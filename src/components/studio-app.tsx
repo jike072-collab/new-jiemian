@@ -85,7 +85,7 @@ export function StudioApp() {
   );
 
   return (
-    <div className="min-h-screen bg-[#030305] text-white">
+    <div className="min-h-screen overflow-x-hidden bg-[#030305] text-white">
       <div className="pointer-events-none fixed inset-0 bg-[radial-gradient(circle_at_62%_0%,rgba(236,0,122,0.24),transparent_32%),radial-gradient(circle_at_20%_20%,rgba(112,48,255,0.18),transparent_28%)]" />
       <aside className="fixed inset-y-0 left-0 z-30 hidden w-[292px] border-r border-white/10 bg-black/80 px-4 py-5 backdrop-blur-xl lg:block">
         <BrandBlock />
@@ -394,7 +394,7 @@ function VideoGenerator({
             onChange={setFiles}
           />
           <RatioPicker value={ratio} onChange={setRatio} />
-          <label className="grid gap-2 text-sm text-white/70">
+          <label className="grid min-w-0 gap-2 text-sm text-white/70">
             时长
             <select
               value={duration}
@@ -739,7 +739,7 @@ function UpscaleForm({
               type="file"
               accept={accept}
               onChange={(event) => setFile(event.target.files?.[0] || null)}
-              className="rounded-2xl border border-dashed border-white/15 bg-black/35 p-4 text-sm text-white/55 file:mr-4 file:rounded-xl file:border-0 file:bg-fuchsia-500 file:px-3 file:py-2 file:text-white"
+              className="w-full min-w-0 max-w-full rounded-2xl border border-dashed border-white/15 bg-black/35 p-4 text-sm text-white/55 file:mr-4 file:rounded-xl file:border-0 file:bg-fuchsia-500 file:px-3 file:py-2 file:text-white"
             />
             {file ? <span className="truncate text-xs text-fuchsia-200">已选择：{file.name}</span> : null}
           </label>
@@ -763,7 +763,7 @@ function UpscaleForm({
             )}
           >
             <div className="flex items-start justify-between gap-3">
-              <div>
+              <div className="min-w-0">
                 <strong className="block">
                   {statusLoading
                     ? "正在检测本机依赖..."
@@ -772,7 +772,7 @@ function UpscaleForm({
                       : "本机依赖未检测到"}
                 </strong>
                 {!statusLoading ? (
-                  <p className="mt-1 text-xs opacity-75">
+                  <p className="mt-1 break-all text-xs opacity-75">
                     {availability?.detail || "请先安装并配置对应的本地高清处理依赖。"}
                   </p>
                 ) : null}

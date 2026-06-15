@@ -295,6 +295,7 @@ export async function submitVideoUpscale(file: UploadedFile, scale: 2 | 4) {
     "--realesrgan-model", provider.model || "realesr-animevideov3",
     "-c", process.env.VIDEO2X_CODEC || "libx264",
     "-e", `crf=${process.env.VIDEO2X_CRF || "18"}`,
+    "--no-progress",
   ];
   if (process.env.VIDEO2X_GPU_ID) args.push("-d", process.env.VIDEO2X_GPU_ID);
 
@@ -303,13 +304,19 @@ export async function submitVideoUpscale(file: UploadedFile, scale: 2 | 4) {
   const child = spawn(status.video.executable, args, {
     windowsHide: true,
     detached: process.platform !== "win32",
-    stdio: "ignore",
+    stdio: ["ignore", "pipe", "pipe"],
     env: {
       ...process.env,
       AOHUANG_VIDEO2X_JOB_ID: job.id,
       AOHUANG_VIDEO2X_ITEM_ID: item.id,
     },
   });
+  let processLog = "";
+  const appendLog = (chunk: Buffer) => {
+    processLog = `${processLog}${chunk.toString("utf8")}`.slice(-16000);
+  };
+  child.stdout.on("data", appendLog);
+  child.stderr.on("data", appendLog);
   child.unref();
 
   void monitorVideoProcess(child, {
@@ -318,6 +325,7 @@ export async function submitVideoUpscale(file: UploadedFile, scale: 2 | 4) {
     storedName,
     itemId: item.id,
     jobId: job.id,
+    getLog: () => processLog,
   });
 
   return {
@@ -334,6 +342,7 @@ async function monitorVideoProcess(
     storedName: string;
     itemId: string;
     jobId: string;
+    getLog: () => string;
   },
 ) {
   let settled = false;
@@ -341,12 +350,17 @@ async function monitorVideoProcess(
     if (settled) return;
     settled = true;
     try {
-      if (code === 0) {
+      const processLog = context.getLog();
+      const recoveredWindowsSuccess = code === 3221226505
+        && processLog.includes("Video processed successfully")
+        && await isValidMp4Output(context.outputPath);
+      if (code === 0 || recoveredWindowsSuccess) {
         const output = await storedOutput(context.storedName, "video/mp4");
         await updateLibraryItem(context.itemId, { status: "done", output });
         await updateJob(context.jobId, { status: "done" });
       } else {
-        const message = `Video2X 任务失败，退出代码 ${code ?? "unknown"}。`;
+        const detail = processLog.trim().split(/\r?\n/).filter(Boolean).slice(-4).join(" ");
+        const message = `Video2X 任务失败，退出代码 ${code ?? "unknown"}。${detail ? ` ${detail}` : ""}`;
         await unlink(context.outputPath).catch(() => undefined);
         await updateLibraryItem(context.itemId, { status: "failed", error: message });
         await updateJob(context.jobId, { status: "failed", error: message });
@@ -364,6 +378,24 @@ async function monitorVideoProcess(
     await unlink(context.inputPath).catch(() => undefined);
   });
   child.once("close", complete);
+}
+
+async function isValidMp4Output(path: string) {
+  try {
+    const fileStat = await stat(path);
+    if (fileStat.size < 1024) return false;
+    const file = await import("node:fs/promises");
+    const handle = await file.open(path, "r");
+    try {
+      const header = Buffer.alloc(12);
+      await handle.read(header, 0, header.length, 0);
+      return header.toString("ascii", 4, 8) === "ftyp";
+    } finally {
+      await handle.close();
+    }
+  } catch {
+    return false;
+  }
 }
 
 export async function uploadedUpscaleFile(

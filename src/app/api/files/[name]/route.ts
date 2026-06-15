@@ -20,7 +20,7 @@ export async function GET(
   context: { params: Promise<{ name: string }> },
 ) {
   const { name } = await context.params;
-  const bytes = await readStoredFile(decodeURIComponent(name));
+  const bytes = await readStoredFile(name);
   if (!bytes) return NextResponse.json({ error: "文件不存在。" }, { status: 404 });
   const mimeType = mimeFromName(name);
   return new NextResponse(bytes, {

@@ -1,15 +1,23 @@
 import { type NextRequest, NextResponse } from "next/server";
 
+function isLoopback(value: string) {
+  const normalized = value.trim().toLowerCase().replace(/^\[|\]$/g, "");
+  return normalized === "127.0.0.1"
+    || normalized === "::1"
+    || normalized === "::ffff:127.0.0.1"
+    || normalized === "localhost";
+}
+
 function isLocalRequest(request: NextRequest) {
-  const forwarded = request.headers.get("x-forwarded-for") || "";
-  if (!forwarded) return true;
-  return forwarded.split(",").some((value) => {
-    const ip = value.trim().toLowerCase();
-    return ip === "127.0.0.1"
-      || ip === "::1"
-      || ip === "::ffff:127.0.0.1"
-      || ip === "localhost";
-  });
+  const host = request.headers.get("host");
+  if (!host) return false;
+  try {
+    if (!isLoopback(new URL(`http://${host}`).hostname)) return false;
+  } catch {
+    return false;
+  }
+  const forwarded = request.headers.get("x-forwarded-for");
+  return !forwarded || isLoopback(forwarded.split(",")[0]);
 }
 
 export function requireAdmin(request: NextRequest) {

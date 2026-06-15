@@ -18,8 +18,14 @@ const endpointOptions: Array<{ value: EndpointType; label: string }> = [
   { value: "videos-generations", label: "OpenAI-compatible videos/generations" },
   { value: "upscayl-cli", label: "本地 Upscayl CLI（图片高清）" },
   { value: "video2x-cli", label: "本地 Video2X CLI（视频高清）" },
-  { value: "upscale-placeholder", label: "高清服务占位" },
 ];
+
+function endpointOptionsFor(provider: EditableProvider) {
+  if (provider.kind === "image") return endpointOptions.filter((option) => option.value.startsWith("images-"));
+  if (provider.kind === "video") return endpointOptions.filter((option) => option.value === "videos-generations");
+  if (provider.kind === "image-upscale") return endpointOptions.filter((option) => option.value === "upscayl-cli");
+  return endpointOptions.filter((option) => option.value === "video2x-cli");
+}
 
 function isLocalCli(endpointType: EndpointType) {
   return endpointType === "upscayl-cli" || endpointType === "video2x-cli";
@@ -208,7 +214,7 @@ export function AdminProvidersClient() {
                     onChange={(event) => update(provider.id, { endpointType: event.target.value as EndpointType })}
                     className="admin-input"
                   >
-                    {endpointOptions.map((option) => (
+                    {endpointOptionsFor(provider).map((option) => (
                       <option key={option.value} value={option.value}>{option.label}</option>
                     ))}
                   </select>

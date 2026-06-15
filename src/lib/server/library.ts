@@ -52,6 +52,8 @@ export async function deleteLibraryItem(id: string) {
   const removed = items.find((item) => item.id === id);
   const next = items.filter((item) => item.id !== id);
   await saveLibrary(next);
+  const jobs = await readJobs();
+  await saveJobs(jobs.filter((job) => job.libraryItemId !== id));
   if (removed?.output?.storedName) {
     await unlink(join(uploadsRoot, safeStoredName(removed.output.storedName))).catch(() => undefined);
   }

@@ -98,6 +98,18 @@ function deriveStatusUrl(apiUrl: string, jobId: string) {
   }
 }
 
+function imageEndpoint(provider: ProviderConfig, useEdits: boolean) {
+  const target = useEdits ? "edits" : "generations";
+  if (/\/images\/(?:edits|generations)\/?$/i.test(provider.apiUrl)) {
+    return provider.apiUrl.replace(/\/images\/(?:edits|generations)\/?$/i, `/images/${target}`);
+  }
+  const configuredForTarget = useEdits
+    ? provider.endpointType === "images-edits"
+    : provider.endpointType === "images-generations";
+  if (configuredForTarget) return provider.apiUrl;
+  throw new Error(`当前图片接口地址无法自动切换为 images/${target}。请在供应商后台填写标准 OpenAI-compatible 图片接口地址。`);
+}
+
 async function readProviderJson(response: Response) {
   const payload = await response.json().catch(() => ({}));
   if (!response.ok) {
@@ -123,10 +135,10 @@ async function callImageProvider({
   files: UploadedMedia[];
 }) {
   const size = ratioToSize(ratio);
-  const useMultipart = provider.endpointType === "images-edits" || /\/images\/edits\/?$/i.test(provider.apiUrl);
+  const useMultipart = files.length > 0;
+  const apiUrl = imageEndpoint(provider, useMultipart);
 
   if (useMultipart) {
-    if (!files.length) throw new Error("当前图片编辑模型需要先上传参考图片。");
     const form = new FormData();
     form.append("model", provider.model);
     form.append("prompt", prompt);
@@ -143,7 +155,7 @@ async function callImageProvider({
       );
     });
 
-    const response = await fetch(provider.apiUrl, {
+    const response = await fetch(apiUrl, {
       method: "POST",
       headers: authHeaders(provider),
       body: form,
@@ -152,7 +164,7 @@ async function callImageProvider({
     return parseProviderOutput(await readProviderJson(response));
   }
 
-  const response = await fetch(provider.apiUrl, {
+  const response = await fetch(apiUrl, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
@@ -165,7 +177,6 @@ async function callImageProvider({
       quality: quality === "2k" ? "high" : "standard",
       response_format: "url",
       ...(quality === "2k" ? { upscale: "2k" } : {}),
-      ...(files.length ? { image: files.map((file) => file.bytes.toString("base64")) } : {}),
     }),
     signal: AbortSignal.timeout(300000),
   });
