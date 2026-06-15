@@ -68,7 +68,7 @@
 
 @layer components {
   .admin-input {
-    @apply h-12 w-full rounded-2xl border border-white/10 bg-black/45 px-4 text-white outline-none transition placeholder:text-white/25 focus:border-fuchsia-400;
+    @apply h-12 w-full rounded-2xl border border-white/10 bg-black/45 px-4 text-white outline-none transition placeholder:text-white/25 focus:border-cyan-400;
   }
 
   .admin-field {
@@ -76,14 +76,34 @@
   }
 
   .admin-primary {
-    @apply flex items-center gap-2 rounded-2xl bg-gradient-to-r from-fuchsia-600 to-pink-600 px-4 py-3 text-sm font-black text-white disabled:cursor-not-allowed disabled:opacity-50;
+    @apply flex items-center gap-2 rounded-2xl bg-gradient-to-r from-cyan-600 to-blue-600 px-4 py-3 text-sm font-black text-white transition hover:-translate-y-0.5 hover:shadow-lg hover:shadow-cyan-950/40 disabled:cursor-not-allowed disabled:translate-y-0 disabled:opacity-50 disabled:shadow-none;
   }
 
   .admin-secondary {
-    @apply flex items-center gap-2 rounded-2xl border border-white/10 px-4 py-3 text-sm text-white/65 transition hover:text-white disabled:cursor-not-allowed disabled:opacity-50;
+    @apply flex items-center gap-2 rounded-2xl border border-white/10 bg-white/[0.025] px-4 py-3 text-sm text-white/65 transition hover:-translate-y-0.5 hover:border-cyan-300/25 hover:text-white disabled:cursor-not-allowed disabled:translate-y-0 disabled:opacity-50;
   }
 
   .admin-badge {
     @apply inline-flex items-center gap-1 rounded-full border border-white/10 bg-white/[0.05] px-3 py-1 text-xs text-white/60;
+  }
+
+  .admin-panel {
+    @apply rounded-3xl border border-white/10 bg-[#111218]/94 shadow-[0_22px_70px_rgba(0,0,0,0.26)] backdrop-blur-xl;
+  }
+
+  .admin-top-link {
+    @apply rounded-xl px-3 py-2 text-sm font-bold text-white/58 transition hover:bg-white/[0.05] hover:text-white;
+  }
+
+  .admin-top-link-active {
+    @apply bg-white/[0.08] text-white;
+  }
+
+  .admin-icon-button {
+    @apply grid size-10 place-items-center rounded-full border border-white/10 bg-white/[0.045] text-white/58 transition hover:border-cyan-300/25 hover:text-white;
+  }
+
+  .admin-dot {
+    @apply inline-block size-2 rounded-full;
   }
 }
