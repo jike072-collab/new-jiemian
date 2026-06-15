@@ -319,6 +319,10 @@ export function AdminProvidersClient() {
               <button type="button" className="admin-icon-button" aria-label="通知" onClick={() => setStatus("通知中心已预留，后续显示客户充值、任务失败和系统公告。")} data-testid="admin-bell">
                 <Bell className="size-4" />
               </button>
+              <Link href="/login" className="hidden admin-secondary clickable sm:flex">
+                <Users className="size-4" />
+                客户登录
+              </Link>
               <div className="hidden items-center gap-2 rounded-full border border-white/10 bg-white/[0.04] py-1 pl-1 pr-3 text-sm text-white/72 sm:flex">
                 <span className="grid size-8 place-items-center rounded-full bg-cyan-500/90 text-xs font-black">J</span>
                 jike072

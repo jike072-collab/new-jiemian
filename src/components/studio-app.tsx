@@ -11,6 +11,7 @@ import {
   RefreshCw,
   Settings,
   Sparkles,
+  UserRound,
   Wand2,
 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
@@ -99,8 +100,11 @@ export function StudioApp() {
   }, []);
 
   return (
-    <div className="min-h-screen overflow-x-hidden bg-[#050507] text-white">
-      <div className="pointer-events-none fixed inset-0 bg-[radial-gradient(circle_at_top_left,rgba(236,72,153,0.18),transparent_24%),radial-gradient(circle_at_top_right,rgba(168,85,247,0.12),transparent_26%),radial-gradient(circle_at_bottom_right,rgba(59,130,246,0.08),transparent_28%)]" />
+    <div className="page-shell min-h-screen overflow-x-hidden bg-[#050507] text-white">
+      <div className="grain-layer fixed" />
+      <span className="particle particle-slow left-[10%] top-[16%] size-2" />
+      <span className="particle particle-fast left-[76%] top-[12%] size-1.5" />
+      <span className="particle particle-slow left-[58%] top-[76%] size-2" />
 
       <main id="top" className="relative z-10 min-h-screen px-3 pb-24 pt-3 sm:px-4 sm:pt-4">
         <GeneratorShell
@@ -124,7 +128,7 @@ export function StudioApp() {
               data-testid={`mobile-tool-${item.id}`}
               onClick={() => setActiveTool(item.id)}
               className={cn(
-                "grid place-items-center gap-1 rounded-2xl px-1 py-2 text-[11px] text-white/52 transition",
+                "clickable grid place-items-center gap-1 rounded-2xl px-1 py-2 text-[11px] text-white/52 transition",
                 activeTool === item.id && "bg-fuchsia-500/15 text-fuchsia-200",
               )}
             >
@@ -195,15 +199,22 @@ function GeneratorShell({
           </div>
           <a
             href="/admin/providers"
-            className="flex items-center justify-center gap-2 rounded-2xl border border-white/10 bg-white/[0.04] px-4 py-3 text-sm text-white/70 transition hover:border-fuchsia-400/50 hover:text-white"
+            className="clickable flex items-center justify-center gap-2 rounded-2xl border border-white/10 bg-white/[0.04] px-4 py-3 text-sm text-white/70 transition hover:border-fuchsia-400/50 hover:text-white"
           >
             <Settings className="size-4" />
             后台设置
           </a>
+          <a
+            href="/login"
+            className="clickable flex items-center justify-center gap-2 rounded-2xl border border-cyan-400/20 bg-cyan-500/10 px-4 py-3 text-sm text-cyan-100 transition hover:border-cyan-300/50 hover:bg-cyan-500/15"
+          >
+            <UserRound className="size-4" />
+            客户登录
+          </a>
         </div>
       </aside>
 
-      <section className="min-w-0 overflow-hidden rounded-[2rem] border border-white/10 bg-[#0d0d11]/94 shadow-[0_24px_80px_rgba(0,0,0,0.35)] backdrop-blur-xl">
+      <section className="soft-card min-w-0 overflow-hidden rounded-[2rem] border border-white/10 bg-[#0d0d11]/94 shadow-[0_24px_80px_rgba(0,0,0,0.35)] backdrop-blur-xl">
         <div className="flex flex-col gap-4 border-b border-white/10 px-4 py-4 md:flex-row md:items-center md:justify-between md:px-5">
           <div>
             <p className="text-xs uppercase tracking-[0.24em] text-fuchsia-300/75">Input</p>
@@ -213,6 +224,9 @@ function GeneratorShell({
           <div className="flex flex-wrap items-center gap-2 text-xs text-white/45">
             <span className="rounded-full border border-white/10 bg-white/5 px-3 py-1">积分位预留</span>
             <span className="rounded-full border border-white/10 bg-white/5 px-3 py-1">当前可直接使用</span>
+            <a href="/login" className="clickable rounded-full border border-cyan-400/20 bg-cyan-500/10 px-3 py-1 text-cyan-100">
+              客户登录
+            </a>
           </div>
         </div>
 
@@ -255,7 +269,7 @@ function GeneratorShell({
         </div>
       </section>
 
-      <aside className="min-w-0 overflow-hidden rounded-[2rem] border border-white/10 bg-black/45 shadow-[0_24px_80px_rgba(0,0,0,0.34)] backdrop-blur-xl">
+      <aside className="soft-card min-w-0 overflow-hidden rounded-[2rem] border border-white/10 bg-black/45 shadow-[0_24px_80px_rgba(0,0,0,0.34)] backdrop-blur-xl">
         <div className="flex items-center justify-between border-b border-white/10 px-4 py-4 md:px-5">
           <div>
             <p className="text-xs uppercase tracking-[0.24em] text-white/38">Output</p>

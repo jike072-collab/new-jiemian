@@ -52,6 +52,7 @@
   html {
     @apply font-sans;
     color-scheme: dark;
+    scroll-behavior: smooth;
   }
 
   body {
@@ -67,6 +68,53 @@
 }
 
 @layer components {
+  .page-shell {
+    @apply relative overflow-x-hidden;
+  }
+
+  .page-shell::before {
+    content: "";
+    @apply pointer-events-none absolute inset-0 opacity-80;
+    background:
+      radial-gradient(circle at 18% 18%, rgba(56, 189, 248, 0.12), transparent 22%),
+      radial-gradient(circle at 82% 12%, rgba(244, 114, 182, 0.1), transparent 24%),
+      radial-gradient(circle at 52% 82%, rgba(99, 102, 241, 0.08), transparent 25%);
+  }
+
+  .grain-layer {
+    @apply pointer-events-none absolute inset-0 opacity-[0.12] mix-blend-screen;
+    background-image:
+      linear-gradient(rgba(255,255,255,0.04) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(255,255,255,0.03) 1px, transparent 1px);
+    background-size: 34px 34px, 34px 34px;
+    mask-image: radial-gradient(circle at center, black 62%, transparent 100%);
+  }
+
+  .particle {
+    @apply pointer-events-none absolute rounded-full bg-white/45 blur-[0.5px];
+    animation: particle-float 10s ease-in-out infinite;
+  }
+
+  .particle-slow {
+    animation-duration: 14s;
+  }
+
+  .particle-fast {
+    animation-duration: 8s;
+  }
+
+  .soft-card {
+    @apply transition duration-200 ease-out hover:-translate-y-0.5 hover:border-white/18 hover:bg-white/[0.045];
+  }
+
+  .clickable {
+    @apply transition duration-200 ease-out active:scale-[0.98];
+  }
+
+  .field-fade {
+    @apply transition duration-200 ease-out focus-within:-translate-y-0.5 focus-within:border-cyan-300/30;
+  }
+
   .admin-input {
     @apply h-12 w-full rounded-2xl border border-white/10 bg-black/45 px-4 text-white outline-none transition placeholder:text-white/25 focus:border-cyan-400;
   }
@@ -105,5 +153,14 @@
 
   .admin-dot {
     @apply inline-block size-2 rounded-full;
+  }
+}
+
+@keyframes particle-float {
+  0%, 100% {
+    transform: translate3d(0, 0, 0);
+  }
+  50% {
+    transform: translate3d(0, -10px, 0);
   }
 }
