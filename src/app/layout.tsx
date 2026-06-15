@@ -3,7 +3,7 @@ import "./globals.css";
 
 export const metadata: Metadata = {
   title: "奥皇 AI",
-  description: "本地优先的 AI 图片与视频生成工作台",
+  description: "一个打开就能用的图片生成、视频生成和本机放大工作台。",
 };
 
 export default function RootLayout({
