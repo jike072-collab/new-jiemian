@@ -22,6 +22,7 @@ npm run dev
 
 - 前台：`http://localhost:3000`
 - 供应商后台：`http://localhost:3000/admin/providers`
+- 客户登录入口：`http://localhost:3000/login`
 
 ## 环境变量
 
@@ -32,6 +33,18 @@ cp .env.example .env.local
 ```
 
 生成结果默认保存到本地 `data/` 和 `uploads/`，这两个目录已被 `.gitignore` 忽略。
+
+### 从旧项目保留下来的接口地址
+
+旧仓库 `jike072-collab/codex_sp` 里的可用后端地址已经对照过：
+
+- 已接入当前工作台：图片生成 `https://www.right.codes/draw/v1/images/generations`
+- 已接入当前工作台：视频生成 `https://clmm-mall.top/v1/videos/generations`
+- 已预留但当前未调用：识图 `https://right.codes/gemini`
+- 已预留但当前未调用：文案/脚本 `https://api.deepseek.com/chat/completions`
+- 已预留但当前未调用：本机代理 `http://127.0.0.1:8080/v1`
+
+这些预留项已经写进 `.env.example`，以后做客户账号、自动提示词、识图分析或脚本文案时可以继续接。旧项目如果曾经填过真实 Key，不要提交到 Git；建议在新项目里重新手动填写或轮换。
 
 ## Windows 本地高清配置
 

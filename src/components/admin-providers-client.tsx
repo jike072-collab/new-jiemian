@@ -115,6 +115,12 @@ const helpItems = [
   },
 ];
 
+const reusableEndpoints = [
+  { label: "识图", value: "https://right.codes/gemini", note: "后面做商品识别、内容分析时可接" },
+  { label: "文案", value: "https://api.deepseek.com/chat/completions", note: "后面做脚本、说明、文案生成时可接" },
+  { label: "本机代理", value: "http://127.0.0.1:8080/v1", note: "后面如果要接本机统一代理，可先留着" },
+];
+
 function endpointOptionsFor(provider: EditableProvider) {
   if (provider.kind === "image") return endpointOptions.filter((option) => option.value.startsWith("images-"));
   if (provider.kind === "video") return endpointOptions.filter((option) => option.value === "videos-generations");
@@ -518,6 +524,19 @@ export function AdminProvidersClient() {
                         <PlaceholderRow left="最近生成 / 失败任务" right="后续显示使用记录" />
                       </div>
                     </div>
+                  </div>
+                </section>
+
+                <section className="admin-panel p-4 md:p-5">
+                  <SectionHeading icon={Database} title="可复用通道" note="旧项目里已经整理好的后端地址，先放在这里备用。" />
+                  <div className="mt-4 grid gap-3 md:grid-cols-3">
+                    {reusableEndpoints.map((item) => (
+                      <div key={item.label} className="soft-card rounded-2xl border border-white/10 bg-white/[0.035] p-4">
+                        <p className="text-sm font-bold text-white/82">{item.label}</p>
+                        <p className="mt-2 break-all text-xs leading-5 text-cyan-200/80">{item.value}</p>
+                        <p className="mt-2 text-xs leading-5 text-white/40">{item.note}</p>
+                      </div>
+                    ))}
                   </div>
                 </section>
 
