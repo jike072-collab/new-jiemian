@@ -82,4 +82,8 @@
   .admin-secondary {
     @apply flex items-center gap-2 rounded-2xl border border-white/10 px-4 py-3 text-sm text-white/65 transition hover:text-white disabled:cursor-not-allowed disabled:opacity-50;
   }
+
+  .admin-badge {
+    @apply inline-flex items-center gap-1 rounded-full border border-white/10 bg-white/[0.05] px-3 py-1 text-xs text-white/60;
+  }
 }
