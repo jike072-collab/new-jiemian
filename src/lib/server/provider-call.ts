@@ -1,0 +1,375 @@
+import { randomUUID } from "node:crypto";
+
+import { addJob, addLibraryItem, storeBytes, storeDataUrl, storeRemoteUrl, updateJob, updateLibraryItem } from "./library";
+import { providerById } from "./providers";
+import { type LibraryItem, type ProviderConfig } from "./types";
+
+type UploadedMedia = {
+  bytes: Buffer;
+  mimeType: string;
+  fileName: string;
+};
+
+type ProviderOutput = {
+  url?: string;
+  base64?: string;
+  jobId?: string;
+  status?: string;
+  statusUrl?: string;
+  mimeType?: string;
+};
+
+function asRecord(value: unknown): Record<string, unknown> {
+  return value && typeof value === "object" && !Array.isArray(value)
+    ? value as Record<string, unknown>
+    : {};
+}
+
+function firstString(...values: unknown[]) {
+  for (const value of values) {
+    if (typeof value === "string" && value.trim()) return value.trim();
+  }
+  return "";
+}
+
+function parseProviderOutput(payload: unknown): ProviderOutput {
+  const root = asRecord(payload);
+  const data = Array.isArray(root.data) ? root.data : [];
+  const first = asRecord(data[0] || root.video || root.result || root.output || payload);
+  const url = firstString(
+    first.url,
+    first.image_url,
+    first.video_url,
+    first.output_url,
+    first.download_url,
+    root.url,
+    root.image_url,
+    root.video_url,
+    root.output_url,
+    root.download_url,
+  );
+  const base64 = firstString(
+    first.b64_json,
+    first.base64,
+    first.image_base64,
+    root.b64_json,
+    root.base64,
+    root.image_base64,
+  );
+  return {
+    url,
+    base64,
+    jobId: firstString(first.id, first.video_id, root.id, root.video_id),
+    status: firstString(first.status, root.status),
+    statusUrl: firstString(first.status_url, root.status_url),
+    mimeType: firstString(first.mime_type, root.mime_type),
+  };
+}
+
+function authHeaders(provider: ProviderConfig) {
+  return { Authorization: `Bearer ${provider.apiKey}` };
+}
+
+function ratioToSize(ratio: string) {
+  if (ratio === "16:9") return "1536x864";
+  if (ratio === "9:16") return "864x1536";
+  if (ratio === "4:3") return "1344x1024";
+  if (ratio === "3:4") return "1024x1344";
+  return "1024x1024";
+}
+
+function normalizeStatus(value: string) {
+  const status = value.toLowerCase();
+  if (["done", "completed", "succeeded", "success"].includes(status)) return "done";
+  if (["failed", "error", "cancelled", "canceled", "expired"].includes(status)) return "failed";
+  if (["generating", "processing", "running", "in_progress"].includes(status)) return "generating";
+  return "queued";
+}
+
+function deriveStatusUrl(apiUrl: string, jobId: string) {
+  if (!jobId) return "";
+  try {
+    const parsed = new URL(apiUrl);
+    parsed.pathname = parsed.pathname.replace(/\/videos\/generations\/?$/i, `/videos/${encodeURIComponent(jobId)}`);
+    parsed.search = "";
+    return parsed.toString();
+  } catch {
+    return "";
+  }
+}
+
+async function readProviderJson(response: Response) {
+  const payload = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    const record = asRecord(payload);
+    const message = firstString(asRecord(record.error).message, record.message)
+      || `供应商请求失败：HTTP ${response.status}`;
+    throw new Error(message);
+  }
+  return payload;
+}
+
+async function callImageProvider({
+  provider,
+  prompt,
+  ratio,
+  quality,
+  files,
+}: {
+  provider: ProviderConfig;
+  prompt: string;
+  ratio: string;
+  quality: string;
+  files: UploadedMedia[];
+}) {
+  const size = ratioToSize(ratio);
+  const useMultipart = provider.endpointType === "images-edits" || /\/images\/edits\/?$/i.test(provider.apiUrl);
+
+  if (useMultipart) {
+    if (!files.length) throw new Error("当前图片编辑模型需要先上传参考图片。");
+    const form = new FormData();
+    form.append("model", provider.model);
+    form.append("prompt", prompt);
+    form.append("n", "1");
+    form.append("size", size);
+    form.append("quality", quality === "2k" ? "high" : "standard");
+    form.append("response_format", "url");
+    if (quality === "2k") form.append("upscale", "2k");
+    files.forEach((file, index) => {
+      form.append(
+        index === 0 ? "image" : "image[]",
+        new Blob([new Uint8Array(file.bytes)], { type: file.mimeType }),
+        file.fileName,
+      );
+    });
+
+    const response = await fetch(provider.apiUrl, {
+      method: "POST",
+      headers: authHeaders(provider),
+      body: form,
+      signal: AbortSignal.timeout(300000),
+    });
+    return parseProviderOutput(await readProviderJson(response));
+  }
+
+  const response = await fetch(provider.apiUrl, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      ...authHeaders(provider),
+    },
+    body: JSON.stringify({
+      model: provider.model,
+      prompt,
+      size,
+      quality: quality === "2k" ? "high" : "standard",
+      response_format: "url",
+      ...(quality === "2k" ? { upscale: "2k" } : {}),
+      ...(files.length ? { image: files.map((file) => file.bytes.toString("base64")) } : {}),
+    }),
+    signal: AbortSignal.timeout(300000),
+  });
+  return parseProviderOutput(await readProviderJson(response));
+}
+
+async function outputToLibrary(output: ProviderOutput, type: "image" | "video", prefix: string) {
+  if (output.base64) {
+    const stored = await storeBytes(
+      Buffer.from(output.base64.replace(/^data:[^;]+;base64,/i, ""), "base64"),
+      type === "image" ? "image/png" : "video/mp4",
+      prefix,
+    );
+    return stored;
+  }
+  if (!output.url) throw new Error("供应商没有返回可识别的生成结果。");
+  if (output.url.startsWith("data:")) return storeDataUrl(output.url, prefix);
+  try {
+    return await storeRemoteUrl(output.url, prefix, output.mimeType || (type === "image" ? "image/png" : "video/mp4"));
+  } catch {
+    return {
+      url: output.url,
+      mimeType: output.mimeType || (type === "image" ? "image/png" : "video/mp4"),
+      sourceUrl: output.url,
+    };
+  }
+}
+
+export async function generateImage(input: {
+  providerId: string;
+  mode: "text-to-image" | "image-to-image";
+  prompt: string;
+  ratio: string;
+  quality: string;
+  files: UploadedMedia[];
+}) {
+  const provider = await providerById(input.providerId);
+  if (!provider || provider.kind !== "image" || !provider.enabled || !provider.apiKey) {
+    throw new Error("图片供应商未配置或未启用。");
+  }
+  if (!input.prompt.trim()) throw new Error("请输入图片提示词。");
+  if (input.mode === "image-to-image" && !input.files.length) {
+    throw new Error("图生图模式需要上传参考图片。");
+  }
+
+  const output = await callImageProvider({
+    provider,
+    prompt: input.prompt,
+    ratio: input.ratio,
+    quality: input.quality,
+    files: input.files,
+  });
+  const stored = await outputToLibrary(output, "image", "image");
+  return addLibraryItem({
+    type: "image",
+    mode: input.mode,
+    title: input.prompt.slice(0, 42) || "图片生成",
+    prompt: input.prompt,
+    providerId: provider.id,
+    model: provider.model,
+    status: "done",
+    output: stored,
+    params: {
+      ratio: input.ratio,
+      quality: input.quality,
+      referenceImages: input.files.length,
+    },
+  });
+}
+
+export async function submitVideo(input: {
+  providerId: string;
+  mode: "text-to-video" | "image-to-video";
+  prompt: string;
+  ratio: string;
+  duration: number;
+  files: UploadedMedia[];
+}) {
+  const provider = await providerById(input.providerId);
+  if (!provider || provider.kind !== "video" || !provider.enabled || !provider.apiKey) {
+    throw new Error("视频供应商未配置或未启用。");
+  }
+  if (!input.prompt.trim()) throw new Error("请输入视频提示词。");
+  if (input.mode === "image-to-video" && !input.files.length) {
+    throw new Error("图生视频模式需要上传参考图片。");
+  }
+
+  const response = await fetch(provider.apiUrl, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      ...authHeaders(provider),
+    },
+    body: JSON.stringify({
+      model: provider.model,
+      prompt: input.prompt,
+      image: input.files.map((file) => `data:${file.mimeType};base64,${file.bytes.toString("base64")}`),
+      duration: input.duration,
+      aspect_ratio: input.ratio,
+      response_format: "url",
+    }),
+    signal: AbortSignal.timeout(180000),
+  });
+  const output = parseProviderOutput(await readProviderJson(response));
+
+  if (output.url) {
+    const stored = await outputToLibrary(output, "video", "video");
+    return {
+      item: await addLibraryItem({
+        type: "video",
+        mode: input.mode,
+        title: input.prompt.slice(0, 42) || "视频生成",
+        prompt: input.prompt,
+        providerId: provider.id,
+        model: provider.model,
+        status: "done",
+        output: stored,
+        params: {
+          ratio: input.ratio,
+          duration: input.duration,
+          referenceImages: input.files.length,
+        },
+      }),
+      job: null,
+    };
+  }
+
+  const item = await addLibraryItem({
+    type: "video",
+    mode: input.mode,
+    title: input.prompt.slice(0, 42) || "视频生成",
+    prompt: input.prompt,
+    providerId: provider.id,
+    model: provider.model,
+    status: normalizeStatus(output.status || ""),
+    params: {
+      ratio: input.ratio,
+      duration: input.duration,
+      referenceImages: input.files.length,
+    },
+  });
+  const jobId = output.jobId || randomUUID();
+  const job = await addJob({
+    id: jobId,
+    libraryItemId: item.id,
+    type: "video",
+    providerId: provider.id,
+    status: normalizeStatus(output.status || ""),
+    statusUrl: output.statusUrl || deriveStatusUrl(provider.apiUrl, jobId),
+  });
+  return { item, job };
+}
+
+export async function refreshVideoJob(jobId: string) {
+  const { readJobs } = await import("./library");
+  const job = (await readJobs()).find((item) => item.id === jobId);
+  if (!job) throw new Error("任务不存在。");
+  if (job.status === "done" || job.status === "failed") return job;
+  if (job.providerId === "video-upscale") return job;
+
+  const provider = await providerById(job.providerId);
+  if (!provider || !provider.apiKey) throw new Error("视频供应商未配置。");
+  if (!job.statusUrl) return job;
+
+  const response = await fetch(job.statusUrl, {
+    method: "GET",
+    headers: authHeaders(provider),
+    signal: AbortSignal.timeout(60000),
+  });
+  const output = parseProviderOutput(await readProviderJson(response));
+  const status = normalizeStatus(output.status || "");
+
+  if (output.url) {
+    const stored = await outputToLibrary(output, "video", "video");
+    await updateLibraryItem(job.libraryItemId, {
+      status: "done",
+      output: stored,
+    } satisfies Partial<LibraryItem>);
+    return updateJob(job.id, {
+      status: "done",
+      sourceUrl: output.url,
+    });
+  }
+
+  if (status === "failed") {
+    await updateLibraryItem(job.libraryItemId, {
+      status: "failed",
+      error: "视频生成任务失败。",
+    });
+  }
+  return updateJob(job.id, { status });
+}
+
+export async function uploadedMediaFromForm(form: FormData, fieldName = "files") {
+  const files = form.getAll(fieldName).filter((value): value is File => value instanceof File && value.size > 0);
+  if (files.length > 10) throw new Error("最多上传 10 张参考图片。");
+  const allowedTypes = new Set(["image/png", "image/jpeg", "image/webp"]);
+  for (const file of files) {
+    if (!allowedTypes.has(file.type)) throw new Error("参考图片只支持 PNG、JPEG 和 WebP。");
+    if (file.size > 10 * 1024 * 1024) throw new Error("单张参考图片不能超过 10MB。");
+  }
+  return Promise.all(files.map(async (file) => ({
+    bytes: Buffer.from(await file.arrayBuffer()),
+    mimeType: file.type || "application/octet-stream",
+    fileName: file.name || "reference.png",
+  })));
+}
