@@ -291,7 +291,7 @@ export function AdminProvidersClient() {
       <div className="pointer-events-none fixed inset-0 bg-[linear-gradient(120deg,rgba(255,255,255,0.04)_0,transparent_30%,rgba(56,189,248,0.04)_100%)]" />
       <div className="relative grid min-h-screen grid-rows-[auto_1fr]">
         <header className="sticky top-0 z-30 border-b border-white/10 bg-[#0d0e13]/95 px-3 py-3 backdrop-blur-xl lg:px-5">
-          <div className="mx-auto flex max-w-[1880px] items-center justify-between gap-3">
+          <div className="flex w-full items-center justify-between gap-3">
             <div className="flex min-w-0 items-center gap-4">
               <Link href="/" className="flex min-w-0 items-center gap-3" data-testid="admin-home-logo">
                 <div className="grid size-10 shrink-0 place-items-center rounded-2xl bg-white/10">
@@ -386,7 +386,7 @@ export function AdminProvidersClient() {
               ))}
             </div>
 
-            <div className="mx-auto grid max-w-[1880px] gap-4 xl:grid-cols-[minmax(0,1fr)_360px]">
+            <div className="grid w-full gap-4 xl:grid-cols-[minmax(0,1fr)_360px]">
               <div className="min-w-0 space-y-4">
                 <section id="dashboard-overview" className="admin-panel p-4 md:p-5">
                   <div className="flex flex-col justify-between gap-4 xl:flex-row xl:items-center">

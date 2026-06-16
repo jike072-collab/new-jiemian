@@ -100,13 +100,13 @@ export function StudioApp() {
   }, []);
 
   return (
-    <div className="page-shell min-h-screen overflow-x-hidden bg-[#050507] text-white">
+    <div className="page-shell h-screen w-screen bg-[#050507] text-white">
       <div className="grain-layer fixed" />
       <span className="particle particle-slow left-[10%] top-[16%] size-2" />
       <span className="particle particle-fast left-[76%] top-[12%] size-1.5" />
       <span className="particle particle-slow left-[58%] top-[76%] size-2" />
 
-      <main id="top" className="relative z-10 min-h-screen px-3 pb-24 pt-3 sm:px-4 sm:pt-4">
+      <main id="top" className="relative z-10 h-full w-full min-w-0 overflow-hidden">
         <GeneratorShell
           activeTool={activeTool}
           setActiveTool={setActiveTool}
@@ -167,8 +167,8 @@ function GeneratorShell({
   const activeOutput = outputs[activeTool] || null;
 
   return (
-    <section id="generate" className="mx-auto grid min-h-[calc(100vh-2rem)] max-w-[1800px] gap-3 xl:grid-cols-[260px_minmax(380px,1.1fr)_minmax(620px,3fr)]">
-      <aside className="hidden min-h-0 rounded-[2rem] border border-white/10 bg-black/45 p-3 shadow-[0_24px_80px_rgba(0,0,0,0.34)] backdrop-blur-xl xl:flex xl:flex-col">
+    <section id="generate" className="app-shell">
+      <aside className="app-sidebar rounded-[2rem] border border-white/10 bg-black/45 p-3 shadow-[0_24px_80px_rgba(0,0,0,0.34)] backdrop-blur-xl">
         <div className="mb-4 flex items-center gap-3 px-2 pt-1">
           <div className="grid size-11 place-items-center rounded-2xl bg-white/10">
             <BrandLogo className="size-7" />
@@ -214,7 +214,7 @@ function GeneratorShell({
         </div>
       </aside>
 
-      <section className="soft-card min-w-0 overflow-hidden rounded-[2rem] border border-white/10 bg-[#0d0d11]/94 shadow-[0_24px_80px_rgba(0,0,0,0.35)] backdrop-blur-xl">
+      <section className="app-tool-panel soft-card flex flex-col rounded-[2rem] border border-white/10 bg-[#0d0d11]/94 shadow-[0_24px_80px_rgba(0,0,0,0.35)] backdrop-blur-xl">
         <div className="flex flex-col gap-4 border-b border-white/10 px-4 py-4 md:flex-row md:items-center md:justify-between md:px-5">
           <div>
             <p className="text-xs uppercase tracking-[0.24em] text-fuchsia-300/75">Input</p>
@@ -230,7 +230,7 @@ function GeneratorShell({
           </div>
         </div>
 
-        <div className="min-h-0 overflow-y-auto px-4 py-5 md:px-5 xl:max-h-[calc(100vh-8rem)]">
+        <div className="min-h-0 flex-1 overflow-y-auto px-4 py-5 md:px-5">
           {activeTool === "image" ? (
             <ImageGenerator
               providers={providers.image}
@@ -269,7 +269,7 @@ function GeneratorShell({
         </div>
       </section>
 
-      <aside className="soft-card min-w-0 overflow-hidden rounded-[2rem] border border-white/10 bg-black/45 shadow-[0_24px_80px_rgba(0,0,0,0.34)] backdrop-blur-xl">
+      <aside className="app-workspace workspace-card soft-card flex flex-col rounded-[2rem] border border-white/10 bg-black/45 shadow-[0_24px_80px_rgba(0,0,0,0.34)] backdrop-blur-xl">
         <div className="flex items-center justify-between border-b border-white/10 px-4 py-4 md:px-5">
           <div>
             <p className="text-xs uppercase tracking-[0.24em] text-white/38">Output</p>
@@ -279,7 +279,7 @@ function GeneratorShell({
             {library.length} 条作品
           </span>
         </div>
-        <div className="min-h-0 overflow-y-auto p-4 md:p-5 xl:max-h-[calc(100vh-8rem)]">
+        <div className="min-h-0 flex-1 overflow-y-auto p-4 md:p-5">
           <OutputPanel tool={activeTool} output={activeOutput} />
         </div>
       </aside>

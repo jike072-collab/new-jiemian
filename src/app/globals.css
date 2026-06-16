@@ -51,12 +51,20 @@
 
   html {
     @apply font-sans;
+    width: 100%;
+    height: 100%;
+    margin: 0;
+    overflow: hidden;
     color-scheme: dark;
     scroll-behavior: smooth;
   }
 
   body {
     @apply bg-background text-foreground;
+    width: 100%;
+    height: 100%;
+    margin: 0;
+    overflow: hidden;
   }
 
   button,
@@ -69,7 +77,52 @@
 
 @layer components {
   .page-shell {
-    @apply relative overflow-x-hidden;
+    @apply relative overflow-hidden;
+  }
+
+  .app-shell {
+    width: 100vw;
+    height: 100vh;
+    display: grid;
+    grid-template-columns: 250px 380px minmax(0, 1fr);
+    gap: 16px;
+    padding: 16px;
+    box-sizing: border-box;
+    background: #050507;
+    overflow: hidden;
+  }
+
+  .app-sidebar {
+    display: flex;
+    flex-direction: column;
+    width: 250px;
+    min-width: 250px;
+    height: 100%;
+    min-height: 0;
+    overflow: hidden;
+  }
+
+  .app-tool-panel {
+    width: 380px;
+    min-width: 380px;
+    height: 100%;
+    min-height: 0;
+    overflow: hidden;
+  }
+
+  .app-workspace {
+    width: 100%;
+    min-width: 0;
+    height: 100%;
+    min-height: 0;
+    overflow: hidden;
+  }
+
+  .workspace-card {
+    width: 100%;
+    height: 100%;
+    box-sizing: border-box;
+    overflow: hidden;
   }
 
   .page-shell::before {
@@ -153,6 +206,55 @@
 
   .admin-dot {
     @apply inline-block size-2 rounded-full;
+  }
+}
+
+@media (max-width: 1179px) and (min-width: 980px) {
+  .app-shell {
+    grid-template-columns: 220px 340px minmax(0, 1fr);
+    gap: 12px;
+    padding: 12px;
+  }
+
+  .app-sidebar {
+    width: 220px;
+    min-width: 220px;
+  }
+
+  .app-tool-panel {
+    width: 340px;
+    min-width: 340px;
+  }
+}
+
+@media (max-width: 979px) {
+  html,
+  body {
+    overflow: hidden;
+  }
+
+  .app-shell {
+    grid-template-columns: minmax(0, 1fr);
+    grid-auto-rows: auto;
+    gap: 12px;
+    padding: 12px 12px 88px;
+    overflow-y: auto;
+  }
+
+  .app-sidebar {
+    display: none;
+  }
+
+  .app-tool-panel,
+  .app-workspace {
+    width: 100%;
+    min-width: 0;
+    height: auto;
+    min-height: 0;
+  }
+
+  .workspace-card {
+    min-height: min(72vh, 720px);
   }
 }
 

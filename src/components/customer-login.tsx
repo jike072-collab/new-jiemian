@@ -29,7 +29,7 @@ export function CustomerLogin() {
       <span className="particle particle-fast left-[66%] top-[68%] size-2" />
       <span className="particle particle-slow left-[24%] top-[74%] size-1.5" />
 
-      <div className="relative mx-auto flex min-h-screen max-w-[1680px] flex-col gap-4 p-3 sm:p-4">
+      <div className="relative flex min-h-screen w-full flex-col gap-4 p-3 sm:p-4">
         <header className="flex items-center justify-between rounded-[2rem] border border-white/10 bg-[#0d0e13]/92 px-4 py-3 backdrop-blur-xl">
           <Link href="/" className="flex items-center gap-3 clickable">
             <div className="grid size-10 place-items-center rounded-2xl bg-white/10">
