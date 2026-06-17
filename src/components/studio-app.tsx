@@ -11,7 +11,6 @@ import {
   RefreshCw,
   Settings,
   Sparkles,
-  UserRound,
   Wand2,
 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
@@ -100,13 +99,10 @@ export function StudioApp() {
   }, []);
 
   return (
-    <div className="page-shell h-screen w-screen bg-[#050507] text-white">
-      <div className="grain-layer fixed" />
-      <span className="particle particle-slow left-[10%] top-[16%] size-2" />
-      <span className="particle particle-fast left-[76%] top-[12%] size-1.5" />
-      <span className="particle particle-slow left-[58%] top-[76%] size-2" />
+    <div className="min-h-screen overflow-x-hidden bg-[#050507] text-white">
+      <div className="pointer-events-none fixed inset-0 bg-[radial-gradient(circle_at_top_left,rgba(236,72,153,0.18),transparent_24%),radial-gradient(circle_at_top_right,rgba(168,85,247,0.12),transparent_26%),radial-gradient(circle_at_bottom_right,rgba(59,130,246,0.08),transparent_28%)]" />
 
-      <main id="top" className="relative z-10 h-full w-full min-w-0 overflow-hidden">
+      <main id="top" className="relative z-10 min-h-screen px-3 pb-24 pt-3 sm:px-4 sm:pt-4">
         <GeneratorShell
           activeTool={activeTool}
           setActiveTool={setActiveTool}
@@ -128,7 +124,7 @@ export function StudioApp() {
               data-testid={`mobile-tool-${item.id}`}
               onClick={() => setActiveTool(item.id)}
               className={cn(
-                "clickable grid place-items-center gap-1 rounded-2xl px-1 py-2 text-[11px] text-white/52 transition",
+                "grid place-items-center gap-1 rounded-2xl px-1 py-2 text-[11px] text-white/52 transition",
                 activeTool === item.id && "bg-fuchsia-500/15 text-fuchsia-200",
               )}
             >
@@ -167,8 +163,8 @@ function GeneratorShell({
   const activeOutput = outputs[activeTool] || null;
 
   return (
-    <section id="generate" className="app-shell">
-      <aside className="app-sidebar rounded-[2rem] border border-white/10 bg-black/45 p-3 shadow-[0_24px_80px_rgba(0,0,0,0.34)] backdrop-blur-xl">
+    <section id="generate" className="mx-auto grid min-h-[calc(100vh-2rem)] max-w-[1800px] gap-3 xl:grid-cols-[260px_minmax(380px,1.1fr)_minmax(620px,3fr)]">
+      <aside className="hidden min-h-0 rounded-[2rem] border border-white/10 bg-black/45 p-3 shadow-[0_24px_80px_rgba(0,0,0,0.34)] backdrop-blur-xl xl:flex xl:flex-col">
         <div className="mb-4 flex items-center gap-3 px-2 pt-1">
           <div className="grid size-11 place-items-center rounded-2xl bg-white/10">
             <BrandLogo className="size-7" />
@@ -199,22 +195,15 @@ function GeneratorShell({
           </div>
           <a
             href="/admin/providers"
-            className="clickable flex items-center justify-center gap-2 rounded-2xl border border-white/10 bg-white/[0.04] px-4 py-3 text-sm text-white/70 transition hover:border-fuchsia-400/50 hover:text-white"
+            className="flex items-center justify-center gap-2 rounded-2xl border border-white/10 bg-white/[0.04] px-4 py-3 text-sm text-white/70 transition hover:border-fuchsia-400/50 hover:text-white"
           >
             <Settings className="size-4" />
             后台设置
           </a>
-          <a
-            href="/login"
-            className="clickable flex items-center justify-center gap-2 rounded-2xl border border-cyan-400/20 bg-cyan-500/10 px-4 py-3 text-sm text-cyan-100 transition hover:border-cyan-300/50 hover:bg-cyan-500/15"
-          >
-            <UserRound className="size-4" />
-            客户登录
-          </a>
         </div>
       </aside>
 
-      <section className="app-tool-panel soft-card flex flex-col rounded-[2rem] border border-white/10 bg-[#0d0d11]/94 shadow-[0_24px_80px_rgba(0,0,0,0.35)] backdrop-blur-xl">
+      <section className="min-w-0 overflow-hidden rounded-[2rem] border border-white/10 bg-[#0d0d11]/94 shadow-[0_24px_80px_rgba(0,0,0,0.35)] backdrop-blur-xl">
         <div className="flex flex-col gap-4 border-b border-white/10 px-4 py-4 md:flex-row md:items-center md:justify-between md:px-5">
           <div>
             <p className="text-xs uppercase tracking-[0.24em] text-fuchsia-300/75">Input</p>
@@ -224,13 +213,10 @@ function GeneratorShell({
           <div className="flex flex-wrap items-center gap-2 text-xs text-white/45">
             <span className="rounded-full border border-white/10 bg-white/5 px-3 py-1">积分位预留</span>
             <span className="rounded-full border border-white/10 bg-white/5 px-3 py-1">当前可直接使用</span>
-            <a href="/login" className="clickable rounded-full border border-cyan-400/20 bg-cyan-500/10 px-3 py-1 text-cyan-100">
-              客户登录
-            </a>
           </div>
         </div>
 
-        <div className="min-h-0 flex-1 overflow-y-auto px-4 py-5 md:px-5">
+        <div className="min-h-0 overflow-y-auto px-4 py-5 md:px-5 xl:max-h-[calc(100vh-8rem)]">
           {activeTool === "image" ? (
             <ImageGenerator
               providers={providers.image}
@@ -269,7 +255,7 @@ function GeneratorShell({
         </div>
       </section>
 
-      <aside className="app-workspace workspace-card soft-card flex flex-col rounded-[2rem] border border-white/10 bg-black/45 shadow-[0_24px_80px_rgba(0,0,0,0.34)] backdrop-blur-xl">
+      <aside className="min-w-0 overflow-hidden rounded-[2rem] border border-white/10 bg-black/45 shadow-[0_24px_80px_rgba(0,0,0,0.34)] backdrop-blur-xl">
         <div className="flex items-center justify-between border-b border-white/10 px-4 py-4 md:px-5">
           <div>
             <p className="text-xs uppercase tracking-[0.24em] text-white/38">Output</p>
@@ -279,7 +265,7 @@ function GeneratorShell({
             {library.length} 条作品
           </span>
         </div>
-        <div className="min-h-0 flex-1 overflow-y-auto p-4 md:p-5">
+        <div className="min-h-0 overflow-y-auto p-4 md:p-5 xl:max-h-[calc(100vh-8rem)]">
           <OutputPanel tool={activeTool} output={activeOutput} />
         </div>
       </aside>
