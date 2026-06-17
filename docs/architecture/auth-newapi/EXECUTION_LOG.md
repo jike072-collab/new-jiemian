@@ -66,3 +66,25 @@ Integration target: `integration/auth-newapi`
 - `/login` was traced to `LoginPage` and `CustomerLogin`; the form navigates to `/` without authentication.
 - `/admin/providers` was traced to `AdminProvidersClient`, `/api/admin/providers`, `requireAdmin`, and provider JSON storage.
 - Generation, upscale, library, job, and files APIs were traced and found to run without auth, user ownership, or charge hooks.
+
+## B03 - New API Official Capability, Version, Security, And License Audit
+
+Status: Completed locally
+
+Branch: `feature/auth-newapi-03-newapi-audit`
+
+Base: `origin/integration/auth-newapi`
+
+Integration target: `integration/auth-newapi`
+
+## B03 Scope
+
+- Reviewed only official New API sources: GitHub repository, public documentation, OpenAPI spec, Docker release workflow, and Docker Hub registry data.
+- No deployment was performed.
+- No project business code, schema, or main line A file was changed.
+
+## B03 Verification
+
+- Latest visible official release verified as `v1.0.0-rc.11` on 2026-06-13.
+- Docker Hub manifest digest for `calciumion/new-api:v1.0.0-rc.11` verified as `sha256:bd30213d808857bb569ef47d3c9209d061a66ea089c2472ef46ce51e75517f19`.
+- Official code and docs confirm user/auth, quota, payment, webhook, deployment, and license behavior.
