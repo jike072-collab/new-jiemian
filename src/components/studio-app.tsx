@@ -2,24 +2,22 @@
 
 /* eslint-disable @next/next/no-img-element */
 
-import {
-  Film,
-  FolderOpen,
-  Image as ImageIcon,
-  Loader2,
-  Maximize2,
-  RefreshCw,
-  Settings,
-  Sparkles,
-  Wand2,
-} from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
+import { Loader2, RefreshCw, Wand2 } from "lucide-react";
+import { useRouter } from "next/navigation";
 
-import { BrandLogo } from "@/components/brand-logo";
+import { WorkbenchShell } from "@/components/workbench-shell";
 import { cn } from "@/lib/utils";
 import type { JobRecord, LibraryItem, PublicProvider } from "@/lib/server/types";
+import {
+  type WorkspaceAction,
+  type WorkspaceToolId,
+  workspaceToolById,
+} from "@/lib/workspace-registry";
 
-type ToolId = "image" | "video" | "image-upscale" | "video-upscale" | "library";
+type BusinessToolId = "image" | "video" | "image-upscale" | "video-upscale" | "library";
+type ImageMode = "text-to-image" | "image-to-image";
+type VideoMode = "text-to-video" | "image-to-video";
 type UpscaleKind = "image" | "video";
 type UpscaleAvailability = { ready: boolean; detail: string };
 type UpscaleStatusResponse = Record<UpscaleKind, UpscaleAvailability>;
@@ -33,21 +31,8 @@ type OutputState = {
   item: LibraryItem;
   job?: JobRecord | null;
   title: string;
-  tool: ToolId;
+  tool: BusinessToolId;
 } | null;
-
-const navItems: Array<{
-  id: ToolId;
-  label: string;
-  desc: string;
-  icon: React.ComponentType<{ className?: string }>;
-}> = [
-  { id: "image", label: "图片生成", desc: "文生图 / 图生图", icon: ImageIcon },
-  { id: "video", label: "视频生成", desc: "文生视频 / 图生视频", icon: Film },
-  { id: "image-upscale", label: "图片放大", desc: "本机 2x / 4x", icon: Maximize2 },
-  { id: "video-upscale", label: "视频放大", desc: "本机增强", icon: Sparkles },
-  { id: "library", label: "作品库", desc: "历史结果", icon: FolderOpen },
-];
 
 const ratios = ["1:1", "16:9", "9:16", "4:3", "3:4"];
 
@@ -64,10 +49,15 @@ async function jsonFetch<T>(url: string, options?: RequestInit): Promise<T> {
 }
 
 export function StudioApp() {
-  const [activeTool, setActiveTool] = useState<ToolId>("image");
+  const router = useRouter();
+  const [activeTool, setActiveTool] = useState<BusinessToolId>("image");
+  const [activeWorkspaceTool, setActiveWorkspaceTool] = useState<WorkspaceToolId>("image");
+  const [imageModePreset, setImageModePreset] = useState<ImageMode>("text-to-image");
+  const [videoModePreset, setVideoModePreset] = useState<VideoMode>("text-to-video");
   const [providers, setProviders] = useState<EnabledProviders>({ image: [], video: [] });
   const [library, setLibrary] = useState<LibraryItem[]>([]);
   const [message, setMessage] = useState("");
+  const [outputs, setOutputs] = useState<Partial<Record<BusinessToolId, OutputState>>>({});
 
   async function refreshLibrary() {
     const data = await jsonFetch<{ items: LibraryItem[] }>("/api/library");
@@ -98,199 +88,111 @@ export function StudioApp() {
     };
   }, []);
 
-  return (
-    <div className="min-h-screen overflow-x-hidden bg-[#050507] text-white">
-      <div className="pointer-events-none fixed inset-0 bg-[radial-gradient(circle_at_top_left,rgba(236,72,153,0.18),transparent_24%),radial-gradient(circle_at_top_right,rgba(168,85,247,0.12),transparent_26%),radial-gradient(circle_at_bottom_right,rgba(59,130,246,0.08),transparent_28%)]" />
+  function handleToolAction(action: WorkspaceAction, tool: WorkspaceToolId) {
+    if (action.kind === "route") {
+      router.push(action.href);
+      return;
+    }
 
-      <main id="top" className="relative z-10 min-h-screen px-3 pb-24 pt-3 sm:px-4 sm:pt-4">
-        <GeneratorShell
-          activeTool={activeTool}
-          setActiveTool={setActiveTool}
-          providers={providers}
-          library={library}
-          refreshLibrary={refreshLibrary}
-          setMessage={setMessage}
-        />
-      </main>
+    setActiveWorkspaceTool(tool);
+    setActiveTool(action.toolId);
+    if (action.toolId === "image") {
+      setImageModePreset(action.mode === "image-to-image" ? "image-to-image" : "text-to-image");
+    }
+    if (action.toolId === "video") {
+      setVideoModePreset(action.mode === "image-to-video" ? "image-to-video" : "text-to-video");
+    }
+  }
 
-      <nav data-testid="mobile-tool-nav" className="fixed inset-x-0 bottom-0 z-50 grid grid-cols-5 border-t border-white/10 bg-black/90 px-2 pb-[env(safe-area-inset-bottom)] pt-2 backdrop-blur-xl xl:hidden">
-        {navItems.map((item) => {
-          const Icon = item.icon;
-          return (
-            <button
-              key={item.id}
-              type="button"
-              aria-label={item.label}
-              data-testid={`mobile-tool-${item.id}`}
-              onClick={() => setActiveTool(item.id)}
-              className={cn(
-                "grid place-items-center gap-1 rounded-2xl px-1 py-2 text-[11px] text-white/52 transition",
-                activeTool === item.id && "bg-fuchsia-500/15 text-fuchsia-200",
-              )}
-            >
-              <Icon className="size-4" />
-              {item.label}
-            </button>
-          );
-        })}
-      </nav>
-
-      {message ? <Toast message={message} onClose={() => setMessage("")} /> : null}
-    </div>
-  );
-}
-
-function GeneratorShell({
-  activeTool,
-  setActiveTool,
-  providers,
-  library,
-  refreshLibrary,
-  setMessage,
-}: {
-  activeTool: ToolId;
-  setActiveTool: (value: ToolId) => void;
-  providers: EnabledProviders;
-  library: LibraryItem[];
-  refreshLibrary: () => Promise<void>;
-  setMessage: (value: string) => void;
-}) {
-  const activeMeta = useMemo(
-    () => navItems.find((item) => item.id === activeTool) || navItems[0],
-    [activeTool],
-  );
-  const [outputs, setOutputs] = useState<Partial<Record<ToolId, OutputState>>>({});
+  const activeMeta = workspaceToolById(activeWorkspaceTool) || workspaceToolById(activeTool);
   const activeOutput = outputs[activeTool] || null;
 
+  const parameterSlot = (
+    <>
+      {activeTool === "image" ? (
+        <ImageGenerator
+          key={activeWorkspaceTool}
+          initialMode={imageModePreset}
+          providers={providers.image}
+          onDone={refreshLibrary}
+          onResult={(item) => setOutputs((prev) => ({ ...prev, image: { item, title: "图片结果", tool: "image" } }))}
+          setMessage={setMessage}
+        />
+      ) : null}
+      {activeTool === "video" ? (
+        <VideoGenerator
+          key={activeWorkspaceTool}
+          initialMode={videoModePreset}
+          providers={providers.video}
+          onDone={refreshLibrary}
+          onResult={(item, job) => setOutputs((prev) => ({ ...prev, video: { item, job, title: "视频结果", tool: "video" } }))}
+          setMessage={setMessage}
+        />
+      ) : null}
+      {activeTool === "image-upscale" ? (
+        <UpscaleForm
+          kind="image"
+          onDone={refreshLibrary}
+          onResult={(item, job) => setOutputs((prev) => ({ ...prev, "image-upscale": { item, job, title: "图片高清结果", tool: "image-upscale" } }))}
+          setMessage={setMessage}
+        />
+      ) : null}
+      {activeTool === "video-upscale" ? (
+        <UpscaleForm
+          kind="video"
+          onDone={refreshLibrary}
+          onResult={(item, job) => setOutputs((prev) => ({ ...prev, "video-upscale": { item, job, title: "视频高清结果", tool: "video-upscale" } }))}
+          setMessage={setMessage}
+        />
+      ) : null}
+      {activeTool === "library" ? (
+        <LibraryView items={library} refresh={refreshLibrary} setMessage={setMessage} />
+      ) : null}
+    </>
+  );
+
   return (
-    <section id="generate" className="mx-auto grid min-h-[calc(100vh-2rem)] max-w-[1800px] gap-3 xl:grid-cols-[260px_minmax(380px,1.1fr)_minmax(620px,3fr)]">
-      <aside className="hidden min-h-0 rounded-[2rem] border border-white/10 bg-black/45 p-3 shadow-[0_24px_80px_rgba(0,0,0,0.34)] backdrop-blur-xl xl:flex xl:flex-col">
-        <div className="mb-4 flex items-center gap-3 px-2 pt-1">
-          <div className="grid size-11 place-items-center rounded-2xl bg-white/10">
-            <BrandLogo className="size-7" />
-          </div>
-          <div>
-            <h1 className="text-lg font-black">奥皇 AI</h1>
-            <p className="text-xs text-white/42">图片与视频工作台</p>
-          </div>
-        </div>
-        <div className="rounded-2xl border border-fuchsia-400/20 bg-fuchsia-500/10 px-4 py-3 text-sm text-fuchsia-100">
-          左边选功能，中间填信息，右边看结果。
-        </div>
-        <nav className="mt-4 grid gap-2">
-          {navItems.map((item) => (
-            <NavButton
-              key={item.id}
-              item={item}
-              testIdPrefix="tool"
-              active={activeTool === item.id}
-              onClick={() => setActiveTool(item.id)}
-            />
-          ))}
-        </nav>
-        <div className="mt-auto grid gap-3 px-1">
-          <div className="grid grid-cols-2 gap-2">
-            <HeroStat label="图片" value={providers.image.length ? `${providers.image.length} 个入口` : "待配置"} />
-            <HeroStat label="视频" value={providers.video.length ? `${providers.video.length} 个入口` : "待配置"} />
-          </div>
-          <a
-            href="/admin/providers"
-            className="flex items-center justify-center gap-2 rounded-2xl border border-white/10 bg-white/[0.04] px-4 py-3 text-sm text-white/70 transition hover:border-fuchsia-400/50 hover:text-white"
-          >
-            <Settings className="size-4" />
-            后台设置
-          </a>
-        </div>
-      </aside>
-
-      <section className="min-w-0 overflow-hidden rounded-[2rem] border border-white/10 bg-[#0d0d11]/94 shadow-[0_24px_80px_rgba(0,0,0,0.35)] backdrop-blur-xl">
-        <div className="flex flex-col gap-4 border-b border-white/10 px-4 py-4 md:flex-row md:items-center md:justify-between md:px-5">
-          <div>
-            <p className="text-xs uppercase tracking-[0.24em] text-fuchsia-300/75">Input</p>
-            <h2 className="mt-1 text-2xl font-black">{activeMeta.label}</h2>
-            <p className="mt-1 text-sm text-white/50">{activeMeta.desc}</p>
-          </div>
-          <div className="flex flex-wrap items-center gap-2 text-xs text-white/45">
-            <span className="rounded-full border border-white/10 bg-white/5 px-3 py-1">积分位预留</span>
-            <span className="rounded-full border border-white/10 bg-white/5 px-3 py-1">当前可直接使用</span>
-          </div>
-        </div>
-
-        <div className="min-h-0 overflow-y-auto px-4 py-5 md:px-5 xl:max-h-[calc(100vh-8rem)]">
-          {activeTool === "image" ? (
-            <ImageGenerator
-              providers={providers.image}
-              onDone={refreshLibrary}
-              onResult={(item) => setOutputs((prev) => ({ ...prev, image: { item, title: "图片结果", tool: "image" } }))}
-              setMessage={setMessage}
-            />
-          ) : null}
-          {activeTool === "video" ? (
-            <VideoGenerator
-              providers={providers.video}
-              onDone={refreshLibrary}
-              onResult={(item, job) => setOutputs((prev) => ({ ...prev, video: { item, job, title: "视频结果", tool: "video" } }))}
-              setMessage={setMessage}
-            />
-          ) : null}
-          {activeTool === "image-upscale" ? (
-            <UpscaleForm
-              kind="image"
-              onDone={refreshLibrary}
-              onResult={(item, job) => setOutputs((prev) => ({ ...prev, "image-upscale": { item, job, title: "图片放大结果", tool: "image-upscale" } }))}
-              setMessage={setMessage}
-            />
-          ) : null}
-          {activeTool === "video-upscale" ? (
-            <UpscaleForm
-              kind="video"
-              onDone={refreshLibrary}
-              onResult={(item, job) => setOutputs((prev) => ({ ...prev, "video-upscale": { item, job, title: "视频放大结果", tool: "video-upscale" } }))}
-              setMessage={setMessage}
-            />
-          ) : null}
-          {activeTool === "library" ? (
-            <LibraryView items={library} refresh={refreshLibrary} setMessage={setMessage} />
-          ) : null}
-        </div>
-      </section>
-
-      <aside className="min-w-0 overflow-hidden rounded-[2rem] border border-white/10 bg-black/45 shadow-[0_24px_80px_rgba(0,0,0,0.34)] backdrop-blur-xl">
-        <div className="flex items-center justify-between border-b border-white/10 px-4 py-4 md:px-5">
-          <div>
-            <p className="text-xs uppercase tracking-[0.24em] text-white/38">Output</p>
-            <h2 className="mt-1 text-xl font-black">展示区</h2>
-          </div>
-          <span className="rounded-full border border-white/10 bg-white/5 px-3 py-1 text-xs text-white/45">
-            {library.length} 条作品
-          </span>
-        </div>
-        <div className="min-h-0 overflow-y-auto p-4 md:p-5 xl:max-h-[calc(100vh-8rem)]">
-          <OutputPanel tool={activeTool} output={activeOutput} />
-        </div>
-      </aside>
-    </section>
+    <>
+      <WorkbenchShell
+        state={{ activeToolId: activeWorkspaceTool, activeMode: activeTool === "image" ? imageModePreset : videoModePreset }}
+        onToolAction={handleToolAction}
+        onOpenLogin={() => router.push("/login")}
+        isAuthenticated={false}
+        toolTitle={activeMeta?.label}
+        toolDescription={activeMeta?.description}
+        parameterSlot={parameterSlot}
+        previewSlot={<OutputPanel tool={activeTool} output={activeOutput} libraryCount={library.length} activeLabel={activeMeta?.label || ""} />}
+        mobileActionSlot={<MobileActionSummary label={activeMeta?.label || "当前工具"} />}
+      />
+      {message ? <Toast message={message} onClose={() => setMessage("")} /> : null}
+    </>
   );
 }
 
 function ImageGenerator({
+  initialMode,
   providers,
   onDone,
   onResult,
   setMessage,
 }: {
+  initialMode: ImageMode;
   providers: PublicProvider[];
   onDone: () => Promise<void>;
   onResult: (item: LibraryItem) => void;
   setMessage: (value: string) => void;
 }) {
-  const [mode, setMode] = useState<"text-to-image" | "image-to-image">("text-to-image");
+  const [mode, setMode] = useState<ImageMode>(initialMode);
   const [providerId, setProviderId] = useState("");
   const [ratio, setRatio] = useState("1:1");
   const [quality, setQuality] = useState("1k");
   const [prompt, setPrompt] = useState("");
   const [files, setFiles] = useState<FileList | null>(null);
   const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    setMode(initialMode);
+  }, [initialMode]);
 
   useEffect(() => {
     if (!providerId && providers[0]) setProviderId(providers[0].id);
@@ -326,68 +228,68 @@ function ImageGenerator({
   }
 
   return (
-    <div className="grid gap-4">
-      <Panel title="图片生成器" subtitle="先输入内容，再选比例和清晰度。">
+    <FormPanel title={mode === "image-to-image" ? "AI 图片编辑器" : "AI 图像生成器"} subtitle="现有图片逻辑保留，编辑模式共用图生图接口。">
+      <ModeSwitch
+        value={mode}
+        options={[
+          ["text-to-image", "文生图"],
+          ["image-to-image", "图生图 / 编辑"],
+        ]}
+        onChange={(value) => setMode(value as ImageMode)}
+      />
+
+      <ProviderSelect providers={providers} value={providerId} onChange={setProviderId} />
+      <FileInput
+        label="参考图片"
+        optional={mode === "text-to-image"}
+        accept="image/png,image/jpeg,image/webp"
+        files={files}
+        onChange={setFiles}
+      />
+      <StackedControl label="图片比例" required>
+        <RatioPicker value={ratio} onChange={setRatio} />
+      </StackedControl>
+      <StackedControl label="清晰度" required>
         <ModeSwitch
-          value={mode}
+          value={quality}
           options={[
-            ["text-to-image", "文生图"],
-            ["image-to-image", "图生图 / 编辑"],
+            ["1k", "1K · 4 积分"],
+            ["2k", "2K · 8 积分"],
           ]}
-          onChange={(value) => setMode(value as typeof mode)}
+          onChange={setQuality}
         />
+      </StackedControl>
+      <PromptBox
+        value={prompt}
+        onChange={setPrompt}
+        required
+        placeholder="描述你想生成或修改的画面，例如：把人物换到赛博朋克城市夜景中，保留服装轮廓。"
+      />
 
-        <ProviderSelect providers={providers} value={providerId} onChange={setProviderId} />
-        <FileInput
-          label="参考图片"
-          optional={mode === "text-to-image"}
-          accept="image/png,image/jpeg,image/webp"
-          files={files}
-          onChange={setFiles}
-        />
-        <StackedControl label="图片比例" required>
-          <RatioPicker value={ratio} onChange={setRatio} />
-        </StackedControl>
-        <StackedControl label="清晰度" required>
-          <ModeSwitch
-            value={quality}
-            options={[
-              ["1k", "1K · 4 积分"],
-              ["2k", "2K · 8 积分"],
-            ]}
-            onChange={setQuality}
-          />
-        </StackedControl>
-        <PromptBox
-          value={prompt}
-          onChange={setPrompt}
-          required
-          placeholder="描述你想生成或修改的画面，例如：把人物换到赛博朋克城市夜景中，保留服装轮廓。"
-        />
-
-        <div className="flex flex-wrap items-center gap-3">
-          <SubmitButton disabled={loading} loading={loading} onClick={submit}>
-            立即生成图片
-          </SubmitButton>
-          <span className="text-sm text-white/45">清晰度位置已预留积分提示</span>
-        </div>
-      </Panel>
-    </div>
+      <div className="studio-actions">
+        <SubmitButton disabled={loading} loading={loading} onClick={submit}>
+          立即生成图片
+        </SubmitButton>
+        <span className="studio-help-text">清晰度位置已预留积分提示</span>
+      </div>
+    </FormPanel>
   );
 }
 
 function VideoGenerator({
+  initialMode,
   providers,
   onDone,
   onResult,
   setMessage,
 }: {
+  initialMode: VideoMode;
   providers: PublicProvider[];
   onDone: () => Promise<void>;
   onResult: (item: LibraryItem, job?: JobRecord | null) => void;
   setMessage: (value: string) => void;
 }) {
-  const [mode, setMode] = useState<"text-to-video" | "image-to-video">("text-to-video");
+  const [mode, setMode] = useState<VideoMode>(initialMode);
   const [providerId, setProviderId] = useState("");
   const [ratio, setRatio] = useState("16:9");
   const [duration, setDuration] = useState(5);
@@ -395,6 +297,10 @@ function VideoGenerator({
   const [files, setFiles] = useState<FileList | null>(null);
   const [loading, setLoading] = useState(false);
   const [job, setJob] = useState<JobRecord | null>(null);
+
+  useEffect(() => {
+    setMode(initialMode);
+  }, [initialMode]);
 
   useEffect(() => {
     if (!providerId && providers[0]) setProviderId(providers[0].id);
@@ -448,54 +354,52 @@ function VideoGenerator({
   }
 
   return (
-    <div className="grid gap-4">
-      <Panel title="视频生成器" subtitle="先写你要的视频，再选尺寸和时长。">
-        <ModeSwitch
-          value={mode}
-          options={[
-            ["text-to-video", "文生视频"],
-            ["image-to-video", "图生视频"],
-          ]}
-          onChange={(value) => setMode(value as typeof mode)}
-        />
-        <ProviderSelect providers={providers} value={providerId} onChange={setProviderId} />
-        <FileInput
-          label="参考图片"
-          optional={mode === "text-to-video"}
-          accept="image/png,image/jpeg,image/webp"
-          files={files}
-          onChange={setFiles}
-        />
-        <StackedControl label="视频比例" required>
-          <RatioPicker value={ratio} onChange={setRatio} />
-        </StackedControl>
-        <FieldFrame label="时长" required>
-          <select
-            value={duration}
-            onChange={(event) => setDuration(Number(event.target.value))}
-            className="h-12 w-full rounded-[1.25rem] border border-white/10 bg-white/[0.04] px-4 text-white outline-none transition focus:border-fuchsia-400"
-          >
-            {[5, 8, 10, 15].map((value) => (
-              <option key={value} value={value}>
-                {value} 秒
-              </option>
-            ))}
-          </select>
-        </FieldFrame>
-        <PromptBox
-          value={prompt}
-          onChange={setPrompt}
-          required
-          placeholder="描述视频画面、运动、镜头和氛围，例如：未来感产品展示，缓慢推进镜头，霓虹灯反射。"
-        />
-        <div className="flex flex-wrap items-center gap-3">
-          <SubmitButton disabled={loading} loading={loading} onClick={submit}>
-            立即生成视频
-          </SubmitButton>
-          <span className="text-sm text-white/45">同样预留积分位</span>
-        </div>
-      </Panel>
-    </div>
+    <FormPanel title="AI 视频生成器" subtitle="先写你要的视频，再选尺寸和时长。">
+      <ModeSwitch
+        value={mode}
+        options={[
+          ["text-to-video", "文生视频"],
+          ["image-to-video", "图生视频"],
+        ]}
+        onChange={(value) => setMode(value as VideoMode)}
+      />
+      <ProviderSelect providers={providers} value={providerId} onChange={setProviderId} />
+      <FileInput
+        label="参考图片"
+        optional={mode === "text-to-video"}
+        accept="image/png,image/jpeg,image/webp"
+        files={files}
+        onChange={setFiles}
+      />
+      <StackedControl label="视频比例" required>
+        <RatioPicker value={ratio} onChange={setRatio} />
+      </StackedControl>
+      <FieldFrame label="时长" required>
+        <select
+          value={duration}
+          onChange={(event) => setDuration(Number(event.target.value))}
+          className="studio-select"
+        >
+          {[5, 8, 10, 15].map((value) => (
+            <option key={value} value={value}>
+              {value} 秒
+            </option>
+          ))}
+        </select>
+      </FieldFrame>
+      <PromptBox
+        value={prompt}
+        onChange={setPrompt}
+        required
+        placeholder="描述视频画面、运动、镜头和氛围，例如：未来感产品展示，缓慢推进镜头，霓虹灯反射。"
+      />
+      <div className="studio-actions">
+        <SubmitButton disabled={loading} loading={loading} onClick={submit}>
+          立即生成视频
+        </SubmitButton>
+        <span className="studio-help-text">同样预留积分位</span>
+      </div>
+    </FormPanel>
   );
 }
 
@@ -598,68 +502,62 @@ function UpscaleForm({
     }
   }
 
-  const title = isVideo ? "视频放大" : "图片放大";
+  const title = isVideo ? "视频高清" : "图片高清";
   const accept = isVideo ? "video/mp4,video/webm,video/quicktime,.mov" : "image/png,image/jpeg,image/webp";
 
   return (
-    <div className="grid gap-4">
-      <Panel title={title} subtitle={`上传单个${isVideo ? "视频" : "图片"}，使用本机工具放大到原始尺寸的 2x 或 4x。`}>
-        <FieldFrame label={isVideo ? "源视频" : "源图片"} required>
-          <input
-            type="file"
-            accept={accept}
-            onChange={(event) => setFile(event.target.files?.[0] || null)}
-            className="w-full min-w-0 max-w-full rounded-[1.25rem] border border-dashed border-white/15 bg-black/35 p-4 text-sm text-white/55 file:mr-4 file:rounded-xl file:border-0 file:bg-fuchsia-500 file:px-3 file:py-2 file:text-white"
-          />
-          {file ? <span className="mt-2 block truncate text-xs text-fuchsia-200">已选择：{file.name}</span> : null}
-        </FieldFrame>
+    <FormPanel title={title} subtitle={`上传单个${isVideo ? "视频" : "图片"}，使用本机工具放大到原始尺寸的 2x 或 4x。`}>
+      <FieldFrame label={isVideo ? "源视频" : "源图片"} required>
+        <input
+          type="file"
+          accept={accept}
+          onChange={(event) => setFile(event.target.files?.[0] || null)}
+          className="studio-file"
+        />
+        {file ? <span className="studio-help-text">已选择：{file.name}</span> : null}
+      </FieldFrame>
 
-        <StackedControl label="放大倍数" required>
-          <ModeSwitch
-            value={scale}
-            options={[
-              ["2", "2x"],
-              ["4", "4x"],
-            ]}
-            onChange={setScale}
-          />
-        </StackedControl>
+      <StackedControl label="放大倍数" required>
+        <ModeSwitch
+          value={scale}
+          options={[
+            ["2", "2x"],
+            ["4", "4x"],
+          ]}
+          onChange={setScale}
+        />
+      </StackedControl>
 
-        <div
-          className={cn(
-            "rounded-2xl border px-4 py-3 text-sm transition",
-            availability?.ready
-              ? "border-emerald-400/30 bg-emerald-500/10 text-emerald-100"
-              : "border-amber-400/30 bg-amber-500/10 text-amber-100",
-          )}
+      <div
+        className={cn(
+          "studio-status",
+          availability?.ready ? "is-ready" : "is-warning",
+        )}
+      >
+        <div className="min-w-0">
+          <strong className="block">
+            {statusLoading ? "正在检测本机依赖..." : availability?.ready ? "本机依赖已就绪" : "本机依赖未检测到"}
+          </strong>
+          {!statusLoading ? <p className="mt-1 break-all text-xs opacity-75">{availability?.detail || "请先安装并配置对应的本地高清处理依赖。"}</p> : null}
+        </div>
+        <button
+          type="button"
+          onClick={checkAvailability}
+          disabled={statusLoading}
+          className="studio-icon-button"
+          aria-label="重新检测本机依赖"
         >
-          <div className="flex items-start justify-between gap-3">
-            <div className="min-w-0">
-              <strong className="block">
-                {statusLoading ? "正在检测本机依赖..." : availability?.ready ? "本机依赖已就绪" : "本机依赖未检测到"}
-              </strong>
-              {!statusLoading ? <p className="mt-1 break-all text-xs opacity-75">{availability?.detail || "请先安装并配置对应的本地高清处理依赖。"}</p> : null}
-            </div>
-            <button
-              type="button"
-              onClick={checkAvailability}
-              disabled={statusLoading}
-              className="shrink-0 rounded-xl border border-current/20 p-2 transition hover:bg-white/10 disabled:opacity-50"
-              aria-label="重新检测本机依赖"
-            >
-              <RefreshCw className={cn("size-4", statusLoading && "animate-spin")} />
-            </button>
-          </div>
-        </div>
+          <RefreshCw className={cn("size-4", statusLoading && "animate-spin")} />
+        </button>
+      </div>
 
-        <div className="flex flex-wrap items-center gap-3">
-          <SubmitButton disabled={loading || statusLoading} loading={loading} onClick={submit}>
-            开始处理
-          </SubmitButton>
-          <span className="text-sm text-white/45">本机增强，不需要 Key</span>
-        </div>
-      </Panel>
-    </div>
+      <div className="studio-actions">
+        <SubmitButton disabled={loading || statusLoading} loading={loading} onClick={submit}>
+          开始处理
+        </SubmitButton>
+        <span className="studio-help-text">本机增强，不需要 Key</span>
+      </div>
+    </FormPanel>
   );
 }
 
@@ -687,22 +585,18 @@ function LibraryView({
 
   if (!items.length) {
     return (
-      <section className="rounded-[2rem] border border-white/10 bg-white/[0.03] p-8 text-center text-white/45">
+      <section className="studio-empty">
         作品库还是空的。生成图片或视频后会自动出现在这里。
       </section>
     );
   }
 
   return (
-    <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+    <div className="grid gap-4 md:grid-cols-2">
       {items.map((item) => (
-        <div key={item.id} className="rounded-[1.5rem] border border-white/10 bg-white/[0.03] p-3">
+        <div key={item.id} className="studio-library-card">
           <MediaCard item={item} />
-          <button
-            type="button"
-            onClick={() => remove(item.id)}
-            className="mt-3 w-full rounded-2xl border border-white/10 px-4 py-2 text-sm text-white/55 transition hover:border-red-400/40 hover:text-red-100"
-          >
+          <button type="button" onClick={() => remove(item.id)} className="studio-secondary-button">
             删除
           </button>
         </div>
@@ -711,136 +605,69 @@ function LibraryView({
   );
 }
 
-function MediaCard({ item, large = false }: { item: LibraryItem; large?: boolean }) {
-  const media = item.output;
-  return (
-    <article className="overflow-hidden rounded-[1.2rem] bg-black/35">
-      <div className={cn("grid place-items-center bg-black", large ? "min-h-[440px]" : "aspect-video")}>
-        {media?.url && item.type === "image" ? <img src={media.url} alt={item.title} className="max-h-full w-full object-contain" /> : null}
-        {media?.url && item.type === "video" ? <video src={media.url} controls className="max-h-full w-full" /> : null}
-        {!media?.url ? <span className="text-white/35">{item.status}</span> : null}
-      </div>
-      <div className="p-4">
-        <div className="flex items-center justify-between gap-3">
-          <strong className="line-clamp-1 text-sm">{item.title}</strong>
-          <span className="rounded-full bg-white/10 px-2 py-1 text-[11px] text-white/55">{item.status}</span>
-        </div>
-        <p className="mt-2 line-clamp-2 text-xs text-white/45">{item.prompt}</p>
-        {media?.url ? (
-          <a href={media.url} download className="mt-3 inline-flex text-sm font-bold text-fuchsia-200">
-            下载结果
-          </a>
-        ) : null}
-      </div>
-    </article>
-  );
-}
-
-function OutputPanel({ tool, output }: { tool: ToolId; output: OutputState }) {
+function OutputPanel({
+  tool,
+  output,
+  libraryCount,
+  activeLabel,
+}: {
+  tool: BusinessToolId;
+  output: OutputState;
+  libraryCount: number;
+  activeLabel: string;
+}) {
   const content = previewContent[tool];
 
   if (!output) {
     return (
-      <div className="grid gap-4">
-        <section className="overflow-hidden rounded-[2rem] border border-white/10 bg-white/[0.03]">
-          <div className="flex items-start justify-between gap-4 border-b border-white/10 px-4 py-4">
-            <div className="min-w-0">
-              <p className="text-xs uppercase tracking-[0.24em] text-fuchsia-300/70">Output</p>
-              <h3 className="mt-1 text-xl font-black">先这样，再这样，就能看到结果</h3>
-              <p className="mt-1 text-sm leading-6 text-white/52">
-                你还没生成内容时，这里先用教学方式告诉你下一步做什么；生成以后会直接换成真实结果。
-              </p>
+      <div className="studio-preview">
+        <div className="studio-preview__top">
+          <div>
+            <p className="shell-eyebrow">当前工具</p>
+            <h3>{activeLabel || content.title}</h3>
+            <p>{content.desc}</p>
+          </div>
+          <span className="shell-chip">{libraryCount} 条作品</span>
+        </div>
+        <div className="studio-preview__media">
+          <img src={content.image} alt={content.title} />
+        </div>
+        <div className="studio-steps">
+          {content.notes.map((note, index) => (
+            <div key={note} className="studio-step">
+              <span>{index + 1}</span>
+              <p>{note}</p>
             </div>
-            <span className="shrink-0 rounded-full border border-white/10 bg-black/25 px-3 py-1 text-xs text-white/45">
-              {content.title}
-            </span>
-          </div>
-
-          <div className="grid gap-4 p-4">
-            <div className="overflow-hidden rounded-[1.6rem] border border-white/10 bg-black/35">
-              <img src={content.image} alt={content.title} className="aspect-[4/3] w-full object-cover" />
-            </div>
-            <div className="grid gap-3">
-              {content.notes.map((note, index) => (
-                <div key={note} className="flex items-start gap-3 rounded-2xl border border-white/10 bg-black/20 px-4 py-3">
-                  <div className="mt-0.5 grid size-7 shrink-0 place-items-center rounded-full bg-fuchsia-500/15 text-xs font-bold text-fuchsia-100">
-                    {index + 1}
-                  </div>
-                  <div className="min-w-0">
-                    <p className="text-sm font-semibold text-white/90">{index === 0 ? "先这样" : index === 1 ? "再这样" : "就能这样"}</p>
-                    <p className="mt-1 text-sm leading-6 text-white/55">{note}</p>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
-        </section>
-
-        <section className="grid gap-3 rounded-[2rem] border border-white/10 bg-white/[0.03] p-4">
-          <div className="flex items-center justify-between gap-3">
-            <strong className="text-sm">当前工具</strong>
-            <span className="rounded-full border border-white/10 bg-white/[0.04] px-3 py-1 text-xs text-white/45">
-              {navItems.find((item) => item.id === tool)?.label}
-            </span>
-          </div>
-          <div className="grid gap-2 sm:grid-cols-3">
-            <MiniStep label="先填内容" desc="把主体、画面和风格说清楚。" />
-            <MiniStep label="再选参数" desc="比例、清晰度、时长都在这里。" />
-            <MiniStep label="最后生成" desc="点按钮后，结果直接出现在右边。" />
-          </div>
-        </section>
+          ))}
+        </div>
       </div>
     );
   }
 
   return (
-    <div className="grid gap-4">
-      <section className="overflow-hidden rounded-[2rem] border border-white/10 bg-white/[0.03]">
-        <div className="flex items-start justify-between gap-4 border-b border-white/10 px-4 py-4">
-          <div className="min-w-0">
-            <p className="text-xs uppercase tracking-[0.24em] text-fuchsia-300/70">Output</p>
-            <h3 className="mt-1 text-xl font-black">{output.title}</h3>
-            <p className="mt-1 text-sm leading-6 text-white/52">
-              生成完成后，这里就是你的真实结果，支持直接查看和下载。
-            </p>
-          </div>
-          <span className="shrink-0 rounded-full border border-white/10 bg-black/25 px-3 py-1 text-xs text-white/45">
-            {output.job?.status || output.item.status}
-          </span>
+    <div className="studio-preview">
+      <div className="studio-preview__top">
+        <div>
+          <p className="shell-eyebrow">结果</p>
+          <h3>{output.title}</h3>
+          <p>生成完成后，这里就是你的真实结果，支持直接查看和下载。</p>
         </div>
-
-        <div className="p-4">
-          <MediaCard item={output.item} large />
-        </div>
-      </section>
-
-      <section className="grid gap-3 rounded-[2rem] border border-white/10 bg-white/[0.03] p-4">
-        <div className="grid gap-2 sm:grid-cols-3">
-          <MiniStep label="结果已到位" desc="不用往下找，预览就在右边。" />
-          <MiniStep label="继续微调" desc="改内容后再点一次，就会刷新。" />
-          <MiniStep label="随时下载" desc="结果一出来就能直接保存。" />
-        </div>
-      </section>
+        <span className="shell-chip">{output.job?.status || output.item.status}</span>
+      </div>
+      <MediaCard item={output.item} large />
     </div>
   );
 }
 
-function MiniStep({ label, desc }: { label: string; desc: string }) {
+function FormPanel({ title, subtitle, children }: { title: string; subtitle: string; children: React.ReactNode }) {
   return (
-    <div className="rounded-2xl border border-white/10 bg-black/20 px-4 py-3">
-      <p className="text-sm font-semibold text-white/90">{label}</p>
-      <p className="mt-1 text-sm leading-6 text-white/55">{desc}</p>
+    <div className="studio-form-panel">
+      <div>
+        <h3>{title}</h3>
+        <p>{subtitle}</p>
+      </div>
+      <div className="studio-form-panel__content">{children}</div>
     </div>
-  );
-}
-
-function Panel({ title, subtitle, children }: { title: string; subtitle: string; children: React.ReactNode }) {
-  return (
-    <section className="min-w-0 rounded-[2rem] border border-white/10 bg-white/[0.03] p-5 shadow-[0_20px_60px_rgba(0,0,0,0.25)]">
-      <h2 className="text-xl font-black">{title}</h2>
-      <p className="mt-1 text-sm text-white/48">{subtitle}</p>
-      <div className="mt-5 grid gap-4">{children}</div>
-    </section>
   );
 }
 
@@ -856,16 +683,12 @@ function FieldFrame({
   children: React.ReactNode;
 }) {
   return (
-    <div className="grid gap-2">
-      <div className="flex items-start justify-between gap-3">
-        <span className="text-sm text-white/70">{label}</span>
-        {required ? (
-          <span className="shrink-0 text-[11px] font-black leading-none text-red-400">*</span>
-        ) : hint ? (
-          <span className="rounded-full border border-white/10 bg-white/[0.04] px-3 py-1 text-xs text-white/45">{hint}</span>
-        ) : null}
+    <div className="studio-field">
+      <div className="studio-field__label">
+        <span>{label}</span>
+        {required ? <span className="studio-required">*</span> : hint ? <span className="shell-chip">{hint}</span> : null}
       </div>
-      <div className="min-w-0 rounded-[1.6rem] border border-white/10 bg-black/20 p-2">{children}</div>
+      <div className="studio-field__body">{children}</div>
     </div>
   );
 }
@@ -894,19 +717,16 @@ function ModeSwitch({
   onChange: (value: string) => void;
 }) {
   return (
-    <div className="grid gap-2">
-      {label ? <span className="text-sm text-white/70">{label}</span> : null}
-      <div className="grid gap-2 sm:grid-cols-2">
+    <div className="studio-mode">
+      {label ? <span className="studio-label">{label}</span> : null}
+      <div className="studio-mode__options">
         {options.map(([id, text]) => (
           <button
             key={id}
             type="button"
             data-testid={`mode-${id}`}
             onClick={() => onChange(id)}
-            className={cn(
-              "rounded-2xl border border-white/10 px-3 py-3 text-sm font-semibold text-white/68 transition duration-200 hover:-translate-y-0.5 hover:border-fuchsia-400/40 hover:bg-white/5",
-              value === id && "border-fuchsia-400/50 bg-fuchsia-500/15 text-fuchsia-100 shadow-[0_12px_24px_rgba(217,70,239,0.14)]",
-            )}
+            className={cn("studio-mode__button", value === id && "is-active")}
           >
             {text}
           </button>
@@ -927,11 +747,7 @@ function ProviderSelect({
 }) {
   return (
     <FieldFrame label="模型" required>
-      <select
-        value={value}
-        onChange={(event) => onChange(event.target.value)}
-        className="h-12 w-full rounded-[1.25rem] border border-white/10 bg-white/[0.04] px-4 text-white outline-none transition focus:border-fuchsia-400"
-      >
+      <select value={value} onChange={(event) => onChange(event.target.value)} className="studio-select">
         {providers.length ? (
           providers.map((provider) => (
             <option key={provider.id} value={provider.id}>
@@ -966,37 +782,28 @@ function FileInput({
         accept={accept}
         multiple
         onChange={(event) => onChange(event.target.files)}
-        className="w-full rounded-[1.25rem] border border-dashed border-white/15 bg-black/30 p-4 text-sm text-white/55 file:mr-4 file:rounded-xl file:border-0 file:bg-fuchsia-500 file:px-3 file:py-2 file:text-white"
+        className="studio-file"
       />
-      {files?.length ? <span className="mt-2 block text-xs text-fuchsia-200">已选择 {files.length} 个文件</span> : null}
+      {files?.length ? <span className="studio-help-text">已选择 {files.length} 个文件</span> : null}
     </FieldFrame>
   );
 }
 
 function RatioPicker({ value, onChange }: { value: string; onChange: (value: string) => void }) {
   return (
-    <div className="grid gap-2">
-      <div className="flex items-center justify-between gap-2">
-        <span className="text-sm text-white/70">比例</span>
-        <span className="rounded-full border border-white/10 bg-white/[0.04] px-3 py-1 text-xs text-white/45">上面有对应框的样子</span>
-      </div>
-      <div className="grid min-w-0 gap-2 sm:grid-cols-5">
-        {ratios.map((ratio) => (
-          <button
-            key={ratio}
-            type="button"
-            data-testid={`ratio-${ratio.replace(":", "-")}`}
-            onClick={() => onChange(ratio)}
-            className={cn(
-              "flex h-14 min-w-0 flex-col items-center justify-center rounded-[1.1rem] border border-white/10 bg-black/20 text-sm font-semibold text-white/60 transition duration-200 hover:-translate-y-0.5 hover:border-fuchsia-300/40 hover:bg-white/[0.06]",
-              value === ratio && "border-fuchsia-400/50 bg-fuchsia-500/15 text-fuchsia-100 shadow-[0_14px_30px_rgba(217,70,239,0.12)]",
-            )}
-          >
-            <span className="text-[11px] uppercase tracking-[0.18em] text-white/35">Size</span>
-            <span className="text-sm">{ratio}</span>
-          </button>
-        ))}
-      </div>
+    <div className="studio-ratio">
+      {ratios.map((ratio) => (
+        <button
+          key={ratio}
+          type="button"
+          data-testid={`ratio-${ratio.replace(":", "-")}`}
+          onClick={() => onChange(ratio)}
+          className={cn("studio-ratio__item", value === ratio && "is-active")}
+        >
+          <span className={cn("studio-ratio__shape", `ratio-${ratio.replace(":", "-")}`)} />
+          <span className="studio-ratio__label">{ratio}</span>
+        </button>
+      ))}
     </div>
   );
 }
@@ -1014,15 +821,17 @@ function PromptBox({
 }) {
   return (
     <FieldFrame label="提示词" required={required}>
-      <textarea
-        data-testid="prompt-input"
-        value={value}
-        onChange={(event) => onChange(event.target.value)}
-        maxLength={3000}
-        placeholder={placeholder}
-        className="min-h-36 w-full resize-none rounded-[1.25rem] border border-white/10 bg-black/30 p-4 text-white outline-none placeholder:text-white/25 transition duration-200 focus:border-fuchsia-400 focus:bg-black/45"
-      />
-      <span className="mt-2 block text-right text-xs text-white/35">{value.length}/3000</span>
+      <div className="studio-textarea-wrap">
+        <textarea
+          data-testid="prompt-input"
+          value={value}
+          onChange={(event) => onChange(event.target.value)}
+          maxLength={3000}
+          placeholder={placeholder}
+          className="studio-textarea"
+        />
+        <span className="studio-counter">{value.length}/3000</span>
+      </div>
     </FieldFrame>
   );
 }
@@ -1039,58 +848,43 @@ function SubmitButton({
   onClick: () => void;
 }) {
   return (
-    <button
-      type="button"
-      data-testid="primary-submit"
-      disabled={disabled}
-      onClick={onClick}
-      className="group flex h-12 items-center justify-center gap-2 rounded-full bg-gradient-to-r from-fuchsia-500 to-violet-600 px-5 font-semibold text-white shadow-[0_16px_32px_rgba(168,85,247,0.25)] transition duration-200 hover:-translate-y-0.5 hover:shadow-[0_22px_40px_rgba(168,85,247,0.28)] disabled:cursor-not-allowed disabled:opacity-45"
-    >
-      {loading ? <Loader2 className="size-4 animate-spin" /> : <Wand2 className="size-4 transition group-hover:rotate-12" />}
+    <button type="button" data-testid="primary-submit" disabled={disabled} onClick={onClick} className="studio-primary-action">
+      {loading ? <Loader2 className="size-4 animate-spin" /> : <Wand2 className="size-4" />}
       {children}
     </button>
   );
 }
 
-function NavButton({
-  item,
-  testIdPrefix,
-  active,
-  onClick,
-}: {
-  item: (typeof navItems)[number];
-  testIdPrefix: string;
-  active: boolean;
-  onClick: () => void;
-}) {
-  const Icon = item.icon;
+function MediaCard({ item, large = false }: { item: LibraryItem; large?: boolean }) {
+  const media = item.output;
   return (
-    <button
-      type="button"
-      aria-label={item.label}
-      data-testid={`${testIdPrefix}-${item.id}`}
-      onClick={onClick}
-      className={cn(
-        "flex items-center gap-3 rounded-2xl px-4 py-3 text-left transition duration-200 hover:-translate-y-0.5",
-        active
-          ? "bg-gradient-to-r from-fuchsia-500 to-violet-600 text-white shadow-[0_16px_40px_rgba(192,38,211,0.22)]"
-          : "border border-white/10 bg-white/[0.03] text-white/62 hover:border-fuchsia-400/40 hover:bg-white/5 hover:text-white",
-      )}
-    >
-      <Icon className="size-5" />
-      <span>
-        <span className="block text-sm font-semibold">{item.label}</span>
-        <span className="text-xs opacity-65">{item.desc}</span>
-      </span>
-    </button>
+    <article className="studio-media-card">
+      <div className={cn("studio-media-card__frame", large && "is-large")}>
+        {media?.url && item.type === "image" ? <img src={media.url} alt={item.title} /> : null}
+        {media?.url && item.type === "video" ? <video src={media.url} controls /> : null}
+        {!media?.url ? <span>{item.status}</span> : null}
+      </div>
+      <div className="studio-media-card__body">
+        <div className="studio-media-card__head">
+          <strong>{item.title}</strong>
+          <span>{item.status}</span>
+        </div>
+        <p>{item.prompt}</p>
+        {media?.url ? (
+          <a href={media.url} download>
+            下载结果
+          </a>
+        ) : null}
+      </div>
+    </article>
   );
 }
 
-function HeroStat({ label, value }: { label: string; value: string }) {
+function MobileActionSummary({ label }: { label: string }) {
   return (
-    <div className="rounded-[1.4rem] border border-white/10 bg-black/20 px-4 py-4">
-      <p className="text-xs uppercase tracking-[0.18em] text-white/35">{label}</p>
-      <p className="mt-2 text-sm font-semibold text-white/88">{value}</p>
+    <div className="studio-mobile-action">
+      <span>{label}</span>
+      <strong>在参数区操作</strong>
     </div>
   );
 }
@@ -1102,44 +896,44 @@ function Toast({ message, onClose }: { message: string; onClose: () => void }) {
   }, [onClose]);
 
   return (
-    <div className="fixed bottom-20 right-4 z-[60] max-w-sm rounded-2xl border border-red-400/30 bg-red-500/12 px-4 py-3 text-sm text-red-100 shadow-[0_20px_60px_rgba(0,0,0,0.35)]">
+    <div className="studio-toast">
       {message}
     </div>
   );
 }
 
 const previewContent: Record<
-  ToolId,
+  BusinessToolId,
   { title: string; desc: string; image: string; notes: string[] }
 > = {
   image: {
-    title: "图片生成右侧示例",
-    desc: "让用户一眼看到效果，再去写提示词。",
+    title: "AI 图像生成器",
+    desc: "当前保留真实图片生成与编辑逻辑，右侧先展示引导。",
     image: "/images/reference/hero-cover.png",
-    notes: ["适合直接替换为你的真实生成图", "比例和清晰度区会更像参考站", "首屏先像产品页，再像工具页"],
+    notes: ["填写提示词", "选择参考图或比例", "结果会保存在作品库"],
   },
   video: {
-    title: "视频生成右侧示例",
-    desc: "先放预览封面，后面可以接结果视频。",
+    title: "AI 视频生成器",
+    desc: "当前保留视频生成、任务刷新和结果保存逻辑。",
     image: "/images/reference/sample-1.png",
-    notes: ["后面可换成视频帧截图", "右侧预览维持参考站的节奏", "生成前就让人知道结果长什么样"],
+    notes: ["填写视频描述", "选择比例和时长", "轮询任务后展示结果"],
   },
   "image-upscale": {
-    title: "图片放大说明",
-    desc: "把本机增强作为一个明确能力，不让用户猜。",
+    title: "图片高清",
+    desc: "本机 Upscayl 放大能力继续通过原接口处理。",
     image: "/images/reference/sample-2.png",
-    notes: ["展示 Upscayl 本机增强", "提示不需要 Key", "把处理结果放进作品库"],
+    notes: ["上传图片", "选择 2x 或 4x", "处理后进入作品库"],
   },
   "video-upscale": {
-    title: "视频放大说明",
-    desc: "把 Video2X 放在更容易懂的位置。",
+    title: "视频高清",
+    desc: "本机 Video2X 增强能力继续通过原接口处理。",
     image: "/images/reference/sample-3.png",
-    notes: ["展示 Video2X 视频增强", "保留依赖检测状态", "保持和图片放大同一套节奏"],
+    notes: ["上传视频", "检测本机依赖", "处理后刷新作品库"],
   },
   library: {
-    title: "作品库示例",
-    desc: "把历史结果做成一眼能扫的卡片。",
+    title: "作品库",
+    desc: "历史结果、下载和删除逻辑保持不变。",
     image: "/images/reference/hero-cover.png",
-    notes: ["历史结果、状态和下载都保留", "库里也要像产品页一样清楚", "不要让用户猜每张卡的用途"],
+    notes: ["查看历史", "下载结果", "删除不需要的作品"],
   },
 };

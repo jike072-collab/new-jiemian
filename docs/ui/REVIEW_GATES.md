@@ -31,3 +31,8 @@
 ## Approval Rule
 
 - No module 2 work starts until the user explicitly confirms module 1 is acceptable.
+
+## Module 3 Gate
+
+- PR #3 must not merge until code repair and real screenshot verification are complete.
+- Module 4 must not start until all three module 3 segments are complete.

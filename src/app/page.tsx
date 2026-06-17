@@ -1,5 +1,5 @@
-import { WorkbenchShell } from "@/components/workbench-shell";
+import { ApplicationContainer } from "@/components/application-container";
 
 export default function Home() {
-  return <WorkbenchShell />;
+  return <ApplicationContainer />;
 }

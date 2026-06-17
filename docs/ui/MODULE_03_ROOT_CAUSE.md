@@ -42,6 +42,26 @@
 - Make responsive behavior depend on CSS breakpoints and tokens first.
 - Keep screenshot evidence tied to stable hydrated layout frames.
 
+## Module 3 Implementation Matrix
+
+| Item | Current file | Current problem | Reuse | Planned change | Business impact | Verification |
+| --- | --- | --- | --- | --- | --- | --- |
+| `page.tsx` | `src/app/page.tsx` | Direct shell mount bypasses the real business container | Yes | Mount `ApplicationContainer` instead of the demo shell | High | home route keeps real tools visible |
+| `StudioApp` | `src/components/studio-app.tsx` | Still owns both business flow and old shell structure | Yes | Keep business truth, expose it through slots/controller props | High | image/video/upscale/library still work |
+| `WorkbenchShell` | `src/components/workbench-shell.tsx` | Contains fake login, fake viewport, and nested demo cards | Partial | Reduce to layout-only shell with registry-driven regions | High | no duplicate auth/tool state |
+| Header | `src/components/workbench-shell.tsx` | Fake header state and redundant account behavior | Partial | Keep real login link and authenticated menu placeholder only | Medium | login link, no fake login toggle |
+| Tool registry | `src/lib/workspace-registry.ts` | No shared registry for tool ids, labels, groups, and routes | No | Add one registry used by navigation and shell containers | Medium | route mapping and nav inspection |
+| Left navigation | `src/components/workbench-shell.tsx` | Card-heavy rows and duplicated desktop/mobile definitions | Yes | Render from registry with compact dense list styling | Medium | desktop/mobile nav screenshots |
+| ToolPanel | `src/components/studio-app.tsx` | Business controls are nested inside the old shell layout | Yes | Keep the active tool form, but expose it through a slot | High | active forms still submit |
+| Preview | `src/components/studio-app.tsx` | Placeholder stage cards still imply a second shell | Yes | Host real guide/result/empty preview content in a slot | High | output and empty states remain correct |
+| Mobile Drawer | `src/components/workbench-shell.tsx` | Uses shell-local viewport state and demo behavior | Partial | Keep drawer open/close, escape, focus, and body lock only | Medium | drawer closes, scroll locks |
+| Params / Tabs | `src/components/workbench-shell.tsx` | Tabs are tied to the old shell demo state | Partial | Keep CSS-driven mobile tabs without duplicating tool state | Medium | parameter/preview switching works |
+| Account entry | `src/components/workbench-shell.tsx` | Fake logged-in state and fake user name are still present | Partial | Only show login link without real auth, keep menu for later | Medium | no fake login, `/login` link exists |
+| Responsive | `src/components/workbench-shell.tsx` / `styles/tokens.css` | JS viewport detection drives the first layout frame | Yes | Move breakpoint ownership to CSS tokens and classes | High | stable desktop/tablet/mobile frames |
+| Token usage | `styles/tokens.css`, `src/app/globals.css` | Shell hardcodes colors and radii outside the token source | Yes | Use token values and stop adding new theme colors | Medium | `#` scan and visual inspection |
+| Screenshot script | `docs/design-references/module-03-shell/README.md` | Evidence is not separated into real captured recovery frames | Partial | Keep filtered evidence only and add stable capture notes later | Medium | filename and viewport match |
+| New API extension | `docs/architecture/NEW_API_INTEGRATION.md` | No documented boundary for account/payment expansion | No | Add planning only, no front-end secrets or payment wiring | Low | doc review only |
+
 ## Scope Guard
 
 - No `src/**` edits in this phase.
