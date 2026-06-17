@@ -2,7 +2,7 @@
 
 ## Frontend Flow
 
-- `src/components/studio-app.tsx` owns the main tool workspace.
+- `src/components/studio-app.tsx` orchestrates the current main tool workspace behavior.
 - It fetches enabled providers and the library, switches between image/video/upscale/library views, and renders the output panel.
 - The home page simply mounts `StudioApp`.
 
