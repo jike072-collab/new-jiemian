@@ -17,3 +17,4 @@
 
 - Do not move to module 2 before user confirmation.
 - Keep every completed checkpoint pushable on its own.
+- Feature branch keeps a small reviewable delta on top of develop for the module 1 PR.
