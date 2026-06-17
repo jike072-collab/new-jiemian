@@ -1,6 +1,6 @@
 # Module 3 Shell Evidence
 
-Captured for the responsive shell rebuild checkpoint.
+Captured for the shell failure audit and recovery planning checkpoint.
 
 ## Desktop
 
@@ -75,3 +75,4 @@ Captured for the responsive shell rebuild checkpoint.
 
 - Screenshots are filtered project evidence only.
 - No terminal noise, cache, or browser artifacts are stored here.
+- This archive is evidence for the current broken shell state, not a finished recovery result.
