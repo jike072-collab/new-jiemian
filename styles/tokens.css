@@ -1,0 +1,35 @@
+:root {
+  --background: #050507;
+  --foreground: #f7f7f8;
+  --panel: #101012;
+  --panel-2: #141416;
+  --surface: #151517;
+  --border-subtle: rgba(255, 255, 255, 0.1);
+  --border-strong: rgba(255, 255, 255, 0.18);
+  --muted: rgba(255, 255, 255, 0.58);
+  --muted-strong: rgba(255, 255, 255, 0.74);
+  --primary: #ec4899;
+  --primary-strong: #f472b6;
+  --primary-soft: rgba(236, 72, 153, 0.14);
+  --success: #34d399;
+  --warning: #fbbf24;
+  --radius-card: 12px;
+  --radius-control: 8px;
+  --radius-chip: 999px;
+  --space-page: 24px;
+  --space-page-mobile: 12px;
+  --space-panel: 16px;
+  --space-stack: 12px;
+  --space-block: 20px;
+  --motion-fast: 120ms;
+  --motion-base: 180ms;
+  --motion-slow: 240ms;
+}
+
+html {
+  background: var(--background);
+  color: var(--foreground);
+  font-family: Inter, system-ui, Arial, "PingFang SC", "Microsoft YaHei", "Noto Sans SC", sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
