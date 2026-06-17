@@ -28,6 +28,7 @@ The frozen object is the current workspace state, not a preferred future state.
 
 Treat template carousel as audit-dependent.
 Only mark it as retained or excluded after checking the current code and freeze evidence.
+Do not treat reference-site template browsing as a reason to add a new template surface.
 
 ## Notes
 

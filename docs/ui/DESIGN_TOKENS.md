@@ -53,7 +53,7 @@
 | Token | Value | Use |
 | --- | --- | --- |
 | `--space-page` | `24px` | Desktop page padding |
-| `--space-page-mobile` | `12px` | Mobile page padding |
+| `--space-page-mobile` | `16px` | Mobile page padding |
 | `--space-panel` | `16px` | Inner panel padding |
 | `--space-stack` | `12px` | Tight vertical gap |
 | `--space-block` | `20px` | Section separation |
@@ -62,6 +62,9 @@
 | `--control-panel-width` | `392px` | Desktop parameter column width target |
 | `--control-height` | `44px` | Standard control height |
 | `--button-height` | `44px` | Primary and secondary button height |
+| `--primary-action-height` | `56px` | Desktop primary action height |
+| `--primary-action-height-mobile` | `52px` | Mobile primary action height |
+| `--mobile-action-bar-height` | `72px` | Mobile fixed action bar height |
 | `--touch-target` | `44px` | Minimum touch target |
 | `--breakpoint-lg` | `1180px` | Desktop workspace breakpoint |
 | `--breakpoint-md` | `980px` | Tablet / compact breakpoint |
@@ -86,4 +89,6 @@
 - Inputs, CTA buttons, ratio chips, and admin controls should share one border/radius language.
 - `--primary-soft` is for subtle emphasis only and should not create large selected blocks.
 - The ratio selector should rely on outline and text state changes, not colored panel fills.
+- Primary generation and enhancement actions use the primary action height tokens; ordinary save, cancel, and filter buttons remain at `44px`.
+- On mobile, the main action bar is fixed to the bottom and respects safe-area spacing.
 - Do not introduce extra palette families before later modules need them.

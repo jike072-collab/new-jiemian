@@ -39,8 +39,8 @@
 
 ### Template Strip
 
-- Horizontal strip of small cards.
-- Each card is about `64x88px` on desktop.
+- Reference observed only: horizontal strip of small cards on the live reference site.
+- Do not promote Template Strip to a project target component unless the current freeze and code audit already confirm template support.
 - "View all" is a light secondary link, not a large CTA.
 
 ### Upload Area
@@ -52,21 +52,24 @@
 ### Prompt Textarea
 
 - Reference observed: desktop measured size is about `338x135px`.
-- Project target: compact textarea with counter visible inside or adjacent to the field.
-- Mobile should preserve the counter inside or near the field.
+- Project target: the character counter must live inside the textarea at the lower-right corner.
+- Use absolute positioning with `right: 12px; bottom: 10px`.
+- Reserve at least `36-40px` of bottom padding so typed text never overlaps the counter.
+- The counter must not intercept input or clicks, so use `pointer-events: none`.
+- Validation or error text belongs below the textarea, while the counter stays inside the field on both desktop and mobile.
 - Placeholder is concise and direct.
 
 ### Ratio Selector
 
 - Reference observed: the image page shows five ratio choices in a single horizontal row.
-- Project target: graphics-first ratio control with no outer card, no large background, and no unified dark button box.
+- Project target: graphics-first ratio control with no outer card and no large background block.
 - Each option uses a real ratio graphic above a label below, all centered in a shared drawing area so the row does not jump vertically.
 - Default state: transparent background, white `1px` outline, white text.
 - Hover: outline turns pink.
 - Selected: only the ratio graphic outline or fill and the label turn pink.
 - Mobile target: keep one horizontal row with horizontal scrolling, without compressing the graphics.
 - Suggested graphic sizes: `1:1 36x36px`, `16:9 46x26px`, `9:16 24x42px`, `4:3 42x31px`, `3:4 29x40px`.
-- Do not describe the control as equal chips, a chip row, or a unified rounded box row.
+- Treat the control as ratio graphics with labels, not as chips or a boxed button row.
 
 ### Generate Button
 

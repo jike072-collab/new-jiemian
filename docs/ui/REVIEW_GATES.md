@@ -10,7 +10,8 @@
 6. Confirm `/login` failure is documented, not silently repaired in module 1.
 7. Confirm develop is the PR target.
 8. Confirm template carousel is audit-dependent, not pre-banned.
-9. Confirm login, registration, and account entry are preserved capabilities and are not replaced by marketing-only entry points.
+9. Confirm Template Strip remains audit-dependent and is not auto-added from the reference site.
+10. Confirm login, registration, and account entry are preserved capabilities and are not replaced by marketing-only entry points.
 
 ## Sensitive Data
 

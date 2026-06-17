@@ -34,6 +34,7 @@
   - Parameters and preview in tabs
   - Single-column layout
   - Generate button fixed to bottom with safe-area spacing
+  - Page-level left and right padding uses `16px`
   - Ratio selector uses horizontal scrolling
   - No page-level horizontal scrolling
 
@@ -62,6 +63,7 @@
 - Default: white outline and white text.
 - Hover: outline turns pink.
 - Selected: only the ratio graphic and label turn pink.
+- Template-related UI stays audit-dependent; do not infer a project component from the reference site alone.
 
 ## Responsive Intent
 

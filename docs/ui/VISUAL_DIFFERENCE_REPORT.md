@@ -12,6 +12,7 @@
 - The right rail is content-dense and role-specific: guidance for video, sample/result for image.
 - The mobile reference keeps the same task order but collapses into a single vertical flow with a bottom tab bar.
 - Ratio selection is a compact control, not a large framed card.
+- Template Strip is a reference-site observation only and must stay audit-dependent in the project.
 
 ## Current Project Carry-Forward
 
@@ -19,6 +20,7 @@
 - Pink primary accent.
 - Rounded panels and clear focus states.
 - Shared visual language for frontend, login, and admin.
+- Template support only remains if the current freeze and code audit already confirm it.
 
 ## Must Adjust Later
 
@@ -26,6 +28,7 @@
 - Tighten borders and selected-state surfaces.
 - Make ratio, quality, and duration controls feel smaller and more mechanical.
 - Make the right rail data-driven and less card-heavy.
+- Keep template behavior tied to freeze evidence instead of reference-site presence alone.
 
 ## Not To Copy As Functionality
 

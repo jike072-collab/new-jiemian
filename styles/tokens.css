@@ -18,7 +18,7 @@
   --radius-control: 8px;
   --radius-chip: 999px;
   --space-page: 24px;
-  --space-page-mobile: 12px;
+  --space-page-mobile: 16px;
   --space-panel: 16px;
   --space-stack: 12px;
   --space-block: 20px;
@@ -27,6 +27,9 @@
   --control-panel-width: 392px;
   --control-height: 44px;
   --button-height: 44px;
+  --primary-action-height: 56px;
+  --primary-action-height-mobile: 52px;
+  --mobile-action-bar-height: 72px;
   --touch-target: 44px;
   --breakpoint-lg: 1180px;
   --breakpoint-md: 980px;
