@@ -7,6 +7,24 @@
 - TypeScript strict
 - Tailwind CSS v4
 
+## Module 1 Baseline Rules
+
+- This workspace is frozen as a recoverable baseline before any UI rebuild work.
+- The first baseline check must compare `git fetch origin`, `git status --short --branch`, `git rev-parse HEAD`, `git rev-parse origin/main`, and `git log --left-right --graph --oneline HEAD...origin/main`.
+- Do not assume any local commit, including `main @ 8aea575`, is the baseline before comparing local and remote state.
+- Do not force-push or overwrite remote history.
+- If the local worktree has unpushed commits or stray state, create `backup/pre-ui-rebuild-<YYYY-MM-DD>` first and push that snapshot before any later branches.
+- After the confirmed baseline is known, create `develop`, then create `feature/01-project-baseline` from `develop`.
+- One module keeps one PR. Multiple atomic commits are allowed, but the safety snapshot and the audit docs must be pushed as separate checkpoints.
+- The PR target for this module is `develop`; `main` is reserved for final stable release only.
+
+## Ownership and Review Gates
+
+- Module 1 may only change `AGENTS.md`, `.gitignore`, `.github/**`, and `docs/**`.
+- Do not modify `src/**`, page styles, interfaces, data structures, or business logic in this module.
+- Do not skip subagent audit output. The controller must wait for the feature auditor, reuse auditor, git manager, and reviewer before concluding.
+- Root layout, routing, global CSS, design tokens, public exports, `package.json`, build config, and `AGENTS.md` must each have a single owner in later modules.
+
 ## Product Boundaries
 
 - Keep the app as a local-first AI tool studio.
