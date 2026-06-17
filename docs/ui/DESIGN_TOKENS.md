@@ -19,9 +19,10 @@
 | `--border-strong` | `rgba(255,255,255,0.18)` | Input and selected state border |
 | `--muted` | `rgba(255,255,255,0.58)` | Secondary body text |
 | `--muted-strong` | `rgba(255,255,255,0.74)` | Strong secondary text |
-| `--primary` | `#EC4899` | Main accent and active state |
-| `--primary-strong` | `#F472B6` | Hover accent |
-| `--primary-soft` | `rgba(236,72,153,0.14)` | Selected fill |
+| `--primary` | `#FF0A6C` | Main accent and active state |
+| `--primary-hover` | `#FF2A80` | Hover accent |
+| `--primary-active` | `#E90061` | Pressed accent |
+| `--primary-soft` | `rgba(255,10,108,0.14)` | Light emphasis only; do not use for ratio, clarity, duration, or other large selected blocks |
 | `--success` | `#34D399` | Ready / configured state |
 | `--warning` | `#FBBF24` | Missing-key / attention state |
 
@@ -30,6 +31,14 @@
 - English and numbers: `Inter`, `system-ui`, `Arial`
 - Chinese: `PingFang SC`, `Microsoft YaHei`, `Noto Sans SC`, `sans-serif`
 - Base text uses crisp, low-noise contrast; no decorative glow or shadow
+- Page title: `24-28px / 600 / 1.2`
+- Tool title: `20-22px / 600 / 1.25`
+- Module title: `16-18px / 500-600 / 1.3`
+- Form label: `14-16px / 500 / 1.35`
+- Body: `14px / 400 / 1.5`
+- Secondary text: `12-13px / 400 / 1.45`
+- Button text: `15-16px / 600 / 1.2`
+- Navigation text: `14-16px / 500 / 1.3`
 
 ## Radius Tokens
 
@@ -48,6 +57,19 @@
 | `--space-panel` | `16px` | Inner panel padding |
 | `--space-stack` | `12px` | Tight vertical gap |
 | `--space-block` | `20px` | Section separation |
+| `--header-height` | `60px` | Desktop top bar height |
+| `--sidebar-width` | `240px` | Desktop navigation width target |
+| `--control-panel-width` | `392px` | Desktop parameter column width target |
+| `--control-height` | `44px` | Standard control height |
+| `--button-height` | `44px` | Primary and secondary button height |
+| `--touch-target` | `44px` | Minimum touch target |
+| `--breakpoint-lg` | `1180px` | Desktop workspace breakpoint |
+| `--breakpoint-md` | `980px` | Tablet / compact breakpoint |
+| `--breakpoint-sm` | `768px` | Mobile breakpoint |
+| `--z-header` | `40` | Sticky top chrome |
+| `--z-drawer` | `50` | Mobile drawer |
+| `--z-modal` | `60` | Dialogs and overlays |
+| `--safe-area-bottom` | `env(safe-area-inset-bottom)` | Bottom CTA spacing |
 
 ## Motion Tokens
 
@@ -62,4 +84,6 @@
 - Keep the system dark and compact.
 - Use fill or border emphasis for selected states, not large neon surfaces.
 - Inputs, CTA buttons, ratio chips, and admin controls should share one border/radius language.
+- `--primary-soft` is for subtle emphasis only and should not create large selected blocks.
+- The ratio selector should rely on outline and text state changes, not colored panel fills.
 - Do not introduce extra palette families before later modules need them.

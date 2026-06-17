@@ -1,6 +1,6 @@
 # Current Before Rebuild
 
-Filtered baseline screenshots for module 1.
+Filtered baseline screenshots for module 1 and the module 2 patch checkpoint.
 
 ## Current Baseline
 
@@ -24,6 +24,14 @@ Filtered baseline screenshots for module 1.
 - `mobile-390x844-home-full.png`
 - `mobile-390x844-login-full.png`
 - `mobile-390x844-admin-providers-full.png`
+
+## Module 2 Patch Checkpoint
+
+- `desktop-1440x900-admin-providers-menu-cards.png`
+  - Source URL: `http://127.0.0.1:3100/admin/providers`
+  - Viewport: `1440x900`
+  - Date: `2026-06-17`
+  - Measurement: project evidence, exact screenshot capture
 
 ## Legacy Carryover
 

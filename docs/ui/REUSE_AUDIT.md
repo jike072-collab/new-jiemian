@@ -5,8 +5,8 @@
 ### A
 
 - `src/components/studio-app.tsx`
-  - Current use: main product shell and tool orchestration.
-  - Reuse: yes, as-is for logic.
+  - Current use: main product orchestration and data flow.
+  - Reuse: yes, as-is for logic only.
 - `src/components/brand-logo.tsx`
   - Current use: shared brand mark.
   - Reuse: yes, as-is.
@@ -42,3 +42,4 @@
 
 - No existing shared Header, Sidebar, AppShell, ToolPanel, or dedicated login/register component is clearly present beyond the route-local `CustomerLogin` surface in the current worktree.
 - The current product is centered on `StudioApp`, `AdminProvidersClient`, server helpers, and a small logo component.
+- `StudioApp` should not be treated as a new layout skeleton until visual comparison proves it fits the target.
