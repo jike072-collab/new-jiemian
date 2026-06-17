@@ -14,6 +14,11 @@ Captured for the responsive shell rebuild checkpoint.
   - Viewport: `1920x1080`
   - Date: `2026-06-17`
   - Measurement: exact project screenshot
+- `desktop-1440x900-image-shell.png`
+  - Source URL: `http://127.0.0.1:3100/`
+  - Viewport: `1440x900`
+  - Date: `2026-06-17`
+  - Measurement: exact project screenshot
 - `desktop-1440x900-video-shell.png`
   - Source URL: `http://127.0.0.1:3100/`
   - Viewport: `1440x900`
@@ -45,7 +50,17 @@ Captured for the responsive shell rebuild checkpoint.
   - Viewport: `390x844`
   - Date: `2026-06-17`
   - Measurement: exact project screenshot
+- `mobile-390x844-tabs-preview.png`
+  - Source URL: `http://127.0.0.1:3100/`
+  - Viewport: `390x844`
+  - Date: `2026-06-17`
+  - Measurement: exact project screenshot
 - `mobile-390x844-drawer-open.png`
+  - Source URL: `http://127.0.0.1:3100/`
+  - Viewport: `390x844`
+  - Date: `2026-06-17`
+  - Measurement: exact project screenshot
+- `mobile-390x844-bottom-action-bar.png`
   - Source URL: `http://127.0.0.1:3100/`
   - Viewport: `390x844`
   - Date: `2026-06-17`
