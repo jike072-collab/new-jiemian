@@ -2,13 +2,15 @@
 
 ## B01 - Isolated Workspace And Git Baseline
 
-Status: In progress
+Status: Completed
 
 Branch: `feature/auth-newapi-01-workspace`
 
 Base: `origin/integration/auth-newapi`
 
 Integration target: `integration/auth-newapi`
+
+Pull request: `#4`
 
 ## Initial Baseline
 
@@ -32,3 +34,11 @@ Integration target: `integration/auth-newapi`
 - Module pull requests target `integration/auth-newapi`.
 - The final line handoff may only create a Draft PR to `develop`.
 - Main line A files remain out of scope.
+
+## B01 Verification
+
+- `git diff --check` passed before commit.
+- Changed files were limited to `docs/architecture/auth-newapi/**` and `docs/ui/PARALLEL_WORK_MATRIX.md`.
+- No `src/**`, package files, database files, or protected main line A files were modified.
+- Sensitive-pattern scan on the new B01 documents found no secret values.
+- Remote PR diff was reviewed after push.
