@@ -47,7 +47,7 @@ async function expectRejects(name, fn) {
 }
 
 async function reset() {
-  await q("truncate table audit_events, task_billing_records, usage_records, billing_idempotency_keys, billing_webhook_events, billing_orders, new_api_user_mappings, auth_sessions, app_users restart identity cascade");
+  await q("truncate table audit_events, task_quota_adjustments, task_billing_records, usage_records, billing_idempotency_keys, billing_webhook_events, billing_orders, new_api_user_mappings, auth_sessions, app_users restart identity cascade");
 }
 
 async function seedUser(overrides = {}) {
@@ -83,11 +83,12 @@ async function assertTablesAndIndexes() {
     "billing_idempotency_keys",
     "usage_records",
     "task_billing_records",
+    "task_quota_adjustments",
     "audit_events",
     "reconciliation_runs",
     "schema_migrations",
   ]]);
-  assert.equal(tables.rowCount, 11);
+  assert.equal(tables.rowCount, 12);
 
   const indexes = await q(`
     select indexname from pg_indexes
@@ -110,6 +111,7 @@ async function assertMigrationStatus() {
     "001_initial_application_schema",
     "002_harden_database_baseline",
     "003_billing_webhook_processing_status",
+    "004_task_billing_lifecycle",
   ]);
   for (const row of result.rows) {
     assert.match(row.checksum, /^[a-f0-9]{64}$/);
@@ -222,6 +224,44 @@ async function assertConstraints() {
       created_at, updated_at, idempotency_key
     ) values ($1,$2,'task-orphan','cloud_image_generation','prechecked',10,now(),now(),'usage-orphan')
   `, [randomUUID(), randomUUID()]));
+
+  await q(`
+    insert into task_billing_records(
+      id, local_user_id, task_id, usage_record_id, idempotency_key, billing_state,
+      estimated_quota_units, final_quota_units, new_api_task_id, created_at, updated_at
+    ) values ($1,$2,'task-1',(select id from usage_records where task_id = 'task-1'),'task-billing-idem','prechecked',10,null,'new-api-task-1',now(),now())
+  `, [randomUUID(), userId]);
+  await expectRejects("unique task billing idempotency", () => q(`
+    insert into task_billing_records(
+      id, local_user_id, task_id, idempotency_key, billing_state,
+      estimated_quota_units, created_at, updated_at
+    ) values ($1,$2,'task-2','task-billing-idem','prechecked',10,now(),now())
+  `, [randomUUID(), userId]));
+  await expectRejects("invalid task billing state is rejected", () => q(`
+    insert into task_billing_records(
+      id, local_user_id, task_id, idempotency_key, billing_state,
+      estimated_quota_units, created_at, updated_at
+    ) values ($1,$2,'task-3','task-billing-invalid','unknown',10,now(),now())
+  `, [randomUUID(), userId]));
+  await q(`
+    insert into task_quota_adjustments(
+      id, local_user_id, new_api_user_id, task_billing_record_id, task_id,
+      idempotency_key, quota_delta, original_quota, target_quota, status, created_at, updated_at
+    ) values ($1,$2,'100',(select id from task_billing_records where task_id = 'task-1'),
+      'task-1','task-settle-1',-10,100,90,'pending',now(),now())
+  `, [randomUUID(), userId]);
+  await expectRejects("duplicate task quota adjustment idempotency", () => q(`
+    insert into task_quota_adjustments(
+      id, local_user_id, new_api_user_id, task_id, idempotency_key, quota_delta,
+      original_quota, target_quota, status, created_at, updated_at
+    ) values ($1,$2,'100','task-1','task-settle-1',-10,100,90,'pending',now(),now())
+  `, [randomUUID(), userId]));
+  await expectRejects("invalid task quota adjustment status is rejected", () => q(`
+    insert into task_quota_adjustments(
+      id, local_user_id, new_api_user_id, task_id, idempotency_key, quota_delta,
+      original_quota, target_quota, status, created_at, updated_at
+    ) values ($1,$2,'100','task-1','task-settle-invalid',-10,100,90,'unknown',now(),now())
+  `, [randomUUID(), userId]));
 }
 
 async function assertRollbackAndHealth() {

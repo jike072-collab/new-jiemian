@@ -19,9 +19,10 @@ if (compile.status !== 0) process.exit(compile.status ?? 1);
 
 const tests = [
   "dist/quota-usage-tests/src/lib/server/quota/__tests__/quota-service.test.js",
+  "dist/quota-usage-tests/src/lib/server/quota/__tests__/task-billing-service.test.js",
 ];
 
-const run = spawnSync("node", ["--test", ...tests], {
+const run = spawnSync("node", ["--conditions=react-server", "--test", ...tests], {
   cwd: root,
   stdio: "inherit",
   shell: process.platform === "win32",

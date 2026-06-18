@@ -183,13 +183,14 @@ jobs:
       - name: Migration status
         run: npm run migrate:status
 
-      - name: Migration status includes 001 through 003
+      - name: Migration status includes 001 through 004
         run: |
           set -eu
           npm run migrate:status > migration-status.txt
           grep -q $'001_initial_application_schema\tapplied' migration-status.txt
           grep -q $'002_harden_database_baseline\tapplied' migration-status.txt
           grep -q $'003_billing_webhook_processing_status\tapplied' migration-status.txt
+          grep -q $'004_task_billing_lifecycle\tapplied' migration-status.txt
 
       - name: Billing webhook status upgrade test
         run: node scripts/database/test-billing-webhook-status-upgrade.mjs
