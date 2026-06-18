@@ -63,6 +63,7 @@ function unavailableAuthRepository(): AuthRepository {
   return {
     getUserById: async () => fail(),
     getUserByIdentifier: async () => fail(),
+    listUsersPage: async () => fail(),
     createUser: async () => fail(),
     updateUser: async () => fail(),
     createSession: async () => fail(),

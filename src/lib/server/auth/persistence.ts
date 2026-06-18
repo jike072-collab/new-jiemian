@@ -195,6 +195,18 @@ export function createDualAuthRepository(json: AuthRepository, postgres: AuthRep
       );
       return jsonUser;
     },
+    async listUsersPage(filter) {
+      const jsonPage = await json.listUsersPage(filter);
+      await compareShadow(
+        "auth_user_list",
+        "listUsersPage",
+        filter?.query || filter?.status || filter?.role || "all",
+        jsonPage.total,
+        () => postgres.listUsersPage(filter),
+        (primary, shadow) => primary !== (shadow as Awaited<ReturnType<AuthRepository["listUsersPage"]>>)?.total,
+      );
+      return jsonPage;
+    },
     async createUser(input) {
       return mirrorWrite(
         json.createUser(input),
@@ -313,6 +325,23 @@ export function createDualNewApiUserMappingRepository(
     },
     async listByStatus(status) {
       return json.listByStatus(status);
+    },
+    async listMappingsPage(filter) {
+      const jsonPage = json.listMappingsPage
+        ? await json.listMappingsPage(filter)
+        : {
+          mappings: filter?.status ? await json.listByStatus(filter.status) : [],
+          total: filter?.status ? (await json.listByStatus(filter.status)).length : 0,
+        };
+      await compareShadow(
+        "new_api_mapping_list",
+        "listMappingsPage",
+        filter?.localUserId || filter?.status || "all",
+        jsonPage.total,
+        () => postgres.listMappingsPage ? postgres.listMappingsPage(filter) : postgres.listByStatus(filter?.status || "active"),
+        (primary, shadow) => primary !== (Array.isArray(shadow) ? shadow.length : (shadow as { total?: number })?.total),
+      );
+      return jsonPage;
     },
     async createPending(input) {
       return mirrorWrite(json.createPending(input), {

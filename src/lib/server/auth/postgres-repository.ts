@@ -8,6 +8,7 @@ import { applicationQuery, getApplicationDatabaseConfig } from "../database";
 import { nowIso, normalizeEmail, normalizeIdentifier, normalizeUsername } from "./normalize";
 import {
   AuthRepositoryError,
+  type AuthUserListFilter,
   type AuthRepository,
   type CreateAuthUserInput,
 } from "./repository";
@@ -142,6 +143,46 @@ export class PostgresAuthRepository implements AuthRepository {
       [normalized],
     );
     return result.rows[0] ? userFromRow(result.rows[0]) : null;
+  }
+
+  async listUsersPage(filter: AuthUserListFilter = {}) {
+    const values: unknown[] = [];
+    const clauses: string[] = [];
+    if (filter.status) {
+      values.push(filter.status);
+      clauses.push(`status = $${values.length}`);
+    }
+    if (filter.role) {
+      values.push(filter.role);
+      clauses.push(`role = $${values.length}`);
+    }
+    const query = normalizeIdentifier(filter.query || "");
+    if (query) {
+      values.push(`%${query}%`);
+      values.push(query);
+      clauses.push(`(email like $${values.length - 1} or username like $${values.length - 1} or local_user_id = $${values.length})`);
+    }
+    const whereClause = clauses.length ? `where ${clauses.join(" and ")}` : "";
+    const count = await applicationQuery<{ count: string }>(
+      `select count(*)::text as count from app_users ${whereClause}`,
+      values,
+    );
+    const page = Math.max(1, Math.trunc(filter.page || 1));
+    const pageSize = Math.min(100, Math.max(1, Math.trunc(filter.pageSize || 20)));
+    const queryValues = values.slice();
+    queryValues.push(pageSize, (page - 1) * pageSize);
+    const result = await applicationQuery<UserRow>(`
+      select *
+      from app_users
+      ${whereClause}
+      order by created_at desc, local_user_id desc
+      limit $${queryValues.length - 1}
+      offset $${queryValues.length}
+    `, queryValues);
+    return {
+      users: result.rows.map(userFromRow),
+      total: Number(count.rows[0]?.count || 0),
+    };
   }
 
   async createUser(input: CreateAuthUserInput) {

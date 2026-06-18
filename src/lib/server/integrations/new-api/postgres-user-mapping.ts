@@ -7,6 +7,7 @@ import {
   NewApiUserMappingError,
   type NewApiUserMapping,
   type NewApiUserMappingFailureInput,
+  type NewApiUserMappingListFilter,
   type NewApiUserMappingPrepareRetryInput,
   type NewApiUserMappingRepository,
   type NewApiUserMappingStatus,
@@ -174,6 +175,40 @@ export class PostgresNewApiUserMappingRepository implements NewApiUserMappingRep
       [status],
     );
     return result.rows.map(mappingFromRow);
+  }
+
+  async listMappingsPage(filter: NewApiUserMappingListFilter = {}) {
+    const values: unknown[] = [];
+    const clauses: string[] = [];
+    if (filter.status) {
+      values.push(filter.status);
+      clauses.push(`sync_status = $${values.length}`);
+    }
+    if (filter.localUserId?.trim()) {
+      values.push(filter.localUserId.trim());
+      clauses.push(`local_user_id = $${values.length}`);
+    }
+    const whereClause = clauses.length ? `where ${clauses.join(" and ")}` : "";
+    const count = await applicationQuery<{ count: string }>(
+      `select count(*)::text as count from new_api_user_mappings ${whereClause}`,
+      values,
+    );
+    const page = Math.max(1, Math.trunc(filter.page || 1));
+    const pageSize = Math.min(100, Math.max(1, Math.trunc(filter.pageSize || 20)));
+    const queryValues = values.slice();
+    queryValues.push(pageSize, (page - 1) * pageSize);
+    const result = await applicationQuery<MappingRow>(`
+      select *
+      from new_api_user_mappings
+      ${whereClause}
+      order by updated_at desc, local_user_id desc
+      limit $${queryValues.length - 1}
+      offset $${queryValues.length}
+    `, queryValues);
+    return {
+      mappings: result.rows.map(mappingFromRow),
+      total: Number(count.rows[0]?.count || 0),
+    };
   }
 
   async createPending(input: { localUserId: string; idempotencyKey?: string; now?: Date }) {

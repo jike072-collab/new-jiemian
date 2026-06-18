@@ -31,8 +31,22 @@ export type CreateAuthUserInput = {
 export type UserRepository = {
   getUserById(localUserId: string): Promise<AuthUser | null>;
   getUserByIdentifier(identifier: string): Promise<AuthUser | null>;
+  listUsersPage(filter?: AuthUserListFilter): Promise<AuthUserListPage>;
   createUser(input: CreateAuthUserInput): Promise<AuthUser>;
   updateUser(localUserId: string, patch: Partial<Pick<AuthUser, "status" | "last_login_at" | "session_version" | "display_name">>, now?: Date): Promise<AuthUser>;
+};
+
+export type AuthUserListFilter = {
+  status?: AuthUserStatus;
+  role?: AuthUserRole;
+  query?: string;
+  page?: number;
+  pageSize?: number;
+};
+
+export type AuthUserListPage = {
+  users: AuthUser[];
+  total: number;
 };
 
 export type SessionRepository = {
@@ -115,6 +129,24 @@ class StoreAuthRepository implements AuthRepository {
       user.email === normalized || user.username === normalized
     ));
     return found ? { ...found } : null;
+  }
+
+  async listUsersPage(filter: AuthUserListFilter = {}) {
+    const page = Math.max(1, Math.trunc(filter.page || 1));
+    const pageSize = Math.min(100, Math.max(1, Math.trunc(filter.pageSize || 20)));
+    const query = normalizeIdentifier(filter.query || "");
+    const store = await this.storage.read();
+    const users = store.users
+      .filter((user) => !filter.status || user.status === filter.status)
+      .filter((user) => !filter.role || user.role === filter.role)
+      .filter((user) => !query || user.email.includes(query) || user.username.includes(query) || user.local_user_id === query)
+      .sort((a, b) => b.created_at.localeCompare(a.created_at))
+      .map((user) => ({ ...user }));
+    const start = (page - 1) * pageSize;
+    return {
+      users: users.slice(start, start + pageSize),
+      total: users.length,
+    };
   }
 
   async createUser(input: CreateAuthUserInput) {

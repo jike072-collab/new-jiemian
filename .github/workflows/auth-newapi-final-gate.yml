@@ -122,6 +122,27 @@ jobs:
       - name: Billing reconciliation dry run
         run: node scripts/reconcile-billing-sandbox.mjs --dry-run --json
 
+  admin-api:
+    name: Admin API tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Admin API tests
+        run: node scripts/test-admin-api.mjs
+
   new-api-docker-health:
     name: New API Docker health and real BFF
     runs-on: ubuntu-latest
