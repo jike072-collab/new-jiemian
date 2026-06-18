@@ -15,6 +15,7 @@
   },
   "include": [
     "src/lib/server/quota/**/*.ts",
+    "src/lib/server/database/**/*.ts",
     "src/lib/server/auth/**/*.ts",
     "src/lib/server/integrations/new-api/**/*.ts"
   ]

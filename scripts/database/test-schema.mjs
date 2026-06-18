@@ -110,6 +110,7 @@ async function assertMigrationStatus() {
     "001_initial_application_schema",
     "002_harden_database_baseline",
     "003_billing_webhook_processing_status",
+    "004_task_billing_lifecycle",
   ]);
   for (const row of result.rows) {
     assert.match(row.checksum, /^[a-f0-9]{64}$/);
@@ -222,6 +223,25 @@ async function assertConstraints() {
       created_at, updated_at, idempotency_key
     ) values ($1,$2,'task-orphan','cloud_image_generation','prechecked',10,now(),now(),'usage-orphan')
   `, [randomUUID(), randomUUID()]));
+
+  await q(`
+    insert into task_billing_records(
+      id, local_user_id, task_id, usage_record_id, idempotency_key, billing_state,
+      estimated_quota_units, final_quota_units, new_api_task_id, created_at, updated_at
+    ) values ($1,$2,'task-1',(select id from usage_records where task_id = 'task-1'),'task-billing-idem','prechecked',10,null,'new-api-task-1',now(),now())
+  `, [randomUUID(), userId]);
+  await expectRejects("unique task billing idempotency", () => q(`
+    insert into task_billing_records(
+      id, local_user_id, task_id, idempotency_key, billing_state,
+      estimated_quota_units, created_at, updated_at
+    ) values ($1,$2,'task-2','task-billing-idem','prechecked',10,now(),now())
+  `, [randomUUID(), userId]));
+  await expectRejects("invalid task billing state is rejected", () => q(`
+    insert into task_billing_records(
+      id, local_user_id, task_id, idempotency_key, billing_state,
+      estimated_quota_units, created_at, updated_at
+    ) values ($1,$2,'task-3','task-billing-invalid','unknown',10,now(),now())
+  `, [randomUUID(), userId]));
 }
 
 async function assertRollbackAndHealth() {
