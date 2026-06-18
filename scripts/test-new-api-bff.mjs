@@ -21,6 +21,8 @@ const tests = process.argv.includes("--real")
   ? ["dist/new-api-bff-tests/src/lib/server/integrations/new-api/__tests__/real-new-api.test.js"]
   : [
       "dist/new-api-bff-tests/src/lib/server/integrations/new-api/__tests__/client.test.js",
+      "dist/new-api-bff-tests/src/lib/server/integrations/new-api/__tests__/user-mapping.test.js",
+      "dist/new-api-bff-tests/src/lib/server/integrations/new-api/__tests__/user-sync.test.js",
       "dist/new-api-bff-tests/src/lib/server/integrations/new-api/__tests__/bundle-boundary.test.js",
     ];
 

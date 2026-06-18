@@ -207,3 +207,36 @@ Pull request: `#10`
 - `.next/static` was scanned for `NEW_API_ADMIN_ACCESS_TOKEN`, `NEW_API_ADMIN_USER_ID`, `NEW_API_BASE_URL`, and `admin-secret`; no client static bundle match was found.
 - GitHub Actions run `27735759479` passed the `New API BFF / bff-client` job on PR `#10`, including unit tests, real New API container startup, health check, test admin setup, access-token generation, real BFF health call, unauthorized admin rejection, authorized admin call, production build, and static bundle leak scan.
 - Initial local Git push failed with `schannel: failed to receive handshake`; the branch was pushed with a per-command OpenSSL backend override and no remote/global Git config change.
+
+## B08 - User Mapping, Sync, Compensation, And Repair
+
+Status: In progress
+
+Branch: `feature/auth-newapi-08-user-mapping`
+
+Base: `origin/integration/auth-newapi`
+
+Integration target: `integration/auth-newapi`
+
+Pull request: pending
+
+## B08 Scope
+
+- Add server-side New API user mapping Repository capabilities.
+- Add sync orchestration for local user to New API user creation/lookup/activation.
+- Cover idempotency, retry, compensation, conflict, orphan, disabled, and repair states.
+- Add implementation documentation, state machine, repair runbook, and migration draft.
+
+## B08 Notes
+
+- The current repo has no Prisma, Drizzle, TypeORM, Knex, Sequelize, SQL schema, or formal migration runner.
+- Existing persistence uses runtime JSON files under `data/`; B08 follows this pattern for the temporary Repository while documenting the future SQL migration shape.
+- B08 does not add a local user table, login/register routes, sessions, schema migration, quota charging, billing, payment, frontend pages, or New API UI.
+- The mapping model keeps one identity truth source: future B09 local project user identity. New API remains the mapped quota/execution account.
+- Automatic repair never deletes New API users and never creates a second cloud quota ledger.
+
+## B08 Local Verification
+
+- `npm ci` completed from the existing lockfile; it reported existing dependency audit findings, but no dependency or lockfile change was made.
+- `node scripts/test-new-api-bff.mjs` passed 27 local unit and boundary tests including B08 Repository and sync cases.
+- Local real container verification remains blocked because `docker` and `docker compose` are not available in `PATH`; PR CI must run `node scripts/test-new-api-bff.mjs --real` against the isolated New API stack.
