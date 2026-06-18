@@ -32,6 +32,20 @@
 - API keys must never be committed. Keep runtime secrets in `.env.local` or local `data/` files only.
 - Image upscale uses the local Upscayl CLI, and video upscale uses the local Video2X CLI. Keep both integrations local-first and API-key-free.
 
+## Module 3 Recovery Rules
+
+- Do not replace a real application entry with a static shell page.
+- Review `docs/ui/FEATURE_FREEZE.md` before any shell, layout, or responsive work.
+- Do not create fake login state, fake balances, or a second tool-state source.
+- Prefer CSS media queries and layout tokens over first-render JavaScript viewport decisions.
+- New or rebuilt surfaces must use Design Tokens; do not hardcode new hex colors in the shell.
+- Keep at most one panel border and one control border per region.
+- Wait for hydration, font load, and layout stability before taking screenshots.
+- Screenshot filenames must match the actual `window.innerWidth` and `window.innerHeight`.
+- Passing build checks does not mean the layout is visually correct.
+- Do not request merge until screenshot comparison and feature-preservation checks are complete.
+- Treat `AI 图片编辑器` as a real current capability decision, not as a reference-site invention.
+
 ## Commands
 
 - `npm run dev`
