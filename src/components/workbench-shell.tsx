@@ -153,7 +153,7 @@ export function WorkbenchShell({
                 <p className="shell-description">{toolDescription || activeTool.description}</p>
               </div>
             </div>
-            <div data-shell-scroll="parameters" className="shell-panel__body">
+            <div id="shell-parameters-panel" data-shell-scroll="parameters" className="shell-panel__body">
               {parameterSlot}
             </div>
             <div className="shell-panel__footer">
@@ -170,7 +170,7 @@ export function WorkbenchShell({
               </div>
               <span className="shell-chip">{activeTool.label}</span>
             </div>
-            <div data-shell-scroll="preview" className="shell-panel__body">
+            <div id="shell-preview-panel" data-shell-scroll="preview" className="shell-panel__body">
               {previewSlot}
             </div>
           </section>
@@ -317,13 +317,29 @@ function MobileOverlay({
           <span className="shell-eyebrow">当前工具</span>
           <strong className="shell-mobile-tabs__title">{activeTool.label}</strong>
         </div>
-        <div className="shell-mobile-tabs__switch">
-          <button type="button" className={cn("shell-tab", pane === "parameters" && "is-active")} onClick={() => onChangePane("parameters")}>
-            <PanelLeft className="size-4" />
+        <div className="shell-mobile-tabs__switch" role="tablist" aria-label="工作区视图">
+          <button
+            type="button"
+            id="shell-parameters-tab"
+            role="tab"
+            aria-selected={pane === "parameters"}
+            aria-controls="shell-parameters-panel"
+            className={cn("shell-tab", pane === "parameters" && "is-active")}
+            onClick={() => onChangePane("parameters")}
+          >
+            <PanelLeft className="size-4" aria-hidden="true" />
             参数
           </button>
-          <button type="button" className={cn("shell-tab", pane === "preview" && "is-active")} onClick={() => onChangePane("preview")}>
-            <PanelRight className="size-4" />
+          <button
+            type="button"
+            id="shell-preview-tab"
+            role="tab"
+            aria-selected={pane === "preview"}
+            aria-controls="shell-preview-panel"
+            className={cn("shell-tab", pane === "preview" && "is-active")}
+            onClick={() => onChangePane("preview")}
+          >
+            <PanelRight className="size-4" aria-hidden="true" />
             预览
           </button>
         </div>
@@ -418,8 +434,9 @@ function ToolButton({
       type="button"
       onClick={onClick}
       className={cn("shell-nav-item", active && "is-active", compact && "is-compact")}
+      aria-current={active ? "page" : undefined}
     >
-      <Icon className="shell-nav-item__icon" />
+      <Icon className="shell-nav-item__icon" aria-hidden="true" />
       <span className={cn("shell-nav-item__text", compact && "sr-only")}>
         <span className="shell-nav-item__label">{item.label}</span>
         <span className="shell-nav-item__desc">{item.description}</span>

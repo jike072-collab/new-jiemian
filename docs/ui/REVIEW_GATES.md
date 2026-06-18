@@ -49,3 +49,6 @@
 - Build passing does not prove image workspace interaction is correct.
 - Final module 4 screenshots must come from the real running app at the latest branch head.
 - A-side module 4 must not modify B-side New API, authentication, quota, payment, Docker, database, Redis, BFF, callback, reconciliation, or port configuration.
+- Button-based selected controls must expose selection semantics with `aria-pressed` or another correct role-specific state.
+- Mobile parameter/preview tabs must expose `role="tablist"`, `role="tab"`, `aria-selected`, and `aria-controls`.
+- Module 4 final review must include a bidi Unicode control-character scan over `src/` and `docs/`.

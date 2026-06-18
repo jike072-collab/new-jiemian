@@ -608,10 +608,12 @@ function ImageGenerator({
         onClear={onFilesClear}
       />
       <StackedControl label="图片比例" required>
-        <RatioPicker value={state.ratio} onChange={onRatioChange} />
+        <RatioPicker label="图片比例" value={state.ratio} onChange={onRatioChange} />
       </StackedControl>
       <StackedControl label="清晰度" required>
         <ModeSwitch
+          label="清晰度"
+          groupId="image-quality"
           value={state.quality}
           options={[
             ["1k", "1K"],
@@ -626,7 +628,7 @@ function ImageGenerator({
         required
         placeholder={meta.promptPlaceholder}
       />
-      {state.submitError ? <p className="studio-error-text">{state.submitError}</p> : null}
+      {state.submitError ? <p className="studio-error-text" role="alert">{state.submitError}</p> : null}
 
       <div className="studio-actions">
         <SubmitButton disabled={!canSubmit} loading={state.loading} loadingLabel={meta.loadingLabel} onClick={onSubmit}>
@@ -646,6 +648,8 @@ function ImageModeSwitch({
 }) {
   return (
     <ModeSwitch
+      label="图像模式"
+      groupId="image-mode"
       value={mode}
       options={[
         ["text-to-image", "文生图"],
@@ -685,6 +689,7 @@ function ReferenceImageInput({
     <FieldFrame label="参考图片" required={required} hint={required ? undefined : "可选"}>
       <div
         className={cn("studio-upload", dragging && "is-dragging", error && "is-error")}
+        aria-describedby={error ? "reference-image-error" : "reference-image-help"}
         onDragOver={(event) => {
           event.preventDefault();
           setDragging(true);
@@ -698,7 +703,10 @@ function ReferenceImageInput({
       >
         <input
           ref={fileInputRef}
+          id="reference-image-input"
           type="file"
+          aria-label={required ? "上传参考图片开始编辑" : "上传参考图片辅助生成"}
+          aria-describedby={error ? "reference-image-error" : "reference-image-help"}
           accept="image/png,image/jpeg,image/webp"
           multiple
           onChange={(event) => {
@@ -709,9 +717,9 @@ function ReferenceImageInput({
         />
         <div className="studio-upload__body">
           <strong>{files.length ? "已选择参考图片" : required ? "上传参考图片开始编辑" : "可上传参考图片辅助生成"}</strong>
-          <p>支持 PNG、JPEG、WebP，最多 10 张，单张不超过 10MB。</p>
+          <p id="reference-image-help">支持 PNG、JPEG、WebP，最多 10 张，单张不超过 10MB。</p>
           <div className="studio-upload__actions">
-            <button type="button" className="studio-secondary-button" onClick={() => fileInputRef.current?.click()}>
+            <button type="button" className="studio-secondary-button" aria-controls="reference-image-input" onClick={() => fileInputRef.current?.click()}>
               {files.length ? "替换图片" : "选择图片"}
             </button>
             {files.length ? (
@@ -732,14 +740,14 @@ function ReferenceImageInput({
                 <span>{formatFileSize(item.file.size)}</span>
               </div>
               <button type="button" className="studio-icon-button" aria-label={`删除 ${item.file.name}`} onClick={() => onRemove(index)}>
-                <X className="size-4" />
+                <X className="size-4" aria-hidden="true" />
               </button>
             </div>
           ))}
         </div>
       ) : null}
-      {error ? <p className="studio-error-text">{error}</p> : null}
-      {!error && required && !files.length ? <p className="studio-help-text">图片编辑必须先上传参考图片。</p> : null}
+      {error ? <p id="reference-image-error" className="studio-error-text" role="alert">{error}</p> : null}
+      {!error && required && !files.length ? <p className="studio-help-text" role="status" aria-live="polite">图片编辑必须先上传参考图片。</p> : null}
     </FieldFrame>
   );
 }
@@ -838,6 +846,8 @@ function VideoGenerator({
   return (
     <FormPanel title="AI 视频生成器" subtitle="先写你要的视频，再选尺寸和时长。">
       <ModeSwitch
+        label="视频模式"
+        groupId="video-mode"
         value={mode}
         options={[
           ["text-to-video", "文生视频"],
@@ -854,7 +864,7 @@ function VideoGenerator({
         onChange={setFiles}
       />
       <StackedControl label="视频比例" required>
-        <RatioPicker value={ratio} onChange={setRatio} />
+        <RatioPicker label="视频比例" value={ratio} onChange={setRatio} />
       </StackedControl>
       <FieldFrame label="时长" required>
         <select
@@ -1012,6 +1022,8 @@ function UpscaleForm({
 
       <StackedControl label="放大倍数" required>
         <ModeSwitch
+          label="放大倍数"
+          groupId="upscale-scale"
           value={scale}
           options={[
             ["2", "2x"],
@@ -1071,6 +1083,8 @@ function LibrarySidebar({
     <div className="studio-library-sidebar">
       <StackedControl label="分类">
         <ModeSwitch
+          label="作品分类"
+          groupId="library-filter"
           value={filter}
           options={[
             ["all", `全部 ${count.all}`],
@@ -1082,6 +1096,8 @@ function LibrarySidebar({
       </StackedControl>
       <StackedControl label="排序">
         <ModeSwitch
+          label="作品排序"
+          groupId="library-sort"
           value={sort}
           options={[
             ["recent", "最新"],
@@ -1175,7 +1191,7 @@ function ImagePreviewPanel({
 
   if (loading) {
     return (
-      <div className="studio-preview">
+      <div className="studio-preview" role="status" aria-live="polite">
         <div className="studio-preview__top">
           <div>
             <p className="shell-eyebrow">处理中</p>
@@ -1193,7 +1209,7 @@ function ImagePreviewPanel({
 
   if (submitError) {
     return (
-      <div className="studio-preview">
+      <div className="studio-preview" role="alert">
         <div className="studio-preview__top">
           <div>
             <p className="shell-eyebrow">失败</p>
@@ -1229,7 +1245,7 @@ function ImagePreviewPanel({
 
   if (output) {
     return (
-      <div className="studio-preview">
+      <div className="studio-preview" role="status" aria-live="polite">
         <div className="studio-preview__top">
           <div>
             <p className="shell-eyebrow">结果</p>
@@ -1368,7 +1384,7 @@ function MobileActionBar({
   return (
     <div className="studio-mobile-action">
       <button type="button" className="studio-primary-action studio-mobile-action__button" disabled={disabled} onClick={onClick}>
-        {loading ? <Loader2 className="size-4 animate-spin" /> : <Wand2 className="size-4" />}
+        {loading ? <Loader2 className="size-4 animate-spin" aria-hidden="true" /> : <Wand2 className="size-4" aria-hidden="true" />}
         {label}
       </button>
     </div>
@@ -1411,24 +1427,27 @@ function StackedControl({
 
 function ModeSwitch({
   label,
+  groupId,
   value,
   options,
   onChange,
 }: {
   label?: string;
+  groupId?: string;
   value: string;
   options: Array<[string, string]>;
   onChange: (value: string) => void;
 }) {
   return (
     <div className="studio-mode">
-      {label ? <span className="studio-label">{label}</span> : null}
-      <div className="studio-mode__options">
+      {label ? <span id={groupId ? `${groupId}-label` : undefined} className="studio-label">{label}</span> : null}
+      <div className="studio-mode__options" role="group" aria-label={label} aria-labelledby={label && groupId ? `${groupId}-label` : undefined}>
         {options.map(([id, text]) => (
           <button
             key={id}
             type="button"
             data-testid={`mode-${id}`}
+            aria-pressed={value === id}
             onClick={() => onChange(id)}
             className={cn("studio-mode__button", value === id && "is-active")}
           >
@@ -1458,12 +1477,17 @@ function ProviderSelect({
   return (
     <FieldFrame label="模型" required>
       <div className="studio-provider">
+        <label className="studio-sr-only" htmlFor="image-provider-select">
+          模型
+        </label>
         <select
+          id="image-provider-select"
           value={value}
           onChange={(event) => onChange(event.target.value)}
           className="studio-select"
           disabled={loading || !providers.length}
           aria-invalid={Boolean(error)}
+          aria-describedby={error ? "image-provider-error" : loading ? "image-provider-status" : !providers.length ? "image-provider-empty" : undefined}
         >
           {loading ? (
             <option value="">正在加载模型</option>
@@ -1477,14 +1501,14 @@ function ProviderSelect({
             <option value="">当前尚未配置可用模型</option>
           )}
         </select>
-        {loading ? <p className="studio-help-text">正在读取后台已启用的图片模型。</p> : null}
+        {loading ? <p id="image-provider-status" className="studio-help-text" role="status" aria-live="polite">正在读取后台已启用的图片模型。</p> : null}
         {!loading && !error && !providers.length ? (
-          <p className="studio-help-text">
+          <p id="image-provider-empty" className="studio-help-text" role="status" aria-live="polite">
             当前尚未配置可用模型，请到 <a href="/admin/providers">后台设置</a> 启用对应模型。
           </p>
         ) : null}
         {error ? (
-          <div className="studio-inline-error">
+          <div id="image-provider-error" className="studio-inline-error" role="alert">
             <p>{error}</p>
             {onReload ? (
               <button type="button" className="studio-secondary-button" onClick={() => void onReload()}>
@@ -1525,18 +1549,19 @@ function FileInput({
   );
 }
 
-function RatioPicker({ value, onChange }: { value: string; onChange: (value: string) => void }) {
+function RatioPicker({ label, value, onChange }: { label: string; value: string; onChange: (value: string) => void }) {
   return (
-    <div className="studio-ratio">
+    <div className="studio-ratio" role="group" aria-label={label}>
       {ratios.map((ratio) => (
         <button
           key={ratio}
           type="button"
           data-testid={`ratio-${ratio.replace(":", "-")}`}
+          aria-pressed={value === ratio}
           onClick={() => onChange(ratio)}
           className={cn("studio-ratio__item", value === ratio && "is-active")}
         >
-          <span className={cn("studio-ratio__shape", `ratio-${ratio.replace(":", "-")}`)} />
+          <span className={cn("studio-ratio__shape", `ratio-${ratio.replace(":", "-")}`)} aria-hidden="true" />
           <span className="studio-ratio__label">{ratio}</span>
         </button>
       ))}
@@ -1567,9 +1592,10 @@ function PromptBox({
           value={value}
           onChange={(event) => onChange(event.target.value)}
           placeholder={placeholder}
+          aria-describedby="image-prompt-counter"
           className="studio-textarea"
         />
-        <span className="studio-counter">{value.length}</span>
+        <span id="image-prompt-counter" className="studio-counter" aria-live="polite">{value.length}</span>
       </div>
     </FieldFrame>
   );
@@ -1589,8 +1615,8 @@ function SubmitButton({
   onClick: () => void;
 }) {
   return (
-    <button type="button" data-testid="primary-submit" disabled={disabled} onClick={onClick} className="studio-primary-action">
-      {loading ? <Loader2 className="size-4 animate-spin" /> : <Wand2 className="size-4" />}
+    <button type="button" data-testid="primary-submit" disabled={disabled} onClick={onClick} className="studio-primary-action" aria-busy={loading}>
+      {loading ? <Loader2 className="size-4 animate-spin" aria-hidden="true" /> : <Wand2 className="size-4" aria-hidden="true" />}
       <span>{loading ? loadingLabel || children : children}</span>
     </button>
   );

@@ -143,6 +143,53 @@ The final module 4 acceptance pass records:
 - `any` search over changed shell/image files
 - browser console/error capture
 
+## Final Accessibility Patch
+
+The final module 4 accessibility patch closed the review gaps without changing the image workspace business state source.
+
+Selection semantics:
+
+- Image mode, image quality, video mode, upscale scale, library filter, and library sort button groups now expose `role="group"` and `aria-pressed`.
+- Image and video ratio buttons now expose `role="group"` on the group and `aria-pressed` on each option.
+- The active shell navigation item now exposes `aria-current="page"`.
+- Decorative icons inside selection/action buttons are hidden with `aria-hidden="true"`.
+
+Tabs:
+
+- The mobile parameter/preview switch now exposes `role="tablist"`.
+- Each tab exposes `role="tab"`, `aria-selected`, and `aria-controls`.
+- The parameter and preview panels expose stable ids for tab control targets.
+
+Labels and input association:
+
+- The model select now has `id="image-provider-select"` and an associated screen-reader label.
+- The reference image file input now has `id="reference-image-input"`, a mode-specific accessible name, and `aria-describedby`.
+- The visible upload controls point at the file input through `aria-controls`.
+- The prompt textarea keeps its explicit label and now describes the internal counter through `aria-describedby`.
+- Remove-image buttons keep file-specific names such as `删除 <file name>`.
+
+Errors and loading/status:
+
+- Immediate submit and upload errors use `role="alert"`.
+- Model loading, no-model, edit-mode missing-reference guidance, image processing, and real result completion use `role="status"` with polite updates where appropriate.
+- Loading icons are decorative and use `aria-hidden="true"`.
+- No fake progress percentage was added.
+
+Keyboard and browser verification:
+
+- Browser verification on the production preview at `http://127.0.0.1:3101/` confirmed image mode and quality buttons expose true/false `aria-pressed`.
+- The image editor state confirmed `图片编辑` is the active pressed mode, the file input accessible name is `上传参考图片开始编辑`, and the submit button remains disabled when no model/reference image is available.
+- The mobile tabs expose `aria-selected` and `aria-controls`.
+- The page had no horizontal scroll at the verification viewport.
+- Console capture for `127.0.0.1:3101` returned no errors, React warnings, hydration warnings, or Next.js issue output.
+
+Unicode safety:
+
+- Bidi control-character scan covered `src/` and `docs/`.
+- Scanned ranges: `U+202A` through `U+202E`, and `U+2066` through `U+2069`.
+- Final scan result: no bidi control characters found.
+- No source file needed hidden Unicode cleanup.
+
 ## Unverified Content
 
 The local environment had no configured image model, so these real provider-dependent flows were not executed:

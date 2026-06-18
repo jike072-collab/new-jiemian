@@ -35,5 +35,6 @@
 | Module 4 segment 1 | Done | Branch, A/B boundary, and image workspace audit completed. |
 | Module 4 segment 2 | Done | Real image generator/editor workspace implementation completed and pushed. |
 | Module 4 segment 3 | Done | Real browser acceptance, screenshots, docs, quality checks, and PR update completed. |
+| Module 4 final accessibility patch | Done | Selection semantics, live regions, labels, keyboard checks, and Unicode safety scan completed. |
 | Module 4 | Done, awaiting human review | Do not merge or continue without manual approval. |
 | Module 5 | Blocked | Module 5 must not start until module 4 is manually approved. |
