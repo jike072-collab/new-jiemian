@@ -1,0 +1,136 @@
+name: New API BFF
+
+on:
+  pull_request:
+    branches:
+      - integration/auth-newapi
+    paths:
+      - "src/lib/server/integrations/new-api/**"
+      - ".github/workflows/new-api-bff.yml"
+      - "infra/new-api/**"
+  workflow_dispatch:
+
+jobs:
+  bff-client:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Unit tests
+        run: node scripts/test-new-api-bff.mjs
+
+      - name: Prepare New API environment
+        working-directory: infra/new-api
+        run: |
+          POSTGRES_PASSWORD=$(openssl rand -hex 18)
+          REDIS_PASSWORD=$(openssl rand -hex 18)
+          SESSION_SECRET=$(openssl rand -hex 32)
+          CRYPTO_SECRET=$(openssl rand -hex 32)
+          ADMIN_PASSWORD=$(openssl rand -hex 18)
+          echo "::add-mask::$POSTGRES_PASSWORD"
+          echo "::add-mask::$REDIS_PASSWORD"
+          echo "::add-mask::$SESSION_SECRET"
+          echo "::add-mask::$CRYPTO_SECRET"
+          echo "::add-mask::$ADMIN_PASSWORD"
+          {
+            echo "ADMIN_PASSWORD=$ADMIN_PASSWORD"
+          } >> "$GITHUB_ENV"
+          cat > .env <<'ENV'
+          NEW_API_IMAGE=calciumion/new-api:v1.0.0-rc.11@sha256:bd30213d808857bb569ef47d3c9209d061a66ea089c2472ef46ce51e75517f19
+          NEW_API_BIND_ADDRESS=127.0.0.1
+          NEW_API_PORT=3000
+          PORT=3000
+          TZ=Asia/Shanghai
+          NODE_TYPE=master
+          NODE_NAME=new-api-ci-bff
+          LOG_LEVEL=info
+          ERROR_LOG_ENABLED=true
+          BATCH_UPDATE_ENABLED=true
+          POSTGRES_DB=new_api_test
+          POSTGRES_USER=new_api_test
+          POSTGRES_PASSWORD=__POSTGRES_PASSWORD__
+          SQL_DSN=postgresql://new_api_test:__POSTGRES_PASSWORD__@postgres:5432/new_api_test?sslmode=disable
+          REDIS_PASSWORD=__REDIS_PASSWORD__
+          REDIS_CONN_STRING=redis://:__REDIS_PASSWORD__@redis:6379/0
+          SESSION_SECRET=__SESSION_SECRET__
+          CRYPTO_SECRET=__CRYPTO_SECRET__
+          ADMIN_USERNAME=testroot
+          ADMIN_PASSWORD=__ADMIN_PASSWORD__
+          ADMIN_CONFIRM_PASSWORD=__ADMIN_PASSWORD__
+          ADMIN_SELF_USE_MODE_ENABLED=true
+          ADMIN_DEMO_SITE_ENABLED=false
+          ENV
+          sed -i \
+            -e "s#__POSTGRES_PASSWORD__#$POSTGRES_PASSWORD#g" \
+            -e "s#__REDIS_PASSWORD__#$REDIS_PASSWORD#g" \
+            -e "s#__SESSION_SECRET__#$SESSION_SECRET#g" \
+            -e "s#__CRYPTO_SECRET__#$CRYPTO_SECRET#g" \
+            -e "s#__ADMIN_PASSWORD__#$ADMIN_PASSWORD#g" \
+            .env
+          mkdir -p .runtime/new-api/data .runtime/new-api/logs .runtime/new-api/postgres .runtime/new-api/redis
+
+      - name: Start New API
+        working-directory: infra/new-api
+        run: |
+          scripts/preflight
+          scripts/start
+          for i in $(seq 1 60); do
+            if curl -fsS http://127.0.0.1:3000/api/status >/dev/null; then
+              exit 0
+            fi
+            sleep 5
+          done
+          docker compose logs --tail=200
+          exit 1
+
+      - name: Initialize test admin
+        working-directory: infra/new-api
+        run: |
+          curl -fsS http://127.0.0.1:3000/api/setup \
+            -H "Content-Type: application/json" \
+            --data-raw '{
+              "username": "testroot",
+              "password": "'"$ADMIN_PASSWORD"'",
+              "confirmPassword": "'"$ADMIN_PASSWORD"'",
+              "SelfUseModeEnabled": true,
+              "DemoSiteEnabled": false
+            }' > setup-response.json
+          grep -q '"success":true' setup-response.json
+
+      - name: Generate admin access token
+        run: |
+          curl -fsS -c new-api.cookies http://127.0.0.1:3000/api/user/login \
+            -H "Content-Type: application/json" \
+            --data-raw '{"username":"testroot","password":"'"$ADMIN_PASSWORD"'"}' \
+            > login-response.json
+          grep -q '"success":true' login-response.json
+          ADMIN_TOKEN=$(curl -fsS -b new-api.cookies http://127.0.0.1:3000/api/user/token -H "New-Api-User: 1" | node -e "let data=''; process.stdin.on('data', c => data += c); process.stdin.on('end', () => { const parsed = JSON.parse(data); if (!parsed.success || !parsed.data) process.exit(1); console.log(parsed.data); });")
+          echo "::add-mask::$ADMIN_TOKEN"
+          {
+            echo "NEW_API_ENABLED=true"
+            echo "NEW_API_BASE_URL=http://127.0.0.1:3000"
+            echo "NEW_API_ADMIN_USER_ID=1"
+            echo "NEW_API_ADMIN_ACCESS_TOKEN=$ADMIN_TOKEN"
+          } >> "$GITHUB_ENV"
+
+      - name: Real BFF client verification
+        run: node scripts/test-new-api-bff.mjs --real
+
+      - name: Bundle boundary build proof
+        run: |
+          npm run build
+          if grep -R "NEW_API_ADMIN_ACCESS_TOKEN\|admin-secret\|NEW_API_BASE_URL" .next/static >/dev/null 2>&1; then
+            echo "New API server configuration leaked into client static bundle" >&2
+            exit 1
+          fi
+
+      - name: Stop New API
+        if: always()
+        working-directory: infra/new-api
+        run: docker compose down --remove-orphans

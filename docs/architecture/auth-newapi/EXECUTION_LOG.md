@@ -171,3 +171,39 @@ Pull request: `#9`
 - The remote Docker-enabled validation covered script syntax, preflight, stack startup, `/api/status`, healthcheck, test admin setup, login, database marker backup, restore, login after restore, bad backup rejection, and log redaction.
 - The first remote validation attempt found that Docker `internal: true` prevented host health probes even though the New API container was healthy internally; the compose network was adjusted so New API can bind to the configured host address while PostgreSQL and Redis remain without host port mappings.
 - Local verification remains limited to static checks because this machine does not provide Docker, Docker Compose, Podman, nerdctl, WSL, or POSIX `sh`.
+
+## B07 - Server BFF Client And Configuration Safety
+
+Status: In progress
+
+Branch: `feature/auth-newapi-07-bff-client`
+
+Base: `origin/integration/auth-newapi`
+
+Integration target: `integration/auth-newapi`
+
+Pull request: `#10`
+
+## B07 Scope
+
+- Add a server-only New API BFF client foundation under `src/lib/server/integrations/new-api/`.
+- Separate health, user, and admin contexts so ordinary user code cannot call admin helpers accidentally.
+- Add config validation, timeouts, request IDs, JSON/content-type guards, response-size limits, structured safe errors, redacted logging, GET retries, and fail-closed behavior.
+- Add Node built-in tests and a GitHub Actions workflow that verifies the client against the isolated New API test stack.
+
+## B07 Notes
+
+- Existing server helpers live under `src/lib/server`; B07 follows that structure instead of creating a new top-level server root.
+- The project has no dedicated test framework or test script in `package.json`; B07 uses Node 24 built-in `node:test` and does not modify `package.json`.
+- Official New API `AdminAuth` and `UserAuth` require `Authorization` plus `New-Api-User`, so both admin and user contexts carry a New API user id.
+
+## B07 Local Verification
+
+- `npm ci` completed from the existing lockfile; it reported existing dependency audit findings, but no dependency or lockfile change was made.
+- `node scripts/test-new-api-bff.mjs` passed local unit and client-boundary tests.
+- `npm run typecheck` passed.
+- `npm run lint` passed after aligning ESLint ignores with the existing ignored `dist/` build output.
+- `npm run build` passed.
+- `.next/static` was scanned for `NEW_API_ADMIN_ACCESS_TOKEN`, `NEW_API_ADMIN_USER_ID`, `NEW_API_BASE_URL`, and `admin-secret`; no client static bundle match was found.
+- GitHub Actions run `27735759479` passed the `New API BFF / bff-client` job on PR `#10`, including unit tests, real New API container startup, health check, test admin setup, access-token generation, real BFF health call, unauthorized admin rejection, authorized admin call, production build, and static bundle leak scan.
+- Initial local Git push failed with `schannel: failed to receive handshake`; the branch was pushed with a per-command OpenSSL backend override and no remote/global Git config change.
