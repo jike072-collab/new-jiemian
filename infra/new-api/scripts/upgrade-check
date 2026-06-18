@@ -1,0 +1,68 @@
+#!/usr/bin/env sh
+set -eu
+
+SCRIPT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
+DEPLOY_DIR=$(CDPATH= cd -- "$SCRIPT_DIR/.." && pwd)
+
+require_cmd() {
+  command -v "$1" >/dev/null 2>&1 || {
+    echo "Missing required command: $1" >&2
+    exit 1
+  }
+}
+
+require_cmd awk
+require_cmd grep
+
+usage() {
+  echo "Usage: $0 --target-image <image-tag-or-digest>" >&2
+  exit 1
+}
+
+TARGET_IMAGE=
+
+while [ "$#" -gt 0 ]; do
+  case "$1" in
+    --target-image)
+      shift
+      [ "$#" -gt 0 ] || usage
+      TARGET_IMAGE=$1
+      ;;
+    *)
+      usage
+      ;;
+  esac
+  shift
+done
+
+if [ ! -f "$DEPLOY_DIR/.env" ]; then
+  echo "Missing $DEPLOY_DIR/.env" >&2
+  exit 1
+fi
+
+get_env() {
+  awk -F= -v key="$1" '$1 == key {print substr($0, index($0, "=") + 1)}' "$DEPLOY_DIR/.env" | tail -n 1
+}
+
+CURRENT_IMAGE=$(get_env NEW_API_IMAGE)
+
+if [ -z "$CURRENT_IMAGE" ]; then
+  echo "NEW_API_IMAGE is required" >&2
+  exit 1
+fi
+
+[ -n "$TARGET_IMAGE" ] || usage
+
+case "$TARGET_IMAGE" in
+  *:latest|latest|*:latest@*)
+    echo "Refusing uncontrolled latest image." >&2
+    exit 1
+    ;;
+esac
+
+echo "Current image: $CURRENT_IMAGE"
+echo "Target image: $TARGET_IMAGE"
+echo "Release delta: pin image and digest before upgrade"
+echo "Migration risk: official startup migrations may change schema"
+echo "Pre-upgrade backup required: yes"
+echo "Rollback condition: keep previous image, env, and backup"

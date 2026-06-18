@@ -3,6 +3,7 @@
 
 # Shell scripts must always use LF, even on Windows
 *.sh text eol=lf
+infra/new-api/scripts/* text eol=lf
 
 # Batch files must always use CRLF
 *.bat text eol=crlf

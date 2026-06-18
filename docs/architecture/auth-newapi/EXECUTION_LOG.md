@@ -139,3 +139,35 @@ Integration target: `integration/auth-newapi`
 - An attempted official docs raw path for `docs/installation/deployment-methods/docker-compose-installation.md` returned 404; this was not used as deployment evidence.
 - Local Docker validation is currently blocked on this machine because `docker`, `docker-compose`, `podman`, `nerdctl`, and `wsl` are not available in `PATH`, and the default Docker Desktop install path is absent.
 - The B05 deployment definition still requires real container verification on a Docker-enabled host before it can be treated as fully operational.
+
+## B06 - Health, Backup, Restore, Upgrade, And Rollback Operations
+
+Status: Completed
+
+Branch: `feature/auth-newapi-06-operations`
+
+Base: `origin/integration/auth-newapi`
+
+Integration target: `integration/auth-newapi`
+
+Pull request: `#9`
+
+## B06 Scope
+
+- Add operational scripts for preflight, health check, backup, restore, upgrade check, rollback, and log redaction.
+- Add operations documentation for backup/restore, upgrade/rollback, healthcheck, and incident handling.
+- Keep all destructive steps parameterized and non-interactive.
+
+## B06 Notes
+
+- The local machine still does not provide Docker, Docker Compose, Podman, nerdctl, or WSL in `PATH`.
+- The local machine also does not provide a POSIX `sh`, so the POSIX shell scripts cannot be executed directly on this host.
+- Because of that environment gap, the isolated real restore test required by B06 cannot yet be executed here.
+- The scripts are written to make the restore path safer by taking an automatic backup before destructive restoration steps.
+
+## B06 Verification
+
+- GitHub Actions run `27733418637` passed the `New API Ops / operations` job on PR `#9`.
+- The remote Docker-enabled validation covered script syntax, preflight, stack startup, `/api/status`, healthcheck, test admin setup, login, database marker backup, restore, login after restore, bad backup rejection, and log redaction.
+- The first remote validation attempt found that Docker `internal: true` prevented host health probes even though the New API container was healthy internally; the compose network was adjusted so New API can bind to the configured host address while PostgreSQL and Redis remain without host port mappings.
+- Local verification remains limited to static checks because this machine does not provide Docker, Docker Compose, Podman, nerdctl, WSL, or POSIX `sh`.

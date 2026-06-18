@@ -1,0 +1,90 @@
+#!/usr/bin/env sh
+set -eu
+
+SCRIPT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
+DEPLOY_DIR=$(CDPATH= cd -- "$SCRIPT_DIR/.." && pwd)
+
+usage() {
+  echo "Usage: $0 --backup <backup-dir> --previous-image <image> --confirm ROLLBACK_NEW_API_TEST [--dry-run]" >&2
+  exit 1
+}
+
+BACKUP_DIR=
+PREVIOUS_IMAGE=
+DRY_RUN=false
+CONFIRM=
+
+require_cmd() {
+  command -v "$1" >/dev/null 2>&1 || {
+    echo "Missing required command: $1" >&2
+    exit 1
+  }
+}
+
+require_cmd awk
+require_cmd sed
+
+compose() {
+  if docker compose version >/dev/null 2>&1; then
+    docker compose -f "$DEPLOY_DIR/docker-compose.yml" "$@"
+  elif docker-compose version >/dev/null 2>&1; then
+    docker-compose -f "$DEPLOY_DIR/docker-compose.yml" "$@"
+  else
+    echo "Missing docker compose binary." >&2
+    exit 1
+  fi
+}
+
+while [ "$#" -gt 0 ]; do
+  case "$1" in
+    --backup)
+      shift
+      [ "$#" -gt 0 ] || usage
+      BACKUP_DIR=$1
+      ;;
+    --previous-image)
+      shift
+      [ "$#" -gt 0 ] || usage
+      PREVIOUS_IMAGE=$1
+      ;;
+    --dry-run)
+      DRY_RUN=true
+      ;;
+    --confirm)
+      shift
+      [ "$#" -gt 0 ] || usage
+      CONFIRM=$1
+      ;;
+    *)
+      usage
+      ;;
+  esac
+  shift
+done
+
+[ -n "$BACKUP_DIR" ] || usage
+[ -n "$PREVIOUS_IMAGE" ] || usage
+[ -d "$BACKUP_DIR" ] || { echo "Missing backup dir: $BACKUP_DIR" >&2; exit 1; }
+[ -f "$DEPLOY_DIR/.env" ] || { echo "Missing $DEPLOY_DIR/.env" >&2; exit 1; }
+
+case "$PREVIOUS_IMAGE" in
+  *:latest|latest|*:latest@*)
+    echo "Refusing uncontrolled latest image." >&2
+    exit 1
+    ;;
+esac
+
+if [ "$DRY_RUN" = true ]; then
+  echo "rollback dry-run ok"
+  exit 0
+fi
+
+[ "$CONFIRM" = "ROLLBACK_NEW_API_TEST" ] || usage
+CURRENT_IMAGE=$(awk -F= '$1 == "NEW_API_IMAGE" {print substr($0, index($0, "=") + 1)}' "$DEPLOY_DIR/.env" | tail -n 1)
+"$SCRIPT_DIR/backup" >/dev/null
+sed -i.rollback "s#^NEW_API_IMAGE=.*#NEW_API_IMAGE=$PREVIOUS_IMAGE#" "$DEPLOY_DIR/.env"
+compose pull new-api
+"$SCRIPT_DIR/restore" --backup "$BACKUP_DIR" --confirm RESTORE_NEW_API_TEST
+echo "rollback ok"
+echo "previous image restored: $PREVIOUS_IMAGE"
+echo "image before rollback: $CURRENT_IMAGE"
