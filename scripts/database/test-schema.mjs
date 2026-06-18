@@ -152,16 +152,20 @@ async function assertConstraints() {
 
   await q(`
     insert into billing_webhook_events(event_id, order_id, provider_order_id, event_type, payload_hash, status)
-    values ('evt_1','bo_test','sandbox_bo_test','payment_succeeded','hash','received')
+      values ('evt_1','bo_test','sandbox_bo_test','payment_succeeded','hash','received')
   `);
   await expectRejects("unique webhook event", () => q(`
     insert into billing_webhook_events(event_id, order_id, provider_order_id, event_type, payload_hash, status)
-    values ('evt_1','bo_test','sandbox_bo_test','payment_succeeded','hash','received')
+      values ('evt_1','bo_test','sandbox_bo_test','payment_succeeded','hash','received')
   `));
   await expectRejects("legacy webhook event status is rejected", () => q(`
     insert into billing_webhook_events(event_id, order_id, provider_order_id, event_type, payload_hash, status)
-    values ('evt_legacy','bo_test','sandbox_bo_test','payment_succeeded','hash','accepted')
+      values ('evt_legacy','bo_test','sandbox_bo_test','payment_succeeded','hash','accepted')
   `));
+  await q(`
+    insert into billing_webhook_events(event_id, order_id, provider_order_id, event_type, payload_hash, status)
+    values ('evt_2','bo_test','sandbox_bo_test','payment_succeeded','hash2','processing')
+  `);
 
   await q(`
     insert into billing_idempotency_keys(key_id, local_user_id, idempotency_key, scope, order_id, created_at)

@@ -191,6 +191,9 @@ jobs:
           grep -q $'002_harden_database_baseline\tapplied' migration-status.txt
           grep -q $'003_billing_webhook_processing_status\tapplied' migration-status.txt
 
+      - name: Billing webhook status upgrade test
+        run: node scripts/database/test-billing-webhook-status-upgrade.mjs
+
       - name: Schema and transaction tests
         run: npm run migrate:test
 
