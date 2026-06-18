@@ -1,0 +1,101 @@
+services:
+  new-api:
+    image: ${NEW_API_IMAGE}
+    restart: unless-stopped
+    command:
+      - --log-dir
+      - /app/logs
+    environment:
+      PORT: ${PORT}
+      TZ: ${TZ}
+      NODE_TYPE: ${NODE_TYPE}
+      NODE_NAME: ${NODE_NAME}
+      SQL_DSN: ${SQL_DSN}
+      REDIS_CONN_STRING: ${REDIS_CONN_STRING}
+      SESSION_SECRET: ${SESSION_SECRET}
+      CRYPTO_SECRET: ${CRYPTO_SECRET}
+      LOG_LEVEL: ${LOG_LEVEL}
+      ERROR_LOG_ENABLED: ${ERROR_LOG_ENABLED}
+      BATCH_UPDATE_ENABLED: ${BATCH_UPDATE_ENABLED}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    ports:
+      - "${NEW_API_BIND_ADDRESS}:${NEW_API_PORT}:${PORT}"
+    volumes:
+      - ./.runtime/new-api/data:/data
+      - ./.runtime/new-api/logs:/app/logs
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - wget -q -O - http://127.0.0.1:${PORT}/api/status | grep -q '"success":true'
+      interval: 15s
+      timeout: 10s
+      retries: 20
+      start_period: 45s
+    networks:
+      - new-api-internal
+    logging:
+      driver: json-file
+      options:
+        max-size: 10m
+        max-file: "3"
+
+  postgres:
+    image: postgres:15.11
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      TZ: ${TZ}
+    volumes:
+      - ./.runtime/new-api/postgres:/var/lib/postgresql/data
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}
+      interval: 10s
+      timeout: 5s
+      retries: 20
+      start_period: 15s
+    networks:
+      - new-api-internal
+    logging:
+      driver: json-file
+      options:
+        max-size: 10m
+        max-file: "3"
+
+  redis:
+    image: redis:7.4-alpine
+    restart: unless-stopped
+    environment:
+      REDIS_PASSWORD: ${REDIS_PASSWORD}
+    command:
+      - sh
+      - -c
+      - exec redis-server --appendonly yes --requirepass "$$REDIS_PASSWORD"
+    volumes:
+      - ./.runtime/new-api/redis:/data
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - REDISCLI_AUTH="$$REDIS_PASSWORD" redis-cli ping | grep -q PONG
+      interval: 10s
+      timeout: 5s
+      retries: 20
+      start_period: 10s
+    networks:
+      - new-api-internal
+    logging:
+      driver: json-file
+      options:
+        max-size: 10m
+        max-file: "3"
+
+networks:
+  new-api-internal:
+    internal: true
