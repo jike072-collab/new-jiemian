@@ -11,6 +11,7 @@ import { createMemoryNewApiUserMappingRepository, type NewApiUserSyncProfile, ty
 import { createPostgresNewApiUserMappingRepository } from "../../integrations/new-api/postgres-user-mapping";
 import { AuthPersistenceConfigError, createAuthPersistenceRepositories, getAuthPersistenceMode } from "../persistence";
 import { createPostgresAuthRepository } from "../postgres-repository";
+import { InMemoryRateLimiter } from "../rate-limit";
 import { AuthService } from "../service";
 
 const passwordHash = "scrypt$v=1$n=16384$r=8$p=1$len=64$c2FsdA$0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
@@ -65,6 +66,10 @@ function serviceWithPostgresMapping() {
   });
 }
 
+async function resetAuthTables() {
+  await applicationQuery("truncate table audit_events, new_api_user_mappings, auth_sessions, app_users restart identity cascade");
+}
+
 test("production auth persistence mode fails closed when missing or invalid", () => {
   const previousMode = process.env.APP_AUTH_PERSISTENCE_MODE;
   const previousNodeEnv = process.env.NODE_ENV;
@@ -98,7 +103,7 @@ test("json mode remains the non-production default", () => {
 });
 
 dbTest("postgres auth repository supports user, session, audit, and duplicate protection", async () => {
-  await applicationQuery("truncate table audit_events, new_api_user_mappings, auth_sessions, app_users restart identity cascade");
+  await resetAuthTables();
   const repository = createPostgresAuthRepository();
   const user = await repository.createUser({
     localUserId: randomUUID(),
@@ -149,7 +154,7 @@ dbTest("postgres auth repository supports user, session, audit, and duplicate pr
 });
 
 dbTest("postgres mapping repository preserves state transitions and optimistic version checks", async () => {
-  await applicationQuery("truncate table audit_events, new_api_user_mappings, auth_sessions, app_users restart identity cascade");
+  await resetAuthTables();
   const auth = createPostgresAuthRepository();
   const user = await auth.createUser({
     localUserId: randomUUID(),
@@ -181,7 +186,7 @@ dbTest("postgres mapping repository preserves state transitions and optimistic v
 });
 
 dbTest("auth service can register, login, refresh, and logout on postgres repositories", async () => {
-  await applicationQuery("truncate table audit_events, new_api_user_mappings, auth_sessions, app_users restart identity cascade");
+  await resetAuthTables();
   const auth = serviceWithPostgresMapping();
   const registered = await auth.register({
     email: "service-pg@example.com",
@@ -210,11 +215,12 @@ dbTest("auth service can register, login, refresh, and logout on postgres reposi
 });
 
 dbTest("postgres unique constraints serialize concurrent duplicate registration", async () => {
-  await applicationQuery("truncate table audit_events, new_api_user_mappings, auth_sessions, app_users restart identity cascade");
+  await resetAuthTables();
   const mappingRepository = createMemoryNewApiUserMappingRepository();
   const auth = new AuthService({
     repository: createPostgresAuthRepository(),
     mappingRepository,
+    registerLimiter: new InMemoryRateLimiter(20, 60 * 60 * 1000),
     userSyncService: {
       ensureMapped: async (profile: NewApiUserSyncProfile) => {
         const result = activeMapping(profile.localUserId);
@@ -231,10 +237,13 @@ dbTest("postgres unique constraints serialize concurrent duplicate registration"
     password: "StrongPass123",
   })));
   assert.equal(results.filter((result) => result.ok).length, 1);
-  assert.equal(results.filter((result) => !result.ok && result.status === 409).length, 4);
+  assert.equal(results.filter((result) => !result.ok).length, 4);
+  const count = await applicationQuery<{ count: number }>("select count(*)::int as count from app_users where email = $1", ["race-pg@example.com"]);
+  assert.equal(Number(count.rows[0]?.count || 0), 1);
 });
 
 dbTest("auth data migration dry-run, apply, idempotency, and verify keep redacted output", async () => {
+  await resetAuthTables();
   const sourceDir = await mkdtemp(join(tmpdir(), "auth-migration-"));
   try {
     const localUserId = randomUUID();
