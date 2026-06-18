@@ -40,3 +40,15 @@
 - Build passing does not prove the page is correct.
 - Final screenshots must come from the real running page, not a static mock.
 - Final screenshots for PR #3 must come from the latest HEAD and must not show a Next.js Issue badge.
+
+## Module 4 Gate
+
+- Module 4 must not merge until it has human review and approval.
+- Module 4 must not proceed to module 5 until the user explicitly approves it.
+- If no real model is configured, do not replace the missing real generation/edit result with a fake model, mock result, or static success state.
+- Build passing does not prove image workspace interaction is correct.
+- Final module 4 screenshots must come from the real running app at the latest branch head.
+- A-side module 4 must not modify B-side New API, authentication, quota, payment, Docker, database, Redis, BFF, callback, reconciliation, or port configuration.
+- Button-based selected controls must expose selection semantics with `aria-pressed` or another correct role-specific state.
+- Mobile parameter/preview tabs must expose `role="tablist"`, `role="tab"`, `aria-selected`, and `aria-controls`.
+- Module 4 final review must include a bidi Unicode control-character scan over `src/` and `docs/`.

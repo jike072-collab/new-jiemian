@@ -26,4 +26,15 @@
 | Module 3 segment 2 | Done | Business-preserving responsive shell repair was pushed to PR #3. |
 | Module 3 segment 3 | Done | Final state, mobile actions, drawer focus, screenshots, and acceptance checks completed. |
 | Module 3 final acceptance patch | Done | Mobile Drawer full-name display, Issue verification, refreshed screenshots, and PR text cleanup completed. |
-| Module 4 | Waiting for manual approval | Do not start until PR #3 is reviewed and the user approves. |
+| Module 4 | Done, awaiting human review | Segment 3 browser acceptance, screenshots, checks, and PR update completed on `feature/04-image-workspace`. |
+
+## Module 4 Board
+
+| Item | Status | Notes |
+| --- | --- | --- |
+| Module 4 segment 1 | Done | Branch, A/B boundary, and image workspace audit completed. |
+| Module 4 segment 2 | Done | Real image generator/editor workspace implementation completed and pushed. |
+| Module 4 segment 3 | Done | Real browser acceptance, screenshots, docs, quality checks, and PR update completed. |
+| Module 4 final accessibility patch | Done | Selection semantics, prompt counter announcements, labels, keyboard checks, and Unicode safety scan completed. |
+| Module 4 | Done, awaiting human review | Do not merge or continue without manual approval. |
+| Module 5 | Blocked | Module 5 must not start until module 4 is manually approved. |
