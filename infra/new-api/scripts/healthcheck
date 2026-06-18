@@ -1,0 +1,106 @@
+#!/usr/bin/env sh
+set -eu
+
+SCRIPT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
+DEPLOY_DIR=$(CDPATH= cd -- "$SCRIPT_DIR/.." && pwd)
+
+if [ ! -f "$DEPLOY_DIR/.env" ]; then
+  echo "Missing $DEPLOY_DIR/.env" >&2
+  exit 1
+fi
+
+require_cmd() {
+  command -v "$1" >/dev/null 2>&1 || {
+    echo "Missing required command: $1" >&2
+    exit 1
+  }
+}
+
+require_cmd awk
+require_cmd df
+require_cmd date
+require_cmd grep
+
+fail() {
+  echo "healthcheck failed: $*" >&2
+  exit 1
+}
+
+check_url() {
+  url=$1
+  if command -v curl >/dev/null 2>&1; then
+    curl -fsS "$url" >/dev/null || fail "cannot reach $url"
+  elif command -v wget >/dev/null 2>&1; then
+    wget -q -O - "$url" >/dev/null || fail "cannot reach $url"
+  else
+    fail "missing curl or wget"
+  fi
+}
+
+compose() {
+  if docker compose version >/dev/null 2>&1; then
+    docker compose -f "$DEPLOY_DIR/docker-compose.yml" "$@"
+  elif docker-compose version >/dev/null 2>&1; then
+    docker-compose -f "$DEPLOY_DIR/docker-compose.yml" "$@"
+  else
+    fail "missing docker compose binary"
+  fi
+}
+
+get_env() {
+  awk -F= -v key="$1" '$1 == key {print substr($0, index($0, "=") + 1)}' "$DEPLOY_DIR/.env" | tail -n 1
+}
+
+check_disk() {
+  min_free_mb=${1:-1024}
+  free_mb=$(df -Pm "$DEPLOY_DIR" | awk 'NR==2 {print $4}')
+  [ "${free_mb:-0}" -ge "$min_free_mb" ] || fail "free disk below ${min_free_mb}MB"
+}
+
+check_file() {
+  [ -e "$1" ] || fail "missing $1"
+}
+
+check_file "$DEPLOY_DIR/docker-compose.yml"
+check_file "$DEPLOY_DIR/.env.example"
+check_file "$DEPLOY_DIR/.env"
+check_file "$DEPLOY_DIR/.runtime/new-api"
+check_file "$DEPLOY_DIR/.runtime/new-api/data"
+check_file "$DEPLOY_DIR/.runtime/new-api/logs"
+check_file "$DEPLOY_DIR/.runtime/new-api/postgres"
+check_file "$DEPLOY_DIR/.runtime/new-api/redis"
+grep -q 'NEW_API_IMAGE=' "$DEPLOY_DIR/.env" || fail "missing NEW_API_IMAGE"
+grep -q 'SESSION_SECRET=' "$DEPLOY_DIR/.env" || fail "missing SESSION_SECRET"
+grep -q 'CRYPTO_SECRET=' "$DEPLOY_DIR/.env" || fail "missing CRYPTO_SECRET"
+
+if [ -d "$DEPLOY_DIR/.runtime/new-api/logs" ]; then
+  if command -v grep >/dev/null 2>&1; then
+    recent_errors=$(grep -RinE 'panic|fatal|error|exception' "$DEPLOY_DIR/.runtime/new-api/logs" 2>/dev/null | tail -n 20 || true)
+    if [ -n "$recent_errors" ]; then
+      echo "$recent_errors" | sed -E \
+        -e 's#(Authorization:|Cookie:|Set-Cookie:|X-Admin-Password:)[^[:cntrl:]]+#\1 [REDACTED]#Ig' \
+        -e 's#(PASSWORD|SECRET|KEY|TOKEN|COOKIE|AUTH|DSN|CONN_STRING)=([^[:space:]]+)#\1=[REDACTED]#Ig'
+    fi
+  fi
+fi
+
+now=$(date -u +%s)
+[ "$now" -gt 1700000000 ] || fail "system clock looks invalid"
+
+check_disk 512
+
+compose ps >/dev/null
+compose exec -T postgres pg_isready -U "$(get_env POSTGRES_USER)" -d "$(get_env POSTGRES_DB)" >/dev/null
+compose exec -T redis sh -c 'REDISCLI_AUTH="$REDIS_PASSWORD" redis-cli ping | grep -q PONG'
+
+status_url=${NEW_API_STATUS_URL:-}
+if [ -z "$status_url" ]; then
+  bind_address=$(get_env NEW_API_BIND_ADDRESS)
+  host_port=$(get_env NEW_API_PORT)
+  status_url="http://${bind_address:-127.0.0.1}:${host_port:-3000}/api/status"
+fi
+check_url "$status_url"
+
+compose images new-api >/dev/null
+
+printf '%s\n' "healthcheck ok"

@@ -1,0 +1,57 @@
+#!/usr/bin/env sh
+set -eu
+
+SCRIPT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
+DEPLOY_DIR=$(CDPATH= cd -- "$SCRIPT_DIR/.." && pwd)
+
+require_cmd() {
+  command -v "$1" >/dev/null 2>&1 || {
+    echo "Missing required command: $1" >&2
+    exit 1
+  }
+}
+
+require_cmd sha256sum
+require_cmd awk
+require_cmd sed
+require_cmd grep
+
+if [ ! -f "$DEPLOY_DIR/.env" ]; then
+  echo "Missing $DEPLOY_DIR/.env. Copy .env.example to .env first." >&2
+  exit 1
+fi
+
+if grep -E 'replace-with|REPLACE_WITH|random_string|123456' "$DEPLOY_DIR/.env" >/dev/null 2>&1; then
+  echo "Refusing to run with placeholder or weak values in .env." >&2
+  exit 1
+fi
+
+if [ -f "$DEPLOY_DIR/docker-compose.yml" ]; then
+  if docker compose version >/dev/null 2>&1; then
+    docker compose -f "$DEPLOY_DIR/docker-compose.yml" config >/dev/null
+  elif docker-compose version >/dev/null 2>&1; then
+    docker-compose -f "$DEPLOY_DIR/docker-compose.yml" config >/dev/null
+  else
+    echo "Missing docker compose binary." >&2
+    exit 1
+  fi
+else
+  echo "Missing $DEPLOY_DIR/docker-compose.yml." >&2
+  exit 1
+fi
+
+for path in "$DEPLOY_DIR/.runtime/new-api" "$DEPLOY_DIR/backups"; do
+  mkdir -p "$path"
+  chmod 700 "$path" 2>/dev/null || true
+done
+
+for path in \
+  "$DEPLOY_DIR/.runtime/new-api/data" \
+  "$DEPLOY_DIR/.runtime/new-api/logs" \
+  "$DEPLOY_DIR/.runtime/new-api/postgres" \
+  "$DEPLOY_DIR/.runtime/new-api/redis"; do
+  mkdir -p "$path"
+  chmod 700 "$path" 2>/dev/null || true
+done
+
+printf '%s\n' "preflight ok"
