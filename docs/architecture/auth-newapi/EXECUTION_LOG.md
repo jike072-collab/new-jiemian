@@ -455,3 +455,63 @@ Final draft target: `develop`
 - New API server modules rely on server directory ownership plus bundle scans; a hard `server-only` guard should be added before production if dependency policy allows.
 - Non-production auth secret fallback must not be used for exposed staging/test environments.
 - PostgreSQL and Redis images are pinned by tag but not digest.
+
+## B12-FG - Final Gate Corrective Validation
+
+Status: Completed for reviewer handoff
+
+Branch: `fix/auth-newapi-final-validation`
+
+Base: `origin/integration/auth-newapi`
+
+Corrective pull request: `#19`
+
+PR #19 state: Open, Draft
+
+PR #17 state: Open, Draft
+
+Latest validated CI head before documentation-only report commit:
+`aaf258db7d1dc55c6290b6390e297454bad51f29`
+
+## B12-FG Scope
+
+- Added a dedicated `Auth New API Final Gate` workflow for integration and
+  final-review validation.
+- Repaired the final secret scan so no-match `git grep` status is accepted,
+  matches fail, and scanner errors fail.
+- Repaired pull request diff scanning with `grep -n -E -- "$PATTERN"`.
+- Repaired Docker exposure checks with both static compose JSON validation and
+  runtime Docker `PortBindings` validation.
+- Did not modify A-side UI files, Workbench shell files, global tokens/styles,
+  production payment, or final frontend UI.
+- Did not merge PR #19 or PR #17 and did not force push.
+
+## B12-FG Remote Verification
+
+GitHub Actions run `27744908374` passed all eight final-gate jobs on
+`aaf258db7d1dc55c6290b6390e297454bad51f29`:
+
+- `Typecheck, lint, build`
+- `Auth and session tests`
+- `BFF and user mapping tests`
+- `Quota and usage tests`
+- `Billing, webhook, reconciliation`
+- `New API Docker health and real BFF`
+- `Backup, restore, bad backup rejection`
+- `Server secrets, client bundle, diff scan`
+
+The Docker job completed healthcheck, port exposure validation, test admin
+initialization, login, masked management token generation, real BFF calls, real
+user mapping creation and activation, log redaction validation, and container
+cleanup.
+
+The backup/restore job completed backup creation, restore verification, login
+after restore, and rejection of a malformed backup.
+
+The security job completed tracked runtime file scan, server secret pattern
+scan, pull request diff scan, build, client bundle scan, and npm audit
+recording. No real secret was reported. The npm audit summary remains
+`{"info":0,"low":1,"moderate":7,"high":4,"critical":0,"total":12}` and is a
+production release blocker.
+
+Final conclusion for B12-FG: `READY_FOR_MAINLINE_REVIEW`.

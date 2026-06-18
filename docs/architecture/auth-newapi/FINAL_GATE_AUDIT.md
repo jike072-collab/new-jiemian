@@ -101,3 +101,113 @@ of rewriting the module workflows:
 - use generated temporary test secrets only;
 - keep real payment disabled and sandbox-only.
 
+## B12-FG Corrective Branch
+
+| Item | Value |
+| --- | --- |
+| Corrective branch | `fix/auth-newapi-final-validation` |
+| Corrective PR | `#19` |
+| PR #19 base | `integration/auth-newapi` |
+| PR #19 state | Open, Draft |
+| Latest validated head before final documentation | `aaf258db7d1dc55c6290b6390e297454bad51f29` |
+| Workflow run | `27744908374` |
+| Workflow | `Auth New API Final Gate` |
+| Event | `pull_request` |
+| Result | Success |
+
+The second corrective round repaired the two failed final-gate areas without
+skipping jobs, adding `continue-on-error`, using `|| true`, force pushing, or
+merging PR #19 or PR #17.
+
+## B12-FG Job Results
+
+| Job | Run ID | Head SHA | Started | Completed | Duration | Result |
+| --- | --- | --- | --- | --- | --- | --- |
+| Typecheck, lint, build | `82080723228` | `aaf258db7d1dc55c6290b6390e297454bad51f29` | `2026-06-18T07:51:12Z` | `2026-06-18T07:51:55Z` | 43s | Success |
+| Auth and session tests | `82080723197` | `aaf258db7d1dc55c6290b6390e297454bad51f29` | `2026-06-18T07:51:12Z` | `2026-06-18T07:51:37Z` | 25s | Success |
+| BFF and user mapping tests | `82080723162` | `aaf258db7d1dc55c6290b6390e297454bad51f29` | `2026-06-18T07:51:12Z` | `2026-06-18T07:51:40Z` | 28s | Success |
+| Quota and usage tests | `82080723255` | `aaf258db7d1dc55c6290b6390e297454bad51f29` | `2026-06-18T07:51:11Z` | `2026-06-18T07:51:34Z` | 23s | Success |
+| Billing, webhook, reconciliation | `82080723297` | `aaf258db7d1dc55c6290b6390e297454bad51f29` | `2026-06-18T07:51:11Z` | `2026-06-18T07:51:36Z` | 25s | Success |
+| New API Docker health and real BFF | `82080723262` | `aaf258db7d1dc55c6290b6390e297454bad51f29` | `2026-06-18T07:51:11Z` | `2026-06-18T07:51:56Z` | 45s | Success |
+| Backup, restore, bad backup rejection | `82080723267` | `aaf258db7d1dc55c6290b6390e297454bad51f29` | `2026-06-18T07:51:12Z` | `2026-06-18T07:51:47Z` | 35s | Success |
+| Server secrets, client bundle, diff scan | `82080723169` | `aaf258db7d1dc55c6290b6390e297454bad51f29` | `2026-06-18T07:51:11Z` | `2026-06-18T07:51:44Z` | 33s | Success |
+
+## Repaired Gate Details
+
+Secret scanning now uses a pattern that does not begin with a bare `-----BEGIN`
+option-like token. The workflow calls `git grep` with `-e "$PATTERN"` and
+distinguishes result codes:
+
+- `0`: a potential secret was found, so the job prints the matched location and
+  fails.
+- `1`: no match was found, so the scan passes.
+- any other status: the scan tool failed, so the job fails with that status.
+
+The pull request diff scan uses `grep -n -E -- "$PATTERN" pr.diff`, so the
+pattern cannot be parsed as a grep option.
+
+Docker exposure verification now checks both static compose configuration and
+runtime Docker bindings:
+
+- `postgres` and `redis` must not define host ports in `docker compose config
+  --format json`;
+- `new-api` static ports must bind only to `127.0.0.1`;
+- runtime `docker inspect .HostConfig.PortBindings` for `postgres` and `redis`
+  must be `null` or `{}`;
+- runtime `new-api` port bindings must use `HostIp` equal to `127.0.0.1`.
+
+## Remote Docker Evidence
+
+The `New API Docker health and real BFF` job completed the full real-service
+path:
+
+- started the pinned New API stack;
+- ran the healthcheck and printed `healthcheck ok`;
+- verified PostgreSQL and Redis are not publicly bound;
+- confirmed New API exposes only `127.0.0.1:3000->3000/tcp`;
+- initialized the test administrator;
+- logged in and generated a masked management token;
+- ran `node scripts/test-new-api-bff.mjs --real`;
+- passed real health, unauthorized admin rejection, authorized admin call, and
+  real user mapping creation/activation checks;
+- ran log redaction validation;
+- stopped and removed the containers and network.
+
+The `Backup, restore, bad backup rejection` job also completed the real
+restore path:
+
+- started the stack;
+- initialized and verified administrator login;
+- seeded a database restore marker;
+- created a backup;
+- mutated the marker and restored the backup;
+- printed `restore ok`;
+- verified login after restore;
+- rejected an intentionally incomplete backup directory.
+
+## Security Scan Evidence
+
+The `Server secrets, client bundle, diff scan` job completed:
+
+- tracked runtime file scan;
+- server secret pattern scan;
+- pull request diff sensitive-pattern scan;
+- production build for bundle scanning;
+- client static bundle leak scan;
+- npm audit recording.
+
+No real secret, token, cookie, private key, `.env` file, runtime database, log,
+backup archive, or build output was reported in the tracked diff. The client
+bundle scan did not find server-only New API, payment, session, crypto, SQL, or
+Redis markers in `.next/static`.
+
+`npm audit` remains a production dependency blocker: the recorded summary is
+`{"info":0,"low":1,"moderate":7,"high":4,"critical":0,"total":12}`.
+
+## Draft PR State
+
+- PR #19 remains Open and Draft.
+- PR #17 remains Open and Draft.
+- No PR was merged during B12-FG.
+- The final mainline PR #17 still targets `develop`; PR #19 is only the
+  corrective PR into `integration/auth-newapi`.
