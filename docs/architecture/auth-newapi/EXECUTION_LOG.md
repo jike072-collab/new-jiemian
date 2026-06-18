@@ -330,3 +330,50 @@ Integration target: `integration/auth-newapi`
 - `npm run build` passed and listed the new `/api/quota`, `/api/quota/precheck`, and `/api/usage` routes.
 - `git diff --check` passed.
 - Protected main line files, `package.json`, and `AGENTS.md` were not modified.
+
+## B10 Remote Verification
+
+- Pull request `#14` was created from `feature/auth-newapi-10-quota-usage` to `integration/auth-newapi`.
+- GitHub Actions passed `Auth Session / auth-session`, `New API BFF / bff-client`, and `Quota Usage / quota-usage`.
+- PR `#14` was merged into `integration/auth-newapi` at merge commit `f4cb873`.
+
+## B11 - Recharge Orders, Webhook, And Payment Sandbox
+
+Status: In progress
+
+Branch: `feature/auth-newapi-11-billing-sandbox`
+
+Base: `origin/integration/auth-newapi` at `f4cb873`
+
+Integration target: `integration/auth-newapi`
+
+## B11 Scope
+
+- Add sandbox-only payment channel configuration returned by the server.
+- Add local payment order repository and state machine.
+- Add authenticated order creation and current-user order read APIs.
+- Add HMAC-verified sandbox webhook handling with timestamp/replay protection.
+- Add idempotent New API quota credit boundary after verified payment.
+- Add reconciliation logic for timed-out or quota-credit-failed orders.
+- Add a sandbox reconciliation script with dry-run default and explicit `--execute` repair mode.
+
+## B11 Notes
+
+- No real payment provider, real funds, production domain, or production payment credential is enabled.
+- The local order store is the payment truth source; New API user quota remains the only cloud quota ledger.
+- Runtime `data/billing-store.json` is ignored by Git.
+- Paid status is only assigned after verified sandbox payment and successful New API quota credit.
+- Payment success with quota credit failure enters `review` and is repairable.
+
+## B11 Local Verification
+
+- `npm ci` completed from the existing lockfile; it reported existing dependency audit findings, but no dependency or lockfile change was made.
+- `node scripts/test-billing-sandbox.mjs` passed 11 B11 tests covering config, order creation, duplicate order idempotency, invalid amounts, inactive mapping, missing secret, bad signature, replay, duplicate webhook, concurrent webhook, amount/user/currency/channel tamper, out-of-order callbacks, quota-credit failure and reconciliation, refund, and user isolation.
+- A final B11 self-review added a distinct-event concurrent paid webhook test; `node scripts/test-billing-sandbox.mjs` now passes 12 tests including duplicate and concurrent webhook idempotency.
+- `node scripts/reconcile-billing-sandbox.mjs --dry-run --json` passed and reported the local sandbox order reconciliation preview without writing runtime data.
+- `node scripts/test-quota-usage.mjs` passed 10 B10 regression tests after the billing changes.
+- `node scripts/test-auth-session.mjs` passed 17 B09 regression tests after the billing changes.
+- `node scripts/test-new-api-bff.mjs` passed 31 B07/B08 regression tests after the billing changes.
+- `npm run typecheck` passed.
+- `npm run lint` passed without warnings after cleanup.
+- `npm run build` passed and listed `/api/billing/config`, `/api/billing/orders`, `/api/billing/orders/[id]`, and `/api/billing/webhooks/sandbox`.
