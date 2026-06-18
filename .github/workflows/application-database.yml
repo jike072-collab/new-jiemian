@@ -1,0 +1,203 @@
+name: Application Database Migration
+
+on:
+  pull_request:
+    branches:
+      - integration/auth-newapi
+      - develop
+    paths:
+      - db/**
+      - scripts/database/**
+      - src/lib/server/database/**
+      - package.json
+      - package-lock.json
+      - .github/workflows/application-database.yml
+      - .env.example
+  workflow_dispatch:
+
+jobs:
+  application-database:
+    name: PostgreSQL schema, migration, and bundle boundary
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_DB: aohuang_app_test
+          POSTGRES_USER: aohuang_app_test
+          POSTGRES_PASSWORD: bootstrap-app-db-test-${{ github.run_id }}-${{ github.run_attempt }}
+        ports:
+          - 127.0.0.1:5432:5432
+        options: >-
+          --health-cmd "pg_isready -U aohuang_app_test -d aohuang_app_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 12
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Verify PostgreSQL localhost binding
+        run: |
+          set -eu
+          CONTAINER_ID=$(docker ps --filter "ancestor=postgres:16-alpine" --format '{{.ID}}' | head -n 1)
+          test -n "$CONTAINER_ID"
+          PORT_BINDINGS=$(docker inspect "$CONTAINER_ID" --format '{{json .HostConfig.PortBindings}}')
+          node -e '
+            const bindings = JSON.parse(process.argv[1]);
+            const entries = Object.values(bindings || {}).flat();
+            if (entries.length === 0) {
+              console.error("postgres service has no runtime port binding");
+              process.exit(1);
+            }
+            for (const entry of entries) {
+              if (entry.HostIp !== "127.0.0.1") {
+                console.error(`postgres must bind only to 127.0.0.1, got ${entry.HostIp || "<empty>"}`);
+                console.error(JSON.stringify(bindings));
+                process.exit(1);
+              }
+            }
+          ' "$PORT_BINDINGS"
+
+      - name: Prepare random test database credential
+        run: |
+          set -eu
+          BOOTSTRAP_PASSWORD="bootstrap-app-db-test-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+          APP_DB_PASSWORD=$(openssl rand -hex 24)
+          echo "::add-mask::$APP_DB_PASSWORD"
+          docker run --rm --network host -e PGPASSWORD="$BOOTSTRAP_PASSWORD" postgres:16-alpine \
+            psql -h 127.0.0.1 -U aohuang_app_test -d aohuang_app_test -v ON_ERROR_STOP=1 \
+            -c "alter user aohuang_app_test with password '$APP_DB_PASSWORD';"
+          {
+            echo "APP_DATABASE_URL=postgresql://aohuang_app_test:$APP_DB_PASSWORD@127.0.0.1:5432/aohuang_app_test?sslmode=disable"
+            echo "APP_DATABASE_MAX_CONNECTIONS=5"
+            echo "APP_DATABASE_CONNECT_TIMEOUT_MS=5000"
+            echo "APP_DATABASE_QUERY_TIMEOUT_MS=10000"
+            echo "APP_DATABASE_IDLE_TIMEOUT_MS=30000"
+            echo "NODE_ENV=test"
+          } >> "$GITHUB_ENV"
+
+      - name: Migration from empty database
+        run: npm run migrate
+
+      - name: Migration status
+        run: npm run migrate:status
+
+      - name: Schema and transaction tests
+        run: node scripts/database/test-schema.mjs
+
+      - name: Re-run migration idempotently
+        run: npm run migrate
+
+      - name: Database health
+        run: npm run db:health
+
+      - name: Type check
+        run: npm run typecheck
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Build
+        env:
+          AUTH_SESSION_SECRET: application-database-test-session-secret-not-production
+          PAYMENT_SANDBOX_WEBHOOK_SECRET: application-database-test-webhook-secret-not-production
+          NEW_API_ENABLED: "false"
+        run: npm run build
+
+      - name: Client bundle database scan
+        run: node scripts/database/bundle-scan.mjs
+
+      - name: Secret pattern scan
+        run: |
+          set -eu
+          PATTERN='[-]{5}BEGIN (RSA |DSA |EC |OPENSSH |PGP )?PRIVATE KEY[-]{5}|ghp_[A-Za-z0-9_]{30,}|github_pat_[A-Za-z0-9_]{50,}|AKIA[0-9A-Z]{16}|sk-[A-Za-z0-9]{32,}'
+          set +e
+          git grep -n -I -E -e "$PATTERN" -- ':!package-lock.json' > secret-scan.txt
+          STATUS=$?
+          set -e
+
+          if [ "$STATUS" -eq 0 ]; then
+            cat secret-scan.txt >&2
+            echo "potential secret pattern found" >&2
+            exit 1
+          fi
+
+          if [ "$STATUS" -ne 1 ]; then
+            echo "git grep failed with status $STATUS" >&2
+            exit "$STATUS"
+          fi
+
+      - name: Pull request diff sensitive scan
+        run: |
+          set -eu
+          PATTERN='[-]{5}BEGIN (RSA |DSA |EC |OPENSSH |PGP )?PRIVATE KEY[-]{5}|ghp_[A-Za-z0-9_]{30,}|github_pat_[A-Za-z0-9_]{50,}|AKIA[0-9A-Z]{16}|sk-[A-Za-z0-9]{32,}'
+          BASE_REF="${GITHUB_BASE_REF:-integration/auth-newapi}"
+          git fetch origin "$BASE_REF" --depth=1
+          git diff --unified=0 "origin/$BASE_REF...HEAD" > pr.diff
+          if grep -n -E -- "$PATTERN" pr.diff; then
+            echo "sensitive pattern found in pull request diff" >&2
+            exit 1
+          fi
+
+      - name: Verify no New API internal database table access
+        run: |
+          set -eu
+          if git grep -n -I -E 'SQL_DSN|REDIS_CONN_STRING|new_api_test|new-api' -- db scripts/database src/lib/server/database; then
+            echo "application database baseline must not access New API internal database tables or DSNs" >&2
+            exit 1
+          fi
+
+      - name: npm audit record
+        run: |
+          set -eu
+          set +e
+          npm audit --json > npm-audit.json
+          STATUS=$?
+          set -e
+          if [ "$STATUS" -ne 0 ] && [ "$STATUS" -ne 1 ]; then
+            echo "npm audit failed with status $STATUS" >&2
+            exit "$STATUS"
+          fi
+          node <<'NODE'
+          const fs = require("node:fs");
+          const audit = JSON.parse(fs.readFileSync("npm-audit.json", "utf8") || "{}");
+          const vulnerabilities = audit.metadata?.vulnerabilities || {};
+          const summary = {
+            info: vulnerabilities.info || 0,
+            low: vulnerabilities.low || 0,
+            moderate: vulnerabilities.moderate || 0,
+            high: vulnerabilities.high || 0,
+            critical: vulnerabilities.critical || 0,
+            total: vulnerabilities.total || 0,
+          };
+          console.log(`npm audit summary: ${JSON.stringify(summary)}`);
+          if (summary.high > 0 || summary.critical > 0) {
+            console.log("production release blocker: high or critical npm audit findings remain unresolved");
+          }
+          NODE
+
+      - name: Cleanup test database
+        if: always()
+        run: |
+          set -eu
+          if [ -n "${APP_DATABASE_URL:-}" ]; then
+            docker run --rm --network host -e PGPASSWORD="$(printf '%s' "$APP_DATABASE_URL" | sed -E 's#^postgresql://[^:]+:([^@]+)@.*$#\1#')" postgres:16-alpine \
+              psql -h 127.0.0.1 -U aohuang_app_test -d aohuang_app_test -v ON_ERROR_STOP=1 \
+              -c "drop schema if exists public cascade;" \
+              -c "create schema public;"
+          fi

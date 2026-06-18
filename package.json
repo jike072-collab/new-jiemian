@@ -29,7 +29,11 @@
     "start": "next start -H 127.0.0.1",
     "lint": "eslint",
     "typecheck": "tsc --noEmit",
-    "check": "npm run lint && npm run typecheck && npm run build"
+    "check": "npm run lint && npm run typecheck && npm run build",
+    "migrate": "node scripts/database/migrate.mjs up",
+    "migrate:status": "node scripts/database/migrate.mjs status",
+    "migrate:test": "npm run migrate && node scripts/database/test-schema.mjs",
+    "db:health": "node scripts/database/migrate.mjs health"
   },
   "dependencies": {
     "@base-ui/react": "^1.3.0",
@@ -37,6 +41,7 @@
     "clsx": "^2.1.1",
     "lucide-react": "^1.6.0",
     "next": "16.2.1",
+    "pg": "^8.21.0",
     "react": "19.2.4",
     "react-dom": "19.2.4",
     "shadcn": "^4.1.0",
@@ -46,6 +51,7 @@
   "devDependencies": {
     "@tailwindcss/postcss": "^4",
     "@types/node": "^24",
+    "@types/pg": "^8.20.0",
     "@types/react": "^19",
     "@types/react-dom": "^19",
     "eslint": "^9",
