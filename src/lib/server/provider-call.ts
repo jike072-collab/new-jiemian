@@ -264,20 +264,24 @@ export async function submitVideo(input: {
     throw new Error("图生视频模式需要上传参考图片。");
   }
 
+  const providerPayload: Record<string, string | number | string[]> = {
+    model: provider.model,
+    prompt: input.prompt,
+    duration: input.duration,
+    aspect_ratio: input.ratio,
+    response_format: "url",
+  };
+  if (input.mode === "image-to-video") {
+    providerPayload.image = input.files.map((file) => `data:${file.mimeType};base64,${file.bytes.toString("base64")}`);
+  }
+
   const response = await fetch(provider.apiUrl, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
       ...authHeaders(provider),
     },
-    body: JSON.stringify({
-      model: provider.model,
-      prompt: input.prompt,
-      image: input.files.map((file) => `data:${file.mimeType};base64,${file.bytes.toString("base64")}`),
-      duration: input.duration,
-      aspect_ratio: input.ratio,
-      response_format: "url",
-    }),
+    body: JSON.stringify(providerPayload),
     signal: AbortSignal.timeout(180000),
   });
   const output = parseProviderOutput(await readProviderJson(response));

@@ -65,6 +65,24 @@ type ImageWorkspaceState = {
   loading: boolean;
 };
 
+type VideoWorkspaceFile = {
+  file: File;
+  previewUrl: string;
+};
+
+type VideoWorkspaceState = {
+  mode: WorkspaceVideoMode;
+  providerId: string;
+  ratio: string;
+  duration: number;
+  prompt: string;
+  files: VideoWorkspaceFile[];
+  fileError: string;
+  submitError: string;
+  loading: boolean;
+  job: JobRecord | null;
+};
+
 const ratios = ["1:1", "16:9", "9:16", "4:3", "3:4"];
 
 const imageWorkspaceModeMeta: Record<WorkspaceImageMode, {
@@ -103,6 +121,53 @@ const allowedReferenceImageTypes = new Set(["image/png", "image/jpeg", "image/we
 const maxReferenceImageSize = 10 * 1024 * 1024;
 const maxReferenceImageCount = 10;
 
+const videoWorkspaceModeMeta: Record<WorkspaceVideoMode, {
+  submitLabel: string;
+  loadingLabel: string;
+  uploadLabel: string;
+  uploadRequired: boolean;
+  uploadEmptyTitle: string;
+  uploadFilledTitle: string;
+  uploadHelpText: string;
+  promptLabel: string;
+  promptPlaceholder: string;
+  guideDescription: string;
+  guideEmpty: string;
+  guideReady: string;
+  guideNotes: string[];
+}> = {
+  "text-to-video": {
+    submitLabel: "生成视频",
+    loadingLabel: "正在生成视频",
+    uploadLabel: "首帧图片",
+    uploadRequired: false,
+    uploadEmptyTitle: "文生视频不需要首帧图片",
+    uploadFilledTitle: "首帧图片已在本地保留",
+    uploadHelpText: "当前模型数据没有暴露参考图能力字段，文生视频请求不会发送图片。",
+    promptLabel: "视频提示词",
+    promptPlaceholder: "描述主体、动作、场景、镜头、运镜、光线和氛围。例如：雨夜霓虹街道，低机位缓慢推进，人物回头看向镜头。",
+    guideDescription: "描述你想生成的视频画面、动作和镜头。",
+    guideEmpty: "描述你想生成的视频画面、动作和镜头，真实视频结果会显示在这里。",
+    guideReady: "提示词已填写，可以提交真实视频任务。",
+    guideNotes: ["选择已启用的视频模型", "描述画面动作和镜头运动", "结果会进入作品库"],
+  },
+  "image-to-video": {
+    submitLabel: "生成视频",
+    loadingLabel: "正在生成视频",
+    uploadLabel: "首帧图片",
+    uploadRequired: true,
+    uploadEmptyTitle: "上传首帧图片",
+    uploadFilledTitle: "已选择首帧图片",
+    uploadHelpText: "支持 PNG、JPEG 和 WebP，最多 10 张，单张不超过 10MB。",
+    promptLabel: "动态描述",
+    promptPlaceholder: "描述图片中的主体如何运动、镜头如何推进/拉远/环绕、背景如何变化，以及哪些元素必须保持一致。",
+    guideDescription: "上传首帧图片，再描述希望画面如何运动。",
+    guideEmpty: "先上传首帧图片，再补充动态描述。这里不会用假视频冒充结果。",
+    guideReady: "首帧图片已准备好，补充动态描述后可以提交真实视频任务。",
+    guideNotes: ["上传首帧图片", "描述运动和镜头变化", "结果会进入作品库"],
+  },
+};
+
 function createImageWorkspaceFiles(files: File[]) {
   const nextFiles = files.slice(0, maxReferenceImageCount);
   if (files.length > maxReferenceImageCount) {
@@ -119,6 +184,13 @@ function createImageWorkspaceFiles(files: File[]) {
   return nextFiles.map((file) => ({
     file,
     previewUrl: URL.createObjectURL(file),
+  }));
+}
+
+function createVideoWorkspaceFiles(files: File[]) {
+  return createImageWorkspaceFiles(files).map((item) => ({
+    file: item.file,
+    previewUrl: item.previewUrl,
   }));
 }
 
@@ -158,7 +230,20 @@ export function StudioApp() {
     submitError: "",
     loading: false,
   });
+  const [videoWorkspace, setVideoWorkspace] = useState<VideoWorkspaceState>({
+    mode: "text-to-video",
+    providerId: "",
+    ratio: "16:9",
+    duration: 5,
+    prompt: "",
+    files: [],
+    fileError: "",
+    submitError: "",
+    loading: false,
+    job: null,
+  });
   const imageWorkspaceFilesRef = useRef<ImageWorkspaceFile[]>([]);
+  const videoWorkspaceFilesRef = useRef<VideoWorkspaceFile[]>([]);
 
   const refreshLibrary = useCallback(async () => {
     const data = await jsonFetch<{ items: LibraryItem[] }>("/api/library");
@@ -212,6 +297,7 @@ export function StudioApp() {
 
   useEffect(() => () => {
     imageWorkspaceFilesRef.current.forEach((file) => URL.revokeObjectURL(file.previewUrl));
+    videoWorkspaceFilesRef.current.forEach((file) => URL.revokeObjectURL(file.previewUrl));
   }, []);
 
   useEffect(() => {
@@ -224,6 +310,17 @@ export function StudioApp() {
       return { ...prev, providerId: nextProviders[0].id };
     });
   }, [providers.image]);
+
+  useEffect(() => {
+    setVideoWorkspace((prev) => {
+      const nextProviders = providers.video;
+      if (!nextProviders.length) {
+        return prev.providerId ? { ...prev, providerId: "" } : prev;
+      }
+      if (nextProviders.some((provider) => provider.id === prev.providerId)) return prev;
+      return { ...prev, providerId: nextProviders[0].id, submitError: "" };
+    });
+  }, [providers.video]);
 
   const handleToolAction = useCallback((action: WorkspaceAction, tool: WorkspaceToolId) => {
     if (action.kind === "route") {
@@ -238,6 +335,13 @@ export function StudioApp() {
       ));
     }
 
+    const nextVideoMode = action.mode === "text-to-video" || action.mode === "image-to-video" ? action.mode : null;
+    if (action.toolId === "video" && nextVideoMode) {
+      setVideoWorkspace((prev) => (
+        prev.mode === nextVideoMode ? prev : { ...prev, mode: nextVideoMode, fileError: "", submitError: "" }
+      ));
+    }
+
     setActiveWorkspaceToolId(tool);
   }, [router]);
 
@@ -246,7 +350,7 @@ export function StudioApp() {
   const activeBusinessTool = activeAction?.toolId || "library";
   const activeOutput = outputs[activeBusinessTool] || null;
   const activeImageMode: WorkspaceImageMode = imageWorkspace.mode;
-  const activeVideoMode: WorkspaceVideoMode = activeBusinessTool === "video" && activeAction?.mode === "image-to-video" ? "image-to-video" : "text-to-video";
+  const activeVideoMode: WorkspaceVideoMode = videoWorkspace.mode;
   const currentLibraryItems = useMemo(() => {
     const filtered = library.filter((item) => {
       if (libraryFilter === "all") return true;
@@ -437,6 +541,171 @@ export function StudioApp() {
     setOutputs((prev) => ({ ...prev, video: { item, job, title: "视频结果", tool: "video" } }));
   }, []);
 
+  const selectedVideoProvider = useMemo(() => {
+    if (!providers.video.length) return null;
+    return providers.video.find((provider) => provider.id === videoWorkspace.providerId) || providers.video[0];
+  }, [providers.video, videoWorkspace.providerId]);
+
+  const videoWorkspaceFiles = videoWorkspace.files;
+  const videoWorkspaceHasFiles = videoWorkspaceFiles.length > 0;
+  const videoWorkspacePrompt = videoWorkspace.prompt.trim();
+  const videoWorkspaceNeedsFile = activeVideoMode === "image-to-video";
+  const videoWorkspaceCanSubmit = Boolean(selectedVideoProvider)
+    && !providersLoading
+    && !videoWorkspace.loading
+    && Boolean(videoWorkspacePrompt)
+    && (!videoWorkspaceNeedsFile || videoWorkspaceHasFiles);
+
+  const updateVideoWorkspace = useCallback((patch: Partial<VideoWorkspaceState>) => {
+    setVideoWorkspace((prev) => ({ ...prev, ...patch }));
+  }, []);
+
+  const handleVideoModeChange = useCallback((mode: WorkspaceVideoMode) => {
+    setVideoWorkspace((prev) => (
+      prev.mode === mode
+        ? prev
+        : {
+            ...prev,
+            mode,
+            fileError: "",
+            submitError: "",
+          }
+    ));
+  }, []);
+
+  const replaceVideoWorkspaceFiles = useCallback((files: File[]) => {
+    let nextFiles: VideoWorkspaceFile[];
+    try {
+      nextFiles = createVideoWorkspaceFiles(files);
+    } catch (error) {
+      setVideoWorkspace((prev) => ({
+        ...prev,
+        fileError: error instanceof Error ? error.message : "首帧图片读取失败。",
+        submitError: "",
+      }));
+      return;
+    }
+    setVideoWorkspace((prev) => ({
+      ...prev,
+      files: nextFiles,
+      fileError: "",
+      submitError: "",
+    }));
+    videoWorkspaceFilesRef.current.forEach((file) => URL.revokeObjectURL(file.previewUrl));
+    videoWorkspaceFilesRef.current = nextFiles;
+  }, []);
+
+  const removeVideoWorkspaceFile = useCallback((index: number) => {
+    setVideoWorkspace((prev) => {
+      const removed = prev.files[index];
+      if (removed) URL.revokeObjectURL(removed.previewUrl);
+      const nextFiles = prev.files.filter((_, currentIndex) => currentIndex !== index);
+      videoWorkspaceFilesRef.current = nextFiles;
+      return {
+        ...prev,
+        files: nextFiles,
+        fileError: "",
+        submitError: "",
+      };
+    });
+  }, []);
+
+  const clearVideoWorkspaceFiles = useCallback(() => {
+    videoWorkspaceFilesRef.current.forEach((file) => URL.revokeObjectURL(file.previewUrl));
+    videoWorkspaceFilesRef.current = [];
+    setVideoWorkspace((prev) => ({
+      ...prev,
+      files: [],
+      fileError: "",
+      submitError: "",
+    }));
+  }, []);
+
+  useEffect(() => {
+    const job = videoWorkspace.job;
+    if (!job || job.status === "done" || job.status === "failed") return;
+    const timer = window.setInterval(async () => {
+      try {
+        const data = await jsonFetch<{ job: JobRecord | null }>(`/api/jobs/${job.id}`);
+        if (data.job) updateVideoWorkspace({ job: data.job });
+        const libraryData = await jsonFetch<{ items: LibraryItem[] }>("/api/library");
+        const updatedItem = libraryData.items.find((item) => item.id === job.libraryItemId);
+        if (updatedItem) handleVideoResult(updatedItem, data.job || job);
+        await refreshLibrary();
+      } catch (error) {
+        const text = error instanceof Error ? error.message : "视频任务查询失败。";
+        updateVideoWorkspace({ submitError: text });
+        setMessage(text);
+      }
+    }, 5000);
+    return () => window.clearInterval(timer);
+  }, [handleVideoResult, refreshLibrary, setMessage, updateVideoWorkspace, videoWorkspace.job]);
+
+  const submitVideoWorkspace = useCallback(async () => {
+    if (!selectedVideoProvider) {
+      const text = "当前尚未配置可用视频模型。";
+      updateVideoWorkspace({ submitError: text });
+      setMessage(text);
+      return;
+    }
+    if (!videoWorkspacePrompt) {
+      updateVideoWorkspace({ submitError: "请输入视频提示词。" });
+      return;
+    }
+    if (videoWorkspaceNeedsFile && !videoWorkspaceHasFiles) {
+      const text = "图生视频需要先上传首帧图片。";
+      updateVideoWorkspace({ fileError: text, submitError: text });
+      return;
+    }
+    if (videoWorkspace.loading) return;
+
+    updateVideoWorkspace({
+      loading: true,
+      submitError: "",
+      fileError: "",
+    });
+    setMessage("");
+    try {
+      const form = new FormData();
+      form.set("providerId", selectedVideoProvider.id);
+      form.set("mode", activeVideoMode);
+      form.set("ratio", videoWorkspace.ratio);
+      form.set("duration", String(videoWorkspace.duration));
+      form.set("prompt", videoWorkspace.prompt);
+      if (activeVideoMode === "image-to-video") {
+        videoWorkspace.files.forEach((attachment) => form.append("files", attachment.file));
+      }
+      const data = await jsonFetch<{ item: LibraryItem; job: JobRecord | null }>("/api/generate/video", {
+        method: "POST",
+        body: form,
+      });
+      updateVideoWorkspace({ job: data.job });
+      handleVideoResult(data.item, data.job);
+      await refreshLibrary();
+    } catch (error) {
+      const text = error instanceof Error ? error.message : "视频生成失败。";
+      updateVideoWorkspace({ submitError: text });
+      setMessage(text);
+    } finally {
+      updateVideoWorkspace({ loading: false });
+    }
+  }, [
+    activeVideoMode,
+    handleVideoResult,
+    refreshLibrary,
+    selectedVideoProvider,
+    setMessage,
+    updateVideoWorkspace,
+    videoWorkspace.duration,
+    videoWorkspace.files,
+    videoWorkspace.loading,
+    videoWorkspace.prompt,
+    videoWorkspace.ratio,
+    videoWorkspaceHasFiles,
+    videoWorkspaceNeedsFile,
+    videoWorkspacePrompt,
+  ]);
+
   const handleImageUpscaleResult = useCallback((item: LibraryItem, job?: JobRecord | null) => {
     setOutputs((prev) => ({ ...prev, "image-upscale": { item, job, title: "图片高清结果", tool: "image-upscale" } }));
   }, []);
@@ -471,11 +740,23 @@ export function StudioApp() {
       ) : null}
       {activeBusinessTool === "video" ? (
         <VideoGenerator
-          initialMode={activeVideoMode}
+          mode={activeVideoMode}
           providers={providers.video}
-          onDone={refreshLibrary}
-          onResult={handleVideoResult}
-          setMessage={setMessage}
+          providersLoading={providersLoading}
+          providersError={providersError}
+          selectedProvider={selectedVideoProvider}
+          state={videoWorkspace}
+          canSubmit={videoWorkspaceCanSubmit}
+          onModeChange={handleVideoModeChange}
+          onProviderChange={(value) => updateVideoWorkspace({ providerId: value, submitError: "" })}
+          onRatioChange={(value) => updateVideoWorkspace({ ratio: value })}
+          onDurationChange={(value) => updateVideoWorkspace({ duration: value })}
+          onPromptChange={(value) => updateVideoWorkspace({ prompt: value, submitError: "" })}
+          onFilesChange={replaceVideoWorkspaceFiles}
+          onFileRemove={removeVideoWorkspaceFile}
+          onFilesClear={clearVideoWorkspaceFiles}
+          onReloadProviders={refreshProviders}
+          onSubmit={submitVideoWorkspace}
           registerMobileAction={setMobileAction}
         />
       ) : null}
@@ -552,6 +833,21 @@ export function StudioApp() {
                 onSubmit={submitImageWorkspace}
                 onReloadProviders={refreshProviders}
                 onOpenLibrary={() => setActiveWorkspaceToolId("library")}
+              />
+            ) : activeBusinessTool === "video" ? (
+              <VideoPreviewPanel
+                mode={activeVideoMode}
+                output={activeOutput}
+                loading={videoWorkspace.loading}
+                submitError={videoWorkspace.submitError}
+                promptFilled={Boolean(videoWorkspacePrompt)}
+                hasProvider={Boolean(selectedVideoProvider)}
+                hasFiles={videoWorkspaceHasFiles}
+                libraryCount={library.length}
+                onSubmit={submitVideoWorkspace}
+                onReloadProviders={refreshProviders}
+                onOpenLibrary={() => setActiveWorkspaceToolId("library")}
+                firstFrame={videoWorkspace.files[0] || null}
               />
             ) : (
               <OutputPanel tool={activeBusinessTool} output={activeOutput} libraryCount={library.length} />
@@ -751,89 +1047,57 @@ function formatFileSize(size: number) {
 }
 
 function VideoGenerator({
-  initialMode,
+  mode,
   providers,
-  onDone,
-  onResult,
-  setMessage,
+  providersLoading,
+  providersError,
+  selectedProvider,
+  state,
+  canSubmit,
+  onModeChange,
+  onProviderChange,
+  onRatioChange,
+  onDurationChange,
+  onPromptChange,
+  onFilesChange,
+  onFileRemove,
+  onFilesClear,
+  onReloadProviders,
+  onSubmit,
   registerMobileAction,
 }: {
-  initialMode: WorkspaceVideoMode;
+  mode: WorkspaceVideoMode;
   providers: PublicProvider[];
-  onDone: () => Promise<void>;
-  onResult: (item: LibraryItem, job?: JobRecord | null) => void;
-  setMessage: (value: string) => void;
+  providersLoading: boolean;
+  providersError: string;
+  selectedProvider: PublicProvider | null;
+  state: VideoWorkspaceState;
+  canSubmit: boolean;
+  onModeChange: (mode: WorkspaceVideoMode) => void;
+  onProviderChange: (value: string) => void;
+  onRatioChange: (value: string) => void;
+  onDurationChange: (value: number) => void;
+  onPromptChange: (value: string) => void;
+  onFilesChange: (files: File[]) => void;
+  onFileRemove: (index: number) => void;
+  onFilesClear: () => void;
+  onReloadProviders: () => Promise<void>;
+  onSubmit: () => void;
   registerMobileAction: (action: MobileActionState) => void;
 }) {
-  const [mode, setMode] = useState<WorkspaceVideoMode>(initialMode);
-  const [providerId, setProviderId] = useState("");
-  const [ratio, setRatio] = useState("16:9");
-  const [duration, setDuration] = useState(5);
-  const [prompt, setPrompt] = useState("");
-  const [files, setFiles] = useState<File[]>([]);
-  const [loading, setLoading] = useState(false);
-  const [job, setJob] = useState<JobRecord | null>(null);
-
-  useEffect(() => {
-    if (!providerId && providers[0]) setProviderId(providers[0].id);
-  }, [providerId, providers]);
-
-  useEffect(() => {
-    if (!job || job.status === "done" || job.status === "failed") return;
-    const timer = window.setInterval(async () => {
-      try {
-        const data = await jsonFetch<{ job: JobRecord | null }>(`/api/jobs/${job.id}`);
-        if (data.job) setJob(data.job);
-        const libraryData = await jsonFetch<{ items: LibraryItem[] }>("/api/library");
-        const updatedItem = libraryData.items.find((item) => item.id === job.libraryItemId);
-        if (updatedItem) onResult(updatedItem, data.job || job);
-        await onDone();
-      } catch (error) {
-        setMessage(error instanceof Error ? error.message : "任务查询失败。");
-      }
-    }, 5000);
-    return () => window.clearInterval(timer);
-  }, [job, onDone, onResult, setMessage]);
-
-  const submit = useCallback(async () => {
-    if (!providerId) {
-      setMessage("请先到后台设置里启用视频生成入口。");
-      return;
-    }
-
-    setLoading(true);
-    setMessage("");
-    try {
-      const form = new FormData();
-      form.set("providerId", providerId);
-      form.set("mode", mode);
-      form.set("ratio", ratio);
-      form.set("duration", String(duration));
-      form.set("prompt", prompt);
-      files.forEach((file) => form.append("files", file));
-      const data = await jsonFetch<{ item: LibraryItem; job: JobRecord | null }>("/api/generate/video", {
-        method: "POST",
-        body: form,
-      });
-      setJob(data.job);
-      onResult(data.item, data.job);
-      await onDone();
-    } catch (error) {
-      setMessage(error instanceof Error ? error.message : "视频生成失败。");
-    } finally {
-      setLoading(false);
-    }
-  }, [duration, files, mode, onDone, onResult, prompt, providerId, ratio, setMessage]);
+  const meta = videoWorkspaceModeMeta[mode];
+  const hasFiles = state.files.length > 0;
+  const showUpload = mode === "image-to-video";
 
   useEffect(() => {
     registerMobileAction({
-      label: "生成视频",
-      loading,
-      disabled: loading,
-      onClick: submit,
+      label: meta.submitLabel,
+      loading: state.loading,
+      disabled: !canSubmit,
+      onClick: onSubmit,
     });
     return () => registerMobileAction(null);
-  }, [loading, registerMobileAction, submit]);
+  }, [canSubmit, meta.submitLabel, onSubmit, registerMobileAction, state.loading]);
 
   return (
     <FormPanel>
@@ -845,23 +1109,37 @@ function VideoGenerator({
           ["text-to-video", "文生视频"],
           ["image-to-video", "图生视频"],
         ]}
-        onChange={(value) => setMode(value as WorkspaceVideoMode)}
+        onChange={(value) => onModeChange(value as WorkspaceVideoMode)}
       />
-      <ProviderSelect providers={providers} value={providerId} onChange={setProviderId} />
-      <FileInput
-        label="参考图片"
-        optional={mode === "text-to-video"}
-        accept="image/png,image/jpeg,image/webp"
-        files={files}
-        onChange={setFiles}
+      <ProviderSelect
+        providers={providers}
+        value={selectedProvider?.id || state.providerId}
+        loading={providersLoading}
+        error={providersError}
+        onChange={onProviderChange}
+        onReload={onReloadProviders}
       />
+      {showUpload ? (
+        <VideoReferenceInput
+          files={state.files}
+          required={meta.uploadRequired}
+          error={state.fileError}
+          label={meta.uploadLabel}
+          emptyTitle={meta.uploadEmptyTitle}
+          filledTitle={meta.uploadFilledTitle}
+          helpText={meta.uploadHelpText}
+          onChange={onFilesChange}
+          onRemove={onFileRemove}
+          onClear={onFilesClear}
+        />
+      ) : null}
       <StackedControl label="视频比例" required>
-        <AspectRatioSelector label="视频比例" value={ratio} onChange={setRatio} />
+        <AspectRatioSelector label="视频比例" value={state.ratio} onChange={onRatioChange} />
       </StackedControl>
-      <FieldFrame label="时长" required>
+      <FieldFrame label="视频时长" required>
         <select
-          value={duration}
-          onChange={(event) => setDuration(Number(event.target.value))}
+          value={state.duration}
+          onChange={(event) => onDurationChange(Number(event.target.value))}
           className="studio-select"
         >
           {[5, 8, 10, 15].map((value) => (
@@ -871,18 +1149,111 @@ function VideoGenerator({
           ))}
         </select>
       </FieldFrame>
-      <PromptBox
-        value={prompt}
-        onChange={setPrompt}
+      <VideoPromptBox
+        label={meta.promptLabel}
+        value={state.prompt}
+        onChange={onPromptChange}
         required
-        placeholder="描述视频画面、运动、镜头和氛围，例如：未来感产品展示，缓慢推进镜头，霓虹灯反射。"
+        placeholder={meta.promptPlaceholder}
       />
+      {state.submitError ? <p className="studio-error-text" role="alert">{state.submitError}</p> : null}
       <StickyPrimaryAction>
-        <SubmitButton disabled={loading} loading={loading} onClick={submit}>
-          生成视频
+        <SubmitButton disabled={!canSubmit} loading={state.loading} onClick={onSubmit}>
+          {state.loading ? meta.loadingLabel : meta.submitLabel}
         </SubmitButton>
+        {!hasFiles && meta.uploadRequired ? <span className="studio-help-text">上传首帧图片后才能生成视频。</span> : null}
       </StickyPrimaryAction>
     </FormPanel>
+  );
+}
+
+function VideoReferenceInput({
+  files,
+  required,
+  error,
+  label,
+  emptyTitle,
+  filledTitle,
+  helpText,
+  onChange,
+  onRemove,
+  onClear,
+}: {
+  files: VideoWorkspaceFile[];
+  required: boolean;
+  error: string;
+  label: string;
+  emptyTitle: string;
+  filledTitle: string;
+  helpText: string;
+  onChange: (files: File[]) => void;
+  onRemove: (index: number) => void;
+  onClear: () => void;
+}) {
+  const inputRef = useRef<HTMLInputElement | null>(null);
+  const [dragging, setDragging] = useState(false);
+
+  return (
+    <FieldFrame label={label} required={required}>
+      <CompactDropzone
+        inputRef={inputRef}
+        inputId="video-first-frame-input"
+        accept="image/png,image/jpeg,image/webp"
+        required={required}
+        dragging={dragging}
+        error={error}
+        files={files.map((item) => ({
+          name: item.file.name,
+          size: item.file.size,
+          previewUrl: item.previewUrl,
+        }))}
+        emptyTitle={emptyTitle}
+        filledTitle={filledTitle}
+        helpText={helpText}
+        chooseLabel={files.length ? "替换图片" : "选择图片"}
+        onFiles={onChange}
+        onRemove={onRemove}
+        onClear={files.length ? onClear : undefined}
+        onDraggingChange={setDragging}
+      />
+      {error ? <p className="studio-error-text" role="alert">{error}</p> : null}
+    </FieldFrame>
+  );
+}
+
+function VideoPromptBox({
+  label,
+  value,
+  onChange,
+  placeholder,
+  required,
+}: {
+  label: string;
+  value: string;
+  onChange: (value: string) => void;
+  placeholder: string;
+  required?: boolean;
+}) {
+  const descriptionId = "video-prompt-counter";
+
+  return (
+    <FieldFrame label={label} required={required}>
+      <label className="studio-sr-only" htmlFor="video-prompt">
+        {label}
+      </label>
+      <div className="studio-textarea-wrap">
+        <textarea
+          id="video-prompt"
+          data-testid="video-prompt-input"
+          value={value}
+          onChange={(event) => onChange(event.target.value)}
+          placeholder={placeholder}
+          aria-describedby={descriptionId}
+          className="studio-textarea"
+        />
+        <span id={descriptionId} className="studio-counter">{value.length} 个字符</span>
+      </div>
+    </FieldFrame>
   );
 }
 
@@ -1249,6 +1620,109 @@ function ImagePreviewPanel({
       </div>
       <div className="studio-steps">
         {content.guideNotes.map((note, index) => (
+          <div key={note} className="studio-step">
+            <span>{index + 1}</span>
+            <p>{note}</p>
+          </div>
+        ))}
+      </div>
+    </PreviewState>
+  );
+}
+
+function VideoPreviewPanel({
+  mode,
+  output,
+  loading,
+  submitError,
+  promptFilled,
+  hasProvider,
+  hasFiles,
+  libraryCount,
+  onSubmit,
+  onReloadProviders,
+  onOpenLibrary,
+  firstFrame,
+}: {
+  mode: WorkspaceVideoMode;
+  output: OutputState;
+  loading: boolean;
+  submitError: string;
+  promptFilled: boolean;
+  hasProvider: boolean;
+  hasFiles: boolean;
+  libraryCount: number;
+  onSubmit: () => void;
+  onReloadProviders: () => Promise<void>;
+  onOpenLibrary: () => void;
+  firstFrame: VideoWorkspaceFile | null;
+}) {
+  const meta = videoWorkspaceModeMeta[mode];
+  const canRetry = hasProvider && promptFilled && (mode === "text-to-video" || hasFiles) && !loading;
+
+  if (loading) {
+    return (
+      <PreviewState eyebrow="处理中" title="创作预览" description={meta.loadingLabel} badge="请稍候" role="status" live>
+        <div className="studio-preview__empty">
+          <p>真实视频任务正在运行，供应商返回结果后会显示在这里。</p>
+        </div>
+      </PreviewState>
+    );
+  }
+
+  if (submitError) {
+    return (
+      <PreviewState eyebrow="失败" title="生成结果" description={submitError} badge="可重试" role="alert">
+        <div className="studio-preview__empty">
+          <p>参数会保留。你可以调整模型、提示词、时长、比例或首帧图片后重试。</p>
+          <div className="studio-actions">
+            {!hasProvider ? (
+              <button type="button" className="studio-secondary-button" onClick={() => void onReloadProviders()}>
+                重新加载模型
+              </button>
+            ) : null}
+            <button type="button" className="studio-secondary-button" onClick={onSubmit} disabled={!canRetry}>
+              重试
+            </button>
+            <button type="button" className="studio-secondary-button" onClick={onOpenLibrary}>
+              进入作品库
+            </button>
+          </div>
+        </div>
+      </PreviewState>
+    );
+  }
+
+  if (output) {
+    return (
+      <PreviewState eyebrow="结果" title="生成结果" description="这里只显示真实供应商返回的视频结果。" badge={output.job?.status || output.item.status} role="status" live>
+        <MediaCard item={output.item} large />
+        <div className="studio-actions">
+          <button type="button" className="studio-secondary-button" onClick={onSubmit} disabled={!canRetry}>
+            再次生成
+          </button>
+          <button type="button" className="studio-secondary-button" onClick={onOpenLibrary}>
+            进入作品库
+          </button>
+        </div>
+      </PreviewState>
+    );
+  }
+
+  return (
+    <PreviewState eyebrow="创作预览" title="创作预览" description={meta.guideDescription} badge={`${libraryCount} 条作品`}>
+      {mode === "image-to-video" && firstFrame ? (
+        <div className="studio-preview__media is-example">
+          <span className="studio-example-badge">首帧图片</span>
+          <img src={firstFrame.previewUrl} alt={firstFrame.file.name} />
+        </div>
+      ) : (
+        <div className="studio-preview__empty">
+          <p>{promptFilled && (mode === "text-to-video" || hasFiles) ? meta.guideReady : meta.guideEmpty}</p>
+        </div>
+      )}
+      <div className="studio-steps">
+        {meta.guideNotes.map((note, index) => (
           <div key={note} className="studio-step">
             <span>{index + 1}</span>
             <p>{note}</p>

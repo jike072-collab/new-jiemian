@@ -178,6 +178,50 @@ Important gap: provider JSON currently does not send a dedicated `mode` field. T
 | Responsive | Module 5 shell/CSS | Stable visual foundation | Video-specific validation not checked | Reuse module 5 components | No shell redesign | Maintains visual baseline | 1440/1024/390 checks in later segment |
 | Accessibility | Shared controls | `aria-pressed`, labels, counters | Submit disabled and errors not mode-specific | Reuse shared semantics | Add local error association where needed | Better screen-reader flow | Keyboard and screen-reader checks |
 
+## Segment 2 Implementation Notes
+
+Implemented in `src/components/studio-app.tsx`:
+
+- Video workspace state is now owned by `StudioApp` as one `videoWorkspace` object.
+- `videoWorkspace.mode` is the only source for the current video mode.
+- `VideoGenerator` is controlled by props and no longer owns a separate local mode, provider, prompt, file, loading, or job state.
+- Desktop `StickyPrimaryAction` and mobile action slot share `submitVideoWorkspace`, `videoWorkspace.loading`, `videoWorkspaceCanSubmit`, and `videoWorkspace.mode`.
+- `VideoPreviewPanel` uses mode-specific initial, ready, loading, error, and result copy while showing only real provider output as success.
+- Image-to-video uses the shared `CompactDropzone` with real file state, object URL preview, replace, remove, clear, and cleanup.
+- Text-to-video hides the first-frame upload because the current provider model data exposes no reference-image capability field.
+- Switching modes keeps prompt, ratio, duration, and provider when still valid. Uploaded images remain in local state for returning to image-to-video, but text-to-video requests do not include them.
+
+Implemented in `src/lib/server/provider-call.ts`:
+
+- The internal API still receives and validates `mode`.
+- Image-to-video provider payload includes base64 `image` data.
+- Text-to-video provider payload no longer sends an empty or stale `image` field.
+
+## Segment 2 Mode Behavior
+
+| Area | Text-to-video | Image-to-video |
+| --- | --- | --- |
+| Single source | `videoWorkspace.mode = "text-to-video"` | `videoWorkspace.mode = "image-to-video"` |
+| Upload UI | Hidden by default because no real reference-image capability is exposed | Required shared `CompactDropzone` |
+| Submit disabled | Disabled when no model, providers are loading, prompt is empty, or request is loading | Disabled when no model, providers are loading, prompt is empty, no first-frame image, or request is loading |
+| Prompt guidance | Describes subject, action, scene, camera, motion, lighting, and mood | Describes subject motion, camera movement, background change, and consistency requirements |
+| Preview empty state | Guides text description of a video scene | Guides first-frame upload first, then motion description |
+| Frontend payload | `providerId`, `mode=text-to-video`, `ratio`, `duration`, `prompt` | `providerId`, `mode=image-to-video`, `ratio`, `duration`, `prompt`, `files` |
+| Provider payload | `model`, `prompt`, `duration`, `aspect_ratio`, `response_format` | Same fields plus `image` data URLs |
+| Result state | Real provider output only | Real provider output only |
+
+## Current Backend Capability Limitation
+
+`PublicProvider` currently exposes provider identity, kind, title, role, API URL, model, enabled status, endpoint type, and configuration status. It does not expose capability metadata for:
+
+- `text-to-video`
+- `image-to-video`
+- supported aspect ratios
+- supported durations
+- optional reference-image support
+
+Because of that, segment 2 does not hard-code vendor capability guesses. Both modes use the real enabled video provider list from `/api/providers/enabled`. If a future backend adds explicit capability fields, the video workspace should filter providers and mode options from those fields instead of adding a second front-end capability table.
+
 ## State Source Plan
 
 Target:
@@ -215,4 +259,3 @@ Do not separately maintain navigation mode, form mode, request mode, and preview
 Current backend supports both mode strings in server validation and library records. It blocks `image-to-video` without files. It does not currently prove that every configured provider supports both modes or that the provider expects an explicit `mode` field in JSON. Segment 2 should preserve existing provider payload unless there is concrete provider/API evidence to change it.
 
 If no enabled video provider exists, module 6 must show the real unavailable state and must not create mock video output.
-
