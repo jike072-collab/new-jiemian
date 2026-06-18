@@ -1441,7 +1441,7 @@ function ModeSwitch({
   return (
     <div className="studio-mode">
       {label ? <span id={groupId ? `${groupId}-label` : undefined} className="studio-label">{label}</span> : null}
-      <div className="studio-mode__options" role="group" aria-label={label} aria-labelledby={label && groupId ? `${groupId}-label` : undefined}>
+      <div className="studio-mode__options" role="group" aria-labelledby={label && groupId ? `${groupId}-label` : undefined}>
         {options.map(([id, text]) => (
           <button
             key={id}
@@ -1595,7 +1595,7 @@ function PromptBox({
           aria-describedby="image-prompt-counter"
           className="studio-textarea"
         />
-        <span id="image-prompt-counter" className="studio-counter" aria-live="polite">{value.length}</span>
+        <span id="image-prompt-counter" className="studio-counter">{value.length} 个字符</span>
       </div>
     </FieldFrame>
   );

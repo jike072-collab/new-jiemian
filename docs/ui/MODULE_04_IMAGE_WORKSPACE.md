@@ -168,6 +168,14 @@ Labels and input association:
 - The prompt textarea keeps its explicit label and now describes the internal counter through `aria-describedby`.
 - Remove-image buttons keep file-specific names such as `删除 <file name>`.
 
+Prompt counter follow-up:
+
+- The prompt character counter no longer uses `aria-live`.
+- The textarea keeps `aria-describedby="image-prompt-counter"`.
+- The counter text now reads as `X 个字符`, for example `0 个字符`, so the number has a clear meaning without repeated live announcements during typing.
+- No fake character limit was added.
+- `ModeSwitch` no longer duplicates the same group name through both `aria-label` and `aria-labelledby`; the visible group label is referenced with `aria-labelledby`.
+
 Errors and loading/status:
 
 - Immediate submit and upload errors use `role="alert"`.
