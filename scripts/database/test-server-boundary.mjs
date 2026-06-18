@@ -6,6 +6,7 @@ import { join } from "node:path";
 const root = process.cwd();
 const probeDir = join(root, "src", "app", "database-boundary-probe");
 const probePage = join(probeDir, "page.tsx");
+const nextDir = join(root, ".next");
 
 async function main() {
   await rm(probeDir, { recursive: true, force: true });
@@ -51,6 +52,7 @@ export default function DatabaseBoundaryProbe() {
     process.exit(1);
   } finally {
     await rm(probeDir, { recursive: true, force: true });
+    await rm(nextDir, { recursive: true, force: true });
   }
 }
 
