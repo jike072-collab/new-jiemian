@@ -241,6 +241,20 @@ jobs:
       - name: Auth migration dry-run apply idempotency verify
         run: |
           set -eu
+          node <<'NODE'
+          const pg = require("pg");
+          (async () => {
+            const pool = new pg.Pool({ connectionString: process.env.APP_DATABASE_URL });
+            try {
+              await pool.query("truncate table audit_events, new_api_user_mappings, auth_sessions, app_users restart identity cascade");
+            } finally {
+              await pool.end();
+            }
+          })().catch((error) => {
+            console.error(error instanceof Error ? error.message : "auth migration state reset failed");
+            process.exit(1);
+          });
+          NODE
           mkdir -p .runtime/auth-migration
           USER_ID="$(node -e 'console.log(crypto.randomUUID())')"
           SESSION_ID="$(node -e 'console.log(crypto.randomUUID())')"
