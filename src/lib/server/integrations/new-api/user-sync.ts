@@ -1,6 +1,6 @@
 import { createHash, randomUUID } from "node:crypto";
 
-import { adminCreateUser, adminGetUsers, type NewApiUserRecord } from "./admin";
+import { adminCreateUser, adminGetUsers, adminSearchUsers, type NewApiUserRecord } from "./admin";
 import { isNewApiError } from "./errors";
 import {
   createJsonNewApiUserMappingRepository,
@@ -38,6 +38,7 @@ export type NewApiUserSyncDependencies = {
   repository?: NewApiUserMappingRepository;
   createUser?: typeof adminCreateUser;
   listUsers?: typeof adminGetUsers;
+  searchUsers?: typeof adminSearchUsers;
 };
 
 type UpstreamCreateResult =
@@ -45,6 +46,8 @@ type UpstreamCreateResult =
   | { kind: "duplicate"; user: NewApiUserRecord | null }
   | { kind: "retryable_failure"; code: string; message: string }
   | { kind: "repair_required"; code: string; message: string };
+
+type UserLookup = (profile: NewApiUserSyncProfile) => ReturnType<typeof adminGetUsers>;
 
 const DEFAULT_GROUP = "default";
 const MAX_NEW_API_USER_FIELD_LENGTH = 20;
@@ -135,9 +138,9 @@ function errorMessage(error: unknown) {
 
 async function findUpstreamUser(
   profile: NewApiUserSyncProfile,
-  listUsers: typeof adminGetUsers,
+  lookupUsers: UserLookup,
 ) {
-  const response = await listUsers();
+  const response = await lookupUsers(profile);
   return extractUsers(response.data).find((user) => sameIdentity(user, profile)) || null;
 }
 
@@ -145,7 +148,7 @@ async function createOrFindUpstreamUser(
   profile: NewApiUserSyncProfile,
   options: NewApiUserSyncOptions,
   createUser: typeof adminCreateUser,
-  listUsers: typeof adminGetUsers,
+  lookupUsers: UserLookup,
 ): Promise<UpstreamCreateResult> {
   try {
     const response = await createUser({
@@ -165,7 +168,7 @@ async function createOrFindUpstreamUser(
     }
     const user = extractCreatedUser(response.data);
     if (user) return { kind: "created", user };
-    const existing = await findUpstreamUser(profile, listUsers);
+    const existing = await findUpstreamUser(profile, lookupUsers);
     if (existing) return { kind: "created", user: existing };
     return {
       kind: "repair_required",
@@ -174,11 +177,11 @@ async function createOrFindUpstreamUser(
     };
   } catch (error) {
     if (isNewApiError(error) && error.upstreamStatus === 409) {
-      const existing = await findUpstreamUser(profile, listUsers).catch(() => null);
+      const existing = await findUpstreamUser(profile, lookupUsers).catch(() => null);
       return { kind: "duplicate", user: existing };
     }
     if (isRetryableError(error)) {
-      const existing = await findUpstreamUser(profile, listUsers).catch(() => null);
+      const existing = await findUpstreamUser(profile, lookupUsers).catch(() => null);
       if (existing) return { kind: "duplicate", user: existing };
       return { kind: "retryable_failure", code: errorCode(error), message: errorMessage(error) };
     }
@@ -189,13 +192,15 @@ async function createOrFindUpstreamUser(
 export class NewApiUserSyncService {
   private readonly repository: NewApiUserMappingRepository;
   private readonly createUser: typeof adminCreateUser;
-  private readonly listUsers: typeof adminGetUsers;
+  private readonly lookupUsers: UserLookup;
   private readonly inFlight = new Map<string, Promise<NewApiUserSyncResult>>();
 
   constructor(dependencies: NewApiUserSyncDependencies = {}) {
     this.repository = dependencies.repository || createJsonNewApiUserMappingRepository();
     this.createUser = dependencies.createUser || adminCreateUser;
-    this.listUsers = dependencies.listUsers || adminGetUsers;
+    this.lookupUsers = dependencies.listUsers
+      ? () => dependencies.listUsers!()
+      : (profile) => (dependencies.searchUsers || adminSearchUsers)(normalizeUsername(profile));
   }
 
   async ensureMapped(
@@ -237,7 +242,7 @@ export class NewApiUserSyncService {
           expectedVersion: mapping.version,
         });
 
-    const upstream = await createOrFindUpstreamUser(profile, options, this.createUser, this.listUsers);
+    const upstream = await createOrFindUpstreamUser(profile, options, this.createUser, this.lookupUsers);
     if (upstream.kind === "created" || upstream.kind === "duplicate") {
       if (!upstream.user) {
         const repair = await this.repository.markFailed({

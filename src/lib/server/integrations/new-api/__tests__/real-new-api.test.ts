@@ -50,7 +50,16 @@ test("creates and activates a real New API user mapping", async () => {
     passwordSeed: suffix,
   });
 
-  assert.equal(result.mapping.sync_status, "active");
+  assert.equal(
+    result.mapping.sync_status,
+    "active",
+    JSON.stringify({
+      action: result.action,
+      last_error_code: result.mapping.last_error_code,
+      last_error_message: result.mapping.last_error_message,
+      retry_count: result.mapping.retry_count,
+    }),
+  );
   assert.match(result.mapping.new_api_user_id || "", /^\d+$/);
   assert.equal((await repository.getByLocalUserId(`local-real-${suffix}`))?.new_api_user_id, result.mapping.new_api_user_id);
 });

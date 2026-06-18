@@ -43,6 +43,14 @@ export async function adminGetUsers(client = new NewApiHttpClient()) {
   });
 }
 
+export async function adminSearchUsers(keyword: string, client = new NewApiHttpClient()) {
+  return client.request<NewApiUserListPayload>({
+    path: "/api/user/search",
+    query: { keyword },
+    context: newApiAdminRequestContext(client.config),
+  });
+}
+
 export async function adminCreateUser(input: NewApiUserCreateInput, client = new NewApiHttpClient()) {
   return client.request<{ success?: boolean; data?: NewApiUserRecord; message?: string }>({
     method: "POST",
