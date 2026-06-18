@@ -397,7 +397,10 @@ Execution uses `spawn(executable, args)` with an argument array. The original us
 | UI | `2x` and `4x` are the only selectable options. |
 | API | `/api/upscale/image` rejects any scale other than `2` or `4`. |
 | Server | `upscaleImage(file, scale)` receives typed `2 | 4` and passes the requested scale into the Upscayl command contract. |
-| Real output | Blocked in the current environment because Upscayl is not installed or not detected. |
+| Real output | Passed with local Upscayl `E:/codex工作台/tools/upscayl/2.15.0/resources/bin/upscayl-bin.exe`. |
+| 2x result | Test image `96 x 64` produced a real PNG `192 x 128` at `/api/files/image-upscale-bc0b6440-2444-44b8-a62d-c6fccbf05070.png`. |
+| 4x result | Test image `96 x 64` produced a real PNG `384 x 256` at `/api/files/image-upscale-e9db416c-287b-49f3-88dd-ffe095e3ac7a.png`. |
+| Concurrent run | Parallel 2x and 4x submissions now both complete after serializing local library/job JSON writes. |
 
 ### Download And Temporary Files
 
@@ -408,6 +411,8 @@ Execution uses `spawn(executable, args)` with an argument array. The original us
 | Success download | Only exposed when a real output file exists. |
 | Failed processing | Deletes temporary input and partial output. |
 | Download boundary | `/api/files/[name]` still uses `readStoredFile()` and `safeStoredName()` so arbitrary local paths cannot be read. |
+| Verified downloads | 2x and 4x output URLs returned real `image/png` responses with expected dimensions. |
+| Temporary input cleanup | `data/work/image-upscale-input-*` had no remaining files after successful processing. |
 
 ### Browser Acceptance
 
@@ -415,10 +420,12 @@ Execution uses `spawn(executable, args)` with an argument array. The original us
 | --- | --- |
 | Desktop no upload | Captured. Shows upload prompt, `2x` default, and disabled start action. |
 | Desktop Upscayl unavailable | Captured. Shows tool unavailable and retry detection without absolute local path. |
-| Desktop uploaded state | Not fully capturable through this browser runtime because programmatic `File`/`DataTransfer` injection is unavailable; UI code uses real file input/dropzone state and object URL preview. |
-| Real success result | Blocked because no Upscayl executable is detected. |
-| Mobile upload/parameters | Captured. Mobile keeps one bottom action and no horizontal overflow in the unavailable state. |
-| Mobile result | Blocked because no real Upscayl output exists. |
+| Desktop Upscayl ready | Captured at `docs/design-references/module-07-image-upscale/1440x900-desktop-upscayl-ready-no-upload.png`. |
+| Desktop uploaded state | Browser runtime cannot programmatically set local file chooser contents; real upload path was verified through the same multipart API used by the page. |
+| Real 2x output | Captured as `docs/design-references/module-07-image-upscale/real-upscayl-2x-96x64-to-192x128.png`. |
+| Real 4x output | Captured as `docs/design-references/module-07-image-upscale/real-upscayl-4x-96x64-to-384x256.png`. |
+| Mobile upload/parameters | Captured at `docs/design-references/module-07-image-upscale/390x844-mobile-upscayl-ready-params.png`; no horizontal overflow. |
+| Mobile result | Real output files exist; full mobile result UI upload replay remains limited by unavailable file chooser automation. |
 
 ### Quality Checks
 
@@ -428,7 +435,8 @@ Execution uses `spawn(executable, args)` with an argument array. The original us
 | `npm run typecheck` | Passed. |
 | `npm run build` | Passed. |
 | `git diff --check` | Passed. |
+| Unicode control scan | Passed for modified source/docs: no U+202A-U+202E or U+2066-U+2069. |
 
-### Segment 3 Remaining Issue
+### Final Upscayl Acceptance Note
 
-The only acceptance blocker is the missing local Upscayl executable/model environment. Module 7 must not bypass this with a fake result. Real successful output and result dimensions should be verified once Upscayl is installed and configured.
+Upscayl is now installed and configured locally. Module 7 real image upscale acceptance used a generated local PNG source, not a static example result. Both requested scales were submitted through `/api/upscale/image`, executed by the local Upscayl CLI, written under `uploads/`, and downloaded through `/api/files/[name]`. The page now records and displays source dimensions, output dimensions, and the selected scale for successful image-upscale results.

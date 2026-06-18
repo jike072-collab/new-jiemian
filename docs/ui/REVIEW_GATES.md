@@ -89,6 +89,7 @@
 - Module 7 must not modify video upscale business while repairing image upscale.
 - Image upscale remains a local processing capability and must not be converted into a New API model call.
 - The local Upscayl dependency must be truly detected before the UI marks image upscale as available.
+- Final module 7 acceptance must include real local Upscayl 2x and 4x output dimensions, not only dependency detection.
 - When the local dependency is missing, the UI must show a real dependency-missing state and must not fake processing or success.
 - No static sample image may be used as an accepted image-upscale result.
 - Download actions must point only to real stored output files created by the local process.

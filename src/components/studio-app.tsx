@@ -1825,6 +1825,14 @@ function ImageUpscalePreviewPanel({
   }
 
   if (output?.item.output?.url) {
+    const params = output.item.params;
+    const sourceSize = typeof params.sourceWidth === "number" && typeof params.sourceHeight === "number"
+      ? `${params.sourceWidth} x ${params.sourceHeight}`
+      : "未记录";
+    const outputSize = typeof params.outputWidth === "number" && typeof params.outputHeight === "number"
+      ? `${params.outputWidth} x ${params.outputHeight}`
+      : "未记录";
+    const resultScale = typeof params.scale === "number" ? `${params.scale}x` : `${state.scale}x`;
     return (
       <PreviewState eyebrow="结果" title="高清结果" description={`真实输出，${state.scale}x。`} badge={output.job?.status || output.item.status} role="status" live>
         <div className="studio-upscale-preview">
@@ -1839,6 +1847,20 @@ function ImageUpscalePreviewPanel({
             <img src={output.item.output.url} alt={output.item.title} />
           </figure>
         </div>
+        <dl className="studio-upscale-stats" aria-label="图片高清结果信息">
+          <div>
+            <dt>原图尺寸</dt>
+            <dd>{sourceSize}</dd>
+          </div>
+          <div>
+            <dt>输出尺寸</dt>
+            <dd>{outputSize}</dd>
+          </div>
+          <div>
+            <dt>当前倍数</dt>
+            <dd>{resultScale}</dd>
+          </div>
+        </dl>
         <div className="studio-actions">
           <a className="studio-secondary-button" href={output.item.output.url} download>
             下载结果图片

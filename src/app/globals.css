@@ -1048,6 +1048,34 @@
     backdrop-filter: blur(12px);
   }
 
+  .studio-upscale-stats {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: var(--space-stack);
+    margin: var(--space-stack) 0 0;
+  }
+
+  .studio-upscale-stats div {
+    min-width: 0;
+    border: 1px solid var(--border-subtle);
+    border-radius: var(--radius-card);
+    background: color-mix(in srgb, var(--panel-2) 72%, transparent);
+    padding: 12px;
+  }
+
+  .studio-upscale-stats dt {
+    color: var(--muted);
+    font-size: 12px;
+    line-height: 1.2;
+  }
+
+  .studio-upscale-stats dd {
+    margin: 6px 0 0;
+    color: var(--text);
+    font-size: 14px;
+    line-height: 1.2;
+  }
+
   .studio-step {
     display: flex;
     gap: var(--space-stack);

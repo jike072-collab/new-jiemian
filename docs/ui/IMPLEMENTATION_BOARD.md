@@ -51,5 +51,6 @@
 | 模块 7 第 1 段 | 已完成 | Image upscale audit, local Upscayl chain review, security review, and implementation plan are documented. |
 | 模块 7 第 2 段 | 已完成 | First usable image upscale workspace is implemented on the real local Upscayl flow. |
 | 模块 7 第 3 段 | 已完成 | Upscayl acceptance evidence, unavailable-state screenshots, docs, and quality checks completed. |
+| 模块 7 最终补修 | 已完成 | Local Upscayl is installed and real 2x/4x integration passed with source/output dimensions, download verification, Unicode scan, and refreshed evidence. |
 | 模块 7 | 已完成，等待人工检查 | Do not merge or proceed to module 8 until manual review approves the module. |
 | 模块 8 | 阻塞 | Do not start until module 7 is manually approved. |

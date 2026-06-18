@@ -1,6 +1,6 @@
 import { execFile, spawn } from "node:child_process";
 import { randomUUID } from "node:crypto";
-import { access, mkdir, stat, unlink, writeFile } from "node:fs/promises";
+import { access, mkdir, readFile, stat, unlink, writeFile } from "node:fs/promises";
 import { dirname, extname, join } from "node:path";
 import { promisify } from "node:util";
 
@@ -29,6 +29,11 @@ type UploadedFile = {
   bytes: Buffer;
   mimeType: string;
   fileName: string;
+};
+
+type ImageDimensions = {
+  width: number;
+  height: number;
 };
 
 const workRoot = join(dataRoot, "work");
@@ -217,6 +222,72 @@ async function storedOutput(storedName: string, mimeType: string) {
   };
 }
 
+function readPngDimensions(bytes: Buffer): ImageDimensions | null {
+  if (bytes.length < 24 || bytes.toString("ascii", 1, 4) !== "PNG") return null;
+  return {
+    width: bytes.readUInt32BE(16),
+    height: bytes.readUInt32BE(20),
+  };
+}
+
+function readJpegDimensions(bytes: Buffer): ImageDimensions | null {
+  if (bytes.length < 4 || bytes[0] !== 0xff || bytes[1] !== 0xd8) return null;
+  let offset = 2;
+  while (offset < bytes.length) {
+    if (bytes[offset] !== 0xff) {
+      offset += 1;
+      continue;
+    }
+    const marker = bytes[offset + 1];
+    const length = bytes.readUInt16BE(offset + 2);
+    if (length < 2) return null;
+    if (
+      marker >= 0xc0
+      && marker <= 0xcf
+      && ![0xc4, 0xc8, 0xcc].includes(marker)
+      && offset + 8 < bytes.length
+    ) {
+      return {
+        width: bytes.readUInt16BE(offset + 7),
+        height: bytes.readUInt16BE(offset + 5),
+      };
+    }
+    offset += 2 + length;
+  }
+  return null;
+}
+
+function readWebpDimensions(bytes: Buffer): ImageDimensions | null {
+  if (bytes.length < 30 || bytes.toString("ascii", 0, 4) !== "RIFF" || bytes.toString("ascii", 8, 12) !== "WEBP") {
+    return null;
+  }
+  const chunk = bytes.toString("ascii", 12, 16);
+  if (chunk === "VP8X") {
+    return {
+      width: 1 + bytes.readUIntLE(24, 3),
+      height: 1 + bytes.readUIntLE(27, 3),
+    };
+  }
+  if (chunk === "VP8L") {
+    const value = bytes.readUInt32LE(21);
+    return {
+      width: 1 + (value & 0x3fff),
+      height: 1 + ((value >> 14) & 0x3fff),
+    };
+  }
+  if (chunk === "VP8 " && bytes.length >= 30) {
+    return {
+      width: bytes.readUInt16LE(26) & 0x3fff,
+      height: bytes.readUInt16LE(28) & 0x3fff,
+    };
+  }
+  return null;
+}
+
+function readImageDimensions(bytes: Buffer): ImageDimensions | null {
+  return readPngDimensions(bytes) || readJpegDimensions(bytes) || readWebpDimensions(bytes);
+}
+
 export async function upscaleImage(file: UploadedFile, scale: 2 | 4) {
   const provider = await providerById("image-upscale");
   const status = await readUpscaleStatus();
@@ -244,6 +315,8 @@ export async function upscaleImage(file: UploadedFile, scale: 2 | 4) {
   let completed = false;
   try {
     await runProcess(status.image.executable, args, 15 * 60 * 1000);
+    const sourceDimensions = readImageDimensions(file.bytes);
+    const outputDimensions = readImageDimensions(await readFile(outputPath));
     const item = await addLibraryItem({
       type: "image",
       mode: "image-upscale",
@@ -253,7 +326,18 @@ export async function upscaleImage(file: UploadedFile, scale: 2 | 4) {
       model: provider.model,
       status: "done",
       output: await storedOutput(storedName, "image/png"),
-      params: { scale, sourceName: file.fileName },
+      params: {
+        scale,
+        sourceName: file.fileName,
+        ...(sourceDimensions ? {
+          sourceWidth: sourceDimensions.width,
+          sourceHeight: sourceDimensions.height,
+        } : {}),
+        ...(outputDimensions ? {
+          outputWidth: outputDimensions.width,
+          outputHeight: outputDimensions.height,
+        } : {}),
+      },
     });
     completed = true;
     return item;
