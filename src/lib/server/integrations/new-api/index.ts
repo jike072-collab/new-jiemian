@@ -4,7 +4,7 @@ export { createNewApiHttpClient, NewApiHttpClient, newApiAdminRequestContext } f
 export { getNewApiConfig, normalizeNewApiBaseUrl } from "./config";
 export { NewApiError, isNewApiError, safeNewApiError } from "./errors";
 export { checkNewApiHealth } from "./health";
-export { getNewApiUserLogs, getNewApiUserSelf } from "./user";
+export { adminGetNewApiLogs, adminGetNewApiUser, getNewApiUserLogs, getNewApiUserSelf } from "./user";
 export {
   createJsonNewApiUserMappingRepository,
   createMemoryNewApiUserMappingRepository,
@@ -21,6 +21,11 @@ export type {
   NewApiUserSyncProfile,
   NewApiUserSyncResult,
 } from "./user-sync";
+export type {
+  NewApiLogListPayload,
+  NewApiLogRecord,
+  NewApiUserSelf,
+} from "./user";
 export type {
   NewApiAuthContext,
   NewApiConfig,

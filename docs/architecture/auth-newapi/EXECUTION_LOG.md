@@ -291,3 +291,42 @@ Pull request: `#13`
 
 - GitHub Actions run `27738455649` passed the `Auth Session / auth-session` job on PR `#13`.
 - The remote validation covered `node scripts/test-auth-session.mjs`, `npm run typecheck`, `npm run lint`, and `npm run build`.
+
+## B10 - Quota, Usage, And Log Adapter
+
+Status: In progress
+
+Branch: `feature/auth-newapi-10-quota-usage`
+
+Base: `origin/integration/auth-newapi`
+
+Integration target: `integration/auth-newapi`
+
+## B10 Scope
+
+- Add a New API-backed quota and usage adapter for authenticated project users.
+- Add current quota, usage pagination, and CSRF-protected quota precheck API routes.
+- Add local usage audit logging without creating a second mutable balance ledger.
+- Add upstream New API log normalization for read-only usage views.
+- Define task billing boundary for future workbench integration.
+
+## B10 Notes
+
+- New API user `quota` and `used_quota` remain the only cloud quota ledger.
+- The display unit is `credits` because B03/B04 did not define a reviewed product conversion to RMB, points, or tokens.
+- Local image/video HD work that does not call New API or another upstream cloud provider remains non-billable against New API quota.
+- B10 does not modify the workbench UI or generation/upscale task routes.
+- Runtime `data/quota-usage-log.json` is an audit log and is ignored by Git.
+- The local quota cache is short-lived display state only; precheck forces a fresh New API quota read.
+
+## B10 Local Verification
+
+- `npm ci` completed from the existing lockfile; it reported existing dependency audit findings, but no dependency or lockfile change was made.
+- `node scripts/test-quota-usage.mjs` passed 10 B10 quota and usage tests covering normal quota, zero quota, insufficient quota, large values, New API unavailable, mapping missing, pagination, idempotency, failed-task audit logging, cache invalidation, user isolation, upstream log mapping, usage failure, and rate limiting.
+- `node scripts/test-auth-session.mjs` passed 17 B09 auth/session tests after the quota changes.
+- `node scripts/test-new-api-bff.mjs` passed 31 B07/B08 New API BFF, mapping, and sync tests after the quota changes.
+- `npm run typecheck` passed.
+- `npm run lint` passed without warnings after cleanup.
+- `npm run build` passed and listed the new `/api/quota`, `/api/quota/precheck`, and `/api/usage` routes.
+- `git diff --check` passed.
+- Protected main line files, `package.json`, and `AGENTS.md` were not modified.
