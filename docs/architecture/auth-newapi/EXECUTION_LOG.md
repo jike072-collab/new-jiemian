@@ -260,7 +260,7 @@ Base: `origin/integration/auth-newapi`
 
 Integration target: `integration/auth-newapi`
 
-Pull request: pending
+Pull request: `#13`
 
 ## B09 Scope
 
@@ -281,4 +281,13 @@ Pull request: pending
 ## B09 Local Verification
 
 - `npm ci` completed from the existing lockfile; it reported existing dependency audit findings, but no dependency or lockfile change was made.
-- `node scripts/test-auth-session.mjs` passed 14 B09 auth/session tests covering registration, duplicate registration, weak password, concurrent registration, mapping failure, login, invalid credentials, disabled user, verification-required user, rate limiting, session expiry, logout, refresh, CSRF, and cookie attributes.
+- `node scripts/test-auth-session.mjs` passed 17 B09 auth/session tests covering registration, duplicate registration, weak password, concurrent registration, mapping failure, login, session rotation, invalid credentials, disabled user, verification-required user, rate limiting, session expiry, logout, route protection helper, refresh, CSRF, open redirect protection, audit redaction, and cookie attributes.
+- `node scripts/test-new-api-bff.mjs` passed 31 B07/B08 BFF and mapping tests.
+- `npm run typecheck` passed.
+- `npm run lint` passed.
+- `npm run build` passed.
+
+## B09 Remote Verification
+
+- GitHub Actions run `27738455649` passed the `Auth Session / auth-session` job on PR `#13`.
+- The remote validation covered `node scripts/test-auth-session.mjs`, `npm run typecheck`, `npm run lint`, and `npm run build`.
