@@ -1,0 +1,22 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "allowImportingTsExtensions": false,
+    "declaration": false,
+    "emitDeclarationOnly": false,
+    "incremental": false,
+    "module": "NodeNext",
+    "moduleResolution": "NodeNext",
+    "noEmit": false,
+    "outDir": "dist/billing-sandbox-tests",
+    "rootDir": ".",
+    "target": "ES2022",
+    "tsBuildInfoFile": "dist/billing-sandbox-tests.tsbuildinfo"
+  },
+  "include": [
+    "src/lib/server/billing/**/*.ts",
+    "src/lib/server/auth/**/*.ts",
+    "src/lib/server/integrations/new-api/**/*.ts",
+    "src/lib/server/quota/**/*.ts"
+  ]
+}

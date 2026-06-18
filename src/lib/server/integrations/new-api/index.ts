@@ -4,6 +4,7 @@ export { createNewApiHttpClient, NewApiHttpClient, newApiAdminRequestContext } f
 export { getNewApiConfig, normalizeNewApiBaseUrl } from "./config";
 export { NewApiError, isNewApiError, safeNewApiError } from "./errors";
 export { checkNewApiHealth } from "./health";
+export { adminCreditNewApiUserQuota, adminSetNewApiUserQuota } from "./topup";
 export { adminGetNewApiLogs, adminGetNewApiUser, getNewApiUserLogs, getNewApiUserSelf } from "./user";
 export {
   createJsonNewApiUserMappingRepository,

@@ -1,0 +1,50 @@
+name: Billing Sandbox
+
+on:
+  pull_request:
+    branches:
+      - integration/auth-newapi
+    paths:
+      - "src/lib/server/billing/**"
+      - "src/app/api/billing/**"
+      - "src/lib/server/auth/**"
+      - "src/lib/server/integrations/new-api/**"
+      - "src/lib/server/quota/**"
+      - "scripts/test-billing-sandbox.mjs"
+      - "scripts/reconcile-billing-sandbox.mjs"
+      - "tsconfig.billing-sandbox-tests.json"
+      - ".github/workflows/billing-sandbox.yml"
+  workflow_dispatch:
+
+jobs:
+  billing-sandbox:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Billing sandbox tests
+        run: node scripts/test-billing-sandbox.mjs
+
+      - name: Billing reconciliation dry run
+        run: node scripts/reconcile-billing-sandbox.mjs --dry-run --json
+
+      - name: Type check
+        run: npm run typecheck
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Build
+        run: npm run build
