@@ -1,6 +1,9 @@
 import {
   adminCreditNewApiUserQuota,
+  adminGetNewApiUser,
+  adminSetNewApiUserQuota,
   createJsonNewApiUserMappingRepository,
+  type NewApiUserSelf,
   type NewApiUserMappingRepository,
 } from "../integrations/new-api";
 import { QuotaDisplayCache } from "./cache";
@@ -37,11 +40,23 @@ export type AdjustQuotaInput = {
   taskId: string;
   quotaDelta: number;
   idempotencyKey: string;
+  originalQuota?: number | null;
+  targetQuota?: number | null;
 };
 
 export type AdjustQuotaResult = {
   ok: true;
   providerAdjustmentId: string;
+} | {
+  ok: false;
+  code: string;
+  message: string;
+  retryable: boolean;
+};
+
+export type ProviderQuotaResult = {
+  ok: true;
+  quota: number;
 } | {
   ok: false;
   code: string;
@@ -55,6 +70,7 @@ export type TaskBillingServiceDependencies = {
   mappingRepository?: NewApiUserMappingRepository;
   quotaCache?: QuotaDisplayCache;
   getQuotaSnapshot?: (localUserId: string) => Promise<{ ok: true; snapshot: QuotaSnapshot } | TaskBillingFailure>;
+  getProviderQuota?: (newApiUserId: string) => Promise<ProviderQuotaResult>;
   adjustQuota?: (input: AdjustQuotaInput) => Promise<AdjustQuotaResult>;
   now?: () => Date;
 };
@@ -144,10 +160,17 @@ function isTaskBillingFailure(value: TaskBillingRecord | null | TaskBillingFailu
 
 async function defaultAdjustQuota(input: AdjustQuotaInput): Promise<AdjustQuotaResult> {
   try {
-    await adminCreditNewApiUserQuota({
-      newApiUserId: Number(input.newApiUserId),
-      quotaDelta: input.quotaDelta,
-    });
+    if (Number.isInteger(input.targetQuota)) {
+      await adminSetNewApiUserQuota({
+        newApiUserId: Number(input.newApiUserId),
+        quota: input.targetQuota!,
+      });
+    } else {
+      await adminCreditNewApiUserQuota({
+        newApiUserId: Number(input.newApiUserId),
+        quotaDelta: input.quotaDelta,
+      });
+    }
     return {
       ok: true,
       providerAdjustmentId: `new-api:${input.taskId}:${input.idempotencyKey}`,
@@ -162,12 +185,49 @@ async function defaultAdjustQuota(input: AdjustQuotaInput): Promise<AdjustQuotaR
   }
 }
 
+function isNewApiUserSelf(value: unknown): value is NewApiUserSelf {
+  return Boolean(value && typeof value === "object" && "id" in value);
+}
+
+function extractNewApiUserQuota(payload: { data?: NewApiUserSelf; user?: NewApiUserSelf } | NewApiUserSelf | null | undefined): number | null {
+  if (!payload || typeof payload !== "object") return null;
+  const direct = isNewApiUserSelf(payload) ? payload.quota : undefined;
+  const nestedData = "data" in payload && isNewApiUserSelf(payload.data) ? payload.data.quota : undefined;
+  const nestedUser = "user" in payload && isNewApiUserSelf(payload.user) ? payload.user.quota : undefined;
+  const quota = Number(direct ?? nestedData ?? nestedUser);
+  return Number.isFinite(quota) ? quota : null;
+}
+
+async function defaultGetProviderQuota(newApiUserId: string): Promise<ProviderQuotaResult> {
+  try {
+    const response = await adminGetNewApiUser({ newApiUserId: Number(newApiUserId) });
+    const quota = extractNewApiUserQuota(response.data);
+    if (quota === null) {
+      return {
+        ok: false,
+        code: "NEW_API_QUOTA_READ_INVALID",
+        message: "New API quota read returned an invalid value.",
+        retryable: true,
+      };
+    }
+    return { ok: true, quota };
+  } catch (error) {
+    return {
+      ok: false,
+      code: error instanceof Error ? error.name : "NEW_API_QUOTA_READ_FAILED",
+      message: "New API quota read failed.",
+      retryable: true,
+    };
+  }
+}
+
 export class TaskBillingService {
   private readonly taskRepository: TaskBillingRepository;
   private readonly usageRepository: UsageLogRepository;
   private readonly mappingRepository: NewApiUserMappingRepository;
   private readonly quotaCache: QuotaDisplayCache;
   private readonly getQuotaSnapshot: NonNullable<TaskBillingServiceDependencies["getQuotaSnapshot"]>;
+  private readonly getProviderQuota: (newApiUserId: string) => Promise<ProviderQuotaResult>;
   private readonly adjustQuota: (input: AdjustQuotaInput) => Promise<AdjustQuotaResult>;
   private readonly now: () => Date;
   private readonly taskLocks = new Map<string, Promise<void>>();
@@ -181,6 +241,7 @@ export class TaskBillingService {
     this.mappingRepository = dependencies.mappingRepository || persistence!.mappingRepository || createJsonNewApiUserMappingRepository();
     this.quotaCache = dependencies.quotaCache || new QuotaDisplayCache(15_000);
     this.getQuotaSnapshot = dependencies.getQuotaSnapshot || this.defaultQuotaSnapshot.bind(this);
+    this.getProviderQuota = dependencies.getProviderQuota || defaultGetProviderQuota;
     this.adjustQuota = dependencies.adjustQuota || defaultAdjustQuota;
     this.now = dependencies.now || (() => new Date());
   }
@@ -481,6 +542,10 @@ export class TaskBillingService {
   }): Promise<AdjustQuotaResult | TaskBillingFailure> {
     const operation = async (): Promise<AdjustQuotaResult | TaskBillingFailure> => {
       try {
+        const currentQuota = await this.getProviderQuota(input.newApiUserId);
+        if (!currentQuota.ok) return currentQuota;
+        const originalQuota = input.originalQuota ?? currentQuota.quota;
+        const targetQuota = input.targetQuota ?? originalQuota + input.quotaDelta;
         const adjustment = this.taskRepository.claimQuotaAdjustment
           ? await this.taskRepository.claimQuotaAdjustment({
             localUserId: input.localUserId,
@@ -489,6 +554,8 @@ export class TaskBillingService {
             taskId: input.taskId,
             idempotencyKey: input.idempotencyKey,
             quotaDelta: input.quotaDelta,
+            originalQuota,
+            targetQuota,
             now: this.now(),
           })
           : null;
@@ -498,7 +565,33 @@ export class TaskBillingService {
             providerAdjustmentId: adjustment.provider_adjustment_id || `task-quota:${input.idempotencyKey}`,
           };
         }
-        const result = await this.adjustQuota(input);
+        const persistedOriginalQuota = adjustment?.original_quota ?? originalQuota;
+        const persistedTargetQuota = adjustment?.target_quota ?? targetQuota;
+        if (adjustment && !adjustment.created && currentQuota.quota === persistedTargetQuota) {
+          const providerAdjustmentId = `new-api:${input.taskId}:${input.idempotencyKey}:recovered`;
+          if (this.taskRepository.markQuotaAdjustmentApplied) {
+            await this.taskRepository.markQuotaAdjustmentApplied(input.idempotencyKey, providerAdjustmentId, this.now());
+          }
+          return { ok: true, providerAdjustmentId };
+        }
+        if (adjustment && !adjustment.created && currentQuota.quota !== persistedOriginalQuota) {
+          const message = "New API quota changed outside the pending task adjustment.";
+          if (this.taskRepository.markQuotaAdjustmentFailed) {
+            await this.taskRepository.markQuotaAdjustmentFailed(input.idempotencyKey, message, this.now())
+              .catch(() => undefined);
+          }
+          return {
+            ok: false,
+            code: "TASK_QUOTA_RECONCILIATION_REQUIRED",
+            message,
+            retryable: false,
+          };
+        }
+        const result = await this.adjustQuota({
+          ...input,
+          originalQuota: persistedOriginalQuota,
+          targetQuota: persistedTargetQuota,
+        });
         if (!result.ok) {
           if (this.taskRepository.markQuotaAdjustmentFailed) {
             await this.taskRepository.markQuotaAdjustmentFailed(input.idempotencyKey, sanitizeError(result.message) || result.code, this.now())

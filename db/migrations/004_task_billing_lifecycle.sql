@@ -18,6 +18,8 @@ create table if not exists task_quota_adjustments (
   task_id text not null,
   idempotency_key text not null unique,
   quota_delta integer not null,
+  original_quota integer,
+  target_quota integer,
   status text not null,
   provider_adjustment_id text,
   last_error text,

@@ -246,21 +246,21 @@ async function assertConstraints() {
   await q(`
     insert into task_quota_adjustments(
       id, local_user_id, new_api_user_id, task_billing_record_id, task_id,
-      idempotency_key, quota_delta, status, created_at, updated_at
+      idempotency_key, quota_delta, original_quota, target_quota, status, created_at, updated_at
     ) values ($1,$2,'100',(select id from task_billing_records where task_id = 'task-1'),
-      'task-1','task-settle-1',-10,'pending',now(),now())
+      'task-1','task-settle-1',-10,100,90,'pending',now(),now())
   `, [randomUUID(), userId]);
   await expectRejects("duplicate task quota adjustment idempotency", () => q(`
     insert into task_quota_adjustments(
       id, local_user_id, new_api_user_id, task_id, idempotency_key, quota_delta,
-      status, created_at, updated_at
-    ) values ($1,$2,'100','task-1','task-settle-1',-10,'pending',now(),now())
+      original_quota, target_quota, status, created_at, updated_at
+    ) values ($1,$2,'100','task-1','task-settle-1',-10,100,90,'pending',now(),now())
   `, [randomUUID(), userId]));
   await expectRejects("invalid task quota adjustment status is rejected", () => q(`
     insert into task_quota_adjustments(
       id, local_user_id, new_api_user_id, task_id, idempotency_key, quota_delta,
-      status, created_at, updated_at
-    ) values ($1,$2,'100','task-1','task-settle-invalid',-10,'unknown',now(),now())
+      original_quota, target_quota, status, created_at, updated_at
+    ) values ($1,$2,'100','task-1','task-settle-invalid',-10,100,90,'unknown',now(),now())
   `, [randomUUID(), userId]));
 }
 

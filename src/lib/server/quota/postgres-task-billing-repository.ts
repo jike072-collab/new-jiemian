@@ -47,6 +47,8 @@ type TaskQuotaAdjustmentRow = QueryResultRow & {
   task_id: string;
   idempotency_key: string;
   quota_delta: number;
+  original_quota: number | null;
+  target_quota: number | null;
   status: TaskQuotaAdjustmentStatus;
   provider_adjustment_id: string | null;
   last_error: string | null;
@@ -54,6 +56,7 @@ type TaskQuotaAdjustmentRow = QueryResultRow & {
   updated_at: Date | string;
   applied_at: Date | string | null;
   version: number;
+  created?: boolean;
 };
 
 function iso(value: Date | string) {
@@ -95,6 +98,8 @@ function adjustmentFromRow(row: TaskQuotaAdjustmentRow): TaskQuotaAdjustment {
     task_id: row.task_id,
     idempotency_key: row.idempotency_key,
     quota_delta: Number(row.quota_delta),
+    original_quota: row.original_quota === null ? null : Number(row.original_quota),
+    target_quota: row.target_quota === null ? null : Number(row.target_quota),
     status: row.status,
     provider_adjustment_id: row.provider_adjustment_id,
     last_error: row.last_error,
@@ -102,6 +107,7 @@ function adjustmentFromRow(row: TaskQuotaAdjustmentRow): TaskQuotaAdjustment {
     updated_at: iso(row.updated_at),
     applied_at: isoOrNull(row.applied_at),
     version: Number(row.version),
+    created: Boolean(row.created),
   };
 }
 
@@ -220,13 +226,14 @@ export class PostgresTaskBillingRepository implements TaskBillingRepository {
   async claimQuotaAdjustment(input: TaskQuotaAdjustmentInput) {
     const timestamp = (input.now || new Date()).toISOString();
     return withApplicationTransaction(async (client) => {
-      await client.query(`
+      const inserted = await client.query<{ id: string }>(`
         insert into task_quota_adjustments(
           id, local_user_id, new_api_user_id, task_billing_record_id, task_id, idempotency_key,
-          quota_delta, status, provider_adjustment_id, last_error, created_at, updated_at,
+          quota_delta, original_quota, target_quota, status, provider_adjustment_id, last_error, created_at, updated_at,
           applied_at, version
-        ) values ($1,$2,$3,$4,$5,$6,$7,'pending',null,null,$8,$8,null,1)
+        ) values ($1,$2,$3,$4,$5,$6,$7,$8,$9,'pending',null,null,$10,$10,null,1)
         on conflict (idempotency_key) do nothing
+        returning id
       `, [
         randomUUID(),
         input.localUserId.trim(),
@@ -235,25 +242,33 @@ export class PostgresTaskBillingRepository implements TaskBillingRepository {
         input.taskId.trim(),
         input.idempotencyKey.trim(),
         input.quotaDelta,
+        input.originalQuota ?? null,
+        input.targetQuota ?? null,
         timestamp,
       ]);
-      const current = await client.query<TaskQuotaAdjustmentRow>(`
+      const current = await client.query<TaskQuotaAdjustmentRow & { created: boolean }>(`
         select *
+        , $2::boolean as created
         from task_quota_adjustments
         where idempotency_key = $1
         for update
-      `, [input.idempotencyKey.trim()]);
+      `, [input.idempotencyKey.trim(), inserted.rowCount === 1]);
       if (!current.rows[0]) {
         throw new TaskBillingRepositoryError("TASK_BILLING_NOT_FOUND", "Task quota adjustment was not found.");
       }
       const row = current.rows[0];
       if (row.status === "failed") {
-        const retried = await client.query<TaskQuotaAdjustmentRow>(`
+        const retried = await client.query<TaskQuotaAdjustmentRow & { created: boolean }>(`
           update task_quota_adjustments
-          set status = 'pending', last_error = null, updated_at = $2, version = version + 1
+          set status = 'pending',
+            original_quota = coalesce($2, original_quota),
+            target_quota = coalesce($3, target_quota),
+            last_error = null,
+            updated_at = $4,
+            version = version + 1
           where idempotency_key = $1
-          returning *
-        `, [input.idempotencyKey.trim(), timestamp]);
+          returning *, false as created
+        `, [input.idempotencyKey.trim(), input.originalQuota ?? null, input.targetQuota ?? null, timestamp]);
         return adjustmentFromRow(retried.rows[0]);
       }
       return adjustmentFromRow(row);

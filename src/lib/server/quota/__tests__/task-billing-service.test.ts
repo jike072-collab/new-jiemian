@@ -56,14 +56,17 @@ function snapshot(available: number, localUserId = "local-user", newApiUserId = 
 
 function service(overrides: {
   availableQuota?: number;
+  providerQuota?: number;
   repository?: TaskBillingRepository;
   adjustQuota?: (input: AdjustQuotaInput) => Promise<{ ok: true; providerAdjustmentId: string } | { ok: false; code: string; message: string; retryable: boolean }>;
+  getProviderQuota?: (newApiUserId: string) => Promise<{ ok: true; quota: number } | { ok: false; code: string; message: string; retryable: boolean }>;
 } = {}) {
   const taskRepository = overrides.repository || createMemoryTaskBillingRepository();
   const usageRepository = createMemoryUsageLogRepository();
   const mappingRepository = createMemoryNewApiUserMappingRepository(mappingSeed());
   const quotaCache = new QuotaDisplayCache(15_000);
   const adjustments: AdjustQuotaInput[] = [];
+  let providerQuota = overrides.providerQuota ?? overrides.availableQuota ?? 100;
   const taskBilling = new TaskBillingService({
     taskRepository,
     usageRepository,
@@ -74,12 +77,26 @@ function service(overrides: {
       ok: true,
       snapshot: snapshot(overrides.availableQuota ?? 100, localUserId),
     }),
+    getProviderQuota: overrides.getProviderQuota || (async () => ({ ok: true, quota: providerQuota })),
     adjustQuota: overrides.adjustQuota || (async (input) => {
       adjustments.push(input);
+      providerQuota = input.targetQuota ?? providerQuota + input.quotaDelta;
       return { ok: true, providerAdjustmentId: `adjust:${input.idempotencyKey}` };
     }),
   });
-  return { taskBilling, taskRepository, usageRepository, mappingRepository, adjustments };
+  return {
+    taskBilling,
+    taskRepository,
+    usageRepository,
+    mappingRepository,
+    adjustments,
+    get providerQuota() {
+      return providerQuota;
+    },
+    set providerQuota(value: number) {
+      providerQuota = value;
+    },
+  };
 }
 
 async function precheckAndAccept(harness = service(), taskId = "task-1") {
@@ -352,6 +369,128 @@ test("local write failure after quota adjustment recovers without duplicate char
   assert.equal(harness.adjustments.length, 1);
   assert.equal(JSON.stringify(first).includes("secret-token"), false);
   assert.equal(JSON.stringify(first).includes("hidden"), false);
+});
+
+test("interrupted provider charge is recovered from target quota without duplicate debit", async () => {
+  const taskRepository = createMemoryTaskBillingRepository();
+  const harness = service({ repository: taskRepository, providerQuota: 100 });
+  await precheckAndAccept(harness, "task-provider-crash");
+  const originalApplied = taskRepository.markQuotaAdjustmentApplied?.bind(taskRepository);
+  let failApplied = true;
+  taskRepository.markQuotaAdjustmentApplied = async (idempotencyKey, providerAdjustmentId, now) => {
+    if (failApplied) {
+      failApplied = false;
+      throw new Error("simulated crash before local applied marker token=hidden");
+    }
+    return originalApplied!(idempotencyKey, providerAdjustmentId, now);
+  };
+
+  const first = await harness.taskBilling.settleSuccess({
+    localUserId: "local-user",
+    taskId: "task-provider-crash",
+    actualQuotaUnits: 11,
+  });
+  assert.equal(first.ok, true);
+  if (!first.ok) return;
+  assert.equal(first.action, "reconciliation_required");
+  assert.equal(harness.providerQuota, 89);
+  assert.equal(harness.adjustments.length, 1);
+
+  const retry = await harness.taskBilling.settleSuccess({
+    localUserId: "local-user",
+    taskId: "task-provider-crash",
+    actualQuotaUnits: 11,
+  });
+
+  assert.equal(retry.ok, true);
+  if (!retry.ok) return;
+  assert.equal(retry.action, "settled");
+  assert.equal(harness.providerQuota, 89);
+  assert.equal(harness.adjustments.length, 1);
+});
+
+test("interrupted provider refund is recovered from target quota without duplicate credit", async () => {
+  const taskRepository = createMemoryTaskBillingRepository();
+  const harness = service({ repository: taskRepository, providerQuota: 100 });
+  await precheckAndAccept(harness, "task-refund-crash");
+  const settled = await harness.taskBilling.settleSuccess({
+    localUserId: "local-user",
+    taskId: "task-refund-crash",
+    actualQuotaUnits: 8,
+  });
+  assert.equal(settled.ok, true);
+  assert.equal(harness.providerQuota, 92);
+  const originalApplied = taskRepository.markQuotaAdjustmentApplied?.bind(taskRepository);
+  let failRefundApplied = true;
+  taskRepository.markQuotaAdjustmentApplied = async (idempotencyKey, providerAdjustmentId, now) => {
+    if (idempotencyKey.startsWith("task-refund:") && failRefundApplied) {
+      failRefundApplied = false;
+      throw new Error("simulated crash before refund applied marker secret=hidden");
+    }
+    return originalApplied!(idempotencyKey, providerAdjustmentId, now);
+  };
+
+  const failed = await harness.taskBilling.fail({
+    localUserId: "local-user",
+    taskId: "task-refund-crash",
+    reason: "provider failed after debit",
+  });
+  assert.equal(failed.ok, true);
+  if (!failed.ok) return;
+  assert.equal(failed.action, "reconciliation_required");
+  assert.equal(harness.providerQuota, 100);
+  assert.deepEqual(harness.adjustments.map((input) => input.quotaDelta), [-8, 8]);
+
+  const retry = await harness.taskBilling.fail({
+    localUserId: "local-user",
+    taskId: "task-refund-crash",
+    reason: "provider failed after debit",
+  });
+
+  assert.equal(retry.ok, true);
+  if (!retry.ok) return;
+  assert.equal(retry.action, "refunded");
+  assert.equal(harness.providerQuota, 100);
+  assert.deepEqual(harness.adjustments.map((input) => input.quotaDelta), [-8, 8]);
+});
+
+test("unknown provider quota change enters reconciliation without automatic overwrite", async () => {
+  const taskRepository = createMemoryTaskBillingRepository();
+  const harness = service({ repository: taskRepository, providerQuota: 100 });
+  await precheckAndAccept(harness, "task-provider-unknown");
+  const originalApplied = taskRepository.markQuotaAdjustmentApplied?.bind(taskRepository);
+  let failApplied = true;
+  taskRepository.markQuotaAdjustmentApplied = async (idempotencyKey, providerAdjustmentId, now) => {
+    if (failApplied) {
+      failApplied = false;
+      throw new Error("simulated crash before local applied marker");
+    }
+    return originalApplied!(idempotencyKey, providerAdjustmentId, now);
+  };
+
+  const first = await harness.taskBilling.settleSuccess({
+    localUserId: "local-user",
+    taskId: "task-provider-unknown",
+    actualQuotaUnits: 10,
+  });
+  assert.equal(first.ok, true);
+  if (!first.ok) return;
+  assert.equal(first.action, "reconciliation_required");
+  assert.equal(harness.providerQuota, 90);
+  harness.providerQuota = 95;
+
+  const retry = await harness.taskBilling.settleSuccess({
+    localUserId: "local-user",
+    taskId: "task-provider-unknown",
+    actualQuotaUnits: 10,
+  });
+
+  assert.equal(retry.ok, true);
+  if (!retry.ok) return;
+  assert.equal(retry.action, "reconciliation_required");
+  assert.equal(retry.record.billing_state, "reconciliation_required");
+  assert.equal(harness.providerQuota, 95);
+  assert.equal(harness.adjustments.length, 1);
 });
 
 async function resetTaskBillingTables() {

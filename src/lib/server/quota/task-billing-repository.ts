@@ -39,6 +39,8 @@ export type TaskQuotaAdjustment = {
   task_id: string;
   idempotency_key: string;
   quota_delta: number;
+  original_quota: number | null;
+  target_quota: number | null;
   status: TaskQuotaAdjustmentStatus;
   provider_adjustment_id: string | null;
   last_error: string | null;
@@ -46,6 +48,7 @@ export type TaskQuotaAdjustment = {
   updated_at: string;
   applied_at: string | null;
   version: number;
+  created: boolean;
 };
 
 export type TaskQuotaAdjustmentInput = {
@@ -55,6 +58,8 @@ export type TaskQuotaAdjustmentInput = {
   taskId: string;
   idempotencyKey: string;
   quotaDelta: number;
+  originalQuota?: number | null;
+  targetQuota?: number | null;
   now?: Date;
 };
 
@@ -97,6 +102,10 @@ function cloneAdjustment(adjustment: TaskQuotaAdjustment): TaskQuotaAdjustment {
   return { ...adjustment };
 }
 
+function persistAdjustment(adjustment: TaskQuotaAdjustment): TaskQuotaAdjustment {
+  return { ...adjustment, created: false };
+}
+
 function normalizeRecord(record: Partial<TaskBillingRecord>): TaskBillingRecord {
   const timestamp = record.created_at || nowIso();
   return {
@@ -128,6 +137,8 @@ function normalizeAdjustment(adjustment: Partial<TaskQuotaAdjustment>): TaskQuot
     task_id: String(adjustment.task_id || ""),
     idempotency_key: String(adjustment.idempotency_key || ""),
     quota_delta: Number(adjustment.quota_delta || 0),
+    original_quota: adjustment.original_quota === undefined ? null : adjustment.original_quota,
+    target_quota: adjustment.target_quota === undefined ? null : adjustment.target_quota,
     status: adjustment.status || "pending",
     provider_adjustment_id: adjustment.provider_adjustment_id ?? null,
     last_error: adjustment.last_error ?? null,
@@ -135,6 +146,7 @@ function normalizeAdjustment(adjustment: Partial<TaskQuotaAdjustment>): TaskQuot
     updated_at: adjustment.updated_at || timestamp,
     applied_at: adjustment.applied_at ?? null,
     version: Number(adjustment.version || 1),
+    created: false,
   };
 }
 
@@ -268,7 +280,7 @@ class StoreTaskBillingRepository implements TaskBillingRepository {
     return this.withLock(async () => {
       const adjustments = (await this.adjustmentStorage!.read()).map(cloneAdjustment);
       const existing = adjustments.find((adjustment) => adjustment.idempotency_key === idempotencyKey);
-      if (existing) return cloneAdjustment(existing);
+      if (existing) return { ...cloneAdjustment(existing), created: false };
       const adjustment: TaskQuotaAdjustment = {
         id: randomUUID(),
         local_user_id: requiredText(input.localUserId, "localUserId"),
@@ -277,6 +289,8 @@ class StoreTaskBillingRepository implements TaskBillingRepository {
         task_id: requiredText(input.taskId, "taskId"),
         idempotency_key: idempotencyKey,
         quota_delta: input.quotaDelta,
+        original_quota: input.originalQuota ?? null,
+        target_quota: input.targetQuota ?? null,
         status: "pending",
         provider_adjustment_id: null,
         last_error: null,
@@ -284,10 +298,11 @@ class StoreTaskBillingRepository implements TaskBillingRepository {
         updated_at: timestamp,
         applied_at: null,
         version: 1,
+        created: true,
       };
-      adjustments.push(adjustment);
+      adjustments.push(persistAdjustment(adjustment));
       await this.adjustmentStorage!.write(adjustments);
-      return cloneAdjustment(adjustment);
+      return { ...cloneAdjustment(adjustment), created: true };
     });
   }
 
