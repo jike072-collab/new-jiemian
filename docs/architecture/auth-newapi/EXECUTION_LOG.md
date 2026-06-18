@@ -218,7 +218,7 @@ Base: `origin/integration/auth-newapi`
 
 Integration target: `integration/auth-newapi`
 
-Pull request: pending
+Pull request: `#12`
 
 ## B08 Scope
 
@@ -238,5 +238,14 @@ Pull request: pending
 ## B08 Local Verification
 
 - `npm ci` completed from the existing lockfile; it reported existing dependency audit findings, but no dependency or lockfile change was made.
-- `node scripts/test-new-api-bff.mjs` passed 27 local unit and boundary tests including B08 Repository and sync cases.
+- `node scripts/test-new-api-bff.mjs` passed 31 local unit and boundary tests including B08 Repository and sync cases.
+- `npm run typecheck` passed.
+- `npm run lint` passed.
+- `npm run build` passed.
 - Local real container verification remains blocked because `docker` and `docker compose` are not available in `PATH`; PR CI must run `node scripts/test-new-api-bff.mjs --real` against the isolated New API stack.
+
+## B08 Remote Verification
+
+- GitHub Actions run `27737484928` passed the `New API BFF / bff-client` job on PR `#12`.
+- The remote Docker-enabled validation covered unit tests, isolated New API startup, test admin initialization, admin access-token generation, real BFF health call, unauthorized admin rejection, authorized admin call, real user mapping creation/activation, production build, and static bundle leak scan.
+- A previous remote validation attempt found that New API rejects user creation when `User.Email` exceeds the official 50-character limit. The sync layer now sends local email upstream only when it fits the New API field limit; overlong local emails remain local identity data and are confirmed upstream by the normalized username.
