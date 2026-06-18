@@ -654,7 +654,8 @@
     padding: 8px;
   }
 
-  .studio-upload-item img {
+  .studio-upload-item img,
+  .studio-upload-item video {
     width: 58px;
     height: 58px;
     border-radius: var(--radius-control);
@@ -1027,7 +1028,8 @@
     background: var(--background);
   }
 
-  .studio-upscale-preview__figure img {
+  .studio-upscale-preview__figure img,
+  .studio-upscale-preview__figure video {
     display: block;
     width: 100%;
     max-height: min(48vh, 520px);
