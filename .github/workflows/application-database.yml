@@ -10,8 +10,11 @@ on:
       - scripts/database/**
       - src/lib/server/database/**
       - src/lib/server/auth/**
+      - src/lib/server/billing/**
       - src/lib/server/integrations/new-api/**
       - tsconfig.auth-persistence-tests.json
+      - tsconfig.billing-sandbox-tests.json
+      - scripts/test-billing-sandbox.mjs
       - package.json
       - package-lock.json
       - .github/workflows/application-database.yml
@@ -180,12 +183,16 @@ jobs:
       - name: Migration status
         run: npm run migrate:status
 
-      - name: Migration status includes 001 and 002
+      - name: Migration status includes 001 through 003
         run: |
           set -eu
           npm run migrate:status > migration-status.txt
           grep -q $'001_initial_application_schema\tapplied' migration-status.txt
           grep -q $'002_harden_database_baseline\tapplied' migration-status.txt
+          grep -q $'003_billing_webhook_processing_status\tapplied' migration-status.txt
+
+      - name: Billing webhook status upgrade test
+        run: node scripts/database/test-billing-webhook-status-upgrade.mjs
 
       - name: Schema and transaction tests
         run: npm run migrate:test
@@ -338,6 +345,14 @@ jobs:
           npm run typecheck
           npm run build
           node scripts/database/bundle-scan.mjs
+
+      - name: Billing postgres persistence and order query contract
+        env:
+          APP_BILLING_PERSISTENCE_MODE: postgres
+          AUTH_SESSION_SECRET: application-database-test-session-secret-not-production
+          PAYMENT_SANDBOX_WEBHOOK_SECRET: application-database-test-webhook-secret-not-production
+          NEW_API_ENABLED: "false"
+        run: node scripts/test-billing-sandbox.mjs
 
       - name: Re-run migration idempotently
         run: npm run migrate

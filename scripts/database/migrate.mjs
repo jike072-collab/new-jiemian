@@ -53,7 +53,9 @@ async function loadMigrations() {
   const files = (await readdir(migrationsDir))
     .filter((file) => /^\d+_[a-z0-9_]+\.sql$/i.test(file))
     .sort();
-  return Promise.all(files.map(async (file) => {
+  const target = process.env.APP_DATABASE_MIGRATION_TARGET || "";
+  const selected = target ? files.filter((file) => migrationVersion(file) <= target) : files;
+  return Promise.all(selected.map(async (file) => {
     const sql = await readFile(join(migrationsDir, file), "utf8");
     return {
       file,

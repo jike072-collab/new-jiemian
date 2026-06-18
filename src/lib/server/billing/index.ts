@@ -1,6 +1,15 @@
 export { amountAllowed, calculateCreditedQuota, listPaymentChannels, publicPaymentChannels } from "./config";
-export { getBillingOrderResponse, createBillingOrderResponse, paymentConfigResponse, sandboxWebhookResponse } from "./http";
+export {
+  getBillingOrderResponse,
+  createBillingOrderResponse,
+  listBillingOrdersResponse,
+  paymentConfigResponse,
+  sandboxWebhookResponse,
+} from "./http";
 export { createMemoryBillingRepository, createJsonBillingRepository, BillingRepositoryError } from "./repository";
+export { createBillingPersistenceRepository, getBillingPersistenceMode, createDualBillingRepository } from "./persistence";
+export { createPostgresBillingRepository } from "./postgres-repository";
+export { createJsonBillingDualRepairRepository } from "./dual-repair";
 export { signSandboxWebhook, verifySandboxWebhook } from "./sandbox-provider";
 export { BillingService, createBillingService, getBillingService } from "./service";
 export type {
@@ -8,6 +17,7 @@ export type {
   BillingCurrency,
   BillingErrorCode,
   BillingOrder,
+  BillingOrderListResult,
   BillingOrderStatus,
   BillingWebhookPayload,
   BillingWebhookResult,

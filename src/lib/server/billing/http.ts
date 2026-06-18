@@ -9,7 +9,7 @@ import {
   readJsonBody,
 } from "../auth";
 import { getBillingService } from "./service";
-import { type BillingErrorCode } from "./types";
+import { type BillingErrorCode, type BillingOrderStatus } from "./types";
 
 function billingErrorResponse(input: {
   code: BillingErrorCode;
@@ -43,6 +43,31 @@ function parseAmount(value: unknown) {
   return Number.isInteger(amount) ? amount : Number.NaN;
 }
 
+const orderStatuses = new Set<BillingOrderStatus>([
+  "pending",
+  "processing",
+  "paid",
+  "failed",
+  "cancelled",
+  "review",
+  "refunded",
+]);
+
+function parsePositiveInt(value: string | null, fallback: number, max: number) {
+  const parsed = Number(value || "");
+  if (!Number.isInteger(parsed) || parsed < 1) return fallback;
+  return Math.min(parsed, max);
+}
+
+function parseStatuses(value: string | null) {
+  if (!value) return undefined;
+  const statuses = value
+    .split(",")
+    .map((status) => status.trim())
+    .filter((status): status is BillingOrderStatus => orderStatuses.has(status as BillingOrderStatus));
+  return statuses.length ? statuses : undefined;
+}
+
 export function paymentConfigResponse() {
   return NextResponse.json({
     ok: true,
@@ -68,6 +93,28 @@ export async function createBillingOrderResponse(request: NextRequest) {
     ok: true,
     order: result.order,
     payment: result.payment,
+  }, { status: result.status });
+}
+
+export async function listBillingOrdersResponse(request: NextRequest) {
+  const auth = await requireLocalUser(request);
+  if (!auth.ok) return auth.response;
+
+  const url = new URL(request.url);
+  const result = await getBillingService().listOrdersForUser({
+    localUserId: auth.localUserId,
+    statuses: parseStatuses(url.searchParams.get("status")),
+    page: parsePositiveInt(url.searchParams.get("page"), 1, 1000000),
+    pageSize: parsePositiveInt(url.searchParams.get("pageSize") || url.searchParams.get("page_size"), 20, 100),
+  });
+  if (!result.ok) return billingErrorResponse(result);
+  return NextResponse.json({
+    ok: true,
+    orders: result.orders,
+    page: result.page,
+    page_size: result.page_size,
+    total: result.total,
+    has_more: result.has_more,
   }, { status: result.status });
 }
 

@@ -1,13 +1,23 @@
 import assert from "node:assert/strict";
+import { mkdtemp, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { test } from "node:test";
 
+import { applicationQuery, closeApplicationDatabasePool } from "../../database";
 import { createMemoryNewApiUserMappingRepository, type NewApiUserMapping } from "../../integrations/new-api";
-import { createMemoryBillingRepository } from "../repository";
+import { createPostgresNewApiUserMappingRepository } from "../../integrations/new-api/postgres-user-mapping";
+import { createDualBillingRepository } from "../persistence";
+import { createJsonBillingDualRepairRepository } from "../dual-repair";
+import { createMemoryBillingRepository, type BillingRepository } from "../repository";
+import { createPostgresBillingRepository } from "../postgres-repository";
 import { signSandboxWebhook } from "../sandbox-provider";
 import { BillingService, type CreditQuotaInput, type CreditQuotaResult } from "../service";
 import { type BillingOrder, type BillingWebhookPayload } from "../types";
 
 const secret = "sandbox-test-secret";
+const hasDatabase = Boolean(process.env.APP_DATABASE_URL && process.env.APP_DATABASE_EXPECTED_NAME);
+const dbTest = hasDatabase ? test : test.skip;
 
 function mappingSeed(localUserId = "local-user", newApiUserId = "100"): NewApiUserMapping[] {
   const now = "2026-06-18T00:00:00.000Z";
@@ -40,6 +50,18 @@ function withSecret<T>(callback: () => T | Promise<T>) {
   const previous = process.env.PAYMENT_SANDBOX_WEBHOOK_SECRET;
   process.env.PAYMENT_SANDBOX_WEBHOOK_SECRET = secret;
   return Promise.resolve(callback()).finally(() => {
+    process.env.PAYMENT_SANDBOX_WEBHOOK_SECRET = previous;
+  });
+}
+
+function withoutSecret<T>(callback: () => T | Promise<T>) {
+  const previous = process.env.PAYMENT_SANDBOX_WEBHOOK_SECRET;
+  delete process.env.PAYMENT_SANDBOX_WEBHOOK_SECRET;
+  return Promise.resolve(callback()).finally(() => {
+    if (previous === undefined) {
+      delete process.env.PAYMENT_SANDBOX_WEBHOOK_SECRET;
+      return;
+    }
     process.env.PAYMENT_SANDBOX_WEBHOOK_SECRET = previous;
   });
 }
@@ -173,11 +195,13 @@ test("rejects missing webhook secret and invalid signatures without paying the o
   const order = await createOrder(harness);
   const rawBody = JSON.stringify(payloadFor(order));
 
-  const missingSecret = await harness.billing.handleSandboxWebhook({
-    rawBody,
-    timestamp: "1781712000",
-    signature: "0".repeat(64),
-    now: new Date("2026-06-18T00:00:00.000Z"),
+  const missingSecret = await withoutSecret(() => {
+    return harness.billing.handleSandboxWebhook({
+      rawBody,
+      timestamp: "1781712000",
+      signature: "0".repeat(64),
+      now: new Date("2026-06-18T00:00:00.000Z"),
+    });
   });
   assert.equal(missingSecret.ok, false);
   if (missingSecret.ok) return;
@@ -232,6 +256,63 @@ test("credits New API quota once for duplicate and concurrent webhooks", async (
 
   assert.equal(harness.creditCalls.length, 1);
   assert.equal(harness.creditCalls[0].quotaUnits, 10000);
+  assert.equal((await harness.repository.getOrder(order.order_id))?.status, "paid");
+});
+
+test("incomplete webhook processing can resume after event record is saved", async () => {
+  const harness = service();
+  const order = await createOrder(harness, { idempotencyKey: "idem-resume" });
+  const originalUpdateOrder = harness.repository.updateOrder.bind(harness.repository);
+  const originalUpdateWebhookEventStatus = harness.repository.updateWebhookEventStatus.bind(harness.repository);
+  let interrupted = true;
+  harness.repository.updateOrder = async (orderId, patch, expectedVersion) => {
+    const next = await originalUpdateOrder(orderId, patch, expectedVersion);
+    if (interrupted && next.status === "processing") {
+      interrupted = false;
+      throw new Error("simulated webhook interruption after status update");
+    }
+    return next;
+  };
+  harness.repository.updateWebhookEventStatus = async (eventId, status, safeError) => {
+    const updated = await originalUpdateWebhookEventStatus(eventId, status, safeError);
+    if (interrupted && status === "processing") {
+      interrupted = false;
+      throw new Error("simulated webhook interruption after event status update");
+    }
+    return updated;
+  };
+
+  await withSecret(async () => {
+    await assert.rejects(
+      () => signedWebhook(harness.billing, payloadFor(order, { event_id: "evt-resume" })),
+      /simulated webhook interruption/,
+    );
+  });
+
+  const afterFirst = await harness.repository.getOrder(order.order_id);
+  assert.equal(afterFirst?.status, "processing");
+  assert.equal(harness.creditCalls.length, 0);
+
+  const eventAfterFirst = await harness.repository.appendWebhookEvent(order.order_id, "evt-resume", { status: "received" });
+  assert.equal(eventAfterFirst.completed, false);
+  assert.equal(eventAfterFirst.event.status, "processing");
+
+  await withSecret(async () => {
+    const second = await signedWebhook(harness.billing, payloadFor(order, { event_id: "evt-resume" }));
+    assert.equal(second.ok, true);
+    if (!second.ok) return;
+    assert.equal(second.action, "credited");
+    assert.equal(second.order.status, "paid");
+  });
+
+  await withSecret(async () => {
+    const third = await signedWebhook(harness.billing, payloadFor(order, { event_id: "evt-resume" }));
+    assert.equal(third.ok, true);
+    if (!third.ok) return;
+    assert.equal(third.action, "idempotent");
+  });
+
+  assert.equal(harness.creditCalls.length, 1);
   assert.equal((await harness.repository.getOrder(order.order_id))?.status, "paid");
 });
 
@@ -363,4 +444,298 @@ test("users cannot read other users' orders through service boundary", async () 
   assert.equal(other.ok, false);
   if (other.ok) return;
   assert.equal(other.code, "payment_not_found");
+});
+
+test("lists current user orders with pagination and status filtering", async () => {
+  const repository = createMemoryBillingRepository();
+  const mappingRepository = createMemoryNewApiUserMappingRepository([
+    ...mappingSeed("local-user", "100"),
+    ...mappingSeed("other-user", "200"),
+  ]);
+  const creditCalls: CreditQuotaInput[] = [];
+  const billing = new BillingService({
+    repository,
+    mappingRepository,
+    now: () => new Date("2026-06-18T00:00:00.000Z"),
+    creditQuota: async (input) => {
+      creditCalls.push(input);
+      return { ok: true, providerCreditId: `credit:${input.orderId}` };
+    },
+  });
+  const harness = { billing, repository, mappingRepository, creditCalls };
+  await createOrder(harness, { idempotencyKey: "idem-1" });
+  const paid = await createOrder(harness, { idempotencyKey: "idem-2" });
+  const other = await billing.createOrder({
+    localUserId: "other-user",
+    channel: "sandbox_alipay",
+    currency: "CNY",
+    requestedAmount: 1000,
+    idempotencyKey: "idem-other",
+  });
+  assert.equal(other.ok, true);
+  await harness.repository.updateOrder(paid.order_id, {
+    status: "paid",
+    updated_at: "2026-06-18T00:02:00.000Z",
+    paid_amount: paid.requested_amount,
+    paid_at: "2026-06-18T00:02:00.000Z",
+    quota_credit_applied_at: "2026-06-18T00:02:00.000Z",
+  }, paid.version);
+
+  const firstPage = await harness.billing.listOrdersForUser({ localUserId: "local-user", page: 1, pageSize: 1 });
+  assert.equal(firstPage.ok, true);
+  if (!firstPage.ok) return;
+  assert.equal(firstPage.orders.length, 1);
+  assert.equal(firstPage.total, 2);
+  assert.equal(firstPage.has_more, true);
+  assert.equal(firstPage.orders.some((order) => order.local_user_id !== "local-user"), false);
+
+  const paidOnly = await harness.billing.listOrdersForUser({
+    localUserId: "local-user",
+    statuses: ["paid"],
+    page: 1,
+    pageSize: 10,
+  });
+  assert.equal(paidOnly.ok, true);
+  if (!paidOnly.ok) return;
+  assert.equal(paidOnly.orders.length, 1);
+  assert.equal(paidOnly.orders[0].status, "paid");
+});
+
+function unavailableBillingRepository(): BillingRepository {
+  const fail = () => {
+    throw new Error("connect ECONNREFUSED postgresql://user:password@10.0.0.5:5432/app?token=secret-token");
+  };
+  return {
+    getOrder: async () => fail(),
+    getOrderByIdempotencyKey: async () => fail(),
+    getOrderByProviderOrderId: async () => fail(),
+    createOrder: async () => fail(),
+    updateOrder: async () => fail(),
+    listOrders: async () => fail(),
+    listOrdersPage: async () => fail(),
+    appendWebhookEvent: async () => fail(),
+    updateWebhookEventStatus: async () => fail(),
+    appendAudit: async () => fail(),
+    listAuditEvents: async () => fail(),
+  };
+}
+
+async function resetBillingTables() {
+  await applicationQuery("truncate table audit_events, task_billing_records, usage_records, billing_idempotency_keys, billing_webhook_events, billing_orders, new_api_user_mappings, auth_sessions, app_users restart identity cascade");
+}
+
+async function seedPostgresUser(input: { localUserId: string; email: string; username: string }) {
+  await applicationQuery(`
+    insert into app_users(
+      local_user_id, email, username, display_name, password_hash, status, role,
+      session_version, created_at, updated_at, last_login_at
+    ) values ($1,$2,$3,$3,$4,'active','user',1,$5,$5,null)
+  `, [
+    input.localUserId,
+    input.email,
+    input.username,
+    "scrypt$v=1$n=16384$r=8$p=1$len=64$c2FsdA$0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+    "2026-06-18T00:00:00.000Z",
+  ]);
+}
+
+async function seedPostgresMapping(localUserId: string, newApiUserId: string) {
+  const mappingRepository = createPostgresNewApiUserMappingRepository();
+  await mappingRepository.createPending({
+    localUserId,
+    idempotencyKey: `register:${localUserId}`,
+    now: new Date("2026-06-18T00:00:00.000Z"),
+  });
+  await mappingRepository.markActive({
+    localUserId,
+    newApiUserId,
+    now: new Date("2026-06-18T00:00:00.000Z"),
+  });
+}
+
+test("dual billing persistence failures do not break JSON order and webhook flow", async () => {
+  const dataDir = await mkdtemp(join(tmpdir(), "billing-dual-repair-"));
+  const previousRepairPath = process.env.APP_BILLING_DUAL_REPAIR_STORE_PATH;
+  const repairPath = join(dataDir, "billing-dual-repair-records.json");
+  const repair = createJsonBillingDualRepairRepository(repairPath);
+  const jsonRepository = createMemoryBillingRepository();
+  const warnings: string[] = [];
+  const originalWarn = console.warn;
+  const creditCalls: CreditQuotaInput[] = [];
+  try {
+    process.env.APP_BILLING_DUAL_REPAIR_STORE_PATH = repairPath;
+    console.warn = (message?: unknown) => {
+      warnings.push(String(message));
+    };
+    const harness = service();
+    const billing = new BillingService({
+      repository: createDualBillingRepository(jsonRepository, unavailableBillingRepository()),
+      mappingRepository: harness.mappingRepository,
+      creditQuota: async (input) => {
+        creditCalls.push(input);
+        return { ok: true, providerCreditId: `credit:${input.orderId}` };
+      },
+      now: () => new Date("2026-06-18T00:00:00.000Z"),
+    });
+    const orderResult = await billing.createOrder({
+      localUserId: "local-user",
+      channel: "sandbox_alipay",
+      currency: "CNY",
+      requestedAmount: 1000,
+      idempotencyKey: "dual-idem",
+    });
+    assert.equal(orderResult.ok, true);
+    if (!orderResult.ok) return;
+
+    await withSecret(async () => {
+      const webhook = await signedWebhook(billing, payloadFor(orderResult.order));
+      assert.equal(webhook.ok, true);
+      if (!webhook.ok) return;
+      assert.equal(webhook.action, "credited");
+      assert.equal(webhook.order.status, "paid");
+    });
+
+    const own = await billing.getOrderForUser("local-user", orderResult.order.order_id);
+    assert.equal(own.ok, true);
+    assert.equal(creditCalls.length, 1);
+    const records = await repair.list("pending");
+    assert.equal(records.some((record) => record.scope === "billing_order"), true);
+    assert.equal(records.some((record) => record.scope === "billing_webhook_event"), true);
+
+    const serialized = `${JSON.stringify(records)}\n${warnings.join("\n")}`;
+    for (const leaked of ["secret-token", "10.0.0.5", "postgresql://user:password", "password@", "token=secret"]) {
+      assert.equal(serialized.includes(leaked), false, `dual repair output leaked ${leaked}`);
+    }
+  } finally {
+    console.warn = originalWarn;
+    if (previousRepairPath === undefined) delete process.env.APP_BILLING_DUAL_REPAIR_STORE_PATH;
+    else process.env.APP_BILLING_DUAL_REPAIR_STORE_PATH = previousRepairPath;
+    await rm(dataDir, { recursive: true, force: true });
+  }
+});
+
+dbTest("postgres billing repository supports orders, filtering, idempotent webhooks, and review states", async () => {
+  await resetBillingTables();
+  const localUserId = "11111111-1111-4111-8111-111111111111";
+  const otherUserId = "22222222-2222-4222-8222-222222222222";
+  await seedPostgresUser({ localUserId, email: "billing-pg@example.com", username: "billing_pg" });
+  await seedPostgresUser({ localUserId: otherUserId, email: "billing-other@example.com", username: "billing_other" });
+  await seedPostgresMapping(localUserId, "9001");
+  await seedPostgresMapping(otherUserId, "9002");
+
+  const creditCalls: CreditQuotaInput[] = [];
+  const billing = new BillingService({
+    repository: createPostgresBillingRepository(),
+    mappingRepository: createPostgresNewApiUserMappingRepository(),
+    now: () => new Date("2026-06-18T00:00:00.000Z"),
+    creditQuota: async (input) => {
+      creditCalls.push(input);
+      return { ok: true, providerCreditId: `credit:${input.orderId}` };
+    },
+  });
+  const first = await billing.createOrder({
+    localUserId,
+    channel: "sandbox_alipay",
+    currency: "CNY",
+    requestedAmount: 1000,
+    idempotencyKey: "pg-idem-1",
+  });
+  assert.equal(first.ok, true);
+  if (!first.ok) return;
+  const other = await billing.createOrder({
+    localUserId: otherUserId,
+    channel: "sandbox_alipay",
+    currency: "CNY",
+    requestedAmount: 1000,
+    idempotencyKey: "pg-other",
+  });
+  assert.equal(other.ok, true);
+
+  await withSecret(async () => {
+    const paid = await signedWebhook(billing, payloadFor(first.order));
+    assert.equal(paid.ok, true);
+    if (!paid.ok) return;
+    assert.equal(paid.action, "credited");
+    const duplicate = await signedWebhook(billing, payloadFor(first.order));
+    assert.equal(duplicate.ok, true);
+    if (!duplicate.ok) return;
+    assert.equal(duplicate.action, "idempotent");
+  });
+  assert.equal(creditCalls.length, 1);
+
+  const second = await billing.createOrder({
+    localUserId,
+    channel: "sandbox_alipay",
+    currency: "CNY",
+    requestedAmount: 1000,
+    idempotencyKey: "pg-idem-2",
+  });
+  assert.equal(second.ok, true);
+  if (!second.ok) return;
+  await withSecret(async () => {
+    const tampered = await signedWebhook(billing, payloadFor(second.order, {
+      event_id: "evt-pg-tampered",
+      local_user_id: otherUserId,
+    }));
+    assert.equal(tampered.ok, true);
+    if (!tampered.ok) return;
+    assert.equal(tampered.action, "review");
+    assert.equal(tampered.order.status, "review");
+  });
+
+  const list = await billing.listOrdersForUser({ localUserId, statuses: ["paid"], page: 1, pageSize: 10 });
+  assert.equal(list.ok, true);
+  if (!list.ok) return;
+  assert.equal(list.orders.length, 1);
+  assert.equal(list.orders[0].status, "paid");
+  assert.equal(list.orders.some((order) => order.local_user_id !== localUserId), false);
+
+  const forbidden = await billing.getOrderForUser(otherUserId, first.order.order_id);
+  assert.equal(forbidden.ok, false);
+  if (forbidden.ok) return;
+  assert.equal(forbidden.code, "payment_not_found");
+
+  const idempotencyRows = await applicationQuery<{ count: string }>(
+    "select count(*)::text as count from billing_idempotency_keys where local_user_id = $1",
+    [localUserId],
+  );
+  assert.equal(Number(idempotencyRows.rows[0]?.count || 0), 2);
+});
+
+dbTest("postgres billing mode does not read JSON order storage", async () => {
+  await resetBillingTables();
+  const localUserId = "33333333-3333-4333-8333-333333333333";
+  await seedPostgresUser({ localUserId, email: "billing-pg-only@example.com", username: "billing_pg_only" });
+  await seedPostgresMapping(localUserId, "9101");
+  const billing = new BillingService({
+    repository: createPostgresBillingRepository(),
+    mappingRepository: createPostgresNewApiUserMappingRepository(),
+    now: () => new Date("2026-06-18T00:00:00.000Z"),
+    creditQuota: async (input) => ({ ok: true, providerCreditId: `credit:${input.orderId}` }),
+  });
+  const created = await billing.createOrder({
+    localUserId,
+    channel: "sandbox_alipay",
+    currency: "CNY",
+    requestedAmount: 1000,
+    idempotencyKey: "pg-only-idem",
+  });
+  assert.equal(created.ok, true);
+  if (!created.ok) return;
+
+  const jsonOnlyRepository = createMemoryBillingRepository();
+  await jsonOnlyRepository.createOrder({
+    ...created.order,
+    order_id: "bo_json_only",
+    provider_order_id: "sandbox_bo_json_only",
+    idempotency_key: "json-only",
+  });
+  const found = await billing.getOrderForUser(localUserId, "bo_json_only");
+  assert.equal(found.ok, false);
+  if (found.ok) return;
+  assert.equal(found.code, "payment_not_found");
+});
+
+test.after(async () => {
+  await closeApplicationDatabasePool();
 });
