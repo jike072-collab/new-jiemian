@@ -15,6 +15,25 @@ import { type JobRecord, type LibraryItem } from "./types";
 
 const libraryPath = join(dataRoot, "library.json");
 const jobsPath = join(dataRoot, "jobs.json");
+let libraryWriteQueue = Promise.resolve();
+let jobsWriteQueue = Promise.resolve();
+
+async function serializeWrite<T>(queue: "library" | "jobs", action: () => Promise<T>) {
+  const previous = queue === "library" ? libraryWriteQueue : jobsWriteQueue;
+  let release: () => void;
+  const current = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  if (queue === "library") libraryWriteQueue = previous.then(() => current, () => current);
+  else jobsWriteQueue = previous.then(() => current, () => current);
+
+  await previous.catch(() => undefined);
+  try {
+    return await action();
+  } finally {
+    release!();
+  }
+}
 
 export async function readLibrary() {
   const items = await readJsonFile<LibraryItem[]>(libraryPath, []);
@@ -33,25 +52,32 @@ export async function addLibraryItem(input: Omit<LibraryItem, "id" | "createdAt"
     createdAt: now,
     updatedAt: now,
   };
-  const items = await readLibrary();
-  await saveLibrary([item, ...items]);
+  await serializeWrite("library", async () => {
+    const items = await readLibrary();
+    await saveLibrary([item, ...items]);
+  });
   return item;
 }
 
 export async function updateLibraryItem(id: string, patch: Partial<LibraryItem>) {
-  const items = await readLibrary();
-  const next = items.map((item) => (
-    item.id === id ? { ...item, ...patch, updatedAt: new Date().toISOString() } : item
-  ));
-  await saveLibrary(next);
-  return next.find((item) => item.id === id) || null;
+  return serializeWrite("library", async () => {
+    const items = await readLibrary();
+    const next = items.map((item) => (
+      item.id === id ? { ...item, ...patch, updatedAt: new Date().toISOString() } : item
+    ));
+    await saveLibrary(next);
+    return next.find((item) => item.id === id) || null;
+  });
 }
 
 export async function deleteLibraryItem(id: string) {
-  const items = await readLibrary();
-  const removed = items.find((item) => item.id === id);
-  const next = items.filter((item) => item.id !== id);
-  await saveLibrary(next);
+  const removed = await serializeWrite("library", async () => {
+    const items = await readLibrary();
+    const removedItem = items.find((item) => item.id === id);
+    const next = items.filter((item) => item.id !== id);
+    await saveLibrary(next);
+    return removedItem;
+  });
   const jobs = await readJobs();
   await saveJobs(jobs.filter((job) => job.libraryItemId !== id));
   if (removed?.output?.storedName) {
@@ -71,18 +97,22 @@ export async function saveJobs(jobs: JobRecord[]) {
 export async function addJob(job: Omit<JobRecord, "createdAt" | "updatedAt">) {
   const now = new Date().toISOString();
   const record: JobRecord = { ...job, createdAt: now, updatedAt: now };
-  const jobs = await readJobs();
-  await saveJobs([record, ...jobs]);
+  await serializeWrite("jobs", async () => {
+    const jobs = await readJobs();
+    await saveJobs([record, ...jobs]);
+  });
   return record;
 }
 
 export async function updateJob(id: string, patch: Partial<JobRecord>) {
-  const jobs = await readJobs();
-  const next = jobs.map((job) => (
-    job.id === id ? { ...job, ...patch, updatedAt: new Date().toISOString() } : job
-  ));
-  await saveJobs(next);
-  return next.find((job) => job.id === id) || null;
+  return serializeWrite("jobs", async () => {
+    const jobs = await readJobs();
+    const next = jobs.map((job) => (
+      job.id === id ? { ...job, ...patch, updatedAt: new Date().toISOString() } : job
+    ));
+    await saveJobs(next);
+    return next.find((job) => job.id === id) || null;
+  });
 }
 
 export function extensionForMime(mimeType: string, fallback = ".bin") {

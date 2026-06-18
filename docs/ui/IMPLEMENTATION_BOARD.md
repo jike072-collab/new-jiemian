@@ -47,5 +47,10 @@
 | Module 6 segment 2 | Done | Text-to-video and image-to-video now differ in parameters, validation, payload behavior, preview state, and mobile/desktop submit state. |
 | Module 6 segment 3 | Done | Production browser acceptance, screenshot evidence, docs, checks, push, and Draft PR completed. |
 | 模块 6 最终补修 | 已完成 | 图生视频单首帧契约、API 校验、真实上传/替换/删除验收、移动端 loading 文案代码修正、Unicode 扫描和证据修正完成。 |
-| 模块 6 | 已完成，等待人工检查 | Do not merge or proceed to module 7 until manual review approves the module. |
-| 模块 7 | 阻塞 | Do not start until module 6 is manually approved. |
+| 模块 6 | 已完成 | PR #22 was approved and merged to `develop`. |
+| 模块 7 第 1 段 | 已完成 | Image upscale audit, local Upscayl chain review, security review, and implementation plan are documented. |
+| 模块 7 第 2 段 | 已完成 | First usable image upscale workspace is implemented on the real local Upscayl flow. |
+| 模块 7 第 3 段 | 已完成 | Upscayl acceptance evidence, unavailable-state screenshots, docs, and quality checks completed. |
+| 模块 7 最终补修 | 已完成 | Local Upscayl is installed and real 2x/4x integration passed with source/output dimensions, download verification, Unicode scan, and refreshed evidence. |
+| 模块 7 | 已完成，等待人工检查 | Do not merge or proceed to module 8 until manual review approves the module. |
+| 模块 8 | 阻塞 | Do not start until module 7 is manually approved. |
