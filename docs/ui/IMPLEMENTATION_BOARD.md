@@ -42,5 +42,8 @@
 | Module 5 segment 3 | Done | After screenshots, visual comparison, browser acceptance, docs, and Draft PR completed. |
 | Module 5 final patch 2 | Done | Image workspace mode regression, segmented controls, ratio visuals, color hierarchy, sticky action, Unicode scan, and refreshed screenshots completed. |
 | Module 5 final visual closeout | Done | Ratio selected state finalized with transparent outer surface and clean production screenshots captured. |
-| Module 5 | Done, awaiting human review | Do not enter module 6 until manual approval. |
-| Module 6 | Blocked | Video generator business work must not start until module 5 is manually approved. |
+| Module 5 | Done | PR #18 was approved and merged to `develop`. |
+| Module 6 segment 1 | In progress | Video workspace audit, mode-difference matrix, and implementation plan started. |
+| Module 6 segment 2 | Not started | Do not implement until segment 1 is reviewed. |
+| Module 6 segment 3 | Not started | Browser acceptance, screenshots, docs, and PR remain pending. |
+| Module 7 | Blocked | Do not start until module 6 is manually approved. |
