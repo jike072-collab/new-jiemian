@@ -65,3 +65,5 @@
 - Public shell screenshots must verify Header, Sidebar, parameter panel, preview panel, mobile Drawer, mobile tabs, and horizontal overflow.
 - WorkbenchShell must remain a layout shell only: no fake account state, no fake model state, no fixed business preview copy, and no second submit path.
 - Shared controls in module 5 must stay controlled by existing tool state and must not own model, upload, prompt, job, or result business data.
+- Module 5 must not merge until the before/after screenshot set and visual comparison table have human review.
+- Module 5 Draft PR must explicitly state that module 6 has not started and B-side New API/auth/quota/payment code was not modified.

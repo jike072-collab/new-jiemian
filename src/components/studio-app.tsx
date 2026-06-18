@@ -1518,11 +1518,13 @@ function PreviewState({
   live?: boolean;
   children: React.ReactNode;
 }) {
+  const showEyebrow = eyebrow !== title;
+
   return (
     <div className="studio-preview" role={role} aria-live={live ? "polite" : undefined}>
       <div className="studio-preview__top">
         <div>
-          <p className="shell-eyebrow">{eyebrow}</p>
+          {showEyebrow ? <p className="shell-eyebrow">{eyebrow}</p> : null}
           <h3>{title}</h3>
           {description ? <p>{description}</p> : null}
         </div>

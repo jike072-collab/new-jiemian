@@ -1,0 +1,1139 @@
+{
+  "generatedAt": "2026-06-18T07:06:38.956Z",
+  "commit": "pending-doc-fill",
+  "url": "http://127.0.0.1:3104/",
+  "screenshots": [
+    "1440x900-ai-image-generator-after.png",
+    "1440x900-ai-image-editor-after.png",
+    "1440x900-ai-video-generator-after.png",
+    "1440x900-image-upscale-after.png",
+    "1440x900-video-upscale-after.png",
+    "1440x900-library-after.png",
+    "1280x800-main-after.png",
+    "1024x768-tablet-main-after.png",
+    "768x1024-tablet-main-after.png",
+    "390x844-mobile-params-after.png",
+    "390x844-mobile-drawer-after.png",
+    "390x844-mobile-preview-after.png",
+    "1440x900-aspect-ratio-closeup-after.png",
+    "1440x900-upload-closeup-after.png",
+    "1440x900-sticky-primary-action-closeup-after.png"
+  ],
+  "audits": [
+    {
+      "label": "1440x900-ai-image-generator-after.png",
+      "viewport": {
+        "w": 1440,
+        "h": 900
+      },
+      "horizontalOverflow": false,
+      "headerText": "奥皇 AI登录",
+      "headerHasToolTitle": false,
+      "menuDisplay": "none",
+      "logoLoginOverlap": false,
+      "navDisplay": "flex",
+      "navW": 240,
+      "visibleNavItems": [
+        {
+          "text": "AI 视频生成器",
+          "h": 40
+        },
+        {
+          "text": "AI 图像生成器",
+          "h": 40
+        },
+        {
+          "text": "AI 图片编辑器",
+          "h": 40
+        },
+        {
+          "text": "图片高清",
+          "h": 40
+        },
+        {
+          "text": "视频高清",
+          "h": 40
+        },
+        {
+          "text": "作品库",
+          "h": 40
+        },
+        {
+          "text": "后台设置",
+          "h": 40
+        }
+      ],
+      "navDescriptionsVisible": false,
+      "controlTitle": "AI 图像生成器",
+      "controlDesc": "文生图 / 图生图",
+      "controlsW": 392,
+      "previewW": 748,
+      "previewTitle": "创作预览",
+      "duplicateWords": [],
+      "repeatedToolInPreview": false,
+      "exampleBadge": false,
+      "hasDropzone": true,
+      "dropzoneRole": "button",
+      "nativeFileVisible": false,
+      "ratioCount": 5,
+      "ratioLabelsAligned": true,
+      "ratioEqualWidth": true,
+      "ratioEqualGraphicHeight": true,
+      "ratios": [
+        {
+          "text": "1:1",
+          "ariaPressed": "true",
+          "w": 65,
+          "h": 88,
+          "top": 619,
+          "graphicH": 46,
+          "labelTop": 680
+        },
+        {
+          "text": "16:9",
+          "ariaPressed": "false",
+          "w": 65,
+          "h": 88,
+          "top": 619,
+          "graphicH": 46,
+          "labelTop": 680
+        },
+        {
+          "text": "9:16",
+          "ariaPressed": "false",
+          "w": 65,
+          "h": 88,
+          "top": 619,
+          "graphicH": 46,
+          "labelTop": 680
+        },
+        {
+          "text": "4:3",
+          "ariaPressed": "false",
+          "w": 65,
+          "h": 88,
+          "top": 619,
+          "graphicH": 46,
+          "labelTop": 680
+        },
+        {
+          "text": "3:4",
+          "ariaPressed": "false",
+          "w": 65,
+          "h": 88,
+          "top": 619,
+          "graphicH": 46,
+          "labelTop": 680
+        }
+      ],
+      "stickyActionVisible": true,
+      "primaryText": "生成图片",
+      "primaryH": 0,
+      "nextIssue": false
+    },
+    {
+      "label": "1440x900-ai-image-editor-after.png",
+      "viewport": {
+        "w": 1440,
+        "h": 900
+      },
+      "horizontalOverflow": false,
+      "headerText": "奥皇 AI登录",
+      "headerHasToolTitle": false,
+      "menuDisplay": "none",
+      "logoLoginOverlap": false,
+      "navDisplay": "flex",
+      "navW": 240,
+      "visibleNavItems": [
+        {
+          "text": "AI 视频生成器",
+          "h": 40
+        },
+        {
+          "text": "AI 图像生成器",
+          "h": 40
+        },
+        {
+          "text": "AI 图片编辑器",
+          "h": 40
+        },
+        {
+          "text": "图片高清",
+          "h": 40
+        },
+        {
+          "text": "视频高清",
+          "h": 40
+        },
+        {
+          "text": "作品库",
+          "h": 40
+        },
+        {
+          "text": "后台设置",
+          "h": 40
+        }
+      ],
+      "navDescriptionsVisible": false,
+      "controlTitle": "AI 图片编辑器",
+      "controlDesc": "上传参考图进行编辑",
+      "controlsW": 392,
+      "previewW": 748,
+      "previewTitle": "创作预览",
+      "duplicateWords": [],
+      "repeatedToolInPreview": false,
+      "exampleBadge": false,
+      "hasDropzone": true,
+      "dropzoneRole": "button",
+      "nativeFileVisible": false,
+      "ratioCount": 5,
+      "ratioLabelsAligned": true,
+      "ratioEqualWidth": true,
+      "ratioEqualGraphicHeight": true,
+      "ratios": [
+        {
+          "text": "1:1",
+          "ariaPressed": "true",
+          "w": 65,
+          "h": 88,
+          "top": 631,
+          "graphicH": 46,
+          "labelTop": 692
+        },
+        {
+          "text": "16:9",
+          "ariaPressed": "false",
+          "w": 65,
+          "h": 88,
+          "top": 631,
+          "graphicH": 46,
+          "labelTop": 692
+        },
+        {
+          "text": "9:16",
+          "ariaPressed": "false",
+          "w": 65,
+          "h": 88,
+          "top": 631,
+          "graphicH": 46,
+          "labelTop": 692
+        },
+        {
+          "text": "4:3",
+          "ariaPressed": "false",
+          "w": 65,
+          "h": 88,
+          "top": 631,
+          "graphicH": 46,
+          "labelTop": 692
+        },
+        {
+          "text": "3:4",
+          "ariaPressed": "false",
+          "w": 65,
+          "h": 88,
+          "top": 631,
+          "graphicH": 46,
+          "labelTop": 692
+        }
+      ],
+      "stickyActionVisible": true,
+      "primaryText": "开始编辑",
+      "primaryH": 0,
+      "nextIssue": false
+    },
+    {
+      "label": "1440x900-ai-video-generator-after.png",
+      "viewport": {
+        "w": 1440,
+        "h": 900
+      },
+      "horizontalOverflow": false,
+      "headerText": "奥皇 AI登录",
+      "headerHasToolTitle": false,
+      "menuDisplay": "none",
+      "logoLoginOverlap": false,
+      "navDisplay": "flex",
+      "navW": 240,
+      "visibleNavItems": [
+        {
+          "text": "AI 视频生成器",
+          "h": 40
+        },
+        {
+          "text": "AI 图像生成器",
+          "h": 40
+        },
+        {
+          "text": "AI 图片编辑器",
+          "h": 40
+        },
+        {
+          "text": "图片高清",
+          "h": 40
+        },
+        {
+          "text": "视频高清",
+          "h": 40
+        },
+        {
+          "text": "作品库",
+          "h": 40
+        },
+        {
+          "text": "后台设置",
+          "h": 40
+        }
+      ],
+      "navDescriptionsVisible": false,
+      "controlTitle": "AI 视频生成器",
+      "controlDesc": "文生视频 / 图生视频",
+      "controlsW": 392,
+      "previewW": 748,
+      "previewTitle": "创作预览",
+      "duplicateWords": [],
+      "repeatedToolInPreview": false,
+      "exampleBadge": true,
+      "hasDropzone": true,
+      "dropzoneRole": "button",
+      "nativeFileVisible": false,
+      "ratioCount": 5,
+      "ratioLabelsAligned": true,
+      "ratioEqualWidth": true,
+      "ratioEqualGraphicHeight": true,
+      "ratios": [
+        {
+          "text": "1:1",
+          "ariaPressed": "false",
+          "w": 65,
+          "h": 88,
+          "top": 600,
+          "graphicH": 46,
+          "labelTop": 661
+        },
+        {
+          "text": "16:9",
+          "ariaPressed": "true",
+          "w": 65,
+          "h": 88,
+          "top": 600,
+          "graphicH": 46,
+          "labelTop": 661
+        },
+        {
+          "text": "9:16",
+          "ariaPressed": "false",
+          "w": 65,
+          "h": 88,
+          "top": 600,
+          "graphicH": 46,
+          "labelTop": 661
+        },
+        {
+          "text": "4:3",
+          "ariaPressed": "false",
+          "w": 65,
+          "h": 88,
+          "top": 600,
+          "graphicH": 46,
+          "labelTop": 661
+        },
+        {
+          "text": "3:4",
+          "ariaPressed": "false",
+          "w": 65,
+          "h": 88,
+          "top": 600,
+          "graphicH": 46,
+          "labelTop": 661
+        }
+      ],
+      "stickyActionVisible": true,
+      "primaryText": "生成视频",
+      "primaryH": 0,
+      "nextIssue": false
+    },
+    {
+      "label": "1440x900-image-upscale-after.png",
+      "viewport": {
+        "w": 1440,
+        "h": 900
+      },
+      "horizontalOverflow": false,
+      "headerText": "奥皇 AI登录",
+      "headerHasToolTitle": false,
+      "menuDisplay": "none",
+      "logoLoginOverlap": false,
+      "navDisplay": "flex",
+      "navW": 240,
+      "visibleNavItems": [
+        {
+          "text": "AI 视频生成器",
+          "h": 40
+        },
+        {
+          "text": "AI 图像生成器",
+          "h": 40
+        },
+        {
+          "text": "AI 图片编辑器",
+          "h": 40
+        },
+        {
+          "text": "图片高清",
+          "h": 40
+        },
+        {
+          "text": "视频高清",
+          "h": 40
+        },
+        {
+          "text": "作品库",
+          "h": 40
+        },
+        {
+          "text": "后台设置",
+          "h": 40
+        }
+      ],
+      "navDescriptionsVisible": false,
+      "controlTitle": "图片高清",
+      "controlDesc": "本机放大处理",
+      "controlsW": 392,
+      "previewW": 748,
+      "previewTitle": "创作预览",
+      "duplicateWords": [],
+      "repeatedToolInPreview": false,
+      "exampleBadge": true,
+      "hasDropzone": true,
+      "dropzoneRole": "button",
+      "nativeFileVisible": false,
+      "ratioCount": 0,
+      "ratioLabelsAligned": null,
+      "ratioEqualWidth": null,
+      "ratioEqualGraphicHeight": null,
+      "ratios": [],
+      "stickyActionVisible": true,
+      "primaryText": "开始增强",
+      "primaryH": 0,
+      "nextIssue": false
+    },
+    {
+      "label": "1440x900-video-upscale-after.png",
+      "viewport": {
+        "w": 1440,
+        "h": 900
+      },
+      "horizontalOverflow": false,
+      "headerText": "奥皇 AI登录",
+      "headerHasToolTitle": false,
+      "menuDisplay": "none",
+      "logoLoginOverlap": false,
+      "navDisplay": "flex",
+      "navW": 240,
+      "visibleNavItems": [
+        {
+          "text": "AI 视频生成器",
+          "h": 40
+        },
+        {
+          "text": "AI 图像生成器",
+          "h": 40
+        },
+        {
+          "text": "AI 图片编辑器",
+          "h": 40
+        },
+        {
+          "text": "图片高清",
+          "h": 40
+        },
+        {
+          "text": "视频高清",
+          "h": 40
+        },
+        {
+          "text": "作品库",
+          "h": 40
+        },
+        {
+          "text": "后台设置",
+          "h": 40
+        }
+      ],
+      "navDescriptionsVisible": false,
+      "controlTitle": "视频高清",
+      "controlDesc": "本机增强处理",
+      "controlsW": 392,
+      "previewW": 748,
+      "previewTitle": "创作预览",
+      "duplicateWords": [],
+      "repeatedToolInPreview": false,
+      "exampleBadge": true,
+      "hasDropzone": true,
+      "dropzoneRole": "button",
+      "nativeFileVisible": false,
+      "ratioCount": 0,
+      "ratioLabelsAligned": null,
+      "ratioEqualWidth": null,
+      "ratioEqualGraphicHeight": null,
+      "ratios": [],
+      "stickyActionVisible": true,
+      "primaryText": "开始增强",
+      "primaryH": 0,
+      "nextIssue": false
+    },
+    {
+      "label": "1440x900-library-after.png",
+      "viewport": {
+        "w": 1440,
+        "h": 900
+      },
+      "horizontalOverflow": false,
+      "headerText": "奥皇 AI登录",
+      "headerHasToolTitle": false,
+      "menuDisplay": "none",
+      "logoLoginOverlap": false,
+      "navDisplay": "flex",
+      "navW": 240,
+      "visibleNavItems": [
+        {
+          "text": "AI 视频生成器",
+          "h": 40
+        },
+        {
+          "text": "AI 图像生成器",
+          "h": 40
+        },
+        {
+          "text": "AI 图片编辑器",
+          "h": 40
+        },
+        {
+          "text": "图片高清",
+          "h": 40
+        },
+        {
+          "text": "视频高清",
+          "h": 40
+        },
+        {
+          "text": "作品库",
+          "h": 40
+        },
+        {
+          "text": "后台设置",
+          "h": 40
+        }
+      ],
+      "navDescriptionsVisible": false,
+      "controlTitle": "作品库",
+      "controlDesc": "历史结果与下载",
+      "controlsW": 392,
+      "previewW": 748,
+      "previewTitle": "作品库还是空的。生成图片或视频后会自动出现在这里。",
+      "duplicateWords": [],
+      "repeatedToolInPreview": false,
+      "exampleBadge": false,
+      "hasDropzone": false,
+      "dropzoneRole": null,
+      "nativeFileVisible": false,
+      "ratioCount": 0,
+      "ratioLabelsAligned": null,
+      "ratioEqualWidth": null,
+      "ratioEqualGraphicHeight": null,
+      "ratios": [],
+      "stickyActionVisible": false,
+      "primaryText": null,
+      "primaryH": 0,
+      "nextIssue": false
+    },
+    {
+      "label": "1280x800-main-after.png",
+      "viewport": {
+        "w": 1280,
+        "h": 800
+      },
+      "horizontalOverflow": false,
+      "headerText": "奥皇 AI登录",
+      "headerHasToolTitle": false,
+      "menuDisplay": "none",
+      "logoLoginOverlap": false,
+      "navDisplay": "flex",
+      "navW": 240,
+      "visibleNavItems": [
+        {
+          "text": "AI 视频生成器",
+          "h": 40
+        },
+        {
+          "text": "AI 图像生成器",
+          "h": 40
+        },
+        {
+          "text": "AI 图片编辑器",
+          "h": 40
+        },
+        {
+          "text": "图片高清",
+          "h": 40
+        },
+        {
+          "text": "视频高清",
+          "h": 40
+        },
+        {
+          "text": "作品库",
+          "h": 40
+        },
+        {
+          "text": "后台设置",
+          "h": 40
+        }
+      ],
+      "navDescriptionsVisible": false,
+      "controlTitle": "AI 图像生成器",
+      "controlDesc": "文生图 / 图生图",
+      "controlsW": 392,
+      "previewW": 588,
+      "previewTitle": "创作预览",
+      "duplicateWords": [],
+      "repeatedToolInPreview": false,
+      "exampleBadge": false,
+      "hasDropzone": true,
+      "dropzoneRole": "button",
+      "nativeFileVisible": false,
+      "ratioCount": 5,
+      "ratioLabelsAligned": true,
+      "ratioEqualWidth": true,
+      "ratioEqualGraphicHeight": true,
+      "ratios": [
+        {
+          "text": "1:1",
+          "ariaPressed": "true",
+          "w": 65,
+          "h": 88,
+          "top": 619,
+          "graphicH": 46,
+          "labelTop": 680
+        },
+        {
+          "text": "16:9",
+          "ariaPressed": "false",
+          "w": 65,
+          "h": 88,
+          "top": 619,
+          "graphicH": 46,
+          "labelTop": 680
+        },
+        {
+          "text": "9:16",
+          "ariaPressed": "false",
+          "w": 65,
+          "h": 88,
+          "top": 619,
+          "graphicH": 46,
+          "labelTop": 680
+        },
+        {
+          "text": "4:3",
+          "ariaPressed": "false",
+          "w": 65,
+          "h": 88,
+          "top": 619,
+          "graphicH": 46,
+          "labelTop": 680
+        },
+        {
+          "text": "3:4",
+          "ariaPressed": "false",
+          "w": 65,
+          "h": 88,
+          "top": 619,
+          "graphicH": 46,
+          "labelTop": 680
+        }
+      ],
+      "stickyActionVisible": true,
+      "primaryText": "生成图片",
+      "primaryH": 0,
+      "nextIssue": false
+    },
+    {
+      "label": "1024x768-tablet-main-after.png",
+      "viewport": {
+        "w": 1024,
+        "h": 768
+      },
+      "horizontalOverflow": false,
+      "headerText": "奥皇 AI登录",
+      "headerHasToolTitle": false,
+      "menuDisplay": "none",
+      "logoLoginOverlap": false,
+      "navDisplay": "flex",
+      "navW": 72,
+      "visibleNavItems": [
+        {
+          "text": "AI 视频生成器",
+          "h": 40
+        },
+        {
+          "text": "AI 图像生成器",
+          "h": 40
+        },
+        {
+          "text": "AI 图片编辑器",
+          "h": 40
+        },
+        {
+          "text": "图片高清",
+          "h": 40
+        },
+        {
+          "text": "视频高清",
+          "h": 40
+        },
+        {
+          "text": "作品库",
+          "h": 40
+        },
+        {
+          "text": "后台设置",
+          "h": 40
+        }
+      ],
+      "navDescriptionsVisible": false,
+      "controlTitle": "AI 图像生成器",
+      "controlDesc": "文生图 / 图生图",
+      "controlsW": 372,
+      "previewW": 532,
+      "previewTitle": "创作预览",
+      "duplicateWords": [],
+      "repeatedToolInPreview": false,
+      "exampleBadge": false,
+      "hasDropzone": true,
+      "dropzoneRole": "button",
+      "nativeFileVisible": false,
+      "ratioCount": 5,
+      "ratioLabelsAligned": true,
+      "ratioEqualWidth": true,
+      "ratioEqualGraphicHeight": true,
+      "ratios": [
+        {
+          "text": "1:1",
+          "ariaPressed": "true",
+          "w": 61,
+          "h": 88,
+          "top": 617,
+          "graphicH": 46,
+          "labelTop": 678
+        },
+        {
+          "text": "16:9",
+          "ariaPressed": "false",
+          "w": 61,
+          "h": 88,
+          "top": 617,
+          "graphicH": 46,
+          "labelTop": 678
+        },
+        {
+          "text": "9:16",
+          "ariaPressed": "false",
+          "w": 61,
+          "h": 88,
+          "top": 617,
+          "graphicH": 46,
+          "labelTop": 678
+        },
+        {
+          "text": "4:3",
+          "ariaPressed": "false",
+          "w": 61,
+          "h": 88,
+          "top": 617,
+          "graphicH": 46,
+          "labelTop": 678
+        },
+        {
+          "text": "3:4",
+          "ariaPressed": "false",
+          "w": 61,
+          "h": 88,
+          "top": 617,
+          "graphicH": 46,
+          "labelTop": 678
+        }
+      ],
+      "stickyActionVisible": true,
+      "primaryText": "生成图片",
+      "primaryH": 0,
+      "nextIssue": false
+    },
+    {
+      "label": "768x1024-tablet-main-after.png",
+      "viewport": {
+        "w": 768,
+        "h": 1024
+      },
+      "horizontalOverflow": false,
+      "headerText": "奥皇 AI登录",
+      "headerHasToolTitle": false,
+      "menuDisplay": "none",
+      "logoLoginOverlap": false,
+      "navDisplay": "flex",
+      "navW": 72,
+      "visibleNavItems": [
+        {
+          "text": "AI 视频生成器",
+          "h": 40
+        },
+        {
+          "text": "AI 图像生成器",
+          "h": 40
+        },
+        {
+          "text": "AI 图片编辑器",
+          "h": 40
+        },
+        {
+          "text": "图片高清",
+          "h": 40
+        },
+        {
+          "text": "视频高清",
+          "h": 40
+        },
+        {
+          "text": "作品库",
+          "h": 40
+        },
+        {
+          "text": "后台设置",
+          "h": 40
+        }
+      ],
+      "navDescriptionsVisible": false,
+      "controlTitle": "AI 图像生成器",
+      "controlDesc": "文生图 / 图生图",
+      "controlsW": 372,
+      "previewW": 276,
+      "previewTitle": "创作预览",
+      "duplicateWords": [],
+      "repeatedToolInPreview": false,
+      "exampleBadge": false,
+      "hasDropzone": true,
+      "dropzoneRole": "button",
+      "nativeFileVisible": false,
+      "ratioCount": 5,
+      "ratioLabelsAligned": true,
+      "ratioEqualWidth": true,
+      "ratioEqualGraphicHeight": true,
+      "ratios": [
+        {
+          "text": "1:1",
+          "ariaPressed": "true",
+          "w": 61,
+          "h": 88,
+          "top": 617,
+          "graphicH": 46,
+          "labelTop": 678
+        },
+        {
+          "text": "16:9",
+          "ariaPressed": "false",
+          "w": 61,
+          "h": 88,
+          "top": 617,
+          "graphicH": 46,
+          "labelTop": 678
+        },
+        {
+          "text": "9:16",
+          "ariaPressed": "false",
+          "w": 61,
+          "h": 88,
+          "top": 617,
+          "graphicH": 46,
+          "labelTop": 678
+        },
+        {
+          "text": "4:3",
+          "ariaPressed": "false",
+          "w": 61,
+          "h": 88,
+          "top": 617,
+          "graphicH": 46,
+          "labelTop": 678
+        },
+        {
+          "text": "3:4",
+          "ariaPressed": "false",
+          "w": 61,
+          "h": 88,
+          "top": 617,
+          "graphicH": 46,
+          "labelTop": 678
+        }
+      ],
+      "stickyActionVisible": true,
+      "primaryText": "生成图片",
+      "primaryH": 0,
+      "nextIssue": false
+    },
+    {
+      "label": "390x844-mobile-params-after.png",
+      "viewport": {
+        "w": 390,
+        "h": 844
+      },
+      "horizontalOverflow": false,
+      "headerText": "奥皇 AI登录",
+      "headerHasToolTitle": false,
+      "menuDisplay": "flex",
+      "logoLoginOverlap": false,
+      "navDisplay": "none",
+      "navW": 0,
+      "visibleNavItems": [],
+      "navDescriptionsVisible": false,
+      "controlTitle": "AI 图像生成器",
+      "controlDesc": "文生图 / 图生图",
+      "controlsW": 358,
+      "previewW": 0,
+      "previewTitle": "创作预览",
+      "duplicateWords": [],
+      "repeatedToolInPreview": false,
+      "exampleBadge": false,
+      "hasDropzone": true,
+      "dropzoneRole": "button",
+      "nativeFileVisible": false,
+      "ratioCount": 5,
+      "ratioLabelsAligned": false,
+      "ratioEqualWidth": true,
+      "ratioEqualGraphicHeight": true,
+      "ratios": [
+        {
+          "text": "1:1",
+          "ariaPressed": "true",
+          "w": 157,
+          "h": 88,
+          "top": 734,
+          "graphicH": 46,
+          "labelTop": 795
+        },
+        {
+          "text": "16:9",
+          "ariaPressed": "false",
+          "w": 157,
+          "h": 88,
+          "top": 734,
+          "graphicH": 46,
+          "labelTop": 795
+        },
+        {
+          "text": "9:16",
+          "ariaPressed": "false",
+          "w": 157,
+          "h": 88,
+          "top": 832,
+          "graphicH": 46,
+          "labelTop": 893
+        },
+        {
+          "text": "4:3",
+          "ariaPressed": "false",
+          "w": 157,
+          "h": 88,
+          "top": 832,
+          "graphicH": 46,
+          "labelTop": 893
+        },
+        {
+          "text": "3:4",
+          "ariaPressed": "false",
+          "w": 157,
+          "h": 88,
+          "top": 930,
+          "graphicH": 46,
+          "labelTop": 991
+        }
+      ],
+      "stickyActionVisible": true,
+      "primaryText": "生成图片",
+      "primaryH": 52,
+      "nextIssue": false
+    },
+    {
+      "label": "390x844-mobile-drawer-after.png",
+      "viewport": {
+        "w": 390,
+        "h": 844
+      },
+      "horizontalOverflow": false,
+      "headerText": "奥皇 AI登录",
+      "headerHasToolTitle": false,
+      "menuDisplay": "flex",
+      "logoLoginOverlap": false,
+      "navDisplay": "none",
+      "navW": 0,
+      "visibleNavItems": [],
+      "navDescriptionsVisible": false,
+      "controlTitle": "AI 图像生成器",
+      "controlDesc": "文生图 / 图生图",
+      "controlsW": 358,
+      "previewW": 0,
+      "previewTitle": "创作预览",
+      "duplicateWords": [],
+      "repeatedToolInPreview": false,
+      "exampleBadge": false,
+      "hasDropzone": true,
+      "dropzoneRole": "button",
+      "nativeFileVisible": false,
+      "ratioCount": 5,
+      "ratioLabelsAligned": false,
+      "ratioEqualWidth": true,
+      "ratioEqualGraphicHeight": true,
+      "ratios": [
+        {
+          "text": "1:1",
+          "ariaPressed": "true",
+          "w": 157,
+          "h": 88,
+          "top": 734,
+          "graphicH": 46,
+          "labelTop": 795
+        },
+        {
+          "text": "16:9",
+          "ariaPressed": "false",
+          "w": 157,
+          "h": 88,
+          "top": 734,
+          "graphicH": 46,
+          "labelTop": 795
+        },
+        {
+          "text": "9:16",
+          "ariaPressed": "false",
+          "w": 157,
+          "h": 88,
+          "top": 832,
+          "graphicH": 46,
+          "labelTop": 893
+        },
+        {
+          "text": "4:3",
+          "ariaPressed": "false",
+          "w": 157,
+          "h": 88,
+          "top": 832,
+          "graphicH": 46,
+          "labelTop": 893
+        },
+        {
+          "text": "3:4",
+          "ariaPressed": "false",
+          "w": 157,
+          "h": 88,
+          "top": 930,
+          "graphicH": 46,
+          "labelTop": 991
+        }
+      ],
+      "stickyActionVisible": true,
+      "primaryText": "生成图片",
+      "primaryH": 52,
+      "nextIssue": false,
+      "drawerOpen": true,
+      "bodyOverflow": "hidden"
+    },
+    {
+      "label": "390x844-mobile-preview-after.png",
+      "viewport": {
+        "w": 390,
+        "h": 844
+      },
+      "horizontalOverflow": false,
+      "headerText": "奥皇 AI登录",
+      "headerHasToolTitle": false,
+      "menuDisplay": "flex",
+      "logoLoginOverlap": false,
+      "navDisplay": "none",
+      "navW": 0,
+      "visibleNavItems": [],
+      "navDescriptionsVisible": false,
+      "controlTitle": "AI 图像生成器",
+      "controlDesc": "文生图 / 图生图",
+      "controlsW": 0,
+      "previewW": 358,
+      "previewTitle": "创作预览",
+      "duplicateWords": [],
+      "repeatedToolInPreview": false,
+      "exampleBadge": false,
+      "hasDropzone": true,
+      "dropzoneRole": "button",
+      "nativeFileVisible": false,
+      "ratioCount": 5,
+      "ratioLabelsAligned": true,
+      "ratioEqualWidth": true,
+      "ratioEqualGraphicHeight": true,
+      "ratios": [
+        {
+          "text": "1:1",
+          "ariaPressed": "true",
+          "w": 0,
+          "h": 0,
+          "top": 0,
+          "graphicH": 0,
+          "labelTop": 0
+        },
+        {
+          "text": "16:9",
+          "ariaPressed": "false",
+          "w": 0,
+          "h": 0,
+          "top": 0,
+          "graphicH": 0,
+          "labelTop": 0
+        },
+        {
+          "text": "9:16",
+          "ariaPressed": "false",
+          "w": 0,
+          "h": 0,
+          "top": 0,
+          "graphicH": 0,
+          "labelTop": 0
+        },
+        {
+          "text": "4:3",
+          "ariaPressed": "false",
+          "w": 0,
+          "h": 0,
+          "top": 0,
+          "graphicH": 0,
+          "labelTop": 0
+        },
+        {
+          "text": "3:4",
+          "ariaPressed": "false",
+          "w": 0,
+          "h": 0,
+          "top": 0,
+          "graphicH": 0,
+          "labelTop": 0
+        }
+      ],
+      "stickyActionVisible": true,
+      "primaryText": "生成图片",
+      "primaryH": 52,
+      "nextIssue": false
+    }
+  ],
+  "adminEntry": {
+    "url": "http://127.0.0.1:3104/admin/providers",
+    "title": true,
+    "horizontalOverflow": false
+  },
+  "logs": []
+}

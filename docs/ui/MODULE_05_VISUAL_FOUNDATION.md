@@ -1,11 +1,12 @@
 # Module 5 Visual Foundation Audit
 
-Status: segment 2 implementation completed. Segment 3 screenshot acceptance and PR are still pending.
+Status: module 5 implementation and acceptance completed. Waiting for human review before merge or module 6.
 
 Branch: `feature/05-visual-foundation`
 Baseline commit: `fd55897`
 Target branch: `develop`
 Reference evidence: `docs/design-references/module-05-visual-foundation/before/`
+After evidence: `docs/design-references/module-05-visual-foundation/after/`
 
 ## Scope
 
@@ -209,9 +210,72 @@ Segment 2 implemented the shell hierarchy and shared visual controls without cha
 
 ### Remaining Segment 3 Work
 
-- Capture after screenshots for the same module 5 surfaces.
-- Repeat and archive final after-screenshot acceptance from the latest HEAD.
-- Create or update the module 5 Draft PR only after segment 3 acceptance.
+- Completed in segment 3: after screenshots, visual comparison, quality checks, Draft PR.
+
+## Segment 3 Acceptance Result
+
+Segment 3 ran against the real production preview at `http://127.0.0.1:3104/` from the latest module 5 branch. It included one small visual hierarchy patch: `PreviewState` now hides the eyebrow when the eyebrow and title are identical, preventing the initial preview from showing `创作预览` twice.
+
+### After Screenshot Set
+
+| File | Viewport | Surface | Validation focus |
+| --- | --- | --- | --- |
+| `1440x900-ai-image-generator-after.png` | 1440x900 | AI image generator | Header, Sidebar, parameter title, ratio selector, preview state |
+| `1440x900-ai-image-editor-after.png` | 1440x900 | AI image editor | Required upload state, editor title, primary action |
+| `1440x900-ai-video-generator-after.png` | 1440x900 | AI video generator | Shared ratio selector, video parameters, example preview badge |
+| `1440x900-image-upscale-after.png` | 1440x900 | Image upscale | Shared dropzone and `开始增强` action |
+| `1440x900-video-upscale-after.png` | 1440x900 | Video upscale | Shared dropzone and dependency status area |
+| `1440x900-library-after.png` | 1440x900 | Library | Library filter column and empty/preview area |
+| `1280x800-main-after.png` | 1280x800 | Main workspace | Desktop three-column fit |
+| `1024x768-tablet-main-after.png` | 1024x768 | Tablet landscape | Compact nav plus two work columns |
+| `768x1024-tablet-main-after.png` | 768x1024 | Tablet portrait | No horizontal overflow at narrow tablet width |
+| `390x844-mobile-params-after.png` | 390x844 | Mobile params | Drawer button, tabs, bottom action |
+| `390x844-mobile-drawer-after.png` | 390x844 | Mobile drawer | Drawer surface, overlay, navigation density |
+| `390x844-mobile-preview-after.png` | 390x844 | Mobile preview | Preview tab and state hierarchy |
+| `1440x900-aspect-ratio-closeup-after.png` | 1440x900 | Ratio selector | Equal wells and aligned labels |
+| `1440x900-upload-closeup-after.png` | 1440x900 | Upload control | Thumbnail state, replace/delete actions |
+| `1440x900-sticky-primary-action-closeup-after.png` | 1440x900 | Primary action | Fixed action sizing and visibility |
+| `acceptance-report.json` | N/A | Machine-readable report | Audits, console logs, admin route check |
+
+### Before/After Comparison
+
+| Area | Before problem | After result | Evidence | Impacted pages | Remaining issue |
+| --- | --- | --- | --- | --- | --- |
+| Header | Header center repeated the active tool name and desktop menu could appear without useful purpose. | Header now shows brand plus real login/account entry; desktop menu is hidden when fixed Sidebar is present. | `before/1440x900-ai-image-generator-before.png`, `after/1440x900-ai-image-generator-after.png` | All workspace pages | None found. |
+| Sidebar | Tool items permanently showed subtitles, making scanning slower. | Desktop Sidebar is a compact icon/name list with 40px rows; drawer keeps descriptions where helpful. | `before/1440x900-ai-image-editor-before.png`, `after/1440x900-ai-image-editor-after.png`, `after/390x844-mobile-drawer-after.png` | Desktop Sidebar and mobile Drawer | None found. |
+| Title hierarchy | Header, parameter panel, inner form, and preview could repeat tool identity. | Tool title appears in Sidebar and parameter title; preview states no longer repeat tool names, and duplicate `创作预览` was removed in segment 3. | `after/1440x900-ai-image-generator-after.png`, `after/390x844-mobile-preview-after.png` | All tools | None found. |
+| Dark grayscale | Sidebar, panels, and inputs had softer separation. | Page/Sidebar stay deepest, panels are lifted, inputs/dropzones use the surface layer. | `after/1280x800-main-after.png` | All workspace pages | Fine tuning can continue only in a future visual module. |
+| Navigation selected state | Active item used a heavier block. | Active state uses pink text/icon, light pink surface, and left indicator. | `after/1440x900-ai-image-generator-after.png` | Sidebar and Drawer | None found. |
+| Aspect ratio | Ratio controls were duplicated and labels could drift. | `AspectRatioSelector` is shared by image, editor, and video; desktop/tablet labels share one baseline. | `after/1440x900-aspect-ratio-closeup-after.png`, `after/1440x900-ai-video-generator-after.png` | Image generator, image editor, video generator | On mobile the selector intentionally wraps into two columns, so not all labels share one global line. |
+| Upload | Image and upscale upload surfaces differed; upscales exposed native file input styling. | `CompactDropzone` provides a shared one-border surface, thumbnail state, replace/delete actions, and no visible native file input. | `before/1440x900-image-upscale-before.png`, `after/1440x900-upload-closeup-after.png` | Image editor, optional image reference, video reference, upscales | Object URL cleanup remains owned by existing business state. |
+| Primary action | Desktop action could scroll with form content and sizes varied. | `StickyPrimaryAction` keeps a full-width 48px desktop action visible; mobile still uses the real mobile action slot. | `after/1440x900-sticky-primary-action-closeup-after.png`, `after/390x844-mobile-params-after.png` | Image, editor, video, upscales | None found. |
+| Preview state | Preview shell repeated `工作区`, active tool, and generic result copy; examples looked like real results. | `PreviewState` owns initial/loading/error/result structure; examples are marked `示例效果`; success still requires real output. | `before/1440x900-ai-video-generator-before.png`, `after/1440x900-ai-video-generator-after.png` | All preview pages | No fake success result was created. |
+| Scrollbars | Default scrollbars were bright and inconsistent. | Sidebar, Drawer, parameter body, and preview body use quiet 6px Chromium scrollbars and thin Firefox scrollbar settings. | `after/1280x800-main-after.png` | Desktop/tablet shell | Firefox visual was CSS-reviewed; Chromium was browser-captured. |
+| Desktop | Three columns needed confirmation after shared control changes. | 1440x900 and 1280x800 audits show no horizontal overflow and expected nav/control/preview ownership. | `after/1440x900-ai-image-generator-after.png`, `after/1280x800-main-after.png`, `acceptance-report.json` | Desktop workbench | None found. |
+| Tablet | Narrow tablet could squeeze content. | 1024x768 and 768x1024 screenshots show no horizontal overflow. | `after/1024x768-tablet-main-after.png`, `after/768x1024-tablet-main-after.png` | Tablet workbench | Preview width is naturally tighter at 768px but remains usable. |
+| Mobile | Header/Drawer/tabs/bottom action needed final evidence. | 390x844 screenshots show params, Drawer, preview tab, and bottom action without horizontal overflow. | `after/390x844-mobile-params-after.png`, `after/390x844-mobile-drawer-after.png`, `after/390x844-mobile-preview-after.png` | Mobile workbench | Keyboard-open interaction was not screen-recorded; layout keeps normal scroll and bottom safe-area spacing. |
+
+### Final Browser Acceptance
+
+- All checked tools switched successfully: AI image generator, AI image editor, AI video generator, image upscale, video upscale, library.
+- Admin settings entry navigated to `/admin/providers`; the route rendered and had no horizontal overflow.
+- Header did not contain active tool titles in captured states.
+- Sidebar did not show persistent subtitles on desktop.
+- No checked state contained `参数区`, `工作区`, `生成结果将在这里显示`, or `创建视频与图片`.
+- No visible native file input appeared in checked upload states.
+- Desktop/tablet ratio labels aligned on one baseline; mobile intentionally wraps.
+- Console and runtime logs in `acceptance-report.json` were empty.
+- No Next.js Issue, hydration, or runtime error marker was detected.
+- No B-side files were changed.
+
+### Final Quality Checks
+
+- `npm run lint`: passed.
+- `npm run typecheck`: passed.
+- `npm run build`: passed.
+- `git diff --check`: passed.
+- Hardcoded color scan over module 5 shell/shared files found no new component-level theme hex colors.
+- `any` scan over touched shell/shared source found no added meaningless `any`.
 
 ## Risks And Blockers
 

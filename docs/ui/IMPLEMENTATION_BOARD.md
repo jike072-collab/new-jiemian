@@ -38,6 +38,7 @@
 | Module 4 final accessibility patch | Done | Selection semantics, prompt counter announcements, labels, keyboard checks, and Unicode safety scan completed. |
 | Module 4 | Done | PR #11 was approved and merged to `develop`. |
 | Module 5 segment 1 | Done | Visual baseline screenshots, audit matrix, component ownership, and implementation plan completed for review. |
-| Module 5 segment 2 | Done | Shell hierarchy cleanup and shared visual controls implemented; final screenshot acceptance remains in segment 3. |
-| Module 5 segment 3 | Not started | Final screenshot and PR acceptance are deferred. |
+| Module 5 segment 2 | Done | Shell hierarchy cleanup and shared visual controls implemented. |
+| Module 5 segment 3 | Done | After screenshots, visual comparison, browser acceptance, docs, and Draft PR completed. |
+| Module 5 | Done, awaiting human review | Do not enter module 6 until manual approval. |
 | Module 6 | Blocked | Video generator business work must not start until module 5 is manually approved. |
