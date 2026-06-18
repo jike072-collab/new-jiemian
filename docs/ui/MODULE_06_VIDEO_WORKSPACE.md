@@ -259,3 +259,68 @@ Do not separately maintain navigation mode, form mode, request mode, and preview
 Current backend supports both mode strings in server validation and library records. It blocks `image-to-video` without files. It does not currently prove that every configured provider supports both modes or that the provider expects an explicit `mode` field in JSON. Segment 2 should preserve existing provider payload unless there is concrete provider/API evidence to change it.
 
 If no enabled video provider exists, module 6 must show the real unavailable state and must not create mock video output.
+
+## Segment 3 Acceptance
+
+Current branch: `feature/06-video-workspace`
+
+Accepted commit: `532fb5f` before final evidence commit.
+
+Production preview:
+
+- Built with `npm run build`.
+- Served from current HEAD at `http://127.0.0.1:3100/` using `npm run start -- -p 3100`.
+- No Next.js development badge or issue overlay was present in the captured evidence.
+
+### Browser Acceptance Results
+
+| Area | Result | Evidence |
+| --- | --- | --- |
+| Text-to-video mode | Passed. The form shows video model, ratio, duration, and video prompt. No first-frame upload is shown, and missing image does not add a disabled reason. | `1440x900-text-to-video-initial.png` |
+| Image-to-video mode | Passed for required empty state. The first-frame upload area appears, prompt label changes to motion description, preview copy changes, and submit stays disabled while no file/model is available. | `1440x900-image-to-video-missing-first-frame.png` |
+| Mode switch | Passed. `aria-pressed` switches between text-to-video and image-to-video; prompt labels, placeholders, upload visibility, disabled reasons, and preview copy change with `videoWorkspace.mode`. | Browser DOM check, 2026-06-18 |
+| Model availability | Passed for current environment. No enabled video model exists, so the UI keeps the real unavailable state and does not create fake models. | `1440x900-no-video-model-state.png` |
+| Payload difference | Passed by code path and disabled-state review. Frontend uses one submit entry, sends `mode`, and appends `files` only for image-to-video. Server provider payload adds `image` only for image-to-video. | `src/components/studio-app.tsx`, `src/lib/server/provider-call.ts` |
+| Preview state | Passed for initial and unavailable states. Text-to-video and image-to-video use different guidance. Success was not shown because no real video model/result exists. | screenshots in `docs/design-references/module-06-video-workspace/` |
+| Desktop responsive | Passed at 1440x900 and 1280x800 with no horizontal overflow. | `1440x900-text-to-video-initial.png`, `1280x800-text-to-video.png` |
+| Tablet/mobile responsive | Partially passed. 390x844 mobile text and image mode screenshots show correct mode-specific content and no horizontal overflow. 1024/768 screenshots were captured, but some automated tool switching was unstable at tablet breakpoints. | mobile screenshots listed below |
+| Console and React warnings | Passed for checked pages. Browser console warning/error list was empty during desktop and mobile checks. | Browser log check, 2026-06-18 |
+
+### Screenshot Evidence
+
+Directory:
+
+```text
+docs/design-references/module-06-video-workspace/
+```
+
+Files:
+
+- `1440x900-text-to-video-initial.png`
+- `1440x900-image-to-video-missing-first-frame.png`
+- `1440x900-image-to-video-upload-not-automated.png`
+- `1440x900-no-video-model-state.png`
+- `1440x900-real-unavailable-error-state.png`
+- `1280x800-text-to-video.png`
+- `1024x768-text-to-video.png`
+- `1024x768-image-to-video.png`
+- `768x1024-text-to-video.png`
+- `390x844-mobile-text-to-video-params.png`
+- `390x844-mobile-image-to-video-upload.png`
+- `390x844-mobile-preview.png`
+- `390x844-mobile-bottom-action.png`
+
+### Quality Checks
+
+Final checks to run before the segment 3 commit:
+
+- `npm run lint`
+- `npm run typecheck`
+- `npm run build`
+- `git diff --check`
+
+### Not Verified In Segment 3
+
+- Real successful video generation, playback, download, and library completion were not verified because the current environment has no enabled real video model.
+- Upload-after-selection thumbnail, replace, and delete were not fully automated because the in-app browser runtime does not expose file-selection or `setInputFiles`. The code path uses the shared `CompactDropzone`, object URL creation, replacement, removal, and cleanup implemented in segment 2.
+- Provider capability filtering could not be verified because the current provider API exposes no capability fields for text-to-video, image-to-video, ratios, durations, or optional reference-image support.

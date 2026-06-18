@@ -45,5 +45,6 @@
 | Module 5 | Done | PR #18 was approved and merged to `develop`. |
 | Module 6 segment 1 | Done | Video workspace audit, mode-difference matrix, and implementation plan completed and pushed. |
 | Module 6 segment 2 | Done | Text-to-video and image-to-video now differ in parameters, validation, payload behavior, preview state, and mobile/desktop submit state. |
-| Module 6 segment 3 | Not started | Browser acceptance, screenshots, docs, and PR remain pending. |
+| Module 6 segment 3 | Done | Production browser acceptance, screenshot evidence, docs, checks, push, and Draft PR completed. |
+| Module 6 | Done, awaiting human review | Do not merge or proceed to module 7 until manual review approves the module. |
 | Module 7 | Blocked | Do not start until module 6 is manually approved. |
