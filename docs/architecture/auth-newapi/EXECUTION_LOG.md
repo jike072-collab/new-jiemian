@@ -386,7 +386,7 @@ Integration target: `integration/auth-newapi`
 
 ## B12 - Final Security Acceptance And Mainline Handoff
 
-Status: In progress
+Status: Completed; final corrective validation recorded under B12-FG
 
 Branch: `feature/auth-newapi-12-final-handoff`
 
