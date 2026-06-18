@@ -219,6 +219,78 @@ test("dual mode keeps JSON registration and login working when PostgreSQL shadow
   }
 });
 
+test("dual mode keeps JSON auth working when shadow and repair storage both fail", async () => {
+  const dataDir = await mkdtemp(join(tmpdir(), "auth-dual-repair-unavailable-"));
+  const previousRepairPath = process.env.APP_AUTH_DUAL_REPAIR_STORE_PATH;
+  const repairPath = join(dataDir, "missing", "auth-dual-repair-records.json");
+  const errors: string[] = [];
+  const originalError = console.error;
+  try {
+    process.env.APP_AUTH_DUAL_REPAIR_STORE_PATH = repairPath;
+    console.error = (message?: unknown) => {
+      errors.push(String(message));
+    };
+
+    const jsonRepository = createMemoryAuthRepository();
+    const jsonMappingRepository = createMemoryNewApiUserMappingRepository();
+    const mappingRepository = createDualNewApiUserMappingRepository(jsonMappingRepository, unavailableMappingRepository());
+    const auth = new AuthService({
+      repository: createDualAuthRepository(jsonRepository, unavailableAuthRepository()),
+      mappingRepository,
+      registerLimiter: new InMemoryRateLimiter(20, 60 * 60 * 1000),
+      loginLimiter: new InMemoryRateLimiter(20, 60 * 60 * 1000),
+      userSyncService: {
+        ensureMapped: async (profile: NewApiUserSyncProfile) => {
+          const result = activeMapping(profile.localUserId);
+          await mappingRepository.createPending({ localUserId: profile.localUserId });
+          await mappingRepository.markActive({
+            localUserId: profile.localUserId,
+            newApiUserId: result.mapping.new_api_user_id!,
+          });
+          return result;
+        },
+      },
+    });
+
+    const registered = await auth.register({
+      email: "dual-repair-fail@example.com",
+      username: "dual-repair-fail",
+      password: "StrongPass123",
+      displayName: "Dual Repair Fail",
+    });
+    assert.equal(registered.ok, true);
+
+    const login = await auth.login({
+      identifier: "dual-repair-fail@example.com",
+      password: "StrongPass123",
+    });
+    assert.equal(login.ok, true);
+    assert.equal(Boolean(login.ok && login.session?.token), true);
+
+    const current = await auth.currentUser(login.ok ? login.session?.token : null);
+    assert.equal(current.ok, true);
+
+    const serializedErrors = errors.join("\n");
+    assert.equal(serializedErrors.includes("auth.persistence.dual_repair_record_failed"), true);
+    assert.equal(serializedErrors.includes("\"severity\":\"critical\""), true);
+    for (const leaked of [
+      "StrongPass123",
+      "secret-token",
+      "10.0.0.5",
+      "postgresql://user:password",
+      "password@",
+      "token=secret",
+    ]) {
+      assert.equal(serializedErrors.includes(leaked), false, `critical log leaked ${leaked}`);
+    }
+  } finally {
+    console.error = originalError;
+    if (previousRepairPath === undefined) delete process.env.APP_AUTH_DUAL_REPAIR_STORE_PATH;
+    else process.env.APP_AUTH_DUAL_REPAIR_STORE_PATH = previousRepairPath;
+    await rm(dataDir, { recursive: true, force: true });
+  }
+});
+
 test("dual repair records can be marked repaired after the PostgreSQL shadow repository recovers", async () => {
   const repair = repairRepositorySink();
   const first = await repair.repository.recordFailure({

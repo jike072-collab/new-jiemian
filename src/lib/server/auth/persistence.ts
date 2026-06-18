@@ -2,7 +2,7 @@ import {
   createJsonNewApiUserMappingRepository,
   type NewApiUserMappingRepository,
 } from "../integrations/new-api/user-mapping";
-import { getJsonAuthDualRepairRepository, redactedAuthDualRepairKey } from "./dual-repair";
+import { getJsonAuthDualRepairRepository, redactedAuthDualRepairKey, sanitizeAuthDualRepairError } from "./dual-repair";
 import { createJsonAuthRepository, type AuthRepository } from "./repository";
 
 export type AuthPersistenceMode = "json" | "dual" | "postgres";
@@ -109,16 +109,28 @@ function stableComparable(value: unknown) {
 }
 
 async function recordShadowFailure(scope: string, operation: string, key: string | number | null | undefined, error: unknown) {
-  const dualRepairRepository = getJsonAuthDualRepairRepository();
-  const record = await dualRepairRepository.recordFailure({ scope, operation, key, error });
-  console.warn(JSON.stringify({
-    event: "auth.persistence.dual_shadow_failure",
-    scope,
-    operation,
-    repair_record_id: record.id,
-    key: record.redacted_key,
-    error_code: record.last_error_code,
-  }));
+  try {
+    const dualRepairRepository = getJsonAuthDualRepairRepository();
+    const record = await dualRepairRepository.recordFailure({ scope, operation, key, error });
+    console.warn(JSON.stringify({
+      event: "auth.persistence.dual_shadow_failure",
+      scope,
+      operation,
+      repair_record_id: record.id,
+      key: record.redacted_key,
+      error_code: record.last_error_code,
+    }));
+  } catch (recordError) {
+    console.error(JSON.stringify({
+      event: "auth.persistence.dual_repair_record_failed",
+      severity: "critical",
+      scope,
+      operation,
+      key: redactedAuthDualRepairKey(key),
+      shadow_error: sanitizeAuthDualRepairError(error),
+      repair_error: sanitizeAuthDualRepairError(recordError),
+    }));
+  }
 }
 
 async function compareShadow<T>(
