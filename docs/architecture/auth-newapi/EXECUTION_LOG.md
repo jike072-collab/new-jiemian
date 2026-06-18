@@ -249,3 +249,45 @@ Pull request: `#12`
 - GitHub Actions run `27737484928` passed the `New API BFF / bff-client` job on PR `#12`.
 - The remote Docker-enabled validation covered unit tests, isolated New API startup, test admin initialization, admin access-token generation, real BFF health call, unauthorized admin rejection, authorized admin call, real user mapping creation/activation, production build, and static bundle leak scan.
 - A previous remote validation attempt found that New API rejects user creation when `User.Email` exceeds the official 50-character limit. The sync layer now sends local email upstream only when it fits the New API field limit; overlong local emails remain local identity data and are confirmed upstream by the normalized username.
+
+## B09 - Registration, Login, Logout, And Secure Session Backend
+
+Status: In progress
+
+Branch: `feature/auth-newapi-09-auth-session`
+
+Base: `origin/integration/auth-newapi`
+
+Integration target: `integration/auth-newapi`
+
+Pull request: `#13`
+
+## B09 Scope
+
+- Add a real local project account backend.
+- Add password hashing, login, registration, logout, current user, session refresh, CSRF, rate limiting, and audit logging.
+- Use B08 `NewApiUserSyncService` for New API user mapping during registration.
+- Keep New API credentials server-only and out of browser cookies/localStorage.
+- Do not build the final login/register visual pages.
+
+## B09 Notes
+
+- Current repo still has no formal ORM, SQL schema, or migration runner; B09 follows the existing runtime JSON persistence pattern and documents the future compensation boundary.
+- The existing provider-admin `x-admin-password` gate remains separate and is not reused as customer auth.
+- The project account store is the single user identity truth source.
+- The project HttpOnly session store is the single customer session truth source.
+- Registration may return `mapping_pending` when the local user exists but New API mapping is not active; billable cloud actions remain blocked for that state.
+
+## B09 Local Verification
+
+- `npm ci` completed from the existing lockfile; it reported existing dependency audit findings, but no dependency or lockfile change was made.
+- `node scripts/test-auth-session.mjs` passed 17 B09 auth/session tests covering registration, duplicate registration, weak password, concurrent registration, mapping failure, login, session rotation, invalid credentials, disabled user, verification-required user, rate limiting, session expiry, logout, route protection helper, refresh, CSRF, open redirect protection, audit redaction, and cookie attributes.
+- `node scripts/test-new-api-bff.mjs` passed 31 B07/B08 BFF and mapping tests.
+- `npm run typecheck` passed.
+- `npm run lint` passed.
+- `npm run build` passed.
+
+## B09 Remote Verification
+
+- GitHub Actions run `27738455649` passed the `Auth Session / auth-session` job on PR `#13`.
+- The remote validation covered `node scripts/test-auth-session.mjs`, `npm run typecheck`, `npm run lint`, and `npm run build`.
