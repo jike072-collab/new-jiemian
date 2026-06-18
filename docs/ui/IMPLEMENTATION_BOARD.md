@@ -40,5 +40,6 @@
 | Module 5 segment 1 | Done | Visual baseline screenshots, audit matrix, component ownership, and implementation plan completed for review. |
 | Module 5 segment 2 | Done | Shell hierarchy cleanup and shared visual controls implemented. |
 | Module 5 segment 3 | Done | After screenshots, visual comparison, browser acceptance, docs, and Draft PR completed. |
+| Module 5 final patch 2 | Done | Image workspace mode regression, segmented controls, ratio visuals, color hierarchy, sticky action, Unicode scan, and refreshed screenshots completed. |
 | Module 5 | Done, awaiting human review | Do not enter module 6 until manual approval. |
 | Module 6 | Blocked | Video generator business work must not start until module 5 is manually approved. |

@@ -216,6 +216,39 @@ Segment 2 implemented the shell hierarchy and shared visual controls without cha
 
 Segment 3 ran against the real production preview at `http://127.0.0.1:3104/` from the latest module 5 branch. It included one small visual hierarchy patch: `PreviewState` now hides the eyebrow when the eyebrow and title are identical, preventing the initial preview from showing `创作预览` twice.
 
+## Final Patch 2 Result
+
+Final patch 2 closes the visual parity and image-mode gaps found during PR #18 review.
+
+- Image workspace mode source: the shared `imageWorkspace` state now owns `mode` in addition to provider, ratio, quality, prompt, files, errors, and loading. `AI 图像生成器` and `AI 图片编辑器` still share the same image business state and `/api/generate/image` submit path.
+- Image generator mapping: `AI 图像生成器` opens the shared image workspace in `text-to-image` and exposes a `文生图 / 图生图` segmented control. Switching to `图生图` changes the upload requirement, prompt guidance, preview guidance, validation, and submit copy through the real mode state.
+- Image editor mapping: `AI 图片编辑器` remains a separate navigation entry and sets the same image workspace mode to `image-to-image` by default. It does not create another model, upload, prompt, submit, result, or library state.
+- Shared mode control: `ModeSegmentedControl` is the shared segmented display used by image mode, video mode, image quality, upscale scale, and library filters. It remains controlled by caller state and uses `aria-pressed`.
+- Ratio visual refinement: `AspectRatioSelector` remains shared by image generation, image editing, and video generation. The active state now emphasizes fill and label color with a lighter outer border, while keeping equal graphic wells and aligned labels.
+- Color hierarchy: Sidebar is the deepest layer; parameter and preview panels use distinguishable raised surfaces; upload/input areas use a clearer inner surface. Navigation text contrast was raised without restoring a heavy selected block.
+- Sticky primary action: desktop action remains naturally after short content and sticky at the panel bottom for longer content with a stronger background separation. Mobile keeps the shell bottom action and does not duplicate the internal desktop button.
+- Unicode safety: scanned `src/`, `docs/`, `AGENTS.md`, and current modified files for U+202A-U+202E and U+2066-U+2069; result is zero matches.
+- Screenshot evidence: refreshed final patch 2 screenshots are stored in `docs/design-references/module-05-visual-foundation/final-patch-2/`. They were captured from the real Next dev server on `http://127.0.0.1:3100/` because the running production preview on `http://127.0.0.1:3104/` returned 500 for its CSS chunk during screenshot capture; production `npm run build` still passed separately.
+- Final patch 2 browser audit: `acceptance-report.json` records no horizontal overflow, no Next.js issue marker, no repeated engineering copy, text/image mode changes, editor default `图生图`, aligned desktop ratio labels, and mobile internal sticky action hidden.
+
+### Final Patch 2 Screenshot Set
+
+| File | Viewport | Surface | Validation focus |
+| --- | --- | --- | --- |
+| `1440x900-ai-image-generator-text-to-image-final-patch2.png` | 1440x900 | AI image generator | `文生图` selected, optional reference image, shared ratio and mode controls |
+| `1440x900-ai-image-generator-image-to-image-final-patch2.png` | 1440x900 | AI image generator | `图生图` selected, required reference image, `开始编辑` action |
+| `1440x900-ai-image-editor-final-patch2.png` | 1440x900 | AI image editor | Independent nav entry defaults to shared image `图生图` mode |
+| `1440x900-ai-video-generator-text-to-video-final-patch2.png` | 1440x900 | AI video generator | Shared mode control and ratio selector in text-to-video |
+| `1440x900-ai-video-generator-image-to-video-final-patch2.png` | 1440x900 | AI video generator | Shared mode control in image-to-video |
+| `1440x900-image-upscale-final-patch2.png` | 1440x900 | Image upscale | Color hierarchy, dropzone, and `开始增强` action |
+| `1024x768-tablet-main-final-patch2.png` | 1024x768 | Tablet main | Tablet layout without horizontal overflow |
+| `390x844-mobile-params-final-patch2.png` | 390x844 | Mobile params | Mobile bottom action remains the only visible primary action |
+| `1440x900-mode-switch-closeup-final-patch2.png` | 1440x900 | Mode segmented control | Shared segmented visual and pressed state |
+| `1440x900-ratio-selector-closeup-final-patch2.png` | 1440x900 | Ratio selector | Lighter item chrome, stronger active fill, aligned labels |
+| `1440x900-sidebar-color-closeup-final-patch2.png` | 1440x900 | Sidebar | Darkest layer and clearer nav text |
+| `1440x900-sticky-primary-action-final-patch2.png` | 1440x900 | Sticky action | Sticky action background separation |
+| `acceptance-report.json` | N/A | Machine-readable report | Browser audit result, failed list is empty |
+
 ### After Screenshot Set
 
 | File | Viewport | Surface | Validation focus |

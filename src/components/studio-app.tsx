@@ -16,7 +16,6 @@ import {
   type WorkspaceVideoMode,
   workspaceToolById,
   workspaceToolEntries,
-  workspaceToolIdForImageMode,
 } from "@/lib/workspace-registry";
 
 type BusinessToolId = "image" | "video" | "image-upscale" | "video-upscale" | "library";
@@ -55,6 +54,7 @@ type UploadFilePreview = {
 };
 
 type ImageWorkspaceState = {
+  mode: WorkspaceImageMode;
   providerId: string;
   ratio: string;
   quality: string;
@@ -148,6 +148,7 @@ export function StudioApp() {
   const [librarySort, setLibrarySort] = useState<"recent" | "title">("recent");
   const [selectedLibraryItemId, setSelectedLibraryItemId] = useState<string | null>(null);
   const [imageWorkspace, setImageWorkspace] = useState<ImageWorkspaceState>({
+    mode: "text-to-image",
     providerId: "",
     ratio: "1:1",
     quality: "1k",
@@ -230,6 +231,13 @@ export function StudioApp() {
       return;
     }
 
+    const nextImageMode = action.mode === "text-to-image" || action.mode === "image-to-image" ? action.mode : null;
+    if (action.toolId === "image" && nextImageMode) {
+      setImageWorkspace((prev) => (
+        prev.mode === nextImageMode ? prev : { ...prev, mode: nextImageMode, submitError: "" }
+      ));
+    }
+
     setActiveWorkspaceToolId(tool);
   }, [router]);
 
@@ -237,7 +245,7 @@ export function StudioApp() {
   const activeAction = activeWorkspaceTool.action.kind === "workspace" ? activeWorkspaceTool.action : null;
   const activeBusinessTool = activeAction?.toolId || "library";
   const activeOutput = outputs[activeBusinessTool] || null;
-  const activeImageMode: WorkspaceImageMode = activeWorkspaceToolId === "image-editor" ? "image-to-image" : "text-to-image";
+  const activeImageMode: WorkspaceImageMode = imageWorkspace.mode;
   const activeVideoMode: WorkspaceVideoMode = activeBusinessTool === "video" && activeAction?.mode === "image-to-video" ? "image-to-video" : "text-to-video";
   const currentLibraryItems = useMemo(() => {
     const filtered = library.filter((item) => {
@@ -285,6 +293,22 @@ export function StudioApp() {
   const updateImageWorkspace = useCallback((patch: Partial<ImageWorkspaceState>) => {
     setImageWorkspace((prev) => ({ ...prev, ...patch }));
   }, []);
+
+  const handleImageModeChange = useCallback((mode: WorkspaceImageMode) => {
+    setImageWorkspace((prev) => (
+      prev.mode === mode
+        ? prev
+        : {
+            ...prev,
+            mode,
+            fileError: mode === "text-to-image" ? "" : prev.fileError,
+            submitError: "",
+          }
+    ));
+    if (activeWorkspaceToolId === "image-editor" && mode === "text-to-image") {
+      setActiveWorkspaceToolId("image");
+    }
+  }, [activeWorkspaceToolId]);
 
   const replaceImageWorkspaceFiles = useCallback((files: File[]) => {
     let nextFiles: ImageWorkspaceFile[];
@@ -432,7 +456,7 @@ export function StudioApp() {
           selectedProvider={selectedImageProvider}
           state={imageWorkspace}
           canSubmit={imageWorkspaceCanSubmit}
-          onModeChange={(mode) => setActiveWorkspaceToolId(workspaceToolIdForImageMode(mode))}
+          onModeChange={handleImageModeChange}
           onProviderChange={(value) => updateImageWorkspace({ providerId: value })}
           onRatioChange={(value) => updateImageWorkspace({ ratio: value })}
           onQualityChange={(value) => updateImageWorkspace({ quality: value })}
@@ -616,7 +640,7 @@ function ImageGenerator({
         <AspectRatioSelector label="图片比例" value={state.ratio} onChange={onRatioChange} />
       </StackedControl>
       <StackedControl label="清晰度" required>
-        <ModeSwitch
+        <ModeSegmentedControl
           label="清晰度"
           groupId="image-quality"
           value={state.quality}
@@ -652,13 +676,13 @@ function ImageModeSwitch({
   onModeChange: (mode: WorkspaceImageMode) => void;
 }) {
   return (
-    <ModeSwitch
+    <ModeSegmentedControl
       label="图像模式"
       groupId="image-mode"
       value={mode}
       options={[
         ["text-to-image", "文生图"],
-        ["image-to-image", "图片编辑"],
+        ["image-to-image", "图生图"],
       ]}
       onChange={(value) => onModeChange(value as WorkspaceImageMode)}
     />
@@ -813,7 +837,7 @@ function VideoGenerator({
 
   return (
     <FormPanel>
-      <ModeSwitch
+      <ModeSegmentedControl
         label="视频模式"
         groupId="video-mode"
         value={mode}
@@ -987,7 +1011,7 @@ function UpscaleForm({
       />
 
       <StackedControl label="放大倍数" required>
-        <ModeSwitch
+        <ModeSegmentedControl
           label="放大倍数"
           groupId="upscale-scale"
           value={scale}
@@ -1047,7 +1071,7 @@ function LibrarySidebar({
   return (
     <div className="studio-library-sidebar">
       <StackedControl label="分类">
-        <ModeSwitch
+        <ModeSegmentedControl
           label="作品分类"
           groupId="library-filter"
           value={filter}
@@ -1060,7 +1084,7 @@ function LibrarySidebar({
         />
       </StackedControl>
       <StackedControl label="排序">
-        <ModeSwitch
+        <ModeSegmentedControl
           label="作品排序"
           groupId="library-sort"
           value={sort}
@@ -1535,7 +1559,7 @@ function PreviewState({
   );
 }
 
-function ModeSwitch({
+function ModeSegmentedControl({
   label,
   groupId,
   value,
