@@ -377,3 +377,81 @@ Integration target: `integration/auth-newapi`
 - `npm run typecheck` passed.
 - `npm run lint` passed without warnings after cleanup.
 - `npm run build` passed and listed `/api/billing/config`, `/api/billing/orders`, `/api/billing/orders/[id]`, and `/api/billing/webhooks/sandbox`.
+
+## B11 Remote Verification
+
+- Pull request `#15` was created from `feature/auth-newapi-11-billing-sandbox` to `integration/auth-newapi`.
+- GitHub Actions passed `Auth Session / auth-session`, `Billing Sandbox / billing-sandbox`, `New API BFF / bff-client`, and `Quota Usage / quota-usage`.
+- PR `#15` was merged into `integration/auth-newapi` at merge commit `f7151ef`.
+
+## B12 - Final Security Acceptance And Mainline Handoff
+
+Status: In progress
+
+Branch: `feature/auth-newapi-12-final-handoff`
+
+Base: `origin/integration/auth-newapi` at `f7151ef`
+
+Final draft target: `develop`
+
+## B12 Scope
+
+- Validate B01 through B11 Git, PR, remote branch, and merge status.
+- Validate New API, BFF, auth, mapping, quota, usage, and billing sandbox evidence.
+- Run B12 local backend regression tests, typecheck, lint, production build, security scans, and final diff checks.
+- Create final mainline handoff documents for auth UI, admin UI, Workbench quota integration, and production payment boundaries.
+- Create only a final Draft PR from `integration/auth-newapi` to `develop`; do not merge it.
+
+## B12 Notes
+
+- B12 synced latest `origin/develop` into `feature/auth-newapi-12-final-handoff` with merge commit `87fe841` to prevent the final draft PR from showing main line A UI files as regressions.
+- After that merge, protected main line A files are absent from the final `origin/develop..HEAD` diff.
+- Local Docker validation remains unavailable on this Windows host because `docker` and `docker compose` are not in `PATH`.
+- New API real container evidence is therefore taken from prior Docker-enabled GitHub Actions runs, especially New API Ops and New API BFF workflows.
+- `npm ci` in the B12 worktree reported existing dependency audit findings: 12 total vulnerabilities, including 4 high. B12 records the risk and does not upgrade dependencies because this module is final handoff only.
+
+## B12 Git Acceptance
+
+- B01 through B11 remote feature branches exist.
+- B01 through B11 PRs target `integration/auth-newapi`, use their expected module branch as head, and are merged.
+- `origin/integration/auth-newapi` includes merge commits `40ac0c6`, `2ff3e71`, `7d79663`, `cf1c275`, `ca74ff1`, `1c91ce2`, `b380f48`, `0bdc3b0`, `98733c6`, `f4cb873`, and `f7151ef`.
+- No uncommitted code existed before B12 document edits.
+
+## B12 Local Verification
+
+- `node scripts/test-new-api-bff.mjs` passed 31 tests.
+- `node scripts/test-auth-session.mjs` passed 17 tests.
+- `node scripts/test-quota-usage.mjs` passed 10 tests.
+- `node scripts/test-billing-sandbox.mjs` passed 12 tests.
+- `node scripts/reconcile-billing-sandbox.mjs --dry-run --json` passed.
+- `npm run typecheck` passed.
+- `npm run lint` passed.
+- `npm run build` passed and listed auth, quota, usage, and billing API routes.
+- `git diff --check` passed.
+- `.next/static` was scanned for New API admin config, webhook secret, session secret, and known test tokens; no match was found.
+- Current file scan found only placeholders, tests, sample redaction fixtures, or redaction code for secret-like patterns; no real secret was identified.
+- Git history scan for common private key, GitHub token, AWS key, and OpenAI-style key patterns found no match outside documented/test exclusions.
+
+## B12 Security Acceptance
+
+- No `.env` runtime file is tracked; only `.env.example` files are tracked.
+- New API image remains pinned to `calciumion/new-api:v1.0.0-rc.11@sha256:bd30213d808857bb569ef47d3c9209d061a66ea089c2472ef46ce51e75517f19`.
+- PostgreSQL and Redis services have no host port mapping in `infra/new-api/docker-compose.yml`.
+- New API binds through `NEW_API_BIND_ADDRESS`, with `.env.example` defaulting to `127.0.0.1`.
+- Backups are under ignored runtime directories and include redacted environment snapshots.
+- Webhook secret is required for sandbox callback acceptance.
+- Client bundle leak checks passed locally and in prior remote BFF workflow.
+
+## B12 Open Issues
+
+- Local host cannot rerun Docker container startup or restore tests.
+- Production persistence still needs a formal database schema and migration runner.
+- Account recharge history needs an order-list endpoint before a full account center history page.
+- Admin user/mapping/quota/order review APIs and UI are not implemented.
+- Workbench generation/upscale routes are not yet connected to B10 quota precheck or usage settlement.
+- Production payment remains disabled and requires a separate launch checklist.
+- Dependency audit findings remain unresolved and should be remediated before production.
+- New API backup archives include runtime logs; operators need a log redaction, encryption, or retention policy before production.
+- New API server modules rely on server directory ownership plus bundle scans; a hard `server-only` guard should be added before production if dependency policy allows.
+- Non-production auth secret fallback must not be used for exposed staging/test environments.
+- PostgreSQL and Redis images are pinned by tag but not digest.

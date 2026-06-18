@@ -77,6 +77,20 @@ The following routes still need future task billing integration and currently re
 
 Future integration must call B10 precheck before billable cloud submission and must update usage status after upstream acceptance, completion, failure, cancellation, retry, and reconciliation.
 
+The future Workbench integration must use a stable task ID and idempotency key so repeated submits, retries, duplicate callbacks, and browser refreshes do not create duplicate audit rows or bypass quota precheck.
+
+Generation and upscale outcomes must be recorded as:
+
+- prechecked;
+- submitted;
+- succeeded;
+- failed;
+- cancelled;
+- retrying;
+- reconciled.
+
+Failed or cancelled tasks must not be counted as successful actual consumption unless New API confirms quota usage. If upstream usage is charged but local task state fails, the task must enter reconciliation instead of silently refunding or creating a local balance correction.
+
 ## Verification Coverage
 
 Local B10 tests cover:
@@ -108,3 +122,4 @@ Remote PR workflow runs:
 - New API log list response shape is normalized defensively because the official response may vary by version.
 - Upstream logs do not always contain the product operation, so normalized upstream-only entries use a placeholder operation until future task integration records the real operation locally.
 - This machine does not provide Docker; real container verification remains covered by existing B05/B06/B07/B08 remote workflows, not by B10 local checks.
+- Workbench task routes are still unauthenticated for quota purposes until a future integration task connects them to B09 sessions, B08 mappings, and B10 precheck.
