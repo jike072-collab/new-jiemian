@@ -117,6 +117,8 @@
 - Generated image/video results and local upscale results must reuse the existing `addLibraryItem()` flow instead of creating a second library store.
 - Download actions must point only to allowed stored output files.
 - Delete actions must delete only the selected library item's allowed file and metadata.
+- Delete actions must remove the real file before metadata; file deletion failure must preserve the work record.
+- Related job cleanup must go through the jobs write queue and must not race with job status updates.
 - Missing output files must render a file-invalid state without crashing the page.
 - Normal workspace errors must not expose local absolute paths, command lines, secrets, or full stack traces.
 - Module 9 must keep the module 5 visual foundation and must not redesign Header, Sidebar, upload controls, primary action, preview shell, or scrollbar behavior.

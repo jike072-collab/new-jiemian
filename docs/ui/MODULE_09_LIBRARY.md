@@ -42,7 +42,7 @@ No second library data store was created.
 | Type labels | Cards distinguish `文生图`, `图生图`, `文生视频`, `图生视频`, `图片高清`, and `视频高清` by item mode. |
 | Preview | Images render with `<img>` and videos render with native controls. |
 | Download | Download links are shown only for stored local files with `storedName`. |
-| Delete | Delete requires confirmation, shows deleting state, refreshes metadata, and preserves the card if deletion fails. |
+| Delete | Delete requires confirmation, shows deleting state, removes the real output file before metadata, refreshes after success, and preserves the card if deletion fails. |
 | Missing file | Stored files are checked server-side; missing files render as `文件失效` without crashing the page. |
 | Mobile | The library keeps no mobile primary action slot and uses the existing shell tabs. |
 
@@ -55,6 +55,18 @@ No second library data store was created.
 | Path traversal | User-provided names are sanitized and rejected when sanitized output differs. |
 | Absolute path leakage | UI displays title, type, status, size, dimensions, and prompt/error only; local paths are not shown. |
 | Large media | Videos are served through `/api/files/[name]` and rendered by the browser video element, not read into frontend memory. |
+
+## Final Delete Flow
+
+| Step | Result |
+| --- | --- |
+| Locate item | `/api/library` returns `404` when the work ID is absent. |
+| Validate output | Stored output names must round-trip through `safeStoredName()` before any file operation. |
+| Delete file first | The stored output file is removed before library metadata is written. Missing files are treated as already cleaned. |
+| Preserve on failure | File deletion errors return a safe error and leave the work metadata and card in place. |
+| Delete metadata | Library metadata is removed only after the file step succeeds or the file is already missing. |
+| Delete related jobs | Associated job records are removed through the existing jobs write queue, preventing overlap with job status updates. |
+| Frontend failure | The deleting state is cleared, the card remains visible, and the API error is shown in the library error surface. |
 
 ## Validation Plan
 

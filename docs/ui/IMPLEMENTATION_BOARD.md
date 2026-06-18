@@ -55,4 +55,5 @@
 | 模块 7 | 已完成 | PR #24 was approved and merged to `develop`. |
 | 模块 8 | 已完成 | PR #26 was approved and merged to `develop`. |
 | 模块 9 | 第一版已完成，等待人工检查 | Real local works library, preview, download, delete, missing-file state, docs, checks, and Draft PR were completed on `feature/09-library`. |
+| 模块 9 最终补修 | 已完成 | Safe delete flow now removes real files before metadata, returns `404` for absent works, and clears related jobs through the jobs write queue. |
 | 模块 10 | 阻塞 | Do not start until module 9 is manually approved. |

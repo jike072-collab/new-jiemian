@@ -18,6 +18,16 @@ const jobsPath = join(dataRoot, "jobs.json");
 let libraryWriteQueue = Promise.resolve();
 let jobsWriteQueue = Promise.resolve();
 
+export class LibraryOperationError extends Error {
+  status: number;
+
+  constructor(status: number, message: string) {
+    super(message);
+    this.name = "LibraryOperationError";
+    this.status = status;
+  }
+}
+
 async function serializeWrite<T>(queue: "library" | "jobs", action: () => Promise<T>) {
   const previous = queue === "library" ? libraryWriteQueue : jobsWriteQueue;
   let release: () => void;
@@ -48,6 +58,32 @@ async function storedFileExists(storedName: string) {
 
 async function readLibraryFile() {
   return readJsonFile<LibraryItem[]>(libraryPath, []);
+}
+
+async function readJobsFile() {
+  return readJsonFile<JobRecord[]>(jobsPath, []);
+}
+
+async function saveJobsFile(jobs: JobRecord[]) {
+  await writeJsonFile(jobsPath, jobs);
+}
+
+function safeOutputPath(storedName: string) {
+  const safeName = safeStoredName(storedName);
+  if (!safeName || safeName !== storedName) {
+    throw new LibraryOperationError(400, "作品文件名无效。");
+  }
+  return join(uploadsRoot, safeName);
+}
+
+async function removeStoredOutputFile(storedName: string) {
+  const outputPath = safeOutputPath(storedName);
+  try {
+    await unlink(outputPath);
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") return;
+    throw new LibraryOperationError(500, "删除作品文件失败，请稍后重试。");
+  }
 }
 
 export async function readLibrary() {
@@ -96,46 +132,44 @@ export async function deleteLibraryItem(id: string) {
   const removed = await serializeWrite("library", async () => {
     const items = await readLibraryFile();
     const removedItem = items.find((item) => item.id === id);
+    if (!removedItem) throw new LibraryOperationError(404, "作品不存在。");
+    if (removedItem.output?.storedName) await removeStoredOutputFile(removedItem.output.storedName);
     const next = items.filter((item) => item.id !== id);
     await saveLibrary(next);
     return removedItem;
   });
-  const jobs = await readJobs();
-  await saveJobs(jobs.filter((job) => job.libraryItemId !== id));
-  if (removed?.output?.storedName) {
-    const storedName = safeStoredName(removed.output.storedName);
-    if (storedName && storedName === removed.output.storedName) {
-      await unlink(join(uploadsRoot, storedName)).catch(() => undefined);
-    }
-  }
+  await serializeWrite("jobs", async () => {
+    const jobs = await readJobsFile();
+    await saveJobsFile(jobs.filter((job) => job.libraryItemId !== id));
+  });
   return { deleted: Boolean(removed) };
 }
 
 export async function readJobs() {
-  return readJsonFile<JobRecord[]>(jobsPath, []);
+  return readJobsFile();
 }
 
 export async function saveJobs(jobs: JobRecord[]) {
-  await writeJsonFile(jobsPath, jobs);
+  await saveJobsFile(jobs);
 }
 
 export async function addJob(job: Omit<JobRecord, "createdAt" | "updatedAt">) {
   const now = new Date().toISOString();
   const record: JobRecord = { ...job, createdAt: now, updatedAt: now };
   await serializeWrite("jobs", async () => {
-    const jobs = await readJobs();
-    await saveJobs([record, ...jobs]);
+    const jobs = await readJobsFile();
+    await saveJobsFile([record, ...jobs]);
   });
   return record;
 }
 
 export async function updateJob(id: string, patch: Partial<JobRecord>) {
   return serializeWrite("jobs", async () => {
-    const jobs = await readJobs();
+    const jobs = await readJobsFile();
     const next = jobs.map((job) => (
       job.id === id ? { ...job, ...patch, updatedAt: new Date().toISOString() } : job
     ));
-    await saveJobs(next);
+    await saveJobsFile(next);
     return next.find((job) => job.id === id) || null;
   });
 }
