@@ -82,9 +82,25 @@ function generatedPassword(profile: NewApiUserSyncProfile, options: NewApiUserSy
   return `napi_${stableHash(`${profile.localUserId}:${seed}`).slice(0, 32)}A1!`;
 }
 
+function arrayFrom(value: unknown): NewApiUserRecord[] {
+  return Array.isArray(value) ? value as NewApiUserRecord[] : [];
+}
+
 function extractUsers(payload: Awaited<ReturnType<typeof adminGetUsers>>["data"]) {
-  const candidates = payload.data || payload.users || [];
-  return Array.isArray(candidates) ? candidates : [];
+  const root = payload as Record<string, unknown>;
+  if (Array.isArray(root.data)) return arrayFrom(root.data);
+  if (Array.isArray(root.users)) return arrayFrom(root.users);
+  if (Array.isArray(root.items)) return arrayFrom(root.items);
+
+  const data = root.data as Record<string, unknown> | undefined;
+  if (data) {
+    if (Array.isArray(data.items)) return arrayFrom(data.items);
+    if (Array.isArray(data.users)) return arrayFrom(data.users);
+    if (Array.isArray(data.rows)) return arrayFrom(data.rows);
+    if (Array.isArray(data.records)) return arrayFrom(data.records);
+  }
+
+  return [];
 }
 
 function extractCreatedUser(payload: Awaited<ReturnType<typeof adminCreateUser>>["data"]) {
@@ -143,7 +159,7 @@ async function createOrFindUpstreamUser(
     const user = extractCreatedUser(response.data);
     if (user) return { kind: "created", user };
     const existing = await findUpstreamUser(profile, listUsers);
-    if (existing) return { kind: "duplicate", user: existing };
+    if (existing) return { kind: "created", user: existing };
     return {
       kind: "repair_required",
       code: "NEW_API_USER_CREATE_EMPTY",

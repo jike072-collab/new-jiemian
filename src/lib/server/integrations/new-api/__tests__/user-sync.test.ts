@@ -89,6 +89,34 @@ test("shortens New API username and display name to official field limits", asyn
   assert.equal(result.mapping.new_api_user_id, "78");
 });
 
+test("confirms created user from New API paginated list when create returns no id", async () => {
+  const repository = createMemoryNewApiUserMappingRepository();
+  let createdUsername = "";
+  const service = new NewApiUserSyncService({
+    repository,
+    createUser: async (input) => {
+      createdUsername = String(input.username);
+      return response({ success: true, message: "" });
+    },
+    listUsers: async () => response({
+      success: true,
+      data: {
+        items: [user({ id: 79, username: createdUsername })],
+        total: 1,
+      },
+    }),
+  });
+
+  const result = await service.ensureMapped(profile({
+    localUserId: "local-user-created-without-id",
+    email: "created-without-id@example.com",
+  }));
+
+  assert.equal(result.action, "created_upstream");
+  assert.equal(result.mapping.sync_status, "active");
+  assert.equal(result.mapping.new_api_user_id, "79");
+});
+
 test("returns existing active mapping without calling New API", async () => {
   const repository = createMemoryNewApiUserMappingRepository();
   await repository.createPending({ localUserId: "local-user-1" });
