@@ -219,6 +219,14 @@ export function createDualBillingRepository(json: BillingRepository, postgres: B
         mirror: () => postgres.appendWebhookEvent(orderId, eventId, input),
       });
     },
+    async updateWebhookEventStatus(eventId, status, safeError) {
+      return mirrorWrite(json.updateWebhookEventStatus(eventId, status, safeError), {
+        scope: "billing_webhook_event",
+        operation: "updateWebhookEventStatus",
+        key: () => eventId,
+        mirror: () => postgres.updateWebhookEventStatus(eventId, status, safeError),
+      });
+    },
     async appendAudit(event) {
       await mirrorWrite(json.appendAudit(event), {
         scope: "billing_audit",

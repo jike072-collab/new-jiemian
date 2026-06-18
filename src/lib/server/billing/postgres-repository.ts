@@ -4,7 +4,7 @@ import { createHash, randomUUID } from "node:crypto";
 
 import { type QueryResultRow } from "pg";
 
-import { applicationQuery, getApplicationDatabaseConfig } from "../database";
+import { applicationQuery, getApplicationDatabaseConfig, withApplicationTransaction } from "../database";
 import {
   BillingRepositoryError,
   type BillingOrderListFilter,
@@ -18,6 +18,9 @@ import {
   type BillingCurrency,
   type BillingOrder,
   type BillingOrderStatus,
+  type BillingWebhookEventRecord,
+  type BillingWebhookEventType,
+  type BillingWebhookProcessingStatus,
 } from "./types";
 
 type BillingOrderRow = QueryResultRow & {
@@ -48,6 +51,16 @@ type BillingAuditRow = QueryResultRow & {
   local_user_id: string | null;
   created_at: Date | string;
   safe_details: Record<string, string | number | boolean | null> | null;
+};
+
+type BillingWebhookEventRow = QueryResultRow & {
+  event_id: string;
+  order_id: string;
+  event_type: BillingWebhookEventType;
+  status: BillingWebhookProcessingStatus;
+  received_at: Date | string;
+  occurred_at: Date | string | null;
+  safe_error: string | null;
 };
 
 const orderColumns = `
@@ -101,6 +114,18 @@ function auditFromRow(row: BillingAuditRow): BillingAuditEvent {
     created_at: iso(row.created_at),
     local_user_id: row.local_user_id,
     safe_details: row.safe_details || {},
+  };
+}
+
+function webhookEventFromRow(row: BillingWebhookEventRow): BillingWebhookEventRecord {
+  return {
+    event_id: row.event_id,
+    order_id: row.order_id,
+    event_type: row.event_type,
+    status: row.status,
+    received_at: iso(row.received_at),
+    occurred_at: isoOrNull(row.occurred_at),
+    safe_error: row.safe_error,
   };
 }
 
@@ -289,29 +314,102 @@ export class PostgresBillingRepository implements BillingRepository {
   async appendWebhookEvent(orderId: string, eventId: string, input: BillingWebhookEventInput = {}) {
     const order = await this.getOrder(orderId);
     if (!order) throw new BillingRepositoryError("BILLING_NOT_FOUND", "Billing order was not found.");
-    const status = input.status || "accepted";
     const eventType = input.eventType || "payment_succeeded";
-    const result = await applicationQuery<{ event_id: string }>(`
-      insert into billing_webhook_events(
-        event_id, order_id, provider_order_id, event_type, occurred_at, payload_hash, status
-      ) values ($1,$2,$3,$4,$5,$6,$7)
-      on conflict (event_id) do nothing
-      returning event_id
-    `, [
-      eventId.trim(),
-      order.order_id,
-      order.provider_order_id,
-      eventType,
-      input.occurredAt || null,
-      payloadHash(order.order_id, eventId.trim()),
-      status,
-    ]);
+    const trimmedEventId = eventId.trim();
+    const event = await withApplicationTransaction(async (client) => {
+      await client.query("select order_id from billing_orders where order_id = $1 for update", [order.order_id]);
+      const processing = await client.query<{ count: string }>(`
+        select count(*)::text as count
+        from billing_webhook_events
+        where order_id = $1 and status = 'processing' and event_id <> $2
+      `, [order.order_id, trimmedEventId]);
+      const status: BillingWebhookProcessingStatus = Number(processing.rows[0]?.count || 0) > 0 ? "received" : "processing";
+      const inserted = await client.query<BillingWebhookEventRow>(`
+        insert into billing_webhook_events(
+          event_id, order_id, provider_order_id, event_type, occurred_at, payload_hash, status, safe_error
+        ) values ($1,$2,$3,$4,$5,$6,$7,$8)
+        on conflict (event_id) do nothing
+        returning event_id, order_id, event_type, status, received_at, occurred_at, safe_error
+      `, [
+        trimmedEventId,
+        order.order_id,
+        order.provider_order_id,
+        eventType,
+        input.occurredAt || null,
+        payloadHash(order.order_id, trimmedEventId),
+        status,
+        input.safeError || null,
+      ]);
+      if (inserted.rows[0]) return webhookEventFromRow(inserted.rows[0]);
+
+      const existing = await client.query<BillingWebhookEventRow>(`
+        select event_id, order_id, event_type, status, received_at, occurred_at, safe_error
+        from billing_webhook_events
+        where event_id = $1
+        for update
+      `, [trimmedEventId]);
+      const existingEvent = existing.rows[0] ? webhookEventFromRow(existing.rows[0]) : null;
+      if (
+        existingEvent
+        && (existingEvent.status === "received" || existingEvent.status === "failed")
+        && Number(processing.rows[0]?.count || 0) === 0
+      ) {
+        const claimed = await client.query<BillingWebhookEventRow>(`
+          update billing_webhook_events
+          set status = 'processing', safe_error = null
+          where event_id = $1
+          returning event_id, order_id, event_type, status, received_at, occurred_at, safe_error
+        `, [trimmedEventId]);
+        return claimed.rows[0] ? webhookEventFromRow(claimed.rows[0]) : existingEvent;
+      }
+      return existingEvent;
+    });
     const updated = await this.getOrder(orderId);
     if (!updated) throw new BillingRepositoryError("BILLING_NOT_FOUND", "Billing order was not found.");
+    if (!event) throw new BillingRepositoryError("BILLING_NOT_FOUND", "Billing webhook event was not found.");
     return {
       order: updated,
-      alreadyProcessed: result.rowCount === 0,
+      event,
+      completed: event.status === "completed",
     };
+  }
+
+  async updateWebhookEventStatus(eventId: string, status: BillingWebhookProcessingStatus, safeError: string | null = null) {
+    return withApplicationTransaction(async (client) => {
+      const current = await client.query<BillingWebhookEventRow>(`
+        select event_id, order_id, event_type, status, received_at, occurred_at, safe_error
+        from billing_webhook_events
+        where event_id = $1
+        for update
+      `, [eventId.trim()]);
+      if (!current.rows[0]) return null;
+      const currentEvent = webhookEventFromRow(current.rows[0]);
+      await client.query("select order_id from billing_orders where order_id = $1 for update", [currentEvent.order_id]);
+      if (status === "processing" && currentEvent.status !== "processing") {
+        const processing = await client.query<{ count: string }>(`
+          select count(*)::text as count
+          from billing_webhook_events
+          where order_id = $1 and status = 'processing' and event_id <> $2
+        `, [currentEvent.order_id, currentEvent.event_id]);
+        if (Number(processing.rows[0]?.count || 0) > 0) return currentEvent;
+      }
+      const result = await client.query<BillingWebhookEventRow>(`
+        update billing_webhook_events
+        set status = $2, safe_error = $3
+        where event_id = $1
+        returning event_id, order_id, event_type, status, received_at, occurred_at, safe_error
+      `, [eventId.trim(), status, safeError]);
+      return result.rows[0] ? webhookEventFromRow(result.rows[0]) : null;
+    });
+  }
+
+  private async getWebhookEvent(eventId: string) {
+    const result = await applicationQuery<BillingWebhookEventRow>(`
+      select event_id, order_id, event_type, status, received_at, occurred_at, safe_error
+      from billing_webhook_events
+      where event_id = $1
+    `, [eventId.trim()]);
+    return result.rows[0] ? webhookEventFromRow(result.rows[0]) : null;
   }
 
   async appendAudit(input: Omit<BillingAuditEvent, "id" | "created_at"> & { id?: string; created_at?: string }) {

@@ -183,12 +183,13 @@ jobs:
       - name: Migration status
         run: npm run migrate:status
 
-      - name: Migration status includes 001 and 002
+      - name: Migration status includes 001 through 003
         run: |
           set -eu
           npm run migrate:status > migration-status.txt
           grep -q $'001_initial_application_schema\tapplied' migration-status.txt
           grep -q $'002_harden_database_baseline\tapplied' migration-status.txt
+          grep -q $'003_billing_webhook_processing_status\tapplied' migration-status.txt
 
       - name: Schema and transaction tests
         run: npm run migrate:test

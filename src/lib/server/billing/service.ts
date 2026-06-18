@@ -313,19 +313,33 @@ export class BillingService {
     const eventResult = await this.repository.appendWebhookEvent(payload.order_id, payload.event_id, {
       eventType: payload.event_type,
       occurredAt: payload.occurred_at,
+      status: "received",
     });
-    if (eventResult.alreadyProcessed) {
-      await this.audit("billing.webhook.idempotent", eventResult.order, context, { event_id: payload.event_id });
-      return { ok: true, status: 200, order: publicOrder(eventResult.order), action: "idempotent" };
+    let order = eventResult.order;
+    const eventStatus = eventResult.event.status;
+    const wasCompleted = eventResult.completed;
+    if (wasCompleted) {
+      await this.audit("billing.webhook.idempotent", order, context, { event_id: payload.event_id });
+      return { ok: true, status: 200, order: publicOrder(order), action: "idempotent" };
+    }
+    if (eventStatus === "received") {
+      const claimed = await this.repository.updateWebhookEventStatus(payload.event_id, "processing");
+      if (claimed?.status !== "processing") {
+        await this.audit("billing.webhook.processing", order, context, { event_id: payload.event_id });
+        return { ok: true, status: 202, order: publicOrder(order), action: "idempotent" };
+      }
+      if (claimed) {
+        order = await this.repository.getOrder(payload.order_id) || order;
+      }
     }
 
-    const order = eventResult.order;
     const mismatch = this.webhookMismatch(order, payload);
     if (mismatch) {
       const review = await this.updateStatus(order, "review", {
         paid_amount: payload.paid_amount,
         last_error: mismatch,
       });
+      await this.repository.updateWebhookEventStatus(payload.event_id, "completed", mismatch);
       await this.audit("billing.webhook.review", review, context, { event_id: payload.event_id, reason: mismatch });
       return { ok: true, status: 202, order: publicOrder(review), action: "review" };
     }
@@ -338,6 +352,7 @@ export class BillingService {
       const review = await this.updateStatus(order, "review", {
         last_error: `Illegal transition ${order.status} -> ${targetStatus}.`,
       });
+      await this.repository.updateWebhookEventStatus(payload.event_id, "completed", review.last_error);
       await this.audit("billing.webhook.out_of_order", review, context, { event_id: payload.event_id });
       return { ok: true, status: 202, order: publicOrder(review), action: "review" };
     }
@@ -347,6 +362,7 @@ export class BillingService {
       paid_at: order.paid_at,
       refunded_at: targetStatus === "refunded" ? nowIso(this.now()) : order.refunded_at,
     });
+    await this.repository.updateWebhookEventStatus(payload.event_id, "completed", null);
     await this.audit(`billing.webhook.${targetStatus}`, updated, context, { event_id: payload.event_id });
     return { ok: true, status: 200, order: publicOrder(updated), action: "status_updated" };
   }
@@ -453,25 +469,43 @@ export class BillingService {
     payload: BillingWebhookPayload,
     context: BillingRequestContext,
     attempt = 0,
+    eventId = payload.event_id,
   ): Promise<BillingWebhookResult> {
     if (order.quota_credit_applied_at) {
       const paid = order.status === "paid" ? order : await this.updateStatus(order, "paid", {
         paid_amount: order.paid_amount || payload.paid_amount,
         paid_at: order.paid_at || payload.occurred_at || nowIso(this.now()),
       });
+      await this.repository.updateWebhookEventStatus(eventId, "completed", null);
       await this.audit("billing.webhook.already_paid", paid, context, { event_id: payload.event_id });
       return { ok: true, status: 200, order: publicOrder(paid), action: "idempotent" };
     }
 
     if (order.status === "processing") {
-      await this.audit("billing.webhook.processing", order, context, { event_id: payload.event_id });
-      return { ok: true, status: 202, order: publicOrder(order), action: "idempotent" };
+      const credited = await this.creditPaidOrder(order, context, eventId);
+      if (credited.ok && credited.action === "credited") {
+        await this.repository.updateWebhookEventStatus(eventId, "completed", null);
+      }
+      return credited;
+    }
+
+    if (
+      order.status === "review"
+      && order.paid_amount === payload.paid_amount
+      && !order.quota_credit_applied_at
+    ) {
+      const credited = await this.creditPaidOrder(order, context, eventId);
+      if (credited.ok && credited.action === "credited") {
+        await this.repository.updateWebhookEventStatus(eventId, "completed", null);
+      }
+      return credited;
     }
 
     if (order.status !== "pending") {
       const review = await this.updateStatus(order, "review", {
         last_error: `Illegal transition ${order.status} -> paid.`,
       });
+      await this.repository.updateWebhookEventStatus(eventId, "completed", review.last_error);
       await this.audit("billing.webhook.out_of_order", review, context, { event_id: payload.event_id });
       return { ok: true, status: 202, order: publicOrder(review), action: "review" };
     }
@@ -482,12 +516,17 @@ export class BillingService {
         paid_at: payload.occurred_at || nowIso(this.now()),
         last_error: null,
       });
-      return this.creditPaidOrder(processing, context, payload.event_id);
+      await this.repository.updateWebhookEventStatus(eventId, "processing", null);
+      const result = await this.creditPaidOrder(processing, context, eventId);
+      if (result.ok && result.action === "credited") {
+        await this.repository.updateWebhookEventStatus(eventId, "completed", null);
+      }
+      return result;
     } catch (error) {
       if (!isVersionConflict(error) || attempt >= 3) throw error;
       const fresh = await this.repository.getOrder(order.order_id);
       if (!fresh) throw error;
-      return this.handlePaidWebhook(fresh, payload, context, attempt + 1);
+      return this.handlePaidWebhook(fresh, payload, context, attempt + 1, eventId);
     }
   }
 
@@ -508,6 +547,7 @@ export class BillingService {
       const review = await this.updateStatusWithRetry(order, "review", {
         last_error: credit.message,
       });
+      await this.repository.updateWebhookEventStatus(eventId, "failed", sanitizeError(credit.message));
       await this.audit("billing.quota.credit_failed", review, context, {
         event_id: eventId,
         error_code: credit.code,
@@ -520,6 +560,7 @@ export class BillingService {
       quota_credit_applied_at: nowIso(this.now()),
       last_error: null,
     });
+    await this.repository.updateWebhookEventStatus(eventId, "completed", null);
     await this.audit("billing.quota.credited", paid, context, {
       event_id: eventId,
       provider_credit_id: credit.providerCreditId,

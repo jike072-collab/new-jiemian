@@ -259,6 +259,63 @@ test("credits New API quota once for duplicate and concurrent webhooks", async (
   assert.equal((await harness.repository.getOrder(order.order_id))?.status, "paid");
 });
 
+test("incomplete webhook processing can resume after event record is saved", async () => {
+  const harness = service();
+  const order = await createOrder(harness, { idempotencyKey: "idem-resume" });
+  const originalUpdateOrder = harness.repository.updateOrder.bind(harness.repository);
+  const originalUpdateWebhookEventStatus = harness.repository.updateWebhookEventStatus.bind(harness.repository);
+  let interrupted = true;
+  harness.repository.updateOrder = async (orderId, patch, expectedVersion) => {
+    const next = await originalUpdateOrder(orderId, patch, expectedVersion);
+    if (interrupted && next.status === "processing") {
+      interrupted = false;
+      throw new Error("simulated webhook interruption after status update");
+    }
+    return next;
+  };
+  harness.repository.updateWebhookEventStatus = async (eventId, status, safeError) => {
+    const updated = await originalUpdateWebhookEventStatus(eventId, status, safeError);
+    if (interrupted && status === "processing") {
+      interrupted = false;
+      throw new Error("simulated webhook interruption after event status update");
+    }
+    return updated;
+  };
+
+  await withSecret(async () => {
+    await assert.rejects(
+      () => signedWebhook(harness.billing, payloadFor(order, { event_id: "evt-resume" })),
+      /simulated webhook interruption/,
+    );
+  });
+
+  const afterFirst = await harness.repository.getOrder(order.order_id);
+  assert.equal(afterFirst?.status, "processing");
+  assert.equal(harness.creditCalls.length, 0);
+
+  const eventAfterFirst = await harness.repository.appendWebhookEvent(order.order_id, "evt-resume", { status: "received" });
+  assert.equal(eventAfterFirst.completed, false);
+  assert.equal(eventAfterFirst.event.status, "processing");
+
+  await withSecret(async () => {
+    const second = await signedWebhook(harness.billing, payloadFor(order, { event_id: "evt-resume" }));
+    assert.equal(second.ok, true);
+    if (!second.ok) return;
+    assert.equal(second.action, "credited");
+    assert.equal(second.order.status, "paid");
+  });
+
+  await withSecret(async () => {
+    const third = await signedWebhook(harness.billing, payloadFor(order, { event_id: "evt-resume" }));
+    assert.equal(third.ok, true);
+    if (!third.ok) return;
+    assert.equal(third.action, "idempotent");
+  });
+
+  assert.equal(harness.creditCalls.length, 1);
+  assert.equal((await harness.repository.getOrder(order.order_id))?.status, "paid");
+});
+
 test("serializes concurrent paid webhooks with distinct event ids", async () => {
   let releaseCredit: () => void = () => undefined;
   const creditGate = new Promise<void>((resolve) => {
@@ -457,6 +514,7 @@ function unavailableBillingRepository(): BillingRepository {
     listOrders: async () => fail(),
     listOrdersPage: async () => fail(),
     appendWebhookEvent: async () => fail(),
+    updateWebhookEventStatus: async () => fail(),
     appendAudit: async () => fail(),
     listAuditEvents: async () => fail(),
   };

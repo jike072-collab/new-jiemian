@@ -79,8 +79,21 @@ export type BillingOrder = {
   webhook_event_ids: string[];
 };
 
+export type BillingWebhookProcessingStatus = "received" | "processing" | "completed" | "failed";
+
+export type BillingWebhookEventRecord = {
+  event_id: string;
+  order_id: string;
+  event_type: BillingWebhookEventType;
+  status: BillingWebhookProcessingStatus;
+  received_at: string;
+  occurred_at: string | null;
+  safe_error: string | null;
+};
+
 export type BillingStore = {
   orders: BillingOrder[];
+  webhook_events: BillingWebhookEventRecord[];
   audit: BillingAuditEvent[];
 };
 
