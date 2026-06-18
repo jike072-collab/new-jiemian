@@ -1,88 +1,162 @@
 # MODULE_04_IMAGE_WORKSPACE
 
-## Segment 1 Scope
+## Scope
 
 Module 4 A-side work covers only the front-end image workspace:
 
-- `AI 图像生成器` -> `image` -> `text-to-image`
-- `AI 图片编辑器` -> `image` -> `image-to-image`
-- parameter hierarchy, preview states, mobile action, responsive behavior, and accessibility for these two entries
+- AI image generator: `AI 图像生成器 -> image -> text-to-image`
+- AI image editor: `AI 图片编辑器 -> image -> image-to-image`
+- parameter hierarchy, preview states, mobile action, responsive behavior, validation, screenshots, and acceptance evidence for these two entries
 
 This module does not handle New API deployment, auth/session backends, credits, payment, Docker, database, Redis, BFF, ports, or B-side integration branches.
 
 ## Branch And Baseline
 
 - Repository: `https://github.com/jike072-collab/new-jiemian`
-- Current branch: `feature/04-image-workspace`
+- Working branch: `feature/04-image-workspace`
 - Target branch: `develop`
-- Module 3 merge baseline: `origin/develop @ 3a282d6`
-- Module 3 final head included in develop: `1637753 fix(ui): close module 3 shell acceptance gaps`
-- PR #3 status checked as merged into `develop`.
-- Current worktree is not a B-side worktree or B-side integration branch.
+- Module 3 merge baseline in `develop`: `3a282d6`
+- Module 4 implementation commit before final acceptance: `3e9467a ui(image): refine generator and editor workspace`
 
-## Current Business Chain
+## State Source
 
-- Home workspace entry: `src/components/studio-app.tsx`
-- Tool registry: `src/lib/workspace-registry.ts`
-- Image API route: `src/app/api/generate/image/route.ts`
-- Provider call and image/edit routing: `src/lib/server/provider-call.ts`
-- Library read/delete route: `src/app/api/library/route.ts`
-- Library persistence and stored media: `src/lib/server/library.ts`
-- Shared media/data types: `src/lib/server/types.ts`
-- Shell slots and mobile action host: `src/components/workbench-shell.tsx`
+`src/components/studio-app.tsx` remains the single business source for the image workspace. It owns:
 
-`StudioApp` currently owns the real provider loading, library loading, active workspace tool, output state, global message, mobile action registration, and library filters. `WorkbenchShell` receives slots and should remain layout-only.
+- `activeWorkspaceToolId`
+- provider loading and unavailable/error states
+- the shared image form state: model, ratio, quality, prompt, files, validation errors, loading
+- submit handling for text-to-image and image-to-image
+- output state and library refresh
+- mobile action registration
 
-## Image Workspace Mapping
+`src/components/workbench-shell.tsx` remains layout-only. It hosts shell navigation, tabs, drawer, panel slots, and the mobile action slot, but does not own image business data, fake login state, fake model state, or duplicate tool state.
 
-| Navigation entry | Workspace tool id | Business tool | Mode | Reuse rule |
+## Mode Mapping
+
+| Navigation entry | Workspace id | Business tool | Mode | Result |
 | --- | --- | --- | --- | --- |
-| AI 图像生成器 | `image` | `image` | `text-to-image` | Reuse the existing shared image form and image API. |
-| AI 图片编辑器 | `image-editor` | `image` | `image-to-image` | Reuse the same image form and submit path; require reference image before submit. |
+| AI 图像生成器 | `image` | `image` | `text-to-image` | Uses the shared image form and `/api/generate/image`. |
+| AI 图片编辑器 | `image-editor` | `image` | `image-to-image` | Uses the same shared image form/API and requires a reference image. |
 
-`workspaceToolIdForImageMode()` already maps `image-to-image` back to `image-editor`, so the internal mode switch and navigation highlight can stay synchronized without adding a second image state source.
+Switching the internal image mode uses `workspaceToolIdForImageMode()` so the navigation highlight, title, mode label, description, and button stay synchronized. Image generation and editing do not create two forms or two submit states.
+
+## Upload And Preview
+
+- File input accepts real local images through the existing browser file input.
+- Supported types are PNG, JPEG, and WebP.
+- The UI blocks unsupported file types near the upload area.
+- Uploaded files show the selected/uploaded state and are sent through the same image submit path.
+- Deleting/replacing an uploaded image updates the shared form state; preview URLs are released by the existing cleanup path.
+- The preview panel shows real guide, loading, result, and error states. It does not create mock success results.
+
+## Mobile Action
+
+The mobile bottom action is registered from the same image form state and calls the same submit function as the desktop button:
+
+- Text-to-image label: `生成图片`
+- Image-to-image label: `开始编辑`
+- Loading labels: `正在生成`, `正在编辑`
+- Disabled state is derived from loading, provider availability, prompt validity, and edit-mode reference image requirement.
+- No DOM click proxy, hidden button simulation, global variable, fake balance, or fake quota is used.
 
 ## Implementation Matrix
 
-| Item | 当前文件 | 当前功能 | 当前问题 | 是否复用 | 计划修改 | 业务影响 | 验证方法 |
-| --- | --- | --- | --- | --- | --- | --- | --- |
-| StudioApp | `src/components/studio-app.tsx` | Loads providers/library, owns active workspace id, renders image/video/upscale/library slots, stores outputs and mobile action. | File is too large and mixes orchestration, image form, preview, and library UI; image workspace changes can become risky if done in one pass. | Yes, logic source of truth. | Keep state and API flow; later extract image form/preview helpers only if it reduces risk. | High if broken. | Navigate between image and image editor, submit validation, library refresh, mobile action registration. |
-| 图像生成模式 | `src/components/studio-app.tsx`, `src/lib/workspace-registry.ts` | `image` entry derives `text-to-image` and renders shared `ImageGenerator`. | Front-end button disabled state does not reflect missing model or empty prompt; field-level feedback is weak. | Yes. | Add clear disabled/error state using existing submit path; keep API contract unchanged. | Medium. | Empty prompt, no provider, and valid prompt flows show correct state and call `/api/generate/image`. |
-| 图片编辑模式 | `src/components/studio-app.tsx`, `src/lib/server/provider-call.ts` | `image-editor` entry derives `image-to-image`; server requires at least one reference image. | Required upload is mostly enforced server-side; front-end can still present an enabled primary action without a file. | Yes. | Mirror server requirement in the form and mobile action disabled state; do not create a second form. | Medium. | Open image editor, no file blocks submit visibly, file + prompt submits same image API. |
-| 模型加载 | `src/components/studio-app.tsx`, `src/app/api/providers/enabled` | Loads enabled image/video providers once and auto-selects first image provider. | Loading and unavailable states are not explicit enough in the image form. | Yes. | Add user-facing unavailable/loading state in the model area; no fake model data. | Medium. | Disable action when no image provider exists; show real unavailable message. |
-| 参考图上传 | `src/components/studio-app.tsx`, `src/lib/server/provider-call.ts` | `FileInput` accepts PNG/JPEG/WebP, multiple files, sends `files` through `FormData`. | Text-to-image optional upload and image-edit required upload use same control, but hierarchy and helper copy need clearer distinction. | Yes. | Keep shared input; adjust labels, helper text, required state, and validation per mode. | Medium. | Upload count displays; image edit requires file; state persists across image/image-editor switching. |
-| 提示词 | `src/components/studio-app.tsx`, `src/lib/server/provider-call.ts` | Controlled textarea with 3000 max length and internal bottom-right counter. | Empty prompt is only blocked during submit; no inline error/disabled state yet. | Yes. | Add lightweight validation state and keep counter inside textarea. | Medium. | Empty prompt disables or reports inline; typed prompt persists when switching modes. |
-| 图片比例 | `src/components/studio-app.tsx`, `src/app/globals.css` | Ratio picker uses graphic shapes and token-colored selected state. | Needs final visual verification in the image workspace, especially horizontal scroll on mobile. | Yes. | Keep component; tune spacing only if screenshot shows issue. | Low. | 1:1/16:9/9:16/4:3/3:4 selectable; no mobile horizontal page scroll. |
-| 清晰度 | `src/components/studio-app.tsx` | ModeSwitch chooses `1k` or `2k`, sent as `quality`. | Uses generic chip-style control; selected background may need alignment with module 2 token rules for image workspace. | Yes. | Keep data value and submit field; restyle only if needed. | Low. | Selected value survives navigation and is included in form data. |
-| 提交按钮 | `src/components/studio-app.tsx` | Desktop button calls `submit`, shows loading icon, posts to image API. | `disabled` currently only tracks `loading`; does not prevent known invalid states. | Yes. | Derive disabled from loading, provider, prompt, and edit-mode file requirement. | Medium. | Repeated clicks prevented; invalid states do not call API; valid states call same submit function. |
-| 手机按钮 | `src/components/studio-app.tsx`, `src/components/workbench-shell.tsx` | Image form registers `MobileActionBar` with same `submit` callback and mode-specific label. | Disabled state mirrors the desktop button weakness; mobile may allow invalid submit until server rejects. | Yes. | Use the same derived action state as desktop; keep bottom action calling the same submit function. | Medium. | Mobile image says `生成图片`; editor says `开始编辑`; disabled/loading match desktop. |
-| 预览区 | `src/components/studio-app.tsx` | `OutputPanel` shows guide content before output and `MediaCard` after result. | Image generation and image editing share generic image preview copy; field/result states are not tailored enough. | Partial. | Keep output and media display; improve copy/state separation without adding fake examples or new features. | Medium. | Empty, loading, success, and failed result states are understandable and use real output only. |
-| 错误状态 | `src/components/studio-app.tsx`, API routes | Errors are surfaced through global toast `message`; API returns provider/prompt/file errors. | No field-specific error placement; global toast can be missed, especially on mobile. | Partial. | Keep toast for global errors; add local validation where the user can fix the issue. | Medium. | Missing prompt/file/provider errors are visible without checking console. |
-| 结果、保存和下载 | `src/components/studio-app.tsx`, `src/lib/server/library.ts` | Successful image call creates `LibraryItem`, refreshes library, and `MediaCard` provides download link. | Download exists, but save/download affordance may be visually weak; no fake result should be added. | Yes. | Keep library persistence and download; improve visible result actions only. | Medium. | Generated item appears in preview/library and download link uses real media URL. |
-| 响应式 | `src/components/workbench-shell.tsx`, `src/app/globals.css` | Shell provides desktop columns, mobile tabs, and mobile action slot. | Image controls need final checks inside the module 3 shell at desktop/tablet/mobile sizes. | Yes. | Adjust only image workspace-specific spacing or overflow; do not rebuild shell. | Medium. | 1440/1280/1024/768/390/375 widths have no horizontal page scroll. |
-| 可访问性 | `src/components/studio-app.tsx`, `src/components/workbench-shell.tsx` | Buttons/selects/textarea are keyboard-usable; drawer a11y was completed in module 3. | Form labels are visual wrappers rather than explicit `label htmlFor`; file input and validation state can be clearer. | Partial. | Add direct labels/aria only where needed for image controls. | Low/Medium. | Keyboard can reach controls; screen reader names are meaningful; disabled states are announced. |
+| Item | Current files | Final status | Verification |
+| --- | --- | --- | --- |
+| StudioApp | `src/components/studio-app.tsx` | Reused as the single business controller. | Navigation, model unavailable state, upload state, mobile action, and library checks passed. |
+| Tool registry | `src/lib/workspace-registry.ts` | Keeps separate image generator and image editor entries mapped to one image business path. | Generator/editor mapping check passed. |
+| Image generation mode | `src/components/studio-app.tsx` | Uses `text-to-image`, `生成图片`, and no-reference-required validation. | Browser text and disabled state checks passed. |
+| Image editing mode | `src/components/studio-app.tsx` | Uses `image-to-image`, `开始编辑`, and required reference-image validation. | No-upload, uploaded, and invalid-file states checked. |
+| Model loading/unavailable | `src/components/studio-app.tsx`, `/api/providers/enabled` | Shows real unavailable model state; no fake model is created. | Local environment had no configured image model; no-model screenshot captured. |
+| Upload | `src/components/studio-app.tsx` | Shared file input and validation are used for generator/editor. | Real PNG upload and invalid `.txt` validation checked. |
+| Prompt | `src/components/studio-app.tsx` | Shared controlled prompt remains in the image form. | Empty/no-model disables action; prompt state remains in shared form. |
+| Ratio and quality | `src/components/studio-app.tsx`, `src/app/globals.css` | Existing controls remain token-driven and keyboard/button accessible. | Desktop and mobile screenshots captured without horizontal page scroll. |
+| Preview | `src/components/studio-app.tsx` | Uses real slot content and real output only. | Initial, no-model, validation, and library states captured. |
+| Mobile action | `src/components/studio-app.tsx`, `src/components/workbench-shell.tsx` | Calls the same submit path and reflects the same disabled/loading state. | Mobile generator/editor action screenshots captured. |
+| Responsive | `src/app/globals.css`, `src/components/workbench-shell.tsx` | Module 3 shell retained; image workspace fits desktop, tablet, and mobile. | 1440, 1280, 1024, 768, 390, and 375 viewport checks passed. |
+| A/B boundary | Docs and git diff | B-side New API/auth/quota/payment files were not changed. | Diff review confirmed no B-side files in module 4 final acceptance. |
 
-## Findings For Segment 2
+## Browser Acceptance
 
-- The correct single business source already exists: `activeWorkspaceToolId` plus `workspace-registry` derives the image mode.
-- `AI 图像生成器` and `AI 图片编辑器` are separate navigation entries, but they share the same image form and API path as required.
-- Switching between image generation and editing should preserve form state because `ImageGenerator` stays mounted when the business tool remains `image`; this must be verified in browser before any refactor.
-- The server already validates empty prompt and edit-mode missing reference image; the front end should mirror those validations for better desktop and mobile UX.
-- The mobile bottom button already calls the same `submit` function as desktop, but its disabled state is too narrow.
-- The current image form, preview, and helper components are all inside one large file; extraction should be surgical and only done if it makes validation/action state clearer.
-- Some current source/doc display in prior terminal output appeared mojibaked; module 4 should avoid introducing new encoding damage and should verify visible Chinese copy in browser.
-- The image preview currently uses generic guide copy and reference images; module 4 should make states clearer without adding template browsing or fake results.
+Acceptance ran against the production preview at `http://127.0.0.1:3101/` from the latest branch head.
+
+| Check | Result |
+| --- | --- |
+| AI 图像生成器 maps to `text-to-image` | Passed |
+| AI 图片编辑器 maps to `image-to-image` | Passed |
+| Navigation title, mode text, and button text stay synchronized | Passed |
+| Generator and editor share one form and one submit path | Passed by source and browser state inspection |
+| No fake model/result/balance/auth state | Passed |
+| Model unavailable state | Passed; no image model configured locally |
+| Real PNG upload state | Passed |
+| Unsupported file validation | Passed |
+| Mobile parameter/preview tabs | Passed |
+| Mobile bottom action labels and disabled state | Passed |
+| Library route/workspace still visible | Passed |
+| Video generator route/workspace still visible | Passed |
+| Horizontal page scroll | None detected at tested sizes |
+| Console / React / Next.js issue | No captured errors or warnings in production preview |
+
+## Responsive Results
+
+| Viewport | Result |
+| --- | --- |
+| 1440x900 | No horizontal scroll; desktop image generator/editor/library/video states captured. |
+| 1280x800 | No horizontal scroll; desktop generator captured. |
+| 1024x768 | No horizontal scroll; tablet generator/editor captured. |
+| 768x1024 | No horizontal scroll; tablet portrait generator captured. |
+| 390x844 | No horizontal scroll; mobile params, preview, drawer, editor upload, and mobile action captured. |
+| 375x812 | No horizontal scroll; mobile generator captured. |
+
+## Screenshot Evidence
+
+Directory: `docs/design-references/module-04-image-workspace/`
+
+- `1440x900-image-generator-initial.png`
+- `1440x900-image-generator-no-model.png`
+- `1440x900-image-editor-no-upload.png`
+- `1440x900-image-editor-uploaded.png`
+- `1440x900-image-editor-validation-error.png`
+- `1280x800-image-generator-initial.png`
+- `1024x768-tablet-image-generator.png`
+- `1024x768-tablet-image-editor.png`
+- `768x1024-tablet-portrait-image-generator.png`
+- `390x844-mobile-generator-params.png`
+- `390x844-mobile-generator-preview.png`
+- `390x844-mobile-drawer-open.png`
+- `390x844-mobile-editor-no-upload.png`
+- `390x844-mobile-editor-uploaded-action.png`
+- `375x812-mobile-generator-params.png`
+- `1440x900-library.png`
+- `1440x900-video-generator.png`
+- `acceptance-results.json`
+
+## Quality Checks
+
+The final module 4 acceptance pass records:
+
+- `npm run lint`
+- `npm run typecheck`
+- `npm run build`
+- `git diff --check`
+- hardcoded theme color search over changed shell/image files
+- `any` search over changed shell/image files
+- browser console/error capture
+
+## Unverified Content
+
+The local environment had no configured image model, so these real provider-dependent flows were not executed:
+
+- real image generation success
+- real image editing success
+- real generated media download
+- real generated media save-to-library from provider output
+
+No mock model, mock success result, or fake media was created to replace those unavailable real flows.
 
 ## A / B Boundary Confirmation
 
-A-side module 4 may change:
-
-- `src/components/studio-app.tsx`
-- image workspace presentation helpers if extracted from `StudioApp`
-- image workspace-specific styles in `src/app/globals.css`
-- image workspace docs and screenshots under `docs/**`
-
-A-side module 4 must not change:
+A-side module 4 changed only image workspace UI, docs, and screenshot evidence. It did not change:
 
 - `docker-compose*`
 - New API environment variables, deployment, or ports
@@ -90,8 +164,6 @@ A-side module 4 must not change:
 - administrator/payment secrets
 - B-side branches such as `integration/auth-newapi` or `feature/auth-newapi-*`
 
-If account, quota, payment, or model inventory is unavailable to the front end, the image workspace must show real unavailable states only. It must not create fake balances, fake models, fake auth, or dead payment routes.
+## Final Status
 
-## Segment 1 Stop Condition
-
-This segment is documentation and audit only. No module 4 implementation commit is created in segment 1. Coding should start only after the next instruction for segment 2.
+Module 4 segments 1, 2, and 3 are complete. The module is ready for human review and must not be merged or used as approval to start module 5 until the user explicitly confirms.
