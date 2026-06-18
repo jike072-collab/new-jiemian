@@ -142,13 +142,15 @@ Integration target: `integration/auth-newapi`
 
 ## B06 - Health, Backup, Restore, Upgrade, And Rollback Operations
 
-Status: In progress
+Status: Completed
 
 Branch: `feature/auth-newapi-06-operations`
 
 Base: `origin/integration/auth-newapi`
 
 Integration target: `integration/auth-newapi`
+
+Pull request: `#9`
 
 ## B06 Scope
 
@@ -162,3 +164,10 @@ Integration target: `integration/auth-newapi`
 - The local machine also does not provide a POSIX `sh`, so the POSIX shell scripts cannot be executed directly on this host.
 - Because of that environment gap, the isolated real restore test required by B06 cannot yet be executed here.
 - The scripts are written to make the restore path safer by taking an automatic backup before destructive restoration steps.
+
+## B06 Verification
+
+- GitHub Actions run `27733418637` passed the `New API Ops / operations` job on PR `#9`.
+- The remote Docker-enabled validation covered script syntax, preflight, stack startup, `/api/status`, healthcheck, test admin setup, login, database marker backup, restore, login after restore, bad backup rejection, and log redaction.
+- The first remote validation attempt found that Docker `internal: true` prevented host health probes even though the New API container was healthy internally; the compose network was adjusted so New API can bind to the configured host address while PostgreSQL and Redis remain without host port mappings.
+- Local verification remains limited to static checks because this machine does not provide Docker, Docker Compose, Podman, nerdctl, WSL, or POSIX `sh`.
