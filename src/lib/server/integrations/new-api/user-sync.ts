@@ -51,6 +51,7 @@ type UserLookup = (profile: NewApiUserSyncProfile) => ReturnType<typeof adminGet
 
 const DEFAULT_GROUP = "default";
 const MAX_NEW_API_USER_FIELD_LENGTH = 20;
+const MAX_NEW_API_EMAIL_LENGTH = 50;
 
 function shortenValue(raw: string, seed: string, maxLength = MAX_NEW_API_USER_FIELD_LENGTH, lowerCase = true) {
   const normalized = raw
@@ -74,6 +75,12 @@ function normalizeUsername(profile: NewApiUserSyncProfile) {
 function normalizeDisplayName(profile: NewApiUserSyncProfile) {
   const raw = profile.displayName || profile.email || profile.localUserId;
   return shortenValue(raw, `${profile.localUserId}:displayName`, MAX_NEW_API_USER_FIELD_LENGTH, false);
+}
+
+function normalizeEmailForNewApi(profile: NewApiUserSyncProfile) {
+  const email = profile.email?.trim().toLowerCase();
+  if (!email) return undefined;
+  return email.length <= MAX_NEW_API_EMAIL_LENGTH ? email : undefined;
 }
 
 function stableHash(value: string) {
@@ -114,7 +121,7 @@ function extractCreatedUser(payload: Awaited<ReturnType<typeof adminCreateUser>>
 
 function sameIdentity(user: NewApiUserRecord, profile: NewApiUserSyncProfile) {
   const username = normalizeUsername(profile);
-  const email = profile.email?.trim().toLowerCase();
+  const email = normalizeEmailForNewApi(profile);
   return user.username?.trim().toLowerCase() === username
     || Boolean(email && user.email?.trim().toLowerCase() === email);
 }
@@ -155,7 +162,7 @@ async function createOrFindUpstreamUser(
       username: normalizeUsername(profile),
       password: generatedPassword(profile, options),
       display_name: normalizeDisplayName(profile),
-      email: profile.email,
+      email: normalizeEmailForNewApi(profile),
       group: profile.group || DEFAULT_GROUP,
       quota: profile.initialQuota ?? 0,
     });

@@ -90,6 +90,41 @@ test("shortens New API username and display name to official field limits", asyn
   assert.equal(result.mapping.new_api_user_id, "78");
 });
 
+test("does not send overlong local email to New API user creation", async () => {
+  const repository = createMemoryNewApiUserMappingRepository();
+  let upstreamUsername = "";
+  const service = new NewApiUserSyncService({
+    repository,
+    createUser: async (input) => {
+      upstreamUsername = String(input.username);
+      assert.equal(input.email, undefined);
+      assert(upstreamUsername.length <= 20);
+      return response({ success: true, message: "" });
+    },
+    listUsers: async () => response({
+      success: true,
+      data: {
+        items: [user({
+          id: 81,
+          username: upstreamUsername,
+          email: undefined,
+        })],
+        total: 1,
+      },
+    }),
+  });
+
+  const result = await service.ensureMapped(profile({
+    localUserId: "local-user-with-overlong-email",
+    email: "very-long-customer-address-for-new-api-field-limit@example.test",
+    displayName: "Long Email Customer",
+  }));
+
+  assert.equal(result.action, "created_upstream");
+  assert.equal(result.mapping.sync_status, "active");
+  assert.equal(result.mapping.new_api_user_id, "81");
+});
+
 test("confirms created user from New API paginated list when create returns no id", async () => {
   const repository = createMemoryNewApiUserMappingRepository();
   let createdUsername = "";

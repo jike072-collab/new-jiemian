@@ -98,6 +98,14 @@ Rules:
 
 The sync service never automatically deletes New API users. If upstream creation succeeds but local activation cannot be confirmed, the local mapping enters repair state.
 
+New API user creation uses normalized upstream fields:
+
+- `username` is derived from local username, email, or `local_user_id`, then shortened to New API's 20-character limit with a stable hash suffix.
+- `display_name` is shortened to New API's 20-character limit.
+- `email` is sent only when the local email fits New API's 50-character limit. Overlong local emails stay in the local account layer and are not sent upstream.
+
+The local account email remains local identity data. New API email is an optional upstream profile field and must not become the identity truth source.
+
 ## Migration Draft
 
 When a formal project database is introduced, create a table equivalent to:
