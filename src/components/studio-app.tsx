@@ -69,10 +69,10 @@ export function StudioApp() {
   const [librarySort, setLibrarySort] = useState<"recent" | "title">("recent");
   const [selectedLibraryItemId, setSelectedLibraryItemId] = useState<string | null>(null);
 
-  async function refreshLibrary() {
+  const refreshLibrary = useCallback(async () => {
     const data = await jsonFetch<{ items: LibraryItem[] }>("/api/library");
     setLibrary(data.items);
-  }
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -98,14 +98,14 @@ export function StudioApp() {
     };
   }, []);
 
-  function handleToolAction(action: WorkspaceAction, tool: WorkspaceToolId) {
+  const handleToolAction = useCallback((action: WorkspaceAction, tool: WorkspaceToolId) => {
     if (action.kind === "route") {
       router.push(action.href);
       return;
     }
 
     setActiveWorkspaceToolId(tool);
-  }
+  }, [router]);
 
   const activeWorkspaceTool = workspaceToolById(activeWorkspaceToolId) || workspaceToolEntries[0];
   const activeAction = activeWorkspaceTool.action.kind === "workspace" ? activeWorkspaceTool.action : null;
@@ -138,6 +138,22 @@ export function StudioApp() {
     video: library.filter((item) => item.type === "video").length,
   }), [library]);
 
+  const handleImageResult = useCallback((item: LibraryItem) => {
+    setOutputs((prev) => ({ ...prev, image: { item, title: "图片结果", tool: "image" } }));
+  }, []);
+
+  const handleVideoResult = useCallback((item: LibraryItem, job?: JobRecord | null) => {
+    setOutputs((prev) => ({ ...prev, video: { item, job, title: "视频结果", tool: "video" } }));
+  }, []);
+
+  const handleImageUpscaleResult = useCallback((item: LibraryItem, job?: JobRecord | null) => {
+    setOutputs((prev) => ({ ...prev, "image-upscale": { item, job, title: "图片高清结果", tool: "image-upscale" } }));
+  }, []);
+
+  const handleVideoUpscaleResult = useCallback((item: LibraryItem, job?: JobRecord | null) => {
+    setOutputs((prev) => ({ ...prev, "video-upscale": { item, job, title: "视频高清结果", tool: "video-upscale" } }));
+  }, []);
+
   const parameterSlot = (
     <>
       {activeBusinessTool === "image" ? (
@@ -146,7 +162,7 @@ export function StudioApp() {
           providers={providers.image}
           onModeChange={(mode) => setActiveWorkspaceToolId(workspaceToolIdForImageMode(mode))}
           onDone={refreshLibrary}
-          onResult={(item) => setOutputs((prev) => ({ ...prev, image: { item, title: "图片结果", tool: "image" } }))}
+          onResult={handleImageResult}
           setMessage={setMessage}
           registerMobileAction={setMobileAction}
         />
@@ -156,7 +172,7 @@ export function StudioApp() {
           initialMode={activeVideoMode}
           providers={providers.video}
           onDone={refreshLibrary}
-          onResult={(item, job) => setOutputs((prev) => ({ ...prev, video: { item, job, title: "视频结果", tool: "video" } }))}
+          onResult={handleVideoResult}
           setMessage={setMessage}
           registerMobileAction={setMobileAction}
         />
@@ -165,7 +181,7 @@ export function StudioApp() {
         <UpscaleForm
           kind="image"
           onDone={refreshLibrary}
-          onResult={(item, job) => setOutputs((prev) => ({ ...prev, "image-upscale": { item, job, title: "图片高清结果", tool: "image-upscale" } }))}
+          onResult={handleImageUpscaleResult}
           setMessage={setMessage}
           registerMobileAction={setMobileAction}
         />
@@ -174,7 +190,7 @@ export function StudioApp() {
         <UpscaleForm
           kind="video"
           onDone={refreshLibrary}
-          onResult={(item, job) => setOutputs((prev) => ({ ...prev, "video-upscale": { item, job, title: "视频高清结果", tool: "video-upscale" } }))}
+          onResult={handleVideoUpscaleResult}
           setMessage={setMessage}
           registerMobileAction={setMobileAction}
         />
