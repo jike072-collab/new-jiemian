@@ -88,3 +88,30 @@ Integration target: `integration/auth-newapi`
 - Latest visible official release verified as `v1.0.0-rc.11` on 2026-06-13.
 - Docker Hub manifest digest for `calciumion/new-api:v1.0.0-rc.11` verified as `sha256:bd30213d808857bb569ef47d3c9209d061a66ea089c2472ef46ce51e75517f19`.
 - Official code and docs confirm user/auth, quota, payment, webhook, deployment, and license behavior.
+
+## B04 - Account, Session, Mapping, And Quota Truth Sources
+
+Status: Completed locally
+
+Branch: `feature/auth-newapi-04-source-of-truth`
+
+Base: `origin/integration/auth-newapi`
+
+Integration target: `integration/auth-newapi`
+
+## B04 Scope
+
+- Compared local-project-primary accounts against New-API-primary accounts.
+- Selected local project account identity with New API mapped backend users.
+- Defined single truth sources for user identity, session, user ID, cloud quota, payment orders, usage logs, and management permissions.
+- Defined user mapping states, session cookie policy, quota boundaries, payment ledger boundary, failure recovery behavior, and BFF trust boundary.
+- No code, schema, auth library, New API deployment, fake user, fake balance, or fake payment was added.
+
+## B04 Verification
+
+- Session truth source is singular: project BFF HttpOnly session.
+- Cloud quota ledger is singular: New API user quota for cloud AI/API usage.
+- Payment order truth source is singular: project billing/order table planned for B11.
+- User identity and management permission truth sources are local project records planned for B09.
+- Local image/video HD work that does not call New API or another upstream cloud provider does not deduct New API quota.
+- New API outage allows local login but blocks billable cloud actions and quota settlement.
