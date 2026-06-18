@@ -1,18 +1,13 @@
 import { randomBytes, randomUUID } from "node:crypto";
 
-import {
-  createJsonNewApiUserMappingRepository,
-  createNewApiUserSyncService,
-  type NewApiUserMappingRepository,
-  type NewApiUserSyncService,
-} from "../integrations/new-api";
+import { createNewApiUserSyncService, type NewApiUserMappingRepository, type NewApiUserSyncService } from "../integrations/new-api";
 import { hashPassword, validatePasswordStrength, verifyPassword } from "./password";
 import { InMemoryRateLimiter } from "./rate-limit";
 import {
-  createJsonAuthRepository,
   AuthRepositoryError,
   type AuthRepository,
 } from "./repository";
+import { createAuthPersistenceRepositories } from "./persistence";
 import {
   isValidEmail,
   isValidUsername,
@@ -58,7 +53,7 @@ export type LoginInput = {
 export type AuthServiceDependencies = {
   repository?: AuthRepository;
   mappingRepository?: NewApiUserMappingRepository;
-  userSyncService?: NewApiUserSyncService;
+  userSyncService?: Pick<NewApiUserSyncService, "ensureMapped">;
   loginLimiter?: InMemoryRateLimiter;
   registerLimiter?: InMemoryRateLimiter;
   now?: () => Date;
@@ -104,14 +99,21 @@ function success(input: Omit<AuthSuccess, "ok">): AuthSuccess {
 export class AuthService {
   private readonly repository: AuthRepository;
   private readonly mappingRepository: NewApiUserMappingRepository;
-  private readonly userSyncService: NewApiUserSyncService;
+  private readonly userSyncService: Pick<NewApiUserSyncService, "ensureMapped">;
   private readonly loginLimiter: InMemoryRateLimiter;
   private readonly registerLimiter: InMemoryRateLimiter;
   private readonly now: () => Date;
 
   constructor(dependencies: AuthServiceDependencies = {}) {
-    this.repository = dependencies.repository || createJsonAuthRepository();
-    this.mappingRepository = dependencies.mappingRepository || createJsonNewApiUserMappingRepository();
+    let repository = dependencies.repository;
+    let mappingRepository = dependencies.mappingRepository;
+    if (!repository || !mappingRepository) {
+      const persistence = createAuthPersistenceRepositories();
+      repository = repository || persistence.authRepository;
+      mappingRepository = mappingRepository || persistence.mappingRepository;
+    }
+    this.repository = repository;
+    this.mappingRepository = mappingRepository;
     this.userSyncService = dependencies.userSyncService || createNewApiUserSyncService({
       repository: this.mappingRepository,
     });
@@ -459,18 +461,20 @@ export class AuthService {
   }
 }
 
-const defaultAuthRepository = createJsonAuthRepository();
-const defaultMappingRepository = createJsonNewApiUserMappingRepository();
-const defaultAuthService = new AuthService({
-  repository: defaultAuthRepository,
-  mappingRepository: defaultMappingRepository,
-  userSyncService: createNewApiUserSyncService({ repository: defaultMappingRepository }),
-});
+let defaultAuthService: AuthService | null = null;
 
 export function createAuthService(dependencies?: AuthServiceDependencies) {
   return new AuthService(dependencies);
 }
 
 export function getAuthService() {
+  if (!defaultAuthService) {
+    const persistence = createAuthPersistenceRepositories();
+    defaultAuthService = new AuthService({
+      repository: persistence.authRepository,
+      mappingRepository: persistence.mappingRepository,
+      userSyncService: createNewApiUserSyncService({ repository: persistence.mappingRepository }),
+    });
+  }
   return defaultAuthService;
 }

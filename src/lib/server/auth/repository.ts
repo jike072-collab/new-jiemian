@@ -28,18 +28,26 @@ export type CreateAuthUserInput = {
   now?: Date;
 };
 
-export type AuthRepository = {
+export type UserRepository = {
   getUserById(localUserId: string): Promise<AuthUser | null>;
   getUserByIdentifier(identifier: string): Promise<AuthUser | null>;
   createUser(input: CreateAuthUserInput): Promise<AuthUser>;
   updateUser(localUserId: string, patch: Partial<Pick<AuthUser, "status" | "last_login_at" | "session_version" | "display_name">>, now?: Date): Promise<AuthUser>;
+};
+
+export type SessionRepository = {
   createSession(session: AuthSession): Promise<AuthSession>;
   getSessionByTokenHash(tokenHash: string): Promise<AuthSession | null>;
   touchSession(sessionId: string, patch: Pick<AuthSession, "last_seen_at" | "idle_expires_at" | "updated_at">): Promise<AuthSession>;
   revokeSession(sessionId: string, now?: Date): Promise<AuthSession | null>;
+};
+
+export type AuthAuditRepository = {
   appendAudit(event: AuthAuditEvent): Promise<void>;
   listAuditEvents(): Promise<AuthAuditEvent[]>;
 };
+
+export type AuthRepository = UserRepository & SessionRepository & AuthAuditRepository;
 
 export class AuthRepositoryError extends Error {
   constructor(readonly code: "AUTH_DUPLICATE_ACCOUNT" | "AUTH_NOT_FOUND", message: string) {

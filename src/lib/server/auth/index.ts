@@ -2,6 +2,7 @@ export { AUTH_CSRF_COOKIE, AUTH_SESSION_COOKIE } from "./cookies";
 export { createCsrfToken, verifyCsrfToken } from "./csrf";
 export { hashPassword, validatePasswordStrength, verifyPassword } from "./password";
 export { InMemoryRateLimiter } from "./rate-limit";
+export { createAuthPersistenceRepositories, getAuthPersistenceMode, AuthPersistenceConfigError } from "./persistence";
 export { createJsonAuthRepository, createMemoryAuthRepository, AuthRepositoryError } from "./repository";
 export { AuthService, createAuthService, getAuthService } from "./service";
 export {
@@ -30,3 +31,10 @@ export type {
   AuthUserStatus,
   PublicAuthUser,
 } from "./types";
+export type { AuthPersistenceMode, AuthPersistenceRepositories } from "./persistence";
+export type {
+  AuthAuditRepository,
+  AuthRepository,
+  SessionRepository,
+  UserRepository,
+} from "./repository";
