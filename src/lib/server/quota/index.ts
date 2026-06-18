@@ -1,9 +1,15 @@
 export { QuotaDisplayCache } from "./cache";
 export { quotaSnapshotResponse, precheckResponse, readonlyAdminQuotaQueryResponse, usagePageResponse } from "./http";
 export { createJsonUsageLogRepository, createMemoryUsageLogRepository } from "./repository";
+export { createPostgresUsageLogRepository } from "./postgres-usage-repository";
 export { QuotaService, createQuotaService, getQuotaService } from "./service";
 export { createJsonTaskBillingRepository, createMemoryTaskBillingRepository } from "./task-billing-repository";
 export { createPostgresTaskBillingRepository } from "./postgres-task-billing-repository";
+export {
+  createTaskBillingPersistenceRepositories,
+  getTaskBillingPersistenceMode,
+  TaskBillingPersistenceConfigError,
+} from "./task-billing-persistence";
 export { TaskBillingService, createTaskBillingService, getTaskBillingService } from "./task-billing-service";
 export type {
   BillableOperation,

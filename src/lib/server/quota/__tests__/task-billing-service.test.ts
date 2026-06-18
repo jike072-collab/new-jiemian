@@ -8,10 +8,15 @@ import {
 } from "../../integrations/new-api";
 import { createPostgresNewApiUserMappingRepository } from "../../integrations/new-api/postgres-user-mapping";
 import { createMemoryUsageLogRepository } from "../repository";
+import { createPostgresUsageLogRepository } from "../postgres-usage-repository";
 import { QuotaDisplayCache } from "../cache";
 import { createMemoryTaskBillingRepository, type TaskBillingRepository } from "../task-billing-repository";
 import { createPostgresTaskBillingRepository } from "../postgres-task-billing-repository";
 import { TaskBillingService, type AdjustQuotaInput } from "../task-billing-service";
+import {
+  createTaskBillingPersistenceRepositories,
+  TaskBillingPersistenceConfigError,
+} from "../task-billing-persistence";
 import { type QuotaSnapshot } from "../types";
 
 const hasDatabase = Boolean(process.env.APP_DATABASE_URL && process.env.APP_DATABASE_EXPECTED_NAME);
@@ -248,6 +253,42 @@ test("concurrent settlement does not duplicate quota adjustment", async () => {
   assert.equal(adjustments.length, 1);
 });
 
+test("same user concurrent task settlements are serialized without lost quota updates", async () => {
+  let quota = 100;
+  const calls: string[] = [];
+  const harness = service({
+    adjustQuota: async (input) => {
+      const before = quota;
+      await new Promise((resolve) => {
+        setImmediate(resolve);
+      });
+      quota = before + input.quotaDelta;
+      calls.push(`${input.taskId}:${before}->${quota}`);
+      return { ok: true, providerAdjustmentId: `adjust:${input.idempotencyKey}` };
+    },
+  });
+  await precheckAndAccept(harness, "task-concurrent-a");
+  await precheckAndAccept(harness, "task-concurrent-b");
+
+  const [first, second] = await Promise.all([
+    harness.taskBilling.settleSuccess({
+      localUserId: "local-user",
+      taskId: "task-concurrent-a",
+      actualQuotaUnits: 6,
+    }),
+    harness.taskBilling.settleSuccess({
+      localUserId: "local-user",
+      taskId: "task-concurrent-b",
+      actualQuotaUnits: 4,
+    }),
+  ]);
+
+  assert.equal(first.ok, true);
+  assert.equal(second.ok, true);
+  assert.equal(calls.length, 2);
+  assert.equal(quota, 90);
+});
+
 test("database failure before settlement does not produce quota adjustment or leak secrets", async () => {
   const repository: TaskBillingRepository = {
     getByTaskId: async () => {
@@ -276,7 +317,7 @@ test("database failure before settlement does not produce quota adjustment or le
   assert.equal(JSON.stringify(result).includes("secret-token"), false);
 });
 
-test("local write failure after quota adjustment enters repair state without duplicate charge", async () => {
+test("local write failure after quota adjustment recovers without duplicate charge", async () => {
   const taskRepository = createMemoryTaskBillingRepository();
   const harness = service({ repository: taskRepository });
   await precheckAndAccept(harness, "task-write-failure");
@@ -306,14 +347,15 @@ test("local write failure after quota adjustment enters repair state without dup
   });
   assert.equal(retry.ok, true);
   if (!retry.ok) return;
-  assert.equal(retry.action, "reconciliation_required");
+  assert.equal(retry.action, "settled");
+  assert.equal(retry.record.billing_state, "settled");
   assert.equal(harness.adjustments.length, 1);
   assert.equal(JSON.stringify(first).includes("secret-token"), false);
   assert.equal(JSON.stringify(first).includes("hidden"), false);
 });
 
 async function resetTaskBillingTables() {
-  await applicationQuery("truncate table audit_events, task_billing_records, usage_records, billing_idempotency_keys, billing_webhook_events, billing_orders, new_api_user_mappings, auth_sessions, app_users restart identity cascade");
+  await applicationQuery("truncate table audit_events, task_quota_adjustments, task_billing_records, usage_records, billing_idempotency_keys, billing_webhook_events, billing_orders, new_api_user_mappings, auth_sessions, app_users restart identity cascade");
 }
 
 async function seedPostgresUser(localUserId: string) {
@@ -352,7 +394,7 @@ dbTest("postgres task billing repository persists lifecycle without JSON fallbac
   const adjustments: AdjustQuotaInput[] = [];
   const taskBilling = new TaskBillingService({
     taskRepository: createPostgresTaskBillingRepository(),
-    usageRepository: createMemoryUsageLogRepository(),
+    usageRepository: createPostgresUsageLogRepository(),
     mappingRepository: createPostgresNewApiUserMappingRepository(),
     now: () => new Date("2026-06-18T00:00:00.000Z"),
     getQuotaSnapshot: async () => ({ ok: true, snapshot: snapshot(100, localUserId, "9401") }),
@@ -382,9 +424,77 @@ dbTest("postgres task billing repository persists lifecycle without JSON fallbac
     "select billing_state, final_quota_units, new_api_task_id from task_billing_records where local_user_id = $1",
     [localUserId],
   );
+  const usageRows = await applicationQuery<{ status: string }>(
+    "select status from usage_records where local_user_id = $1 and task_id = 'pg-task'",
+    [localUserId],
+  );
+  const adjustmentRows = await applicationQuery<{ status: string }>(
+    "select status from task_quota_adjustments where local_user_id = $1 and task_id = 'pg-task'",
+    [localUserId],
+  );
   assert.equal(rows.rows[0]?.billing_state, "settled");
   assert.equal(Number(rows.rows[0]?.final_quota_units), 8);
   assert.equal(rows.rows[0]?.new_api_task_id, "new-api-pg-task");
+  assert.equal(usageRows.rows[0]?.status, "succeeded");
+  assert.equal(adjustmentRows.rows[0]?.status, "applied");
+});
+
+dbTest("task billing postgres persistence mode does not read or write JSON repositories", async () => {
+  await resetTaskBillingTables();
+  const previousMode = process.env.APP_TASK_BILLING_PERSISTENCE_MODE;
+  const localUserId = "55555555-5555-4555-8555-555555555555";
+  try {
+    process.env.APP_TASK_BILLING_PERSISTENCE_MODE = "postgres";
+    await seedPostgresUser(localUserId);
+    await seedPostgresMapping(localUserId, "9501");
+    const persistence = createTaskBillingPersistenceRepositories();
+    const taskBilling = new TaskBillingService({
+      ...persistence,
+      now: () => new Date("2026-06-18T00:00:00.000Z"),
+      getQuotaSnapshot: async () => ({ ok: true, snapshot: snapshot(100, localUserId, "9501") }),
+      adjustQuota: async (input) => ({ ok: true, providerAdjustmentId: `adjust:${input.idempotencyKey}` }),
+    });
+
+    const prechecked = await taskBilling.precheck({
+      localUserId,
+      taskId: "pg-mode-task",
+      operation: "cloud_image_generation",
+      estimatedQuotaUnits: 5,
+      idempotencyKey: "pg-mode-idem",
+    });
+    assert.equal(prechecked.ok, true);
+    const settled = await taskBilling.settleSuccess({
+      localUserId,
+      taskId: "pg-mode-task",
+      actualQuotaUnits: 5,
+    });
+    assert.equal(settled.ok, true);
+    const rows = await applicationQuery<{ count: string }>(
+      "select count(*)::text as count from task_billing_records where local_user_id = $1",
+      [localUserId],
+    );
+    assert.equal(rows.rows[0]?.count, "1");
+  } finally {
+    if (previousMode === undefined) delete process.env.APP_TASK_BILLING_PERSISTENCE_MODE;
+    else process.env.APP_TASK_BILLING_PERSISTENCE_MODE = previousMode;
+  }
+});
+
+test("production task billing persistence mode fails closed when missing or invalid", () => {
+  const previousMode = process.env.APP_TASK_BILLING_PERSISTENCE_MODE;
+  const previousNodeEnv = process.env.NODE_ENV;
+  try {
+    delete process.env.APP_TASK_BILLING_PERSISTENCE_MODE;
+    Reflect.set(process.env, "NODE_ENV", "production");
+    assert.throws(() => createTaskBillingPersistenceRepositories(), TaskBillingPersistenceConfigError);
+    process.env.APP_TASK_BILLING_PERSISTENCE_MODE = "dual";
+    assert.throws(() => createTaskBillingPersistenceRepositories(), TaskBillingPersistenceConfigError);
+  } finally {
+    if (previousMode === undefined) delete process.env.APP_TASK_BILLING_PERSISTENCE_MODE;
+    else process.env.APP_TASK_BILLING_PERSISTENCE_MODE = previousMode;
+    if (previousNodeEnv === undefined) Reflect.deleteProperty(process.env, "NODE_ENV");
+    else Reflect.set(process.env, "NODE_ENV", previousNodeEnv);
+  }
 });
 
 test.after(async () => {

@@ -29,11 +29,44 @@ export type TaskBillingRecordPatch = {
   last_error?: string | null;
 };
 
+export type TaskQuotaAdjustmentStatus = "pending" | "applied" | "failed";
+
+export type TaskQuotaAdjustment = {
+  id: string;
+  local_user_id: string;
+  new_api_user_id: string;
+  task_billing_record_id: string | null;
+  task_id: string;
+  idempotency_key: string;
+  quota_delta: number;
+  status: TaskQuotaAdjustmentStatus;
+  provider_adjustment_id: string | null;
+  last_error: string | null;
+  created_at: string;
+  updated_at: string;
+  applied_at: string | null;
+  version: number;
+};
+
+export type TaskQuotaAdjustmentInput = {
+  localUserId: string;
+  newApiUserId: string;
+  taskBillingRecordId?: string | null;
+  taskId: string;
+  idempotencyKey: string;
+  quotaDelta: number;
+  now?: Date;
+};
+
 export type TaskBillingRepository = {
   getByTaskId(localUserId: string, taskId: string): Promise<TaskBillingRecord | null>;
   getByIdempotencyKey(localUserId: string, idempotencyKey: string): Promise<TaskBillingRecord | null>;
   createPrecheck(input: CreateTaskBillingRecordInput): Promise<TaskBillingRecord>;
   update(recordId: string, patch: TaskBillingRecordPatch, expectedVersion?: number): Promise<TaskBillingRecord>;
+  withQuotaAdjustmentLock?<T>(newApiUserId: string, operation: () => Promise<T>): Promise<T>;
+  claimQuotaAdjustment?(input: TaskQuotaAdjustmentInput): Promise<TaskQuotaAdjustment>;
+  markQuotaAdjustmentApplied?(idempotencyKey: string, providerAdjustmentId: string, now?: Date): Promise<TaskQuotaAdjustment>;
+  markQuotaAdjustmentFailed?(idempotencyKey: string, error: string, now?: Date): Promise<TaskQuotaAdjustment>;
 };
 
 export class TaskBillingRepositoryError extends Error {
@@ -44,6 +77,7 @@ export class TaskBillingRepositoryError extends Error {
 }
 
 const defaultTaskBillingPath = join(dataRoot, "task-billing-records.json");
+const defaultTaskQuotaAdjustmentPath = join(dataRoot, "task-quota-adjustments.json");
 
 function nowIso(now?: Date) {
   return (now || new Date()).toISOString();
@@ -57,6 +91,10 @@ function requiredText(value: string, name: string) {
 
 function cloneRecord(record: TaskBillingRecord): TaskBillingRecord {
   return { ...record };
+}
+
+function cloneAdjustment(adjustment: TaskQuotaAdjustment): TaskQuotaAdjustment {
+  return { ...adjustment };
 }
 
 function normalizeRecord(record: Partial<TaskBillingRecord>): TaskBillingRecord {
@@ -80,10 +118,37 @@ function normalizeRecord(record: Partial<TaskBillingRecord>): TaskBillingRecord 
   };
 }
 
+function normalizeAdjustment(adjustment: Partial<TaskQuotaAdjustment>): TaskQuotaAdjustment {
+  const timestamp = adjustment.created_at || nowIso();
+  return {
+    id: adjustment.id || randomUUID(),
+    local_user_id: String(adjustment.local_user_id || ""),
+    new_api_user_id: String(adjustment.new_api_user_id || ""),
+    task_billing_record_id: adjustment.task_billing_record_id ?? null,
+    task_id: String(adjustment.task_id || ""),
+    idempotency_key: String(adjustment.idempotency_key || ""),
+    quota_delta: Number(adjustment.quota_delta || 0),
+    status: adjustment.status || "pending",
+    provider_adjustment_id: adjustment.provider_adjustment_id ?? null,
+    last_error: adjustment.last_error ?? null,
+    created_at: timestamp,
+    updated_at: adjustment.updated_at || timestamp,
+    applied_at: adjustment.applied_at ?? null,
+    version: Number(adjustment.version || 1),
+  };
+}
+
 class StoreTaskBillingRepository implements TaskBillingRepository {
   private queue = Promise.resolve();
+  private readonly quotaAdjustmentLocks = new Map<string, Promise<void>>();
 
-  constructor(private readonly storage: TaskBillingStorage) {}
+  constructor(
+    private readonly storage: TaskBillingStorage,
+    private readonly adjustmentStorage?: {
+      read(): Promise<TaskQuotaAdjustment[]>;
+      write(adjustments: TaskQuotaAdjustment[]): Promise<void>;
+    },
+  ) {}
 
   private async withLock<T>(operation: () => Promise<T>) {
     const previous = this.queue;
@@ -178,10 +243,93 @@ class StoreTaskBillingRepository implements TaskBillingRepository {
       return cloneRecord(records[index]);
     });
   }
+
+  async withQuotaAdjustmentLock<T>(newApiUserId: string, operation: () => Promise<T>) {
+    const key = newApiUserId.trim();
+    const previous = this.quotaAdjustmentLocks.get(key) || Promise.resolve();
+    let release: () => void = () => undefined;
+    const current = previous.then(() => new Promise<void>((resolve) => {
+      release = resolve;
+    }));
+    this.quotaAdjustmentLocks.set(key, current);
+    await previous;
+    try {
+      return await operation();
+    } finally {
+      release();
+      if (this.quotaAdjustmentLocks.get(key) === current) this.quotaAdjustmentLocks.delete(key);
+    }
+  }
+
+  async claimQuotaAdjustment(input: TaskQuotaAdjustmentInput) {
+    if (!this.adjustmentStorage) throw new Error("Task quota adjustment storage is not configured.");
+    const timestamp = nowIso(input.now);
+    const idempotencyKey = requiredText(input.idempotencyKey, "idempotencyKey");
+    return this.withLock(async () => {
+      const adjustments = (await this.adjustmentStorage!.read()).map(cloneAdjustment);
+      const existing = adjustments.find((adjustment) => adjustment.idempotency_key === idempotencyKey);
+      if (existing) return cloneAdjustment(existing);
+      const adjustment: TaskQuotaAdjustment = {
+        id: randomUUID(),
+        local_user_id: requiredText(input.localUserId, "localUserId"),
+        new_api_user_id: requiredText(input.newApiUserId, "newApiUserId"),
+        task_billing_record_id: input.taskBillingRecordId || null,
+        task_id: requiredText(input.taskId, "taskId"),
+        idempotency_key: idempotencyKey,
+        quota_delta: input.quotaDelta,
+        status: "pending",
+        provider_adjustment_id: null,
+        last_error: null,
+        created_at: timestamp,
+        updated_at: timestamp,
+        applied_at: null,
+        version: 1,
+      };
+      adjustments.push(adjustment);
+      await this.adjustmentStorage!.write(adjustments);
+      return cloneAdjustment(adjustment);
+    });
+  }
+
+  async markQuotaAdjustmentApplied(idempotencyKey: string, providerAdjustmentId: string, now?: Date) {
+    if (!this.adjustmentStorage) throw new Error("Task quota adjustment storage is not configured.");
+    return this.updateAdjustment(idempotencyKey, {
+      status: "applied",
+      provider_adjustment_id: providerAdjustmentId,
+      last_error: null,
+      applied_at: nowIso(now),
+      updated_at: nowIso(now),
+    });
+  }
+
+  async markQuotaAdjustmentFailed(idempotencyKey: string, error: string, now?: Date) {
+    if (!this.adjustmentStorage) throw new Error("Task quota adjustment storage is not configured.");
+    return this.updateAdjustment(idempotencyKey, {
+      status: "failed",
+      last_error: error,
+      updated_at: nowIso(now),
+    });
+  }
+
+  private async updateAdjustment(idempotencyKey: string, patch: Partial<TaskQuotaAdjustment>) {
+    return this.withLock(async () => {
+      const adjustments = (await this.adjustmentStorage!.read()).map(cloneAdjustment);
+      const index = adjustments.findIndex((adjustment) => adjustment.idempotency_key === idempotencyKey.trim());
+      if (index < 0) throw new TaskBillingRepositoryError("TASK_BILLING_NOT_FOUND", "Task quota adjustment was not found.");
+      adjustments[index] = {
+        ...adjustments[index],
+        ...patch,
+        version: adjustments[index].version + 1,
+      };
+      await this.adjustmentStorage!.write(adjustments);
+      return cloneAdjustment(adjustments[index]);
+    });
+  }
 }
 
 export function createMemoryTaskBillingRepository(seed: TaskBillingRecord[] = []) {
   let records = seed.map(normalizeRecord);
+  let adjustments: TaskQuotaAdjustment[] = [];
   return new StoreTaskBillingRepository({
     async read() {
       return records.map(cloneRecord);
@@ -189,16 +337,34 @@ export function createMemoryTaskBillingRepository(seed: TaskBillingRecord[] = []
     async write(nextRecords) {
       records = nextRecords.map(cloneRecord);
     },
+  }, {
+    async read() {
+      return adjustments.map(cloneAdjustment);
+    },
+    async write(nextAdjustments) {
+      adjustments = nextAdjustments.map(cloneAdjustment);
+    },
   });
 }
 
-export function createJsonTaskBillingRepository(path = defaultTaskBillingPath) {
+export function createJsonTaskBillingRepository(
+  path = defaultTaskBillingPath,
+  adjustmentPath = defaultTaskQuotaAdjustmentPath,
+) {
   return new StoreTaskBillingRepository({
     async read() {
       return readJsonFile<Partial<TaskBillingRecord>[]>(path, []).then((records) => records.map(normalizeRecord));
     },
     async write(records) {
       await writeJsonFile(path, records);
+    },
+  }, {
+    async read() {
+      return readJsonFile<Partial<TaskQuotaAdjustment>[]>(adjustmentPath, [])
+        .then((adjustments) => adjustments.map(normalizeAdjustment));
+    },
+    async write(adjustments) {
+      await writeJsonFile(adjustmentPath, adjustments);
     },
   });
 }

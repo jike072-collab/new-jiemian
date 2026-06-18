@@ -1,13 +1,21 @@
 import "server-only";
 
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 
 import { type QueryResultRow } from "pg";
 
-import { applicationQuery } from "../database";
+import {
+  applicationQuery,
+  getApplicationDatabaseConfig,
+  getApplicationDatabasePool,
+  withApplicationTransaction,
+} from "../database";
 import {
   TaskBillingRepositoryError,
   type CreateTaskBillingRecordInput,
+  type TaskQuotaAdjustment,
+  type TaskQuotaAdjustmentInput,
+  type TaskQuotaAdjustmentStatus,
   type TaskBillingRecordPatch,
   type TaskBillingRepository,
 } from "./task-billing-repository";
@@ -28,6 +36,23 @@ type TaskBillingRecordRow = QueryResultRow & {
   settled_at: Date | string | null;
   refunded_at: Date | string | null;
   last_error: string | null;
+  version: number;
+};
+
+type TaskQuotaAdjustmentRow = QueryResultRow & {
+  id: string;
+  local_user_id: string;
+  new_api_user_id: string;
+  task_billing_record_id: string | null;
+  task_id: string;
+  idempotency_key: string;
+  quota_delta: number;
+  status: TaskQuotaAdjustmentStatus;
+  provider_adjustment_id: string | null;
+  last_error: string | null;
+  created_at: Date | string;
+  updated_at: Date | string;
+  applied_at: Date | string | null;
   version: number;
 };
 
@@ -61,6 +86,25 @@ function fromRow(row: TaskBillingRecordRow): TaskBillingRecord {
   };
 }
 
+function adjustmentFromRow(row: TaskQuotaAdjustmentRow): TaskQuotaAdjustment {
+  return {
+    id: row.id,
+    local_user_id: row.local_user_id,
+    new_api_user_id: row.new_api_user_id,
+    task_billing_record_id: row.task_billing_record_id,
+    task_id: row.task_id,
+    idempotency_key: row.idempotency_key,
+    quota_delta: Number(row.quota_delta),
+    status: row.status,
+    provider_adjustment_id: row.provider_adjustment_id,
+    last_error: row.last_error,
+    created_at: iso(row.created_at),
+    updated_at: iso(row.updated_at),
+    applied_at: isoOrNull(row.applied_at),
+    version: Number(row.version),
+  };
+}
+
 function isUniqueViolation(error: unknown) {
   return typeof error === "object"
     && error !== null
@@ -68,7 +112,28 @@ function isUniqueViolation(error: unknown) {
     && String((error as { code?: unknown }).code) === "23505";
 }
 
+function advisoryKeyParts(value: string): [number, number] {
+  const hash = createHash("sha256").update(value).digest();
+  return [hash.readInt32BE(0), hash.readInt32BE(4)];
+}
+
 export class PostgresTaskBillingRepository implements TaskBillingRepository {
+  constructor() {
+    getApplicationDatabaseConfig();
+  }
+
+  async withQuotaAdjustmentLock<T>(newApiUserId: string, operation: () => Promise<T>) {
+    const client = await getApplicationDatabasePool().connect();
+    const [key1, key2] = advisoryKeyParts(`task-quota:${newApiUserId.trim()}`);
+    try {
+      await client.query("select pg_advisory_lock($1, $2)", [key1, key2]);
+      return operation();
+    } finally {
+      await client.query("select pg_advisory_unlock($1, $2)", [key1, key2]).catch(() => undefined);
+      client.release();
+    }
+  }
+
   async getByTaskId(localUserId: string, taskId: string) {
     const result = await applicationQuery<TaskBillingRecordRow>(`
       select *
@@ -150,6 +215,82 @@ export class PostgresTaskBillingRepository implements TaskBillingRepository {
       throw new TaskBillingRepositoryError("TASK_BILLING_NOT_FOUND", "Task billing record was not found.");
     }
     throw new TaskBillingRepositoryError("TASK_BILLING_VERSION_CONFLICT", "Task billing record changed before update.");
+  }
+
+  async claimQuotaAdjustment(input: TaskQuotaAdjustmentInput) {
+    const timestamp = (input.now || new Date()).toISOString();
+    return withApplicationTransaction(async (client) => {
+      await client.query(`
+        insert into task_quota_adjustments(
+          id, local_user_id, new_api_user_id, task_billing_record_id, task_id, idempotency_key,
+          quota_delta, status, provider_adjustment_id, last_error, created_at, updated_at,
+          applied_at, version
+        ) values ($1,$2,$3,$4,$5,$6,$7,'pending',null,null,$8,$8,null,1)
+        on conflict (idempotency_key) do nothing
+      `, [
+        randomUUID(),
+        input.localUserId.trim(),
+        input.newApiUserId.trim(),
+        input.taskBillingRecordId || null,
+        input.taskId.trim(),
+        input.idempotencyKey.trim(),
+        input.quotaDelta,
+        timestamp,
+      ]);
+      const current = await client.query<TaskQuotaAdjustmentRow>(`
+        select *
+        from task_quota_adjustments
+        where idempotency_key = $1
+        for update
+      `, [input.idempotencyKey.trim()]);
+      if (!current.rows[0]) {
+        throw new TaskBillingRepositoryError("TASK_BILLING_NOT_FOUND", "Task quota adjustment was not found.");
+      }
+      const row = current.rows[0];
+      if (row.status === "failed") {
+        const retried = await client.query<TaskQuotaAdjustmentRow>(`
+          update task_quota_adjustments
+          set status = 'pending', last_error = null, updated_at = $2, version = version + 1
+          where idempotency_key = $1
+          returning *
+        `, [input.idempotencyKey.trim(), timestamp]);
+        return adjustmentFromRow(retried.rows[0]);
+      }
+      return adjustmentFromRow(row);
+    });
+  }
+
+  async markQuotaAdjustmentApplied(idempotencyKey: string, providerAdjustmentId: string, now?: Date) {
+    const timestamp = (now || new Date()).toISOString();
+    return this.updateQuotaAdjustment(idempotencyKey, `
+      status = 'applied',
+      provider_adjustment_id = $2,
+      last_error = null,
+      applied_at = coalesce(applied_at, $3),
+      updated_at = $3,
+      version = version + 1
+    `, [providerAdjustmentId, timestamp]);
+  }
+
+  async markQuotaAdjustmentFailed(idempotencyKey: string, error: string, now?: Date) {
+    const timestamp = (now || new Date()).toISOString();
+    return this.updateQuotaAdjustment(idempotencyKey, `
+      status = 'failed',
+      last_error = $2,
+      updated_at = $3,
+      version = version + 1
+    `, [error, timestamp]);
+  }
+
+  private async updateQuotaAdjustment(idempotencyKey: string, assignmentSql: string, values: unknown[]) {
+    const result = await applicationQuery<TaskQuotaAdjustmentRow>(`
+      update task_quota_adjustments
+      set ${assignmentSql}
+      where idempotency_key = $1
+      returning *
+    `, [idempotencyKey.trim(), ...values]);
+    if (result.rows[0]) return adjustmentFromRow(result.rows[0]);
+    throw new TaskBillingRepositoryError("TASK_BILLING_NOT_FOUND", "Task quota adjustment was not found.");
   }
 }
 

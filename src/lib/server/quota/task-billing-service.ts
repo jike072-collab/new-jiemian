@@ -10,11 +10,11 @@ import {
   type UsageLogRepository,
 } from "./repository";
 import {
-  createJsonTaskBillingRepository,
   TaskBillingRepositoryError,
   type TaskBillingRecordPatch,
   type TaskBillingRepository,
 } from "./task-billing-repository";
+import { createTaskBillingPersistenceRepositories } from "./task-billing-persistence";
 import {
   type TaskBillingFailInput,
   type TaskBillingFailure,
@@ -173,9 +173,12 @@ export class TaskBillingService {
   private readonly taskLocks = new Map<string, Promise<void>>();
 
   constructor(dependencies: TaskBillingServiceDependencies = {}) {
-    this.taskRepository = dependencies.taskRepository || createJsonTaskBillingRepository();
-    this.usageRepository = dependencies.usageRepository || createJsonUsageLogRepository();
-    this.mappingRepository = dependencies.mappingRepository || createJsonNewApiUserMappingRepository();
+    const persistence = dependencies.taskRepository && dependencies.usageRepository && dependencies.mappingRepository
+      ? null
+      : createTaskBillingPersistenceRepositories();
+    this.taskRepository = dependencies.taskRepository || persistence!.taskRepository;
+    this.usageRepository = dependencies.usageRepository || persistence!.usageRepository || createJsonUsageLogRepository();
+    this.mappingRepository = dependencies.mappingRepository || persistence!.mappingRepository || createJsonNewApiUserMappingRepository();
     this.quotaCache = dependencies.quotaCache || new QuotaDisplayCache(15_000);
     this.getQuotaSnapshot = dependencies.getQuotaSnapshot || this.defaultQuotaSnapshot.bind(this);
     this.adjustQuota = dependencies.adjustQuota || defaultAdjustQuota;
@@ -291,9 +294,7 @@ export class TaskBillingService {
     if (record.billing_state === "settled") {
       return { ok: true, status: 200, action: "idempotent", record };
     }
-    if (record.billing_state === "reconciliation_required") {
-      return { ok: true, status: 202, action: "reconciliation_required", record };
-    }
+    if (record.billing_state === "reconciliation_required") return this.completeSettlement(record, input);
     if (record.billing_state === "failed" || record.billing_state === "cancelled") {
       return this.markReconciliationRequired(record, "Cannot settle a failed or cancelled task.");
     }
@@ -309,23 +310,31 @@ export class TaskBillingService {
       if (prepared.record.billing_state === "settled") {
         return { ok: true, status: 200, action: "idempotent", record: prepared.record };
       }
+      if (prepared.record.billing_state === "reconciliation_required") {
+        return this.completeSettlement(prepared.record, input);
+      }
       return { ok: true, status: 202, action: "reconciliation_required", record: prepared.record };
     }
 
+    return this.completeSettlement(prepared.record, input);
+  }
+
+  private async completeSettlement(record: TaskBillingRecord, input: TaskBillingSettleInput): Promise<TaskBillingResult> {
     const mapping = await this.mappingRepository.getByLocalUserId(input.localUserId);
     if (!mapping || mapping.sync_status !== "active" || !mapping.new_api_user_id) return quotaFailure("mapping_pending");
 
-    const charge = await this.adjustQuota({
+    const charge = await this.applyIdempotentQuotaAdjustment({
       localUserId: input.localUserId,
       newApiUserId: mapping.new_api_user_id,
       taskId: input.taskId,
       quotaDelta: -input.actualQuotaUnits,
-      idempotencyKey: `task-settle:${prepared.record.id}`,
+      idempotencyKey: `task-settle:${record.id}`,
+      taskBillingRecordId: record.id,
     });
-    if (!charge.ok) return this.markReconciliationRequired(prepared.record, charge.message);
+    if (!charge.ok) return this.markReconciliationRequired(record, charge.message);
 
     const timestamp = nowIso(this.now());
-    const usage = await this.updateUsageForRecord(prepared.record, {
+    const usage = await this.updateUsageForRecord(record, {
       newApiUserId: mapping.new_api_user_id,
       status: "succeeded",
       actualQuotaUnits: input.actualQuotaUnits,
@@ -333,7 +342,7 @@ export class TaskBillingService {
       upstreamRequestId: input.upstreamRequestId || null,
       upstreamModel: input.upstreamModel || null,
     });
-    const updated = await this.updateWithRetry(prepared.record, {
+    const updated = await this.updateWithRetry(record, {
       billing_state: "settled",
       new_api_task_id: input.newApiTaskId || record.new_api_task_id,
       usage_record_id: usage?.id || record.usage_record_id,
@@ -372,6 +381,9 @@ export class TaskBillingService {
       return { ok: true, status: 200, action: "idempotent", record };
     }
     if (record.billing_state === "reconciliation_required") {
+      if (record.final_quota_units && !record.refunded_at) {
+        return this.refundSettledTask(record, state, input.reason || `${state} after settlement`);
+      }
       return { ok: true, status: 202, action: "reconciliation_required", record };
     }
     if (record.billing_state === "settled") {
@@ -419,12 +431,13 @@ export class TaskBillingService {
     }
     const mapping = await this.mappingRepository.getByLocalUserId(record.local_user_id);
     if (!mapping || mapping.sync_status !== "active" || !mapping.new_api_user_id) return quotaFailure("mapping_pending");
-    const refund = await this.adjustQuota({
+    const refund = await this.applyIdempotentQuotaAdjustment({
       localUserId: record.local_user_id,
       newApiUserId: mapping.new_api_user_id,
       taskId: record.task_id,
       quotaDelta: finalQuota,
       idempotencyKey: `task-refund:${prepared.record.id}`,
+      taskBillingRecordId: prepared.record.id,
     });
     if (!refund.ok) return this.markReconciliationRequired(prepared.record, refund.message);
     const usage = await this.updateUsageForRecord(prepared.record, {
@@ -461,6 +474,50 @@ export class TaskBillingService {
     });
     if (!updated.ok) return updated;
     return { ok: true, status: 202, action: "reconciliation_required", record: updated.record, usage: usage || undefined };
+  }
+
+  private async applyIdempotentQuotaAdjustment(input: AdjustQuotaInput & {
+    taskBillingRecordId: string;
+  }): Promise<AdjustQuotaResult | TaskBillingFailure> {
+    const operation = async (): Promise<AdjustQuotaResult | TaskBillingFailure> => {
+      try {
+        const adjustment = this.taskRepository.claimQuotaAdjustment
+          ? await this.taskRepository.claimQuotaAdjustment({
+            localUserId: input.localUserId,
+            newApiUserId: input.newApiUserId,
+            taskBillingRecordId: input.taskBillingRecordId,
+            taskId: input.taskId,
+            idempotencyKey: input.idempotencyKey,
+            quotaDelta: input.quotaDelta,
+            now: this.now(),
+          })
+          : null;
+        if (adjustment?.status === "applied") {
+          return {
+            ok: true,
+            providerAdjustmentId: adjustment.provider_adjustment_id || `task-quota:${input.idempotencyKey}`,
+          };
+        }
+        const result = await this.adjustQuota(input);
+        if (!result.ok) {
+          if (this.taskRepository.markQuotaAdjustmentFailed) {
+            await this.taskRepository.markQuotaAdjustmentFailed(input.idempotencyKey, sanitizeError(result.message) || result.code, this.now())
+              .catch(() => undefined);
+          }
+          return result;
+        }
+        if (this.taskRepository.markQuotaAdjustmentApplied) {
+          await this.taskRepository.markQuotaAdjustmentApplied(input.idempotencyKey, result.providerAdjustmentId, this.now());
+        }
+        return result;
+      } catch (error) {
+        return errorFailure(error);
+      }
+    };
+    if (this.taskRepository.withQuotaAdjustmentLock) {
+      return this.taskRepository.withQuotaAdjustmentLock(input.newApiUserId, operation);
+    }
+    return operation();
   }
 
   private async updateWithRetry(
