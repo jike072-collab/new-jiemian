@@ -5,7 +5,9 @@ BP-01A only establishes the database baseline. It does not migrate runtime data,
 ## Phase 1: Schema Creation
 
 - Apply `db/migrations/001_initial_application_schema.sql` to an empty application PostgreSQL database.
-- Verify `schema_migrations` has the expected checksum.
+- Set `APP_DATABASE_EXPECTED_NAME` and verify `select current_database()` matches it before any DDL.
+- Apply `db/migrations/001_initial_application_schema.sql` and `db/migrations/002_harden_database_baseline.sql`.
+- Verify `schema_migrations` has the expected checksums for both migrations.
 - Confirm the target database is the application database, not the New API database.
 - Confirm no local table represents a second New API quota balance ledger.
 
@@ -82,7 +84,7 @@ BP-01A only establishes the database baseline. It does not migrate runtime data,
 | `AuthUser.email` | `app_users.email` | Normalize to existing auth repository rules before duplicate checks. |
 | `AuthUser.username` | `app_users.username` | Must be unique. |
 | `AuthUser.password_hash` | `app_users.password_hash` | Existing `scrypt$...` format is preserved; passwords are never reset in migration. |
-| `AuthSession.token_hash` | `auth_sessions.token_hash` | Raw tokens are rejected; only hash-like values are accepted. |
+| `AuthSession.token_hash` | `auth_sessions.token_hash` | Raw tokens are rejected; only lowercase SHA-256 hex values matching `^[a-f0-9]{64}$` are accepted. |
 | `NewApiUserMapping.local_user_id` | `new_api_user_mappings.local_user_id` | Must reference an imported local user. |
 | `NewApiUserMapping.new_api_user_id` | `new_api_user_mappings.new_api_user_id` | Unique when present; conflicts become manual review. |
 | `BillingOrder.requested_amount` | `billing_orders.requested_amount` | Integer minor currency unit only. |
@@ -97,6 +99,7 @@ BP-01A only establishes the database baseline. It does not migrate runtime data,
 - Duplicate mappings: active mapping conflicts become `repair_required`; do not steal New API ownership.
 - Duplicate orders: preserve all evidence and mark duplicates for review; do not double-credit quota.
 - Invalid sessions: reject and require login again.
+- Wrong database identity: stop before creating `schema_migrations` or any application table; do not infer identity from the URL string.
 - Orphan records: import only when a valid owner exists, or quarantine into an operator review report.
 - Time format: parse ISO timestamps; invalid or missing timestamps are review items unless a safe source timestamp exists.
 - Amount format: reject floats and strings that cannot be converted to integer minor units without loss.

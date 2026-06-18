@@ -1,7 +1,14 @@
+import "server-only";
+
 import { randomUUID } from "node:crypto";
 import pg, { type Pool as PgPool, type PoolClient, type QueryResult, type QueryResultRow } from "pg";
 
-import { getApplicationDatabaseConfig, safeDatabaseError, type ApplicationDatabaseConfig } from "./config";
+import {
+  ApplicationDatabaseIdentityError,
+  getApplicationDatabaseConfig,
+  safeDatabaseError,
+  type ApplicationDatabaseConfig,
+} from "./config";
 
 const { Pool } = pg;
 
@@ -57,6 +64,18 @@ export async function withApplicationTransaction<T>(
   }
 }
 
+export async function assertApplicationDatabaseIdentity(
+  client: Pick<PoolClient, "query">,
+  expectedDatabaseName = getApplicationDatabaseConfig().expectedDatabaseName,
+) {
+  const result = await client.query<{ database_name: string }>("select current_database() as database_name");
+  const actualDatabaseName = result.rows[0]?.database_name || "";
+  if (actualDatabaseName !== expectedDatabaseName) {
+    throw new ApplicationDatabaseIdentityError(expectedDatabaseName, actualDatabaseName);
+  }
+  return actualDatabaseName;
+}
+
 export type ApplicationDatabaseHealth =
   | {
       ok: true;
@@ -76,16 +95,23 @@ export async function checkApplicationDatabaseHealth(requestId: string = randomU
     const result = await applicationQuery<{
       server_time: string;
       database_name: string;
-      migration_count: string;
+      migrations_table: string | null;
     }>(
-      "select now()::text as server_time, current_database() as database_name, (select count(*)::text from schema_migrations) as migration_count",
+      "select now()::text as server_time, current_database() as database_name, to_regclass('public.schema_migrations') as migrations_table",
     );
+    const config = getApplicationDatabaseConfig();
+    if (result.rows[0]?.database_name !== config.expectedDatabaseName) {
+      throw new ApplicationDatabaseIdentityError(config.expectedDatabaseName, result.rows[0]?.database_name || "");
+    }
+    const migrationCount = result.rows[0]?.migrations_table
+      ? await applicationQuery<{ count: string }>("select count(*)::text as count from schema_migrations")
+      : { rows: [{ count: "0" }] };
     return {
       ok: true,
       requestId,
       database: result.rows[0]?.database_name || "",
       serverTime: result.rows[0]?.server_time || "",
-      migrationCount: Number(result.rows[0]?.migration_count || 0),
+      migrationCount: Number(migrationCount.rows[0]?.count || 0),
     };
   } catch (error) {
     return {

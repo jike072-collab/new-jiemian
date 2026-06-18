@@ -37,7 +37,7 @@ Reasons:
 - BP-01A needs a conservative database baseline, not a broad data-access rewrite.
 - Existing B-side code already uses explicit service/repository boundaries. Raw SQL can be introduced underneath those repositories later without changing public API contracts.
 - Raw SQL gives reviewers direct visibility into status checks, unique constraints, foreign keys, integer money/quota fields, and the absence of a local cloud quota balance ledger.
-- The dependency surface stays limited to `pg` and `@types/pg`.
+- The dependency surface stays limited to `pg`, `@types/pg`, and the Next/React `server-only` marker package.
 - Migration checksum enforcement is simple to audit and does not require generated migration artifacts.
 
 ## Rejected Options
@@ -70,6 +70,8 @@ The schema intentionally does not create a local mutable quota balance table. Ne
 - Adds migration and schema test scripts under `scripts/database`.
 - Adds environment placeholders to `.env.example`.
 - Adds CI for PostgreSQL migration and client bundle boundary scans.
+- Adds `server-only` imports to the database entry modules so Client Component imports fail at build time.
+- Requires `APP_DATABASE_EXPECTED_NAME` before migration, status, health, or schema tests execute database DDL or read application tables.
 - Does not change any existing API route contract.
 - Does not enable PostgreSQL as the primary runtime write path in BP-01A.
 - Does not remove or modify existing JSON runtime stores.
@@ -81,16 +83,19 @@ Before any production write path uses the application database, rollback is:
 1. Remove the BP-01A database files under `db/`, `scripts/database/`, and `src/lib/server/database/`.
 2. Remove the application database workflow.
 3. Remove `APP_DATABASE_*` placeholders from `.env.example`.
-4. Remove `pg` and `@types/pg` from package files.
+4. Remove `pg`, `@types/pg`, and `server-only` from package files if no later server-only modules still use it.
 
 After later modules begin writing to PostgreSQL, rollback must be handled by a module-specific data rollback plan and must not delete production tables automatically.
 
 ## Security Notes
 
 - `APP_DATABASE_URL` is server-only and must not be exposed to client components or browser bundles.
+- `APP_DATABASE_EXPECTED_NAME` must be set explicitly and compared with `select current_database()` before creating `schema_migrations`, running migrations, checking status, health, or schema tests.
+- The migration scripts must fail before DDL when connected to an unexpected database name.
 - Production must fail closed when `APP_DATABASE_URL` is absent.
+- Production and test migration commands also fail closed when `APP_DATABASE_EXPECTED_NAME` is absent.
 - Database credentials must not be reused from New API.
 - Test and production databases must use different credentials.
 - PostgreSQL and Redis must not be public.
 - Password hashes remain compatible with the existing `scrypt$...` format from `src/lib/server/auth/password.ts`.
-- Session rows store token hashes only, never raw session tokens.
+- Session rows store SHA-256 hexadecimal token hashes only, never raw session tokens. Migration `002_harden_database_baseline.sql` replaces the initial length-only check with `^[a-f0-9]{64}$`.

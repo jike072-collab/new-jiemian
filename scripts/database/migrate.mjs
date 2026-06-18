@@ -22,6 +22,25 @@ function requireDatabaseUrl() {
   return value;
 }
 
+function requireExpectedDatabaseName() {
+  const value = process.env.APP_DATABASE_EXPECTED_NAME || "";
+  if (!value) fail("APP_DATABASE_EXPECTED_NAME is required.");
+  if (!/^[a-zA-Z0-9_][a-zA-Z0-9_-]{0,62}$/.test(value)) {
+    fail("APP_DATABASE_EXPECTED_NAME must be a valid explicit database name.");
+  }
+  return value;
+}
+
+async function assertDatabaseIdentity(client) {
+  const expected = requireExpectedDatabaseName();
+  const result = await client.query("select current_database() as database_name");
+  const actual = result.rows[0]?.database_name || "";
+  if (actual !== expected) {
+    fail(`Connected to unexpected application database "${actual}". Expected "${expected}".`);
+  }
+  return actual;
+}
+
 function checksum(sql) {
   return createHash("sha256").update(sql).digest("hex");
 }
@@ -46,6 +65,7 @@ async function loadMigrations() {
 }
 
 async function ensureMigrationTable(client) {
+  await assertDatabaseIdentity(client);
   await client.query(`
     create table if not exists schema_migrations (
       version text primary key,
@@ -65,6 +85,7 @@ async function migrate(pool) {
   const migrations = await loadMigrations();
   const client = await pool.connect();
   try {
+    await assertDatabaseIdentity(client);
     const applied = await appliedMigrations(client);
     for (const migration of migrations) {
       const existing = applied.get(migration.version);
@@ -97,6 +118,7 @@ async function status(pool) {
   const migrations = await loadMigrations();
   const client = await pool.connect();
   try {
+    await assertDatabaseIdentity(client);
     const applied = await appliedMigrations(client);
     let pending = 0;
     for (const migration of migrations) {
@@ -118,14 +140,23 @@ async function status(pool) {
 }
 
 async function health(pool) {
-  const result = await pool.query("select now()::text as server_time, current_database() as database_name");
-  const migrations = await pool.query("select count(*)::int as count from schema_migrations");
-  console.log(JSON.stringify({
-    ok: true,
-    database: result.rows[0].database_name,
-    serverTime: result.rows[0].server_time,
-    migrationCount: migrations.rows[0].count,
-  }));
+  const client = await pool.connect();
+  try {
+    await assertDatabaseIdentity(client);
+    const result = await client.query("select now()::text as server_time, current_database() as database_name");
+    const migrationTable = await client.query("select to_regclass('public.schema_migrations') as table_name");
+    const migrations = migrationTable.rows[0]?.table_name
+      ? await client.query("select count(*)::int as count from schema_migrations")
+      : { rows: [{ count: 0 }] };
+    console.log(JSON.stringify({
+      ok: true,
+      database: result.rows[0].database_name,
+      serverTime: result.rows[0].server_time,
+      migrationCount: migrations.rows[0].count,
+    }));
+  } finally {
+    client.release();
+  }
 }
 
 async function main() {

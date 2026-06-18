@@ -12,6 +12,12 @@ function requireDatabaseUrl() {
   return value;
 }
 
+function requireExpectedDatabaseName() {
+  const value = process.env.APP_DATABASE_EXPECTED_NAME || "";
+  if (!value) throw new Error("APP_DATABASE_EXPECTED_NAME is required.");
+  return value;
+}
+
 const pool = new Pool({
   connectionString: requireDatabaseUrl(),
   max: 3,
@@ -23,6 +29,11 @@ const pool = new Pool({
 
 async function q(text, values = []) {
   return pool.query(text, values);
+}
+
+async function assertDatabaseIdentity() {
+  const result = await q("select current_database() as database_name");
+  assert.equal(result.rows[0].database_name, requireExpectedDatabaseName());
 }
 
 async function expectRejects(name, fn) {
@@ -94,9 +105,14 @@ async function assertTablesAndIndexes() {
 }
 
 async function assertMigrationStatus() {
-  const result = await q("select version, checksum from schema_migrations where version = '001_initial_application_schema'");
-  assert.equal(result.rowCount, 1);
-  assert.match(result.rows[0].checksum, /^[a-f0-9]{64}$/);
+  const result = await q("select version, checksum from schema_migrations order by version");
+  assert.deepEqual(result.rows.map((row) => row.version), [
+    "001_initial_application_schema",
+    "002_harden_database_baseline",
+  ]);
+  for (const row of result.rows) {
+    assert.match(row.checksum, /^[a-f0-9]{64}$/);
+  }
 }
 
 async function assertConstraints() {
@@ -151,20 +167,39 @@ async function assertConstraints() {
     values ($1,$2,'idem-order','billing_order','bo_test',now())
   `, [randomUUID(), userId]));
 
+  const validSessionHash = "a".repeat(64);
   await q(`
     insert into auth_sessions(
       session_id, local_user_id, token_hash, session_version, created_at, updated_at,
       last_seen_at, idle_expires_at, expires_at
     ) values ($1,$2,$3,1,now(),now(),now(),now() + interval '1 hour',now() + interval '2 hours')
-  `, [randomUUID(), userId, `hash-${randomUUID()}-${randomUUID()}`]);
+  `, [randomUUID(), userId, validSessionHash]);
   const expired = await q("select count(*)::int as count from auth_sessions where idle_expires_at < now()");
   assert.equal(expired.rows[0].count, 0);
-  await expectRejects("session token hash only", () => q(`
+  await expectRejects("raw base64url session token is rejected", () => q(`
+    insert into auth_sessions(
+      session_id, local_user_id, token_hash, session_version, created_at, updated_at,
+      last_seen_at, idle_expires_at, expires_at
+    ) values ($1,$2,'rawBase64urlSessionToken_1234567890abcdef',1,now(),now(),now(),now() + interval '1 hour',now() + interval '2 hours')
+  `, [randomUUID(), userId]));
+  await expectRejects("short session token hash is rejected", () => q(`
     insert into auth_sessions(
       session_id, local_user_id, token_hash, session_version, created_at, updated_at,
       last_seen_at, idle_expires_at, expires_at
     ) values ($1,$2,'short',1,now(),now(),now(),now() + interval '1 hour',now() + interval '2 hours')
   `, [randomUUID(), userId]));
+  await expectRejects("non hex 64 character session token hash is rejected", () => q(`
+    insert into auth_sessions(
+      session_id, local_user_id, token_hash, session_version, created_at, updated_at,
+      last_seen_at, idle_expires_at, expires_at
+    ) values ($1,$2,$3,1,now(),now(),now(),now() + interval '1 hour',now() + interval '2 hours')
+  `, [randomUUID(), userId, "g".repeat(64)]));
+  await expectRejects("duplicate session token hash is rejected", () => q(`
+    insert into auth_sessions(
+      session_id, local_user_id, token_hash, session_version, created_at, updated_at,
+      last_seen_at, idle_expires_at, expires_at
+    ) values ($1,$2,$3,1,now(),now(),now(),now() + interval '1 hour',now() + interval '2 hours')
+  `, [randomUUID(), userId, validSessionHash]));
 
   await q(`
     insert into usage_records(
@@ -182,25 +217,43 @@ async function assertConstraints() {
 
 async function assertRollbackAndHealth() {
   const before = await q("select count(*)::int as count from app_users");
+  const rollbackEmail = "rollback@example.com";
+  const client = await pool.connect();
   await expectRejects("transaction rollback", async () => {
-    await q("begin");
+    await client.query("begin");
     try {
-      await seedUser({ email: "rollback@example.com", username: "rollback_user" });
-      await q("insert into app_users(local_user_id,email,username,display_name,password_hash,status,role,created_at,updated_at) values ($1,'bad@example.com','bad','Bad','plain','invalid','user',now(),now())", [randomUUID()]);
-      await q("commit");
+      await client.query(`
+        insert into app_users(
+          local_user_id, email, username, display_name, password_hash, status, role,
+          session_version, created_at, updated_at
+        ) values ($1,$2,'rollback_user','Rollback User',$3,'active','user',1,now(),now())
+      `, [
+        randomUUID(),
+        rollbackEmail,
+        "scrypt$v=1$n=16384$r=8$p=1$len=64$c2FsdA$0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+      ]);
+      const inside = await client.query("select count(*)::int as count from app_users where email = $1", [rollbackEmail]);
+      assert.equal(inside.rows[0].count, 1);
+      await client.query("insert into app_users(local_user_id,email,username,display_name,password_hash,status,role,created_at,updated_at) values ($1,'bad@example.com','bad','Bad','plain','invalid','user',now(),now())", [randomUUID()]);
+      await client.query("commit");
     } catch (error) {
-      await q("rollback");
+      await client.query("rollback");
       throw error;
     }
+  }).finally(() => {
+    client.release();
   });
   const after = await q("select count(*)::int as count from app_users");
   assert.equal(after.rows[0].count, before.rows[0].count);
+  const rollbackUser = await q("select count(*)::int as count from app_users where email = $1", [rollbackEmail]);
+  assert.equal(rollbackUser.rows[0].count, 0);
 
   const health = await q("select current_database() as database_name");
   assert.ok(health.rows[0].database_name);
 }
 
 async function main() {
+  await assertDatabaseIdentity();
   await assertTablesAndIndexes();
   await assertMigrationStatus();
   await reset();

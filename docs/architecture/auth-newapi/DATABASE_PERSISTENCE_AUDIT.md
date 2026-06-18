@@ -24,6 +24,9 @@ BP-01A audited the current server-side persistence before adding the PostgreSQL 
 - New API quota is still the only cloud quota ledger. `usage_records` and `task_billing_records` are audit and settlement evidence, not a mutable local balance.
 - `QuotaDisplayCache` is intentionally in memory and must not become a second quota ledger during migration.
 - The first PostgreSQL migration defines constraints that JSON cannot enforce reliably across processes: unique users, session token hashes, user mappings, order idempotency, webhook event IDs, and usage/task idempotency.
+- `src/lib/server/database/config.ts`, `client.ts`, and `index.ts` now import `server-only`; a Client Component import must fail at build time, and bundle scans remain required.
+- Database migration/status/health/test scripts require `APP_DATABASE_EXPECTED_NAME` and compare it to `select current_database()` before application DDL or table reads.
+- Migration `002_harden_database_baseline.sql` tightens `auth_sessions.token_hash` from a length-only check to a lowercase SHA-256 hex check.
 
 ## BP-01A Non-Changes
 

@@ -1,5 +1,8 @@
+import "server-only";
+
 export {
   applicationQuery,
+  assertApplicationDatabaseIdentity,
   checkApplicationDatabaseHealth,
   closeApplicationDatabasePool,
   getApplicationDatabasePool,
@@ -10,5 +13,7 @@ export {
 export {
   getApplicationDatabaseConfig,
   safeDatabaseError,
+  ApplicationDatabaseConfigError,
+  ApplicationDatabaseIdentityError,
   type ApplicationDatabaseConfig,
 } from "./config";

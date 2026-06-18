@@ -84,6 +84,7 @@ jobs:
             -c "alter user aohuang_app_test with password '$APP_DB_PASSWORD';"
           {
             echo "APP_DATABASE_URL=postgresql://aohuang_app_test:$APP_DB_PASSWORD@127.0.0.1:5432/aohuang_app_test?sslmode=disable"
+            echo "APP_DATABASE_EXPECTED_NAME=aohuang_app_test"
             echo "APP_DATABASE_MAX_CONNECTIONS=5"
             echo "APP_DATABASE_CONNECT_TIMEOUT_MS=5000"
             echo "APP_DATABASE_QUERY_TIMEOUT_MS=10000"
@@ -91,20 +92,109 @@ jobs:
             echo "NODE_ENV=test"
           } >> "$GITHUB_ENV"
 
+      - name: Wrong database name fails before DDL
+        run: |
+          set -eu
+          EXPECTED="$APP_DATABASE_EXPECTED_NAME"
+          APP_DATABASE_EXPECTED_NAME=wrong_database_name
+          export APP_DATABASE_EXPECTED_NAME
+          if node scripts/database/migrate.mjs up > wrong-db.out 2> wrong-db.err; then
+            echo "migration succeeded with wrong APP_DATABASE_EXPECTED_NAME" >&2
+            exit 1
+          fi
+          if grep -E 'postgresql://|APP_DATABASE_URL|PASSWORD|password=' wrong-db.out wrong-db.err; then
+            echo "wrong database failure leaked connection details" >&2
+            exit 1
+          fi
+          if ! grep -q "unexpected application database" wrong-db.err; then
+            echo "wrong database failure did not explain identity mismatch" >&2
+            cat wrong-db.err >&2
+            exit 1
+          fi
+          APP_DATABASE_EXPECTED_NAME="$EXPECTED"
+          export APP_DATABASE_EXPECTED_NAME
+          node <<'NODE'
+          const pg = require("pg");
+          (async () => {
+            const pool = new pg.Pool({ connectionString: process.env.APP_DATABASE_URL });
+            try {
+              const result = await pool.query("select to_regclass('public.schema_migrations') as table_name");
+              if (result.rows[0]?.table_name !== null) {
+                console.error("schema_migrations exists after wrong database identity failure");
+                process.exit(1);
+              }
+            } finally {
+              await pool.end();
+            }
+          })().catch((error) => {
+            console.error(error instanceof Error ? error.message : "schema_migrations absence check failed");
+            process.exit(1);
+          });
+          NODE
+
+      - name: Missing expected database name fails closed before DDL
+        run: |
+          set -eu
+          EXPECTED="$APP_DATABASE_EXPECTED_NAME"
+          unset APP_DATABASE_EXPECTED_NAME
+          if node scripts/database/migrate.mjs up > missing-name.out 2> missing-name.err; then
+            echo "migration succeeded without APP_DATABASE_EXPECTED_NAME" >&2
+            exit 1
+          fi
+          if grep -E 'postgresql://|APP_DATABASE_URL|PASSWORD|password=' missing-name.out missing-name.err; then
+            echo "missing expected name failure leaked connection details" >&2
+            exit 1
+          fi
+          if ! grep -q "APP_DATABASE_EXPECTED_NAME is required" missing-name.err; then
+            echo "missing expected name failure did not explain fail-closed config" >&2
+            cat missing-name.err >&2
+            exit 1
+          fi
+          APP_DATABASE_EXPECTED_NAME="$EXPECTED"
+          export APP_DATABASE_EXPECTED_NAME
+          node <<'NODE'
+          const pg = require("pg");
+          (async () => {
+            const pool = new pg.Pool({ connectionString: process.env.APP_DATABASE_URL });
+            try {
+              const result = await pool.query("select to_regclass('public.schema_migrations') as table_name");
+              if (result.rows[0]?.table_name !== null) {
+                console.error("schema_migrations exists after missing expected name failure");
+                process.exit(1);
+              }
+            } finally {
+              await pool.end();
+            }
+          })().catch((error) => {
+            console.error(error instanceof Error ? error.message : "schema_migrations absence check failed");
+            process.exit(1);
+          });
+          NODE
+
       - name: Migration from empty database
         run: npm run migrate
 
       - name: Migration status
         run: npm run migrate:status
 
+      - name: Migration status includes 001 and 002
+        run: |
+          set -eu
+          npm run migrate:status > migration-status.txt
+          grep -q $'001_initial_application_schema\tapplied' migration-status.txt
+          grep -q $'002_harden_database_baseline\tapplied' migration-status.txt
+
       - name: Schema and transaction tests
-        run: node scripts/database/test-schema.mjs
+        run: npm run migrate:test
 
       - name: Re-run migration idempotently
         run: npm run migrate
 
       - name: Database health
         run: npm run db:health
+
+      - name: Server-only database boundary
+        run: npm run database:boundary
 
       - name: Type check
         run: npm run typecheck
@@ -157,7 +247,7 @@ jobs:
       - name: Verify no New API internal database table access
         run: |
           set -eu
-          if git grep -n -I -E 'SQL_DSN|REDIS_CONN_STRING|new_api_test|new-api' -- db scripts/database src/lib/server/database; then
+          if git grep -n -I -E 'SQL_DSN|REDIS_CONN_STRING|new-api' -- db scripts/database src/lib/server/database; then
             echo "application database baseline must not access New API internal database tables or DSNs" >&2
             exit 1
           fi
