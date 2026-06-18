@@ -5,6 +5,22 @@ export { getNewApiConfig, normalizeNewApiBaseUrl } from "./config";
 export { NewApiError, isNewApiError, safeNewApiError } from "./errors";
 export { checkNewApiHealth } from "./health";
 export { getNewApiUserLogs, getNewApiUserSelf } from "./user";
+export {
+  createJsonNewApiUserMappingRepository,
+  createMemoryNewApiUserMappingRepository,
+  NewApiUserMappingError,
+} from "./user-mapping";
+export { createNewApiUserSyncService, NewApiUserSyncService } from "./user-sync";
+export type {
+  NewApiUserMapping,
+  NewApiUserMappingRepository,
+  NewApiUserMappingStatus,
+} from "./user-mapping";
+export type {
+  NewApiUserSyncOptions,
+  NewApiUserSyncProfile,
+  NewApiUserSyncResult,
+} from "./user-sync";
 export type {
   NewApiAuthContext,
   NewApiConfig,

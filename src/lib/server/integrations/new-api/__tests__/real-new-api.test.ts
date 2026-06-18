@@ -7,6 +7,8 @@ import { NewApiHttpClient } from "../client";
 import { getNewApiConfig } from "../config";
 import { NewApiError } from "../errors";
 import { checkNewApiHealth } from "../health";
+import { createMemoryNewApiUserMappingRepository } from "../user-mapping";
+import { NewApiUserSyncService } from "../user-sync";
 
 test("connects to the B05 New API test service and checks health", async () => {
   const response = await checkNewApiHealth();
@@ -31,4 +33,33 @@ test("authorizes admin client against the real test service", async () => {
   const response = await adminGetUsers();
   assert.equal(response.upstreamStatus, 200);
   assert.equal(typeof response.data, "object");
+});
+
+test("creates and activates a real New API user mapping", async () => {
+  const repository = createMemoryNewApiUserMappingRepository();
+  const service = new NewApiUserSyncService({ repository });
+  const suffix = `${Date.now()}-${Math.random().toString(16).slice(2)}`;
+
+  const result = await service.ensureMapped({
+    localUserId: `local-real-${suffix}`,
+    email: `local-real-${suffix}@example.test`,
+    displayName: "B08 Real Mapping Test",
+    initialQuota: 0,
+  }, {
+    idempotencyKey: `b08-real:${suffix}`,
+    passwordSeed: suffix,
+  });
+
+  assert.equal(
+    result.mapping.sync_status,
+    "active",
+    JSON.stringify({
+      action: result.action,
+      last_error_code: result.mapping.last_error_code,
+      last_error_message: result.mapping.last_error_message,
+      retry_count: result.mapping.retry_count,
+    }),
+  );
+  assert.match(result.mapping.new_api_user_id || "", /^\d+$/);
+  assert.equal((await repository.getByLocalUserId(`local-real-${suffix}`))?.new_api_user_id, result.mapping.new_api_user_id);
 });

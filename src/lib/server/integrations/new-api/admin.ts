@@ -21,9 +21,32 @@ export type NewApiUserRecord = {
   [key: string]: unknown;
 };
 
+export type NewApiUserListPayload = {
+  success?: boolean;
+  data?: NewApiUserRecord[] | {
+    items?: NewApiUserRecord[];
+    users?: NewApiUserRecord[];
+    rows?: NewApiUserRecord[];
+    records?: NewApiUserRecord[];
+    total?: number;
+    [key: string]: unknown;
+  };
+  users?: NewApiUserRecord[];
+  items?: NewApiUserRecord[];
+  [key: string]: unknown;
+};
+
 export async function adminGetUsers(client = new NewApiHttpClient()) {
-  return client.request<{ data?: NewApiUserRecord[]; users?: NewApiUserRecord[] }>({
+  return client.request<NewApiUserListPayload>({
     path: "/api/user/",
+    context: newApiAdminRequestContext(client.config),
+  });
+}
+
+export async function adminSearchUsers(keyword: string, client = new NewApiHttpClient()) {
+  return client.request<NewApiUserListPayload>({
+    path: "/api/user/search",
+    query: { keyword },
     context: newApiAdminRequestContext(client.config),
   });
 }
