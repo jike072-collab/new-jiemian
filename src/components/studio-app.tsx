@@ -2,8 +2,8 @@
 
 /* eslint-disable @next/next/no-img-element */
 
-import { useCallback, useEffect, useMemo, useState } from "react";
-import { Loader2, RefreshCw, Wand2 } from "lucide-react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Loader2, RefreshCw, Wand2, X } from "lucide-react";
 import { useRouter } from "next/navigation";
 
 import { WorkbenchShell } from "@/components/workbench-shell";
@@ -43,7 +43,78 @@ type MobileActionState = {
   onClick: () => void;
 } | null;
 
+type ImageWorkspaceFile = {
+  file: File;
+  previewUrl: string;
+};
+
+type ImageWorkspaceState = {
+  providerId: string;
+  ratio: string;
+  quality: string;
+  prompt: string;
+  files: ImageWorkspaceFile[];
+  fileError: string;
+  submitError: string;
+  loading: boolean;
+};
+
 const ratios = ["1:1", "16:9", "9:16", "4:3", "3:4"];
+
+const imageWorkspaceModeMeta: Record<WorkspaceImageMode, {
+  title: string;
+  subtitle: string;
+  submitLabel: string;
+  loadingLabel: string;
+  promptPlaceholder: string;
+  guideTitle: string;
+  guideDescription: string;
+  guideNotes: string[];
+}> = {
+  "text-to-image": {
+    title: "AI 图像生成器",
+    subtitle: "输入提示词并选择模型。",
+    submitLabel: "生成图片",
+    loadingLabel: "正在生成",
+    promptPlaceholder: "描述你要生成的画面、风格、主体和氛围。",
+    guideTitle: "准备开始生成",
+    guideDescription: "先选模型、比例和清晰度，再写清楚你想生成什么。",
+    guideNotes: ["确认模型可用", "填写提示词", "结果会自动进入作品库"],
+  },
+  "image-to-image": {
+    title: "AI 图片编辑器",
+    subtitle: "上传参考图并输入修改要求。",
+    submitLabel: "开始编辑",
+    loadingLabel: "正在编辑",
+    promptPlaceholder: "描述你要如何修改这张图，保留哪些元素、替换哪些内容。",
+    guideTitle: "准备开始编辑",
+    guideDescription: "先上传参考图，再补充你要修改的内容和保留的细节。",
+    guideNotes: ["上传参考图", "写清修改要求", "结果会自动进入作品库"],
+  },
+};
+
+const allowedReferenceImageTypes = new Set(["image/png", "image/jpeg", "image/webp"]);
+const maxReferenceImageSize = 10 * 1024 * 1024;
+const maxReferenceImageCount = 10;
+
+function createImageWorkspaceFiles(files: File[]) {
+  const nextFiles = files.slice(0, maxReferenceImageCount);
+  if (files.length > maxReferenceImageCount) {
+    throw new Error(`最多上传 ${maxReferenceImageCount} 张参考图片。`);
+  }
+  for (const file of nextFiles) {
+    if (!allowedReferenceImageTypes.has(file.type)) {
+      throw new Error("参考图片仅支持 PNG、JPEG 和 WebP。");
+    }
+    if (file.size > maxReferenceImageSize) {
+      throw new Error("单张参考图片不能超过 10MB。");
+    }
+  }
+  return nextFiles.map((file) => ({
+    file,
+    previewUrl: URL.createObjectURL(file),
+  }));
+}
 
 async function jsonFetch<T>(url: string, options?: RequestInit): Promise<T> {
   const response = await fetch(url, options);
@@ -61,6 +132,8 @@ export function StudioApp() {
   const router = useRouter();
   const [activeWorkspaceToolId, setActiveWorkspaceToolId] = useState<WorkspaceToolId>("image");
   const [providers, setProviders] = useState<EnabledProviders>({ image: [], video: [] });
+  const [providersLoading, setProvidersLoading] = useState(true);
+  const [providersError, setProvidersError] = useState("");
   const [library, setLibrary] = useState<LibraryItem[]>([]);
   const [message, setMessage] = useState("");
   const [outputs, setOutputs] = useState<Partial<Record<BusinessToolId, OutputState>>>({});
@@ -68,10 +141,36 @@ export function StudioApp() {
   const [libraryFilter, setLibraryFilter] = useState<"all" | "image" | "video">("all");
   const [librarySort, setLibrarySort] = useState<"recent" | "title">("recent");
   const [selectedLibraryItemId, setSelectedLibraryItemId] = useState<string | null>(null);
+  const [imageWorkspace, setImageWorkspace] = useState<ImageWorkspaceState>({
+    providerId: "",
+    ratio: "1:1",
+    quality: "1k",
+    prompt: "",
+    files: [],
+    fileError: "",
+    submitError: "",
+    loading: false,
+  });
+  const imageWorkspaceFilesRef = useRef<ImageWorkspaceFile[]>([]);
 
   const refreshLibrary = useCallback(async () => {
     const data = await jsonFetch<{ items: LibraryItem[] }>("/api/library");
     setLibrary(data.items);
+  }, []);
+
+  const refreshProviders = useCallback(async () => {
+    setProvidersLoading(true);
+    setProvidersError("");
+    try {
+      const data = await jsonFetch<{ providers: EnabledProviders }>("/api/providers/enabled");
+      setProviders(data.providers);
+    } catch (error) {
+      const text = error instanceof Error ? error.message : "模型加载失败。";
+      setProvidersError(text);
+      setMessage(text);
+    } finally {
+      setProvidersLoading(false);
+    }
   }, []);
 
   useEffect(() => {
@@ -79,6 +178,7 @@ export function StudioApp() {
 
     void (async () => {
       try {
+        setProvidersLoading(true);
         const [providersData, libraryData] = await Promise.all([
           jsonFetch<{ providers: EnabledProviders }>("/api/providers/enabled"),
           jsonFetch<{ items: LibraryItem[] }>("/api/library"),
@@ -86,10 +186,15 @@ export function StudioApp() {
         if (cancelled) return;
         setProviders(providersData.providers);
         setLibrary(libraryData.items);
+        setProvidersError("");
       } catch (error) {
         if (!cancelled) {
-          setMessage(error instanceof Error ? error.message : "加载失败。");
+          const text = error instanceof Error ? error.message : "加载失败。";
+          setProvidersError(text);
+          setMessage(text);
         }
+      } finally {
+        if (!cancelled) setProvidersLoading(false);
       }
     })();
 
@@ -97,6 +202,21 @@ export function StudioApp() {
       cancelled = true;
     };
   }, []);
+
+  useEffect(() => () => {
+    imageWorkspaceFilesRef.current.forEach((file) => URL.revokeObjectURL(file.previewUrl));
+  }, []);
+
+  useEffect(() => {
+    setImageWorkspace((prev) => {
+      const nextProviders = providers.image;
+      if (!nextProviders.length) {
+        return prev.providerId ? { ...prev, providerId: "" } : prev;
+      }
+      if (nextProviders.some((provider) => provider.id === prev.providerId)) return prev;
+      return { ...prev, providerId: nextProviders[0].id };
+    });
+  }, [providers.image]);
 
   const handleToolAction = useCallback((action: WorkspaceAction, tool: WorkspaceToolId) => {
     if (action.kind === "route") {
@@ -142,6 +262,147 @@ export function StudioApp() {
     setOutputs((prev) => ({ ...prev, image: { item, title: "图片结果", tool: "image" } }));
   }, []);
 
+  const selectedImageProvider = useMemo(() => {
+    if (!providers.image.length) return null;
+    return providers.image.find((provider) => provider.id === imageWorkspace.providerId) || providers.image[0];
+  }, [imageWorkspace.providerId, providers.image]);
+
+  const imageWorkspaceFiles = imageWorkspace.files;
+  const imageWorkspaceHasFiles = imageWorkspaceFiles.length > 0;
+  const imageWorkspacePrompt = imageWorkspace.prompt.trim();
+  const imageWorkspaceCanSubmit = Boolean(selectedImageProvider)
+    && !providersLoading
+    && !imageWorkspace.loading
+    && Boolean(imageWorkspacePrompt)
+    && (activeImageMode === "text-to-image" || imageWorkspaceHasFiles);
+
+  const updateImageWorkspace = useCallback((patch: Partial<ImageWorkspaceState>) => {
+    setImageWorkspace((prev) => ({ ...prev, ...patch }));
+  }, []);
+
+  const replaceImageWorkspaceFiles = useCallback((files: File[]) => {
+    let nextFiles: ImageWorkspaceFile[];
+    try {
+      nextFiles = createImageWorkspaceFiles(files);
+    } catch (error) {
+      setImageWorkspace((prev) => ({
+        ...prev,
+        fileError: error instanceof Error ? error.message : "参考图片读取失败。",
+        submitError: "",
+      }));
+      return;
+    }
+    setImageWorkspace((prev) => ({
+      ...prev,
+      files: nextFiles,
+      fileError: "",
+      submitError: "",
+    }));
+    imageWorkspaceFilesRef.current.forEach((file) => URL.revokeObjectURL(file.previewUrl));
+    imageWorkspaceFilesRef.current = nextFiles;
+  }, []);
+
+  const removeImageWorkspaceFile = useCallback((index: number) => {
+    setImageWorkspace((prev) => {
+      const removed = prev.files[index];
+      if (removed) URL.revokeObjectURL(removed.previewUrl);
+      const nextFiles = prev.files.filter((_, currentIndex) => currentIndex !== index);
+      imageWorkspaceFilesRef.current = nextFiles;
+      return {
+        ...prev,
+        files: nextFiles,
+        fileError: "",
+        submitError: "",
+      };
+    });
+  }, []);
+
+  const clearImageWorkspaceFiles = useCallback(() => {
+    imageWorkspaceFilesRef.current.forEach((file) => URL.revokeObjectURL(file.previewUrl));
+    imageWorkspaceFilesRef.current = [];
+    setImageWorkspace((prev) => ({
+      ...prev,
+      files: [],
+      fileError: "",
+      submitError: "",
+    }));
+  }, []);
+
+  const submitImageWorkspace = useCallback(async () => {
+    if (!selectedImageProvider) {
+      setImageWorkspace((prev) => ({
+        ...prev,
+        submitError: "当前尚未配置可用模型。",
+      }));
+      setMessage("当前尚未配置可用模型。");
+      return;
+    }
+    if (!imageWorkspacePrompt) {
+      setImageWorkspace((prev) => ({
+        ...prev,
+        submitError: "请输入提示词。",
+      }));
+      return;
+    }
+    if (activeImageMode === "image-to-image" && !imageWorkspaceHasFiles) {
+      setImageWorkspace((prev) => ({
+        ...prev,
+        fileError: "图片编辑需要先上传参考图片。",
+        submitError: "图片编辑需要先上传参考图片。",
+      }));
+      return;
+    }
+    if (imageWorkspace.loading) return;
+
+    setImageWorkspace((prev) => ({
+      ...prev,
+      loading: true,
+      submitError: "",
+      fileError: "",
+    }));
+    setMessage("");
+    try {
+      const form = new FormData();
+      form.set("providerId", selectedImageProvider.id);
+      form.set("mode", activeImageMode);
+      form.set("ratio", imageWorkspace.ratio);
+      form.set("quality", imageWorkspace.quality);
+      form.set("prompt", imageWorkspace.prompt);
+      imageWorkspace.files.forEach((attachment) => form.append("files", attachment.file));
+      const data = await jsonFetch<{ item: LibraryItem }>("/api/generate/image", {
+        method: "POST",
+        body: form,
+      });
+      handleImageResult(data.item);
+      await refreshLibrary();
+    } catch (error) {
+      const text = error instanceof Error ? error.message : "图片生成失败。";
+      setImageWorkspace((prev) => ({
+        ...prev,
+        submitError: text,
+      }));
+      setMessage(text);
+    } finally {
+      setImageWorkspace((prev) => ({
+        ...prev,
+        loading: false,
+      }));
+    }
+  }, [
+    activeImageMode,
+    handleImageResult,
+    imageWorkspace.files,
+    imageWorkspace.loading,
+    imageWorkspace.quality,
+    imageWorkspace.ratio,
+    imageWorkspace.prompt,
+    imageWorkspaceHasFiles,
+    imageWorkspacePrompt,
+    refreshLibrary,
+    selectedImageProvider,
+    setMessage,
+  ]);
+
   const handleVideoResult = useCallback((item: LibraryItem, job?: JobRecord | null) => {
     setOutputs((prev) => ({ ...prev, video: { item, job, title: "视频结果", tool: "video" } }));
   }, []);
@@ -160,10 +421,21 @@ export function StudioApp() {
         <ImageGenerator
           mode={activeImageMode}
           providers={providers.image}
+          providersLoading={providersLoading}
+          providersError={providersError}
+          selectedProvider={selectedImageProvider}
+          state={imageWorkspace}
+          canSubmit={imageWorkspaceCanSubmit}
           onModeChange={(mode) => setActiveWorkspaceToolId(workspaceToolIdForImageMode(mode))}
-          onDone={refreshLibrary}
-          onResult={handleImageResult}
-          setMessage={setMessage}
+          onProviderChange={(value) => updateImageWorkspace({ providerId: value })}
+          onRatioChange={(value) => updateImageWorkspace({ ratio: value })}
+          onQualityChange={(value) => updateImageWorkspace({ quality: value })}
+          onPromptChange={(value) => updateImageWorkspace({ prompt: value, submitError: "" })}
+          onFilesChange={replaceImageWorkspaceFiles}
+          onFileRemove={removeImageWorkspaceFile}
+          onFilesClear={clearImageWorkspaceFiles}
+          onReloadProviders={refreshProviders}
+          onSubmit={submitImageWorkspace}
           registerMobileAction={setMobileAction}
         />
       ) : null}
@@ -237,7 +509,24 @@ export function StudioApp() {
               onRefresh={refreshLibrary}
             />
           ) : (
-            <OutputPanel tool={activeBusinessTool} output={activeOutput} libraryCount={library.length} activeLabel={activeWorkspaceTool.label} />
+            activeBusinessTool === "image" ? (
+              <ImagePreviewPanel
+                mode={activeImageMode}
+                output={activeOutput}
+                loading={imageWorkspace.loading}
+                submitError={imageWorkspace.submitError}
+                promptFilled={Boolean(imageWorkspacePrompt)}
+                hasProvider={Boolean(selectedImageProvider)}
+                hasFiles={imageWorkspaceHasFiles}
+                libraryCount={library.length}
+                activeLabel={activeWorkspaceTool.label}
+                onSubmit={submitImageWorkspace}
+                onReloadProviders={refreshProviders}
+                onOpenLibrary={() => setActiveWorkspaceToolId("library")}
+              />
+            ) : (
+              <OutputPanel tool={activeBusinessTool} output={activeOutput} libraryCount={library.length} activeLabel={activeWorkspaceTool.label} />
+            )
           )
         }
         mobileActionSlot={mobileAction ? <MobileActionBar {...mobileAction} /> : null}
@@ -250,116 +539,215 @@ export function StudioApp() {
 function ImageGenerator({
   mode,
   providers,
+  providersLoading,
+  providersError,
+  selectedProvider,
+  state,
+  canSubmit,
   onModeChange,
-  onDone,
-  onResult,
-  setMessage,
+  onProviderChange,
+  onRatioChange,
+  onQualityChange,
+  onPromptChange,
+  onFilesChange,
+  onFileRemove,
+  onFilesClear,
+  onReloadProviders,
+  onSubmit,
   registerMobileAction,
 }: {
   mode: WorkspaceImageMode;
   providers: PublicProvider[];
+  providersLoading: boolean;
+  providersError: string;
+  selectedProvider: PublicProvider | null;
+  state: ImageWorkspaceState;
+  canSubmit: boolean;
   onModeChange: (mode: WorkspaceImageMode) => void;
-  onDone: () => Promise<void>;
-  onResult: (item: LibraryItem) => void;
-  setMessage: (value: string) => void;
+  onProviderChange: (value: string) => void;
+  onRatioChange: (value: string) => void;
+  onQualityChange: (value: string) => void;
+  onPromptChange: (value: string) => void;
+  onFilesChange: (files: File[]) => void;
+  onFileRemove: (index: number) => void;
+  onFilesClear: () => void;
+  onReloadProviders: () => Promise<void>;
+  onSubmit: () => void;
   registerMobileAction: (action: MobileActionState) => void;
 }) {
-  const [providerId, setProviderId] = useState("");
-  const [ratio, setRatio] = useState("1:1");
-  const [quality, setQuality] = useState("1k");
-  const [prompt, setPrompt] = useState("");
-  const [files, setFiles] = useState<FileList | null>(null);
-  const [loading, setLoading] = useState(false);
-
-  useEffect(() => {
-    if (!providerId && providers[0]) setProviderId(providers[0].id);
-  }, [providerId, providers]);
-
-  const submit = useCallback(async () => {
-    if (!providerId) {
-      setMessage("请先到后台设置里启用图片生成入口。");
-      return;
-    }
-
-    setLoading(true);
-    setMessage("");
-    try {
-      const form = new FormData();
-      form.set("providerId", providerId);
-      form.set("mode", mode);
-      form.set("ratio", ratio);
-      form.set("quality", quality);
-      form.set("prompt", prompt);
-      Array.from(files || []).forEach((file) => form.append("files", file));
-      const data = await jsonFetch<{ item: LibraryItem }>("/api/generate/image", {
-        method: "POST",
-        body: form,
-      });
-      onResult(data.item);
-      await onDone();
-    } catch (error) {
-      setMessage(error instanceof Error ? error.message : "图片生成失败。");
-    } finally {
-      setLoading(false);
-    }
-  }, [files, mode, onDone, onResult, prompt, providerId, quality, ratio, setMessage]);
+  const meta = imageWorkspaceModeMeta[mode];
 
   useEffect(() => {
     registerMobileAction({
-      label: mode === "image-to-image" ? "开始编辑" : "生成图片",
-      loading,
-      disabled: loading,
-      onClick: submit,
+      label: state.loading ? meta.loadingLabel : meta.submitLabel,
+      loading: state.loading,
+      disabled: !canSubmit,
+      onClick: onSubmit,
     });
     return () => registerMobileAction(null);
-  }, [loading, mode, registerMobileAction, submit]);
+  }, [canSubmit, meta.loadingLabel, meta.submitLabel, onSubmit, registerMobileAction, state.loading]);
 
   return (
-    <FormPanel title={mode === "image-to-image" ? "AI 图片编辑器" : "AI 图像生成器"} subtitle={mode === "image-to-image" ? "上传参考图并输入修改要求。" : "输入提示词并选择模型。"}>
-      <ModeSwitch
-        value={mode}
-        options={[
-          ["text-to-image", "文生图"],
-          ["image-to-image", "图生图 / 编辑"],
-        ]}
-        onChange={(value) => onModeChange(value as WorkspaceImageMode)}
-      />
+    <FormPanel title={meta.title} subtitle={meta.subtitle}>
+      <ImageModeSwitch mode={mode} onModeChange={onModeChange} />
 
-      <ProviderSelect providers={providers} value={providerId} onChange={setProviderId} />
-      <FileInput
-        label="参考图片"
-        optional={mode === "text-to-image"}
-        accept="image/png,image/jpeg,image/webp"
-        files={files}
-        onChange={setFiles}
+      <ProviderSelect
+        providers={providers}
+        value={selectedProvider?.id || state.providerId}
+        loading={providersLoading}
+        error={providersError}
+        onChange={onProviderChange}
+        onReload={onReloadProviders}
+      />
+      <ReferenceImageInput
+        mode={mode}
+        files={state.files}
+        error={state.fileError}
+        onChange={onFilesChange}
+        onRemove={onFileRemove}
+        onClear={onFilesClear}
       />
       <StackedControl label="图片比例" required>
-        <RatioPicker value={ratio} onChange={setRatio} />
+        <RatioPicker value={state.ratio} onChange={onRatioChange} />
       </StackedControl>
       <StackedControl label="清晰度" required>
         <ModeSwitch
-          value={quality}
+          value={state.quality}
           options={[
-            ["1k", "1K · 4 积分"],
-            ["2k", "2K · 8 积分"],
+            ["1k", "1K"],
+            ["2k", "2K"],
           ]}
-          onChange={setQuality}
+          onChange={onQualityChange}
         />
       </StackedControl>
       <PromptBox
-        value={prompt}
-        onChange={setPrompt}
+        value={state.prompt}
+        onChange={onPromptChange}
         required
-        placeholder="描述你想生成或修改的画面，例如：把人物换到赛博朋克城市夜景中，保留服装轮廓。"
+        placeholder={meta.promptPlaceholder}
       />
+      {state.submitError ? <p className="studio-error-text">{state.submitError}</p> : null}
 
       <div className="studio-actions">
-        <SubmitButton disabled={loading} loading={loading} onClick={submit}>
-          {mode === "image-to-image" ? "开始编辑" : "生成图片"}
+        <SubmitButton disabled={!canSubmit} loading={state.loading} loadingLabel={meta.loadingLabel} onClick={onSubmit}>
+          {meta.submitLabel}
         </SubmitButton>
       </div>
     </FormPanel>
   );
+}
+
+function ImageModeSwitch({
+  mode,
+  onModeChange,
+}: {
+  mode: WorkspaceImageMode;
+  onModeChange: (mode: WorkspaceImageMode) => void;
+}) {
+  return (
+    <ModeSwitch
+      value={mode}
+      options={[
+        ["text-to-image", "文生图"],
+        ["image-to-image", "图片编辑"],
+      ]}
+      onChange={(value) => onModeChange(value as WorkspaceImageMode)}
+    />
+  );
+}
+
+function ReferenceImageInput({
+  mode,
+  files,
+  error,
+  onChange,
+  onRemove,
+  onClear,
+}: {
+  mode: WorkspaceImageMode;
+  files: ImageWorkspaceFile[];
+  error: string;
+  onChange: (files: File[]) => void;
+  onRemove: (index: number) => void;
+  onClear: () => void;
+}) {
+  const [dragging, setDragging] = useState(false);
+  const required = mode === "image-to-image";
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
+
+  const applyFiles = useCallback((fileList: FileList | File[]) => {
+    const nextFiles = Array.from(fileList);
+    if (!nextFiles.length) return;
+    onChange(nextFiles);
+  }, [onChange]);
+
+  return (
+    <FieldFrame label="参考图片" required={required} hint={required ? undefined : "可选"}>
+      <div
+        className={cn("studio-upload", dragging && "is-dragging", error && "is-error")}
+        onDragOver={(event) => {
+          event.preventDefault();
+          setDragging(true);
+        }}
+        onDragLeave={() => setDragging(false)}
+        onDrop={(event) => {
+          event.preventDefault();
+          setDragging(false);
+          applyFiles(event.dataTransfer.files);
+        }}
+      >
+        <input
+          ref={fileInputRef}
+          type="file"
+          accept="image/png,image/jpeg,image/webp"
+          multiple
+          onChange={(event) => {
+            applyFiles(event.target.files || []);
+            event.currentTarget.value = "";
+          }}
+          className="studio-file-input"
+        />
+        <div className="studio-upload__body">
+          <strong>{files.length ? "已选择参考图片" : required ? "上传参考图片开始编辑" : "可上传参考图片辅助生成"}</strong>
+          <p>支持 PNG、JPEG、WebP，最多 10 张，单张不超过 10MB。</p>
+          <div className="studio-upload__actions">
+            <button type="button" className="studio-secondary-button" onClick={() => fileInputRef.current?.click()}>
+              {files.length ? "替换图片" : "选择图片"}
+            </button>
+            {files.length ? (
+              <button type="button" className="studio-secondary-button" onClick={onClear}>
+                全部删除
+              </button>
+            ) : null}
+          </div>
+        </div>
+      </div>
+      {files.length ? (
+        <div className="studio-upload-list">
+          {files.map((item, index) => (
+            <div key={`${item.file.name}-${item.file.lastModified}-${index}`} className="studio-upload-item">
+              <img src={item.previewUrl} alt={item.file.name} />
+              <div>
+                <strong>{item.file.name}</strong>
+                <span>{formatFileSize(item.file.size)}</span>
+              </div>
+              <button type="button" className="studio-icon-button" aria-label={`删除 ${item.file.name}`} onClick={() => onRemove(index)}>
+                <X className="size-4" />
+              </button>
+            </div>
+          ))}
+        </div>
+      ) : null}
+      {error ? <p className="studio-error-text">{error}</p> : null}
+      {!error && required && !files.length ? <p className="studio-help-text">图片编辑必须先上传参考图片。</p> : null}
+    </FieldFrame>
+  );
+}
+
+function formatFileSize(size: number) {
+  if (size >= 1024 * 1024) return `${(size / 1024 / 1024).toFixed(1)} MB`;
+  if (size >= 1024) return `${Math.round(size / 1024)} KB`;
+  return `${size} B`;
 }
 
 function VideoGenerator({
@@ -756,6 +1144,150 @@ function LibraryWorkspace({
   );
 }
 
+function ImagePreviewPanel({
+  mode,
+  output,
+  loading,
+  submitError,
+  promptFilled,
+  hasProvider,
+  hasFiles,
+  libraryCount,
+  activeLabel,
+  onSubmit,
+  onReloadProviders,
+  onOpenLibrary,
+}: {
+  mode: WorkspaceImageMode;
+  output: OutputState;
+  loading: boolean;
+  submitError: string;
+  promptFilled: boolean;
+  hasProvider: boolean;
+  hasFiles: boolean;
+  libraryCount: number;
+  activeLabel: string;
+  onSubmit: () => void;
+  onReloadProviders: () => Promise<void>;
+  onOpenLibrary: () => void;
+}) {
+  const meta = imageWorkspaceModeMeta[mode];
+
+  if (loading) {
+    return (
+      <div className="studio-preview">
+        <div className="studio-preview__top">
+          <div>
+            <p className="shell-eyebrow">处理中</p>
+            <h3>{meta.title}</h3>
+            <p>{meta.loadingLabel}</p>
+          </div>
+          <span className="shell-chip">请稍候</span>
+        </div>
+        <div className="studio-preview__empty">
+          <p>正在处理请求，生成完成后会在这里显示结果。</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (submitError) {
+    return (
+      <div className="studio-preview">
+        <div className="studio-preview__top">
+          <div>
+            <p className="shell-eyebrow">失败</p>
+            <h3>{meta.title}</h3>
+            <p>{submitError}</p>
+          </div>
+          <span className="shell-chip">请重试</span>
+        </div>
+        <div className="studio-preview__empty">
+          <p>参数会保留，你可以先修改模型、提示词或参考图片，再重新提交。</p>
+          <div className="studio-actions">
+            {!hasProvider ? (
+              <button type="button" className="studio-secondary-button" onClick={() => void onReloadProviders()}>
+                重新加载模型
+              </button>
+            ) : null}
+            <button
+              type="button"
+              className="studio-secondary-button"
+              onClick={onSubmit}
+              disabled={!hasProvider || !promptFilled || (mode === "image-to-image" && !hasFiles)}
+            >
+              重试
+            </button>
+            <button type="button" className="studio-secondary-button" onClick={onOpenLibrary}>
+              进入作品库
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  if (output) {
+    return (
+      <div className="studio-preview">
+        <div className="studio-preview__top">
+          <div>
+            <p className="shell-eyebrow">结果</p>
+            <h3>{output.title}</h3>
+            <p>生成完成后，这里就是你的真实结果，支持直接查看和下载。</p>
+          </div>
+          <span className="shell-chip">{output.job?.status || output.item.status}</span>
+        </div>
+        <MediaCard item={output.item} large />
+        <div className="studio-actions">
+          {output.item.output?.url ? (
+            <a className="studio-secondary-button" href={output.item.output.url} target="_blank" rel="noreferrer">
+              查看原图
+            </a>
+          ) : null}
+          <button
+            type="button"
+            className="studio-secondary-button"
+            onClick={onSubmit}
+            disabled={!hasProvider || !promptFilled || (mode === "image-to-image" && !hasFiles) || loading}
+          >
+            再次生成
+          </button>
+          <button type="button" className="studio-secondary-button" onClick={onOpenLibrary}>
+            进入作品库
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  const content = imageWorkspaceModeMeta[mode];
+
+  return (
+    <div className="studio-preview">
+      <div className="studio-preview__top">
+        <div>
+          <p className="shell-eyebrow">创作预览</p>
+          <h3>{activeLabel || content.guideTitle}</h3>
+          <p>{content.guideDescription}</p>
+        </div>
+        <span className="shell-chip">{libraryCount} 条作品</span>
+      </div>
+      <div className="studio-preview__empty">
+        <p>上传素材开始创作，生成结果将在这里显示。</p>
+      </div>
+      <div className="studio-steps">
+        {content.guideNotes.map((note, index) => (
+          <div key={note} className="studio-step">
+            <span>{index + 1}</span>
+            <p>{note}</p>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 function OutputPanel({
   tool,
   output,
@@ -911,25 +1443,57 @@ function ModeSwitch({
 function ProviderSelect({
   providers,
   value,
+  loading,
+  error,
   onChange,
+  onReload,
 }: {
   providers: PublicProvider[];
   value: string;
+  loading?: boolean;
+  error?: string;
   onChange: (value: string) => void;
+  onReload?: () => Promise<void>;
 }) {
   return (
     <FieldFrame label="模型" required>
-      <select value={value} onChange={(event) => onChange(event.target.value)} className="studio-select">
-        {providers.length ? (
-          providers.map((provider) => (
-            <option key={provider.id} value={provider.id}>
-              {provider.model} · {provider.title}
-            </option>
-          ))
-        ) : (
-          <option value="">后台尚未启用模型</option>
-        )}
-      </select>
+      <div className="studio-provider">
+        <select
+          value={value}
+          onChange={(event) => onChange(event.target.value)}
+          className="studio-select"
+          disabled={loading || !providers.length}
+          aria-invalid={Boolean(error)}
+        >
+          {loading ? (
+            <option value="">正在加载模型</option>
+          ) : providers.length ? (
+            providers.map((provider) => (
+              <option key={provider.id} value={provider.id}>
+                {provider.model} · {provider.title}
+              </option>
+            ))
+          ) : (
+            <option value="">当前尚未配置可用模型</option>
+          )}
+        </select>
+        {loading ? <p className="studio-help-text">正在读取后台已启用的图片模型。</p> : null}
+        {!loading && !error && !providers.length ? (
+          <p className="studio-help-text">
+            当前尚未配置可用模型，请到 <a href="/admin/providers">后台设置</a> 启用对应模型。
+          </p>
+        ) : null}
+        {error ? (
+          <div className="studio-inline-error">
+            <p>{error}</p>
+            {onReload ? (
+              <button type="button" className="studio-secondary-button" onClick={() => void onReload()}>
+                重新加载
+              </button>
+            ) : null}
+          </div>
+        ) : null}
+      </div>
     </FieldFrame>
   );
 }
@@ -993,16 +1557,19 @@ function PromptBox({
 }) {
   return (
     <FieldFrame label="提示词" required={required}>
+      <label className="studio-sr-only" htmlFor="image-prompt">
+        提示词
+      </label>
       <div className="studio-textarea-wrap">
         <textarea
+          id="image-prompt"
           data-testid="prompt-input"
           value={value}
           onChange={(event) => onChange(event.target.value)}
-          maxLength={3000}
           placeholder={placeholder}
           className="studio-textarea"
         />
-        <span className="studio-counter">{value.length}/3000</span>
+        <span className="studio-counter">{value.length}</span>
       </div>
     </FieldFrame>
   );
@@ -1011,18 +1578,20 @@ function PromptBox({
 function SubmitButton({
   disabled,
   loading,
+  loadingLabel,
   children,
   onClick,
 }: {
   disabled: boolean;
   loading: boolean;
+  loadingLabel?: string;
   children: React.ReactNode;
   onClick: () => void;
 }) {
   return (
     <button type="button" data-testid="primary-submit" disabled={disabled} onClick={onClick} className="studio-primary-action">
       {loading ? <Loader2 className="size-4 animate-spin" /> : <Wand2 className="size-4" />}
-      {children}
+      <span>{loading ? loadingLabel || children : children}</span>
     </button>
   );
 }

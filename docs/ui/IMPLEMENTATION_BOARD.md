@@ -26,4 +26,13 @@
 | Module 3 segment 2 | Done | Business-preserving responsive shell repair was pushed to PR #3. |
 | Module 3 segment 3 | Done | Final state, mobile actions, drawer focus, screenshots, and acceptance checks completed. |
 | Module 3 final acceptance patch | Done | Mobile Drawer full-name display, Issue verification, refreshed screenshots, and PR text cleanup completed. |
-| Module 4 | Waiting for manual approval | Do not start until PR #3 is reviewed and the user approves. |
+| Module 4 | In progress | Segment 2 image workspace implementation completed on `feature/04-image-workspace`. |
+
+## Module 4 Board
+
+| Item | Status | Notes |
+| --- | --- | --- |
+| 模块 4 第 1 段 | 已完成 | 建立分支、确认 A/B 边界并完成图像工作区审计。 |
+| 模块 4 第 2 段 | 已完成 | 图像生成器与图片编辑器真实工作区已实现并验证。 |
+| 模块 4 第 3 段 | 未开始 | 等待实现完成后再做最终验收。 |
+| 模块 5 | 阻塞 | 模块 4 未完成前不得开始。 |
