@@ -3,7 +3,7 @@
 /* eslint-disable @next/next/no-img-element */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { ImageUp, Loader2, RefreshCw, UploadCloud, Wand2, X } from "lucide-react";
+import { AlertTriangle, Download, ExternalLink, ImageUp, Loader2, RefreshCw, Trash2, UploadCloud, Wand2, X } from "lucide-react";
 import { useRouter } from "next/navigation";
 
 import { WorkbenchShell } from "@/components/workbench-shell";
@@ -19,6 +19,8 @@ import {
 } from "@/lib/workspace-registry";
 
 type BusinessToolId = "image" | "video" | "image-upscale" | "video-upscale" | "library";
+type LibraryFilter = "all" | "image" | "video";
+type LibrarySort = "recent" | "title";
 type UpscaleKind = "image" | "video";
 type UpscaleAvailability = { ready: boolean; detail: string };
 type UpscaleStatusResponse = Record<UpscaleKind, UpscaleAvailability>;
@@ -301,12 +303,16 @@ export function StudioApp() {
   const [providersLoading, setProvidersLoading] = useState(true);
   const [providersError, setProvidersError] = useState("");
   const [library, setLibrary] = useState<LibraryItem[]>([]);
+  const [libraryLoading, setLibraryLoading] = useState(true);
+  const [libraryError, setLibraryError] = useState("");
   const [message, setMessage] = useState("");
   const [outputs, setOutputs] = useState<Partial<Record<BusinessToolId, OutputState>>>({});
   const [mobileAction, setMobileAction] = useState<MobileActionState>(null);
-  const [libraryFilter, setLibraryFilter] = useState<"all" | "image" | "video">("all");
-  const [librarySort, setLibrarySort] = useState<"recent" | "title">("recent");
+  const [libraryFilter, setLibraryFilter] = useState<LibraryFilter>("all");
+  const [librarySort, setLibrarySort] = useState<LibrarySort>("recent");
   const [selectedLibraryItemId, setSelectedLibraryItemId] = useState<string | null>(null);
+  const [deletingLibraryItemId, setDeletingLibraryItemId] = useState<string | null>(null);
+  const [missingLibraryMediaIds, setMissingLibraryMediaIds] = useState<Set<string>>(() => new Set());
   const [imageWorkspace, setImageWorkspace] = useState<ImageWorkspaceState>({
     mode: "text-to-image",
     providerId: "",
@@ -359,8 +365,19 @@ export function StudioApp() {
   const videoUpscaleFileRef = useRef<VideoUpscaleWorkspaceFile | null>(null);
 
   const refreshLibrary = useCallback(async () => {
-    const data = await jsonFetch<{ items: LibraryItem[] }>("/api/library");
-    setLibrary(data.items);
+    setLibraryLoading(true);
+    setLibraryError("");
+    try {
+      const data = await jsonFetch<{ items: LibraryItem[] }>("/api/library");
+      setLibrary(data.items);
+      setMissingLibraryMediaIds(new Set());
+    } catch (error) {
+      const text = error instanceof Error ? error.message : "作品库加载失败。";
+      setLibraryError(text);
+      throw error;
+    } finally {
+      setLibraryLoading(false);
+    }
   }, []);
 
   const refreshProviders = useCallback(async () => {
@@ -392,14 +409,19 @@ export function StudioApp() {
         setProviders(providersData.providers);
         setLibrary(libraryData.items);
         setProvidersError("");
+        setLibraryError("");
       } catch (error) {
         if (!cancelled) {
           const text = error instanceof Error ? error.message : "加载失败。";
           setProvidersError(text);
+          setLibraryError(text);
           setMessage(text);
         }
       } finally {
-        if (!cancelled) setProvidersLoading(false);
+        if (!cancelled) {
+          setProvidersLoading(false);
+          setLibraryLoading(false);
+        }
       }
     })();
 
@@ -484,6 +506,38 @@ export function StudioApp() {
     () => currentLibraryItems.find((item) => item.id === selectedLibraryItemId) || currentLibraryItems[0] || null,
     [currentLibraryItems, selectedLibraryItemId],
   );
+  const markLibraryMediaMissing = useCallback((id: string) => {
+    setMissingLibraryMediaIds((prev) => {
+      if (prev.has(id)) return prev;
+      const next = new Set(prev);
+      next.add(id);
+      return next;
+    });
+  }, []);
+  const handleDeleteLibraryItem = useCallback(async (id: string) => {
+    if (deletingLibraryItemId) return;
+    const item = library.find((entry) => entry.id === id);
+    const confirmed = window.confirm(`确认删除作品「${item?.title || "未命名作品"}」？删除后会同步移除可删除的本地结果文件。`);
+    if (!confirmed) return;
+
+    setDeletingLibraryItemId(id);
+    setLibraryError("");
+    try {
+      await jsonFetch("/api/library", {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id }),
+      });
+      await refreshLibrary();
+      setSelectedLibraryItemId((current) => (current === id ? null : current));
+    } catch (error) {
+      const text = error instanceof Error ? error.message : "删除失败。";
+      setLibraryError(text);
+      setMessage(text);
+    } finally {
+      setDeletingLibraryItemId(null);
+    }
+  }, [deletingLibraryItemId, library, refreshLibrary]);
 
   const libraryCounts = useMemo(() => ({
     all: library.length,
@@ -1174,21 +1228,17 @@ export function StudioApp() {
           activeBusinessTool === "library" ? (
             <LibraryWorkspace
               items={currentLibraryItems}
+              totalCount={library.length}
               selectedItem={selectedLibraryItem}
+              loading={libraryLoading}
+              error={libraryError}
+              filter={libraryFilter}
+              deletingItemId={deletingLibraryItemId}
+              missingMediaIds={missingLibraryMediaIds}
               onSelectItem={setSelectedLibraryItemId}
-              onDelete={async (id) => {
-                try {
-                  await jsonFetch("/api/library", {
-                    method: "DELETE",
-                    headers: { "Content-Type": "application/json" },
-                    body: JSON.stringify({ id }),
-                  });
-                  await refreshLibrary();
-                } catch (error) {
-                  setMessage(error instanceof Error ? error.message : "删除失败。");
-                }
-              }}
+              onDelete={handleDeleteLibraryItem}
               onRefresh={refreshLibrary}
+              onMediaMissing={markLibraryMediaMissing}
             />
           ) : (
             activeBusinessTool === "image" ? (
@@ -2229,10 +2279,10 @@ function LibrarySidebar({
   onSortChange,
 }: {
   count: { all: number; image: number; video: number };
-  filter: "all" | "image" | "video";
-  sort: "recent" | "title";
-  onFilterChange: (value: "all" | "image" | "video") => void;
-  onSortChange: (value: "recent" | "title") => void;
+  filter: LibraryFilter;
+  sort: LibrarySort;
+  onFilterChange: (value: LibraryFilter) => void;
+  onSortChange: (value: LibrarySort) => void;
 }) {
   return (
     <div className="studio-library-sidebar">
@@ -2246,7 +2296,7 @@ function LibrarySidebar({
             ["image", `图片 ${count.image}`],
             ["video", `视频 ${count.video}`],
           ]}
-          onChange={(value) => onFilterChange(value as "all" | "image" | "video")}
+          onChange={(value) => onFilterChange(value as LibraryFilter)}
         />
       </StackedControl>
       <StackedControl label="排序">
@@ -2258,7 +2308,7 @@ function LibrarySidebar({
             ["recent", "最新"],
             ["title", "标题"],
           ]}
-          onChange={(value) => onSortChange(value as "recent" | "title")}
+          onChange={(value) => onSortChange(value as LibrarySort)}
         />
       </StackedControl>
       <p className="studio-help-text">点击作品后会在右侧预览区显示详情。</p>
@@ -2268,50 +2318,130 @@ function LibrarySidebar({
 
 function LibraryWorkspace({
   items,
+  totalCount,
   selectedItem,
+  loading,
+  error,
+  filter,
+  deletingItemId,
+  missingMediaIds,
   onSelectItem,
   onDelete,
   onRefresh,
+  onMediaMissing,
 }: {
   items: LibraryItem[];
+  totalCount: number;
   selectedItem: LibraryItem | null;
+  loading: boolean;
+  error: string;
+  filter: LibraryFilter;
+  deletingItemId: string | null;
+  missingMediaIds: Set<string>;
   onSelectItem: (id: string | null) => void;
   onDelete: (id: string) => Promise<void>;
   onRefresh: () => Promise<void>;
+  onMediaMissing: (id: string) => void;
 }) {
+  if (loading) {
+    return (
+      <PreviewState eyebrow="加载中" title="作品库" description="正在读取本地作品记录。" badge="请稍候" role="status" live>
+        <div className="studio-preview__empty">
+          <Loader2 className="size-5 animate-spin" aria-hidden="true" />
+          <p>正在加载真实作品。</p>
+        </div>
+      </PreviewState>
+    );
+  }
+
+  if (error) {
+    return (
+      <PreviewState eyebrow="加载失败" title="作品库" description={error} badge="可重试" role="alert">
+        <div className="studio-preview__empty">
+          <p>作品记录没有被替换成示例数据，你可以重新读取本地记录。</p>
+          <button type="button" className="studio-secondary-button" onClick={() => void onRefresh()}>
+            重新加载
+          </button>
+        </div>
+      </PreviewState>
+    );
+  }
+
   if (!items.length) {
-    return <section className="studio-empty">作品库还是空的。生成图片或视频后会自动出现在这里。</section>;
+    const hasFilter = totalCount > 0 && filter !== "all";
+    return (
+      <PreviewState
+        eyebrow="空作品库"
+        title="作品库"
+        description={hasFilter ? "当前分类下没有作品。" : "生成或高清处理成功后，真实结果会自动出现在这里。"}
+        badge={`${totalCount} 条作品`}
+      >
+        <div className="studio-preview__empty">
+          <p>{hasFilter ? "切换到“全部”可以查看其他类型作品。" : "这里不会展示静态示例作品。"}</p>
+          <button type="button" className="studio-secondary-button" onClick={() => void onRefresh()}>
+            刷新作品库
+          </button>
+        </div>
+      </PreviewState>
+    );
   }
 
   return (
-    <div className="studio-library-workspace">
-      <div className="studio-library-grid">
-        {items.map((item) => (
-          <button
-            key={item.id}
-            type="button"
-            className={cn("studio-library-tile", selectedItem?.id === item.id && "is-active")}
-            onClick={() => onSelectItem(item.id)}
-          >
-            <MediaCard item={item} />
-          </button>
-        ))}
-      </div>
-
-      {selectedItem ? (
-        <div className="studio-library-detail">
-          <MediaCard item={selectedItem} large />
-          <div className="studio-actions">
-            <button type="button" className="studio-secondary-button" onClick={() => onDelete(selectedItem.id)}>
-              删除
+    <PreviewState eyebrow="作品库" title="作品库" description="真实作品按时间排列，可筛选、预览、下载和删除。" badge={`${items.length} 条作品`}>
+      <div className="studio-library-workspace">
+        <div className="studio-library-grid">
+          {items.map((item) => (
+            <button
+              key={item.id}
+              type="button"
+              className={cn("studio-library-tile", selectedItem?.id === item.id && "is-active")}
+              onClick={() => onSelectItem(item.id)}
+            >
+              <MediaCard
+                item={item}
+                mediaMissing={missingMediaIds.has(item.id) || item.fileAvailable === false}
+                onMediaMissing={() => onMediaMissing(item.id)}
+              />
             </button>
-            <button type="button" className="studio-secondary-button" onClick={onRefresh}>
-              刷新
-            </button>
-          </div>
+          ))}
         </div>
-      ) : null}
-    </div>
+
+        {selectedItem ? (
+          <div className="studio-library-detail">
+            <MediaCard
+              item={selectedItem}
+              large
+              mediaMissing={missingMediaIds.has(selectedItem.id) || selectedItem.fileAvailable === false}
+              onMediaMissing={() => onMediaMissing(selectedItem.id)}
+            />
+            <div className="studio-actions">
+              <button
+                type="button"
+                className="studio-secondary-button"
+                onClick={() => void onDelete(selectedItem.id)}
+                disabled={deletingItemId === selectedItem.id}
+              >
+                {deletingItemId === selectedItem.id ? (
+                  <>
+                    <Loader2 className="size-4 animate-spin" aria-hidden="true" />
+                    删除中
+                  </>
+                ) : (
+                  <>
+                    <Trash2 className="size-4" aria-hidden="true" />
+                    删除
+                  </>
+                )}
+              </button>
+              <button type="button" className="studio-secondary-button" onClick={() => void onRefresh()}>
+                <RefreshCw className="size-4" aria-hidden="true" />
+                刷新
+              </button>
+            </div>
+          </div>
+        ) : null}
+      </div>
+    </PreviewState>
   );
 }
 
@@ -2980,29 +3110,117 @@ function SubmitButton({
   );
 }
 
-function MediaCard({ item, large = false }: { item: LibraryItem; large?: boolean }) {
+function MediaCard({
+  item,
+  large = false,
+  mediaMissing = false,
+  onMediaMissing,
+}: {
+  item: LibraryItem;
+  large?: boolean;
+  mediaMissing?: boolean;
+  onMediaMissing?: () => void;
+}) {
   const media = item.output;
+  const hasMediaUrl = Boolean(media?.url) && !mediaMissing;
+  const typeLabel = libraryModeLabel(item);
+  const createdAt = formatDateTime(item.createdAt);
+  const dimensionText = libraryDimensions(item);
+  const scaleText = typeof item.params.scale === "number" || typeof item.params.scale === "string"
+    ? `${item.params.scale}x`
+    : "";
+  const fileSizeText = typeof media?.size === "number" ? formatBytes(media.size) : "";
+  const canDownloadStoredFile = Boolean(media?.storedName);
+  const showActions = large;
   return (
     <article className="studio-media-card">
       <div className={cn("studio-media-card__frame", large && "is-large")}>
-        {media?.url && item.type === "image" ? <img src={media.url} alt={item.title} /> : null}
-        {media?.url && item.type === "video" ? <video src={media.url} controls /> : null}
-        {!media?.url ? <span>{item.status}</span> : null}
+        {hasMediaUrl && media?.url && item.type === "image" ? (
+          <img src={media.url} alt={item.title} onError={onMediaMissing} />
+        ) : null}
+        {hasMediaUrl && media?.url && item.type === "video" ? (
+          <video src={media.url} controls={showActions} preload="metadata" onError={onMediaMissing} />
+        ) : null}
+        {!hasMediaUrl ? (
+          <div className={cn("studio-media-card__missing", mediaMissing && "is-missing")}>
+            <AlertTriangle className="size-5" aria-hidden="true" />
+            <span>{mediaMissing ? "文件失效" : libraryStatusLabel(item.status)}</span>
+          </div>
+        ) : null}
       </div>
       <div className="studio-media-card__body">
         <div className="studio-media-card__head">
           <strong>{item.title}</strong>
-          <span>{item.status}</span>
+          <span>{libraryStatusLabel(item.status)}</span>
         </div>
-        <p>{item.prompt}</p>
-        {media?.url ? (
-          <a href={media.url} download>
-            下载结果
-          </a>
+        <div className="studio-media-card__meta" aria-label="作品信息">
+          <span>{typeLabel}</span>
+          <span>{createdAt}</span>
+          {scaleText ? <span>{scaleText}</span> : null}
+          {dimensionText ? <span>{dimensionText}</span> : null}
+          {fileSizeText ? <span>{fileSizeText}</span> : null}
+        </div>
+        <p>{item.error || item.prompt || "无提示词记录"}</p>
+        {mediaMissing ? <p className="studio-inline-error" role="alert">结果文件不存在，作品记录仍保留，可刷新或删除。</p> : null}
+        {showActions && media?.url && !mediaMissing ? (
+          <div className="studio-media-card__actions">
+            <a href={media.url} target="_blank" rel="noreferrer">
+              <ExternalLink className="size-4" aria-hidden="true" />
+              预览
+            </a>
+            {canDownloadStoredFile ? (
+              <a href={media.url} download>
+                <Download className="size-4" aria-hidden="true" />
+                下载
+              </a>
+            ) : null}
+          </div>
         ) : null}
       </div>
     </article>
   );
+}
+
+function libraryModeLabel(item: LibraryItem) {
+  if (item.mode === "text-to-image") return "图片 · 文生图";
+  if (item.mode === "image-to-image") return "图片 · 图生图";
+  if (item.mode === "text-to-video") return "视频 · 文生视频";
+  if (item.mode === "image-to-video") return "视频 · 图生视频";
+  if (item.mode === "image-upscale") return "图片高清";
+  if (item.mode === "video-upscale") return "视频高清";
+  return item.type === "image" ? "图片作品" : "视频作品";
+}
+
+function libraryStatusLabel(status: LibraryItem["status"]) {
+  if (status === "done") return "已完成";
+  if (status === "queued") return "排队中";
+  if (status === "generating") return "处理中";
+  return "失败";
+}
+
+function formatDateTime(value: string) {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "时间未知";
+  return new Intl.DateTimeFormat("zh-CN", {
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+  }).format(date);
+}
+
+function formatBytes(value: number) {
+  if (!Number.isFinite(value) || value <= 0) return "";
+  if (value >= 1024 * 1024) return `${(value / 1024 / 1024).toFixed(1)} MB`;
+  if (value >= 1024) return `${Math.round(value / 1024)} KB`;
+  return `${value} B`;
+}
+
+function libraryDimensions(item: LibraryItem) {
+  const width = Number(item.params.outputWidth || item.params.sourceWidth || 0);
+  const height = Number(item.params.outputHeight || item.params.sourceHeight || 0);
+  if (!Number.isFinite(width) || !Number.isFinite(height) || width <= 0 || height <= 0) return "";
+  return `${Math.round(width)}×${Math.round(height)}`;
 }
 
 function Toast({ message, onClose }: { message: string; onClose: () => void }) {

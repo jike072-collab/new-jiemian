@@ -53,5 +53,7 @@
 | 模块 7 第 3 段 | 已完成 | Upscayl acceptance evidence, unavailable-state screenshots, docs, and quality checks completed. |
 | 模块 7 最终补修 | 已完成 | Local Upscayl is installed and real 2x/4x integration passed with source/output dimensions, download verification, Unicode scan, and refreshed evidence. |
 | 模块 7 | 已完成 | PR #24 was approved and merged to `develop`. |
-| 模块 8 | 第一版已完成，等待人工检查 | Video2X workspace, checks, docs, and evidence were completed on `feature/08-video-upscale`. |
-| 模块 9 | 阻塞 | Do not start until module 8 is manually approved. |
+| 模块 8 | 已完成 | PR #26 was approved and merged to `develop`. |
+| 模块 9 | 第一版已完成，等待人工检查 | Real local works library, preview, download, delete, missing-file state, docs, checks, and Draft PR were completed on `feature/09-library`. |
+| 模块 9 最终补修 | 已完成 | Safe delete flow now removes real files before metadata, returns `404` for absent works, and clears related jobs through the jobs write queue. |
+| 模块 10 | 阻塞 | Do not start until module 9 is manually approved. |

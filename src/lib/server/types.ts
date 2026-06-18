@@ -57,6 +57,7 @@ export type LibraryItem = {
   output?: LibraryOutput;
   params: Record<string, string | number | boolean>;
   error?: string;
+  fileAvailable?: boolean;
 };
 
 export type JobRecord = {
