@@ -69,3 +69,15 @@
 - Module 5 Draft PR must explicitly state that module 6 has not started and B-side New API/auth/quota/payment code was not modified.
 - Module 5 final visual evidence must come from a clean production preview, not a stale dev server or static mock.
 - Production evidence must verify CSS and JS chunks load successfully; a passing build alone is not sufficient visual acceptance.
+
+## Module 6 Gate
+
+- Module 6 must not proceed to module 7 until it is manually approved.
+- Module 6 must not merge until segment 3 browser evidence, quality checks, and Draft PR text have human review.
+- `text-to-video` and `image-to-video` must be genuinely different in validation, copy, empty state, and request behavior before acceptance.
+- When no real video model is configured, do not replace the unavailable state with a mock video result, fake progress, or static success state.
+- Module 6 must reuse the module 5 visual foundation and must not redesign Header, Sidebar, ratio controls, upload controls, primary action, preview shell, or scrollbar behavior.
+- A-side module 6 must not modify B-side New API, authentication, quota, payment, Docker, database, Redis, BFF, callback, reconciliation, or port configuration.
+- If the current provider API exposes no capability fields, A-side code must record the limitation and must not hard-code guessed vendor capability maps.
+- Image-to-video accepts exactly one first-frame image. Zero files and more than one file must be rejected by both the UI contract and API validation; screenshots must not label an unuploaded state as uploaded.
+- Module 6 upload evidence must verify real upload, replace, delete, and object URL cleanup, or explicitly record the automation limitation instead of using a fake uploaded state.

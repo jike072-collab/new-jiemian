@@ -42,5 +42,10 @@
 | Module 5 segment 3 | Done | After screenshots, visual comparison, browser acceptance, docs, and Draft PR completed. |
 | Module 5 final patch 2 | Done | Image workspace mode regression, segmented controls, ratio visuals, color hierarchy, sticky action, Unicode scan, and refreshed screenshots completed. |
 | Module 5 final visual closeout | Done | Ratio selected state finalized with transparent outer surface and clean production screenshots captured. |
-| Module 5 | Done, awaiting human review | Do not enter module 6 until manual approval. |
-| Module 6 | Blocked | Video generator business work must not start until module 5 is manually approved. |
+| Module 5 | Done | PR #18 was approved and merged to `develop`. |
+| Module 6 segment 1 | Done | Video workspace audit, mode-difference matrix, and implementation plan completed and pushed. |
+| Module 6 segment 2 | Done | Text-to-video and image-to-video now differ in parameters, validation, payload behavior, preview state, and mobile/desktop submit state. |
+| Module 6 segment 3 | Done | Production browser acceptance, screenshot evidence, docs, checks, push, and Draft PR completed. |
+| 模块 6 最终补修 | 已完成 | 图生视频单首帧契约、API 校验、真实上传/替换/删除验收、移动端 loading 文案代码修正、Unicode 扫描和证据修正完成。 |
+| 模块 6 | 已完成，等待人工检查 | Do not merge or proceed to module 7 until manual review approves the module. |
+| 模块 7 | 阻塞 | Do not start until module 6 is manually approved. |
