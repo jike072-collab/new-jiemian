@@ -109,7 +109,6 @@ export function WorkbenchShell({
   return (
     <div ref={rootRef} className="shell-root min-h-[100dvh] overflow-hidden bg-[var(--background)] text-[var(--foreground)]">
       <Header
-        activeTool={activeTool}
         isAuthenticated={isAuthenticated}
         onToggleDrawer={() => setDrawerOpen((value) => !value)}
         onToggleAccount={() => setAccountOpen((value) => !value)}
@@ -146,9 +145,8 @@ export function WorkbenchShell({
           />
 
           <section className="shell-panel shell-panel--controls">
-            <div className="shell-panel__header">
+            <div className="shell-panel__header shell-panel__header--tool">
               <div>
-                <p className="shell-eyebrow">参数区</p>
                 <h2 className="shell-title">{toolTitle || activeTool.label}</h2>
                 <p className="shell-description">{toolDescription || activeTool.description}</p>
               </div>
@@ -156,21 +154,10 @@ export function WorkbenchShell({
             <div id="shell-parameters-panel" data-shell-scroll="parameters" className="shell-panel__body">
               {parameterSlot}
             </div>
-            <div className="shell-panel__footer">
-              <span className="shell-chip">{activeTool.group}</span>
-            </div>
           </section>
 
           <section className="shell-panel shell-panel--preview">
-            <div className="shell-panel__header">
-              <div>
-                <p className="shell-eyebrow">工作区</p>
-                <h2 className="shell-title">{activeTool.label}</h2>
-                <p className="shell-description">生成结果将在这里显示。</p>
-              </div>
-              <span className="shell-chip">{activeTool.label}</span>
-            </div>
-            <div id="shell-preview-panel" data-shell-scroll="preview" className="shell-panel__body">
+            <div id="shell-preview-panel" data-shell-scroll="preview" className="shell-panel__body shell-panel__body--preview">
               {previewSlot}
             </div>
           </section>
@@ -183,7 +170,6 @@ export function WorkbenchShell({
 }
 
 function Header({
-  activeTool,
   isAuthenticated,
   onToggleDrawer,
   onToggleAccount,
@@ -193,7 +179,6 @@ function Header({
   drawerId,
   drawerOpen,
 }: {
-  activeTool: WorkspaceToolEntry;
   isAuthenticated: boolean;
   onToggleDrawer: () => void;
   onToggleAccount: () => void;
@@ -221,10 +206,6 @@ function Header({
           <BrandLogo className="shell-brand__logo" />
           <span className="shell-brand__text">奥皇 AI</span>
         </Link>
-      </div>
-
-      <div className="shell-header__center">
-        <span className="shell-header__active">{activeTool.label}</span>
       </div>
 
       <div className="shell-header__actions">
@@ -258,7 +239,7 @@ function DesktopNavigation({
   return (
     <aside className="shell-nav">
       <div className="shell-nav__head">
-        <p className="shell-eyebrow">工作区导航</p>
+        <p className="shell-eyebrow">工具导航</p>
       </div>
       <div className="shell-nav__groups">
         {groups.map((group) => (
@@ -273,6 +254,7 @@ function DesktopNavigation({
                     key={item.id}
                     item={item}
                     active={activeToolId === item.id}
+                    showDescription={false}
                     onClick={() => onSelect(item.action, item.id)}
                   />
                 );
@@ -317,7 +299,7 @@ function MobileOverlay({
           <span className="shell-eyebrow">当前工具</span>
           <strong className="shell-mobile-tabs__title">{activeTool.label}</strong>
         </div>
-        <div className="shell-mobile-tabs__switch" role="tablist" aria-label="工作区视图">
+        <div className="shell-mobile-tabs__switch" role="tablist" aria-label="参数和预览视图">
           <button
             type="button"
             id="shell-parameters-tab"
@@ -358,7 +340,7 @@ function MobileOverlay({
         aria-hidden={!drawerOpen}
       >
         <div className="shell-drawer__head">
-            <div className="shell-drawer__brand">
+          <div className="shell-drawer__brand">
             <BrandLogo className="shell-brand__logo" />
             <div>
               <strong className="shell-brand__text">奥皇 AI</strong>
@@ -383,6 +365,7 @@ function MobileOverlay({
                       key={item.id}
                       item={item}
                       active={activeTool.id === item.id}
+                      showDescription
                       onClick={() => {
                         onSelect(item.action, item.id);
                         onClose();
@@ -421,11 +404,13 @@ function ToolButton({
   item,
   active,
   compact,
+  showDescription = true,
   onClick,
 }: {
   item: WorkspaceToolEntry;
   active: boolean;
   compact?: boolean;
+  showDescription?: boolean;
   onClick: () => void;
 }) {
   const Icon = item.icon;
@@ -439,7 +424,7 @@ function ToolButton({
       <Icon className="shell-nav-item__icon" aria-hidden="true" />
       <span className={cn("shell-nav-item__text", compact && "sr-only")}>
         <span className="shell-nav-item__label">{item.label}</span>
-        <span className="shell-nav-item__desc">{item.description}</span>
+        {showDescription ? <span className="shell-nav-item__desc">{item.description}</span> : null}
       </span>
     </button>
   );

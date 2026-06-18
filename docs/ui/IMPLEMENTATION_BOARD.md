@@ -36,5 +36,11 @@
 | Module 4 segment 2 | Done | Real image generator/editor workspace implementation completed and pushed. |
 | Module 4 segment 3 | Done | Real browser acceptance, screenshots, docs, quality checks, and PR update completed. |
 | Module 4 final accessibility patch | Done | Selection semantics, prompt counter announcements, labels, keyboard checks, and Unicode safety scan completed. |
-| Module 4 | Done, awaiting human review | Do not merge or continue without manual approval. |
-| Module 5 | Blocked | Module 5 must not start until module 4 is manually approved. |
+| Module 4 | Done | PR #11 was approved and merged to `develop`. |
+| Module 5 segment 1 | Done | Visual baseline screenshots, audit matrix, component ownership, and implementation plan completed for review. |
+| Module 5 segment 2 | Done | Shell hierarchy cleanup and shared visual controls implemented. |
+| Module 5 segment 3 | Done | After screenshots, visual comparison, browser acceptance, docs, and Draft PR completed. |
+| Module 5 final patch 2 | Done | Image workspace mode regression, segmented controls, ratio visuals, color hierarchy, sticky action, Unicode scan, and refreshed screenshots completed. |
+| Module 5 final visual closeout | Done | Ratio selected state finalized with transparent outer surface and clean production screenshots captured. |
+| Module 5 | Done, awaiting human review | Do not enter module 6 until manual approval. |
+| Module 6 | Blocked | Video generator business work must not start until module 5 is manually approved. |

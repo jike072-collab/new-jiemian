@@ -1,0 +1,812 @@
+{
+  "generatedAt": "2026-06-18T08:16:28.004Z",
+  "url": "http://127.0.0.1:3100/",
+  "screenshots": [
+    "1440x900-ai-image-generator-text-to-image-final-patch2.png",
+    "1440x900-ai-image-generator-image-to-image-final-patch2.png",
+    "1440x900-ai-image-editor-final-patch2.png",
+    "1440x900-ai-video-generator-text-to-video-final-patch2.png",
+    "1440x900-ai-video-generator-image-to-video-final-patch2.png",
+    "1440x900-image-upscale-final-patch2.png",
+    "1024x768-tablet-main-final-patch2.png",
+    "390x844-mobile-params-final-patch2.png",
+    "1440x900-mode-switch-closeup-final-patch2.png",
+    "1440x900-ratio-selector-closeup-final-patch2.png",
+    "1440x900-sidebar-color-closeup-final-patch2.png",
+    "1440x900-sticky-primary-action-final-patch2.png"
+  ],
+  "audits": [
+    {
+      "label": "AI image generator text-to-image",
+      "horizontalOverflow": false,
+      "issueMarkers": false,
+      "duplicateCopy": [],
+      "title": "AI 图像生成器",
+      "description": "文生图 / 图生图",
+      "previewTitle": "创作预览",
+      "primaryText": "生成图片",
+      "primaryDisabled": true,
+      "mobilePrimaryText": "生成图片",
+      "internalStickyVisible": true,
+      "hasUpload": true,
+      "modes": [
+        {
+          "text": "文生图",
+          "pressed": "true",
+          "id": "mode-text-to-image"
+        },
+        {
+          "text": "图生图",
+          "pressed": "false",
+          "id": "mode-image-to-image"
+        },
+        {
+          "text": "1K",
+          "pressed": "true",
+          "id": "mode-1k"
+        },
+        {
+          "text": "2K",
+          "pressed": "false",
+          "id": "mode-2k"
+        }
+      ],
+      "ratios": [
+        {
+          "text": "1:1",
+          "pressed": "true",
+          "width": 65,
+          "labelTop": 679
+        },
+        {
+          "text": "16:9",
+          "pressed": "false",
+          "width": 65,
+          "labelTop": 679
+        },
+        {
+          "text": "9:16",
+          "pressed": "false",
+          "width": 65,
+          "labelTop": 679
+        },
+        {
+          "text": "4:3",
+          "pressed": "false",
+          "width": 65,
+          "labelTop": 679
+        },
+        {
+          "text": "3:4",
+          "pressed": "false",
+          "width": 65,
+          "labelTop": 679
+        }
+      ],
+      "ratioAligned": true,
+      "ratioEqualWidth": true,
+      "bodyTextIncludesUploadRequired": false
+    },
+    {
+      "label": "AI image generator image-to-image",
+      "horizontalOverflow": false,
+      "issueMarkers": false,
+      "duplicateCopy": [],
+      "title": "AI 图像生成器",
+      "description": "文生图 / 图生图",
+      "previewTitle": "创作预览",
+      "primaryText": "开始编辑",
+      "primaryDisabled": true,
+      "mobilePrimaryText": "开始编辑",
+      "internalStickyVisible": true,
+      "hasUpload": true,
+      "modes": [
+        {
+          "text": "文生图",
+          "pressed": "false",
+          "id": "mode-text-to-image"
+        },
+        {
+          "text": "图生图",
+          "pressed": "true",
+          "id": "mode-image-to-image"
+        },
+        {
+          "text": "1K",
+          "pressed": "true",
+          "id": "mode-1k"
+        },
+        {
+          "text": "2K",
+          "pressed": "false",
+          "id": "mode-2k"
+        }
+      ],
+      "ratios": [
+        {
+          "text": "1:1",
+          "pressed": "true",
+          "width": 65,
+          "labelTop": 691
+        },
+        {
+          "text": "16:9",
+          "pressed": "false",
+          "width": 65,
+          "labelTop": 691
+        },
+        {
+          "text": "9:16",
+          "pressed": "false",
+          "width": 65,
+          "labelTop": 691
+        },
+        {
+          "text": "4:3",
+          "pressed": "false",
+          "width": 65,
+          "labelTop": 691
+        },
+        {
+          "text": "3:4",
+          "pressed": "false",
+          "width": 65,
+          "labelTop": 691
+        }
+      ],
+      "ratioAligned": true,
+      "ratioEqualWidth": true,
+      "bodyTextIncludesUploadRequired": true
+    },
+    {
+      "label": "AI image editor",
+      "horizontalOverflow": false,
+      "issueMarkers": false,
+      "duplicateCopy": [],
+      "title": "AI 图片编辑器",
+      "description": "上传参考图进行编辑",
+      "previewTitle": "创作预览",
+      "primaryText": "开始编辑",
+      "primaryDisabled": true,
+      "mobilePrimaryText": "开始编辑",
+      "internalStickyVisible": true,
+      "hasUpload": true,
+      "modes": [
+        {
+          "text": "文生图",
+          "pressed": "false",
+          "id": "mode-text-to-image"
+        },
+        {
+          "text": "图生图",
+          "pressed": "true",
+          "id": "mode-image-to-image"
+        },
+        {
+          "text": "1K",
+          "pressed": "true",
+          "id": "mode-1k"
+        },
+        {
+          "text": "2K",
+          "pressed": "false",
+          "id": "mode-2k"
+        }
+      ],
+      "ratios": [
+        {
+          "text": "1:1",
+          "pressed": "true",
+          "width": 65,
+          "labelTop": 691
+        },
+        {
+          "text": "16:9",
+          "pressed": "false",
+          "width": 65,
+          "labelTop": 691
+        },
+        {
+          "text": "9:16",
+          "pressed": "false",
+          "width": 65,
+          "labelTop": 691
+        },
+        {
+          "text": "4:3",
+          "pressed": "false",
+          "width": 65,
+          "labelTop": 691
+        },
+        {
+          "text": "3:4",
+          "pressed": "false",
+          "width": 65,
+          "labelTop": 691
+        }
+      ],
+      "ratioAligned": true,
+      "ratioEqualWidth": true,
+      "bodyTextIncludesUploadRequired": true
+    },
+    {
+      "label": "AI video generator text-to-video",
+      "horizontalOverflow": false,
+      "issueMarkers": false,
+      "duplicateCopy": [],
+      "title": "AI 视频生成器",
+      "description": "文生视频 / 图生视频",
+      "previewTitle": "创作预览",
+      "primaryText": "生成视频",
+      "primaryDisabled": false,
+      "mobilePrimaryText": "生成视频",
+      "internalStickyVisible": true,
+      "hasUpload": true,
+      "modes": [
+        {
+          "text": "文生视频",
+          "pressed": "true",
+          "id": "mode-text-to-video"
+        },
+        {
+          "text": "图生视频",
+          "pressed": "false",
+          "id": "mode-image-to-video"
+        }
+      ],
+      "ratios": [
+        {
+          "text": "1:1",
+          "pressed": "false",
+          "width": 65,
+          "labelTop": 660
+        },
+        {
+          "text": "16:9",
+          "pressed": "true",
+          "width": 65,
+          "labelTop": 660
+        },
+        {
+          "text": "9:16",
+          "pressed": "false",
+          "width": 65,
+          "labelTop": 660
+        },
+        {
+          "text": "4:3",
+          "pressed": "false",
+          "width": 65,
+          "labelTop": 660
+        },
+        {
+          "text": "3:4",
+          "pressed": "false",
+          "width": 65,
+          "labelTop": 660
+        }
+      ],
+      "ratioAligned": true,
+      "ratioEqualWidth": true,
+      "bodyTextIncludesUploadRequired": false
+    },
+    {
+      "label": "AI video generator image-to-video",
+      "horizontalOverflow": false,
+      "issueMarkers": false,
+      "duplicateCopy": [],
+      "title": "AI 视频生成器",
+      "description": "文生视频 / 图生视频",
+      "previewTitle": "创作预览",
+      "primaryText": "生成视频",
+      "primaryDisabled": false,
+      "mobilePrimaryText": "生成视频",
+      "internalStickyVisible": true,
+      "hasUpload": true,
+      "modes": [
+        {
+          "text": "文生视频",
+          "pressed": "false",
+          "id": "mode-text-to-video"
+        },
+        {
+          "text": "图生视频",
+          "pressed": "true",
+          "id": "mode-image-to-video"
+        }
+      ],
+      "ratios": [
+        {
+          "text": "1:1",
+          "pressed": "false",
+          "width": 65,
+          "labelTop": 653
+        },
+        {
+          "text": "16:9",
+          "pressed": "true",
+          "width": 65,
+          "labelTop": 653
+        },
+        {
+          "text": "9:16",
+          "pressed": "false",
+          "width": 65,
+          "labelTop": 653
+        },
+        {
+          "text": "4:3",
+          "pressed": "false",
+          "width": 65,
+          "labelTop": 653
+        },
+        {
+          "text": "3:4",
+          "pressed": "false",
+          "width": 65,
+          "labelTop": 653
+        }
+      ],
+      "ratioAligned": true,
+      "ratioEqualWidth": true,
+      "bodyTextIncludesUploadRequired": false
+    },
+    {
+      "label": "Image upscale",
+      "horizontalOverflow": false,
+      "issueMarkers": false,
+      "duplicateCopy": [],
+      "title": "图片高清",
+      "description": "本机放大处理",
+      "previewTitle": "创作预览",
+      "primaryText": "开始增强",
+      "primaryDisabled": false,
+      "mobilePrimaryText": "开始增强",
+      "internalStickyVisible": true,
+      "hasUpload": true,
+      "modes": [
+        {
+          "text": "2x",
+          "pressed": "true",
+          "id": "mode-2"
+        },
+        {
+          "text": "4x",
+          "pressed": "false",
+          "id": "mode-4"
+        }
+      ],
+      "ratios": [],
+      "ratioAligned": null,
+      "ratioEqualWidth": null,
+      "bodyTextIncludesUploadRequired": false
+    },
+    {
+      "label": "Tablet main",
+      "horizontalOverflow": false,
+      "issueMarkers": false,
+      "duplicateCopy": [],
+      "title": "AI 图像生成器",
+      "description": "文生图 / 图生图",
+      "previewTitle": "创作预览",
+      "primaryText": "生成图片",
+      "primaryDisabled": true,
+      "mobilePrimaryText": "生成图片",
+      "internalStickyVisible": true,
+      "hasUpload": true,
+      "modes": [
+        {
+          "text": "文生图",
+          "pressed": "true",
+          "id": "mode-text-to-image"
+        },
+        {
+          "text": "图生图",
+          "pressed": "false",
+          "id": "mode-image-to-image"
+        },
+        {
+          "text": "1K",
+          "pressed": "true",
+          "id": "mode-1k"
+        },
+        {
+          "text": "2K",
+          "pressed": "false",
+          "id": "mode-2k"
+        }
+      ],
+      "ratios": [
+        {
+          "text": "1:1",
+          "pressed": "true",
+          "width": 61,
+          "labelTop": 677
+        },
+        {
+          "text": "16:9",
+          "pressed": "false",
+          "width": 61,
+          "labelTop": 677
+        },
+        {
+          "text": "9:16",
+          "pressed": "false",
+          "width": 61,
+          "labelTop": 677
+        },
+        {
+          "text": "4:3",
+          "pressed": "false",
+          "width": 61,
+          "labelTop": 677
+        },
+        {
+          "text": "3:4",
+          "pressed": "false",
+          "width": 61,
+          "labelTop": 677
+        }
+      ],
+      "ratioAligned": true,
+      "ratioEqualWidth": true,
+      "bodyTextIncludesUploadRequired": false
+    },
+    {
+      "label": "Mobile params",
+      "horizontalOverflow": false,
+      "issueMarkers": false,
+      "duplicateCopy": [],
+      "title": "AI 图像生成器",
+      "description": "文生图 / 图生图",
+      "previewTitle": "创作预览",
+      "primaryText": "生成图片",
+      "primaryDisabled": true,
+      "mobilePrimaryText": "生成图片",
+      "internalStickyVisible": false,
+      "hasUpload": true,
+      "modes": [
+        {
+          "text": "文生图",
+          "pressed": "true",
+          "id": "mode-text-to-image"
+        },
+        {
+          "text": "图生图",
+          "pressed": "false",
+          "id": "mode-image-to-image"
+        },
+        {
+          "text": "1K",
+          "pressed": "true",
+          "id": "mode-1k"
+        },
+        {
+          "text": "2K",
+          "pressed": "false",
+          "id": "mode-2k"
+        }
+      ],
+      "ratios": [
+        {
+          "text": "1:1",
+          "pressed": "true",
+          "width": 157,
+          "labelTop": 782
+        },
+        {
+          "text": "16:9",
+          "pressed": "false",
+          "width": 157,
+          "labelTop": 782
+        },
+        {
+          "text": "9:16",
+          "pressed": "false",
+          "width": 157,
+          "labelTop": 876
+        },
+        {
+          "text": "4:3",
+          "pressed": "false",
+          "width": 157,
+          "labelTop": 876
+        },
+        {
+          "text": "3:4",
+          "pressed": "false",
+          "width": 157,
+          "labelTop": 970
+        }
+      ],
+      "ratioAligned": false,
+      "ratioEqualWidth": true,
+      "bodyTextIncludesUploadRequired": false
+    },
+    {
+      "label": "Mode switch closeup",
+      "horizontalOverflow": false,
+      "issueMarkers": false,
+      "duplicateCopy": [],
+      "title": "AI 图像生成器",
+      "description": "文生图 / 图生图",
+      "previewTitle": "创作预览",
+      "primaryText": "生成图片",
+      "primaryDisabled": true,
+      "mobilePrimaryText": "生成图片",
+      "internalStickyVisible": true,
+      "hasUpload": true,
+      "modes": [
+        {
+          "text": "文生图",
+          "pressed": "true",
+          "id": "mode-text-to-image"
+        },
+        {
+          "text": "图生图",
+          "pressed": "false",
+          "id": "mode-image-to-image"
+        },
+        {
+          "text": "1K",
+          "pressed": "true",
+          "id": "mode-1k"
+        },
+        {
+          "text": "2K",
+          "pressed": "false",
+          "id": "mode-2k"
+        }
+      ],
+      "ratios": [
+        {
+          "text": "1:1",
+          "pressed": "true",
+          "width": 65,
+          "labelTop": 679
+        },
+        {
+          "text": "16:9",
+          "pressed": "false",
+          "width": 65,
+          "labelTop": 679
+        },
+        {
+          "text": "9:16",
+          "pressed": "false",
+          "width": 65,
+          "labelTop": 679
+        },
+        {
+          "text": "4:3",
+          "pressed": "false",
+          "width": 65,
+          "labelTop": 679
+        },
+        {
+          "text": "3:4",
+          "pressed": "false",
+          "width": 65,
+          "labelTop": 679
+        }
+      ],
+      "ratioAligned": true,
+      "ratioEqualWidth": true,
+      "bodyTextIncludesUploadRequired": false
+    },
+    {
+      "label": "Ratio selector closeup",
+      "horizontalOverflow": false,
+      "issueMarkers": false,
+      "duplicateCopy": [],
+      "title": "AI 图像生成器",
+      "description": "文生图 / 图生图",
+      "previewTitle": "创作预览",
+      "primaryText": "生成图片",
+      "primaryDisabled": true,
+      "mobilePrimaryText": "生成图片",
+      "internalStickyVisible": true,
+      "hasUpload": true,
+      "modes": [
+        {
+          "text": "文生图",
+          "pressed": "true",
+          "id": "mode-text-to-image"
+        },
+        {
+          "text": "图生图",
+          "pressed": "false",
+          "id": "mode-image-to-image"
+        },
+        {
+          "text": "1K",
+          "pressed": "true",
+          "id": "mode-1k"
+        },
+        {
+          "text": "2K",
+          "pressed": "false",
+          "id": "mode-2k"
+        }
+      ],
+      "ratios": [
+        {
+          "text": "1:1",
+          "pressed": "true",
+          "width": 65,
+          "labelTop": 679
+        },
+        {
+          "text": "16:9",
+          "pressed": "false",
+          "width": 65,
+          "labelTop": 679
+        },
+        {
+          "text": "9:16",
+          "pressed": "false",
+          "width": 65,
+          "labelTop": 679
+        },
+        {
+          "text": "4:3",
+          "pressed": "false",
+          "width": 65,
+          "labelTop": 679
+        },
+        {
+          "text": "3:4",
+          "pressed": "false",
+          "width": 65,
+          "labelTop": 679
+        }
+      ],
+      "ratioAligned": true,
+      "ratioEqualWidth": true,
+      "bodyTextIncludesUploadRequired": false
+    },
+    {
+      "label": "Sidebar closeup",
+      "horizontalOverflow": false,
+      "issueMarkers": false,
+      "duplicateCopy": [],
+      "title": "AI 图像生成器",
+      "description": "文生图 / 图生图",
+      "previewTitle": "创作预览",
+      "primaryText": "生成图片",
+      "primaryDisabled": true,
+      "mobilePrimaryText": "生成图片",
+      "internalStickyVisible": true,
+      "hasUpload": true,
+      "modes": [
+        {
+          "text": "文生图",
+          "pressed": "true",
+          "id": "mode-text-to-image"
+        },
+        {
+          "text": "图生图",
+          "pressed": "false",
+          "id": "mode-image-to-image"
+        },
+        {
+          "text": "1K",
+          "pressed": "true",
+          "id": "mode-1k"
+        },
+        {
+          "text": "2K",
+          "pressed": "false",
+          "id": "mode-2k"
+        }
+      ],
+      "ratios": [
+        {
+          "text": "1:1",
+          "pressed": "true",
+          "width": 65,
+          "labelTop": 679
+        },
+        {
+          "text": "16:9",
+          "pressed": "false",
+          "width": 65,
+          "labelTop": 679
+        },
+        {
+          "text": "9:16",
+          "pressed": "false",
+          "width": 65,
+          "labelTop": 679
+        },
+        {
+          "text": "4:3",
+          "pressed": "false",
+          "width": 65,
+          "labelTop": 679
+        },
+        {
+          "text": "3:4",
+          "pressed": "false",
+          "width": 65,
+          "labelTop": 679
+        }
+      ],
+      "ratioAligned": true,
+      "ratioEqualWidth": true,
+      "bodyTextIncludesUploadRequired": false
+    },
+    {
+      "label": "Sticky action closeup",
+      "horizontalOverflow": false,
+      "issueMarkers": false,
+      "duplicateCopy": [],
+      "title": "AI 图像生成器",
+      "description": "文生图 / 图生图",
+      "previewTitle": "创作预览",
+      "primaryText": "生成图片",
+      "primaryDisabled": true,
+      "mobilePrimaryText": "生成图片",
+      "internalStickyVisible": true,
+      "hasUpload": true,
+      "modes": [
+        {
+          "text": "文生图",
+          "pressed": "true",
+          "id": "mode-text-to-image"
+        },
+        {
+          "text": "图生图",
+          "pressed": "false",
+          "id": "mode-image-to-image"
+        },
+        {
+          "text": "1K",
+          "pressed": "true",
+          "id": "mode-1k"
+        },
+        {
+          "text": "2K",
+          "pressed": "false",
+          "id": "mode-2k"
+        }
+      ],
+      "ratios": [
+        {
+          "text": "1:1",
+          "pressed": "true",
+          "width": 65,
+          "labelTop": 679
+        },
+        {
+          "text": "16:9",
+          "pressed": "false",
+          "width": 65,
+          "labelTop": 679
+        },
+        {
+          "text": "9:16",
+          "pressed": "false",
+          "width": 65,
+          "labelTop": 679
+        },
+        {
+          "text": "4:3",
+          "pressed": "false",
+          "width": 65,
+          "labelTop": 679
+        },
+        {
+          "text": "3:4",
+          "pressed": "false",
+          "width": 65,
+          "labelTop": 679
+        }
+      ],
+      "ratioAligned": true,
+      "ratioEqualWidth": true,
+      "bodyTextIncludesUploadRequired": false
+    }
+  ],
+  "failed": []
+}

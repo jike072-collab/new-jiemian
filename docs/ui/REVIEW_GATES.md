@@ -52,3 +52,20 @@
 - Button-based selected controls must expose selection semantics with `aria-pressed` or another correct role-specific state.
 - Mobile parameter/preview tabs must expose `role="tablist"`, `role="tab"`, `aria-selected`, and `aria-controls`.
 - Module 4 final review must include a bidi Unicode control-character scan over `src/` and `docs/`.
+
+## Module 5 Gate
+
+- Module 5 must not proceed to module 6 until it is manually approved.
+- Feature modules must not casually rebuild global visual structure while implementing business features.
+- Shared component changes must include before/after screenshots.
+- Build passing does not prove visual correctness.
+- Module 5 must not restore the old five-step shoe-ad workflow, white workspace, fluorescent green brand color, narrow AI Inspector, or Shoe Ad Studio page.
+- Module 5 must not modify B-side New API, authentication, quota, payment, Docker, database, Redis, BFF, callback, reconciliation, or port configuration.
+- When no real model is configured, the UI must keep the real unavailable state and must not introduce fake models, fake balances, or fake results.
+- Public shell screenshots must verify Header, Sidebar, parameter panel, preview panel, mobile Drawer, mobile tabs, and horizontal overflow.
+- WorkbenchShell must remain a layout shell only: no fake account state, no fake model state, no fixed business preview copy, and no second submit path.
+- Shared controls in module 5 must stay controlled by existing tool state and must not own model, upload, prompt, job, or result business data.
+- Module 5 must not merge until the before/after screenshot set and visual comparison table have human review.
+- Module 5 Draft PR must explicitly state that module 6 has not started and B-side New API/auth/quota/payment code was not modified.
+- Module 5 final visual evidence must come from a clean production preview, not a stale dev server or static mock.
+- Production evidence must verify CSS and JS chunks load successfully; a passing build alone is not sufficient visual acceptance.

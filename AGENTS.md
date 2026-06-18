@@ -46,6 +46,15 @@
 - Do not request merge until screenshot comparison and feature-preservation checks are complete.
 - Treat `AI 图片编辑器` as a real current capability decision, not as a reference-site invention.
 
+## Module 5 Visual Foundation Rules
+
+- Feature modules must not redesign the public shell as a side effect of business work.
+- Tool pages must not copy shared shell titles, ratio controls, upload controls, preview states, or primary-action layouts.
+- Shared component changes must include before/after visual comparison screenshots.
+- Do not restore the old Shoe Ad Studio five-step workflow, white workspace, fluorescent green brand color, narrow AI Inspector, or shoe-ad page structure.
+- A-side work must not modify B-side New API, authentication, quota, payment, Docker, database, Redis, BFF, callback, reconciliation, or port configuration.
+- Shared UI components must stay controlled by the existing business owner and must not create duplicate model, upload, prompt, submit, job, or result state.
+
 ## Commands
 
 - `npm run dev`
