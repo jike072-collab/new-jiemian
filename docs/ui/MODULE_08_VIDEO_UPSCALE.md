@@ -23,7 +23,7 @@ It does not enter the library module and does not modify B-side New API, auth, q
 | --- | --- |
 | Video2X executable | `data/providers.json` local config points to `E:/codex工作台/tools/video2x/6.4.0/video2x.exe` |
 | FFmpeg check | Video2X Windows package includes FFmpeg runtime DLLs: `avcodec-61.dll`, `avformat-61.dll`, `avfilter-10.dll`, `avutil-59.dll`, `swscale-8.dll`, `swresample-5.dll` |
-| FFprobe | Not separately installed on PATH; first version falls back to MP4 file header parsing for resolution when FFprobe is unavailable |
+| FFprobe | `E:/codex工作台/tools/ffmpeg/n7.1/ffmpeg-n7.1-latest-win64-gpl-7.1/bin/ffprobe.exe` |
 | Invocation | `spawn(video2x.exe, args)` with argument array and `cwd` set to the Video2X install directory |
 | Shell command strings | Not used for user file paths |
 | Input path | Random file under `data/work/` |
@@ -72,14 +72,16 @@ This file is ignored runtime evidence and is not committed.
 | Case | Result |
 | --- | --- |
 | Status API | `/api/upscale/status` returned video `ready: true` with Video2X and FFmpeg runtime available. |
+| Final readiness | Output validation requires FFprobe, MP4 `ftyp`, and a minimum file size before a recoverable exit can be treated as success. |
 | 2x submit | `/api/upscale/video` accepted the real MP4 and created a generating job. |
-| 2x result | Success, source `640 x 360`, output `1280 x 720`, stored MP4 size `3,105,847` bytes. |
+| 2x result | Success, source `640 x 360`, output `1280 x 720`, stored MP4 size `1,627,597` bytes, audio retained, FFprobe duration `4.000000`. |
 | 4x submit | `/api/upscale/video` accepted the real MP4 and created a generating job. |
-| 4x result | Success, source `640 x 360`, output `2560 x 1440`, stored MP4 size `11,245,215` bytes. |
-| Download | `/api/files/video-upscale-*.mp4` returned real MP4 files; downloaded byte sizes matched stored output. |
+| 4x result | Success, source `640 x 360`, output `2560 x 1440`, stored MP4 size `4,067,699` bytes, audio retained, FFprobe duration `4.000000`. |
+| Download | `/api/files/video-upscale-*.mp4` returned real MP4 files; downloaded byte sizes matched stored output and replayed in the browser. |
+| Browser playback | Both 2x and 4x results played, supported seeking, reached the end, and showed the audio track in FFprobe output. |
 | Temp cleanup | No `video-upscale-input-*` files remained under `data/work/` after completion. |
 
-Video2X on this Windows build exits with code `3221225477` after writing a valid file. The monitor treats that as success only when the log confirms an output was written and the output path contains a valid MP4 header.
+Video2X on this Windows build can exit with code `3221225477` after writing a valid file. The monitor now treats that as success only when the output passes MP4 header, minimum size, and FFprobe validation for both video dimensions and duration.
 
 ## Security Notes
 
@@ -109,3 +111,9 @@ Final checks:
 | `git diff --check` | Passed |
 
 Unicode control-character scan over `src/` and `docs/`: passed with no matches.
+
+## Final Evidence
+
+- 2x browser playback screenshot: `docs/design-references/module-08-video-upscale/final-2x-browser.png`
+- 4x browser playback screenshot: `docs/design-references/module-08-video-upscale/final-4x-browser.png`
+- Playback verification summary: `data/module-08-tests/final-playback-summary.json`

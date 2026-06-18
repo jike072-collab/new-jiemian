@@ -43,8 +43,13 @@ type VideoDimensions = {
   height: number;
 };
 
+type VideoProbeMetadata = VideoDimensions & {
+  duration: number;
+};
+
 const workRoot = join(dataRoot, "work");
 const execFileAsync = promisify(execFile);
+const minimumVideoOutputSize = 64 * 1024;
 
 function executableCandidates(kind: "image" | "video", configuredPath: string) {
   const localAppData = process.env.LOCALAPPDATA || "";
@@ -218,13 +223,19 @@ export async function readUpscaleStatus() {
     };
   } else {
     const probe = await ffprobeExecutable(videoExecutable);
+    if (!probe) {
+      video = {
+        ready: false,
+        detail: "已检测到 Video2X 和 FFmpeg 运行库，但未检测到 FFprobe。请配置 FFPROBE_BIN 或安装完整 FFmpeg 后重新检测。",
+        executable: videoExecutable,
+      };
+      return { image, video };
+    }
     video = {
       ready: true,
-      detail: probe
-        ? "已检测到 Video2X、FFmpeg 运行库和 FFprobe，视频高清工具可用。"
-        : "已检测到 Video2X 和 FFmpeg 运行库，视频高清工具可用。未单独检测到 FFprobe，分辨率会使用本地文件头读取。",
+      detail: "已检测到 Video2X、FFmpeg 运行库和 FFprobe，视频高清工具可用。",
       executable: videoExecutable,
-      ffprobeExecutable: probe || undefined,
+      ffprobeExecutable: probe,
     };
   }
   return { image, video };
@@ -351,24 +362,29 @@ function readImageDimensions(bytes: Buffer): ImageDimensions | null {
   return readPngDimensions(bytes) || readJpegDimensions(bytes) || readWebpDimensions(bytes);
 }
 
-async function readVideoDimensionsWithFfprobe(path: string, executable?: string) {
+async function probeVideoMetadata(path: string, executable?: string): Promise<VideoProbeMetadata | null> {
   if (!executable) return null;
   try {
     const { stdout } = await execFileAsync(executable, [
       "-v", "error",
       "-select_streams", "v:0",
-      "-show_entries", "stream=width,height",
-      "-of", "csv=s=x:p=0",
+      "-show_entries", "stream=width,height:format=duration",
+      "-of", "default=noprint_wrappers=1:nokey=1",
       path,
     ], {
       windowsHide: true,
       timeout: 10000,
     });
-    const match = stdout.trim().match(/^(\d+)x(\d+)$/);
-    if (!match) return null;
+    const [widthText, heightText, durationText] = stdout.trim().split(/\r?\n/);
+    const width = Number(widthText);
+    const height = Number(heightText);
+    const duration = Number(durationText);
+    if (!Number.isFinite(width) || !Number.isFinite(height) || !Number.isFinite(duration)) return null;
+    if (width <= 0 || height <= 0 || duration <= 0) return null;
     return {
-      width: Number(match[1]),
-      height: Number(match[2]),
+      width,
+      height,
+      duration,
     };
   } catch {
     return null;
@@ -419,11 +435,30 @@ function readMp4Dimensions(bytes: Buffer): VideoDimensions | null {
 }
 
 async function readVideoDimensions(path: string, probe?: string): Promise<VideoDimensions | null> {
-  const probed = await readVideoDimensionsWithFfprobe(path, probe);
+  const probed = await probeVideoMetadata(path, probe);
   if (probed) return probed;
   const fileStat = await stat(path);
   if (fileStat.size > 256 * 1024 * 1024) return null;
   return readMp4Dimensions(await readFile(path));
+}
+
+async function validateVideoOutput(path: string, probe: string): Promise<VideoProbeMetadata | null> {
+  try {
+    const fileStat = await stat(path);
+    if (fileStat.size < minimumVideoOutputSize) return null;
+    const file = await import("node:fs/promises");
+    const handle = await file.open(path, "r");
+    try {
+      const header = Buffer.alloc(12);
+      await handle.read(header, 0, header.length, 0);
+      if (header.toString("ascii", 4, 8) !== "ftyp") return null;
+    } finally {
+      await handle.close();
+    }
+    return await probeVideoMetadata(path, probe);
+  } catch {
+    return null;
+  }
 }
 
 export async function upscaleImage(file: UploadedFile, scale: 2 | 4) {
@@ -488,7 +523,7 @@ export async function upscaleImage(file: UploadedFile, scale: 2 | 4) {
 export async function submitVideoUpscale(file: UploadedFile, scale: 2 | 4) {
   const provider = await providerById("video-upscale");
   const status = await readUpscaleStatus();
-  if (!provider || provider.endpointType !== "video2x-cli" || !status.video.ready || !status.video.executable) {
+  if (!provider || provider.endpointType !== "video2x-cli" || !status.video.ready || !status.video.executable || !status.video.ffprobeExecutable) {
     throw new Error(status.video.detail);
   }
 
@@ -604,15 +639,17 @@ async function monitorVideoProcess(
     clearTimeout(timeout);
     try {
       const processLog = context.getLog();
-      const recoveredWindowsSuccess = [3221226505, 3221225477].includes(code ?? -1)
+      const recoverableWindowsExit = [3221226505, 3221225477].includes(code ?? -1);
+      const logIndicatesSuccess = processLog.includes("Video processed successfully") || processLog.includes("Output written to:");
+      const outputDimensions = await validateVideoOutput(context.outputPath, context.ffprobeExecutable || "");
+      const recoveredWindowsSuccess = recoverableWindowsExit
         && processLog.includes("Video processed successfully")
-        && await isValidMp4Output(context.outputPath);
-      const outputWrittenSuccess = [3221226505, 3221225477].includes(code ?? -1)
+        && Boolean(outputDimensions);
+      const outputWrittenSuccess = recoverableWindowsExit
         && processLog.includes("Output written to:")
-        && await isValidMp4Output(context.outputPath);
-      if (code === 0 || recoveredWindowsSuccess || outputWrittenSuccess) {
+        && Boolean(outputDimensions);
+      if ((code === 0 || recoveredWindowsSuccess || outputWrittenSuccess) && outputDimensions) {
         const output = await storedOutput(context.storedName, "video/mp4");
-        const outputDimensions = await readVideoDimensions(context.outputPath, context.ffprobeExecutable);
         const currentItems = await readLibrary();
         const currentItem = currentItems.find((item) => item.id === context.itemId);
         await updateLibraryItem(context.itemId, {
@@ -623,13 +660,17 @@ async function monitorVideoProcess(
             ...(outputDimensions ? {
               outputWidth: outputDimensions.width,
               outputHeight: outputDimensions.height,
+              outputDuration: outputDimensions.duration,
             } : {}),
           },
         });
         await updateJob(context.jobId, { status: "done" });
       } else {
         const detail = processLog.trim().split(/\r?\n/).filter(Boolean).slice(-4).join(" ");
-        const message = `Video2X 任务失败，退出代码 ${code ?? "unknown"}。${detail ? ` ${detail}` : ""}`;
+        const validationError = code === 0 || (recoverableWindowsExit && logIndicatesSuccess)
+          ? "输出文件未通过 MP4 文件头、文件大小和 FFprobe 分辨率/时长校验。"
+          : "";
+        const message = `Video2X 任务失败，退出代码 ${code ?? "unknown"}。${validationError}${detail ? ` ${detail}` : ""}`;
         await unlink(context.outputPath).catch(() => undefined);
         await updateLibraryItem(context.itemId, { status: "failed", error: sanitizeProcessDetail(message) });
         await updateJob(context.jobId, { status: "failed", error: sanitizeProcessDetail(message) });
@@ -642,24 +683,6 @@ async function monitorVideoProcess(
     await fail(error.message);
   });
   child.once("close", complete);
-}
-
-async function isValidMp4Output(path: string) {
-  try {
-    const fileStat = await stat(path);
-    if (fileStat.size < 1024) return false;
-    const file = await import("node:fs/promises");
-    const handle = await file.open(path, "r");
-    try {
-      const header = Buffer.alloc(12);
-      await handle.read(header, 0, header.length, 0);
-      return header.toString("ascii", 4, 8) === "ftyp";
-    } finally {
-      await handle.close();
-    }
-  } catch {
-    return false;
-  }
 }
 
 export async function uploadedUpscaleFile(
