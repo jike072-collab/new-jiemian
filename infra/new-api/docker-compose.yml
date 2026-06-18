@@ -97,5 +97,4 @@ services:
         max-file: "3"
 
 networks:
-  new-api-internal:
-    internal: true
+  new-api-internal: {}

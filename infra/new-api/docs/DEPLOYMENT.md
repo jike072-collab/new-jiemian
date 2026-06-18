@@ -10,6 +10,7 @@ This deployment is only for the B05 isolated test environment:
 - persistent runtime data
 - health checks
 - New API bound only to localhost or a controlled test network
+- PostgreSQL and Redis attached to the compose network without host port mappings
 - no frontend integration
 - no real payment configuration
 

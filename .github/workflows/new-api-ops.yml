@@ -85,6 +85,7 @@ jobs:
       - name: Wait for status
         working-directory: infra/new-api
         run: |
+          docker compose ps
           for i in $(seq 1 60); do
             if curl -fsS http://127.0.0.1:3000/api/status >/dev/null; then
               exit 0
