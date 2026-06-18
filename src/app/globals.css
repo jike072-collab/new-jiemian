@@ -80,6 +80,220 @@
     @apply flex items-center gap-2 rounded-2xl border border-white/10 px-4 py-3 text-sm text-white/65 transition hover:text-white disabled:cursor-not-allowed disabled:opacity-50;
   }
 
+  .auth-page {
+    background:
+      radial-gradient(circle at 74% 12%, color-mix(in srgb, var(--primary) 18%, transparent), transparent 32%),
+      radial-gradient(circle at 10% 86%, rgba(95, 116, 255, 0.12), transparent 28%),
+      var(--background);
+  }
+
+  .auth-shell {
+    display: grid;
+    grid-template-columns: minmax(0, 1.05fr) minmax(360px, 0.95fr);
+    overflow: hidden;
+    border: 1px solid var(--border-subtle);
+    border-radius: var(--radius-card);
+    background: color-mix(in srgb, var(--panel) 92%, transparent);
+    box-shadow: 0 24px 80px rgba(0, 0, 0, 0.34);
+  }
+
+  .auth-intro {
+    display: flex;
+    min-width: 0;
+    flex-direction: column;
+    justify-content: space-between;
+    gap: 34px;
+    border-right: 1px solid var(--border-subtle);
+    padding: 34px;
+  }
+
+  .auth-brand {
+    display: inline-flex;
+    width: fit-content;
+    align-items: center;
+    gap: 12px;
+    color: var(--foreground);
+    font-size: 20px;
+    font-weight: 650;
+  }
+
+  .auth-brand__logo {
+    width: 42px;
+    height: 42px;
+  }
+
+  .auth-eyebrow {
+    color: var(--primary);
+    font-size: 12px;
+    font-weight: 700;
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+  }
+
+  .auth-intro h1 {
+    margin-top: 10px;
+    color: var(--foreground);
+    font-size: clamp(34px, 5vw, 56px);
+    font-weight: 760;
+    line-height: 1;
+  }
+
+  .auth-intro p:not(.auth-eyebrow),
+  .auth-form__head p {
+    margin-top: 12px;
+    color: var(--muted);
+    font-size: 15px;
+    line-height: 1.8;
+  }
+
+  .auth-note {
+    display: flex;
+    align-items: flex-start;
+    gap: 12px;
+    border: 1px solid color-mix(in srgb, var(--primary) 22%, transparent);
+    border-radius: var(--radius-control);
+    background: color-mix(in srgb, var(--primary) 8%, transparent);
+    padding: 14px;
+    color: var(--muted-strong);
+    font-size: 14px;
+    line-height: 1.65;
+  }
+
+  .auth-form {
+    display: grid;
+    align-content: center;
+    gap: 18px;
+    min-width: 0;
+    padding: 34px;
+    background: color-mix(in srgb, var(--surface) 72%, transparent);
+  }
+
+  .auth-form__head {
+    display: flex;
+    align-items: flex-start;
+    gap: 12px;
+  }
+
+  .auth-form__head h2 {
+    color: var(--foreground);
+    font-size: 24px;
+    font-weight: 700;
+  }
+
+  .auth-field {
+    display: grid;
+    gap: 8px;
+    min-width: 0;
+    color: var(--muted-strong);
+    font-size: 14px;
+  }
+
+  .auth-input-wrap {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr) auto;
+    align-items: center;
+    gap: 10px;
+    min-height: 48px;
+    border: 1px solid var(--border-subtle);
+    border-radius: var(--radius-control);
+    background: color-mix(in srgb, var(--panel) 70%, transparent);
+    padding: 0 12px;
+    color: var(--muted);
+    transition: border-color var(--motion-base), background var(--motion-base);
+  }
+
+  .auth-input-wrap:focus-within {
+    border-color: var(--primary);
+    background: color-mix(in srgb, var(--surface) 90%, transparent);
+  }
+
+  .auth-input-wrap input {
+    min-width: 0;
+    border: 0;
+    background: transparent;
+    color: var(--foreground);
+    outline: none;
+  }
+
+  .auth-input-wrap input::placeholder {
+    color: color-mix(in srgb, var(--muted) 60%, transparent);
+  }
+
+  .auth-password-toggle {
+    display: inline-grid;
+    width: 34px;
+    height: 34px;
+    place-items: center;
+    border-radius: var(--radius-control);
+    color: var(--muted-strong);
+    transition: color var(--motion-base), background var(--motion-base);
+  }
+
+  .auth-password-toggle:hover {
+    background: color-mix(in srgb, var(--surface-high) 86%, transparent);
+    color: var(--foreground);
+  }
+
+  .auth-field-error,
+  .auth-submit-error {
+    border-radius: var(--radius-control);
+    padding: 11px 12px;
+    font-size: 13px;
+    line-height: 1.55;
+  }
+
+  .auth-field-error {
+    background: color-mix(in srgb, #f59e0b 12%, transparent);
+    color: #f8d98a;
+  }
+
+  .auth-submit-error {
+    border: 1px solid color-mix(in srgb, #fb7185 24%, transparent);
+    background: color-mix(in srgb, #fb7185 12%, transparent);
+    color: #fecdd3;
+  }
+
+  .auth-submit {
+    display: inline-flex;
+    min-height: 48px;
+    align-items: center;
+    justify-content: center;
+    gap: 9px;
+    border-radius: var(--radius-control);
+    background: var(--primary);
+    color: var(--foreground);
+    font-weight: 700;
+    transition: filter var(--motion-base), opacity var(--motion-base), transform var(--motion-base);
+  }
+
+  .auth-submit:hover:not(:disabled) {
+    filter: brightness(1.06);
+    transform: translateY(-1px);
+  }
+
+  .auth-submit:disabled {
+    cursor: not-allowed;
+    opacity: 0.48;
+  }
+
+  .auth-alt-link {
+    display: inline-flex;
+    min-height: 44px;
+    align-items: center;
+    justify-content: center;
+    border: 1px solid var(--border-subtle);
+    border-radius: var(--radius-control);
+    color: var(--muted-strong);
+    font-size: 14px;
+    transition: border-color var(--motion-base), color var(--motion-base), background var(--motion-base);
+  }
+
+  .auth-alt-link:hover {
+    border-color: var(--border-strong);
+    background: color-mix(in srgb, var(--surface-high) 60%, transparent);
+    color: var(--foreground);
+  }
+
   .shell-root {
     display: flex;
     flex-direction: column;
@@ -1285,6 +1499,35 @@
 }
 
 @media (max-width: 767px) {
+  .auth-page {
+    padding: 16px;
+  }
+
+  .auth-shell {
+    grid-template-columns: minmax(0, 1fr);
+    border-radius: 22px;
+  }
+
+  .auth-intro,
+  .auth-form {
+    padding: 22px;
+  }
+
+  .auth-intro {
+    gap: 22px;
+    border-right: 0;
+    border-bottom: 1px solid var(--border-subtle);
+  }
+
+  .auth-brand__logo {
+    width: 36px;
+    height: 36px;
+  }
+
+  .auth-intro h1 {
+    font-size: 34px;
+  }
+
   .shell-header {
     height: 56px;
     grid-template-columns: minmax(0, 1fr) auto;

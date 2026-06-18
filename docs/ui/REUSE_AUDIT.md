@@ -25,21 +25,24 @@
 
 - `src/app/login/page.tsx`
   - Current use: route entry that renders the worktree login surface.
-  - Reuse: keep the route; module 1 does not alter the component structure.
-- `src/components/customer-login.tsx`
-  - Current use: dedicated login surface in the current worktree.
-  - Reuse: keep for the `/login` route; later modules may restyle without changing behavior.
+  - Reuse: keep the route and render the shared auth page in login mode.
+- `src/app/register/page.tsx`
+  - Current use: route entry that renders the worktree registration surface.
+  - Reuse: share `AuthPages` with `/login`.
+- `src/components/auth-pages.tsx`
+  - Current use: ordinary user login/register form surface.
+  - Reuse: keep for the `/login` and `/register` routes until a real account backend is connected.
 - `src/lib/server/provider-call.ts`
   - Current use: business logic plus network calls.
   - Reuse: keep logic, later UI work may wrap presentation separately.
 
 ### D
 
-- No old component is deleted in module 1.
+- The previous placeholder login component was replaced by the shared `AuthPages` surface in the auth-pages task.
 - Any unused legacy surface should be tagged legacy before removal in later modules.
 
 ## Reuse Notes
 
-- No existing shared Header, Sidebar, AppShell, ToolPanel, or dedicated login/register component is clearly present beyond the route-local `CustomerLogin` surface in the current worktree.
+- No existing shared Header, Sidebar, AppShell, or ToolPanel is clearly present beyond the route-local auth surface in the current worktree.
 - The current product is centered on `StudioApp`, `AdminProvidersClient`, server helpers, and a small logo component.
 - `StudioApp` should not be treated as a new layout skeleton until visual comparison proves it fits the target.
