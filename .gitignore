@@ -70,3 +70,10 @@ docs/research/screenshots/
 data/
 uploads/
 .runtime/
+
+# Isolated New API test deployment
+infra/new-api/.env
+infra/new-api/.env.*
+!infra/new-api/.env.example
+infra/new-api/.runtime/
+infra/new-api/backups/

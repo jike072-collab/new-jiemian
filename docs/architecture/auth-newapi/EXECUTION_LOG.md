@@ -115,3 +115,27 @@ Integration target: `integration/auth-newapi`
 - User identity and management permission truth sources are local project records planned for B09.
 - Local image/video HD work that does not call New API or another upstream cloud provider does not deduct New API quota.
 - New API outage allows local login but blocks billable cloud actions and quota settlement.
+
+## B05 - New API Isolated Test Deployment
+
+Status: In progress
+
+Branch: `feature/auth-newapi-05-deployment`
+
+Base: `origin/integration/auth-newapi`
+
+Integration target: `integration/auth-newapi`
+
+## B05 Scope
+
+- Add an isolated New API Docker Compose test deployment under `infra/new-api/`.
+- Keep New API detached from the frontend and from real payment credentials.
+- Use fixed New API release/image references from B03 and a fresh official release check on 2026-06-18.
+
+## B05 Notes
+
+- Official latest GitHub Release rechecked as `v1.0.0-rc.11`, published `2026-06-13T08:15:40Z`.
+- Official `controller/setup.go` at `v1.0.0-rc.11` was checked for `/api/setup` bootstrap fields.
+- An attempted official docs raw path for `docs/installation/deployment-methods/docker-compose-installation.md` returned 404; this was not used as deployment evidence.
+- Local Docker validation is currently blocked on this machine because `docker`, `docker-compose`, `podman`, `nerdctl`, and `wsl` are not available in `PATH`, and the default Docker Desktop install path is absent.
+- The B05 deployment definition still requires real container verification on a Docker-enabled host before it can be treated as fully operational.
