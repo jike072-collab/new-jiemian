@@ -39,3 +39,4 @@
 - Module 4 must not start until all three module 3 segments are complete and manually approved.
 - Build passing does not prove the page is correct.
 - Final screenshots must come from the real running page, not a static mock.
+- Final screenshots for PR #3 must come from the latest HEAD and must not show a Next.js Issue badge.

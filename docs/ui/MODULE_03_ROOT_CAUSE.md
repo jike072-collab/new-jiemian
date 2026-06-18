@@ -2,15 +2,15 @@
 
 ## Root Cause Summary
 
-- The shell rebuild was treated as a page replacement instead of a compositional container around the existing app.
-- `src/app/page.tsx` now mounts `WorkbenchShell` directly, so the real `StudioApp` entry is no longer the visible homepage surface.
-- `WorkbenchShell` keeps its own tool, login, and viewport state, which duplicates the existing product state instead of reusing it.
-- The first render depends on JavaScript viewport detection, which makes the initial desktop/mobile frame unstable and screenshot timing unreliable.
-- The shell was rebuilt with hardcoded card layers, borders, colors, and radii instead of staying inside the token system.
-- The current structure reintroduced nested panels and card-like blocks, so the border hierarchy became heavier again.
-- The `AI 图片编辑器` path exists in the product logic but was not carried forward as an explicit navigation entry, so it looks missing even though the underlying capability is still present.
-- Screenshot capture happened before the layout had a stable hydrated frame, so the evidence does not reliably reflect the final visual state.
-- Validation focused on build success, not on feature preservation, breakpoint behavior, or route-level correctness.
+- The failed first shell rebuild treated the task as a page replacement instead of a compositional container around the existing app.
+- The failed first pass mounted `WorkbenchShell` directly and bypassed the real `StudioApp` business surface.
+- The failed first pass kept its own tool, login, and viewport state, which duplicated the existing product state instead of reusing it.
+- The failed first pass depended on JavaScript viewport detection, which made the initial desktop/mobile frame unstable and screenshot timing unreliable.
+- The failed first pass used hardcoded card layers, borders, colors, and radii instead of staying inside the token system.
+- The failed first pass reintroduced nested panels and card-like blocks, so the border hierarchy became heavier again.
+- The `AI 图片编辑器` path existed in the product logic but was not carried forward as an explicit navigation entry, so it looked missing even though the underlying capability was still present.
+- Earlier screenshot capture happened before the layout had a stable hydrated frame, so the evidence did not reliably reflect the final visual state.
+- Earlier validation focused on build success, not on feature preservation, breakpoint behavior, or route-level correctness.
 
 ## Business Entry Points
 
@@ -75,6 +75,16 @@
 - The drawer has `role="dialog"`, `aria-modal`, focus return, escape close, backdrop close, body scroll lock restoration, and focus trapping.
 - The library now uses the parameter column for filtering/sorting and the main workspace for browsing and detail preview.
 - Developer-facing copy was removed from the running shell and tool surfaces.
+
+## Final Acceptance Patch
+
+- Mobile Drawer previously reused `ToolButton` with `compact`, which applied `sr-only` to tool text and made the drawer look icon-only to ordinary users.
+- The final patch removed `compact` from the mobile Drawer while preserving compact behavior for tablet/narrow navigation.
+- Drawer-specific CSS now keeps rows at touch-target height and shows full labels/descriptions without card borders or horizontal scroll.
+- The Next.js Issue screenshots were traced to runtime warnings from the mobile action registration loop before `a080a5f`.
+- `a080a5f` stabilized the mobile action callback registration; the final acceptance patch verified that no fresh `Maximum update depth exceeded` log appears after a new page load.
+- Fresh final screenshots were regenerated from the real running app at the current HEAD, with no Issue badge text detected in page state.
+- The final screenshot set is recorded in `docs/design-references/module-03-shell/README.md`.
 
 ## Final Verification Notes
 

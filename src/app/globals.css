@@ -1059,6 +1059,20 @@
     padding-bottom: var(--space-panel);
   }
 
+  .shell-drawer .shell-nav-item {
+    min-height: var(--touch-target);
+    padding: 8px 10px;
+  }
+
+  .shell-drawer .shell-nav-item__text {
+    display: block;
+  }
+
+  .shell-drawer .shell-nav-item__label,
+  .shell-drawer .shell-nav-item__desc {
+    max-width: 100%;
+  }
+
   .shell-drawer__link {
     display: flex;
     min-height: var(--touch-target);

@@ -367,7 +367,6 @@ function MobileOverlay({
                       key={item.id}
                       item={item}
                       active={activeTool.id === item.id}
-                      compact
                       onClick={() => {
                         onSelect(item.action, item.id);
                         onClose();
