@@ -214,21 +214,69 @@ jobs:
         working-directory: infra/new-api
         run: |
           set -eu
+          docker compose config --format json > compose-config.json
+          node <<'NODE'
+          const fs = require("node:fs");
+          const config = JSON.parse(fs.readFileSync("compose-config.json", "utf8"));
+          const services = config.services || {};
+          const ports = (service) => Array.isArray(services[service]?.ports) ? services[service].ports : [];
+
+          for (const service of ["postgres", "redis"]) {
+            if (ports(service).length > 0) {
+              console.error(`${service} must not define host ports in docker compose config`);
+              console.error(JSON.stringify(ports(service), null, 2));
+              process.exit(1);
+            }
+          }
+
+          const newApiPorts = ports("new-api");
+          if (newApiPorts.length === 0) {
+            console.error("new-api must expose its HTTP port for local CI verification");
+            process.exit(1);
+          }
+
+          for (const port of newApiPorts) {
+            const hostIp = port.host_ip || port.host_ip_address || "";
+            if (hostIp !== "127.0.0.1") {
+              console.error(`new-api must bind only to 127.0.0.1, got ${hostIp || "<empty>"}`);
+              console.error(JSON.stringify(port, null, 2));
+              process.exit(1);
+            }
+          }
+          NODE
           docker compose ps
-          if docker compose port postgres 5432 > postgres-port.txt 2>/dev/null; then
-            if [ -s postgres-port.txt ]; then
-              echo "PostgreSQL exposes a host port" >&2
-              cat postgres-port.txt >&2
-              exit 1
-            fi
-          fi
-          if docker compose port redis 6379 > redis-port.txt 2>/dev/null; then
-            if [ -s redis-port.txt ]; then
-              echo "Redis exposes a host port" >&2
-              cat redis-port.txt >&2
-              exit 1
-            fi
-          fi
+          for SERVICE in postgres redis; do
+            CONTAINER_ID=$(docker compose ps -q "$SERVICE")
+            test -n "$CONTAINER_ID"
+            PORT_BINDINGS=$(docker inspect "$CONTAINER_ID" --format '{{json .HostConfig.PortBindings}}')
+            case "$PORT_BINDINGS" in
+              null|'{}')
+                ;;
+              *)
+                echo "$SERVICE has unexpected host port bindings: $PORT_BINDINGS" >&2
+                exit 1
+                ;;
+            esac
+          done
+
+          NEW_API_CONTAINER_ID=$(docker compose ps -q new-api)
+          test -n "$NEW_API_CONTAINER_ID"
+          NEW_API_BINDINGS=$(docker inspect "$NEW_API_CONTAINER_ID" --format '{{json .HostConfig.PortBindings}}')
+          node -e '
+            const bindings = JSON.parse(process.argv[1]);
+            const entries = Object.values(bindings || {}).flat();
+            if (entries.length === 0) {
+              console.error("new-api has no runtime port binding");
+              process.exit(1);
+            }
+            for (const entry of entries) {
+              if (entry.HostIp !== "127.0.0.1") {
+                console.error(`new-api must bind only to 127.0.0.1, got ${entry.HostIp || "<empty>"}`);
+                console.error(JSON.stringify(bindings));
+                process.exit(1);
+              }
+            }
+          ' "$NEW_API_BINDINGS"
 
       - name: Initialize test admin
         working-directory: infra/new-api
@@ -460,19 +508,31 @@ jobs:
       - name: Server secret pattern scan
         run: |
           set -eu
-          git grep -n -I -E '-----BEGIN (RSA |DSA |EC |OPENSSH |PGP )?PRIVATE KEY-----|ghp_[A-Za-z0-9_]{30,}|github_pat_[A-Za-z0-9_]{50,}|AKIA[0-9A-Z]{16}|sk-[A-Za-z0-9]{32,}' -- ':!package-lock.json' > secret-scan.txt
-          if [ -s secret-scan.txt ]; then
+          PATTERN='[-]{5}BEGIN (RSA |DSA |EC |OPENSSH |PGP )?PRIVATE KEY[-]{5}|ghp_[A-Za-z0-9_]{30,}|github_pat_[A-Za-z0-9_]{50,}|AKIA[0-9A-Z]{16}|sk-[A-Za-z0-9]{32,}'
+          set +e
+          git grep -n -I -E -e "$PATTERN" -- ':!package-lock.json' > secret-scan.txt
+          STATUS=$?
+          set -e
+
+          if [ "$STATUS" -eq 0 ]; then
             cat secret-scan.txt >&2
+            echo "potential secret pattern found" >&2
             exit 1
+          fi
+
+          if [ "$STATUS" -ne 1 ]; then
+            echo "git grep failed with status $STATUS" >&2
+            exit "$STATUS"
           fi
 
       - name: Git diff sensitive scan
         run: |
           set -eu
+          PATTERN='[-]{5}BEGIN (RSA |DSA |EC |OPENSSH |PGP )?PRIVATE KEY[-]{5}|ghp_[A-Za-z0-9_]{30,}|github_pat_[A-Za-z0-9_]{50,}|AKIA[0-9A-Z]{16}|sk-[A-Za-z0-9]{32,}'
           BASE_REF="${GITHUB_BASE_REF:-develop}"
           git fetch origin "$BASE_REF" --depth=1
           git diff --unified=0 "origin/$BASE_REF...HEAD" > pr.diff
-          if grep -n -E '-----BEGIN (RSA |DSA |EC |OPENSSH |PGP )?PRIVATE KEY-----|ghp_[A-Za-z0-9_]{30,}|github_pat_[A-Za-z0-9_]{50,}|AKIA[0-9A-Z]{16}|sk-[A-Za-z0-9]{32,}' pr.diff; then
+          if grep -n -E -- "$PATTERN" pr.diff; then
             echo "sensitive pattern found in pull request diff" >&2
             exit 1
           fi
