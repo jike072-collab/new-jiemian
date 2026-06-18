@@ -182,6 +182,8 @@ Base: `origin/integration/auth-newapi`
 
 Integration target: `integration/auth-newapi`
 
+Pull request: `#10`
+
 ## B07 Scope
 
 - Add a server-only New API BFF client foundation under `src/lib/server/integrations/new-api/`.
@@ -203,3 +205,5 @@ Integration target: `integration/auth-newapi`
 - `npm run lint` passed after aligning ESLint ignores with the existing ignored `dist/` build output.
 - `npm run build` passed.
 - `.next/static` was scanned for `NEW_API_ADMIN_ACCESS_TOKEN`, `NEW_API_ADMIN_USER_ID`, `NEW_API_BASE_URL`, and `admin-secret`; no client static bundle match was found.
+- GitHub Actions run `27735759479` passed the `New API BFF / bff-client` job on PR `#10`, including unit tests, real New API container startup, health check, test admin setup, access-token generation, real BFF health call, unauthorized admin rejection, authorized admin call, production build, and static bundle leak scan.
+- Initial local Git push failed with `schannel: failed to receive handshake`; the branch was pushed with a per-command OpenSSL backend override and no remote/global Git config change.
