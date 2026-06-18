@@ -67,9 +67,10 @@ Logout:
 - `src/lib/server/auth/postgres-repository.ts` implements PostgreSQL user, session, and audit persistence.
 - `src/lib/server/integrations/new-api/postgres-user-mapping.ts` implements PostgreSQL mapping persistence with existing status and optimistic version semantics.
 - `src/lib/server/auth/persistence.ts` adds `APP_AUTH_PERSISTENCE_MODE=json|dual|postgres`.
+- `src/lib/server/auth/dual-repair.ts` records redacted, persistent repair records when PostgreSQL shadow reads or writes fail after JSON primary persistence succeeds.
 - `src/lib/server/auth/service.ts` uses the persistence selector only when repositories are not injected, preserving unit test and service dependency injection.
 - `scripts/database/auth-data-migration.mjs` supports `dry-run`, `apply --confirm-apply`, and `verify`.
-- `scripts/database/verify-auth-persistence.mjs` compares JSON and PostgreSQL counts/hashes with redacted output.
+- `scripts/database/verify-auth-persistence.mjs` compares JSON and PostgreSQL counts/hashes with redacted output and can explicitly retry pending dual repair records with `--repair`.
 - `.github/workflows/application-database.yml` now runs real PostgreSQL auth persistence and migration checks.
 
 ## Mode Behavior
@@ -77,7 +78,7 @@ Logout:
 | Mode | Read source | Write target | Intended use | Failure rule |
 | --- | --- | --- | --- | --- |
 | `json` | JSON | JSON | Development default and rollback evidence | No database is read. |
-| `dual` | JSON primary | JSON plus PostgreSQL mirror | Controlled comparison window only | Mirror failures fail the request; no silent fallback. |
+| `dual` | JSON primary | JSON plus PostgreSQL mirror | Controlled comparison window only | JSON remains authoritative. PostgreSQL shadow read/write failures do not fail an already successful JSON request; they create redacted repair records for explicit retry. |
 | `postgres` | PostgreSQL | PostgreSQL | CI validation and future production cutover | Missing database config fails closed. |
 
 Production without `APP_AUTH_PERSISTENCE_MODE` fails closed. BP-01B does not approve production PostgreSQL primary writes.
@@ -88,6 +89,8 @@ Production without `APP_AUTH_PERSISTENCE_MODE` fails closed. BP-01B does not app
 - `npm run migrate:auth-data:apply` requires explicit `--confirm-apply` through the package script.
 - `npm run migrate:auth-data:verify` reads source JSON and PostgreSQL counts.
 - `npm run verify:auth-persistence` prints only counts and hashes, not raw user IDs, session token hashes, passwords, cookies, or database URLs.
+- `npm run verify:auth-persistence -- --repair` retries pending dual repair records by replaying current JSON users, sessions, audit events, and mappings into PostgreSQL, then marks the redacted records as `repaired` or `failed`.
+- `data/auth-dual-repair-records.json` is runtime state only. It stores scope, operation, hashed key, redacted key, status, retry count, and sanitized error details; it must not store passwords, raw session tokens, Authorization, Cookie, API keys, or database URLs.
 - Orphan sessions and orphan mappings are rejected.
 - Invalid session token hashes are rejected.
 - Re-running apply is idempotent for unchanged source rows.
