@@ -21,6 +21,7 @@ if (compile.status !== 0) process.exit(compile.status ?? 1);
 const run = spawnSync("node", [
   "--conditions=react-server",
   "--test",
+  "--test-timeout=30000",
   "dist/database-tests/src/lib/server/database/__tests__/client.test.js",
 ], {
   cwd: root,

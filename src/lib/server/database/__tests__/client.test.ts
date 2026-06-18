@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
-import { test } from "node:test";
+import { after, test } from "node:test";
 
 import {
   applicationQuery,
@@ -48,15 +48,16 @@ test("withApplicationTransaction commits successful work and releases client", a
         ) values ($1,$2,$3,'Tx Commit',$4,'active','user',1,now(),now())
       `, [localUserId, `${localUserId}@example.com`, `tx_${localUserId.slice(0, 8)}`, passwordHash]);
     });
-    const result = await applicationQuery<{ count: string }>(
-      "select count(*)::text as count from app_users where local_user_id = $1",
-      [localUserId],
-    );
-    assert.equal(result.rows[0].count, "1");
-    assert.equal(releaseCount, 1);
   } finally {
     pool.connect = originalConnect as typeof pool.connect;
   }
+
+  const result = await applicationQuery<{ count: string }>(
+    "select count(*)::text as count from app_users where local_user_id = $1",
+    [localUserId],
+  );
+  assert.equal(result.rows[0].count, "1");
+  assert.equal(releaseCount, 1);
 });
 
 test("withApplicationTransaction rolls back failed work and releases client", async () => {
@@ -162,4 +163,8 @@ test("checkApplicationDatabaseHealth returns redacted retryable error when datab
     if (previous.queryTimeout === undefined) delete process.env.APP_DATABASE_QUERY_TIMEOUT_MS;
     else process.env.APP_DATABASE_QUERY_TIMEOUT_MS = previous.queryTimeout;
   }
+});
+
+after(async () => {
+  await closeApplicationDatabasePool();
 });
