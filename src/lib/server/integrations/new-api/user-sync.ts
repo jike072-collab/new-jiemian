@@ -47,11 +47,30 @@ type UpstreamCreateResult =
   | { kind: "repair_required"; code: string; message: string };
 
 const DEFAULT_GROUP = "default";
+const MAX_NEW_API_USER_FIELD_LENGTH = 20;
+
+function shortenValue(raw: string, seed: string, maxLength = MAX_NEW_API_USER_FIELD_LENGTH, lowerCase = true) {
+  const normalized = raw
+    .trim()
+    .replace(/\s+/g, " ")
+    .replace(/[^A-Za-z0-9_.@ -]+/g, "-")
+    .replace(/^-+|-+$/g, "");
+  const candidate = lowerCase ? normalized.toLowerCase() : normalized;
+  if (!candidate) return `local-${stableHash(seed).slice(0, Math.max(8, maxLength - 6))}`.slice(0, maxLength);
+  if (candidate.length <= maxLength) return candidate;
+  const hash = stableHash(seed).slice(0, 8);
+  const prefixLength = Math.max(1, maxLength - hash.length - 1);
+  return `${candidate.slice(0, prefixLength)}-${hash}`.slice(0, maxLength);
+}
 
 function normalizeUsername(profile: NewApiUserSyncProfile) {
   const raw = profile.username || profile.email || profile.localUserId;
-  const normalized = raw.trim().toLowerCase().replace(/[^a-z0-9_.@-]+/g, "-").replace(/^-+|-+$/g, "");
-  return normalized || `local-${stableHash(profile.localUserId).slice(0, 12)}`;
+  return shortenValue(raw, `${profile.localUserId}:username`);
+}
+
+function normalizeDisplayName(profile: NewApiUserSyncProfile) {
+  const raw = profile.displayName || profile.email || profile.localUserId;
+  return shortenValue(raw, `${profile.localUserId}:displayName`, MAX_NEW_API_USER_FIELD_LENGTH, false);
 }
 
 function stableHash(value: string) {
@@ -116,7 +135,7 @@ async function createOrFindUpstreamUser(
     const response = await createUser({
       username: normalizeUsername(profile),
       password: generatedPassword(profile, options),
-      display_name: profile.displayName || profile.email || profile.localUserId,
+      display_name: normalizeDisplayName(profile),
       email: profile.email,
       group: profile.group || DEFAULT_GROUP,
       quota: profile.initialQuota ?? 0,

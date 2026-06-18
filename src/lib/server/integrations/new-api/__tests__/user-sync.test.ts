@@ -59,6 +59,36 @@ test("creates a pending mapping then activates it after New API user creation", 
   assert.equal((await repository.getByLocalUserId("local-user-1"))?.idempotency_key, "register:local-user-1");
 });
 
+test("shortens New API username and display name to official field limits", async () => {
+  const repository = createMemoryNewApiUserMappingRepository();
+  const service = new NewApiUserSyncService({
+    repository,
+    createUser: async (input) => {
+      assert(String(input.username).length <= 20);
+      assert(String(input.display_name).length <= 20);
+      assert.notEqual(input.username, "very-long-customer-address@example.com");
+      return response({
+        success: true,
+        data: user({
+          id: 78,
+          username: String(input.username),
+          email: "very-long-customer-address@example.com",
+        }),
+      });
+    },
+    listUsers: async () => response({ data: [] }),
+  });
+
+  const result = await service.ensureMapped(profile({
+    localUserId: "local-user-with-a-long-stable-id",
+    email: "very-long-customer-address@example.com",
+    displayName: "Very Long Customer Display Name For New API",
+  }));
+
+  assert.equal(result.mapping.sync_status, "active");
+  assert.equal(result.mapping.new_api_user_id, "78");
+});
+
 test("returns existing active mapping without calling New API", async () => {
   const repository = createMemoryNewApiUserMappingRepository();
   await repository.createPending({ localUserId: "local-user-1" });
