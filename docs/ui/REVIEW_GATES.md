@@ -95,3 +95,16 @@
 - Download actions must point only to real stored output files created by the local process.
 - Normal workspace errors must not expose local absolute executable paths, model paths, command lines, secrets, or full stack traces.
 - Module 7 must keep the module 5 visual foundation and must not redesign Header, Sidebar, upload controls, primary action, preview shell, or scrollbar behavior.
+
+## Module 8 Gate
+
+- Module 8 must not proceed to module 9 until it is manually approved.
+- A-side module 8 must not modify B-side New API, authentication, quota, payment, Docker, database, Redis, BFF, callback, reconciliation, or port configuration.
+- Video upscale must use the real local Video2X command-line workflow and must not automate the desktop UI.
+- Video2X and FFmpeg runtime availability must be truly detected before the UI marks video upscale as available.
+- Final module 8 acceptance must include real Video2X 2x and 4x output dimensions, not only dependency detection.
+- When Video2X or FFmpeg is missing, the UI must show a real dependency-missing state and must not fake processing or success.
+- No static sample video may be used as an accepted video-upscale result.
+- Download actions must point only to real stored output files created by the local process.
+- Normal workspace errors must not expose local absolute executable paths, command lines, secrets, or full stack traces.
+- Module 8 must keep the module 5 visual foundation and must not redesign Header, Sidebar, upload controls, primary action, preview shell, or scrollbar behavior.

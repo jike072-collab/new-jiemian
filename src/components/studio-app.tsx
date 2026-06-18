@@ -51,6 +51,7 @@ type UploadFilePreview = {
   name: string;
   size: number;
   previewUrl?: string;
+  mediaType?: "image" | "video";
 };
 
 type ImageWorkspaceState = {
@@ -88,6 +89,11 @@ type ImageUpscaleWorkspaceFile = {
   previewUrl: string;
 };
 
+type VideoUpscaleWorkspaceFile = {
+  file: File;
+  previewUrl: string;
+};
+
 type ImageUpscaleWorkspaceState = {
   scale: "2" | "4";
   file: ImageUpscaleWorkspaceFile | null;
@@ -98,6 +104,19 @@ type ImageUpscaleWorkspaceState = {
   checked: boolean;
   availability: UpscaleAvailability | null;
   statusError: string;
+};
+
+type VideoUpscaleWorkspaceState = {
+  scale: "2" | "4";
+  file: VideoUpscaleWorkspaceFile | null;
+  fileError: string;
+  submitError: string;
+  loading: boolean;
+  statusLoading: boolean;
+  checked: boolean;
+  availability: UpscaleAvailability | null;
+  statusError: string;
+  job: JobRecord | null;
 };
 
 const ratios = ["1:1", "16:9", "9:16", "4:3", "3:4"];
@@ -135,10 +154,12 @@ const imageWorkspaceModeMeta: Record<WorkspaceImageMode, {
 };
 
 const allowedReferenceImageTypes = new Set(["image/png", "image/jpeg", "image/webp"]);
+const allowedUpscaleVideoTypes = new Set(["video/mp4", "video/webm", "video/quicktime"]);
 const maxReferenceImageSize = 10 * 1024 * 1024;
 const maxReferenceImageCount = 10;
 const maxVideoFirstFrameCount = 1;
 const maxImageUpscaleSize = 25 * 1024 * 1024;
+const maxVideoUpscaleSize = 1024 * 1024 * 1024;
 
 const videoWorkspaceModeMeta: Record<WorkspaceVideoMode, {
   submitLabel: string;
@@ -243,6 +264,24 @@ function createImageUpscaleFile(files: File[]) {
   };
 }
 
+function createVideoUpscaleFile(files: File[]) {
+  if (files.length > 1) {
+    throw new Error("视频高清一次只能上传 1 个视频。");
+  }
+  const [file] = files;
+  if (!file) return null;
+  if (!allowedUpscaleVideoTypes.has(file.type)) {
+    throw new Error("视频高清仅支持 MP4、WebM 和 MOV。");
+  }
+  if (file.size > maxVideoUpscaleSize) {
+    throw new Error("视频高清文件不能超过 1GB。");
+  }
+  return {
+    file,
+    previewUrl: URL.createObjectURL(file),
+  };
+}
+
 async function jsonFetch<T>(url: string, options?: RequestInit): Promise<T> {
   const response = await fetch(url, options);
   const data = await response.json().catch(() => ({}));
@@ -302,9 +341,22 @@ export function StudioApp() {
     availability: null,
     statusError: "",
   });
+  const [videoUpscaleWorkspace, setVideoUpscaleWorkspace] = useState<VideoUpscaleWorkspaceState>({
+    scale: "2",
+    file: null,
+    fileError: "",
+    submitError: "",
+    loading: false,
+    statusLoading: true,
+    checked: false,
+    availability: null,
+    statusError: "",
+    job: null,
+  });
   const imageWorkspaceFilesRef = useRef<ImageWorkspaceFile[]>([]);
   const videoWorkspaceFilesRef = useRef<VideoWorkspaceFile[]>([]);
   const imageUpscaleFileRef = useRef<ImageUpscaleWorkspaceFile | null>(null);
+  const videoUpscaleFileRef = useRef<VideoUpscaleWorkspaceFile | null>(null);
 
   const refreshLibrary = useCallback(async () => {
     const data = await jsonFetch<{ items: LibraryItem[] }>("/api/library");
@@ -360,6 +412,7 @@ export function StudioApp() {
     imageWorkspaceFilesRef.current.forEach((file) => URL.revokeObjectURL(file.previewUrl));
     videoWorkspaceFilesRef.current.forEach((file) => URL.revokeObjectURL(file.previewUrl));
     if (imageUpscaleFileRef.current) URL.revokeObjectURL(imageUpscaleFileRef.current.previewUrl);
+    if (videoUpscaleFileRef.current) URL.revokeObjectURL(videoUpscaleFileRef.current.previewUrl);
   }, []);
 
   useEffect(() => {
@@ -786,6 +839,159 @@ export function StudioApp() {
     && !imageUpscaleWorkspace.loading
     && !imageUpscaleWorkspace.statusLoading;
 
+  const updateVideoUpscaleWorkspace = useCallback((patch: Partial<VideoUpscaleWorkspaceState>) => {
+    setVideoUpscaleWorkspace((prev) => ({ ...prev, ...patch }));
+  }, []);
+
+  const checkVideoUpscaleAvailability = useCallback(async () => {
+    updateVideoUpscaleWorkspace({ statusLoading: true, statusError: "", checked: true });
+    try {
+      const data = await jsonFetch<UpscaleStatusResponse>("/api/upscale/status");
+      updateVideoUpscaleWorkspace({ availability: data.video, statusLoading: false });
+    } catch (error) {
+      updateVideoUpscaleWorkspace({
+        availability: null,
+        statusLoading: false,
+        statusError: error instanceof Error ? error.message : "本机视频高清依赖检测失败。",
+      });
+    }
+  }, [updateVideoUpscaleWorkspace]);
+
+  useEffect(() => {
+    void checkVideoUpscaleAvailability();
+  }, [checkVideoUpscaleAvailability]);
+
+  const replaceVideoUpscaleFile = useCallback((files: File[]) => {
+    const previous = videoUpscaleFileRef.current;
+    try {
+      const nextFile = createVideoUpscaleFile(files);
+      if (previous) URL.revokeObjectURL(previous.previewUrl);
+      videoUpscaleFileRef.current = nextFile;
+      updateVideoUpscaleWorkspace({
+        file: nextFile,
+        fileError: "",
+        submitError: "",
+      });
+      setOutputs((prev) => ({ ...prev, "video-upscale": null }));
+    } catch (error) {
+      if (previous) URL.revokeObjectURL(previous.previewUrl);
+      videoUpscaleFileRef.current = null;
+      updateVideoUpscaleWorkspace({
+        file: null,
+        fileError: error instanceof Error ? error.message : "视频读取失败。",
+        submitError: "",
+      });
+      setOutputs((prev) => ({ ...prev, "video-upscale": null }));
+    }
+  }, [updateVideoUpscaleWorkspace]);
+
+  const removeVideoUpscaleFile = useCallback(() => {
+    if (videoUpscaleFileRef.current) {
+      URL.revokeObjectURL(videoUpscaleFileRef.current.previewUrl);
+    }
+    videoUpscaleFileRef.current = null;
+    updateVideoUpscaleWorkspace({
+      file: null,
+      fileError: "",
+      submitError: "",
+      job: null,
+    });
+    setOutputs((prev) => ({ ...prev, "video-upscale": null }));
+  }, [updateVideoUpscaleWorkspace]);
+
+  const submitVideoUpscale = useCallback(async () => {
+    const currentFile = videoUpscaleWorkspace.file;
+    const pendingJob = videoUpscaleWorkspace.job
+      && videoUpscaleWorkspace.job.status !== "done"
+      && videoUpscaleWorkspace.job.status !== "failed";
+    if (!currentFile) {
+      updateVideoUpscaleWorkspace({ fileError: "请先上传一个视频。", submitError: "请先上传一个视频。" });
+      return;
+    }
+    if (!videoUpscaleWorkspace.availability?.ready) {
+      updateVideoUpscaleWorkspace({
+        submitError: videoUpscaleWorkspace.statusError || videoUpscaleWorkspace.availability?.detail || "本机视频高清工具还没有准备好。",
+      });
+      return;
+    }
+    if (videoUpscaleWorkspace.loading || pendingJob) return;
+
+    updateVideoUpscaleWorkspace({
+      loading: true,
+      submitError: "",
+      fileError: "",
+      job: null,
+    });
+    setMessage("");
+    try {
+      const form = new FormData();
+      form.set("file", currentFile.file);
+      form.set("scale", videoUpscaleWorkspace.scale);
+      const data = await jsonFetch<{ item: LibraryItem; job: JobRecord | null }>("/api/upscale/video", {
+        method: "POST",
+        body: form,
+      });
+      updateVideoUpscaleWorkspace({ job: data.job });
+      setOutputs((prev) => ({ ...prev, "video-upscale": { item: data.item, job: data.job, title: "视频高清结果", tool: "video-upscale" } }));
+      await refreshLibrary();
+    } catch (error) {
+      const text = error instanceof Error ? error.message : "视频高清处理失败。";
+      updateVideoUpscaleWorkspace({ submitError: text });
+      setMessage(text);
+    } finally {
+      updateVideoUpscaleWorkspace({ loading: false });
+    }
+  }, [
+    refreshLibrary,
+    setMessage,
+    updateVideoUpscaleWorkspace,
+    videoUpscaleWorkspace.availability?.detail,
+    videoUpscaleWorkspace.availability?.ready,
+    videoUpscaleWorkspace.file,
+    videoUpscaleWorkspace.job,
+    videoUpscaleWorkspace.loading,
+    videoUpscaleWorkspace.scale,
+    videoUpscaleWorkspace.statusError,
+  ]);
+
+  const videoUpscaleProcessing = Boolean(videoUpscaleWorkspace.job)
+    && videoUpscaleWorkspace.job?.status !== "done"
+    && videoUpscaleWorkspace.job?.status !== "failed";
+  const videoUpscaleCanSubmit = Boolean(videoUpscaleWorkspace.file)
+    && Boolean(videoUpscaleWorkspace.availability?.ready)
+    && !videoUpscaleWorkspace.loading
+    && !videoUpscaleWorkspace.statusLoading
+    && !videoUpscaleProcessing;
+
+  useEffect(() => {
+    const job = videoUpscaleWorkspace.job;
+    if (!job || job.status === "done" || job.status === "failed") return;
+    const timer = window.setInterval(async () => {
+      try {
+        const data = await jsonFetch<{ job: JobRecord | null }>(`/api/jobs/${job.id}`);
+        const nextJob = data.job || job;
+        updateVideoUpscaleWorkspace({ job: nextJob });
+        const libraryData = await jsonFetch<{ items: LibraryItem[] }>("/api/library");
+        const updatedItem = libraryData.items.find((item) => item.id === job.libraryItemId);
+        if (updatedItem) {
+          setOutputs((prev) => ({
+            ...prev,
+            "video-upscale": { item: updatedItem, job: nextJob, title: "视频高清结果", tool: "video-upscale" },
+          }));
+          if (updatedItem.status === "failed") {
+            updateVideoUpscaleWorkspace({ submitError: updatedItem.error || nextJob.error || "视频高清处理失败。" });
+          }
+        }
+        await refreshLibrary();
+      } catch (error) {
+        const text = error instanceof Error ? error.message : "视频高清任务查询失败。";
+        updateVideoUpscaleWorkspace({ submitError: text });
+        setMessage(text);
+      }
+    }, 5000);
+    return () => window.clearInterval(timer);
+  }, [refreshLibrary, setMessage, updateVideoUpscaleWorkspace, videoUpscaleWorkspace.job]);
+
   useEffect(() => {
     const job = videoWorkspace.job;
     if (!job || job.status === "done" || job.status === "failed") return;
@@ -871,10 +1077,6 @@ export function StudioApp() {
     videoWorkspacePrompt,
   ]);
 
-  const handleVideoUpscaleResult = useCallback((item: LibraryItem, job?: JobRecord | null) => {
-    setOutputs((prev) => ({ ...prev, "video-upscale": { item, job, title: "视频高清结果", tool: "video-upscale" } }));
-  }, []);
-
   const parameterSlot = (
     <>
       {activeBusinessTool === "image" ? (
@@ -935,11 +1137,15 @@ export function StudioApp() {
         />
       ) : null}
       {activeBusinessTool === "video-upscale" ? (
-        <UpscaleForm
-          kind="video"
-          onDone={refreshLibrary}
-          onResult={handleVideoUpscaleResult}
-          setMessage={setMessage}
+        <VideoUpscaleForm
+          state={videoUpscaleWorkspace}
+          canSubmit={videoUpscaleCanSubmit}
+          onScaleChange={(value) => updateVideoUpscaleWorkspace({ scale: value as "2" | "4", submitError: "" })}
+          onFilesChange={replaceVideoUpscaleFile}
+          onFileRemove={removeVideoUpscaleFile}
+          onFilesClear={removeVideoUpscaleFile}
+          onCheckAvailability={checkVideoUpscaleAvailability}
+          onSubmit={submitVideoUpscale}
           registerMobileAction={setMobileAction}
         />
       ) : null}
@@ -1022,6 +1228,16 @@ export function StudioApp() {
                 libraryCount={library.length}
                 onSubmit={submitImageUpscale}
                 onCheckAvailability={checkImageUpscaleAvailability}
+                onOpenLibrary={() => setActiveWorkspaceToolId("library")}
+              />
+            ) : activeBusinessTool === "video-upscale" ? (
+              <VideoUpscalePreviewPanel
+                state={videoUpscaleWorkspace}
+                output={activeOutput}
+                canSubmit={videoUpscaleCanSubmit}
+                libraryCount={library.length}
+                onSubmit={submitVideoUpscale}
+                onCheckAvailability={checkVideoUpscaleAvailability}
                 onOpenLibrary={() => setActiveWorkspaceToolId("library")}
               />
             ) : (
@@ -1433,175 +1649,6 @@ function VideoPromptBox({
   );
 }
 
-function UpscaleForm({
-  kind,
-  onDone,
-  onResult,
-  setMessage,
-  registerMobileAction,
-}: {
-  kind: UpscaleKind;
-  onDone: () => Promise<void>;
-  onResult: (item: LibraryItem, job?: JobRecord | null) => void;
-  setMessage: (value: string) => void;
-  registerMobileAction: (action: MobileActionState) => void;
-}) {
-  const isVideo = kind === "video";
-  const [scale, setScale] = useState("2");
-  const [file, setFile] = useState<File | null>(null);
-  const [loading, setLoading] = useState(false);
-  const [statusLoading, setStatusLoading] = useState(true);
-  const [availability, setAvailability] = useState<UpscaleAvailability | null>(null);
-  const [job, setJob] = useState<JobRecord | null>(null);
-
-  async function checkAvailability() {
-    setStatusLoading(true);
-    try {
-      const data = await jsonFetch<UpscaleStatusResponse>("/api/upscale/status");
-      setAvailability(data[kind]);
-    } catch (error) {
-      setAvailability(null);
-      setMessage(error instanceof Error ? error.message : "本机高清依赖检测失败。");
-    } finally {
-      setStatusLoading(false);
-    }
-  }
-
-  useEffect(() => {
-    let cancelled = false;
-    jsonFetch<UpscaleStatusResponse>("/api/upscale/status")
-      .then((data) => {
-        if (!cancelled) setAvailability(data[kind]);
-      })
-      .catch((error: unknown) => {
-        if (!cancelled) {
-          setAvailability(null);
-          setMessage(error instanceof Error ? error.message : "本机高清依赖检测失败。");
-        }
-      })
-      .finally(() => {
-        if (!cancelled) setStatusLoading(false);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [kind, setMessage]);
-
-  useEffect(() => {
-    if (!isVideo || !job || job.status === "done" || job.status === "failed") return;
-    const timer = window.setInterval(async () => {
-      try {
-        const data = await jsonFetch<{ job: JobRecord | null }>(`/api/jobs/${job.id}`);
-        if (data.job) setJob(data.job);
-        const libraryData = await jsonFetch<{ items: LibraryItem[] }>("/api/library");
-        const updatedItem = libraryData.items.find((item) => item.id === job.libraryItemId);
-        if (updatedItem) onResult(updatedItem, data.job || job);
-        await onDone();
-      } catch (error) {
-        setMessage(error instanceof Error ? error.message : "高清任务查询失败。");
-      }
-    }, 5000);
-    return () => window.clearInterval(timer);
-  }, [isVideo, job, onDone, onResult, setMessage]);
-
-  const submit = useCallback(async () => {
-    if (!file) {
-      setMessage(`请选择一个${isVideo ? "视频" : "图片"}文件。`);
-      return;
-    }
-    if (!availability?.ready) {
-      setMessage(availability?.detail || `本机${isVideo ? "视频" : "图片"}放大工具还没有准备好。`);
-      return;
-    }
-
-    setLoading(true);
-    setMessage("");
-    try {
-      const form = new FormData();
-      form.set("file", file);
-      form.set("scale", scale);
-      const data = await jsonFetch<{ item: LibraryItem; job: JobRecord | null }>(`/api/upscale/${kind}`, {
-        method: "POST",
-        body: form,
-      });
-      setJob(data.job);
-      onResult(data.item, data.job);
-      await onDone();
-    } catch (error) {
-      setMessage(error instanceof Error ? error.message : `${isVideo ? "视频" : "图片"}高清处理失败。`);
-    } finally {
-      setLoading(false);
-    }
-  }, [availability?.detail, availability?.ready, file, isVideo, kind, onDone, onResult, scale, setMessage]);
-
-  const accept = isVideo ? "video/mp4,video/webm,video/quicktime,.mov" : "image/png,image/jpeg,image/webp";
-
-  useEffect(() => {
-    registerMobileAction({
-      label: "开始增强",
-      loading,
-      disabled: loading || statusLoading,
-      onClick: submit,
-    });
-    return () => registerMobileAction(null);
-  }, [loading, registerMobileAction, statusLoading, submit]);
-
-  return (
-    <FormPanel>
-      <FileInput
-        label={isVideo ? "源视频" : "源图片"}
-        optional={false}
-        accept={accept}
-        multiple={false}
-        files={file ? [file] : []}
-        onChange={(nextFiles) => setFile(nextFiles[0] || null)}
-      />
-
-      <StackedControl label="放大倍数" required>
-        <ModeSegmentedControl
-          label="放大倍数"
-          groupId="upscale-scale"
-          value={scale}
-          options={[
-            ["2", "2x"],
-            ["4", "4x"],
-          ]}
-          onChange={setScale}
-        />
-      </StackedControl>
-
-      <div
-        className={cn(
-          "studio-status",
-          availability?.ready ? "is-ready" : "is-warning",
-        )}
-      >
-        <div className="min-w-0">
-          <strong className="block">
-            {statusLoading ? "正在检测本机依赖..." : availability?.ready ? "本机依赖已就绪" : "本机依赖未检测到"}
-          </strong>
-          {!statusLoading ? <p className="mt-1 break-all text-xs opacity-75">{availability?.detail || "请先安装并配置对应的本地高清处理依赖。"}</p> : null}
-        </div>
-        <button
-          type="button"
-          onClick={checkAvailability}
-          disabled={statusLoading}
-          className="studio-icon-button"
-          aria-label="重新检测本机依赖"
-        >
-          <RefreshCw className={cn("size-4", statusLoading && "animate-spin")} />
-        </button>
-      </div>
-
-      <StickyPrimaryAction helpText="本机增强，不需要 Key">
-        <SubmitButton disabled={loading || statusLoading} loading={loading} onClick={submit}>
-          开始增强
-        </SubmitButton>
-      </StickyPrimaryAction>
-    </FormPanel>
-  );
-}
-
 function ImageUpscaleForm({
   state,
   canSubmit,
@@ -1882,6 +1929,295 @@ function ImageUpscalePreviewPanel({
         <p>上传后开始增强，成功后这里会显示真实结果。</p>
       </div>
     </PreviewState>
+  );
+}
+
+function VideoUpscalePreviewPanel({
+  state,
+  output,
+  canSubmit,
+  libraryCount,
+  onSubmit,
+  onCheckAvailability,
+  onOpenLibrary,
+}: {
+  state: VideoUpscaleWorkspaceState;
+  output: OutputState;
+  canSubmit: boolean;
+  libraryCount: number;
+  onSubmit: () => void;
+  onCheckAvailability: () => Promise<void>;
+  onOpenLibrary: () => void;
+}) {
+  const source = state.file;
+
+  if (state.loading || state.job?.status === "generating" || state.job?.status === "queued") {
+    return (
+      <PreviewState eyebrow="处理中" title="创作预览" description="正在增强视频，请稍候。" badge={`${state.scale}x`} role="status" live>
+        <div className="studio-upscale-preview">
+          {source ? (
+            <figure className="studio-upscale-preview__figure">
+              <span className="studio-upscale-preview__label">源视频</span>
+              <video src={source.previewUrl} controls />
+            </figure>
+          ) : null}
+          <div className="studio-preview__empty">
+            <p>增强完成后，结果会在这里播放。</p>
+          </div>
+        </div>
+      </PreviewState>
+    );
+  }
+
+  if (state.submitError) {
+    return (
+      <PreviewState eyebrow="失败" title="生成结果" description={state.submitError} badge="可重试" role="alert">
+        <div className="studio-upscale-preview">
+          {source ? (
+            <figure className="studio-upscale-preview__figure">
+              <span className="studio-upscale-preview__label">源视频</span>
+              <video src={source.previewUrl} controls />
+            </figure>
+          ) : null}
+          <div className="studio-preview__empty">
+            <p>参数会保留，你可以重新检测本机依赖后再次尝试。</p>
+            <div className="studio-actions">
+              <button type="button" className="studio-secondary-button" onClick={() => void onCheckAvailability()}>
+                重新检测
+              </button>
+              <button type="button" className="studio-secondary-button" onClick={onSubmit} disabled={!canSubmit}>
+                重试
+              </button>
+              <button type="button" className="studio-secondary-button" onClick={onOpenLibrary}>
+                进入作品库
+              </button>
+            </div>
+          </div>
+        </div>
+      </PreviewState>
+    );
+  }
+
+  if (!state.checked || state.statusLoading || (!state.availability?.ready && !state.statusError)) {
+    return (
+      <PreviewState
+        eyebrow="创作预览"
+        title="创作预览"
+        description={state.statusLoading ? "正在检测本机依赖。" : "先上传一个视频，再选择 2x 或 4x。"}
+        badge={`${libraryCount} 条作品`}
+      >
+        <div className="studio-preview__empty">
+          <p>这里会显示源视频和增强结果对比。</p>
+        </div>
+        <div className="studio-steps">
+          <div className="studio-step">
+            <span>1</span>
+            <p>上传一个 MP4、WebM 或 MOV 视频</p>
+          </div>
+          <div className="studio-step">
+            <span>2</span>
+            <p>选择 2x 或 4x 放大倍数</p>
+          </div>
+          <div className="studio-step">
+            <span>3</span>
+            <p>成功后可直接播放和下载</p>
+          </div>
+        </div>
+      </PreviewState>
+    );
+  }
+
+  if (!state.availability?.ready) {
+    return (
+      <PreviewState eyebrow="依赖不可用" title="生成结果" description={state.statusError || state.availability?.detail || "本机视频高清工具不可用。"} badge="请重试" role="alert">
+        <div className="studio-preview__empty">
+          <p>工具可用后才能开始增强。</p>
+          <div className="studio-actions">
+            <button type="button" className="studio-secondary-button" onClick={() => void onCheckAvailability()}>
+              重新检测
+            </button>
+          </div>
+        </div>
+      </PreviewState>
+    );
+  }
+
+  if (output?.item.output?.url) {
+    const params = output.item.params;
+    const sourceSize = typeof params.sourceWidth === "number" && typeof params.sourceHeight === "number"
+      ? `${params.sourceWidth} x ${params.sourceHeight}`
+      : "未记录";
+    const outputSize = typeof params.outputWidth === "number" && typeof params.outputHeight === "number"
+      ? `${params.outputWidth} x ${params.outputHeight}`
+      : "未记录";
+    const resultScale = typeof params.scale === "number" ? `${params.scale}x` : `${state.scale}x`;
+    return (
+      <PreviewState eyebrow="结果" title="高清结果" description={`真实输出，${state.scale}x。`} badge={output.job?.status || output.item.status} role="status" live>
+        <div className="studio-upscale-preview">
+          {source ? (
+            <figure className="studio-upscale-preview__figure">
+              <span className="studio-upscale-preview__label">原视频</span>
+              <video src={source.previewUrl} controls />
+            </figure>
+          ) : null}
+          <figure className="studio-upscale-preview__figure">
+            <span className="studio-upscale-preview__label">高清结果</span>
+            <video src={output.item.output.url} controls />
+          </figure>
+        </div>
+        <dl className="studio-upscale-stats" aria-label="视频高清结果信息">
+          <div>
+            <dt>原视频分辨率</dt>
+            <dd>{sourceSize}</dd>
+          </div>
+          <div>
+            <dt>输出分辨率</dt>
+            <dd>{outputSize}</dd>
+          </div>
+          <div>
+            <dt>当前倍数</dt>
+            <dd>{resultScale}</dd>
+          </div>
+        </dl>
+        <div className="studio-actions">
+          <a className="studio-secondary-button" href={output.item.output.url} download>
+            下载结果视频
+          </a>
+          <button type="button" className="studio-secondary-button" onClick={onSubmit} disabled={!canSubmit}>
+            再次增强
+          </button>
+          <button type="button" className="studio-secondary-button" onClick={onOpenLibrary}>
+            进入作品库
+          </button>
+        </div>
+      </PreviewState>
+    );
+  }
+
+  return (
+    <PreviewState eyebrow="创作预览" title="创作预览" description="上传视频后，源视频和增强结果会在这里对比显示。" badge={`${libraryCount} 条作品`}>
+      <div className="studio-preview__empty">
+        <p>上传后开始增强，成功后这里会显示真实结果。</p>
+      </div>
+    </PreviewState>
+  );
+}
+
+function VideoUpscaleForm({
+  state,
+  canSubmit,
+  onScaleChange,
+  onFilesChange,
+  onFileRemove,
+  onFilesClear,
+  onCheckAvailability,
+  onSubmit,
+  registerMobileAction,
+}: {
+  state: VideoUpscaleWorkspaceState;
+  canSubmit: boolean;
+  onScaleChange: (value: string) => void;
+  onFilesChange: (files: File[]) => void;
+  onFileRemove: () => void;
+  onFilesClear: () => void;
+  onCheckAvailability: () => Promise<void>;
+  onSubmit: () => void;
+  registerMobileAction: (action: MobileActionState) => void;
+}) {
+  const inputRef = useRef<HTMLInputElement | null>(null);
+  const [dragging, setDragging] = useState(false);
+  const file = state.file;
+  const statusTitle = !state.checked
+    ? "未检测"
+    : state.statusLoading
+      ? "正在检测本机依赖..."
+      : state.statusError
+        ? "检测失败"
+        : state.availability?.ready
+          ? "工具可用"
+          : "工具不可用";
+  const statusTone = state.statusError
+    ? "is-warning"
+    : state.availability?.ready
+      ? "is-ready"
+      : "is-warning";
+  const processing = state.loading || state.job?.status === "queued" || state.job?.status === "generating";
+
+  useEffect(() => {
+    registerMobileAction({
+      label: processing ? "正在增强" : "开始增强",
+      loading: processing,
+      disabled: !canSubmit || processing,
+      onClick: onSubmit,
+    });
+    return () => registerMobileAction(null);
+  }, [canSubmit, onSubmit, processing, registerMobileAction]);
+
+  return (
+    <FormPanel>
+      <FieldFrame label="源视频" required>
+        <CompactDropzone
+          inputRef={inputRef}
+          inputId="video-upscale-input"
+          accept="video/mp4,video/webm,video/quicktime"
+          multiple={false}
+          required
+          dragging={dragging}
+          files={file ? [{
+            name: file.file.name,
+            size: file.file.size,
+            previewUrl: file.previewUrl,
+            mediaType: "video",
+          }] : []}
+          emptyTitle="上传视频"
+          filledTitle="已选择视频"
+          helpText="支持 MP4、WebM、MOV，单个视频不超过 1GB。"
+          chooseLabel={file ? "替换视频" : "选择视频"}
+          onFiles={onFilesChange}
+          onRemove={file ? () => onFileRemove() : undefined}
+          onClear={file ? onFilesClear : undefined}
+          onDraggingChange={setDragging}
+        />
+        {state.fileError ? <p className="studio-error-text" role="alert">{state.fileError}</p> : null}
+      </FieldFrame>
+
+      <StackedControl label="放大倍数" required>
+        <ModeSegmentedControl
+          label="放大倍数"
+          groupId="video-upscale-scale"
+          value={state.scale}
+          options={[
+            ["2", "2x"],
+            ["4", "4x"],
+          ]}
+          onChange={onScaleChange}
+        />
+      </StackedControl>
+
+      <div className={cn("studio-status", statusTone)}>
+        <div className="min-w-0">
+          <strong className="block">{statusTitle}</strong>
+          <p className="mt-1 break-all text-xs opacity-75">
+            {state.statusError || state.availability?.detail || "先检测本机 Video2X，再开始增强视频。"}
+          </p>
+        </div>
+        <button
+          type="button"
+          onClick={() => void onCheckAvailability()}
+          disabled={state.statusLoading}
+          className="studio-icon-button"
+          aria-label="重新检测本机依赖"
+        >
+          <RefreshCw className={cn("size-4", state.statusLoading && "animate-spin")} />
+        </button>
+      </div>
+
+      <StickyPrimaryAction helpText="本机增强，不需要 Key">
+        <SubmitButton disabled={!canSubmit || processing} loading={processing} loadingLabel="正在增强" onClick={onSubmit}>
+          开始增强
+        </SubmitButton>
+      </StickyPrimaryAction>
+    </FormPanel>
   );
 }
 
@@ -2426,7 +2762,9 @@ function CompactDropzone({
           {files.map((file, index) => (
             <div key={`${file.name}-${file.size}-${index}`} className="studio-upload-item">
               {file.previewUrl ? (
-                <img src={file.previewUrl} alt={file.name} />
+                file.mediaType === "video"
+                  ? <video src={file.previewUrl} controls />
+                  : <img src={file.previewUrl} alt={file.name} />
               ) : (
                 <span className="studio-upload-item__placeholder" aria-hidden="true">
                   <ImageUp className="size-5" />
@@ -2585,51 +2923,6 @@ function ProviderSelect({
           </div>
         ) : null}
       </div>
-    </FieldFrame>
-  );
-}
-
-function FileInput({
-  label,
-  optional,
-  accept,
-  multiple = true,
-  files,
-  onChange,
-}: {
-  label: string;
-  optional: boolean;
-  accept: string;
-  multiple?: boolean;
-  files: File[];
-  onChange: (files: File[]) => void;
-}) {
-  const inputRef = useRef<HTMLInputElement | null>(null);
-  const [dragging, setDragging] = useState(false);
-  const inputId = `${label.replace(/\s+/g, "-")}-file-input`;
-
-  return (
-    <FieldFrame label={label} required={!optional} hint={optional ? "可选" : undefined}>
-      <CompactDropzone
-        inputRef={inputRef}
-        inputId={inputId}
-        accept={accept}
-        multiple={multiple}
-        required={!optional}
-        dragging={dragging}
-        files={files.map((file) => ({
-          name: file.name,
-          size: file.size,
-        }))}
-        emptyTitle={optional ? `可上传${label}` : `上传${label}`}
-        filledTitle={`已选择${label}`}
-        helpText={`支持真实接口允许的${label}文件。`}
-        chooseLabel={files.length ? "替换文件" : "选择文件"}
-        onFiles={(nextFiles) => onChange(multiple ? nextFiles : nextFiles.slice(0, 1))}
-        onRemove={(index) => onChange(files.filter((_, currentIndex) => currentIndex !== index))}
-        onClear={files.length ? () => onChange([]) : undefined}
-        onDraggingChange={setDragging}
-      />
     </FieldFrame>
   );
 }
