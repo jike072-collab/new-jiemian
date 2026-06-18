@@ -118,6 +118,16 @@ export type CreateBillingOrderSuccess = {
 
 export type CreateBillingOrderResult = CreateBillingOrderSuccess | BillingFailure;
 
+export type BillingOrderListResult = {
+  ok: true;
+  status: number;
+  orders: BillingOrder[];
+  page: number;
+  page_size: number;
+  total: number;
+  has_more: boolean;
+} | BillingFailure;
+
 export type BillingWebhookEventType = "payment_succeeded" | "payment_failed" | "payment_cancelled" | "payment_refunded";
 
 export type BillingWebhookPayload = {

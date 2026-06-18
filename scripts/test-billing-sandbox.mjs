@@ -21,7 +21,7 @@ const tests = [
   "dist/billing-sandbox-tests/src/lib/server/billing/__tests__/billing-service.test.js",
 ];
 
-const run = spawnSync("node", ["--test", ...tests], {
+const run = spawnSync("node", ["--conditions=react-server", "--test", ...tests], {
   cwd: root,
   stdio: "inherit",
   shell: process.platform === "win32",

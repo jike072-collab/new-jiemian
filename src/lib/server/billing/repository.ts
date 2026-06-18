@@ -2,7 +2,13 @@ import { randomUUID } from "node:crypto";
 import { join } from "node:path";
 
 import { dataRoot, readJsonFile, writeJsonFile } from "../paths";
-import { type BillingAuditEvent, type BillingOrder, type BillingOrderStatus, type BillingStore } from "./types";
+import {
+  type BillingAuditEvent,
+  type BillingOrder,
+  type BillingOrderStatus,
+  type BillingStore,
+  type BillingWebhookEventType,
+} from "./types";
 
 type BillingStorage = {
   read(): Promise<BillingStore>;
@@ -16,14 +22,37 @@ export type CreateOrderRecordInput = Omit<BillingOrder, "version" | "webhook_eve
 
 export type BillingOrderPatch = Partial<Omit<BillingOrder, "order_id" | "created_at" | "local_user_id" | "new_api_user_id" | "idempotency_key">>;
 
+export type BillingOrderListFilter = {
+  localUserId?: string;
+  statuses?: BillingOrderStatus[];
+  page?: number;
+  pageSize?: number;
+};
+
+export type BillingOrderListPage = {
+  orders: BillingOrder[];
+  total: number;
+};
+
+export type BillingWebhookEventInput = {
+  eventType?: BillingWebhookEventType;
+  occurredAt?: string | null;
+  status?: "accepted" | "duplicate" | "rejected" | "review";
+};
+
 export type BillingRepository = {
   getOrder(orderId: string): Promise<BillingOrder | null>;
   getOrderByIdempotencyKey(localUserId: string, idempotencyKey: string): Promise<BillingOrder | null>;
   getOrderByProviderOrderId(providerOrderId: string): Promise<BillingOrder | null>;
   createOrder(input: CreateOrderRecordInput): Promise<BillingOrder>;
   updateOrder(orderId: string, patch: BillingOrderPatch, expectedVersion?: number): Promise<BillingOrder>;
-  listOrders(filter?: { localUserId?: string; statuses?: BillingOrderStatus[] }): Promise<BillingOrder[]>;
-  appendWebhookEvent(orderId: string, eventId: string): Promise<{ order: BillingOrder; alreadyProcessed: boolean }>;
+  listOrders(filter?: BillingOrderListFilter): Promise<BillingOrder[]>;
+  listOrdersPage?(filter?: BillingOrderListFilter): Promise<BillingOrderListPage>;
+  appendWebhookEvent(
+    orderId: string,
+    eventId: string,
+    input?: BillingWebhookEventInput,
+  ): Promise<{ order: BillingOrder; alreadyProcessed: boolean }>;
   appendAudit(event: Omit<BillingAuditEvent, "id" | "created_at"> & { id?: string; created_at?: string }): Promise<void>;
   listAuditEvents(): Promise<BillingAuditEvent[]>;
 };
@@ -148,7 +177,7 @@ class StoreBillingRepository implements BillingRepository {
     });
   }
 
-  async listOrders(filter: { localUserId?: string; statuses?: BillingOrderStatus[] } = {}) {
+  async listOrders(filter: BillingOrderListFilter = {}) {
     const statuses = filter.statuses ? new Set(filter.statuses) : null;
     const localUserId = filter.localUserId?.trim();
     const store = await this.storage.read();
@@ -159,7 +188,18 @@ class StoreBillingRepository implements BillingRepository {
       .map(cloneOrder);
   }
 
-  async appendWebhookEvent(orderId: string, eventId: string) {
+  async listOrdersPage(filter: BillingOrderListFilter = {}) {
+    const page = Math.max(1, Math.trunc(filter.page || 1));
+    const pageSize = Math.min(100, Math.max(1, Math.trunc(filter.pageSize || 20)));
+    const orders = await this.listOrders(filter);
+    const start = (page - 1) * pageSize;
+    return {
+      orders: orders.slice(start, start + pageSize),
+      total: orders.length,
+    };
+  }
+
+  async appendWebhookEvent(orderId: string, eventId: string, _input: BillingWebhookEventInput = {}) {
     return this.mutate((store) => {
       const index = store.orders.findIndex((order) => order.order_id === orderId.trim());
       if (index < 0) throw new BillingRepositoryError("BILLING_NOT_FOUND", "Billing order was not found.");

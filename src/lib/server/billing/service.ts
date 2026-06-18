@@ -14,11 +14,13 @@ import {
   publicPaymentChannels,
   sandboxWebhookSecret,
 } from "./config";
-import { BillingRepositoryError, createJsonBillingRepository, type BillingRepository } from "./repository";
+import { createBillingPersistenceRepository } from "./persistence";
+import { BillingRepositoryError, type BillingRepository } from "./repository";
 import { verifySandboxWebhook } from "./sandbox-provider";
 import {
   type BillingErrorCode,
   type BillingFailure,
+  type BillingOrderListResult,
   type BillingOrder,
   type BillingOrderStatus,
   type BillingRequestContext,
@@ -141,7 +143,7 @@ export class BillingService {
   private readonly now: () => Date;
 
   constructor(dependencies: BillingServiceDependencies = {}) {
-    this.repository = dependencies.repository || createJsonBillingRepository();
+    this.repository = dependencies.repository || createBillingPersistenceRepository();
     this.mappingRepository = dependencies.mappingRepository || createJsonNewApiUserMappingRepository();
     this.creditQuota = dependencies.creditQuota || defaultCreditQuota;
     this.getProviderStatus = dependencies.getProviderStatus;
@@ -229,6 +231,34 @@ export class BillingService {
     return { ok: true as const, status: 200, order: publicOrder(order) };
   }
 
+  async listOrdersForUser(input: {
+    localUserId: string;
+    statuses?: BillingOrderStatus[];
+    page?: number;
+    pageSize?: number;
+  }): Promise<BillingOrderListResult> {
+    const page = Math.max(1, Math.trunc(input.page || 1));
+    const pageSize = Math.min(100, Math.max(1, Math.trunc(input.pageSize || 20)));
+    const filter = {
+      localUserId: input.localUserId,
+      statuses: input.statuses,
+      page,
+      pageSize,
+    };
+    const result = this.repository.listOrdersPage
+      ? await this.repository.listOrdersPage(filter)
+      : await this.listOrdersPageFallback(filter);
+    return {
+      ok: true,
+      status: 200,
+      orders: result.orders.map(publicOrder),
+      page,
+      page_size: pageSize,
+      total: result.total,
+      has_more: page * pageSize < result.total,
+    };
+  }
+
   async handleSandboxWebhook(input: {
     rawBody: string;
     timestamp: string | null;
@@ -280,7 +310,10 @@ export class BillingService {
     if (!payload.event_id || !payload.order_id || !payload.provider_order_id) {
       return billingFailure("invalid_billing_request", 400, "Webhook payload is invalid.");
     }
-    const eventResult = await this.repository.appendWebhookEvent(payload.order_id, payload.event_id);
+    const eventResult = await this.repository.appendWebhookEvent(payload.order_id, payload.event_id, {
+      eventType: payload.event_type,
+      occurredAt: payload.occurred_at,
+    });
     if (eventResult.alreadyProcessed) {
       await this.audit("billing.webhook.idempotent", eventResult.order, context, { event_id: payload.event_id });
       return { ok: true, status: 200, order: publicOrder(eventResult.order), action: "idempotent" };
@@ -511,6 +544,20 @@ export class BillingService {
     }
   }
 
+  private async listOrdersPageFallback(input: {
+    localUserId: string;
+    statuses?: BillingOrderStatus[];
+    page: number;
+    pageSize: number;
+  }) {
+    const orders = await this.repository.listOrders(input);
+    const start = (input.page - 1) * input.pageSize;
+    return {
+      orders: orders.slice(start, start + input.pageSize),
+      total: orders.length,
+    };
+  }
+
 
   private async audit(
     event: string,
@@ -530,13 +577,14 @@ export class BillingService {
   }
 }
 
-const defaultBillingService = new BillingService();
+let defaultBillingService: BillingService | null = null;
 
 export function createBillingService(dependencies?: BillingServiceDependencies) {
   return new BillingService(dependencies);
 }
 
 export function getBillingService() {
+  defaultBillingService ||= new BillingService();
   return defaultBillingService;
 }
 
