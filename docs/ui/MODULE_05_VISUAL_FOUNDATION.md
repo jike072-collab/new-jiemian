@@ -310,6 +310,46 @@ Final patch 2 closes the visual parity and image-mode gaps found during PR #18 r
 - Hardcoded color scan over module 5 shell/shared files found no new component-level theme hex colors.
 - `any` scan over touched shell/shared source found no added meaningless `any`.
 
+## Final Visual Closeout
+
+This closeout finalizes the shared ratio selected state and replaces the earlier development-server evidence with clean production-preview screenshots from the current branch head.
+
+- Ratio selected state: `AspectRatioSelector` now keeps the outer button surface transparent in both idle and selected states. The selected state is expressed by the ratio shape itself using the pink fill and pink border, plus a pink label. The selected item keeps the same size and continues to expose `aria-pressed`.
+- Ratio idle state: inactive items keep a transparent outer surface, a quiet ratio-shape fill, a readable shape border, and foreground label text.
+- Hover and focus: hover uses only a light token-derived surface lift; keyboard focus uses a visible pink outline. No page-specific override was added.
+- Scope: the shared selector still serves the image generator, image editor, and video generator. No image/video model, upload, prompt, task, result, or library business state changed.
+- Production preview: old local Next processes on ports 3100, 3101, 3103, and 3104 were stopped, `npm run build` was rerun, and a fresh `npm run start -- -p 3104` process served the evidence.
+- CSS chunk validation: `http://127.0.0.1:3104/_next/static/chunks/0z~jgw7djqt3..css` returned `200 text/css`; sampled JS chunks also returned `200 application/javascript`.
+- Production browser audit: no console errors or warnings were captured, no Next.js issue marker or development `N` marker was detected, and no horizontal overflow was detected in the checked desktop and mobile states.
+- Unicode safety: scan over `src/`, `docs/`, `AGENTS.md`, and current modified files for U+202A-U+202E and U+2066-U+2069 returned zero matches.
+
+### Final Production Screenshot Set
+
+Evidence directory: `docs/design-references/module-05-visual-foundation/final-production/`
+
+| File | Viewport | Surface | Validation focus |
+| --- | --- | --- | --- |
+| `1440x900-ai-image-generator-production.png` | 1440x900 | AI image generator | Production preview, shared image mode control, transparent ratio item surface, pink selected shape and label |
+| `1440x900-ai-video-generator-production.png` | 1440x900 | AI video generator | Production preview, shared video mode control, same shared ratio selected state |
+| `390x844-mobile-params-production.png` | 390x844 | Mobile parameter tab | Production preview, no development marker, no horizontal overflow, mobile action remains the shell action |
+| `1440x900-ratio-selector-closeup-production.png` | 1440x900 | Ratio selector closeup | Active outer item transparent, active shape pink-filled, active label pink, labels aligned |
+
+### Final Production Regression
+
+- AI image generator: `text-to-image` opened with `文生图` selected, `图生图` switching worked, ratio active state used transparent outer surface plus pink shape/label, sticky primary action remained visible, and no horizontal overflow was detected.
+- AI image editor: the independent nav entry still opened the shared image workspace with `图生图` selected by default; upload visibility and disabled edit action were preserved.
+- AI video generator: `文生视频` and `图生视频` switching remained available; the same ratio selector styling was used. Video mode parameter differences remain deferred to module 6.
+- Mobile: ratio items wrapped without horizontal overflow, no development marker was visible, and the internal desktop sticky action was hidden while the shell mobile action remained responsible for the primary action.
+
+### Final Closeout Quality Checks
+
+- `npm run lint`: passed.
+- `npm run typecheck`: passed.
+- `npm run build`: passed.
+- `git diff --check`: passed.
+- Production preview command: `npm run start -- -p 3104`; result was ready at `http://127.0.0.1:3104/`.
+- CSS/JS resource check: homepage returned `200 text/html`; CSS chunk returned `200 text/css`; sampled JS chunks returned `200 application/javascript`.
+
 ## Risks And Blockers
 
 - Current local dev server could not be duplicated on a new port because Next detected an existing dev server for the same repository. Production preview at 3103 was used for baseline capture.

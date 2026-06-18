@@ -718,10 +718,13 @@
     gap: 4px;
     border: 1px solid transparent;
     border-radius: 7px;
-    background: color-mix(in srgb, var(--surface) 48%, transparent);
-    color: var(--muted-strong);
+    background: transparent;
+    color: var(--foreground);
     padding: 7px 6px;
-    transition: border-color var(--motion-base), background var(--motion-base), color var(--motion-base);
+    transition:
+      border-color var(--motion-base),
+      background var(--motion-base),
+      color var(--motion-base);
   }
 
   .studio-ratio__graphic {
@@ -733,20 +736,34 @@
 
   .studio-ratio__shape {
     display: block;
-    border: 1px solid currentColor;
+    border: 1px solid color-mix(in srgb, var(--foreground) 50%, transparent);
     border-radius: 4px;
-    background: color-mix(in srgb, currentColor 14%, transparent);
+    background: color-mix(in srgb, var(--surface) 22%, transparent);
+    transition:
+      border-color var(--motion-base),
+      background var(--motion-base),
+      box-shadow var(--motion-base);
   }
 
-  .studio-ratio__item:hover,
+  .studio-ratio__item:hover {
+    background: color-mix(in srgb, var(--surface) 34%, transparent);
+  }
+
+  .studio-ratio__item:focus-visible {
+    outline: 2px solid var(--primary);
+    outline-offset: 2px;
+  }
+
   .studio-ratio__item.is-active {
     border-color: transparent;
-    background: color-mix(in srgb, var(--primary-soft) 86%, var(--surface));
+    background: transparent;
     color: var(--primary);
   }
 
   .studio-ratio__item.is-active .studio-ratio__shape {
-    background: color-mix(in srgb, var(--primary) 30%, transparent);
+    border-color: var(--primary);
+    background: color-mix(in srgb, var(--primary) 72%, transparent);
+    box-shadow: 0 0 0 1px color-mix(in srgb, var(--primary) 34%, transparent);
   }
 
   .studio-ratio__label {
@@ -756,6 +773,10 @@
     font-size: 13px;
     font-weight: 500;
     line-height: 1.2;
+  }
+
+  .studio-ratio__item.is-active .studio-ratio__label {
+    font-weight: 700;
   }
 
   .ratio-1-1 {

@@ -67,3 +67,5 @@
 - Shared controls in module 5 must stay controlled by existing tool state and must not own model, upload, prompt, job, or result business data.
 - Module 5 must not merge until the before/after screenshot set and visual comparison table have human review.
 - Module 5 Draft PR must explicitly state that module 6 has not started and B-side New API/auth/quota/payment code was not modified.
+- Module 5 final visual evidence must come from a clean production preview, not a stale dev server or static mock.
+- Production evidence must verify CSS and JS chunks load successfully; a passing build alone is not sufficient visual acceptance.
