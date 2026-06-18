@@ -17,3 +17,13 @@
 
 - Do not move to module 2 before user confirmation.
 - Keep every completed checkpoint pushable on its own.
+
+## Module 3 Board
+
+| Item | Status | Notes |
+| --- | --- | --- |
+| Module 3 segment 1 | Done | Root cause and recovery plan documented. |
+| Module 3 segment 2 | Done | Business-preserving responsive shell repair was pushed to PR #3. |
+| Module 3 segment 3 | Done | Final state, mobile actions, drawer focus, screenshots, and acceptance checks completed. |
+| Module 3 final acceptance patch | Done | Mobile Drawer full-name display, Issue verification, refreshed screenshots, and PR text cleanup completed. |
+| Module 4 | Waiting for manual approval | Do not start until PR #3 is reviewed and the user approves. |
