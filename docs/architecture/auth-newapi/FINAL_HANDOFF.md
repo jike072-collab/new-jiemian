@@ -81,6 +81,25 @@ Remote evidence already present:
 
 Local Docker remains unavailable on this Windows host, so B12 did not rerun real container startup locally.
 
+B12-FG final gate:
+
+- PR #19 (`fix/auth-newapi-final-validation` -> `integration/auth-newapi`) is
+  Open and Draft.
+- PR #19 run `27744908374` passed all eight `Auth New API Final Gate` jobs on
+  `aaf258db7d1dc55c6290b6390e297454bad51f29`.
+- The final gate includes typecheck/lint/build, auth/session, BFF/mapping,
+  quota/usage, billing/webhook/reconciliation, real New API Docker health and
+  BFF validation, backup/restore/bad-backup rejection, and secret/bundle/diff
+  scanning.
+- The real Docker job initialized the test admin, logged in, generated a masked
+  management token, ran real BFF calls, created and activated a real New API
+  user mapping, checked log redaction, and cleaned up containers.
+- The security job completed server secret scanning, pull request diff scanning,
+  and client static bundle scanning with no reported secret leak.
+- `npm audit` remains `{"info":0,"low":1,"moderate":7,"high":4,"critical":0,"total":12}`;
+  this is recorded as a production dependency blocker.
+- PR #17 remains Open and Draft; it was not merged.
+
 ## Open Items
 
 | Item | Owner | Blocking for final UI? |
@@ -105,6 +124,15 @@ These items do not indicate a real secret leak and do not block the B12 handoff,
 - New API server integrations currently rely on `src/lib/server/**` ownership and bundle leak tests. Add a hard `server-only` import guard when the project dependency policy allows it.
 - Non-production auth secret fallback is useful for local tests, but staging/test environments exposed beyond localhost must set `AUTH_SESSION_SECRET` or `SESSION_SECRET`.
 - PostgreSQL and Redis images are pinned by tag, not digest. New API itself is pinned by tag and digest.
+
+## Final Review Status
+
+Conclusion: `READY_FOR_MAINLINE_REVIEW`
+
+This conclusion means the backend foundation, final gate workflow, and handoff
+documents are ready for reviewer attention. It does not approve production
+release while the dependency audit and production hardening risks above remain
+open.
 
 ## Stop Rules
 
