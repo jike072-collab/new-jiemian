@@ -54,6 +54,18 @@ function withSecret<T>(callback: () => T | Promise<T>) {
   });
 }
 
+function withoutSecret<T>(callback: () => T | Promise<T>) {
+  const previous = process.env.PAYMENT_SANDBOX_WEBHOOK_SECRET;
+  delete process.env.PAYMENT_SANDBOX_WEBHOOK_SECRET;
+  return Promise.resolve(callback()).finally(() => {
+    if (previous === undefined) {
+      delete process.env.PAYMENT_SANDBOX_WEBHOOK_SECRET;
+      return;
+    }
+    process.env.PAYMENT_SANDBOX_WEBHOOK_SECRET = previous;
+  });
+}
+
 function service(overrides: {
   mappings?: NewApiUserMapping[];
   creditQuota?: (input: CreditQuotaInput) => Promise<CreditQuotaResult>;
@@ -183,11 +195,13 @@ test("rejects missing webhook secret and invalid signatures without paying the o
   const order = await createOrder(harness);
   const rawBody = JSON.stringify(payloadFor(order));
 
-  const missingSecret = await harness.billing.handleSandboxWebhook({
-    rawBody,
-    timestamp: "1781712000",
-    signature: "0".repeat(64),
-    now: new Date("2026-06-18T00:00:00.000Z"),
+  const missingSecret = await withoutSecret(() => {
+    return harness.billing.handleSandboxWebhook({
+      rawBody,
+      timestamp: "1781712000",
+      signature: "0".repeat(64),
+      now: new Date("2026-06-18T00:00:00.000Z"),
+    });
   });
   assert.equal(missingSecret.ok, false);
   if (missingSecret.ok) return;
