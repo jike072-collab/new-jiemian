@@ -83,6 +83,23 @@ type VideoWorkspaceState = {
   job: JobRecord | null;
 };
 
+type ImageUpscaleWorkspaceFile = {
+  file: File;
+  previewUrl: string;
+};
+
+type ImageUpscaleWorkspaceState = {
+  scale: "2" | "4";
+  file: ImageUpscaleWorkspaceFile | null;
+  fileError: string;
+  submitError: string;
+  loading: boolean;
+  statusLoading: boolean;
+  checked: boolean;
+  availability: UpscaleAvailability | null;
+  statusError: string;
+};
+
 const ratios = ["1:1", "16:9", "9:16", "4:3", "3:4"];
 
 const imageWorkspaceModeMeta: Record<WorkspaceImageMode, {
@@ -121,6 +138,7 @@ const allowedReferenceImageTypes = new Set(["image/png", "image/jpeg", "image/we
 const maxReferenceImageSize = 10 * 1024 * 1024;
 const maxReferenceImageCount = 10;
 const maxVideoFirstFrameCount = 1;
+const maxImageUpscaleSize = 25 * 1024 * 1024;
 
 const videoWorkspaceModeMeta: Record<WorkspaceVideoMode, {
   submitLabel: string;
@@ -207,6 +225,24 @@ function createVideoWorkspaceFiles(files: File[]) {
   }];
 }
 
+function createImageUpscaleFile(files: File[]) {
+  if (files.length > 1) {
+    throw new Error("图片高清一次只能上传 1 张图片。");
+  }
+  const [file] = files;
+  if (!file) return null;
+  if (!allowedReferenceImageTypes.has(file.type)) {
+    throw new Error("图片高清仅支持 PNG、JPEG 和 WebP。");
+  }
+  if (file.size > maxImageUpscaleSize) {
+    throw new Error("图片高清文件不能超过 25MB。");
+  }
+  return {
+    file,
+    previewUrl: URL.createObjectURL(file),
+  };
+}
+
 async function jsonFetch<T>(url: string, options?: RequestInit): Promise<T> {
   const response = await fetch(url, options);
   const data = await response.json().catch(() => ({}));
@@ -255,8 +291,20 @@ export function StudioApp() {
     loading: false,
     job: null,
   });
+  const [imageUpscaleWorkspace, setImageUpscaleWorkspace] = useState<ImageUpscaleWorkspaceState>({
+    scale: "2",
+    file: null,
+    fileError: "",
+    submitError: "",
+    loading: false,
+    statusLoading: true,
+    checked: false,
+    availability: null,
+    statusError: "",
+  });
   const imageWorkspaceFilesRef = useRef<ImageWorkspaceFile[]>([]);
   const videoWorkspaceFilesRef = useRef<VideoWorkspaceFile[]>([]);
+  const imageUpscaleFileRef = useRef<ImageUpscaleWorkspaceFile | null>(null);
 
   const refreshLibrary = useCallback(async () => {
     const data = await jsonFetch<{ items: LibraryItem[] }>("/api/library");
@@ -311,6 +359,7 @@ export function StudioApp() {
   useEffect(() => () => {
     imageWorkspaceFilesRef.current.forEach((file) => URL.revokeObjectURL(file.previewUrl));
     videoWorkspaceFilesRef.current.forEach((file) => URL.revokeObjectURL(file.previewUrl));
+    if (imageUpscaleFileRef.current) URL.revokeObjectURL(imageUpscaleFileRef.current.previewUrl);
   }, []);
 
   useEffect(() => {
@@ -634,6 +683,109 @@ export function StudioApp() {
     }));
   }, []);
 
+  const updateImageUpscaleWorkspace = useCallback((patch: Partial<ImageUpscaleWorkspaceState>) => {
+    setImageUpscaleWorkspace((prev) => ({ ...prev, ...patch }));
+  }, []);
+
+  const checkImageUpscaleAvailability = useCallback(async () => {
+    updateImageUpscaleWorkspace({ statusLoading: true, statusError: "", checked: true });
+    try {
+      const data = await jsonFetch<UpscaleStatusResponse>("/api/upscale/status");
+      updateImageUpscaleWorkspace({ availability: data.image, statusLoading: false });
+    } catch (error) {
+      updateImageUpscaleWorkspace({
+        availability: null,
+        statusLoading: false,
+        statusError: error instanceof Error ? error.message : "本机高清依赖检测失败。",
+      });
+    }
+  }, [updateImageUpscaleWorkspace]);
+
+  useEffect(() => {
+    void checkImageUpscaleAvailability();
+  }, [checkImageUpscaleAvailability]);
+
+  const replaceImageUpscaleFile = useCallback((files: File[]) => {
+    const previous = imageUpscaleFileRef.current;
+    try {
+      const nextFile = createImageUpscaleFile(files);
+      if (previous) URL.revokeObjectURL(previous.previewUrl);
+      imageUpscaleFileRef.current = nextFile;
+      updateImageUpscaleWorkspace({
+        file: nextFile,
+        fileError: "",
+        submitError: "",
+      });
+      setOutputs((prev) => ({ ...prev, "image-upscale": null }));
+    } catch (error) {
+      if (previous) URL.revokeObjectURL(previous.previewUrl);
+      imageUpscaleFileRef.current = null;
+      updateImageUpscaleWorkspace({
+        file: null,
+        fileError: error instanceof Error ? error.message : "图片读取失败。",
+        submitError: "",
+      });
+      setOutputs((prev) => ({ ...prev, "image-upscale": null }));
+    }
+  }, [updateImageUpscaleWorkspace]);
+
+  const removeImageUpscaleFile = useCallback(() => {
+    if (imageUpscaleFileRef.current) {
+      URL.revokeObjectURL(imageUpscaleFileRef.current.previewUrl);
+    }
+    imageUpscaleFileRef.current = null;
+    updateImageUpscaleWorkspace({
+      file: null,
+      fileError: "",
+      submitError: "",
+    });
+    setOutputs((prev) => ({ ...prev, "image-upscale": null }));
+  }, [updateImageUpscaleWorkspace]);
+
+  const submitImageUpscale = useCallback(async () => {
+    const currentFile = imageUpscaleWorkspace.file;
+    if (!currentFile) {
+      updateImageUpscaleWorkspace({ fileError: "请先上传一张图片。", submitError: "请先上传一张图片。" });
+      return;
+    }
+    if (!imageUpscaleWorkspace.availability?.ready) {
+      updateImageUpscaleWorkspace({
+        submitError: imageUpscaleWorkspace.statusError || imageUpscaleWorkspace.availability?.detail || "本机图片高清工具还没有准备好。",
+      });
+      return;
+    }
+    if (imageUpscaleWorkspace.loading) return;
+
+    updateImageUpscaleWorkspace({
+      loading: true,
+      submitError: "",
+      fileError: "",
+    });
+    setMessage("");
+    try {
+      const form = new FormData();
+      form.set("file", currentFile.file);
+      form.set("scale", imageUpscaleWorkspace.scale);
+      const data = await jsonFetch<{ item: LibraryItem; job: JobRecord | null }>("/api/upscale/image", {
+        method: "POST",
+        body: form,
+      });
+      setOutputs((prev) => ({ ...prev, "image-upscale": { item: data.item, job: data.job, title: "图片高清结果", tool: "image-upscale" } }));
+      await refreshLibrary();
+    } catch (error) {
+      const text = error instanceof Error ? error.message : "图片高清处理失败。";
+      updateImageUpscaleWorkspace({ submitError: text });
+      setMessage(text);
+    } finally {
+      updateImageUpscaleWorkspace({ loading: false });
+    }
+  }, [imageUpscaleWorkspace.availability?.detail, imageUpscaleWorkspace.availability?.ready, imageUpscaleWorkspace.file, imageUpscaleWorkspace.loading, imageUpscaleWorkspace.scale, imageUpscaleWorkspace.statusError, refreshLibrary, setMessage, updateImageUpscaleWorkspace]);
+
+  const imageUpscaleCanSubmit = Boolean(imageUpscaleWorkspace.file)
+    && Boolean(imageUpscaleWorkspace.availability?.ready)
+    && !imageUpscaleWorkspace.loading
+    && !imageUpscaleWorkspace.statusLoading;
+
   useEffect(() => {
     const job = videoWorkspace.job;
     if (!job || job.status === "done" || job.status === "failed") return;
@@ -719,10 +871,6 @@ export function StudioApp() {
     videoWorkspacePrompt,
   ]);
 
-  const handleImageUpscaleResult = useCallback((item: LibraryItem, job?: JobRecord | null) => {
-    setOutputs((prev) => ({ ...prev, "image-upscale": { item, job, title: "图片高清结果", tool: "image-upscale" } }));
-  }, []);
-
   const handleVideoUpscaleResult = useCallback((item: LibraryItem, job?: JobRecord | null) => {
     setOutputs((prev) => ({ ...prev, "video-upscale": { item, job, title: "视频高清结果", tool: "video-upscale" } }));
   }, []);
@@ -774,11 +922,15 @@ export function StudioApp() {
         />
       ) : null}
       {activeBusinessTool === "image-upscale" ? (
-        <UpscaleForm
-          kind="image"
-          onDone={refreshLibrary}
-          onResult={handleImageUpscaleResult}
-          setMessage={setMessage}
+        <ImageUpscaleForm
+          state={imageUpscaleWorkspace}
+          canSubmit={imageUpscaleCanSubmit}
+          onScaleChange={(value) => updateImageUpscaleWorkspace({ scale: value as "2" | "4", submitError: "" })}
+          onFilesChange={replaceImageUpscaleFile}
+          onFileRemove={removeImageUpscaleFile}
+          onFilesClear={removeImageUpscaleFile}
+          onCheckAvailability={checkImageUpscaleAvailability}
+          onSubmit={submitImageUpscale}
           registerMobileAction={setMobileAction}
         />
       ) : null}
@@ -861,6 +1013,16 @@ export function StudioApp() {
                 onReloadProviders={refreshProviders}
                 onOpenLibrary={() => setActiveWorkspaceToolId("library")}
                 firstFrame={videoWorkspace.files[0] || null}
+              />
+            ) : activeBusinessTool === "image-upscale" ? (
+              <ImageUpscalePreviewPanel
+                state={imageUpscaleWorkspace}
+                output={activeOutput}
+                canSubmit={imageUpscaleCanSubmit}
+                libraryCount={library.length}
+                onSubmit={submitImageUpscale}
+                onCheckAvailability={checkImageUpscaleAvailability}
+                onOpenLibrary={() => setActiveWorkspaceToolId("library")}
               />
             ) : (
               <OutputPanel tool={activeBusinessTool} output={activeOutput} libraryCount={library.length} />
@@ -1437,6 +1599,267 @@ function UpscaleForm({
         </SubmitButton>
       </StickyPrimaryAction>
     </FormPanel>
+  );
+}
+
+function ImageUpscaleForm({
+  state,
+  canSubmit,
+  onScaleChange,
+  onFilesChange,
+  onFileRemove,
+  onFilesClear,
+  onCheckAvailability,
+  onSubmit,
+  registerMobileAction,
+}: {
+  state: ImageUpscaleWorkspaceState;
+  canSubmit: boolean;
+  onScaleChange: (value: string) => void;
+  onFilesChange: (files: File[]) => void;
+  onFileRemove: () => void;
+  onFilesClear: () => void;
+  onCheckAvailability: () => Promise<void>;
+  onSubmit: () => void;
+  registerMobileAction: (action: MobileActionState) => void;
+}) {
+  const inputRef = useRef<HTMLInputElement | null>(null);
+  const [dragging, setDragging] = useState(false);
+  const file = state.file;
+  const statusTitle = !state.checked
+    ? "未检测"
+    : state.statusLoading
+      ? "正在检测本机依赖..."
+      : state.statusError
+        ? "检测失败"
+        : state.availability?.ready
+          ? "工具可用"
+          : "工具不可用";
+  const statusTone = state.statusError
+    ? "is-warning"
+    : state.availability?.ready
+      ? "is-ready"
+      : "is-warning";
+
+  useEffect(() => {
+    registerMobileAction({
+      label: state.loading ? "正在增强" : "开始增强",
+      loading: state.loading,
+      disabled: !canSubmit,
+      onClick: onSubmit,
+    });
+    return () => registerMobileAction(null);
+  }, [canSubmit, onSubmit, registerMobileAction, state.loading]);
+
+  return (
+    <FormPanel>
+      <FieldFrame label="源图片" required>
+        <CompactDropzone
+          inputRef={inputRef}
+          inputId="image-upscale-input"
+          accept="image/png,image/jpeg,image/webp"
+          multiple={false}
+          required
+          dragging={dragging}
+          files={file ? [{ name: file.file.name, size: file.file.size, previewUrl: file.previewUrl }] : []}
+          emptyTitle="上传图片"
+          filledTitle="已选择图片"
+          helpText="支持 PNG、JPEG、WebP，单张不超过 25MB。"
+          chooseLabel={file ? "替换图片" : "选择图片"}
+          onFiles={onFilesChange}
+          onRemove={file ? () => onFileRemove() : undefined}
+          onClear={file ? onFilesClear : undefined}
+          onDraggingChange={setDragging}
+        />
+        {state.fileError ? <p className="studio-error-text" role="alert">{state.fileError}</p> : null}
+      </FieldFrame>
+
+      <StackedControl label="放大倍数" required>
+        <ModeSegmentedControl
+          label="放大倍数"
+          groupId="image-upscale-scale"
+          value={state.scale}
+          options={[
+            ["2", "2x"],
+            ["4", "4x"],
+          ]}
+          onChange={onScaleChange}
+        />
+      </StackedControl>
+
+      <div className={cn("studio-status", statusTone)}>
+        <div className="min-w-0">
+          <strong className="block">{statusTitle}</strong>
+          <p className="mt-1 break-all text-xs opacity-75">
+            {state.statusError || state.availability?.detail || "先检测本机 Upscayl，再开始增强。"}
+          </p>
+        </div>
+        <button
+          type="button"
+          onClick={() => void onCheckAvailability()}
+          disabled={state.statusLoading}
+          className="studio-icon-button"
+          aria-label="重新检测本机依赖"
+        >
+          <RefreshCw className={cn("size-4", state.statusLoading && "animate-spin")} />
+        </button>
+      </div>
+
+      <StickyPrimaryAction helpText="本机增强，不需要 Key">
+        <SubmitButton disabled={!canSubmit} loading={state.loading} loadingLabel="正在增强" onClick={onSubmit}>
+          开始增强
+        </SubmitButton>
+      </StickyPrimaryAction>
+    </FormPanel>
+  );
+}
+
+function ImageUpscalePreviewPanel({
+  state,
+  output,
+  canSubmit,
+  libraryCount,
+  onSubmit,
+  onCheckAvailability,
+  onOpenLibrary,
+}: {
+  state: ImageUpscaleWorkspaceState;
+  output: OutputState;
+  canSubmit: boolean;
+  libraryCount: number;
+  onSubmit: () => void;
+  onCheckAvailability: () => Promise<void>;
+  onOpenLibrary: () => void;
+}) {
+  const source = state.file;
+
+  if (state.loading) {
+    return (
+      <PreviewState eyebrow="处理中" title="创作预览" description="正在增强图片，请稍候。" badge={`${state.scale}x`} role="status" live>
+        <div className="studio-upscale-preview">
+          {source ? (
+            <figure className="studio-upscale-preview__figure">
+              <span className="studio-upscale-preview__label">原图</span>
+              <img src={source.previewUrl} alt={source.file.name} />
+            </figure>
+          ) : null}
+          <div className="studio-preview__empty">
+            <p>增强完成后，高清结果会显示在右侧。</p>
+          </div>
+        </div>
+      </PreviewState>
+    );
+  }
+
+  if (state.submitError) {
+    return (
+      <PreviewState eyebrow="失败" title="生成结果" description={state.submitError} badge="可重试" role="alert">
+        <div className="studio-upscale-preview">
+          {source ? (
+            <figure className="studio-upscale-preview__figure">
+              <span className="studio-upscale-preview__label">原图</span>
+              <img src={source.previewUrl} alt={source.file.name} />
+            </figure>
+          ) : null}
+          <div className="studio-preview__empty">
+            <p>参数会保留，你可以重新检测本机依赖后再次尝试。</p>
+            <div className="studio-actions">
+              <button type="button" className="studio-secondary-button" onClick={() => void onCheckAvailability()}>
+                重新检测
+              </button>
+              <button type="button" className="studio-secondary-button" onClick={onSubmit} disabled={!canSubmit}>
+                重试
+              </button>
+              <button type="button" className="studio-secondary-button" onClick={onOpenLibrary}>
+                进入作品库
+              </button>
+            </div>
+          </div>
+        </div>
+      </PreviewState>
+    );
+  }
+
+  if (!state.checked || state.statusLoading || (!state.availability?.ready && !state.statusError)) {
+    return (
+      <PreviewState
+        eyebrow="创作预览"
+        title="创作预览"
+        description={state.statusLoading ? "正在检测本机依赖。" : "先上传一张图片，再选择 2x 或 4x。"}
+        badge={`${libraryCount} 条作品`}
+      >
+        <div className="studio-preview__empty">
+          <p>这里会显示原图和高清结果对比。</p>
+        </div>
+        <div className="studio-steps">
+          <div className="studio-step">
+            <span>1</span>
+            <p>上传一张 PNG、JPEG 或 WebP 图片</p>
+          </div>
+          <div className="studio-step">
+            <span>2</span>
+            <p>选择 2x 或 4x 放大倍数</p>
+          </div>
+          <div className="studio-step">
+            <span>3</span>
+            <p>结果成功后可直接下载</p>
+          </div>
+        </div>
+      </PreviewState>
+    );
+  }
+
+  if (!state.availability?.ready) {
+    return (
+      <PreviewState eyebrow="依赖不可用" title="生成结果" description={state.statusError || state.availability?.detail || "本机图片高清工具不可用。"} badge="请重试" role="alert">
+        <div className="studio-preview__empty">
+          <p>工具可用后才能开始增强。</p>
+          <div className="studio-actions">
+            <button type="button" className="studio-secondary-button" onClick={() => void onCheckAvailability()}>
+              重新检测
+            </button>
+          </div>
+        </div>
+      </PreviewState>
+    );
+  }
+
+  if (output?.item.output?.url) {
+    return (
+      <PreviewState eyebrow="结果" title="高清结果" description={`真实输出，${state.scale}x。`} badge={output.job?.status || output.item.status} role="status" live>
+        <div className="studio-upscale-preview">
+          {source ? (
+            <figure className="studio-upscale-preview__figure">
+              <span className="studio-upscale-preview__label">原图</span>
+              <img src={source.previewUrl} alt={source.file.name} />
+            </figure>
+          ) : null}
+          <figure className="studio-upscale-preview__figure">
+            <span className="studio-upscale-preview__label">高清结果</span>
+            <img src={output.item.output.url} alt={output.item.title} />
+          </figure>
+        </div>
+        <div className="studio-actions">
+          <a className="studio-secondary-button" href={output.item.output.url} download>
+            下载结果图片
+          </a>
+          <button type="button" className="studio-secondary-button" onClick={onSubmit} disabled={!canSubmit}>
+            再次增强
+          </button>
+          <button type="button" className="studio-secondary-button" onClick={onOpenLibrary}>
+            进入作品库
+          </button>
+        </div>
+      </PreviewState>
+    );
+  }
+
+  return (
+    <PreviewState eyebrow="创作预览" title="创作预览" description="上传图片后，原图和高清结果会在这里对比显示。" badge={`${libraryCount} 条作品`}>
+      <div className="studio-preview__empty">
+        <p>上传后开始增强，成功后这里会显示真实结果。</p>
+      </div>
+    </PreviewState>
   );
 }
 

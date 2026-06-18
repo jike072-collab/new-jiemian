@@ -81,3 +81,16 @@
 - If the current provider API exposes no capability fields, A-side code must record the limitation and must not hard-code guessed vendor capability maps.
 - Image-to-video accepts exactly one first-frame image. Zero files and more than one file must be rejected by both the UI contract and API validation; screenshots must not label an unuploaded state as uploaded.
 - Module 6 upload evidence must verify real upload, replace, delete, and object URL cleanup, or explicitly record the automation limitation instead of using a fake uploaded state.
+
+## Module 7 Gate
+
+- Module 7 must not proceed to module 8 until it is manually approved.
+- A-side module 7 must not modify B-side New API, authentication, quota, payment, Docker, database, Redis, BFF, callback, reconciliation, or port configuration.
+- Module 7 must not modify video upscale business while repairing image upscale.
+- Image upscale remains a local processing capability and must not be converted into a New API model call.
+- The local Upscayl dependency must be truly detected before the UI marks image upscale as available.
+- When the local dependency is missing, the UI must show a real dependency-missing state and must not fake processing or success.
+- No static sample image may be used as an accepted image-upscale result.
+- Download actions must point only to real stored output files created by the local process.
+- Normal workspace errors must not expose local absolute executable paths, model paths, command lines, secrets, or full stack traces.
+- Module 7 must keep the module 5 visual foundation and must not redesign Header, Sidebar, upload controls, primary action, preview shell, or scrollbar behavior.

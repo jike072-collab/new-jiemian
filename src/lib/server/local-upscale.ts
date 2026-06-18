@@ -140,8 +140,8 @@ export async function readUpscaleStatus() {
     const model = imageProvider?.model || "upscayl-standard-4x";
     const modelsReady = await upscaylModelReady(modelsPath, model);
     image = modelsReady
-      ? { ready: true, detail: `已检测到 Upscayl：${imageExecutable}`, executable: imageExecutable }
-      : { ready: false, detail: `已找到 Upscayl，但模型 ${model} 在目录 ${modelsPath} 中不完整。` };
+      ? { ready: true, detail: "已检测到 Upscayl，本机图片高清工具可用。", executable: imageExecutable }
+      : { ready: false, detail: `已找到 Upscayl，但模型 ${model} 不完整。` };
   }
 
   let video: LocalToolStatus;
@@ -192,7 +192,7 @@ function runProcess(executable: string, args: string[], timeoutMs: number) {
 
 async function writeInput(file: UploadedFile, prefix: string) {
   await Promise.all([ensureRuntimeDirs(), mkdir(workRoot, { recursive: true })]);
-  const extension = extname(file.fileName) || extensionForUpload(file.mimeType);
+  const extension = extensionForUpload(file.mimeType) || extname(file.fileName);
   const path = join(workRoot, `${prefix}-${randomUUID()}${extension}`);
   await writeFile(path, file.bytes);
   return path;
@@ -241,9 +241,10 @@ export async function upscaleImage(file: UploadedFile, scale: 2 | 4) {
   if (scale !== nativeScale) args.push("-s", String(scale));
   if (process.env.UPSCAYL_GPU_ID) args.push("-g", process.env.UPSCAYL_GPU_ID);
 
+  let completed = false;
   try {
     await runProcess(status.image.executable, args, 15 * 60 * 1000);
-    return addLibraryItem({
+    const item = await addLibraryItem({
       type: "image",
       mode: "image-upscale",
       title: `图片高清 ${scale}x`,
@@ -254,8 +255,11 @@ export async function upscaleImage(file: UploadedFile, scale: 2 | 4) {
       output: await storedOutput(storedName, "image/png"),
       params: { scale, sourceName: file.fileName },
     });
+    completed = true;
+    return item;
   } finally {
     await unlink(inputPath).catch(() => undefined);
+    if (!completed) await unlink(outputPath).catch(() => undefined);
   }
 }
 
