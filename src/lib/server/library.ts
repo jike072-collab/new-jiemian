@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { join } from "node:path";
-import { readFile, unlink, writeFile } from "node:fs/promises";
+import { access, readFile, unlink, writeFile } from "node:fs/promises";
 
 import {
   dataRoot,
@@ -35,9 +35,31 @@ async function serializeWrite<T>(queue: "library" | "jobs", action: () => Promis
   }
 }
 
+async function storedFileExists(storedName: string) {
+  const safeName = safeStoredName(storedName);
+  if (!safeName || safeName !== storedName) return false;
+  try {
+    await access(join(uploadsRoot, safeName));
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+async function readLibraryFile() {
+  return readJsonFile<LibraryItem[]>(libraryPath, []);
+}
+
 export async function readLibrary() {
-  const items = await readJsonFile<LibraryItem[]>(libraryPath, []);
-  return items.sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+  const items = await readLibraryFile();
+  const withFileState = await Promise.all(items.map(async (item) => {
+    if (!item.output?.storedName) return item;
+    return {
+      ...item,
+      fileAvailable: await storedFileExists(item.output.storedName),
+    };
+  }));
+  return withFileState.sort((a, b) => b.createdAt.localeCompare(a.createdAt));
 }
 
 export async function saveLibrary(items: LibraryItem[]) {
@@ -53,7 +75,7 @@ export async function addLibraryItem(input: Omit<LibraryItem, "id" | "createdAt"
     updatedAt: now,
   };
   await serializeWrite("library", async () => {
-    const items = await readLibrary();
+    const items = await readLibraryFile();
     await saveLibrary([item, ...items]);
   });
   return item;
@@ -61,7 +83,7 @@ export async function addLibraryItem(input: Omit<LibraryItem, "id" | "createdAt"
 
 export async function updateLibraryItem(id: string, patch: Partial<LibraryItem>) {
   return serializeWrite("library", async () => {
-    const items = await readLibrary();
+    const items = await readLibraryFile();
     const next = items.map((item) => (
       item.id === id ? { ...item, ...patch, updatedAt: new Date().toISOString() } : item
     ));
@@ -72,7 +94,7 @@ export async function updateLibraryItem(id: string, patch: Partial<LibraryItem>)
 
 export async function deleteLibraryItem(id: string) {
   const removed = await serializeWrite("library", async () => {
-    const items = await readLibrary();
+    const items = await readLibraryFile();
     const removedItem = items.find((item) => item.id === id);
     const next = items.filter((item) => item.id !== id);
     await saveLibrary(next);
@@ -81,7 +103,10 @@ export async function deleteLibraryItem(id: string) {
   const jobs = await readJobs();
   await saveJobs(jobs.filter((job) => job.libraryItemId !== id));
   if (removed?.output?.storedName) {
-    await unlink(join(uploadsRoot, safeStoredName(removed.output.storedName))).catch(() => undefined);
+    const storedName = safeStoredName(removed.output.storedName);
+    if (storedName && storedName === removed.output.storedName) {
+      await unlink(join(uploadsRoot, storedName)).catch(() => undefined);
+    }
   }
   return { deleted: Boolean(removed) };
 }

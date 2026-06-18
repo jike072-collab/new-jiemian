@@ -108,3 +108,15 @@
 - Download actions must point only to real stored output files created by the local process.
 - Normal workspace errors must not expose local absolute executable paths, command lines, secrets, or full stack traces.
 - Module 8 must keep the module 5 visual foundation and must not redesign Header, Sidebar, upload controls, primary action, preview shell, or scrollbar behavior.
+
+## Module 9 Gate
+
+- Module 9 must not proceed to module 10 until it is manually approved.
+- A-side module 9 must not modify B-side New API, authentication, quota, payment, Docker, database, Redis, BFF, callback, reconciliation, or port configuration.
+- The works library must display real records from the existing library data source and must not use static sample works as user data.
+- Generated image/video results and local upscale results must reuse the existing `addLibraryItem()` flow instead of creating a second library store.
+- Download actions must point only to allowed stored output files.
+- Delete actions must delete only the selected library item's allowed file and metadata.
+- Missing output files must render a file-invalid state without crashing the page.
+- Normal workspace errors must not expose local absolute paths, command lines, secrets, or full stack traces.
+- Module 9 must keep the module 5 visual foundation and must not redesign Header, Sidebar, upload controls, primary action, preview shell, or scrollbar behavior.
