@@ -2,7 +2,7 @@
 
 /* eslint-disable @next/next/no-img-element */
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { Loader2, RefreshCw, Wand2 } from "lucide-react";
 import { useRouter } from "next/navigation";
 
@@ -11,13 +11,15 @@ import { cn } from "@/lib/utils";
 import type { JobRecord, LibraryItem, PublicProvider } from "@/lib/server/types";
 import {
   type WorkspaceAction,
+  type WorkspaceImageMode,
   type WorkspaceToolId,
+  type WorkspaceVideoMode,
   workspaceToolById,
+  workspaceToolEntries,
+  workspaceToolIdForImageMode,
 } from "@/lib/workspace-registry";
 
 type BusinessToolId = "image" | "video" | "image-upscale" | "video-upscale" | "library";
-type ImageMode = "text-to-image" | "image-to-image";
-type VideoMode = "text-to-video" | "image-to-video";
 type UpscaleKind = "image" | "video";
 type UpscaleAvailability = { ready: boolean; detail: string };
 type UpscaleStatusResponse = Record<UpscaleKind, UpscaleAvailability>;
@@ -32,6 +34,13 @@ type OutputState = {
   job?: JobRecord | null;
   title: string;
   tool: BusinessToolId;
+} | null;
+
+type MobileActionState = {
+  label: string;
+  loading: boolean;
+  disabled: boolean;
+  onClick: () => void;
 } | null;
 
 const ratios = ["1:1", "16:9", "9:16", "4:3", "3:4"];
@@ -50,14 +59,15 @@ async function jsonFetch<T>(url: string, options?: RequestInit): Promise<T> {
 
 export function StudioApp() {
   const router = useRouter();
-  const [activeTool, setActiveTool] = useState<BusinessToolId>("image");
-  const [activeWorkspaceTool, setActiveWorkspaceTool] = useState<WorkspaceToolId>("image");
-  const [imageModePreset, setImageModePreset] = useState<ImageMode>("text-to-image");
-  const [videoModePreset, setVideoModePreset] = useState<VideoMode>("text-to-video");
+  const [activeWorkspaceToolId, setActiveWorkspaceToolId] = useState<WorkspaceToolId>("image");
   const [providers, setProviders] = useState<EnabledProviders>({ image: [], video: [] });
   const [library, setLibrary] = useState<LibraryItem[]>([]);
   const [message, setMessage] = useState("");
   const [outputs, setOutputs] = useState<Partial<Record<BusinessToolId, OutputState>>>({});
+  const [mobileAction, setMobileAction] = useState<MobileActionState>(null);
+  const [libraryFilter, setLibraryFilter] = useState<"all" | "image" | "video">("all");
+  const [librarySort, setLibrarySort] = useState<"recent" | "title">("recent");
+  const [selectedLibraryItemId, setSelectedLibraryItemId] = useState<string | null>(null);
 
   async function refreshLibrary() {
     const data = await jsonFetch<{ items: LibraryItem[] }>("/api/library");
@@ -94,59 +104,89 @@ export function StudioApp() {
       return;
     }
 
-    setActiveWorkspaceTool(tool);
-    setActiveTool(action.toolId);
-    if (action.toolId === "image") {
-      setImageModePreset(action.mode === "image-to-image" ? "image-to-image" : "text-to-image");
-    }
-    if (action.toolId === "video") {
-      setVideoModePreset(action.mode === "image-to-video" ? "image-to-video" : "text-to-video");
-    }
+    setActiveWorkspaceToolId(tool);
   }
 
-  const activeMeta = workspaceToolById(activeWorkspaceTool) || workspaceToolById(activeTool);
-  const activeOutput = outputs[activeTool] || null;
+  const activeWorkspaceTool = workspaceToolById(activeWorkspaceToolId) || workspaceToolEntries[0];
+  const activeAction = activeWorkspaceTool.action.kind === "workspace" ? activeWorkspaceTool.action : null;
+  const activeBusinessTool = activeAction?.toolId || "library";
+  const activeOutput = outputs[activeBusinessTool] || null;
+  const activeImageMode: WorkspaceImageMode = activeWorkspaceToolId === "image-editor" ? "image-to-image" : "text-to-image";
+  const activeVideoMode: WorkspaceVideoMode = activeBusinessTool === "video" && activeAction?.mode === "image-to-video" ? "image-to-video" : "text-to-video";
+  const currentLibraryItems = useMemo(() => {
+    const filtered = library.filter((item) => {
+      if (libraryFilter === "all") return true;
+      return item.type === libraryFilter;
+    });
+    const sorted = [...filtered];
+    if (librarySort === "title") {
+      sorted.sort((a, b) => a.title.localeCompare(b.title, "zh-Hans-CN"));
+    } else {
+      sorted.sort((a, b) => Number(new Date(b.createdAt)) - Number(new Date(a.createdAt)));
+    }
+    return sorted;
+  }, [library, libraryFilter, librarySort]);
+
+  const selectedLibraryItem = useMemo(
+    () => currentLibraryItems.find((item) => item.id === selectedLibraryItemId) || currentLibraryItems[0] || null,
+    [currentLibraryItems, selectedLibraryItemId],
+  );
+
+  const libraryCounts = useMemo(() => ({
+    all: library.length,
+    image: library.filter((item) => item.type === "image").length,
+    video: library.filter((item) => item.type === "video").length,
+  }), [library]);
 
   const parameterSlot = (
     <>
-      {activeTool === "image" ? (
+      {activeBusinessTool === "image" ? (
         <ImageGenerator
-          key={activeWorkspaceTool}
-          initialMode={imageModePreset}
+          mode={activeImageMode}
           providers={providers.image}
+          onModeChange={(mode) => setActiveWorkspaceToolId(workspaceToolIdForImageMode(mode))}
           onDone={refreshLibrary}
           onResult={(item) => setOutputs((prev) => ({ ...prev, image: { item, title: "图片结果", tool: "image" } }))}
           setMessage={setMessage}
+          registerMobileAction={setMobileAction}
         />
       ) : null}
-      {activeTool === "video" ? (
+      {activeBusinessTool === "video" ? (
         <VideoGenerator
-          key={activeWorkspaceTool}
-          initialMode={videoModePreset}
+          initialMode={activeVideoMode}
           providers={providers.video}
           onDone={refreshLibrary}
           onResult={(item, job) => setOutputs((prev) => ({ ...prev, video: { item, job, title: "视频结果", tool: "video" } }))}
           setMessage={setMessage}
+          registerMobileAction={setMobileAction}
         />
       ) : null}
-      {activeTool === "image-upscale" ? (
+      {activeBusinessTool === "image-upscale" ? (
         <UpscaleForm
           kind="image"
           onDone={refreshLibrary}
           onResult={(item, job) => setOutputs((prev) => ({ ...prev, "image-upscale": { item, job, title: "图片高清结果", tool: "image-upscale" } }))}
           setMessage={setMessage}
+          registerMobileAction={setMobileAction}
         />
       ) : null}
-      {activeTool === "video-upscale" ? (
+      {activeBusinessTool === "video-upscale" ? (
         <UpscaleForm
           kind="video"
           onDone={refreshLibrary}
           onResult={(item, job) => setOutputs((prev) => ({ ...prev, "video-upscale": { item, job, title: "视频高清结果", tool: "video-upscale" } }))}
           setMessage={setMessage}
+          registerMobileAction={setMobileAction}
         />
       ) : null}
-      {activeTool === "library" ? (
-        <LibraryView items={library} refresh={refreshLibrary} setMessage={setMessage} />
+      {activeBusinessTool === "library" ? (
+        <LibrarySidebar
+          count={libraryCounts}
+          filter={libraryFilter}
+          sort={librarySort}
+          onFilterChange={setLibraryFilter}
+          onSortChange={setLibrarySort}
+        />
       ) : null}
     </>
   );
@@ -154,15 +194,37 @@ export function StudioApp() {
   return (
     <>
       <WorkbenchShell
-        state={{ activeToolId: activeWorkspaceTool, activeMode: activeTool === "image" ? imageModePreset : videoModePreset }}
+        state={{ activeToolId: activeWorkspaceToolId }}
         onToolAction={handleToolAction}
-        onOpenLogin={() => router.push("/login")}
         isAuthenticated={false}
-        toolTitle={activeMeta?.label}
-        toolDescription={activeMeta?.description}
+        toolTitle={activeWorkspaceTool.label}
+        toolDescription={activeWorkspaceTool.description}
         parameterSlot={parameterSlot}
-        previewSlot={<OutputPanel tool={activeTool} output={activeOutput} libraryCount={library.length} activeLabel={activeMeta?.label || ""} />}
-        mobileActionSlot={<MobileActionSummary label={activeMeta?.label || "当前工具"} />}
+        previewSlot={
+          activeBusinessTool === "library" ? (
+            <LibraryWorkspace
+              items={currentLibraryItems}
+              selectedItem={selectedLibraryItem}
+              onSelectItem={setSelectedLibraryItemId}
+              onDelete={async (id) => {
+                try {
+                  await jsonFetch("/api/library", {
+                    method: "DELETE",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ id }),
+                  });
+                  await refreshLibrary();
+                } catch (error) {
+                  setMessage(error instanceof Error ? error.message : "删除失败。");
+                }
+              }}
+              onRefresh={refreshLibrary}
+            />
+          ) : (
+            <OutputPanel tool={activeBusinessTool} output={activeOutput} libraryCount={library.length} activeLabel={activeWorkspaceTool.label} />
+          )
+        }
+        mobileActionSlot={mobileAction ? <MobileActionBar {...mobileAction} /> : null}
       />
       {message ? <Toast message={message} onClose={() => setMessage("")} /> : null}
     </>
@@ -170,19 +232,22 @@ export function StudioApp() {
 }
 
 function ImageGenerator({
-  initialMode,
+  mode,
   providers,
+  onModeChange,
   onDone,
   onResult,
   setMessage,
+  registerMobileAction,
 }: {
-  initialMode: ImageMode;
+  mode: WorkspaceImageMode;
   providers: PublicProvider[];
+  onModeChange: (mode: WorkspaceImageMode) => void;
   onDone: () => Promise<void>;
   onResult: (item: LibraryItem) => void;
   setMessage: (value: string) => void;
+  registerMobileAction: (action: MobileActionState) => void;
 }) {
-  const [mode, setMode] = useState<ImageMode>(initialMode);
   const [providerId, setProviderId] = useState("");
   const [ratio, setRatio] = useState("1:1");
   const [quality, setQuality] = useState("1k");
@@ -191,14 +256,10 @@ function ImageGenerator({
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
-    setMode(initialMode);
-  }, [initialMode]);
-
-  useEffect(() => {
     if (!providerId && providers[0]) setProviderId(providers[0].id);
   }, [providerId, providers]);
 
-  async function submit() {
+  const submit = useCallback(async () => {
     if (!providerId) {
       setMessage("请先到后台设置里启用图片生成入口。");
       return;
@@ -225,17 +286,27 @@ function ImageGenerator({
     } finally {
       setLoading(false);
     }
-  }
+  }, [files, mode, onDone, onResult, prompt, providerId, quality, ratio, setMessage]);
+
+  useEffect(() => {
+    registerMobileAction({
+      label: mode === "image-to-image" ? "开始编辑" : "生成图片",
+      loading,
+      disabled: loading,
+      onClick: submit,
+    });
+    return () => registerMobileAction(null);
+  }, [loading, mode, registerMobileAction, submit]);
 
   return (
-    <FormPanel title={mode === "image-to-image" ? "AI 图片编辑器" : "AI 图像生成器"} subtitle="现有图片逻辑保留，编辑模式共用图生图接口。">
+    <FormPanel title={mode === "image-to-image" ? "AI 图片编辑器" : "AI 图像生成器"} subtitle={mode === "image-to-image" ? "上传参考图并输入修改要求。" : "输入提示词并选择模型。"}>
       <ModeSwitch
         value={mode}
         options={[
           ["text-to-image", "文生图"],
           ["image-to-image", "图生图 / 编辑"],
         ]}
-        onChange={(value) => setMode(value as ImageMode)}
+        onChange={(value) => onModeChange(value as WorkspaceImageMode)}
       />
 
       <ProviderSelect providers={providers} value={providerId} onChange={setProviderId} />
@@ -268,9 +339,8 @@ function ImageGenerator({
 
       <div className="studio-actions">
         <SubmitButton disabled={loading} loading={loading} onClick={submit}>
-          立即生成图片
+          {mode === "image-to-image" ? "开始编辑" : "生成图片"}
         </SubmitButton>
-        <span className="studio-help-text">清晰度位置已预留积分提示</span>
       </div>
     </FormPanel>
   );
@@ -282,14 +352,16 @@ function VideoGenerator({
   onDone,
   onResult,
   setMessage,
+  registerMobileAction,
 }: {
-  initialMode: VideoMode;
+  initialMode: WorkspaceVideoMode;
   providers: PublicProvider[];
   onDone: () => Promise<void>;
   onResult: (item: LibraryItem, job?: JobRecord | null) => void;
   setMessage: (value: string) => void;
+  registerMobileAction: (action: MobileActionState) => void;
 }) {
-  const [mode, setMode] = useState<VideoMode>(initialMode);
+  const [mode, setMode] = useState<WorkspaceVideoMode>(initialMode);
   const [providerId, setProviderId] = useState("");
   const [ratio, setRatio] = useState("16:9");
   const [duration, setDuration] = useState(5);
@@ -297,10 +369,6 @@ function VideoGenerator({
   const [files, setFiles] = useState<FileList | null>(null);
   const [loading, setLoading] = useState(false);
   const [job, setJob] = useState<JobRecord | null>(null);
-
-  useEffect(() => {
-    setMode(initialMode);
-  }, [initialMode]);
 
   useEffect(() => {
     if (!providerId && providers[0]) setProviderId(providers[0].id);
@@ -323,7 +391,7 @@ function VideoGenerator({
     return () => window.clearInterval(timer);
   }, [job, onDone, onResult, setMessage]);
 
-  async function submit() {
+  const submit = useCallback(async () => {
     if (!providerId) {
       setMessage("请先到后台设置里启用视频生成入口。");
       return;
@@ -351,7 +419,17 @@ function VideoGenerator({
     } finally {
       setLoading(false);
     }
-  }
+  }, [duration, files, mode, onDone, onResult, prompt, providerId, ratio, setMessage]);
+
+  useEffect(() => {
+    registerMobileAction({
+      label: "生成视频",
+      loading,
+      disabled: loading,
+      onClick: submit,
+    });
+    return () => registerMobileAction(null);
+  }, [loading, registerMobileAction, submit]);
 
   return (
     <FormPanel title="AI 视频生成器" subtitle="先写你要的视频，再选尺寸和时长。">
@@ -361,7 +439,7 @@ function VideoGenerator({
           ["text-to-video", "文生视频"],
           ["image-to-video", "图生视频"],
         ]}
-        onChange={(value) => setMode(value as VideoMode)}
+        onChange={(value) => setMode(value as WorkspaceVideoMode)}
       />
       <ProviderSelect providers={providers} value={providerId} onChange={setProviderId} />
       <FileInput
@@ -395,9 +473,8 @@ function VideoGenerator({
       />
       <div className="studio-actions">
         <SubmitButton disabled={loading} loading={loading} onClick={submit}>
-          立即生成视频
+          生成视频
         </SubmitButton>
-        <span className="studio-help-text">同样预留积分位</span>
       </div>
     </FormPanel>
   );
@@ -408,11 +485,13 @@ function UpscaleForm({
   onDone,
   onResult,
   setMessage,
+  registerMobileAction,
 }: {
   kind: UpscaleKind;
   onDone: () => Promise<void>;
   onResult: (item: LibraryItem, job?: JobRecord | null) => void;
   setMessage: (value: string) => void;
+  registerMobileAction: (action: MobileActionState) => void;
 }) {
   const isVideo = kind === "video";
   const [scale, setScale] = useState("2");
@@ -472,7 +551,7 @@ function UpscaleForm({
     return () => window.clearInterval(timer);
   }, [isVideo, job, onDone, onResult, setMessage]);
 
-  async function submit() {
+  const submit = useCallback(async () => {
     if (!file) {
       setMessage(`请选择一个${isVideo ? "视频" : "图片"}文件。`);
       return;
@@ -500,10 +579,20 @@ function UpscaleForm({
     } finally {
       setLoading(false);
     }
-  }
+  }, [availability?.detail, availability?.ready, file, isVideo, kind, onDone, onResult, scale, setMessage]);
 
   const title = isVideo ? "视频高清" : "图片高清";
   const accept = isVideo ? "video/mp4,video/webm,video/quicktime,.mov" : "image/png,image/jpeg,image/webp";
+
+  useEffect(() => {
+    registerMobileAction({
+      label: "开始增强",
+      loading,
+      disabled: loading || statusLoading,
+      onClick: submit,
+    });
+    return () => registerMobileAction(null);
+  }, [loading, registerMobileAction, statusLoading, submit]);
 
   return (
     <FormPanel title={title} subtitle={`上传单个${isVideo ? "视频" : "图片"}，使用本机工具放大到原始尺寸的 2x 或 4x。`}>
@@ -553,7 +642,7 @@ function UpscaleForm({
 
       <div className="studio-actions">
         <SubmitButton disabled={loading || statusLoading} loading={loading} onClick={submit}>
-          开始处理
+          开始增强
         </SubmitButton>
         <span className="studio-help-text">本机增强，不需要 Key</span>
       </div>
@@ -561,46 +650,92 @@ function UpscaleForm({
   );
 }
 
-function LibraryView({
+function LibrarySidebar({
+  count,
+  filter,
+  sort,
+  onFilterChange,
+  onSortChange,
+}: {
+  count: { all: number; image: number; video: number };
+  filter: "all" | "image" | "video";
+  sort: "recent" | "title";
+  onFilterChange: (value: "all" | "image" | "video") => void;
+  onSortChange: (value: "recent" | "title") => void;
+}) {
+  return (
+    <div className="studio-library-sidebar">
+      <StackedControl label="分类">
+        <ModeSwitch
+          value={filter}
+          options={[
+            ["all", `全部 ${count.all}`],
+            ["image", `图片 ${count.image}`],
+            ["video", `视频 ${count.video}`],
+          ]}
+          onChange={(value) => onFilterChange(value as "all" | "image" | "video")}
+        />
+      </StackedControl>
+      <StackedControl label="排序">
+        <ModeSwitch
+          value={sort}
+          options={[
+            ["recent", "最新"],
+            ["title", "标题"],
+          ]}
+          onChange={(value) => onSortChange(value as "recent" | "title")}
+        />
+      </StackedControl>
+      <p className="studio-help-text">点击作品后会在右侧预览区显示详情。</p>
+    </div>
+  );
+}
+
+function LibraryWorkspace({
   items,
-  refresh,
-  setMessage,
+  selectedItem,
+  onSelectItem,
+  onDelete,
+  onRefresh,
 }: {
   items: LibraryItem[];
-  refresh: () => Promise<void>;
-  setMessage: (value: string) => void;
+  selectedItem: LibraryItem | null;
+  onSelectItem: (id: string | null) => void;
+  onDelete: (id: string) => Promise<void>;
+  onRefresh: () => Promise<void>;
 }) {
-  async function remove(id: string) {
-    try {
-      await jsonFetch("/api/library", {
-        method: "DELETE",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ id }),
-      });
-      await refresh();
-    } catch (error) {
-      setMessage(error instanceof Error ? error.message : "删除失败。");
-    }
-  }
-
   if (!items.length) {
-    return (
-      <section className="studio-empty">
-        作品库还是空的。生成图片或视频后会自动出现在这里。
-      </section>
-    );
+    return <section className="studio-empty">作品库还是空的。生成图片或视频后会自动出现在这里。</section>;
   }
 
   return (
-    <div className="grid gap-4 md:grid-cols-2">
-      {items.map((item) => (
-        <div key={item.id} className="studio-library-card">
-          <MediaCard item={item} />
-          <button type="button" onClick={() => remove(item.id)} className="studio-secondary-button">
-            删除
+    <div className="studio-library-workspace">
+      <div className="studio-library-grid">
+        {items.map((item) => (
+          <button
+            key={item.id}
+            type="button"
+            className={cn("studio-library-tile", selectedItem?.id === item.id && "is-active")}
+            onClick={() => onSelectItem(item.id)}
+          >
+            <MediaCard item={item} />
           </button>
+        ))}
+      </div>
+
+      {selectedItem ? (
+        <div className="studio-library-detail">
+          <MediaCard item={selectedItem} large />
+          <div className="studio-actions">
+            <button type="button" className="studio-secondary-button" onClick={() => onDelete(selectedItem.id)}>
+              删除
+            </button>
+            <button type="button" className="studio-secondary-button" onClick={onRefresh}>
+              刷新
+            </button>
+          </div>
         </div>
-      ))}
+      ) : null}
     </div>
   );
 }
@@ -623,7 +758,7 @@ function OutputPanel({
       <div className="studio-preview">
         <div className="studio-preview__top">
           <div>
-            <p className="shell-eyebrow">当前工具</p>
+            <p className="shell-eyebrow">创作预览</p>
             <h3>{activeLabel || content.title}</h3>
             <p>{content.desc}</p>
           </div>
@@ -667,6 +802,27 @@ function FormPanel({ title, subtitle, children }: { title: string; subtitle: str
         <p>{subtitle}</p>
       </div>
       <div className="studio-form-panel__content">{children}</div>
+    </div>
+  );
+}
+
+function MobileActionBar({
+  label,
+  loading,
+  disabled,
+  onClick,
+}: {
+  label: string;
+  loading: boolean;
+  disabled: boolean;
+  onClick: () => void;
+}) {
+  return (
+    <div className="studio-mobile-action">
+      <button type="button" className="studio-primary-action studio-mobile-action__button" disabled={disabled} onClick={onClick}>
+        {loading ? <Loader2 className="size-4 animate-spin" /> : <Wand2 className="size-4" />}
+        {label}
+      </button>
     </div>
   );
 }
@@ -880,15 +1036,6 @@ function MediaCard({ item, large = false }: { item: LibraryItem; large?: boolean
   );
 }
 
-function MobileActionSummary({ label }: { label: string }) {
-  return (
-    <div className="studio-mobile-action">
-      <span>{label}</span>
-      <strong>在参数区操作</strong>
-    </div>
-  );
-}
-
 function Toast({ message, onClose }: { message: string; onClose: () => void }) {
   useEffect(() => {
     const timer = window.setTimeout(onClose, 4500);
@@ -908,13 +1055,13 @@ const previewContent: Record<
 > = {
   image: {
     title: "AI 图像生成器",
-    desc: "当前保留真实图片生成与编辑逻辑，右侧先展示引导。",
+    desc: "输入提示词并选择模型，生成结果会在这里显示。",
     image: "/images/reference/hero-cover.png",
     notes: ["填写提示词", "选择参考图或比例", "结果会保存在作品库"],
   },
   video: {
     title: "AI 视频生成器",
-    desc: "当前保留视频生成、任务刷新和结果保存逻辑。",
+    desc: "输入视频描述，生成任务完成后会在这里显示。",
     image: "/images/reference/sample-1.png",
     notes: ["填写视频描述", "选择比例和时长", "轮询任务后展示结果"],
   },

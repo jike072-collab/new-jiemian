@@ -62,10 +62,23 @@
 | Screenshot script | `docs/design-references/module-03-shell/README.md` | Evidence is not separated into real captured recovery frames | Partial | Keep filtered evidence only and add stable capture notes later | Medium | filename and viewport match |
 | New API extension | `docs/architecture/NEW_API_INTEGRATION.md` | No documented boundary for account/payment expansion | No | Add planning only, no front-end secrets or payment wiring | Low | doc review only |
 
-## Scope Guard
+## Final Repair Result
 
-- No `src/**` edits in this phase.
-- No new fake data.
-- No new login model.
-- No new API or route shape.
-- No module 4 work.
+- `src/app/page.tsx` now renders `ApplicationContainer`, and the visible homepage is the real `StudioApp` business surface.
+- `StudioApp` uses one active workspace entry state: `activeWorkspaceToolId`.
+- Business tool id, image mode, video mode, title, description, navigation highlight, and permission metadata are derived from `workspace-registry`.
+- `AI 图像生成器` maps to `image + text-to-image`; `AI 图片编辑器` maps to `image + image-to-image`.
+- The image form is shared between generation and editing, and switching those entries no longer remounts the form or clears prompt, upload, ratio, model, or quality state.
+- Mobile bottom actions call the same submit functions used by the desktop form buttons.
+- The mobile action labels are `生成图片`, `开始编辑`, `生成视频`, and `开始增强`; the library view hides the mobile action slot.
+- Header and drawer login entries are real `/login` links when no authenticated session exists.
+- The drawer has `role="dialog"`, `aria-modal`, focus return, escape close, backdrop close, body scroll lock restoration, and focus trapping.
+- The library now uses the parameter column for filtering/sorting and the main workspace for browsing and detail preview.
+- Developer-facing copy was removed from the running shell and tool surfaces.
+
+## Final Verification Notes
+
+- Final browser verification and screenshot evidence are recorded in `docs/design-references/module-03-shell/README.md`.
+- `npm run lint`, `npm run typecheck`, and `npm run build` passed on the final revision.
+- PR #3 remains the only PR for module 3 and targets `develop`.
+- Module 4 remains blocked until manual approval.

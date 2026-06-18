@@ -23,6 +23,6 @@
 | Item | Status | Notes |
 | --- | --- | --- |
 | Module 3 segment 1 | Done | Root cause and recovery plan documented. |
-| Module 3 segment 2 | In progress | Implementation matrix added; code repair begins next. |
-| Module 3 segment 3 | Not started | Final screenshots and verification still pending. |
-| Module 4 | Blocked | Wait for module 3 completion and user confirmation. |
+| Module 3 segment 2 | Done | Business-preserving responsive shell repair was pushed to PR #3. |
+| Module 3 segment 3 | Done | Final state, mobile actions, drawer focus, screenshots, and acceptance checks completed. |
+| Module 4 | Waiting for manual approval | Do not start until PR #3 is reviewed and the user approves. |

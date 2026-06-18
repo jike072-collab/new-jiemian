@@ -637,7 +637,9 @@
   }
 
   .studio-empty,
-  .studio-library-card {
+  .studio-library-card,
+  .studio-library-tile,
+  .studio-library-detail {
     border: 1px solid var(--border-subtle);
     border-radius: var(--radius-card);
     background: color-mix(in srgb, var(--surface) 50%, transparent);
@@ -650,6 +652,48 @@
   }
 
   .studio-library-card {
+    display: grid;
+    gap: var(--space-stack);
+  }
+
+  .studio-library-sidebar {
+    display: grid;
+    gap: var(--space-block);
+  }
+
+  .studio-library-workspace {
+    display: grid;
+    gap: var(--space-panel);
+    min-width: 0;
+  }
+
+  .studio-library-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+    gap: var(--space-stack);
+    min-width: 0;
+  }
+
+  .studio-library-tile {
+    display: block;
+    width: 100%;
+    min-width: 0;
+    padding: 0;
+    color: inherit;
+    text-align: left;
+    transition: border-color var(--motion-base), transform var(--motion-base);
+  }
+
+  .studio-library-tile:hover,
+  .studio-library-tile.is-active {
+    border-color: var(--primary);
+  }
+
+  .studio-library-tile:hover {
+    transform: translateY(-1px);
+  }
+
+  .studio-library-detail {
     display: grid;
     gap: var(--space-stack);
   }
@@ -772,11 +816,11 @@
     align-items: center;
     justify-content: space-between;
     gap: var(--space-stack);
-    height: var(--primary-action-height-mobile);
+    min-height: var(--primary-action-height-mobile);
     border: 1px solid var(--border-subtle);
     border-radius: var(--radius-control);
     background: var(--panel);
-    padding: 0 var(--space-panel);
+    padding: 8px;
   }
 
   .studio-mobile-action span {
@@ -792,6 +836,11 @@
     color: var(--foreground);
     font-size: 13px;
     font-weight: 600;
+  }
+
+  .studio-mobile-action__button {
+    width: 100%;
+    min-width: 0;
   }
 
   .studio-toast {
@@ -1025,6 +1074,10 @@
 
   .studio-mode__options {
     grid-template-columns: minmax(0, 1fr);
+  }
+
+  .studio-library-grid {
+    grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
   }
 
   .studio-primary-action {

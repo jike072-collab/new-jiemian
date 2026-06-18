@@ -28,13 +28,11 @@ type ShellPane = "parameters" | "preview";
 
 type WorkspaceShellState = {
   activeToolId: WorkspaceToolId;
-  activeMode?: string;
 };
 
 type WorkbenchShellProps = {
   state: WorkspaceShellState;
   onToolAction: (action: WorkspaceAction, tool: WorkspaceToolId) => void;
-  onOpenLogin: () => void;
   isAuthenticated: boolean;
   headerRightSlot?: ReactNode;
   parameterSlot: ReactNode;
@@ -47,7 +45,6 @@ type WorkbenchShellProps = {
 export function WorkbenchShell({
   state,
   onToolAction,
-  onOpenLogin,
   isAuthenticated,
   headerRightSlot,
   parameterSlot,
@@ -62,8 +59,10 @@ export function WorkbenchShell({
   const drawerRef = useRef<HTMLDivElement>(null);
   const drawerButtonRef = useRef<HTMLButtonElement>(null);
   const rootRef = useRef<HTMLDivElement>(null);
+  const previousOverflowRef = useRef("");
 
   const activeTool = workspaceToolById(state.activeToolId) || workspaceToolEntries[0];
+  const drawerId = "workspace-mobile-drawer";
 
   useEffect(() => {
     rootRef.current?.querySelector<HTMLElement>("[data-shell-scroll='parameters']")?.scrollTo({ top: 0 });
@@ -72,17 +71,38 @@ export function WorkbenchShell({
 
   useEffect(() => {
     if (!drawerOpen) return;
+    const triggerButton = drawerButtonRef.current;
     const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape") setDrawerOpen(false);
+      if (event.key === "Escape") {
+        setDrawerOpen(false);
+        return;
+      }
+
+      if (event.key !== "Tab" || !drawerRef.current) return;
+      const focusable = drawerRef.current.querySelectorAll<HTMLElement>(
+        'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])',
+      );
+      if (!focusable.length) return;
+      const first = focusable[0];
+      const last = focusable[focusable.length - 1];
+      if (event.shiftKey && document.activeElement === first) {
+        event.preventDefault();
+        last.focus();
+      } else if (!event.shiftKey && document.activeElement === last) {
+        event.preventDefault();
+        first.focus();
+      }
     };
     window.addEventListener("keydown", onKeyDown);
+    previousOverflowRef.current = document.body.style.overflow;
     document.body.style.overflow = "hidden";
     window.setTimeout(() => {
       drawerRef.current?.querySelector<HTMLElement>("button, a")?.focus();
     }, 0);
     return () => {
       window.removeEventListener("keydown", onKeyDown);
-      document.body.style.overflow = "";
+      document.body.style.overflow = previousOverflowRef.current;
+      triggerButton?.focus();
     };
   }, [drawerOpen]);
 
@@ -91,12 +111,13 @@ export function WorkbenchShell({
       <Header
         activeTool={activeTool}
         isAuthenticated={isAuthenticated}
-        onOpenLogin={onOpenLogin}
         onToggleDrawer={() => setDrawerOpen((value) => !value)}
         onToggleAccount={() => setAccountOpen((value) => !value)}
         accountOpen={accountOpen}
         headerRightSlot={headerRightSlot}
         drawerButtonRef={drawerButtonRef}
+        drawerId={drawerId}
+        drawerOpen={drawerOpen}
       />
 
       <MobileOverlay
@@ -109,11 +130,11 @@ export function WorkbenchShell({
           setDrawerOpen(false);
         }}
         onChangePane={setPane}
-        onOpenLogin={onOpenLogin}
         isAuthenticated={isAuthenticated}
         accountOpen={accountOpen}
         mobileActionSlot={mobileActionSlot}
         drawerRef={drawerRef}
+        drawerId={drawerId}
       />
 
       <main className="shell-main">
@@ -144,8 +165,8 @@ export function WorkbenchShell({
             <div className="shell-panel__header">
               <div>
                 <p className="shell-eyebrow">工作区</p>
-                <h2 className="shell-title">默认引导与结果容器</h2>
-                <p className="shell-description">预览、结果和空状态内容都通过插槽提供。</p>
+                <h2 className="shell-title">{activeTool.label}</h2>
+                <p className="shell-description">生成结果将在这里显示。</p>
               </div>
               <span className="shell-chip">{activeTool.label}</span>
             </div>
@@ -164,21 +185,23 @@ export function WorkbenchShell({
 function Header({
   activeTool,
   isAuthenticated,
-  onOpenLogin,
   onToggleDrawer,
   onToggleAccount,
   accountOpen,
   headerRightSlot,
   drawerButtonRef,
+  drawerId,
+  drawerOpen,
 }: {
   activeTool: WorkspaceToolEntry;
   isAuthenticated: boolean;
-  onOpenLogin: () => void;
   onToggleDrawer: () => void;
   onToggleAccount: () => void;
   accountOpen: boolean;
   headerRightSlot?: ReactNode;
   drawerButtonRef: RefObject<HTMLButtonElement | null>;
+  drawerId: string;
+  drawerOpen: boolean;
 }) {
   return (
     <header className="shell-header">
@@ -188,6 +211,8 @@ function Header({
           type="button"
           className="shell-icon-button shell-header__menu"
           aria-label="打开导航"
+          aria-controls={drawerId}
+          aria-expanded={drawerOpen}
           onClick={onToggleDrawer}
         >
           <Menu className="size-4" />
@@ -211,10 +236,10 @@ function Header({
             <ChevronDown className={cn("size-4 transition", accountOpen && "rotate-180")} />
           </button>
         ) : (
-          <button type="button" className="shell-login" onClick={onOpenLogin}>
+          <Link href="/login" className="shell-login">
             <UserRound className="size-4" />
             登录
-          </button>
+          </Link>
         )}
       </div>
     </header>
@@ -267,11 +292,11 @@ function MobileOverlay({
   onClose,
   onSelect,
   onChangePane,
-  onOpenLogin,
   isAuthenticated,
   accountOpen,
   mobileActionSlot,
   drawerRef,
+  drawerId,
 }: {
   activeTool: WorkspaceToolEntry;
   drawerOpen: boolean;
@@ -279,11 +304,11 @@ function MobileOverlay({
   onClose: () => void;
   onSelect: (action: WorkspaceAction, tool: WorkspaceToolId) => void;
   onChangePane: (value: ShellPane) => void;
-  onOpenLogin: () => void;
   isAuthenticated: boolean;
   accountOpen: boolean;
   mobileActionSlot?: ReactNode;
   drawerRef: RefObject<HTMLDivElement | null>;
+  drawerId: string;
 }) {
   return (
     <>
@@ -307,13 +332,21 @@ function MobileOverlay({
       <div className="shell-mobile-action-slot">{mobileActionSlot}</div>
 
       <div className={cn("shell-drawer-backdrop", drawerOpen && "is-open")} onClick={onClose} aria-hidden="true" />
-      <aside ref={drawerRef} className={cn("shell-drawer", drawerOpen && "is-open")} aria-hidden={!drawerOpen}>
+      <aside
+        id={drawerId}
+        ref={drawerRef}
+        className={cn("shell-drawer", drawerOpen && "is-open")}
+        role="dialog"
+        aria-modal="true"
+        aria-label="工具导航"
+        aria-hidden={!drawerOpen}
+      >
         <div className="shell-drawer__head">
-          <div className="shell-drawer__brand">
+            <div className="shell-drawer__brand">
             <BrandLogo className="shell-brand__logo" />
             <div>
               <strong className="shell-brand__text">奥皇 AI</strong>
-              <p className="shell-drawer__sub">工具导航</p>
+              <p className="shell-drawer__sub">选择创作工具</p>
             </div>
           </div>
           <button type="button" className="shell-icon-button" onClick={onClose} aria-label="关闭导航">
@@ -347,10 +380,10 @@ function MobileOverlay({
           ))}
 
           {!isAuthenticated ? (
-            <button type="button" className="shell-drawer__link" onClick={onOpenLogin}>
+            <Link href="/login" className="shell-drawer__link" onClick={onClose}>
               <UserRound className="size-4" />
               登录
-            </button>
+            </Link>
           ) : null}
 
           {accountOpen ? (

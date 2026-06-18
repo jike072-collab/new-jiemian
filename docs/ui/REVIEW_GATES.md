@@ -35,4 +35,7 @@
 ## Module 3 Gate
 
 - PR #3 must not merge until code repair and real screenshot verification are complete.
-- Module 4 must not start until all three module 3 segments are complete.
+- PR #3 must not merge until the browser checks prove desktop, tablet, mobile, login, drawer, and library behavior.
+- Module 4 must not start until all three module 3 segments are complete and manually approved.
+- Build passing does not prove the page is correct.
+- Final screenshots must come from the real running page, not a static mock.

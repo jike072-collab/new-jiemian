@@ -19,12 +19,14 @@ export type WorkspaceToolId =
   | "admin-settings";
 
 export type WorkspaceBusinessToolId = Exclude<WorkspaceToolId, "image-editor" | "admin-settings">;
+export type WorkspaceImageMode = "text-to-image" | "image-to-image";
+export type WorkspaceVideoMode = "text-to-video" | "image-to-video";
 
 export type WorkspaceAction =
   | {
       kind: "workspace";
       toolId: WorkspaceBusinessToolId;
-      mode?: "text-to-image" | "image-to-image" | "text-to-video" | "image-to-video";
+      mode?: WorkspaceImageMode | WorkspaceVideoMode;
     }
   | {
       kind: "route";
@@ -83,7 +85,7 @@ export const workspaceToolEntries: WorkspaceToolEntry[] = [
   {
     id: "image-editor",
     label: "AI 图片编辑器",
-    description: "同一图像逻辑的编辑模式",
+    description: "上传参考图进行编辑",
     icon: Wand2,
     group: "创建视频与图片",
     action: { kind: "workspace", toolId: "image", mode: "image-to-image" },
@@ -136,7 +138,7 @@ export const workspaceAccountMenu: WorkspaceAccountEntry[] = [
   {
     id: "account-center",
     label: "账户中心",
-    description: "后续模块接入",
+    description: "查看账户资料",
     visible: false,
     requiresAuth: true,
     featureFlag: "new-api-account-menu",
@@ -144,7 +146,7 @@ export const workspaceAccountMenu: WorkspaceAccountEntry[] = [
   {
     id: "balance-topup",
     label: "余额与充值",
-    description: "后续模块接入",
+    description: "查看余额和充值入口",
     visible: false,
     requiresAuth: true,
     featureFlag: "new-api-account-menu",
@@ -152,7 +154,7 @@ export const workspaceAccountMenu: WorkspaceAccountEntry[] = [
   {
     id: "recharge-records",
     label: "充值记录",
-    description: "后续模块接入",
+    description: "查看充值明细",
     visible: false,
     requiresAuth: true,
     featureFlag: "new-api-account-menu",
@@ -160,7 +162,7 @@ export const workspaceAccountMenu: WorkspaceAccountEntry[] = [
   {
     id: "logout",
     label: "退出登录",
-    description: "后续模块接入",
+    description: "结束当前会话",
     visible: false,
     requiresAuth: true,
     featureFlag: "new-api-account-menu",
@@ -173,4 +175,8 @@ export function workspaceToolById(id: WorkspaceToolId) {
 
 export function workspaceToolGroupFor(id: WorkspaceToolId) {
   return workspaceToolById(id)?.group || "创建视频与图片";
+}
+
+export function workspaceToolIdForImageMode(mode: WorkspaceImageMode): WorkspaceToolId {
+  return mode === "image-to-image" ? "image-editor" : "image";
 }
