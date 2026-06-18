@@ -255,13 +255,22 @@ export async function submitVideo(input: {
   duration: number;
   files: UploadedMedia[];
 }) {
+  if (!input.prompt.trim()) throw new Error("请输入视频提示词。");
+  if (input.mode === "text-to-video" && input.files.length) {
+    throw new Error("文生视频模式不接收首帧图片。");
+  }
+  if (input.mode === "image-to-video") {
+    if (!input.files.length) {
+      throw new Error("图生视频模式需要上传 1 张首帧图片。");
+    }
+    if (input.files.length > 1) {
+      throw new Error("图生视频模式只能上传 1 张首帧图片。");
+    }
+  }
+
   const provider = await providerById(input.providerId);
   if (!provider || provider.kind !== "video" || !provider.enabled || !provider.apiKey) {
     throw new Error("视频供应商未配置或未启用。");
-  }
-  if (!input.prompt.trim()) throw new Error("请输入视频提示词。");
-  if (input.mode === "image-to-video" && !input.files.length) {
-    throw new Error("图生视频模式需要上传参考图片。");
   }
 
   const providerPayload: Record<string, string | number | string[]> = {
@@ -272,7 +281,8 @@ export async function submitVideo(input: {
     response_format: "url",
   };
   if (input.mode === "image-to-video") {
-    providerPayload.image = input.files.map((file) => `data:${file.mimeType};base64,${file.bytes.toString("base64")}`);
+    const [file] = input.files;
+    providerPayload.image = [`data:${file.mimeType};base64,${file.bytes.toString("base64")}`];
   }
 
   const response = await fetch(provider.apiUrl, {

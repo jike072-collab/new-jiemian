@@ -120,6 +120,7 @@ const imageWorkspaceModeMeta: Record<WorkspaceImageMode, {
 const allowedReferenceImageTypes = new Set(["image/png", "image/jpeg", "image/webp"]);
 const maxReferenceImageSize = 10 * 1024 * 1024;
 const maxReferenceImageCount = 10;
+const maxVideoFirstFrameCount = 1;
 
 const videoWorkspaceModeMeta: Record<WorkspaceVideoMode, {
   submitLabel: string;
@@ -158,7 +159,7 @@ const videoWorkspaceModeMeta: Record<WorkspaceVideoMode, {
     uploadRequired: true,
     uploadEmptyTitle: "上传首帧图片",
     uploadFilledTitle: "已选择首帧图片",
-    uploadHelpText: "支持 PNG、JPEG 和 WebP，最多 10 张，单张不超过 10MB。",
+    uploadHelpText: "仅支持 1 张 PNG、JPEG 或 WebP 图片，单张不超过 10MB。",
     promptLabel: "动态描述",
     promptPlaceholder: "描述图片中的主体如何运动、镜头如何推进/拉远/环绕、背景如何变化，以及哪些元素必须保持一致。",
     guideDescription: "上传首帧图片，再描述希望画面如何运动。",
@@ -188,10 +189,22 @@ function createImageWorkspaceFiles(files: File[]) {
 }
 
 function createVideoWorkspaceFiles(files: File[]) {
-  return createImageWorkspaceFiles(files).map((item) => ({
-    file: item.file,
-    previewUrl: item.previewUrl,
-  }));
+  if (files.length > maxVideoFirstFrameCount) {
+    throw new Error("图生视频模式只能上传 1 张首帧图片。");
+  }
+  const nextFiles = files.slice(0, maxVideoFirstFrameCount);
+  if (!nextFiles.length) return [];
+  const [file] = nextFiles;
+  if (!allowedReferenceImageTypes.has(file.type)) {
+    throw new Error("首帧图片仅支持 PNG、JPEG 和 WebP。");
+  }
+  if (file.size > maxReferenceImageSize) {
+    throw new Error("首帧图片不能超过 10MB。");
+  }
+  return [{
+    file,
+    previewUrl: URL.createObjectURL(file),
+  }];
 }
 
 async function jsonFetch<T>(url: string, options?: RequestInit): Promise<T> {
@@ -1091,13 +1104,13 @@ function VideoGenerator({
 
   useEffect(() => {
     registerMobileAction({
-      label: meta.submitLabel,
+      label: state.loading ? meta.loadingLabel : meta.submitLabel,
       loading: state.loading,
       disabled: !canSubmit,
       onClick: onSubmit,
     });
     return () => registerMobileAction(null);
-  }, [canSubmit, meta.submitLabel, onSubmit, registerMobileAction, state.loading]);
+  }, [canSubmit, meta.loadingLabel, meta.submitLabel, onSubmit, registerMobileAction, state.loading]);
 
   return (
     <FormPanel>
@@ -1199,6 +1212,7 @@ function VideoReferenceInput({
         inputRef={inputRef}
         inputId="video-first-frame-input"
         accept="image/png,image/jpeg,image/webp"
+        multiple={false}
         required={required}
         dragging={dragging}
         error={error}

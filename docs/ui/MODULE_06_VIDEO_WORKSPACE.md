@@ -194,8 +194,10 @@ Implemented in `src/components/studio-app.tsx`:
 Implemented in `src/lib/server/provider-call.ts`:
 
 - The internal API still receives and validates `mode`.
-- Image-to-video provider payload includes base64 `image` data.
+- Image-to-video provider payload includes exactly one base64 `image` data URL.
 - Text-to-video provider payload no longer sends an empty or stale `image` field.
+- Image-to-video now rejects 0 files and rejects more than 1 file instead of silently truncating.
+- Text-to-video now rejects any submitted first-frame file before provider dispatch.
 
 ## Segment 2 Mode Behavior
 
@@ -207,8 +209,76 @@ Implemented in `src/lib/server/provider-call.ts`:
 | Prompt guidance | Describes subject, action, scene, camera, motion, lighting, and mood | Describes subject motion, camera movement, background change, and consistency requirements |
 | Preview empty state | Guides text description of a video scene | Guides first-frame upload first, then motion description |
 | Frontend payload | `providerId`, `mode=text-to-video`, `ratio`, `duration`, `prompt` | `providerId`, `mode=image-to-video`, `ratio`, `duration`, `prompt`, `files` |
-| Provider payload | `model`, `prompt`, `duration`, `aspect_ratio`, `response_format` | Same fields plus `image` data URLs |
+| Provider payload | `model`, `prompt`, `duration`, `aspect_ratio`, `response_format` | Same fields plus exactly one `image` data URL |
 | Result state | Real provider output only | Real provider output only |
+
+## Final Acceptance Patch
+
+Current branch: `feature/06-video-workspace`
+
+Patch scope:
+
+- Tightened the image-to-video first-frame contract to a single image.
+- Kept `videoWorkspace.mode` as the only mode source.
+- Kept module 5 shared components and shell visuals unchanged.
+- Kept B-side New API, authentication, quota, payment, Docker, database, Redis, BFF, and port configuration untouched.
+
+### Single First-Frame Contract
+
+| Layer | Result | Verification |
+| --- | --- | --- |
+| Frontend copy | The image-to-video upload help now says `仅支持 1 张 PNG、JPEG 或 WebP 图片，单张不超过 10MB。` and no longer says `最多 10 张`. | Production DOM check |
+| Frontend input | `#video-first-frame-input` renders as a single file input with `multiple === false`. | Production DOM check |
+| Frontend state | `createVideoWorkspaceFiles` rejects more than one file and keeps at most one accepted `VideoWorkspaceFile`. | Code review and upload test |
+| Replace | Selecting a new first frame replaces the previous thumbnail and releases the previous object URL. | CDP upload report |
+| Delete | Deleting the first frame removes the thumbnail, restores the missing-upload guidance, disables submit, and releases the object URL. | CDP upload report and screenshot |
+| API route | `/api/generate/video` rejects `image-to-video` with 0 files or more than 1 file before provider dispatch. | API request check |
+| Server provider call | `submitVideo` rejects text-to-video files, rejects image-to-video 0/>1 files, and sends a one-item `image` array only for image-to-video. | API request check and code review |
+
+API request checks against production preview at `http://127.0.0.1:3105/`:
+
+| Request | Result |
+| --- | --- |
+| `image-to-video` with 0 files | `400`, `图生视频模式需要上传 1 张首帧图片。` |
+| `image-to-video` with 2 files | `400`, `图生视频模式只能上传 1 张首帧图片。` |
+| `text-to-video` with 1 file | `400`, `文生视频模式不接收首帧图片。` |
+| `text-to-video` with 0 files | Reached real provider validation and returned `视频供应商未配置或未启用。` in the current no-model environment. |
+
+### Upload, Replace, Delete Evidence
+
+Temporary local test images were used only for browser acceptance and were not committed.
+
+Evidence was captured through a clean production preview plus a temporary Chrome DevTools Protocol session so the real browser file input received local PNG files. No fake generated video result was used.
+
+CDP upload report summary:
+
+| Step | Result |
+| --- | --- |
+| Initial image-to-video state | `multiple: false`, single-frame copy present, old `最多 10 张` copy absent, submit disabled. |
+| Upload | One local PNG was selected through the real file input. The UI showed the thumbnail, filename, replacement action, and delete action. |
+| Replace | A second local PNG replaced the first. The first blob URL was revoked. |
+| Delete | Thumbnail count returned to 0, missing-upload guidance returned, submit stayed disabled, and all created blob URLs were revoked. |
+| Text-to-video regression | No first-frame upload input is present and the text-generation guidance remains visible. |
+| Mobile uploaded state | 390x844 screenshot shows the image-to-video thumbnail state without a Next.js development marker. |
+
+### Final Patch Screenshots
+
+Directory:
+
+```text
+docs/design-references/module-06-video-workspace/
+```
+
+New or refreshed evidence:
+
+- `1440x900-image-to-video-uploaded-first-frame.png`
+- `1440x900-image-to-video-after-delete.png`
+- `768x1024-text-to-video.png`
+- `390x844-image-to-video-uploaded.png`
+
+Requested but not regenerated as a fake state:
+
+- `390x844-video-loading-action.png` remains unverified because the current environment has no enabled real video model, so the app cannot enter a real video generation loading state without inventing a provider or fake result.
 
 ## Current Backend Capability Limitation
 
@@ -298,7 +368,8 @@ Files:
 
 - `1440x900-text-to-video-initial.png`
 - `1440x900-image-to-video-missing-first-frame.png`
-- `1440x900-image-to-video-upload-not-automated.png`
+- `1440x900-image-to-video-uploaded-first-frame.png`
+- `1440x900-image-to-video-after-delete.png`
 - `1440x900-no-video-model-state.png`
 - `1440x900-real-unavailable-error-state.png`
 - `1280x800-text-to-video.png`
@@ -307,6 +378,7 @@ Files:
 - `768x1024-text-to-video.png`
 - `390x844-mobile-text-to-video-params.png`
 - `390x844-mobile-image-to-video-upload.png`
+- `390x844-image-to-video-uploaded.png`
 - `390x844-mobile-preview.png`
 - `390x844-mobile-bottom-action.png`
 
@@ -322,5 +394,5 @@ Final checks to run before the segment 3 commit:
 ### Not Verified In Segment 3
 
 - Real successful video generation, playback, download, and library completion were not verified because the current environment has no enabled real video model.
-- Upload-after-selection thumbnail, replace, and delete were not fully automated because the in-app browser runtime does not expose file-selection or `setInputFiles`. The code path uses the shared `CompactDropzone`, object URL creation, replacement, removal, and cleanup implemented in segment 2.
+- A real video generation loading state was not verified because the current environment has no enabled real video model. The mobile action label code now uses `state.loading ? meta.loadingLabel : meta.submitLabel`.
 - Provider capability filtering could not be verified because the current provider API exposes no capability fields for text-to-video, image-to-video, ratios, durations, or optional reference-image support.

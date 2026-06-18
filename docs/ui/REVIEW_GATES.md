@@ -79,3 +79,5 @@
 - Module 6 must reuse the module 5 visual foundation and must not redesign Header, Sidebar, ratio controls, upload controls, primary action, preview shell, or scrollbar behavior.
 - A-side module 6 must not modify B-side New API, authentication, quota, payment, Docker, database, Redis, BFF, callback, reconciliation, or port configuration.
 - If the current provider API exposes no capability fields, A-side code must record the limitation and must not hard-code guessed vendor capability maps.
+- Image-to-video accepts exactly one first-frame image. Zero files and more than one file must be rejected by both the UI contract and API validation; screenshots must not label an unuploaded state as uploaded.
+- Module 6 upload evidence must verify real upload, replace, delete, and object URL cleanup, or explicitly record the automation limitation instead of using a fake uploaded state.
