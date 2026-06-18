@@ -245,6 +245,7 @@ jobs:
           USER_ID="$(node -e 'console.log(crypto.randomUUID())')"
           SESSION_ID="$(node -e 'console.log(crypto.randomUUID())')"
           TOKEN_HASH="$(node -e 'console.log("c".repeat(64))')"
+          PASSWORD_HASH='scrypt$v=1$n=16384$r=8$p=1$len=64$c2FsdA$0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef'
           cat > .runtime/auth-migration/auth-store.json <<JSON
           {
             "users": [
@@ -253,7 +254,7 @@ jobs:
                 "email": "ci-auth-migrate@example.com",
                 "username": "ci-auth-migrate",
                 "display_name": "CI Auth Migrate",
-                "password_hash": "scrypt\\$v=1\\$n=16384\\$r=8\\$p=1\\$len=64\\$c2FsdA\\$0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+                "password_hash": "$PASSWORD_HASH",
                 "status": "active",
                 "role": "user",
                 "session_version": 1,
