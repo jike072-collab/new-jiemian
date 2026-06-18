@@ -1,5 +1,5 @@
-import { StudioApp } from "@/components/studio-app";
+import { ApplicationContainer } from "@/components/application-container";
 
 export default function Home() {
-  return <StudioApp />;
+  return <ApplicationContainer />;
 }

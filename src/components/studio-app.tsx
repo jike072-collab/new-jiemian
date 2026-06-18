@@ -2,24 +2,24 @@
 
 /* eslint-disable @next/next/no-img-element */
 
-import {
-  Film,
-  FolderOpen,
-  Image as ImageIcon,
-  Loader2,
-  Maximize2,
-  RefreshCw,
-  Settings,
-  Sparkles,
-  Wand2,
-} from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Loader2, RefreshCw, Wand2, X } from "lucide-react";
+import { useRouter } from "next/navigation";
 
-import { BrandLogo } from "@/components/brand-logo";
+import { WorkbenchShell } from "@/components/workbench-shell";
 import { cn } from "@/lib/utils";
 import type { JobRecord, LibraryItem, PublicProvider } from "@/lib/server/types";
+import {
+  type WorkspaceAction,
+  type WorkspaceImageMode,
+  type WorkspaceToolId,
+  type WorkspaceVideoMode,
+  workspaceToolById,
+  workspaceToolEntries,
+  workspaceToolIdForImageMode,
+} from "@/lib/workspace-registry";
 
-type ToolId = "image" | "video" | "image-upscale" | "video-upscale" | "library";
+type BusinessToolId = "image" | "video" | "image-upscale" | "video-upscale" | "library";
 type UpscaleKind = "image" | "video";
 type UpscaleAvailability = { ready: boolean; detail: string };
 type UpscaleStatusResponse = Record<UpscaleKind, UpscaleAvailability>;
@@ -33,23 +33,88 @@ type OutputState = {
   item: LibraryItem;
   job?: JobRecord | null;
   title: string;
-  tool: ToolId;
+  tool: BusinessToolId;
 } | null;
 
-const navItems: Array<{
-  id: ToolId;
+type MobileActionState = {
   label: string;
-  desc: string;
-  icon: React.ComponentType<{ className?: string }>;
-}> = [
-  { id: "image", label: "图片生成", desc: "文生图 / 图生图", icon: ImageIcon },
-  { id: "video", label: "视频生成", desc: "文生视频 / 图生视频", icon: Film },
-  { id: "image-upscale", label: "图片放大", desc: "本机 2x / 4x", icon: Maximize2 },
-  { id: "video-upscale", label: "视频放大", desc: "本机增强", icon: Sparkles },
-  { id: "library", label: "作品库", desc: "历史结果", icon: FolderOpen },
-];
+  loading: boolean;
+  disabled: boolean;
+  onClick: () => void;
+} | null;
+
+type ImageWorkspaceFile = {
+  file: File;
+  previewUrl: string;
+};
+
+type ImageWorkspaceState = {
+  providerId: string;
+  ratio: string;
+  quality: string;
+  prompt: string;
+  files: ImageWorkspaceFile[];
+  fileError: string;
+  submitError: string;
+  loading: boolean;
+};
 
 const ratios = ["1:1", "16:9", "9:16", "4:3", "3:4"];
+
+const imageWorkspaceModeMeta: Record<WorkspaceImageMode, {
+  title: string;
+  subtitle: string;
+  submitLabel: string;
+  loadingLabel: string;
+  promptPlaceholder: string;
+  guideTitle: string;
+  guideDescription: string;
+  guideNotes: string[];
+}> = {
+  "text-to-image": {
+    title: "AI 图像生成器",
+    subtitle: "输入提示词并选择模型。",
+    submitLabel: "生成图片",
+    loadingLabel: "正在生成",
+    promptPlaceholder: "描述你要生成的画面、风格、主体和氛围。",
+    guideTitle: "准备开始生成",
+    guideDescription: "先选模型、比例和清晰度，再写清楚你想生成什么。",
+    guideNotes: ["确认模型可用", "填写提示词", "结果会自动进入作品库"],
+  },
+  "image-to-image": {
+    title: "AI 图片编辑器",
+    subtitle: "上传参考图并输入修改要求。",
+    submitLabel: "开始编辑",
+    loadingLabel: "正在编辑",
+    promptPlaceholder: "描述你要如何修改这张图，保留哪些元素、替换哪些内容。",
+    guideTitle: "准备开始编辑",
+    guideDescription: "先上传参考图，再补充你要修改的内容和保留的细节。",
+    guideNotes: ["上传参考图", "写清修改要求", "结果会自动进入作品库"],
+  },
+};
+
+const allowedReferenceImageTypes = new Set(["image/png", "image/jpeg", "image/webp"]);
+const maxReferenceImageSize = 10 * 1024 * 1024;
+const maxReferenceImageCount = 10;
+
+function createImageWorkspaceFiles(files: File[]) {
+  const nextFiles = files.slice(0, maxReferenceImageCount);
+  if (files.length > maxReferenceImageCount) {
+    throw new Error(`最多上传 ${maxReferenceImageCount} 张参考图片。`);
+  }
+  for (const file of nextFiles) {
+    if (!allowedReferenceImageTypes.has(file.type)) {
+      throw new Error("参考图片仅支持 PNG、JPEG 和 WebP。");
+    }
+    if (file.size > maxReferenceImageSize) {
+      throw new Error("单张参考图片不能超过 10MB。");
+    }
+  }
+  return nextFiles.map((file) => ({
+    file,
+    previewUrl: URL.createObjectURL(file),
+  }));
+}
 
 async function jsonFetch<T>(url: string, options?: RequestInit): Promise<T> {
   const response = await fetch(url, options);
@@ -64,21 +129,56 @@ async function jsonFetch<T>(url: string, options?: RequestInit): Promise<T> {
 }
 
 export function StudioApp() {
-  const [activeTool, setActiveTool] = useState<ToolId>("image");
+  const router = useRouter();
+  const [activeWorkspaceToolId, setActiveWorkspaceToolId] = useState<WorkspaceToolId>("image");
   const [providers, setProviders] = useState<EnabledProviders>({ image: [], video: [] });
+  const [providersLoading, setProvidersLoading] = useState(true);
+  const [providersError, setProvidersError] = useState("");
   const [library, setLibrary] = useState<LibraryItem[]>([]);
   const [message, setMessage] = useState("");
+  const [outputs, setOutputs] = useState<Partial<Record<BusinessToolId, OutputState>>>({});
+  const [mobileAction, setMobileAction] = useState<MobileActionState>(null);
+  const [libraryFilter, setLibraryFilter] = useState<"all" | "image" | "video">("all");
+  const [librarySort, setLibrarySort] = useState<"recent" | "title">("recent");
+  const [selectedLibraryItemId, setSelectedLibraryItemId] = useState<string | null>(null);
+  const [imageWorkspace, setImageWorkspace] = useState<ImageWorkspaceState>({
+    providerId: "",
+    ratio: "1:1",
+    quality: "1k",
+    prompt: "",
+    files: [],
+    fileError: "",
+    submitError: "",
+    loading: false,
+  });
+  const imageWorkspaceFilesRef = useRef<ImageWorkspaceFile[]>([]);
 
-  async function refreshLibrary() {
+  const refreshLibrary = useCallback(async () => {
     const data = await jsonFetch<{ items: LibraryItem[] }>("/api/library");
     setLibrary(data.items);
-  }
+  }, []);
+
+  const refreshProviders = useCallback(async () => {
+    setProvidersLoading(true);
+    setProvidersError("");
+    try {
+      const data = await jsonFetch<{ providers: EnabledProviders }>("/api/providers/enabled");
+      setProviders(data.providers);
+    } catch (error) {
+      const text = error instanceof Error ? error.message : "模型加载失败。";
+      setProvidersError(text);
+      setMessage(text);
+    } finally {
+      setProvidersLoading(false);
+    }
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
 
     void (async () => {
       try {
+        setProvidersLoading(true);
         const [providersData, libraryData] = await Promise.all([
           jsonFetch<{ providers: EnabledProviders }>("/api/providers/enabled"),
           jsonFetch<{ items: LibraryItem[] }>("/api/library"),
@@ -86,10 +186,15 @@ export function StudioApp() {
         if (cancelled) return;
         setProviders(providersData.providers);
         setLibrary(libraryData.items);
+        setProvidersError("");
       } catch (error) {
         if (!cancelled) {
-          setMessage(error instanceof Error ? error.message : "加载失败。");
+          const text = error instanceof Error ? error.message : "加载失败。";
+          setProvidersError(text);
+          setMessage(text);
         }
+      } finally {
+        if (!cancelled) setProvidersLoading(false);
       }
     })();
 
@@ -98,296 +203,577 @@ export function StudioApp() {
     };
   }, []);
 
-  return (
-    <div className="min-h-screen overflow-x-hidden bg-[#050507] text-white">
-      <div className="pointer-events-none fixed inset-0 bg-[radial-gradient(circle_at_top_left,rgba(236,72,153,0.18),transparent_24%),radial-gradient(circle_at_top_right,rgba(168,85,247,0.12),transparent_26%),radial-gradient(circle_at_bottom_right,rgba(59,130,246,0.08),transparent_28%)]" />
-
-      <main id="top" className="relative z-10 min-h-screen px-3 pb-24 pt-3 sm:px-4 sm:pt-4">
-        <GeneratorShell
-          activeTool={activeTool}
-          setActiveTool={setActiveTool}
-          providers={providers}
-          library={library}
-          refreshLibrary={refreshLibrary}
-          setMessage={setMessage}
-        />
-      </main>
-
-      <nav data-testid="mobile-tool-nav" className="fixed inset-x-0 bottom-0 z-50 grid grid-cols-5 border-t border-white/10 bg-black/90 px-2 pb-[env(safe-area-inset-bottom)] pt-2 backdrop-blur-xl xl:hidden">
-        {navItems.map((item) => {
-          const Icon = item.icon;
-          return (
-            <button
-              key={item.id}
-              type="button"
-              aria-label={item.label}
-              data-testid={`mobile-tool-${item.id}`}
-              onClick={() => setActiveTool(item.id)}
-              className={cn(
-                "grid place-items-center gap-1 rounded-2xl px-1 py-2 text-[11px] text-white/52 transition",
-                activeTool === item.id && "bg-fuchsia-500/15 text-fuchsia-200",
-              )}
-            >
-              <Icon className="size-4" />
-              {item.label}
-            </button>
-          );
-        })}
-      </nav>
-
-      {message ? <Toast message={message} onClose={() => setMessage("")} /> : null}
-    </div>
-  );
-}
-
-function GeneratorShell({
-  activeTool,
-  setActiveTool,
-  providers,
-  library,
-  refreshLibrary,
-  setMessage,
-}: {
-  activeTool: ToolId;
-  setActiveTool: (value: ToolId) => void;
-  providers: EnabledProviders;
-  library: LibraryItem[];
-  refreshLibrary: () => Promise<void>;
-  setMessage: (value: string) => void;
-}) {
-  const activeMeta = useMemo(
-    () => navItems.find((item) => item.id === activeTool) || navItems[0],
-    [activeTool],
-  );
-  const [outputs, setOutputs] = useState<Partial<Record<ToolId, OutputState>>>({});
-  const activeOutput = outputs[activeTool] || null;
-
-  return (
-    <section id="generate" className="mx-auto grid min-h-[calc(100vh-2rem)] max-w-[1800px] gap-3 xl:grid-cols-[260px_minmax(380px,1.1fr)_minmax(620px,3fr)]">
-      <aside className="hidden min-h-0 rounded-[2rem] border border-white/10 bg-black/45 p-3 shadow-[0_24px_80px_rgba(0,0,0,0.34)] backdrop-blur-xl xl:flex xl:flex-col">
-        <div className="mb-4 flex items-center gap-3 px-2 pt-1">
-          <div className="grid size-11 place-items-center rounded-2xl bg-white/10">
-            <BrandLogo className="size-7" />
-          </div>
-          <div>
-            <h1 className="text-lg font-black">奥皇 AI</h1>
-            <p className="text-xs text-white/42">图片与视频工作台</p>
-          </div>
-        </div>
-        <div className="rounded-2xl border border-fuchsia-400/20 bg-fuchsia-500/10 px-4 py-3 text-sm text-fuchsia-100">
-          左边选功能，中间填信息，右边看结果。
-        </div>
-        <nav className="mt-4 grid gap-2">
-          {navItems.map((item) => (
-            <NavButton
-              key={item.id}
-              item={item}
-              testIdPrefix="tool"
-              active={activeTool === item.id}
-              onClick={() => setActiveTool(item.id)}
-            />
-          ))}
-        </nav>
-        <div className="mt-auto grid gap-3 px-1">
-          <div className="grid grid-cols-2 gap-2">
-            <HeroStat label="图片" value={providers.image.length ? `${providers.image.length} 个入口` : "待配置"} />
-            <HeroStat label="视频" value={providers.video.length ? `${providers.video.length} 个入口` : "待配置"} />
-          </div>
-          <a
-            href="/admin/providers"
-            className="flex items-center justify-center gap-2 rounded-2xl border border-white/10 bg-white/[0.04] px-4 py-3 text-sm text-white/70 transition hover:border-fuchsia-400/50 hover:text-white"
-          >
-            <Settings className="size-4" />
-            后台设置
-          </a>
-        </div>
-      </aside>
-
-      <section className="min-w-0 overflow-hidden rounded-[2rem] border border-white/10 bg-[#0d0d11]/94 shadow-[0_24px_80px_rgba(0,0,0,0.35)] backdrop-blur-xl">
-        <div className="flex flex-col gap-4 border-b border-white/10 px-4 py-4 md:flex-row md:items-center md:justify-between md:px-5">
-          <div>
-            <p className="text-xs uppercase tracking-[0.24em] text-fuchsia-300/75">Input</p>
-            <h2 className="mt-1 text-2xl font-black">{activeMeta.label}</h2>
-            <p className="mt-1 text-sm text-white/50">{activeMeta.desc}</p>
-          </div>
-          <div className="flex flex-wrap items-center gap-2 text-xs text-white/45">
-            <span className="rounded-full border border-white/10 bg-white/5 px-3 py-1">积分位预留</span>
-            <span className="rounded-full border border-white/10 bg-white/5 px-3 py-1">当前可直接使用</span>
-          </div>
-        </div>
-
-        <div className="min-h-0 overflow-y-auto px-4 py-5 md:px-5 xl:max-h-[calc(100vh-8rem)]">
-          {activeTool === "image" ? (
-            <ImageGenerator
-              providers={providers.image}
-              onDone={refreshLibrary}
-              onResult={(item) => setOutputs((prev) => ({ ...prev, image: { item, title: "图片结果", tool: "image" } }))}
-              setMessage={setMessage}
-            />
-          ) : null}
-          {activeTool === "video" ? (
-            <VideoGenerator
-              providers={providers.video}
-              onDone={refreshLibrary}
-              onResult={(item, job) => setOutputs((prev) => ({ ...prev, video: { item, job, title: "视频结果", tool: "video" } }))}
-              setMessage={setMessage}
-            />
-          ) : null}
-          {activeTool === "image-upscale" ? (
-            <UpscaleForm
-              kind="image"
-              onDone={refreshLibrary}
-              onResult={(item, job) => setOutputs((prev) => ({ ...prev, "image-upscale": { item, job, title: "图片放大结果", tool: "image-upscale" } }))}
-              setMessage={setMessage}
-            />
-          ) : null}
-          {activeTool === "video-upscale" ? (
-            <UpscaleForm
-              kind="video"
-              onDone={refreshLibrary}
-              onResult={(item, job) => setOutputs((prev) => ({ ...prev, "video-upscale": { item, job, title: "视频放大结果", tool: "video-upscale" } }))}
-              setMessage={setMessage}
-            />
-          ) : null}
-          {activeTool === "library" ? (
-            <LibraryView items={library} refresh={refreshLibrary} setMessage={setMessage} />
-          ) : null}
-        </div>
-      </section>
-
-      <aside className="min-w-0 overflow-hidden rounded-[2rem] border border-white/10 bg-black/45 shadow-[0_24px_80px_rgba(0,0,0,0.34)] backdrop-blur-xl">
-        <div className="flex items-center justify-between border-b border-white/10 px-4 py-4 md:px-5">
-          <div>
-            <p className="text-xs uppercase tracking-[0.24em] text-white/38">Output</p>
-            <h2 className="mt-1 text-xl font-black">展示区</h2>
-          </div>
-          <span className="rounded-full border border-white/10 bg-white/5 px-3 py-1 text-xs text-white/45">
-            {library.length} 条作品
-          </span>
-        </div>
-        <div className="min-h-0 overflow-y-auto p-4 md:p-5 xl:max-h-[calc(100vh-8rem)]">
-          <OutputPanel tool={activeTool} output={activeOutput} />
-        </div>
-      </aside>
-    </section>
-  );
-}
-
-function ImageGenerator({
-  providers,
-  onDone,
-  onResult,
-  setMessage,
-}: {
-  providers: PublicProvider[];
-  onDone: () => Promise<void>;
-  onResult: (item: LibraryItem) => void;
-  setMessage: (value: string) => void;
-}) {
-  const [mode, setMode] = useState<"text-to-image" | "image-to-image">("text-to-image");
-  const [providerId, setProviderId] = useState("");
-  const [ratio, setRatio] = useState("1:1");
-  const [quality, setQuality] = useState("1k");
-  const [prompt, setPrompt] = useState("");
-  const [files, setFiles] = useState<FileList | null>(null);
-  const [loading, setLoading] = useState(false);
+  useEffect(() => () => {
+    imageWorkspaceFilesRef.current.forEach((file) => URL.revokeObjectURL(file.previewUrl));
+  }, []);
 
   useEffect(() => {
-    if (!providerId && providers[0]) setProviderId(providers[0].id);
-  }, [providerId, providers]);
+    setImageWorkspace((prev) => {
+      const nextProviders = providers.image;
+      if (!nextProviders.length) {
+        return prev.providerId ? { ...prev, providerId: "" } : prev;
+      }
+      if (nextProviders.some((provider) => provider.id === prev.providerId)) return prev;
+      return { ...prev, providerId: nextProviders[0].id };
+    });
+  }, [providers.image]);
 
-  async function submit() {
-    if (!providerId) {
-      setMessage("请先到后台设置里启用图片生成入口。");
+  const handleToolAction = useCallback((action: WorkspaceAction, tool: WorkspaceToolId) => {
+    if (action.kind === "route") {
+      router.push(action.href);
       return;
     }
 
-    setLoading(true);
+    setActiveWorkspaceToolId(tool);
+  }, [router]);
+
+  const activeWorkspaceTool = workspaceToolById(activeWorkspaceToolId) || workspaceToolEntries[0];
+  const activeAction = activeWorkspaceTool.action.kind === "workspace" ? activeWorkspaceTool.action : null;
+  const activeBusinessTool = activeAction?.toolId || "library";
+  const activeOutput = outputs[activeBusinessTool] || null;
+  const activeImageMode: WorkspaceImageMode = activeWorkspaceToolId === "image-editor" ? "image-to-image" : "text-to-image";
+  const activeVideoMode: WorkspaceVideoMode = activeBusinessTool === "video" && activeAction?.mode === "image-to-video" ? "image-to-video" : "text-to-video";
+  const currentLibraryItems = useMemo(() => {
+    const filtered = library.filter((item) => {
+      if (libraryFilter === "all") return true;
+      return item.type === libraryFilter;
+    });
+    const sorted = [...filtered];
+    if (librarySort === "title") {
+      sorted.sort((a, b) => a.title.localeCompare(b.title, "zh-Hans-CN"));
+    } else {
+      sorted.sort((a, b) => Number(new Date(b.createdAt)) - Number(new Date(a.createdAt)));
+    }
+    return sorted;
+  }, [library, libraryFilter, librarySort]);
+
+  const selectedLibraryItem = useMemo(
+    () => currentLibraryItems.find((item) => item.id === selectedLibraryItemId) || currentLibraryItems[0] || null,
+    [currentLibraryItems, selectedLibraryItemId],
+  );
+
+  const libraryCounts = useMemo(() => ({
+    all: library.length,
+    image: library.filter((item) => item.type === "image").length,
+    video: library.filter((item) => item.type === "video").length,
+  }), [library]);
+
+  const handleImageResult = useCallback((item: LibraryItem) => {
+    setOutputs((prev) => ({ ...prev, image: { item, title: "图片结果", tool: "image" } }));
+  }, []);
+
+  const selectedImageProvider = useMemo(() => {
+    if (!providers.image.length) return null;
+    return providers.image.find((provider) => provider.id === imageWorkspace.providerId) || providers.image[0];
+  }, [imageWorkspace.providerId, providers.image]);
+
+  const imageWorkspaceFiles = imageWorkspace.files;
+  const imageWorkspaceHasFiles = imageWorkspaceFiles.length > 0;
+  const imageWorkspacePrompt = imageWorkspace.prompt.trim();
+  const imageWorkspaceCanSubmit = Boolean(selectedImageProvider)
+    && !providersLoading
+    && !imageWorkspace.loading
+    && Boolean(imageWorkspacePrompt)
+    && (activeImageMode === "text-to-image" || imageWorkspaceHasFiles);
+
+  const updateImageWorkspace = useCallback((patch: Partial<ImageWorkspaceState>) => {
+    setImageWorkspace((prev) => ({ ...prev, ...patch }));
+  }, []);
+
+  const replaceImageWorkspaceFiles = useCallback((files: File[]) => {
+    let nextFiles: ImageWorkspaceFile[];
+    try {
+      nextFiles = createImageWorkspaceFiles(files);
+    } catch (error) {
+      setImageWorkspace((prev) => ({
+        ...prev,
+        fileError: error instanceof Error ? error.message : "参考图片读取失败。",
+        submitError: "",
+      }));
+      return;
+    }
+    setImageWorkspace((prev) => ({
+      ...prev,
+      files: nextFiles,
+      fileError: "",
+      submitError: "",
+    }));
+    imageWorkspaceFilesRef.current.forEach((file) => URL.revokeObjectURL(file.previewUrl));
+    imageWorkspaceFilesRef.current = nextFiles;
+  }, []);
+
+  const removeImageWorkspaceFile = useCallback((index: number) => {
+    setImageWorkspace((prev) => {
+      const removed = prev.files[index];
+      if (removed) URL.revokeObjectURL(removed.previewUrl);
+      const nextFiles = prev.files.filter((_, currentIndex) => currentIndex !== index);
+      imageWorkspaceFilesRef.current = nextFiles;
+      return {
+        ...prev,
+        files: nextFiles,
+        fileError: "",
+        submitError: "",
+      };
+    });
+  }, []);
+
+  const clearImageWorkspaceFiles = useCallback(() => {
+    imageWorkspaceFilesRef.current.forEach((file) => URL.revokeObjectURL(file.previewUrl));
+    imageWorkspaceFilesRef.current = [];
+    setImageWorkspace((prev) => ({
+      ...prev,
+      files: [],
+      fileError: "",
+      submitError: "",
+    }));
+  }, []);
+
+  const submitImageWorkspace = useCallback(async () => {
+    if (!selectedImageProvider) {
+      setImageWorkspace((prev) => ({
+        ...prev,
+        submitError: "当前尚未配置可用模型。",
+      }));
+      setMessage("当前尚未配置可用模型。");
+      return;
+    }
+    if (!imageWorkspacePrompt) {
+      setImageWorkspace((prev) => ({
+        ...prev,
+        submitError: "请输入提示词。",
+      }));
+      return;
+    }
+    if (activeImageMode === "image-to-image" && !imageWorkspaceHasFiles) {
+      setImageWorkspace((prev) => ({
+        ...prev,
+        fileError: "图片编辑需要先上传参考图片。",
+        submitError: "图片编辑需要先上传参考图片。",
+      }));
+      return;
+    }
+    if (imageWorkspace.loading) return;
+
+    setImageWorkspace((prev) => ({
+      ...prev,
+      loading: true,
+      submitError: "",
+      fileError: "",
+    }));
     setMessage("");
     try {
       const form = new FormData();
-      form.set("providerId", providerId);
-      form.set("mode", mode);
-      form.set("ratio", ratio);
-      form.set("quality", quality);
-      form.set("prompt", prompt);
-      Array.from(files || []).forEach((file) => form.append("files", file));
+      form.set("providerId", selectedImageProvider.id);
+      form.set("mode", activeImageMode);
+      form.set("ratio", imageWorkspace.ratio);
+      form.set("quality", imageWorkspace.quality);
+      form.set("prompt", imageWorkspace.prompt);
+      imageWorkspace.files.forEach((attachment) => form.append("files", attachment.file));
       const data = await jsonFetch<{ item: LibraryItem }>("/api/generate/image", {
         method: "POST",
         body: form,
       });
-      onResult(data.item);
-      await onDone();
+      handleImageResult(data.item);
+      await refreshLibrary();
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : "图片生成失败。");
+      const text = error instanceof Error ? error.message : "图片生成失败。";
+      setImageWorkspace((prev) => ({
+        ...prev,
+        submitError: text,
+      }));
+      setMessage(text);
     } finally {
-      setLoading(false);
+      setImageWorkspace((prev) => ({
+        ...prev,
+        loading: false,
+      }));
     }
-  }
+  }, [
+    activeImageMode,
+    handleImageResult,
+    imageWorkspace.files,
+    imageWorkspace.loading,
+    imageWorkspace.quality,
+    imageWorkspace.ratio,
+    imageWorkspace.prompt,
+    imageWorkspaceHasFiles,
+    imageWorkspacePrompt,
+    refreshLibrary,
+    selectedImageProvider,
+    setMessage,
+  ]);
+
+  const handleVideoResult = useCallback((item: LibraryItem, job?: JobRecord | null) => {
+    setOutputs((prev) => ({ ...prev, video: { item, job, title: "视频结果", tool: "video" } }));
+  }, []);
+
+  const handleImageUpscaleResult = useCallback((item: LibraryItem, job?: JobRecord | null) => {
+    setOutputs((prev) => ({ ...prev, "image-upscale": { item, job, title: "图片高清结果", tool: "image-upscale" } }));
+  }, []);
+
+  const handleVideoUpscaleResult = useCallback((item: LibraryItem, job?: JobRecord | null) => {
+    setOutputs((prev) => ({ ...prev, "video-upscale": { item, job, title: "视频高清结果", tool: "video-upscale" } }));
+  }, []);
+
+  const parameterSlot = (
+    <>
+      {activeBusinessTool === "image" ? (
+        <ImageGenerator
+          mode={activeImageMode}
+          providers={providers.image}
+          providersLoading={providersLoading}
+          providersError={providersError}
+          selectedProvider={selectedImageProvider}
+          state={imageWorkspace}
+          canSubmit={imageWorkspaceCanSubmit}
+          onModeChange={(mode) => setActiveWorkspaceToolId(workspaceToolIdForImageMode(mode))}
+          onProviderChange={(value) => updateImageWorkspace({ providerId: value })}
+          onRatioChange={(value) => updateImageWorkspace({ ratio: value })}
+          onQualityChange={(value) => updateImageWorkspace({ quality: value })}
+          onPromptChange={(value) => updateImageWorkspace({ prompt: value, submitError: "" })}
+          onFilesChange={replaceImageWorkspaceFiles}
+          onFileRemove={removeImageWorkspaceFile}
+          onFilesClear={clearImageWorkspaceFiles}
+          onReloadProviders={refreshProviders}
+          onSubmit={submitImageWorkspace}
+          registerMobileAction={setMobileAction}
+        />
+      ) : null}
+      {activeBusinessTool === "video" ? (
+        <VideoGenerator
+          initialMode={activeVideoMode}
+          providers={providers.video}
+          onDone={refreshLibrary}
+          onResult={handleVideoResult}
+          setMessage={setMessage}
+          registerMobileAction={setMobileAction}
+        />
+      ) : null}
+      {activeBusinessTool === "image-upscale" ? (
+        <UpscaleForm
+          kind="image"
+          onDone={refreshLibrary}
+          onResult={handleImageUpscaleResult}
+          setMessage={setMessage}
+          registerMobileAction={setMobileAction}
+        />
+      ) : null}
+      {activeBusinessTool === "video-upscale" ? (
+        <UpscaleForm
+          kind="video"
+          onDone={refreshLibrary}
+          onResult={handleVideoUpscaleResult}
+          setMessage={setMessage}
+          registerMobileAction={setMobileAction}
+        />
+      ) : null}
+      {activeBusinessTool === "library" ? (
+        <LibrarySidebar
+          count={libraryCounts}
+          filter={libraryFilter}
+          sort={librarySort}
+          onFilterChange={setLibraryFilter}
+          onSortChange={setLibrarySort}
+        />
+      ) : null}
+    </>
+  );
 
   return (
-    <div className="grid gap-4">
-      <Panel title="图片生成器" subtitle="先输入内容，再选比例和清晰度。">
-        <ModeSwitch
-          value={mode}
-          options={[
-            ["text-to-image", "文生图"],
-            ["image-to-image", "图生图 / 编辑"],
-          ]}
-          onChange={(value) => setMode(value as typeof mode)}
-        />
-
-        <ProviderSelect providers={providers} value={providerId} onChange={setProviderId} />
-        <FileInput
-          label="参考图片"
-          optional={mode === "text-to-image"}
-          accept="image/png,image/jpeg,image/webp"
-          files={files}
-          onChange={setFiles}
-        />
-        <StackedControl label="图片比例" required>
-          <RatioPicker value={ratio} onChange={setRatio} />
-        </StackedControl>
-        <StackedControl label="清晰度" required>
-          <ModeSwitch
-            value={quality}
-            options={[
-              ["1k", "1K · 4 积分"],
-              ["2k", "2K · 8 积分"],
-            ]}
-            onChange={setQuality}
-          />
-        </StackedControl>
-        <PromptBox
-          value={prompt}
-          onChange={setPrompt}
-          required
-          placeholder="描述你想生成或修改的画面，例如：把人物换到赛博朋克城市夜景中，保留服装轮廓。"
-        />
-
-        <div className="flex flex-wrap items-center gap-3">
-          <SubmitButton disabled={loading} loading={loading} onClick={submit}>
-            立即生成图片
-          </SubmitButton>
-          <span className="text-sm text-white/45">清晰度位置已预留积分提示</span>
-        </div>
-      </Panel>
-    </div>
+    <>
+      <WorkbenchShell
+        state={{ activeToolId: activeWorkspaceToolId }}
+        onToolAction={handleToolAction}
+        isAuthenticated={false}
+        toolTitle={activeWorkspaceTool.label}
+        toolDescription={activeWorkspaceTool.description}
+        parameterSlot={parameterSlot}
+        previewSlot={
+          activeBusinessTool === "library" ? (
+            <LibraryWorkspace
+              items={currentLibraryItems}
+              selectedItem={selectedLibraryItem}
+              onSelectItem={setSelectedLibraryItemId}
+              onDelete={async (id) => {
+                try {
+                  await jsonFetch("/api/library", {
+                    method: "DELETE",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ id }),
+                  });
+                  await refreshLibrary();
+                } catch (error) {
+                  setMessage(error instanceof Error ? error.message : "删除失败。");
+                }
+              }}
+              onRefresh={refreshLibrary}
+            />
+          ) : (
+            activeBusinessTool === "image" ? (
+              <ImagePreviewPanel
+                mode={activeImageMode}
+                output={activeOutput}
+                loading={imageWorkspace.loading}
+                submitError={imageWorkspace.submitError}
+                promptFilled={Boolean(imageWorkspacePrompt)}
+                hasProvider={Boolean(selectedImageProvider)}
+                hasFiles={imageWorkspaceHasFiles}
+                libraryCount={library.length}
+                activeLabel={activeWorkspaceTool.label}
+                onSubmit={submitImageWorkspace}
+                onReloadProviders={refreshProviders}
+                onOpenLibrary={() => setActiveWorkspaceToolId("library")}
+              />
+            ) : (
+              <OutputPanel tool={activeBusinessTool} output={activeOutput} libraryCount={library.length} activeLabel={activeWorkspaceTool.label} />
+            )
+          )
+        }
+        mobileActionSlot={mobileAction ? <MobileActionBar {...mobileAction} /> : null}
+      />
+      {message ? <Toast message={message} onClose={() => setMessage("")} /> : null}
+    </>
   );
 }
 
+function ImageGenerator({
+  mode,
+  providers,
+  providersLoading,
+  providersError,
+  selectedProvider,
+  state,
+  canSubmit,
+  onModeChange,
+  onProviderChange,
+  onRatioChange,
+  onQualityChange,
+  onPromptChange,
+  onFilesChange,
+  onFileRemove,
+  onFilesClear,
+  onReloadProviders,
+  onSubmit,
+  registerMobileAction,
+}: {
+  mode: WorkspaceImageMode;
+  providers: PublicProvider[];
+  providersLoading: boolean;
+  providersError: string;
+  selectedProvider: PublicProvider | null;
+  state: ImageWorkspaceState;
+  canSubmit: boolean;
+  onModeChange: (mode: WorkspaceImageMode) => void;
+  onProviderChange: (value: string) => void;
+  onRatioChange: (value: string) => void;
+  onQualityChange: (value: string) => void;
+  onPromptChange: (value: string) => void;
+  onFilesChange: (files: File[]) => void;
+  onFileRemove: (index: number) => void;
+  onFilesClear: () => void;
+  onReloadProviders: () => Promise<void>;
+  onSubmit: () => void;
+  registerMobileAction: (action: MobileActionState) => void;
+}) {
+  const meta = imageWorkspaceModeMeta[mode];
+
+  useEffect(() => {
+    registerMobileAction({
+      label: state.loading ? meta.loadingLabel : meta.submitLabel,
+      loading: state.loading,
+      disabled: !canSubmit,
+      onClick: onSubmit,
+    });
+    return () => registerMobileAction(null);
+  }, [canSubmit, meta.loadingLabel, meta.submitLabel, onSubmit, registerMobileAction, state.loading]);
+
+  return (
+    <FormPanel title={meta.title} subtitle={meta.subtitle}>
+      <ImageModeSwitch mode={mode} onModeChange={onModeChange} />
+
+      <ProviderSelect
+        providers={providers}
+        value={selectedProvider?.id || state.providerId}
+        loading={providersLoading}
+        error={providersError}
+        onChange={onProviderChange}
+        onReload={onReloadProviders}
+      />
+      <ReferenceImageInput
+        mode={mode}
+        files={state.files}
+        error={state.fileError}
+        onChange={onFilesChange}
+        onRemove={onFileRemove}
+        onClear={onFilesClear}
+      />
+      <StackedControl label="图片比例" required>
+        <RatioPicker label="图片比例" value={state.ratio} onChange={onRatioChange} />
+      </StackedControl>
+      <StackedControl label="清晰度" required>
+        <ModeSwitch
+          label="清晰度"
+          groupId="image-quality"
+          value={state.quality}
+          options={[
+            ["1k", "1K"],
+            ["2k", "2K"],
+          ]}
+          onChange={onQualityChange}
+        />
+      </StackedControl>
+      <PromptBox
+        value={state.prompt}
+        onChange={onPromptChange}
+        required
+        placeholder={meta.promptPlaceholder}
+      />
+      {state.submitError ? <p className="studio-error-text" role="alert">{state.submitError}</p> : null}
+
+      <div className="studio-actions">
+        <SubmitButton disabled={!canSubmit} loading={state.loading} loadingLabel={meta.loadingLabel} onClick={onSubmit}>
+          {meta.submitLabel}
+        </SubmitButton>
+      </div>
+    </FormPanel>
+  );
+}
+
+function ImageModeSwitch({
+  mode,
+  onModeChange,
+}: {
+  mode: WorkspaceImageMode;
+  onModeChange: (mode: WorkspaceImageMode) => void;
+}) {
+  return (
+    <ModeSwitch
+      label="图像模式"
+      groupId="image-mode"
+      value={mode}
+      options={[
+        ["text-to-image", "文生图"],
+        ["image-to-image", "图片编辑"],
+      ]}
+      onChange={(value) => onModeChange(value as WorkspaceImageMode)}
+    />
+  );
+}
+
+function ReferenceImageInput({
+  mode,
+  files,
+  error,
+  onChange,
+  onRemove,
+  onClear,
+}: {
+  mode: WorkspaceImageMode;
+  files: ImageWorkspaceFile[];
+  error: string;
+  onChange: (files: File[]) => void;
+  onRemove: (index: number) => void;
+  onClear: () => void;
+}) {
+  const [dragging, setDragging] = useState(false);
+  const required = mode === "image-to-image";
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
+
+  const applyFiles = useCallback((fileList: FileList | File[]) => {
+    const nextFiles = Array.from(fileList);
+    if (!nextFiles.length) return;
+    onChange(nextFiles);
+  }, [onChange]);
+
+  return (
+    <FieldFrame label="参考图片" required={required} hint={required ? undefined : "可选"}>
+      <div
+        className={cn("studio-upload", dragging && "is-dragging", error && "is-error")}
+        aria-describedby={error ? "reference-image-error" : "reference-image-help"}
+        onDragOver={(event) => {
+          event.preventDefault();
+          setDragging(true);
+        }}
+        onDragLeave={() => setDragging(false)}
+        onDrop={(event) => {
+          event.preventDefault();
+          setDragging(false);
+          applyFiles(event.dataTransfer.files);
+        }}
+      >
+        <input
+          ref={fileInputRef}
+          id="reference-image-input"
+          type="file"
+          aria-label={required ? "上传参考图片开始编辑" : "上传参考图片辅助生成"}
+          aria-describedby={error ? "reference-image-error" : "reference-image-help"}
+          accept="image/png,image/jpeg,image/webp"
+          multiple
+          onChange={(event) => {
+            applyFiles(event.target.files || []);
+            event.currentTarget.value = "";
+          }}
+          className="studio-file-input"
+        />
+        <div className="studio-upload__body">
+          <strong>{files.length ? "已选择参考图片" : required ? "上传参考图片开始编辑" : "可上传参考图片辅助生成"}</strong>
+          <p id="reference-image-help">支持 PNG、JPEG、WebP，最多 10 张，单张不超过 10MB。</p>
+          <div className="studio-upload__actions">
+            <button type="button" className="studio-secondary-button" aria-controls="reference-image-input" onClick={() => fileInputRef.current?.click()}>
+              {files.length ? "替换图片" : "选择图片"}
+            </button>
+            {files.length ? (
+              <button type="button" className="studio-secondary-button" onClick={onClear}>
+                全部删除
+              </button>
+            ) : null}
+          </div>
+        </div>
+      </div>
+      {files.length ? (
+        <div className="studio-upload-list">
+          {files.map((item, index) => (
+            <div key={`${item.file.name}-${item.file.lastModified}-${index}`} className="studio-upload-item">
+              <img src={item.previewUrl} alt={item.file.name} />
+              <div>
+                <strong>{item.file.name}</strong>
+                <span>{formatFileSize(item.file.size)}</span>
+              </div>
+              <button type="button" className="studio-icon-button" aria-label={`删除 ${item.file.name}`} onClick={() => onRemove(index)}>
+                <X className="size-4" aria-hidden="true" />
+              </button>
+            </div>
+          ))}
+        </div>
+      ) : null}
+      {error ? <p id="reference-image-error" className="studio-error-text" role="alert">{error}</p> : null}
+      {!error && required && !files.length ? <p className="studio-help-text" role="status" aria-live="polite">图片编辑必须先上传参考图片。</p> : null}
+    </FieldFrame>
+  );
+}
+
+function formatFileSize(size: number) {
+  if (size >= 1024 * 1024) return `${(size / 1024 / 1024).toFixed(1)} MB`;
+  if (size >= 1024) return `${Math.round(size / 1024)} KB`;
+  return `${size} B`;
+}
+
 function VideoGenerator({
+  initialMode,
   providers,
   onDone,
   onResult,
   setMessage,
+  registerMobileAction,
 }: {
+  initialMode: WorkspaceVideoMode;
   providers: PublicProvider[];
   onDone: () => Promise<void>;
   onResult: (item: LibraryItem, job?: JobRecord | null) => void;
   setMessage: (value: string) => void;
+  registerMobileAction: (action: MobileActionState) => void;
 }) {
-  const [mode, setMode] = useState<"text-to-video" | "image-to-video">("text-to-video");
+  const [mode, setMode] = useState<WorkspaceVideoMode>(initialMode);
   const [providerId, setProviderId] = useState("");
   const [ratio, setRatio] = useState("16:9");
   const [duration, setDuration] = useState(5);
@@ -417,7 +803,7 @@ function VideoGenerator({
     return () => window.clearInterval(timer);
   }, [job, onDone, onResult, setMessage]);
 
-  async function submit() {
+  const submit = useCallback(async () => {
     if (!providerId) {
       setMessage("请先到后台设置里启用视频生成入口。");
       return;
@@ -445,57 +831,66 @@ function VideoGenerator({
     } finally {
       setLoading(false);
     }
-  }
+  }, [duration, files, mode, onDone, onResult, prompt, providerId, ratio, setMessage]);
+
+  useEffect(() => {
+    registerMobileAction({
+      label: "生成视频",
+      loading,
+      disabled: loading,
+      onClick: submit,
+    });
+    return () => registerMobileAction(null);
+  }, [loading, registerMobileAction, submit]);
 
   return (
-    <div className="grid gap-4">
-      <Panel title="视频生成器" subtitle="先写你要的视频，再选尺寸和时长。">
-        <ModeSwitch
-          value={mode}
-          options={[
-            ["text-to-video", "文生视频"],
-            ["image-to-video", "图生视频"],
-          ]}
-          onChange={(value) => setMode(value as typeof mode)}
-        />
-        <ProviderSelect providers={providers} value={providerId} onChange={setProviderId} />
-        <FileInput
-          label="参考图片"
-          optional={mode === "text-to-video"}
-          accept="image/png,image/jpeg,image/webp"
-          files={files}
-          onChange={setFiles}
-        />
-        <StackedControl label="视频比例" required>
-          <RatioPicker value={ratio} onChange={setRatio} />
-        </StackedControl>
-        <FieldFrame label="时长" required>
-          <select
-            value={duration}
-            onChange={(event) => setDuration(Number(event.target.value))}
-            className="h-12 w-full rounded-[1.25rem] border border-white/10 bg-white/[0.04] px-4 text-white outline-none transition focus:border-fuchsia-400"
-          >
-            {[5, 8, 10, 15].map((value) => (
-              <option key={value} value={value}>
-                {value} 秒
-              </option>
-            ))}
-          </select>
-        </FieldFrame>
-        <PromptBox
-          value={prompt}
-          onChange={setPrompt}
-          required
-          placeholder="描述视频画面、运动、镜头和氛围，例如：未来感产品展示，缓慢推进镜头，霓虹灯反射。"
-        />
-        <div className="flex flex-wrap items-center gap-3">
-          <SubmitButton disabled={loading} loading={loading} onClick={submit}>
-            立即生成视频
-          </SubmitButton>
-          <span className="text-sm text-white/45">同样预留积分位</span>
-        </div>
-      </Panel>
-    </div>
+    <FormPanel title="AI 视频生成器" subtitle="先写你要的视频，再选尺寸和时长。">
+      <ModeSwitch
+        label="视频模式"
+        groupId="video-mode"
+        value={mode}
+        options={[
+          ["text-to-video", "文生视频"],
+          ["image-to-video", "图生视频"],
+        ]}
+        onChange={(value) => setMode(value as WorkspaceVideoMode)}
+      />
+      <ProviderSelect providers={providers} value={providerId} onChange={setProviderId} />
+      <FileInput
+        label="参考图片"
+        optional={mode === "text-to-video"}
+        accept="image/png,image/jpeg,image/webp"
+        files={files}
+        onChange={setFiles}
+      />
+      <StackedControl label="视频比例" required>
+        <RatioPicker label="视频比例" value={ratio} onChange={setRatio} />
+      </StackedControl>
+      <FieldFrame label="时长" required>
+        <select
+          value={duration}
+          onChange={(event) => setDuration(Number(event.target.value))}
+          className="studio-select"
+        >
+          {[5, 8, 10, 15].map((value) => (
+            <option key={value} value={value}>
+              {value} 秒
+            </option>
+          ))}
+        </select>
+      </FieldFrame>
+      <PromptBox
+        value={prompt}
+        onChange={setPrompt}
+        required
+        placeholder="描述视频画面、运动、镜头和氛围，例如：未来感产品展示，缓慢推进镜头，霓虹灯反射。"
+      />
+      <div className="studio-actions">
+        <SubmitButton disabled={loading} loading={loading} onClick={submit}>
+          生成视频
+        </SubmitButton>
+      </div>
+    </FormPanel>
   );
 }
 
@@ -504,11 +899,13 @@ function UpscaleForm({
   onDone,
   onResult,
   setMessage,
+  registerMobileAction,
 }: {
   kind: UpscaleKind;
   onDone: () => Promise<void>;
   onResult: (item: LibraryItem, job?: JobRecord | null) => void;
   setMessage: (value: string) => void;
+  registerMobileAction: (action: MobileActionState) => void;
 }) {
   const isVideo = kind === "video";
   const [scale, setScale] = useState("2");
@@ -568,7 +965,7 @@ function UpscaleForm({
     return () => window.clearInterval(timer);
   }, [isVideo, job, onDone, onResult, setMessage]);
 
-  async function submit() {
+  const submit = useCallback(async () => {
     if (!file) {
       setMessage(`请选择一个${isVideo ? "视频" : "图片"}文件。`);
       return;
@@ -596,251 +993,401 @@ function UpscaleForm({
     } finally {
       setLoading(false);
     }
-  }
+  }, [availability?.detail, availability?.ready, file, isVideo, kind, onDone, onResult, scale, setMessage]);
 
-  const title = isVideo ? "视频放大" : "图片放大";
+  const title = isVideo ? "视频高清" : "图片高清";
   const accept = isVideo ? "video/mp4,video/webm,video/quicktime,.mov" : "image/png,image/jpeg,image/webp";
 
+  useEffect(() => {
+    registerMobileAction({
+      label: "开始增强",
+      loading,
+      disabled: loading || statusLoading,
+      onClick: submit,
+    });
+    return () => registerMobileAction(null);
+  }, [loading, registerMobileAction, statusLoading, submit]);
+
   return (
-    <div className="grid gap-4">
-      <Panel title={title} subtitle={`上传单个${isVideo ? "视频" : "图片"}，使用本机工具放大到原始尺寸的 2x 或 4x。`}>
-        <FieldFrame label={isVideo ? "源视频" : "源图片"} required>
-          <input
-            type="file"
-            accept={accept}
-            onChange={(event) => setFile(event.target.files?.[0] || null)}
-            className="w-full min-w-0 max-w-full rounded-[1.25rem] border border-dashed border-white/15 bg-black/35 p-4 text-sm text-white/55 file:mr-4 file:rounded-xl file:border-0 file:bg-fuchsia-500 file:px-3 file:py-2 file:text-white"
-          />
-          {file ? <span className="mt-2 block truncate text-xs text-fuchsia-200">已选择：{file.name}</span> : null}
-        </FieldFrame>
+    <FormPanel title={title} subtitle={`上传单个${isVideo ? "视频" : "图片"}，使用本机工具放大到原始尺寸的 2x 或 4x。`}>
+      <FieldFrame label={isVideo ? "源视频" : "源图片"} required>
+        <input
+          type="file"
+          accept={accept}
+          onChange={(event) => setFile(event.target.files?.[0] || null)}
+          className="studio-file"
+        />
+        {file ? <span className="studio-help-text">已选择：{file.name}</span> : null}
+      </FieldFrame>
 
-        <StackedControl label="放大倍数" required>
-          <ModeSwitch
-            value={scale}
-            options={[
-              ["2", "2x"],
-              ["4", "4x"],
-            ]}
-            onChange={setScale}
-          />
-        </StackedControl>
+      <StackedControl label="放大倍数" required>
+        <ModeSwitch
+          label="放大倍数"
+          groupId="upscale-scale"
+          value={scale}
+          options={[
+            ["2", "2x"],
+            ["4", "4x"],
+          ]}
+          onChange={setScale}
+        />
+      </StackedControl>
 
-        <div
-          className={cn(
-            "rounded-2xl border px-4 py-3 text-sm transition",
-            availability?.ready
-              ? "border-emerald-400/30 bg-emerald-500/10 text-emerald-100"
-              : "border-amber-400/30 bg-amber-500/10 text-amber-100",
-          )}
+      <div
+        className={cn(
+          "studio-status",
+          availability?.ready ? "is-ready" : "is-warning",
+        )}
+      >
+        <div className="min-w-0">
+          <strong className="block">
+            {statusLoading ? "正在检测本机依赖..." : availability?.ready ? "本机依赖已就绪" : "本机依赖未检测到"}
+          </strong>
+          {!statusLoading ? <p className="mt-1 break-all text-xs opacity-75">{availability?.detail || "请先安装并配置对应的本地高清处理依赖。"}</p> : null}
+        </div>
+        <button
+          type="button"
+          onClick={checkAvailability}
+          disabled={statusLoading}
+          className="studio-icon-button"
+          aria-label="重新检测本机依赖"
         >
-          <div className="flex items-start justify-between gap-3">
-            <div className="min-w-0">
-              <strong className="block">
-                {statusLoading ? "正在检测本机依赖..." : availability?.ready ? "本机依赖已就绪" : "本机依赖未检测到"}
-              </strong>
-              {!statusLoading ? <p className="mt-1 break-all text-xs opacity-75">{availability?.detail || "请先安装并配置对应的本地高清处理依赖。"}</p> : null}
-            </div>
-            <button
-              type="button"
-              onClick={checkAvailability}
-              disabled={statusLoading}
-              className="shrink-0 rounded-xl border border-current/20 p-2 transition hover:bg-white/10 disabled:opacity-50"
-              aria-label="重新检测本机依赖"
-            >
-              <RefreshCw className={cn("size-4", statusLoading && "animate-spin")} />
+          <RefreshCw className={cn("size-4", statusLoading && "animate-spin")} />
+        </button>
+      </div>
+
+      <div className="studio-actions">
+        <SubmitButton disabled={loading || statusLoading} loading={loading} onClick={submit}>
+          开始增强
+        </SubmitButton>
+        <span className="studio-help-text">本机增强，不需要 Key</span>
+      </div>
+    </FormPanel>
+  );
+}
+
+function LibrarySidebar({
+  count,
+  filter,
+  sort,
+  onFilterChange,
+  onSortChange,
+}: {
+  count: { all: number; image: number; video: number };
+  filter: "all" | "image" | "video";
+  sort: "recent" | "title";
+  onFilterChange: (value: "all" | "image" | "video") => void;
+  onSortChange: (value: "recent" | "title") => void;
+}) {
+  return (
+    <div className="studio-library-sidebar">
+      <StackedControl label="分类">
+        <ModeSwitch
+          label="作品分类"
+          groupId="library-filter"
+          value={filter}
+          options={[
+            ["all", `全部 ${count.all}`],
+            ["image", `图片 ${count.image}`],
+            ["video", `视频 ${count.video}`],
+          ]}
+          onChange={(value) => onFilterChange(value as "all" | "image" | "video")}
+        />
+      </StackedControl>
+      <StackedControl label="排序">
+        <ModeSwitch
+          label="作品排序"
+          groupId="library-sort"
+          value={sort}
+          options={[
+            ["recent", "最新"],
+            ["title", "标题"],
+          ]}
+          onChange={(value) => onSortChange(value as "recent" | "title")}
+        />
+      </StackedControl>
+      <p className="studio-help-text">点击作品后会在右侧预览区显示详情。</p>
+    </div>
+  );
+}
+
+function LibraryWorkspace({
+  items,
+  selectedItem,
+  onSelectItem,
+  onDelete,
+  onRefresh,
+}: {
+  items: LibraryItem[];
+  selectedItem: LibraryItem | null;
+  onSelectItem: (id: string | null) => void;
+  onDelete: (id: string) => Promise<void>;
+  onRefresh: () => Promise<void>;
+}) {
+  if (!items.length) {
+    return <section className="studio-empty">作品库还是空的。生成图片或视频后会自动出现在这里。</section>;
+  }
+
+  return (
+    <div className="studio-library-workspace">
+      <div className="studio-library-grid">
+        {items.map((item) => (
+          <button
+            key={item.id}
+            type="button"
+            className={cn("studio-library-tile", selectedItem?.id === item.id && "is-active")}
+            onClick={() => onSelectItem(item.id)}
+          >
+            <MediaCard item={item} />
+          </button>
+        ))}
+      </div>
+
+      {selectedItem ? (
+        <div className="studio-library-detail">
+          <MediaCard item={selectedItem} large />
+          <div className="studio-actions">
+            <button type="button" className="studio-secondary-button" onClick={() => onDelete(selectedItem.id)}>
+              删除
+            </button>
+            <button type="button" className="studio-secondary-button" onClick={onRefresh}>
+              刷新
             </button>
           </div>
         </div>
-
-        <div className="flex flex-wrap items-center gap-3">
-          <SubmitButton disabled={loading || statusLoading} loading={loading} onClick={submit}>
-            开始处理
-          </SubmitButton>
-          <span className="text-sm text-white/45">本机增强，不需要 Key</span>
-        </div>
-      </Panel>
+      ) : null}
     </div>
   );
 }
 
-function LibraryView({
-  items,
-  refresh,
-  setMessage,
+function ImagePreviewPanel({
+  mode,
+  output,
+  loading,
+  submitError,
+  promptFilled,
+  hasProvider,
+  hasFiles,
+  libraryCount,
+  activeLabel,
+  onSubmit,
+  onReloadProviders,
+  onOpenLibrary,
 }: {
-  items: LibraryItem[];
-  refresh: () => Promise<void>;
-  setMessage: (value: string) => void;
+  mode: WorkspaceImageMode;
+  output: OutputState;
+  loading: boolean;
+  submitError: string;
+  promptFilled: boolean;
+  hasProvider: boolean;
+  hasFiles: boolean;
+  libraryCount: number;
+  activeLabel: string;
+  onSubmit: () => void;
+  onReloadProviders: () => Promise<void>;
+  onOpenLibrary: () => void;
 }) {
-  async function remove(id: string) {
-    try {
-      await jsonFetch("/api/library", {
-        method: "DELETE",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ id }),
-      });
-      await refresh();
-    } catch (error) {
-      setMessage(error instanceof Error ? error.message : "删除失败。");
-    }
-  }
+  const meta = imageWorkspaceModeMeta[mode];
 
-  if (!items.length) {
+  if (loading) {
     return (
-      <section className="rounded-[2rem] border border-white/10 bg-white/[0.03] p-8 text-center text-white/45">
-        作品库还是空的。生成图片或视频后会自动出现在这里。
-      </section>
+      <div className="studio-preview" role="status" aria-live="polite">
+        <div className="studio-preview__top">
+          <div>
+            <p className="shell-eyebrow">处理中</p>
+            <h3>{meta.title}</h3>
+            <p>{meta.loadingLabel}</p>
+          </div>
+          <span className="shell-chip">请稍候</span>
+        </div>
+        <div className="studio-preview__empty">
+          <p>正在处理请求，生成完成后会在这里显示结果。</p>
+        </div>
+      </div>
     );
   }
 
-  return (
-    <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-      {items.map((item) => (
-        <div key={item.id} className="rounded-[1.5rem] border border-white/10 bg-white/[0.03] p-3">
-          <MediaCard item={item} />
+  if (submitError) {
+    return (
+      <div className="studio-preview" role="alert">
+        <div className="studio-preview__top">
+          <div>
+            <p className="shell-eyebrow">失败</p>
+            <h3>{meta.title}</h3>
+            <p>{submitError}</p>
+          </div>
+          <span className="shell-chip">请重试</span>
+        </div>
+        <div className="studio-preview__empty">
+          <p>参数会保留，你可以先修改模型、提示词或参考图片，再重新提交。</p>
+          <div className="studio-actions">
+            {!hasProvider ? (
+              <button type="button" className="studio-secondary-button" onClick={() => void onReloadProviders()}>
+                重新加载模型
+              </button>
+            ) : null}
+            <button
+              type="button"
+              className="studio-secondary-button"
+              onClick={onSubmit}
+              disabled={!hasProvider || !promptFilled || (mode === "image-to-image" && !hasFiles)}
+            >
+              重试
+            </button>
+            <button type="button" className="studio-secondary-button" onClick={onOpenLibrary}>
+              进入作品库
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  if (output) {
+    return (
+      <div className="studio-preview" role="status" aria-live="polite">
+        <div className="studio-preview__top">
+          <div>
+            <p className="shell-eyebrow">结果</p>
+            <h3>{output.title}</h3>
+            <p>生成完成后，这里就是你的真实结果，支持直接查看和下载。</p>
+          </div>
+          <span className="shell-chip">{output.job?.status || output.item.status}</span>
+        </div>
+        <MediaCard item={output.item} large />
+        <div className="studio-actions">
+          {output.item.output?.url ? (
+            <a className="studio-secondary-button" href={output.item.output.url} target="_blank" rel="noreferrer">
+              查看原图
+            </a>
+          ) : null}
           <button
             type="button"
-            onClick={() => remove(item.id)}
-            className="mt-3 w-full rounded-2xl border border-white/10 px-4 py-2 text-sm text-white/55 transition hover:border-red-400/40 hover:text-red-100"
+            className="studio-secondary-button"
+            onClick={onSubmit}
+            disabled={!hasProvider || !promptFilled || (mode === "image-to-image" && !hasFiles) || loading}
           >
-            删除
+            再次生成
+          </button>
+          <button type="button" className="studio-secondary-button" onClick={onOpenLibrary}>
+            进入作品库
           </button>
         </div>
-      ))}
+      </div>
+    );
+  }
+
+  const content = imageWorkspaceModeMeta[mode];
+
+  return (
+    <div className="studio-preview">
+      <div className="studio-preview__top">
+        <div>
+          <p className="shell-eyebrow">创作预览</p>
+          <h3>{activeLabel || content.guideTitle}</h3>
+          <p>{content.guideDescription}</p>
+        </div>
+        <span className="shell-chip">{libraryCount} 条作品</span>
+      </div>
+      <div className="studio-preview__empty">
+        <p>上传素材开始创作，生成结果将在这里显示。</p>
+      </div>
+      <div className="studio-steps">
+        {content.guideNotes.map((note, index) => (
+          <div key={note} className="studio-step">
+            <span>{index + 1}</span>
+            <p>{note}</p>
+          </div>
+        ))}
+      </div>
     </div>
   );
 }
 
-function MediaCard({ item, large = false }: { item: LibraryItem; large?: boolean }) {
-  const media = item.output;
-  return (
-    <article className="overflow-hidden rounded-[1.2rem] bg-black/35">
-      <div className={cn("grid place-items-center bg-black", large ? "min-h-[440px]" : "aspect-video")}>
-        {media?.url && item.type === "image" ? <img src={media.url} alt={item.title} className="max-h-full w-full object-contain" /> : null}
-        {media?.url && item.type === "video" ? <video src={media.url} controls className="max-h-full w-full" /> : null}
-        {!media?.url ? <span className="text-white/35">{item.status}</span> : null}
-      </div>
-      <div className="p-4">
-        <div className="flex items-center justify-between gap-3">
-          <strong className="line-clamp-1 text-sm">{item.title}</strong>
-          <span className="rounded-full bg-white/10 px-2 py-1 text-[11px] text-white/55">{item.status}</span>
-        </div>
-        <p className="mt-2 line-clamp-2 text-xs text-white/45">{item.prompt}</p>
-        {media?.url ? (
-          <a href={media.url} download className="mt-3 inline-flex text-sm font-bold text-fuchsia-200">
-            下载结果
-          </a>
-        ) : null}
-      </div>
-    </article>
-  );
-}
-
-function OutputPanel({ tool, output }: { tool: ToolId; output: OutputState }) {
+function OutputPanel({
+  tool,
+  output,
+  libraryCount,
+  activeLabel,
+}: {
+  tool: BusinessToolId;
+  output: OutputState;
+  libraryCount: number;
+  activeLabel: string;
+}) {
   const content = previewContent[tool];
 
   if (!output) {
     return (
-      <div className="grid gap-4">
-        <section className="overflow-hidden rounded-[2rem] border border-white/10 bg-white/[0.03]">
-          <div className="flex items-start justify-between gap-4 border-b border-white/10 px-4 py-4">
-            <div className="min-w-0">
-              <p className="text-xs uppercase tracking-[0.24em] text-fuchsia-300/70">Output</p>
-              <h3 className="mt-1 text-xl font-black">先这样，再这样，就能看到结果</h3>
-              <p className="mt-1 text-sm leading-6 text-white/52">
-                你还没生成内容时，这里先用教学方式告诉你下一步做什么；生成以后会直接换成真实结果。
-              </p>
+      <div className="studio-preview">
+        <div className="studio-preview__top">
+          <div>
+            <p className="shell-eyebrow">创作预览</p>
+            <h3>{activeLabel || content.title}</h3>
+            <p>{content.desc}</p>
+          </div>
+          <span className="shell-chip">{libraryCount} 条作品</span>
+        </div>
+        <div className="studio-preview__media">
+          <img src={content.image} alt={content.title} />
+        </div>
+        <div className="studio-steps">
+          {content.notes.map((note, index) => (
+            <div key={note} className="studio-step">
+              <span>{index + 1}</span>
+              <p>{note}</p>
             </div>
-            <span className="shrink-0 rounded-full border border-white/10 bg-black/25 px-3 py-1 text-xs text-white/45">
-              {content.title}
-            </span>
-          </div>
-
-          <div className="grid gap-4 p-4">
-            <div className="overflow-hidden rounded-[1.6rem] border border-white/10 bg-black/35">
-              <img src={content.image} alt={content.title} className="aspect-[4/3] w-full object-cover" />
-            </div>
-            <div className="grid gap-3">
-              {content.notes.map((note, index) => (
-                <div key={note} className="flex items-start gap-3 rounded-2xl border border-white/10 bg-black/20 px-4 py-3">
-                  <div className="mt-0.5 grid size-7 shrink-0 place-items-center rounded-full bg-fuchsia-500/15 text-xs font-bold text-fuchsia-100">
-                    {index + 1}
-                  </div>
-                  <div className="min-w-0">
-                    <p className="text-sm font-semibold text-white/90">{index === 0 ? "先这样" : index === 1 ? "再这样" : "就能这样"}</p>
-                    <p className="mt-1 text-sm leading-6 text-white/55">{note}</p>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
-        </section>
-
-        <section className="grid gap-3 rounded-[2rem] border border-white/10 bg-white/[0.03] p-4">
-          <div className="flex items-center justify-between gap-3">
-            <strong className="text-sm">当前工具</strong>
-            <span className="rounded-full border border-white/10 bg-white/[0.04] px-3 py-1 text-xs text-white/45">
-              {navItems.find((item) => item.id === tool)?.label}
-            </span>
-          </div>
-          <div className="grid gap-2 sm:grid-cols-3">
-            <MiniStep label="先填内容" desc="把主体、画面和风格说清楚。" />
-            <MiniStep label="再选参数" desc="比例、清晰度、时长都在这里。" />
-            <MiniStep label="最后生成" desc="点按钮后，结果直接出现在右边。" />
-          </div>
-        </section>
+          ))}
+        </div>
       </div>
     );
   }
 
   return (
-    <div className="grid gap-4">
-      <section className="overflow-hidden rounded-[2rem] border border-white/10 bg-white/[0.03]">
-        <div className="flex items-start justify-between gap-4 border-b border-white/10 px-4 py-4">
-          <div className="min-w-0">
-            <p className="text-xs uppercase tracking-[0.24em] text-fuchsia-300/70">Output</p>
-            <h3 className="mt-1 text-xl font-black">{output.title}</h3>
-            <p className="mt-1 text-sm leading-6 text-white/52">
-              生成完成后，这里就是你的真实结果，支持直接查看和下载。
-            </p>
-          </div>
-          <span className="shrink-0 rounded-full border border-white/10 bg-black/25 px-3 py-1 text-xs text-white/45">
-            {output.job?.status || output.item.status}
-          </span>
+    <div className="studio-preview">
+      <div className="studio-preview__top">
+        <div>
+          <p className="shell-eyebrow">结果</p>
+          <h3>{output.title}</h3>
+          <p>生成完成后，这里就是你的真实结果，支持直接查看和下载。</p>
         </div>
-
-        <div className="p-4">
-          <MediaCard item={output.item} large />
-        </div>
-      </section>
-
-      <section className="grid gap-3 rounded-[2rem] border border-white/10 bg-white/[0.03] p-4">
-        <div className="grid gap-2 sm:grid-cols-3">
-          <MiniStep label="结果已到位" desc="不用往下找，预览就在右边。" />
-          <MiniStep label="继续微调" desc="改内容后再点一次，就会刷新。" />
-          <MiniStep label="随时下载" desc="结果一出来就能直接保存。" />
-        </div>
-      </section>
+        <span className="shell-chip">{output.job?.status || output.item.status}</span>
+      </div>
+      <MediaCard item={output.item} large />
     </div>
   );
 }
 
-function MiniStep({ label, desc }: { label: string; desc: string }) {
+function FormPanel({ title, subtitle, children }: { title: string; subtitle: string; children: React.ReactNode }) {
   return (
-    <div className="rounded-2xl border border-white/10 bg-black/20 px-4 py-3">
-      <p className="text-sm font-semibold text-white/90">{label}</p>
-      <p className="mt-1 text-sm leading-6 text-white/55">{desc}</p>
+    <div className="studio-form-panel">
+      <div>
+        <h3>{title}</h3>
+        <p>{subtitle}</p>
+      </div>
+      <div className="studio-form-panel__content">{children}</div>
     </div>
   );
 }
 
-function Panel({ title, subtitle, children }: { title: string; subtitle: string; children: React.ReactNode }) {
+function MobileActionBar({
+  label,
+  loading,
+  disabled,
+  onClick,
+}: {
+  label: string;
+  loading: boolean;
+  disabled: boolean;
+  onClick: () => void;
+}) {
   return (
-    <section className="min-w-0 rounded-[2rem] border border-white/10 bg-white/[0.03] p-5 shadow-[0_20px_60px_rgba(0,0,0,0.25)]">
-      <h2 className="text-xl font-black">{title}</h2>
-      <p className="mt-1 text-sm text-white/48">{subtitle}</p>
-      <div className="mt-5 grid gap-4">{children}</div>
-    </section>
+    <div className="studio-mobile-action">
+      <button type="button" className="studio-primary-action studio-mobile-action__button" disabled={disabled} onClick={onClick}>
+        {loading ? <Loader2 className="size-4 animate-spin" aria-hidden="true" /> : <Wand2 className="size-4" aria-hidden="true" />}
+        {label}
+      </button>
+    </div>
   );
 }
 
@@ -856,16 +1403,12 @@ function FieldFrame({
   children: React.ReactNode;
 }) {
   return (
-    <div className="grid gap-2">
-      <div className="flex items-start justify-between gap-3">
-        <span className="text-sm text-white/70">{label}</span>
-        {required ? (
-          <span className="shrink-0 text-[11px] font-black leading-none text-red-400">*</span>
-        ) : hint ? (
-          <span className="rounded-full border border-white/10 bg-white/[0.04] px-3 py-1 text-xs text-white/45">{hint}</span>
-        ) : null}
+    <div className="studio-field">
+      <div className="studio-field__label">
+        <span>{label}</span>
+        {required ? <span className="studio-required">*</span> : hint ? <span className="shell-chip">{hint}</span> : null}
       </div>
-      <div className="min-w-0 rounded-[1.6rem] border border-white/10 bg-black/20 p-2">{children}</div>
+      <div className="studio-field__body">{children}</div>
     </div>
   );
 }
@@ -884,29 +1427,29 @@ function StackedControl({
 
 function ModeSwitch({
   label,
+  groupId,
   value,
   options,
   onChange,
 }: {
   label?: string;
+  groupId?: string;
   value: string;
   options: Array<[string, string]>;
   onChange: (value: string) => void;
 }) {
   return (
-    <div className="grid gap-2">
-      {label ? <span className="text-sm text-white/70">{label}</span> : null}
-      <div className="grid gap-2 sm:grid-cols-2">
+    <div className="studio-mode">
+      {label ? <span id={groupId ? `${groupId}-label` : undefined} className="studio-label">{label}</span> : null}
+      <div className="studio-mode__options" role="group" aria-labelledby={label && groupId ? `${groupId}-label` : undefined}>
         {options.map(([id, text]) => (
           <button
             key={id}
             type="button"
             data-testid={`mode-${id}`}
+            aria-pressed={value === id}
             onClick={() => onChange(id)}
-            className={cn(
-              "rounded-2xl border border-white/10 px-3 py-3 text-sm font-semibold text-white/68 transition duration-200 hover:-translate-y-0.5 hover:border-fuchsia-400/40 hover:bg-white/5",
-              value === id && "border-fuchsia-400/50 bg-fuchsia-500/15 text-fuchsia-100 shadow-[0_12px_24px_rgba(217,70,239,0.14)]",
-            )}
+            className={cn("studio-mode__button", value === id && "is-active")}
           >
             {text}
           </button>
@@ -919,29 +1462,62 @@ function ModeSwitch({
 function ProviderSelect({
   providers,
   value,
+  loading,
+  error,
   onChange,
+  onReload,
 }: {
   providers: PublicProvider[];
   value: string;
+  loading?: boolean;
+  error?: string;
   onChange: (value: string) => void;
+  onReload?: () => Promise<void>;
 }) {
   return (
     <FieldFrame label="模型" required>
-      <select
-        value={value}
-        onChange={(event) => onChange(event.target.value)}
-        className="h-12 w-full rounded-[1.25rem] border border-white/10 bg-white/[0.04] px-4 text-white outline-none transition focus:border-fuchsia-400"
-      >
-        {providers.length ? (
-          providers.map((provider) => (
-            <option key={provider.id} value={provider.id}>
-              {provider.model} · {provider.title}
-            </option>
-          ))
-        ) : (
-          <option value="">后台尚未启用模型</option>
-        )}
-      </select>
+      <div className="studio-provider">
+        <label className="studio-sr-only" htmlFor="image-provider-select">
+          模型
+        </label>
+        <select
+          id="image-provider-select"
+          value={value}
+          onChange={(event) => onChange(event.target.value)}
+          className="studio-select"
+          disabled={loading || !providers.length}
+          aria-invalid={Boolean(error)}
+          aria-describedby={error ? "image-provider-error" : loading ? "image-provider-status" : !providers.length ? "image-provider-empty" : undefined}
+        >
+          {loading ? (
+            <option value="">正在加载模型</option>
+          ) : providers.length ? (
+            providers.map((provider) => (
+              <option key={provider.id} value={provider.id}>
+                {provider.model} · {provider.title}
+              </option>
+            ))
+          ) : (
+            <option value="">当前尚未配置可用模型</option>
+          )}
+        </select>
+        {loading ? <p id="image-provider-status" className="studio-help-text" role="status" aria-live="polite">正在读取后台已启用的图片模型。</p> : null}
+        {!loading && !error && !providers.length ? (
+          <p id="image-provider-empty" className="studio-help-text" role="status" aria-live="polite">
+            当前尚未配置可用模型，请到 <a href="/admin/providers">后台设置</a> 启用对应模型。
+          </p>
+        ) : null}
+        {error ? (
+          <div id="image-provider-error" className="studio-inline-error" role="alert">
+            <p>{error}</p>
+            {onReload ? (
+              <button type="button" className="studio-secondary-button" onClick={() => void onReload()}>
+                重新加载
+              </button>
+            ) : null}
+          </div>
+        ) : null}
+      </div>
     </FieldFrame>
   );
 }
@@ -966,37 +1542,29 @@ function FileInput({
         accept={accept}
         multiple
         onChange={(event) => onChange(event.target.files)}
-        className="w-full rounded-[1.25rem] border border-dashed border-white/15 bg-black/30 p-4 text-sm text-white/55 file:mr-4 file:rounded-xl file:border-0 file:bg-fuchsia-500 file:px-3 file:py-2 file:text-white"
+        className="studio-file"
       />
-      {files?.length ? <span className="mt-2 block text-xs text-fuchsia-200">已选择 {files.length} 个文件</span> : null}
+      {files?.length ? <span className="studio-help-text">已选择 {files.length} 个文件</span> : null}
     </FieldFrame>
   );
 }
 
-function RatioPicker({ value, onChange }: { value: string; onChange: (value: string) => void }) {
+function RatioPicker({ label, value, onChange }: { label: string; value: string; onChange: (value: string) => void }) {
   return (
-    <div className="grid gap-2">
-      <div className="flex items-center justify-between gap-2">
-        <span className="text-sm text-white/70">比例</span>
-        <span className="rounded-full border border-white/10 bg-white/[0.04] px-3 py-1 text-xs text-white/45">上面有对应框的样子</span>
-      </div>
-      <div className="grid min-w-0 gap-2 sm:grid-cols-5">
-        {ratios.map((ratio) => (
-          <button
-            key={ratio}
-            type="button"
-            data-testid={`ratio-${ratio.replace(":", "-")}`}
-            onClick={() => onChange(ratio)}
-            className={cn(
-              "flex h-14 min-w-0 flex-col items-center justify-center rounded-[1.1rem] border border-white/10 bg-black/20 text-sm font-semibold text-white/60 transition duration-200 hover:-translate-y-0.5 hover:border-fuchsia-300/40 hover:bg-white/[0.06]",
-              value === ratio && "border-fuchsia-400/50 bg-fuchsia-500/15 text-fuchsia-100 shadow-[0_14px_30px_rgba(217,70,239,0.12)]",
-            )}
-          >
-            <span className="text-[11px] uppercase tracking-[0.18em] text-white/35">Size</span>
-            <span className="text-sm">{ratio}</span>
-          </button>
-        ))}
-      </div>
+    <div className="studio-ratio" role="group" aria-label={label}>
+      {ratios.map((ratio) => (
+        <button
+          key={ratio}
+          type="button"
+          data-testid={`ratio-${ratio.replace(":", "-")}`}
+          aria-pressed={value === ratio}
+          onClick={() => onChange(ratio)}
+          className={cn("studio-ratio__item", value === ratio && "is-active")}
+        >
+          <span className={cn("studio-ratio__shape", `ratio-${ratio.replace(":", "-")}`)} aria-hidden="true" />
+          <span className="studio-ratio__label">{ratio}</span>
+        </button>
+      ))}
     </div>
   );
 }
@@ -1014,15 +1582,21 @@ function PromptBox({
 }) {
   return (
     <FieldFrame label="提示词" required={required}>
-      <textarea
-        data-testid="prompt-input"
-        value={value}
-        onChange={(event) => onChange(event.target.value)}
-        maxLength={3000}
-        placeholder={placeholder}
-        className="min-h-36 w-full resize-none rounded-[1.25rem] border border-white/10 bg-black/30 p-4 text-white outline-none placeholder:text-white/25 transition duration-200 focus:border-fuchsia-400 focus:bg-black/45"
-      />
-      <span className="mt-2 block text-right text-xs text-white/35">{value.length}/3000</span>
+      <label className="studio-sr-only" htmlFor="image-prompt">
+        提示词
+      </label>
+      <div className="studio-textarea-wrap">
+        <textarea
+          id="image-prompt"
+          data-testid="prompt-input"
+          value={value}
+          onChange={(event) => onChange(event.target.value)}
+          placeholder={placeholder}
+          aria-describedby="image-prompt-counter"
+          className="studio-textarea"
+        />
+        <span id="image-prompt-counter" className="studio-counter">{value.length} 个字符</span>
+      </div>
     </FieldFrame>
   );
 }
@@ -1030,68 +1604,46 @@ function PromptBox({
 function SubmitButton({
   disabled,
   loading,
+  loadingLabel,
   children,
   onClick,
 }: {
   disabled: boolean;
   loading: boolean;
+  loadingLabel?: string;
   children: React.ReactNode;
   onClick: () => void;
 }) {
   return (
-    <button
-      type="button"
-      data-testid="primary-submit"
-      disabled={disabled}
-      onClick={onClick}
-      className="group flex h-12 items-center justify-center gap-2 rounded-full bg-gradient-to-r from-fuchsia-500 to-violet-600 px-5 font-semibold text-white shadow-[0_16px_32px_rgba(168,85,247,0.25)] transition duration-200 hover:-translate-y-0.5 hover:shadow-[0_22px_40px_rgba(168,85,247,0.28)] disabled:cursor-not-allowed disabled:opacity-45"
-    >
-      {loading ? <Loader2 className="size-4 animate-spin" /> : <Wand2 className="size-4 transition group-hover:rotate-12" />}
-      {children}
+    <button type="button" data-testid="primary-submit" disabled={disabled} onClick={onClick} className="studio-primary-action" aria-busy={loading}>
+      {loading ? <Loader2 className="size-4 animate-spin" aria-hidden="true" /> : <Wand2 className="size-4" aria-hidden="true" />}
+      <span>{loading ? loadingLabel || children : children}</span>
     </button>
   );
 }
 
-function NavButton({
-  item,
-  testIdPrefix,
-  active,
-  onClick,
-}: {
-  item: (typeof navItems)[number];
-  testIdPrefix: string;
-  active: boolean;
-  onClick: () => void;
-}) {
-  const Icon = item.icon;
+function MediaCard({ item, large = false }: { item: LibraryItem; large?: boolean }) {
+  const media = item.output;
   return (
-    <button
-      type="button"
-      aria-label={item.label}
-      data-testid={`${testIdPrefix}-${item.id}`}
-      onClick={onClick}
-      className={cn(
-        "flex items-center gap-3 rounded-2xl px-4 py-3 text-left transition duration-200 hover:-translate-y-0.5",
-        active
-          ? "bg-gradient-to-r from-fuchsia-500 to-violet-600 text-white shadow-[0_16px_40px_rgba(192,38,211,0.22)]"
-          : "border border-white/10 bg-white/[0.03] text-white/62 hover:border-fuchsia-400/40 hover:bg-white/5 hover:text-white",
-      )}
-    >
-      <Icon className="size-5" />
-      <span>
-        <span className="block text-sm font-semibold">{item.label}</span>
-        <span className="text-xs opacity-65">{item.desc}</span>
-      </span>
-    </button>
-  );
-}
-
-function HeroStat({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="rounded-[1.4rem] border border-white/10 bg-black/20 px-4 py-4">
-      <p className="text-xs uppercase tracking-[0.18em] text-white/35">{label}</p>
-      <p className="mt-2 text-sm font-semibold text-white/88">{value}</p>
-    </div>
+    <article className="studio-media-card">
+      <div className={cn("studio-media-card__frame", large && "is-large")}>
+        {media?.url && item.type === "image" ? <img src={media.url} alt={item.title} /> : null}
+        {media?.url && item.type === "video" ? <video src={media.url} controls /> : null}
+        {!media?.url ? <span>{item.status}</span> : null}
+      </div>
+      <div className="studio-media-card__body">
+        <div className="studio-media-card__head">
+          <strong>{item.title}</strong>
+          <span>{item.status}</span>
+        </div>
+        <p>{item.prompt}</p>
+        {media?.url ? (
+          <a href={media.url} download>
+            下载结果
+          </a>
+        ) : null}
+      </div>
+    </article>
   );
 }
 
@@ -1102,44 +1654,44 @@ function Toast({ message, onClose }: { message: string; onClose: () => void }) {
   }, [onClose]);
 
   return (
-    <div className="fixed bottom-20 right-4 z-[60] max-w-sm rounded-2xl border border-red-400/30 bg-red-500/12 px-4 py-3 text-sm text-red-100 shadow-[0_20px_60px_rgba(0,0,0,0.35)]">
+    <div className="studio-toast">
       {message}
     </div>
   );
 }
 
 const previewContent: Record<
-  ToolId,
+  BusinessToolId,
   { title: string; desc: string; image: string; notes: string[] }
 > = {
   image: {
-    title: "图片生成右侧示例",
-    desc: "让用户一眼看到效果，再去写提示词。",
+    title: "AI 图像生成器",
+    desc: "输入提示词并选择模型，生成结果会在这里显示。",
     image: "/images/reference/hero-cover.png",
-    notes: ["适合直接替换为你的真实生成图", "比例和清晰度区会更像参考站", "首屏先像产品页，再像工具页"],
+    notes: ["填写提示词", "选择参考图或比例", "结果会保存在作品库"],
   },
   video: {
-    title: "视频生成右侧示例",
-    desc: "先放预览封面，后面可以接结果视频。",
+    title: "AI 视频生成器",
+    desc: "输入视频描述，生成任务完成后会在这里显示。",
     image: "/images/reference/sample-1.png",
-    notes: ["后面可换成视频帧截图", "右侧预览维持参考站的节奏", "生成前就让人知道结果长什么样"],
+    notes: ["填写视频描述", "选择比例和时长", "轮询任务后展示结果"],
   },
   "image-upscale": {
-    title: "图片放大说明",
-    desc: "把本机增强作为一个明确能力，不让用户猜。",
+    title: "图片高清",
+    desc: "本机 Upscayl 放大能力继续通过原接口处理。",
     image: "/images/reference/sample-2.png",
-    notes: ["展示 Upscayl 本机增强", "提示不需要 Key", "把处理结果放进作品库"],
+    notes: ["上传图片", "选择 2x 或 4x", "处理后进入作品库"],
   },
   "video-upscale": {
-    title: "视频放大说明",
-    desc: "把 Video2X 放在更容易懂的位置。",
+    title: "视频高清",
+    desc: "本机 Video2X 增强能力继续通过原接口处理。",
     image: "/images/reference/sample-3.png",
-    notes: ["展示 Video2X 视频增强", "保留依赖检测状态", "保持和图片放大同一套节奏"],
+    notes: ["上传视频", "检测本机依赖", "处理后刷新作品库"],
   },
   library: {
-    title: "作品库示例",
-    desc: "把历史结果做成一眼能扫的卡片。",
+    title: "作品库",
+    desc: "历史结果、下载和删除逻辑保持不变。",
     image: "/images/reference/hero-cover.png",
-    notes: ["历史结果、状态和下载都保留", "库里也要像产品页一样清楚", "不要让用户猜每张卡的用途"],
+    notes: ["查看历史", "下载结果", "删除不需要的作品"],
   },
 };

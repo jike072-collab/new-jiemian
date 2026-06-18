@@ -1,0 +1,112 @@
+{
+  "generatedAt": "2026-06-18T04:11:57.038Z",
+  "sourceUrl": "http://127.0.0.1:3101/",
+  "sourceBuild": "production preview from feature/04-image-workspace",
+  "screenshots": [
+    "docs/design-references/module-04-image-workspace/1440x900-image-generator-initial.png",
+    "docs/design-references/module-04-image-workspace/1440x900-image-generator-no-model.png",
+    "docs/design-references/module-04-image-workspace/1440x900-image-editor-no-upload.png",
+    "docs/design-references/module-04-image-workspace/1440x900-image-editor-uploaded.png",
+    "docs/design-references/module-04-image-workspace/1440x900-image-editor-validation-error.png",
+    "docs/design-references/module-04-image-workspace/1280x800-image-generator-initial.png",
+    "docs/design-references/module-04-image-workspace/1024x768-tablet-image-generator.png",
+    "docs/design-references/module-04-image-workspace/1024x768-tablet-image-editor.png",
+    "docs/design-references/module-04-image-workspace/768x1024-tablet-portrait-image-generator.png",
+    "docs/design-references/module-04-image-workspace/390x844-mobile-generator-params.png",
+    "docs/design-references/module-04-image-workspace/390x844-mobile-generator-preview.png",
+    "docs/design-references/module-04-image-workspace/390x844-mobile-drawer-open.png",
+    "docs/design-references/module-04-image-workspace/390x844-mobile-editor-no-upload.png",
+    "docs/design-references/module-04-image-workspace/390x844-mobile-editor-uploaded-action.png",
+    "docs/design-references/module-04-image-workspace/375x812-mobile-generator-params.png",
+    "docs/design-references/module-04-image-workspace/1440x900-library.png",
+    "docs/design-references/module-04-image-workspace/1440x900-video-generator.png"
+  ],
+  "checks": [
+    {
+      "name": "desktop initial no horizontal",
+      "width": 1440,
+      "height": 900,
+      "scrollWidth": 1440,
+      "bodyScrollWidth": 1440,
+      "noHorizontal": true
+    },
+    {
+      "name": "generator mapping",
+      "ok": true
+    },
+    {
+      "name": "editor mapping no upload",
+      "ok": true
+    },
+    {
+      "name": "editor uploaded state",
+      "ok": true
+    },
+    {
+      "name": "bad file validation",
+      "ok": true
+    },
+    {
+      "name": "1280 no horizontal",
+      "width": 1280,
+      "height": 800,
+      "scrollWidth": 1280,
+      "bodyScrollWidth": 1280,
+      "noHorizontal": true
+    },
+    {
+      "name": "1024 tablet no horizontal",
+      "width": 1024,
+      "height": 768,
+      "scrollWidth": 1024,
+      "bodyScrollWidth": 1024,
+      "noHorizontal": true
+    },
+    {
+      "name": "768 tablet portrait no horizontal",
+      "width": 768,
+      "height": 1024,
+      "scrollWidth": 768,
+      "bodyScrollWidth": 768,
+      "noHorizontal": true
+    },
+    {
+      "name": "390 mobile no horizontal",
+      "width": 390,
+      "height": 844,
+      "scrollWidth": 390,
+      "bodyScrollWidth": 390,
+      "noHorizontal": true
+    },
+    {
+      "name": "mobile action generator",
+      "ok": true
+    },
+    {
+      "name": "mobile action editor",
+      "ok": true
+    },
+    {
+      "name": "375 mobile no horizontal",
+      "width": 375,
+      "height": 812,
+      "scrollWidth": 375,
+      "bodyScrollWidth": 375,
+      "noHorizontal": true
+    },
+    {
+      "name": "library visible",
+      "ok": true
+    },
+    {
+      "name": "video generator visible",
+      "ok": true
+    }
+  ],
+  "badLogs": [],
+  "unverified": [
+    "No configured image model in this local environment; real generation success was not executed.",
+    "No configured image model in this local environment; real image editing success was not executed.",
+    "Provider-result download and save-to-library were not executed because no real provider result was available."
+  ]
+}
