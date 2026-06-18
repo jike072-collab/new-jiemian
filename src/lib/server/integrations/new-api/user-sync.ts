@@ -79,7 +79,7 @@ function stableHash(value: string) {
 
 function generatedPassword(profile: NewApiUserSyncProfile, options: NewApiUserSyncOptions) {
   const seed = options.passwordSeed || randomUUID();
-  return `napi_${stableHash(`${profile.localUserId}:${seed}`).slice(0, 32)}A1!`;
+  return `napi_${stableHash(`${profile.localUserId}:${seed}`).slice(0, 12)}A1!`;
 }
 
 function arrayFrom(value: unknown): NewApiUserRecord[] {
@@ -156,6 +156,13 @@ async function createOrFindUpstreamUser(
       group: profile.group || DEFAULT_GROUP,
       quota: profile.initialQuota ?? 0,
     });
+    if (response.data.success === false) {
+      return {
+        kind: "repair_required",
+        code: "NEW_API_USER_CREATE_REJECTED",
+        message: String(response.data.message || "New API rejected user creation."),
+      };
+    }
     const user = extractCreatedUser(response.data);
     if (user) return { kind: "created", user };
     const existing = await findUpstreamUser(profile, listUsers);

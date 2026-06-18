@@ -42,6 +42,7 @@ test("creates a pending mapping then activates it after New API user creation", 
       assert.equal(input.username, "customer@example.com");
       assert.equal(input.email, "customer@example.com");
       assert.equal(input.quota, 0);
+      assert(String(input.password).length <= 20);
       assert.equal(String(input.password).includes("local-user-1"), false);
       return response({ success: true, data: user() });
     },
@@ -115,6 +116,27 @@ test("confirms created user from New API paginated list when create returns no i
   assert.equal(result.action, "created_upstream");
   assert.equal(result.mapping.sync_status, "active");
   assert.equal(result.mapping.new_api_user_id, "79");
+});
+
+test("does not treat New API business rejection as a successful create", async () => {
+  const repository = createMemoryNewApiUserMappingRepository();
+  const service = new NewApiUserSyncService({
+    repository,
+    createUser: async () => response({ success: false, message: "invalid password" }),
+    listUsers: async () => response({
+      success: true,
+      data: {
+        items: [user({ id: 80 })],
+        total: 1,
+      },
+    }),
+  });
+
+  const result = await service.ensureMapped(profile({ localUserId: "local-rejected" }));
+
+  assert.equal(result.action, "repair_required");
+  assert.equal(result.mapping.sync_status, "repair_required");
+  assert.equal(result.mapping.last_error_code, "NEW_API_USER_CREATE_REJECTED");
 });
 
 test("returns existing active mapping without calling New API", async () => {
