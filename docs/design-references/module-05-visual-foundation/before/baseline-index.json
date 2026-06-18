@@ -1,0 +1,113 @@
+[
+  {
+    "fileName": "1440x900-ai-image-generator-before.png",
+    "viewport": "1440x900",
+    "tool": "AI 图像生成器",
+    "state": "Initial no configured model",
+    "commit": "fd55897",
+    "issues": [
+      "Header center repeats current tool",
+      "Parameter panel shows engineering eyebrow",
+      "Preview repeats tool name and empty-state text"
+    ]
+  },
+  {
+    "fileName": "1440x900-ai-image-editor-before.png",
+    "viewport": "1440x900",
+    "tool": "AI 图片编辑器",
+    "state": "Initial no upload",
+    "commit": "fd55897",
+    "issues": [
+      "Sidebar keeps subtitle under each tool",
+      "Parameter title and inner form title duplicate the tool"
+    ]
+  },
+  {
+    "fileName": "1440x900-ai-video-generator-before.png",
+    "viewport": "1440x900",
+    "tool": "AI 视频生成器",
+    "state": "Initial",
+    "commit": "fd55897",
+    "issues": [
+      "Preview uses full sample image while library count may be zero",
+      "Video ratio/control styling differs from image workspace"
+    ]
+  },
+  {
+    "fileName": "1440x900-image-upscale-before.png",
+    "viewport": "1440x900",
+    "tool": "图片高清",
+    "state": "Initial",
+    "commit": "fd55897",
+    "issues": [
+      "Upload is native file input style rather than shared compact dropzone",
+      "Preview sample can look like a real output"
+    ]
+  },
+  {
+    "fileName": "1440x900-video-upscale-before.png",
+    "viewport": "1440x900",
+    "tool": "视频高清",
+    "state": "Initial",
+    "commit": "fd55897",
+    "issues": [
+      "Upload and action patterns are not shared with image editor",
+      "Preview repeats tool title"
+    ]
+  },
+  {
+    "fileName": "1440x900-library-before.png",
+    "viewport": "1440x900",
+    "tool": "作品库",
+    "state": "Empty or current library",
+    "commit": "fd55897",
+    "issues": [
+      "Library empty state occupies preview area without unified PreviewState",
+      "Filter controls use the same shell panel as generation params"
+    ]
+  },
+  {
+    "fileName": "1024x768-tablet-main-before.png",
+    "viewport": "1024x768",
+    "tool": "AI 图像生成器",
+    "state": "Tablet main",
+    "commit": "fd55897",
+    "issues": [
+      "Tablet narrow rail hides labels but keeps repeated panel titles",
+      "Navigation icon-only meaning depends on icons"
+    ]
+  },
+  {
+    "fileName": "390x844-mobile-params-before.png",
+    "viewport": "390x844",
+    "tool": "AI 图像生成器",
+    "state": "Mobile parameter tab",
+    "commit": "fd55897",
+    "issues": [
+      "Mobile header and tabs still show current tool while parameter panel also titles tool",
+      "Bottom action exists but hierarchy remains busy"
+    ]
+  },
+  {
+    "fileName": "390x844-mobile-drawer-before.png",
+    "viewport": "390x844",
+    "tool": "AI 图像生成器",
+    "state": "Mobile drawer open",
+    "commit": "fd55897",
+    "issues": [
+      "Drawer keeps full subtitles under each tool",
+      "Group and entry density is high for scanning"
+    ]
+  },
+  {
+    "fileName": "390x844-mobile-preview-before.png",
+    "viewport": "390x844",
+    "tool": "AI 图像生成器",
+    "state": "Mobile preview tab",
+    "commit": "fd55897",
+    "issues": [
+      "Preview tab repeats creation preview plus tool title and empty copy",
+      "Preview state is not a shared component"
+    ]
+  }
+]

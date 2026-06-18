@@ -3,7 +3,7 @@
 /* eslint-disable @next/next/no-img-element */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Loader2, RefreshCw, Wand2, X } from "lucide-react";
+import { ImageUp, Loader2, RefreshCw, UploadCloud, Wand2, X } from "lucide-react";
 import { useRouter } from "next/navigation";
 
 import { WorkbenchShell } from "@/components/workbench-shell";
@@ -46,6 +46,12 @@ type MobileActionState = {
 type ImageWorkspaceFile = {
   file: File;
   previewUrl: string;
+};
+
+type UploadFilePreview = {
+  name: string;
+  size: number;
+  previewUrl?: string;
 };
 
 type ImageWorkspaceState = {
@@ -519,13 +525,12 @@ export function StudioApp() {
                 hasProvider={Boolean(selectedImageProvider)}
                 hasFiles={imageWorkspaceHasFiles}
                 libraryCount={library.length}
-                activeLabel={activeWorkspaceTool.label}
                 onSubmit={submitImageWorkspace}
                 onReloadProviders={refreshProviders}
                 onOpenLibrary={() => setActiveWorkspaceToolId("library")}
               />
             ) : (
-              <OutputPanel tool={activeBusinessTool} output={activeOutput} libraryCount={library.length} activeLabel={activeWorkspaceTool.label} />
+              <OutputPanel tool={activeBusinessTool} output={activeOutput} libraryCount={library.length} />
             )
           )
         }
@@ -588,7 +593,7 @@ function ImageGenerator({
   }, [canSubmit, meta.loadingLabel, meta.submitLabel, onSubmit, registerMobileAction, state.loading]);
 
   return (
-    <FormPanel title={meta.title} subtitle={meta.subtitle}>
+    <FormPanel>
       <ImageModeSwitch mode={mode} onModeChange={onModeChange} />
 
       <ProviderSelect
@@ -608,7 +613,7 @@ function ImageGenerator({
         onClear={onFilesClear}
       />
       <StackedControl label="图片比例" required>
-        <RatioPicker label="图片比例" value={state.ratio} onChange={onRatioChange} />
+        <AspectRatioSelector label="图片比例" value={state.ratio} onChange={onRatioChange} />
       </StackedControl>
       <StackedControl label="清晰度" required>
         <ModeSwitch
@@ -630,11 +635,11 @@ function ImageGenerator({
       />
       {state.submitError ? <p className="studio-error-text" role="alert">{state.submitError}</p> : null}
 
-      <div className="studio-actions">
+      <StickyPrimaryAction>
         <SubmitButton disabled={!canSubmit} loading={state.loading} loadingLabel={meta.loadingLabel} onClick={onSubmit}>
           {meta.submitLabel}
         </SubmitButton>
-      </div>
+      </StickyPrimaryAction>
     </FormPanel>
   );
 }
@@ -687,65 +692,28 @@ function ReferenceImageInput({
 
   return (
     <FieldFrame label="参考图片" required={required} hint={required ? undefined : "可选"}>
-      <div
-        className={cn("studio-upload", dragging && "is-dragging", error && "is-error")}
-        aria-describedby={error ? "reference-image-error" : "reference-image-help"}
-        onDragOver={(event) => {
-          event.preventDefault();
-          setDragging(true);
-        }}
-        onDragLeave={() => setDragging(false)}
-        onDrop={(event) => {
-          event.preventDefault();
-          setDragging(false);
-          applyFiles(event.dataTransfer.files);
-        }}
-      >
-        <input
-          ref={fileInputRef}
-          id="reference-image-input"
-          type="file"
-          aria-label={required ? "上传参考图片开始编辑" : "上传参考图片辅助生成"}
-          aria-describedby={error ? "reference-image-error" : "reference-image-help"}
-          accept="image/png,image/jpeg,image/webp"
-          multiple
-          onChange={(event) => {
-            applyFiles(event.target.files || []);
-            event.currentTarget.value = "";
-          }}
-          className="studio-file-input"
-        />
-        <div className="studio-upload__body">
-          <strong>{files.length ? "已选择参考图片" : required ? "上传参考图片开始编辑" : "可上传参考图片辅助生成"}</strong>
-          <p id="reference-image-help">支持 PNG、JPEG、WebP，最多 10 张，单张不超过 10MB。</p>
-          <div className="studio-upload__actions">
-            <button type="button" className="studio-secondary-button" aria-controls="reference-image-input" onClick={() => fileInputRef.current?.click()}>
-              {files.length ? "替换图片" : "选择图片"}
-            </button>
-            {files.length ? (
-              <button type="button" className="studio-secondary-button" onClick={onClear}>
-                全部删除
-              </button>
-            ) : null}
-          </div>
-        </div>
-      </div>
-      {files.length ? (
-        <div className="studio-upload-list">
-          {files.map((item, index) => (
-            <div key={`${item.file.name}-${item.file.lastModified}-${index}`} className="studio-upload-item">
-              <img src={item.previewUrl} alt={item.file.name} />
-              <div>
-                <strong>{item.file.name}</strong>
-                <span>{formatFileSize(item.file.size)}</span>
-              </div>
-              <button type="button" className="studio-icon-button" aria-label={`删除 ${item.file.name}`} onClick={() => onRemove(index)}>
-                <X className="size-4" aria-hidden="true" />
-              </button>
-            </div>
-          ))}
-        </div>
-      ) : null}
+      <CompactDropzone
+        inputRef={fileInputRef}
+        inputId="reference-image-input"
+        accept="image/png,image/jpeg,image/webp"
+        multiple
+        required={required}
+        dragging={dragging}
+        error={error}
+        files={files.map((item) => ({
+          name: item.file.name,
+          size: item.file.size,
+          previewUrl: item.previewUrl,
+        }))}
+        emptyTitle={required ? "上传参考图片开始编辑" : "可上传参考图片辅助生成"}
+        filledTitle="已选择参考图片"
+        helpText="支持 PNG、JPEG、WebP，最多 10 张，单张不超过 10MB。"
+        chooseLabel={files.length ? "替换图片" : "选择图片"}
+        onFiles={applyFiles}
+        onRemove={onRemove}
+        onClear={files.length ? onClear : undefined}
+        onDraggingChange={setDragging}
+      />
       {error ? <p id="reference-image-error" className="studio-error-text" role="alert">{error}</p> : null}
       {!error && required && !files.length ? <p className="studio-help-text" role="status" aria-live="polite">图片编辑必须先上传参考图片。</p> : null}
     </FieldFrame>
@@ -778,7 +746,7 @@ function VideoGenerator({
   const [ratio, setRatio] = useState("16:9");
   const [duration, setDuration] = useState(5);
   const [prompt, setPrompt] = useState("");
-  const [files, setFiles] = useState<FileList | null>(null);
+  const [files, setFiles] = useState<File[]>([]);
   const [loading, setLoading] = useState(false);
   const [job, setJob] = useState<JobRecord | null>(null);
 
@@ -818,7 +786,7 @@ function VideoGenerator({
       form.set("ratio", ratio);
       form.set("duration", String(duration));
       form.set("prompt", prompt);
-      Array.from(files || []).forEach((file) => form.append("files", file));
+      files.forEach((file) => form.append("files", file));
       const data = await jsonFetch<{ item: LibraryItem; job: JobRecord | null }>("/api/generate/video", {
         method: "POST",
         body: form,
@@ -844,7 +812,7 @@ function VideoGenerator({
   }, [loading, registerMobileAction, submit]);
 
   return (
-    <FormPanel title="AI 视频生成器" subtitle="先写你要的视频，再选尺寸和时长。">
+    <FormPanel>
       <ModeSwitch
         label="视频模式"
         groupId="video-mode"
@@ -864,7 +832,7 @@ function VideoGenerator({
         onChange={setFiles}
       />
       <StackedControl label="视频比例" required>
-        <RatioPicker label="视频比例" value={ratio} onChange={setRatio} />
+        <AspectRatioSelector label="视频比例" value={ratio} onChange={setRatio} />
       </StackedControl>
       <FieldFrame label="时长" required>
         <select
@@ -885,11 +853,11 @@ function VideoGenerator({
         required
         placeholder="描述视频画面、运动、镜头和氛围，例如：未来感产品展示，缓慢推进镜头，霓虹灯反射。"
       />
-      <div className="studio-actions">
+      <StickyPrimaryAction>
         <SubmitButton disabled={loading} loading={loading} onClick={submit}>
           生成视频
         </SubmitButton>
-      </div>
+      </StickyPrimaryAction>
     </FormPanel>
   );
 }
@@ -995,7 +963,6 @@ function UpscaleForm({
     }
   }, [availability?.detail, availability?.ready, file, isVideo, kind, onDone, onResult, scale, setMessage]);
 
-  const title = isVideo ? "视频高清" : "图片高清";
   const accept = isVideo ? "video/mp4,video/webm,video/quicktime,.mov" : "image/png,image/jpeg,image/webp";
 
   useEffect(() => {
@@ -1009,16 +976,15 @@ function UpscaleForm({
   }, [loading, registerMobileAction, statusLoading, submit]);
 
   return (
-    <FormPanel title={title} subtitle={`上传单个${isVideo ? "视频" : "图片"}，使用本机工具放大到原始尺寸的 2x 或 4x。`}>
-      <FieldFrame label={isVideo ? "源视频" : "源图片"} required>
-        <input
-          type="file"
-          accept={accept}
-          onChange={(event) => setFile(event.target.files?.[0] || null)}
-          className="studio-file"
-        />
-        {file ? <span className="studio-help-text">已选择：{file.name}</span> : null}
-      </FieldFrame>
+    <FormPanel>
+      <FileInput
+        label={isVideo ? "源视频" : "源图片"}
+        optional={false}
+        accept={accept}
+        multiple={false}
+        files={file ? [file] : []}
+        onChange={(nextFiles) => setFile(nextFiles[0] || null)}
+      />
 
       <StackedControl label="放大倍数" required>
         <ModeSwitch
@@ -1056,12 +1022,11 @@ function UpscaleForm({
         </button>
       </div>
 
-      <div className="studio-actions">
+      <StickyPrimaryAction helpText="本机增强，不需要 Key">
         <SubmitButton disabled={loading || statusLoading} loading={loading} onClick={submit}>
           开始增强
         </SubmitButton>
-        <span className="studio-help-text">本机增强，不需要 Key</span>
-      </div>
+      </StickyPrimaryAction>
     </FormPanel>
   );
 }
@@ -1169,7 +1134,6 @@ function ImagePreviewPanel({
   hasProvider,
   hasFiles,
   libraryCount,
-  activeLabel,
   onSubmit,
   onReloadProviders,
   onOpenLibrary,
@@ -1182,7 +1146,6 @@ function ImagePreviewPanel({
   hasProvider: boolean;
   hasFiles: boolean;
   libraryCount: number;
-  activeLabel: string;
   onSubmit: () => void;
   onReloadProviders: () => Promise<void>;
   onOpenLibrary: () => void;
@@ -1191,33 +1154,17 @@ function ImagePreviewPanel({
 
   if (loading) {
     return (
-      <div className="studio-preview" role="status" aria-live="polite">
-        <div className="studio-preview__top">
-          <div>
-            <p className="shell-eyebrow">处理中</p>
-            <h3>{meta.title}</h3>
-            <p>{meta.loadingLabel}</p>
-          </div>
-          <span className="shell-chip">请稍候</span>
-        </div>
+      <PreviewState eyebrow="处理中" title="创作预览" description={meta.loadingLabel} badge="请稍候" role="status" live>
         <div className="studio-preview__empty">
           <p>正在处理请求，生成完成后会在这里显示结果。</p>
         </div>
-      </div>
+      </PreviewState>
     );
   }
 
   if (submitError) {
     return (
-      <div className="studio-preview" role="alert">
-        <div className="studio-preview__top">
-          <div>
-            <p className="shell-eyebrow">失败</p>
-            <h3>{meta.title}</h3>
-            <p>{submitError}</p>
-          </div>
-          <span className="shell-chip">请重试</span>
-        </div>
+      <PreviewState eyebrow="失败" title="生成结果" description={submitError} badge="请重试" role="alert">
         <div className="studio-preview__empty">
           <p>参数会保留，你可以先修改模型、提示词或参考图片，再重新提交。</p>
           <div className="studio-actions">
@@ -1239,21 +1186,13 @@ function ImagePreviewPanel({
             </button>
           </div>
         </div>
-      </div>
+      </PreviewState>
     );
   }
 
   if (output) {
     return (
-      <div className="studio-preview" role="status" aria-live="polite">
-        <div className="studio-preview__top">
-          <div>
-            <p className="shell-eyebrow">结果</p>
-            <h3>{output.title}</h3>
-            <p>生成完成后，这里就是你的真实结果，支持直接查看和下载。</p>
-          </div>
-          <span className="shell-chip">{output.job?.status || output.item.status}</span>
-        </div>
+      <PreviewState eyebrow="结果" title="生成结果" description="生成完成后，这里就是你的真实结果，支持直接查看和下载。" badge={output.job?.status || output.item.status} role="status" live>
         <MediaCard item={output.item} large />
         <div className="studio-actions">
           {output.item.output?.url ? (
@@ -1273,24 +1212,16 @@ function ImagePreviewPanel({
             进入作品库
           </button>
         </div>
-      </div>
+      </PreviewState>
     );
   }
 
   const content = imageWorkspaceModeMeta[mode];
 
   return (
-    <div className="studio-preview">
-      <div className="studio-preview__top">
-        <div>
-          <p className="shell-eyebrow">创作预览</p>
-          <h3>{activeLabel || content.guideTitle}</h3>
-          <p>{content.guideDescription}</p>
-        </div>
-        <span className="shell-chip">{libraryCount} 条作品</span>
-      </div>
+    <PreviewState eyebrow="创作预览" title="创作预览" description={content.guideDescription} badge={`${libraryCount} 条作品`}>
       <div className="studio-preview__empty">
-        <p>上传素材开始创作，生成结果将在这里显示。</p>
+        <p>上传素材开始创作，结果会在这里显示。</p>
       </div>
       <div className="studio-steps">
         {content.guideNotes.map((note, index) => (
@@ -1300,7 +1231,7 @@ function ImagePreviewPanel({
           </div>
         ))}
       </div>
-    </div>
+    </PreviewState>
   );
 }
 
@@ -1308,27 +1239,18 @@ function OutputPanel({
   tool,
   output,
   libraryCount,
-  activeLabel,
 }: {
   tool: BusinessToolId;
   output: OutputState;
   libraryCount: number;
-  activeLabel: string;
 }) {
   const content = previewContent[tool];
 
   if (!output) {
     return (
-      <div className="studio-preview">
-        <div className="studio-preview__top">
-          <div>
-            <p className="shell-eyebrow">创作预览</p>
-            <h3>{activeLabel || content.title}</h3>
-            <p>{content.desc}</p>
-          </div>
-          <span className="shell-chip">{libraryCount} 条作品</span>
-        </div>
-        <div className="studio-preview__media">
+      <PreviewState eyebrow="创作预览" title="创作预览" description={content.desc} badge={`${libraryCount} 条作品`}>
+        <div className="studio-preview__media is-example">
+          <span className="studio-example-badge">示例效果</span>
           <img src={content.image} alt={content.title} />
         </div>
         <div className="studio-steps">
@@ -1339,32 +1261,20 @@ function OutputPanel({
             </div>
           ))}
         </div>
-      </div>
+      </PreviewState>
     );
   }
 
   return (
-    <div className="studio-preview">
-      <div className="studio-preview__top">
-        <div>
-          <p className="shell-eyebrow">结果</p>
-          <h3>{output.title}</h3>
-          <p>生成完成后，这里就是你的真实结果，支持直接查看和下载。</p>
-        </div>
-        <span className="shell-chip">{output.job?.status || output.item.status}</span>
-      </div>
+    <PreviewState eyebrow="结果" title="生成结果" description="生成完成后，这里就是你的真实结果，支持直接查看和下载。" badge={output.job?.status || output.item.status}>
       <MediaCard item={output.item} large />
-    </div>
+    </PreviewState>
   );
 }
 
-function FormPanel({ title, subtitle, children }: { title: string; subtitle: string; children: React.ReactNode }) {
+function FormPanel({ children }: { children: React.ReactNode }) {
   return (
     <div className="studio-form-panel">
-      <div>
-        <h3>{title}</h3>
-        <p>{subtitle}</p>
-      </div>
       <div className="studio-form-panel__content">{children}</div>
     </div>
   );
@@ -1423,6 +1333,204 @@ function StackedControl({
   children: React.ReactNode;
 }) {
   return <FieldFrame label={label} required={required}>{children}</FieldFrame>;
+}
+
+function AspectRatioSelector({ label, value, onChange }: { label: string; value: string; onChange: (value: string) => void }) {
+  return (
+    <div className="studio-ratio" role="group" aria-label={label}>
+      {ratios.map((ratio) => (
+        <button
+          key={ratio}
+          type="button"
+          data-testid={`ratio-${ratio.replace(":", "-")}`}
+          aria-pressed={value === ratio}
+          onClick={() => onChange(ratio)}
+          className={cn("studio-ratio__item", value === ratio && "is-active")}
+        >
+          <span className="studio-ratio__graphic" aria-hidden="true">
+            <span className={cn("studio-ratio__shape", `ratio-${ratio.replace(":", "-")}`)} />
+          </span>
+          <span className="studio-ratio__label">{ratio}</span>
+        </button>
+      ))}
+    </div>
+  );
+}
+
+function CompactDropzone({
+  inputRef,
+  inputId,
+  accept,
+  multiple = true,
+  required,
+  dragging,
+  error,
+  files,
+  emptyTitle,
+  filledTitle,
+  helpText,
+  chooseLabel,
+  onFiles,
+  onRemove,
+  onClear,
+  onDraggingChange,
+}: {
+  inputRef: React.RefObject<HTMLInputElement | null>;
+  inputId: string;
+  accept: string;
+  multiple?: boolean;
+  required?: boolean;
+  dragging?: boolean;
+  error?: string;
+  files: UploadFilePreview[];
+  emptyTitle: string;
+  filledTitle: string;
+  helpText: string;
+  chooseLabel?: string;
+  onFiles: (files: File[]) => void;
+  onRemove?: (index: number) => void;
+  onClear?: () => void;
+  onDraggingChange?: (dragging: boolean) => void;
+}) {
+  const helpId = `${inputId}-help`;
+
+  const applyFiles = useCallback((fileList: FileList | File[]) => {
+    const nextFiles = Array.from(fileList);
+    if (!nextFiles.length) return;
+    onFiles(nextFiles);
+  }, [onFiles]);
+
+  return (
+    <div className="studio-upload-group">
+      <div
+        className={cn("studio-upload", dragging && "is-dragging", error && "is-error")}
+        role="button"
+        tabIndex={0}
+        aria-controls={inputId}
+        aria-describedby={helpId}
+        onClick={() => inputRef.current?.click()}
+        onKeyDown={(event) => {
+          if (event.key === "Enter" || event.key === " ") {
+            event.preventDefault();
+            inputRef.current?.click();
+          }
+        }}
+        onDragOver={(event) => {
+          event.preventDefault();
+          onDraggingChange?.(true);
+        }}
+        onDragLeave={() => onDraggingChange?.(false)}
+        onDrop={(event) => {
+          event.preventDefault();
+          onDraggingChange?.(false);
+          applyFiles(event.dataTransfer.files);
+        }}
+      >
+        <input
+          ref={inputRef}
+          id={inputId}
+          type="file"
+          aria-label={required ? emptyTitle : chooseLabel || emptyTitle}
+          aria-describedby={helpId}
+          accept={accept}
+          multiple={multiple}
+          onChange={(event) => {
+            applyFiles(event.target.files || []);
+            event.currentTarget.value = "";
+          }}
+          className="studio-file-input"
+        />
+        <div className="studio-upload__icon" aria-hidden="true">
+          <UploadCloud className="size-5" />
+        </div>
+        <div className="studio-upload__content">
+          <strong>{files.length ? filledTitle : emptyTitle}</strong>
+          <p id={helpId}>{helpText}</p>
+        </div>
+      </div>
+
+      <div className="studio-upload__actions">
+        <button
+          type="button"
+          className="studio-secondary-button"
+          onClick={() => inputRef.current?.click()}
+        >
+          {chooseLabel || (files.length ? "替换文件" : "选择文件")}
+        </button>
+        {files.length && onClear ? (
+          <button type="button" className="studio-secondary-button" onClick={onClear}>
+            全部删除
+          </button>
+        ) : null}
+      </div>
+
+      {files.length ? (
+        <div className="studio-upload-list">
+          {files.map((file, index) => (
+            <div key={`${file.name}-${file.size}-${index}`} className="studio-upload-item">
+              {file.previewUrl ? (
+                <img src={file.previewUrl} alt={file.name} />
+              ) : (
+                <span className="studio-upload-item__placeholder" aria-hidden="true">
+                  <ImageUp className="size-5" />
+                </span>
+              )}
+              <div>
+                <strong>{file.name}</strong>
+                <span>{formatFileSize(file.size)}</span>
+              </div>
+              {onRemove ? (
+                <button type="button" className="studio-icon-button" aria-label={`删除 ${file.name}`} onClick={() => onRemove(index)}>
+                  <X className="size-4" aria-hidden="true" />
+                </button>
+              ) : null}
+            </div>
+          ))}
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+function StickyPrimaryAction({ children, helpText }: { children: React.ReactNode; helpText?: string }) {
+  return (
+    <div className="studio-sticky-action">
+      {children}
+      {helpText ? <span className="studio-help-text">{helpText}</span> : null}
+    </div>
+  );
+}
+
+function PreviewState({
+  eyebrow,
+  title,
+  description,
+  badge,
+  role,
+  live,
+  children,
+}: {
+  eyebrow: string;
+  title: string;
+  description?: string;
+  badge?: string;
+  role?: "status" | "alert";
+  live?: boolean;
+  children: React.ReactNode;
+}) {
+  return (
+    <div className="studio-preview" role={role} aria-live={live ? "polite" : undefined}>
+      <div className="studio-preview__top">
+        <div>
+          <p className="shell-eyebrow">{eyebrow}</p>
+          <h3>{title}</h3>
+          {description ? <p>{description}</p> : null}
+        </div>
+        {badge ? <span className="shell-chip">{badge}</span> : null}
+      </div>
+      <div className="studio-preview__content">{children}</div>
+    </div>
+  );
 }
 
 function ModeSwitch({
@@ -1526,46 +1634,44 @@ function FileInput({
   label,
   optional,
   accept,
+  multiple = true,
   files,
   onChange,
 }: {
   label: string;
   optional: boolean;
   accept: string;
-  files: FileList | null;
-  onChange: (files: FileList | null) => void;
+  multiple?: boolean;
+  files: File[];
+  onChange: (files: File[]) => void;
 }) {
+  const inputRef = useRef<HTMLInputElement | null>(null);
+  const [dragging, setDragging] = useState(false);
+  const inputId = `${label.replace(/\s+/g, "-")}-file-input`;
+
   return (
     <FieldFrame label={label} required={!optional} hint={optional ? "可选" : undefined}>
-      <input
-        type="file"
+      <CompactDropzone
+        inputRef={inputRef}
+        inputId={inputId}
         accept={accept}
-        multiple
-        onChange={(event) => onChange(event.target.files)}
-        className="studio-file"
+        multiple={multiple}
+        required={!optional}
+        dragging={dragging}
+        files={files.map((file) => ({
+          name: file.name,
+          size: file.size,
+        }))}
+        emptyTitle={optional ? `可上传${label}` : `上传${label}`}
+        filledTitle={`已选择${label}`}
+        helpText={`支持真实接口允许的${label}文件。`}
+        chooseLabel={files.length ? "替换文件" : "选择文件"}
+        onFiles={(nextFiles) => onChange(multiple ? nextFiles : nextFiles.slice(0, 1))}
+        onRemove={(index) => onChange(files.filter((_, currentIndex) => currentIndex !== index))}
+        onClear={files.length ? () => onChange([]) : undefined}
+        onDraggingChange={setDragging}
       />
-      {files?.length ? <span className="studio-help-text">已选择 {files.length} 个文件</span> : null}
     </FieldFrame>
-  );
-}
-
-function RatioPicker({ label, value, onChange }: { label: string; value: string; onChange: (value: string) => void }) {
-  return (
-    <div className="studio-ratio" role="group" aria-label={label}>
-      {ratios.map((ratio) => (
-        <button
-          key={ratio}
-          type="button"
-          data-testid={`ratio-${ratio.replace(":", "-")}`}
-          aria-pressed={value === ratio}
-          onClick={() => onChange(ratio)}
-          className={cn("studio-ratio__item", value === ratio && "is-active")}
-        >
-          <span className={cn("studio-ratio__shape", `ratio-${ratio.replace(":", "-")}`)} aria-hidden="true" />
-          <span className="studio-ratio__label">{ratio}</span>
-        </button>
-      ))}
-    </div>
   );
 }
 
