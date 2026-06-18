@@ -456,6 +456,34 @@ Final draft target: `develop`
 - Non-production auth secret fallback must not be used for exposed staging/test environments.
 - PostgreSQL and Redis images are pinned by tag but not digest.
 
+## BP-01B - Auth PostgreSQL persistence
+
+Status: In progress
+
+Branch: `feature/backend-production-01b-auth-postgres`
+
+Scope:
+
+- Added PostgreSQL repositories for auth users, auth sessions, auth audit events, and New API user mappings.
+- Added auth persistence mode selection with `json`, `dual`, and `postgres`.
+- Added auth data migration dry-run, apply, and verify scripts.
+- Added auth persistence consistency verification.
+- Extended the application database workflow to exercise the auth PostgreSQL path.
+
+Current local verification:
+
+- `npm run typecheck` passed.
+- `node scripts/test-auth-session.mjs` passed 17 tests with the `react-server` Node condition.
+- `npm run test:auth-persistence` passed the configuration checks and skipped PostgreSQL integration cases because this workstation lacks `APP_DATABASE_URL` and Docker.
+- Real PostgreSQL validation is delegated to GitHub Actions through the application database workflow.
+
+Guardrails:
+
+- A-side files remain untouched.
+- Production payment remains disabled.
+- Production PostgreSQL primary writes still require explicit release approval.
+- Missing production `APP_AUTH_PERSISTENCE_MODE` fails closed.
+
 ## B12-FG - Final Gate Corrective Validation
 
 Status: Completed for reviewer handoff

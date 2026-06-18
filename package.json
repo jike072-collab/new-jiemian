@@ -33,6 +33,11 @@
     "migrate": "node scripts/database/migrate.mjs up",
     "migrate:status": "node scripts/database/migrate.mjs status",
     "migrate:test": "npm run migrate && node scripts/database/test-schema.mjs && node scripts/database/test-client.mjs",
+    "migrate:auth-data:dry-run": "node scripts/database/auth-data-migration.mjs dry-run",
+    "migrate:auth-data:apply": "node scripts/database/auth-data-migration.mjs apply --confirm-apply",
+    "migrate:auth-data:verify": "node scripts/database/auth-data-migration.mjs verify",
+    "verify:auth-persistence": "node scripts/database/verify-auth-persistence.mjs",
+    "test:auth-persistence": "node scripts/database/test-auth-persistence.mjs",
     "database:boundary": "node scripts/database/test-server-boundary.mjs",
     "db:health": "node scripts/database/migrate.mjs health"
   },

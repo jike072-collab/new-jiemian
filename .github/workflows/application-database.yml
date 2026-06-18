@@ -9,6 +9,9 @@ on:
       - db/**
       - scripts/database/**
       - src/lib/server/database/**
+      - src/lib/server/auth/**
+      - src/lib/server/integrations/new-api/**
+      - tsconfig.auth-persistence-tests.json
       - package.json
       - package-lock.json
       - .github/workflows/application-database.yml
@@ -187,6 +190,140 @@ jobs:
       - name: Schema and transaction tests
         run: npm run migrate:test
 
+      - name: Auth PostgreSQL persistence tests
+        env:
+          APP_AUTH_PERSISTENCE_MODE: postgres
+        run: npm run test:auth-persistence
+
+      - name: Auth migration dry run rejects bad source
+        run: |
+          set -eu
+          mkdir -p .runtime/auth-migration-bad
+          cat > .runtime/auth-migration-bad/auth-store.json <<'JSON'
+          {
+            "users": [],
+            "sessions": [
+              {
+                "session_id": "not-a-uuid",
+                "local_user_id": "missing-user",
+                "token_hash": "raw-session-token",
+                "session_version": 1,
+                "created_at": "2026-06-18T00:00:00.000Z",
+                "updated_at": "2026-06-18T00:00:00.000Z",
+                "last_seen_at": "2026-06-18T00:00:00.000Z",
+                "idle_expires_at": "2026-06-18T01:00:00.000Z",
+                "expires_at": "2026-06-19T00:00:00.000Z",
+                "revoked_at": null,
+                "user_agent_hash": null,
+                "ip_hash": null
+              }
+            ],
+            "audit": []
+          }
+          JSON
+          printf '[]\n' > .runtime/auth-migration-bad/new-api-user-mappings.json
+          set +e
+          APP_AUTH_MIGRATION_DATA_DIR=.runtime/auth-migration-bad npm run migrate:auth-data:dry-run > bad-auth-dry-run.json
+          STATUS=$?
+          set -e
+          if [ "$STATUS" -ne 2 ]; then
+            echo "bad auth migration dry-run should exit 2, got $STATUS" >&2
+            cat bad-auth-dry-run.json >&2
+            exit 1
+          fi
+          grep -q '"invalid_token_hash"' bad-auth-dry-run.json
+          grep -q '"orphan_session"' bad-auth-dry-run.json
+          if grep -E 'raw-session-token|APP_DATABASE_URL|postgresql://' bad-auth-dry-run.json; then
+            echo "bad auth migration dry-run leaked sensitive source details" >&2
+            exit 1
+          fi
+
+      - name: Auth migration dry-run apply idempotency verify
+        run: |
+          set -eu
+          mkdir -p .runtime/auth-migration
+          USER_ID="$(node -e 'console.log(crypto.randomUUID())')"
+          SESSION_ID="$(node -e 'console.log(crypto.randomUUID())')"
+          TOKEN_HASH="$(node -e 'console.log("c".repeat(64))')"
+          cat > .runtime/auth-migration/auth-store.json <<JSON
+          {
+            "users": [
+              {
+                "local_user_id": "$USER_ID",
+                "email": "ci-auth-migrate@example.com",
+                "username": "ci-auth-migrate",
+                "display_name": "CI Auth Migrate",
+                "password_hash": "scrypt\\$v=1\\$n=16384\\$r=8\\$p=1\\$len=64\\$c2FsdA\\$0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+                "status": "active",
+                "role": "user",
+                "session_version": 1,
+                "created_at": "2026-06-18T00:00:00.000Z",
+                "updated_at": "2026-06-18T00:00:00.000Z",
+                "last_login_at": null
+              }
+            ],
+            "sessions": [
+              {
+                "session_id": "$SESSION_ID",
+                "local_user_id": "$USER_ID",
+                "token_hash": "$TOKEN_HASH",
+                "session_version": 1,
+                "created_at": "2026-06-18T00:00:00.000Z",
+                "updated_at": "2026-06-18T00:00:00.000Z",
+                "last_seen_at": "2026-06-18T00:00:00.000Z",
+                "idle_expires_at": "2026-06-18T01:00:00.000Z",
+                "expires_at": "2026-06-19T00:00:00.000Z",
+                "revoked_at": null,
+                "user_agent_hash": null,
+                "ip_hash": null
+              }
+            ],
+            "audit": []
+          }
+          JSON
+          cat > .runtime/auth-migration/new-api-user-mappings.json <<JSON
+          [
+            {
+              "local_user_id": "$USER_ID",
+              "new_api_user_id": "9001",
+              "sync_status": "active",
+              "created_at": "2026-06-18T00:00:00.000Z",
+              "updated_at": "2026-06-18T00:00:00.000Z",
+              "last_sync_at": "2026-06-18T00:00:00.000Z",
+              "last_error_code": null,
+              "last_error_message": null,
+              "retry_count": 0,
+              "version": 2,
+              "idempotency_key": "register:$USER_ID"
+            }
+          ]
+          JSON
+          APP_AUTH_MIGRATION_DATA_DIR=.runtime/auth-migration npm run migrate:auth-data:dry-run > auth-dry-run.json
+          APP_AUTH_MIGRATION_DATA_DIR=.runtime/auth-migration npm run migrate:auth-data:apply > auth-apply-1.json
+          APP_AUTH_MIGRATION_DATA_DIR=.runtime/auth-migration npm run migrate:auth-data:apply > auth-apply-2.json
+          APP_AUTH_MIGRATION_DATA_DIR=.runtime/auth-migration npm run migrate:auth-data:verify > auth-verify.json
+          APP_AUTH_MIGRATION_DATA_DIR=.runtime/auth-migration npm run verify:auth-persistence > auth-consistency.json
+          grep -q '"ok":true' auth-dry-run.json
+          grep -q '"ok":true' auth-apply-1.json
+          grep -q '"ok":true' auth-apply-2.json
+          grep -q '"ok":true' auth-verify.json
+          grep -q '"ok":true' auth-consistency.json
+          if grep -E "$USER_ID|$SESSION_ID|$TOKEN_HASH|APP_DATABASE_URL|postgresql://" auth-*.json; then
+            echo "auth migration output leaked raw ids, token hash, or database details" >&2
+            exit 1
+          fi
+
+      - name: Auth postgres API contract with persistence mode
+        env:
+          APP_AUTH_PERSISTENCE_MODE: postgres
+          AUTH_SESSION_SECRET: application-database-test-session-secret-not-production
+          PAYMENT_SANDBOX_WEBHOOK_SECRET: application-database-test-webhook-secret-not-production
+          NEW_API_ENABLED: "false"
+        run: |
+          npm run typecheck
+          npm run build
+          node scripts/database/bundle-scan.mjs
+
       - name: Re-run migration idempotently
         run: npm run migrate
 
@@ -244,12 +381,23 @@ jobs:
             exit 1
           fi
 
-      - name: Verify no New API internal database table access
+      - name: Verify no direct New API database table or DSN access
         run: |
           set -eu
-          if git grep -n -I -E 'SQL_DSN|REDIS_CONN_STRING|new-api' -- db scripts/database src/lib/server/database; then
+          set +e
+          git grep -n -I -E -e 'SQL_DSN|REDIS_CONN_STRING|new_api_(users|sessions|tokens|channels|models|logs|tasks|orders|payments|settings|statistics|limits|usage|audit|billing|roles|permissions)' -- db src/lib/server/database src/lib/server/auth src/lib/server/integrations/new-api > forbidden-new-api-db.txt
+          STATUS=$?
+          set -e
+
+          if [ "$STATUS" -eq 0 ]; then
+            cat forbidden-new-api-db.txt >&2
             echo "application database baseline must not access New API internal database tables or DSNs" >&2
             exit 1
+          fi
+
+          if [ "$STATUS" -ne 1 ]; then
+            echo "git grep failed with status $STATUS" >&2
+            exit "$STATUS"
           fi
 
       - name: npm audit record
