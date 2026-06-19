@@ -15,6 +15,15 @@ were marked as suggested deletes. Their planning content is now covered by the
 final handoff, Final QA, current mainline integration documents, and execution
 log.
 
+Update: cleanup-02 removed three pre-integration auth audit documents. The
+useful historical note is that the old application had a visual-only login form,
+no customer user table, no HttpOnly customer session, no quota ledger, and
+global local JSON artifact/job records. The current source of truth is now
+documented by `FINAL_HANDOFF.md`, `FINAL_QA_REPORT.md`,
+`MAINLINE_INTEGRATION_REQUIREMENTS.md`, `AUTH_API_CONTRACT.md`,
+`SESSION_FLOW.md`, `SESSION_ARCHITECTURE.md`, `ADR_APPLICATION_DATABASE.md`,
+and `USER_MAPPING_CONTRACT.md`.
+
 ## Release Baseline
 
 - Release branch: `release/v0.9-small-test`
@@ -74,9 +83,6 @@ log.
 | `docs/ui/MODULE_03_ROOT_CAUSE.md` | Historical root-cause analysis mentioning fake login and early shell problems. | No runtime code reference found. | Medium: old statements are stale but useful for why later work exists. |待确认| Documentation review only. |
 | `docs/ui/MODULE_04_IMAGE_WORKSPACE.md` through `docs/ui/MODULE_09_LIBRARY.md` | Module delivery reports and acceptance notes. | No runtime code reference found. | Medium: can be archived later, but currently useful for traceability. |待确认| Documentation review only. |
 | `docs/ui/FEATURE_FREEZE.md` | Historical freeze policy for UI modules. | No runtime code reference found. | Medium: may still explain why some UI features are intentionally absent. |待确认| Documentation review only. |
-| `docs/architecture/auth-newapi/CURRENT_AUTH_AUDIT.md` | Pre-auth audit documenting old fake login behavior. | No runtime code reference found. | Medium: stale as current state, useful as historical evidence. |待确认| Documentation review only. |
-| `docs/architecture/auth-newapi/CURRENT_AUTH_FLOW.md` | Pre-auth flow documentation. | No runtime code reference found. | Medium: may confuse readers if not clearly marked historical. |待确认| Documentation review only. |
-| `docs/architecture/auth-newapi/CURRENT_ACCOUNT_DATA_MODEL.md` | Pre-integration account model audit. | No runtime code reference found. | Medium: superseded by final contracts but useful migration history. |待确认| Documentation review only. |
 | `docs/architecture/auth-newapi/FINAL_GATE_AUDIT.md`, `FINAL_VALIDATION_REPORT.md`, `FINAL_QA_REPORT.md`, `FINAL_HANDOFF.md` | Final validation and handoff evidence. | No runtime code reference found. | High: release evidence for `v0.9.0-rc1`. |保留| None. |
 | `docs/architecture/auth-newapi/USER_*`, `QUOTA_*`, `BILLING_*`, `PAYMENT_*`, `TASK_BILLING_BOUNDARY.md`, `RECONCILIATION_RUNBOOK.md` | Active backend API, state-machine, and operations documentation. | No runtime code reference found. | High: still needed for operations and future UI/admin work. |保留| None. |
 | `.github/workflows/admin-api.yml`, `auth-session.yml`, `quota-usage.yml`, `billing-sandbox.yml`, `new-api-bff.yml` | Module-specific CI retained alongside final gates. | Yes, GitHub Actions. | Medium: possibly redundant with `auth-newapi-final-gate.yml`, but useful for targeted reruns. |待确认| Trigger affected workflows and `Auth New API Final Gate`. |
@@ -120,5 +126,5 @@ log.
 ## Candidate Counts
 
 - Suggested delete: 0 grouped documentation candidates after cleanup-01.
-- Awaiting confirmation: 16 grouped documentation or local-artifact candidates.
+- Awaiting confirmation: 13 grouped documentation or local-artifact candidates after cleanup-02.
 - Explicitly retained high-risk items: 18 grouped candidates.
