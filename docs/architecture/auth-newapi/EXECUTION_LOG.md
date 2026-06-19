@@ -543,3 +543,64 @@ recording. No real secret was reported. The npm audit summary remains
 production release blocker.
 
 Final conclusion for B12-FG: `READY_FOR_MAINLINE_REVIEW`.
+
+## BP-06 - Backend Security Release Baseline
+
+Status: Implementation complete; awaiting Draft PR validation
+
+Branch: `feature/backend-production-06-security-release`
+
+Base: `origin/integration/auth-newapi`
+
+Scope:
+
+- Upgrade safely remediable vulnerable dependencies.
+- Add backend release preflight checks and a safe backend health endpoint.
+- Verify production configuration fails closed for Session Secret, PostgreSQL persistence, New API config, and production payment.
+- Add a backend security release CI gate.
+- Record release findings in `BP_06_SECURITY_RELEASE_REPORT.md`.
+
+Guardrails:
+
+- A-side workbench files remain out of scope.
+- Production payment remains disabled.
+- PR #17 remains Draft and must not be merged by BP-06.
+
+Initial dependency audit before remediation:
+
+- total: 12
+- high: 4
+- moderate: 7
+- low: 1
+- critical: 0
+
+Dependency remediation target:
+
+- `next` and `eslint-config-next` patched to `16.2.9`.
+- Transitive advisory fixes applied with non-major upgrades.
+- `postcss` overridden to `8.5.15` to remove the remaining Next-bundled PostCSS audit finding.
+
+Local verification:
+
+- `npm audit --json` reports `{"info":0,"low":0,"moderate":0,"high":0,"critical":0,"total":0}`.
+- `npm run test:security-release` passed.
+- `npm run typecheck` passed.
+- `npm run lint` passed.
+- `npm run build` passed.
+- `node scripts/database/bundle-scan.mjs` passed after build.
+- `npm run security:release-check` passed after build and included client bundle scanning.
+- `node scripts/test-auth-session.mjs` passed.
+- `node scripts/test-quota-usage.mjs` passed with PostgreSQL integration cases skipped locally because no `APP_DATABASE_URL` is configured.
+- `node scripts/test-billing-sandbox.mjs` passed with PostgreSQL integration cases skipped locally because no `APP_DATABASE_URL` is configured.
+- `node scripts/test-admin-api.mjs` passed.
+- `node scripts/test-new-api-bff.mjs` passed.
+- `node scripts/test-provider-display-names.mjs` passed.
+- `npm run database:boundary` passed.
+- `npm run test:auth-persistence` passed with PostgreSQL integration cases skipped locally because no `APP_DATABASE_URL` is configured.
+
+Release notes:
+
+- Local Docker is unavailable, so Docker exposure validation used static compose checks locally; CI must run the pushed workflow before merge.
+- `npm run migrate:status` failed closed locally with `APP_DATABASE_URL is required`, which is expected without a release database environment.
+- Production payment remains disabled and no real production payment provider is registered.
+- No A-side workbench, formal frontend, or production UI files are modified by BP-06.

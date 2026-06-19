@@ -1,0 +1,54 @@
+name: Backend Security Release Gate
+
+on:
+  pull_request:
+    branches:
+      - integration/auth-newapi
+      - develop
+  workflow_dispatch:
+
+jobs:
+  backend-security-release:
+    name: Backend security release checks
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Security release unit tests
+        run: npm run test:security-release
+
+      - name: Typecheck, lint, build
+        env:
+          AUTH_SESSION_SECRET: backend-security-release-session-secret-not-production
+          PAYMENT_SANDBOX_WEBHOOK_SECRET: backend-security-release-webhook-secret-not-production
+          NEW_API_ENABLED: "false"
+        run: |
+          npm run typecheck
+          npm run lint
+          npm run build
+
+      - name: Bundle and release checks
+        run: |
+          node scripts/database/bundle-scan.mjs
+          npm run security:release-check
+
+      - name: Backend smoke tests
+        run: |
+          node scripts/test-auth-session.mjs
+          node scripts/test-quota-usage.mjs
+          node scripts/test-billing-sandbox.mjs
+          node scripts/test-admin-api.mjs
