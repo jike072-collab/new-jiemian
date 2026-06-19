@@ -62,11 +62,21 @@ type SelectOption = {
   disabled?: boolean;
 };
 
+type ImagePromptTemplate = {
+  id: string;
+  label: string;
+  prompt: string;
+};
+
 type ImageWorkspaceState = {
   providerId: string;
   ratio: string;
   quality: string;
+  templateId: string;
   prompt: string;
+  promptOptimizing: boolean;
+  promptOptimizeError: string;
+  promptOptimizeUndo: string;
   files: ImageWorkspaceFile[];
   fileError: string;
   submitError: string;
@@ -127,6 +137,24 @@ type VideoUpscaleWorkspaceState = {
 
 const ratios = ["1:1", "16:9", "9:16", "4:3", "3:4"];
 const upscaleUnavailableMessage = "高清处理暂时不可用，请稍后重试";
+const promptOptimizationTargetPlatform = "TikTok Shop";
+const imagePromptTemplates: ImagePromptTemplate[] = [
+  {
+    id: "product-hero",
+    label: "商品主图",
+    prompt: "生成一张 TikTok Shop 商品主图，主体居中清晰，背景干净，光线柔和，突出商品质感和核心卖点。",
+  },
+  {
+    id: "lifestyle-scene",
+    label: "生活方式",
+    prompt: "生成一张适合 TikTok Shop 的生活方式场景图，展示商品被真实使用的画面，氛围自然，有轻微景深。",
+  },
+  {
+    id: "detail-focus",
+    label: "细节展示",
+    prompt: "生成一张商品细节展示图，突出材质、纹理、结构和功能亮点，画面干净，适合电商详情页。",
+  },
+];
 
 const imageWorkspaceModeMeta: Record<WorkspaceImageMode, {
   title: string;
@@ -323,7 +351,11 @@ export function StudioApp() {
     providerId: "",
     ratio: "1:1",
     quality: "1k",
+    templateId: imagePromptTemplates[0].id,
     prompt: "",
+    promptOptimizing: false,
+    promptOptimizeError: "",
+    promptOptimizeUndo: "",
     files: [],
     fileError: "",
     submitError: "",
@@ -568,6 +600,89 @@ export function StudioApp() {
 
   const updateImageWorkspace = useCallback((patch: Partial<ImageWorkspaceState>) => {
     setImageWorkspace((prev) => ({ ...prev, ...patch }));
+  }, []);
+
+  const applyImagePromptTemplate = useCallback((templateId: string) => {
+    const template = imagePromptTemplates.find((item) => item.id === templateId);
+    setImageWorkspace((prev) => ({
+      ...prev,
+      templateId,
+      prompt: template?.prompt || prev.prompt,
+      promptOptimizeError: "",
+      promptOptimizeUndo: "",
+      submitError: "",
+    }));
+  }, []);
+
+  const optimizeImagePrompt = useCallback(async () => {
+    const prompt = imageWorkspace.prompt.trim();
+    if (!prompt) {
+      updateImageWorkspace({
+        promptOptimizeError: "请先填写提示词。",
+        promptOptimizeUndo: "",
+      });
+      return;
+    }
+    if (imageWorkspace.promptOptimizing) return;
+
+    const originalPrompt = imageWorkspace.prompt;
+    updateImageWorkspace({
+      promptOptimizing: true,
+      promptOptimizeError: "",
+      promptOptimizeUndo: "",
+    });
+    try {
+      const data = await jsonFetch<{ prompt?: string; optimizedPrompt?: string }>("/api/prompts/optimize", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          tool: activeImageMode,
+          templateId: imageWorkspace.templateId,
+          prompt: originalPrompt,
+          hasImage: imageWorkspaceHasFiles,
+          aspectRatio: imageWorkspace.ratio,
+          quality: imageWorkspace.quality,
+          targetPlatform: promptOptimizationTargetPlatform,
+        }),
+      });
+      const optimizedPrompt = String(data.optimizedPrompt || data.prompt || "").trim();
+      if (!optimizedPrompt) throw new Error("优化失败，请稍后重试");
+      updateImageWorkspace({
+        prompt: optimizedPrompt,
+        promptOptimizing: false,
+        promptOptimizeUndo: originalPrompt,
+        promptOptimizeError: "",
+        submitError: "",
+      });
+    } catch {
+      updateImageWorkspace({
+        promptOptimizing: false,
+        promptOptimizeUndo: "",
+        promptOptimizeError: "优化失败，请稍后重试",
+      });
+    }
+  }, [
+    activeImageMode,
+    imageWorkspace.prompt,
+    imageWorkspace.promptOptimizing,
+    imageWorkspace.quality,
+    imageWorkspace.ratio,
+    imageWorkspace.templateId,
+    imageWorkspaceHasFiles,
+    updateImageWorkspace,
+  ]);
+
+  const undoImagePromptOptimization = useCallback(() => {
+    setImageWorkspace((prev) => {
+      if (!prev.promptOptimizeUndo) return prev;
+      return {
+        ...prev,
+        prompt: prev.promptOptimizeUndo,
+        promptOptimizeUndo: "",
+        promptOptimizeError: "",
+        submitError: "",
+      };
+    });
   }, []);
 
   const replaceImageWorkspaceFiles = useCallback((files: File[]) => {
@@ -1108,7 +1223,10 @@ export function StudioApp() {
           onProviderChange={(value) => updateImageWorkspace({ providerId: value })}
           onRatioChange={(value) => updateImageWorkspace({ ratio: value })}
           onQualityChange={(value) => updateImageWorkspace({ quality: value })}
-          onPromptChange={(value) => updateImageWorkspace({ prompt: value, submitError: "" })}
+          onTemplateChange={applyImagePromptTemplate}
+          onPromptChange={(value) => updateImageWorkspace({ prompt: value, promptOptimizeError: "", submitError: "" })}
+          onPromptOptimize={optimizeImagePrompt}
+          onPromptOptimizeUndo={undoImagePromptOptimization}
           onFilesChange={replaceImageWorkspaceFiles}
           onFileRemove={removeImageWorkspaceFile}
           onFilesClear={clearImageWorkspaceFiles}
@@ -1273,7 +1391,10 @@ function ImageGenerator({
   onProviderChange,
   onRatioChange,
   onQualityChange,
+  onTemplateChange,
   onPromptChange,
+  onPromptOptimize,
+  onPromptOptimizeUndo,
   onFilesChange,
   onFileRemove,
   onFilesClear,
@@ -1291,7 +1412,10 @@ function ImageGenerator({
   onProviderChange: (value: string) => void;
   onRatioChange: (value: string) => void;
   onQualityChange: (value: string) => void;
+  onTemplateChange: (value: string) => void;
   onPromptChange: (value: string) => void;
+  onPromptOptimize: () => void;
+  onPromptOptimizeUndo: () => void;
   onFilesChange: (files: File[]) => void;
   onFileRemove: (index: number) => void;
   onFilesClear: () => void;
@@ -1345,9 +1469,24 @@ function ImageGenerator({
           onChange={onQualityChange}
         />
       </StackedControl>
+      <FieldFrame label="模板">
+        <ModeSegmentedControl
+          label="模板"
+          labelHidden
+          groupId="image-prompt-template"
+          value={state.templateId}
+          options={imagePromptTemplates.map((template) => [template.id, template.label])}
+          onChange={onTemplateChange}
+        />
+      </FieldFrame>
       <PromptBox
         value={state.prompt}
         onChange={onPromptChange}
+        optimizing={state.promptOptimizing}
+        optimizeError={state.promptOptimizeError}
+        canUndoOptimize={Boolean(state.promptOptimizeUndo)}
+        onOptimize={onPromptOptimize}
+        onUndoOptimize={onPromptOptimizeUndo}
         required
         placeholder={meta.promptPlaceholder}
       />
@@ -2626,18 +2765,23 @@ function FieldFrame({
   label,
   required,
   hint,
+  action,
   children,
 }: {
   label: string;
   required?: boolean;
   hint?: string;
+  action?: React.ReactNode;
   children: React.ReactNode;
 }) {
   return (
     <div className="studio-field">
       <div className="studio-field__label">
         <span>{label}</span>
-        {required ? <span className="studio-required">*</span> : hint ? <span className="shell-chip">{hint}</span> : null}
+        <div className="studio-field__meta">
+          {required ? <span className="studio-required">*</span> : hint ? <span className="shell-chip">{hint}</span> : null}
+          {action}
+        </div>
       </div>
       <div className="studio-field__body">{children}</div>
     </div>
@@ -2999,6 +3143,16 @@ function CustomSelect({
                 disabled={option.disabled}
                 className={cn("studio-custom-select__option", selected && "is-selected", active && "is-active")}
                 onMouseEnter={() => setActiveIndex(index)}
+                onPointerDown={(event) => {
+                  event.preventDefault();
+                  event.stopPropagation();
+                  chooseOption(option);
+                }}
+                onMouseDown={(event) => {
+                  event.preventDefault();
+                  event.stopPropagation();
+                  chooseOption(option);
+                }}
                 onClick={() => chooseOption(option)}
               >
                 <span>{option.label}</span>
@@ -3067,14 +3221,52 @@ function PromptBox({
   onChange,
   placeholder,
   required,
+  optimizing,
+  optimizeError,
+  canUndoOptimize,
+  onOptimize,
+  onUndoOptimize,
 }: {
   value: string;
   onChange: (value: string) => void;
   placeholder: string;
   required?: boolean;
+  optimizing: boolean;
+  optimizeError: string;
+  canUndoOptimize: boolean;
+  onOptimize: () => void;
+  onUndoOptimize: () => void;
 }) {
   return (
-    <FieldFrame label="提示词" required={required}>
+    <FieldFrame
+      label="提示词"
+      required={required}
+      action={(
+        <div className="studio-prompt-actions">
+          <button
+            type="button"
+            className="studio-prompt-action"
+            onClick={onOptimize}
+            disabled={optimizing}
+            aria-busy={optimizing}
+          >
+            {optimizing ? (
+              <>
+                <Loader2 className="size-4 animate-spin" aria-hidden="true" />
+                正在优化…
+              </>
+            ) : (
+              "✨ 优化提示词"
+            )}
+          </button>
+          {canUndoOptimize ? (
+            <button type="button" className="studio-prompt-action" onClick={onUndoOptimize}>
+              撤销优化
+            </button>
+          ) : null}
+        </div>
+      )}
+    >
       <label className="studio-sr-only" htmlFor="image-prompt">
         提示词
       </label>
@@ -3090,6 +3282,7 @@ function PromptBox({
         />
         <span id="image-prompt-counter" className="studio-counter">{value.length} 个字符</span>
       </div>
+      {optimizeError ? <p className="studio-error-text" role="alert">{optimizeError}</p> : null}
     </FieldFrame>
   );
 }
