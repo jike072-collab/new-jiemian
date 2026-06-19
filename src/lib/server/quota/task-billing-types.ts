@@ -2,6 +2,8 @@ import { type BillableOperation, type QuotaErrorCode, type UsageLogEntry } from 
 
 export type TaskBillingState =
   | "prechecked"
+  | "dispatching"
+  | "provider_started"
   | "accepted"
   | "settled"
   | "failed"
@@ -10,6 +12,8 @@ export type TaskBillingState =
 
 export type TaskBillingAction =
   | "prechecked"
+  | "dispatching"
+  | "provider_started"
   | "accepted"
   | "settled"
   | "failed"

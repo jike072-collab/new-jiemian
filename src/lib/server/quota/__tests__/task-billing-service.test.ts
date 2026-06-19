@@ -205,6 +205,118 @@ test("server-side generation requires a matching precheck record", async () => {
   assert.equal(matched.ok, true);
 });
 
+test("same task can claim provider dispatch only once", async () => {
+  const harness = service();
+  const input = {
+    localUserId: "local-user",
+    taskId: "dispatch-once",
+    operation: "cloud_image_generation" as const,
+    estimatedQuotaUnits: 40,
+    idempotencyKey: "dispatch-once",
+    requestFingerprint: "image:dispatch-once:40",
+  };
+  const prechecked = await harness.taskBilling.precheck(input);
+  assert.equal(prechecked.ok, true);
+
+  let providerCalls = 0;
+  const attempts = await Promise.all([
+    harness.taskBilling.claimProviderDispatch(input),
+    harness.taskBilling.claimProviderDispatch(input),
+  ]);
+  for (const attempt of attempts) {
+    if (attempt.ok && attempt.action === "dispatching") providerCalls += 1;
+  }
+  assert.equal(providerCalls, 1);
+  assert.equal(attempts.filter((attempt) => !attempt.ok && attempt.code === "task_billing_conflict").length, 1);
+});
+
+test("accepted task replay cannot claim provider dispatch again", async () => {
+  const harness = service();
+  const input = {
+    localUserId: "local-user",
+    taskId: "accepted-replay",
+    operation: "cloud_video_generation" as const,
+    estimatedQuotaUnits: 60,
+    idempotencyKey: "accepted-replay",
+    requestFingerprint: "video:accepted-replay:60",
+  };
+  const prechecked = await harness.taskBilling.precheck(input);
+  assert.equal(prechecked.ok, true);
+  const claimed = await harness.taskBilling.claimProviderDispatch(input);
+  assert.equal(claimed.ok, true);
+  if (!claimed.ok) return;
+  assert.equal(claimed.action, "dispatching");
+  const started = await harness.taskBilling.markProviderStarted({
+    localUserId: "local-user",
+    taskId: "accepted-replay",
+    upstreamModel: "video-model",
+  });
+  assert.equal(started.ok, true);
+  const accepted = await harness.taskBilling.accept({
+    localUserId: "local-user",
+    taskId: "accepted-replay",
+    newApiTaskId: "new-api-accepted-replay",
+  });
+  assert.equal(accepted.ok, true);
+
+  const replay = await harness.taskBilling.claimProviderDispatch(input);
+  assert.equal(replay.ok, false);
+  if (replay.ok) return;
+  assert.equal(replay.code, "task_billing_conflict");
+});
+
+test("interrupted provider dispatch recovers before start and reconciles after start", async () => {
+  const beforeStart = service();
+  const beforeStartInput = {
+    localUserId: "local-user",
+    taskId: "dispatch-before-start",
+    operation: "cloud_image_generation" as const,
+    estimatedQuotaUnits: 40,
+    idempotencyKey: "dispatch-before-start",
+    requestFingerprint: "image:dispatch-before-start:40",
+  };
+  assert.equal((await beforeStart.taskBilling.precheck(beforeStartInput)).ok, true);
+  const firstClaim = await beforeStart.taskBilling.claimProviderDispatch(beforeStartInput);
+  assert.equal(firstClaim.ok, true);
+  const staleDispatch = await beforeStart.taskRepository.getByTaskId("local-user", "dispatch-before-start");
+  assert.ok(staleDispatch);
+  await beforeStart.taskRepository.update(staleDispatch.id, {
+    updated_at: "2026-06-17T23:50:00.000Z",
+  }, staleDispatch.version);
+  const recovered = await beforeStart.taskBilling.claimProviderDispatch(beforeStartInput);
+  assert.equal(recovered.ok, true);
+  if (!recovered.ok) return;
+  assert.equal(recovered.action, "dispatching");
+
+  const afterStart = service();
+  const afterStartInput = {
+    localUserId: "local-user",
+    taskId: "dispatch-after-start",
+    operation: "cloud_image_generation" as const,
+    estimatedQuotaUnits: 40,
+    idempotencyKey: "dispatch-after-start",
+    requestFingerprint: "image:dispatch-after-start:40",
+  };
+  assert.equal((await afterStart.taskBilling.precheck(afterStartInput)).ok, true);
+  assert.equal((await afterStart.taskBilling.claimProviderDispatch(afterStartInput)).ok, true);
+  const started = await afterStart.taskBilling.markProviderStarted({
+    localUserId: "local-user",
+    taskId: "dispatch-after-start",
+    upstreamModel: "image-model",
+  });
+  assert.equal(started.ok, true);
+  const staleStarted = await afterStart.taskRepository.getByTaskId("local-user", "dispatch-after-start");
+  assert.ok(staleStarted);
+  await afterStart.taskRepository.update(staleStarted.id, {
+    updated_at: "2026-06-17T23:50:00.000Z",
+  }, staleStarted.version);
+  const reconciled = await afterStart.taskBilling.claimProviderDispatch(afterStartInput);
+  assert.equal(reconciled.ok, true);
+  if (!reconciled.ok) return;
+  assert.equal(reconciled.action, "reconciliation_required");
+  assert.equal(reconciled.record.billing_state, "reconciliation_required");
+});
+
 test("precheck retries reject mismatched request parameters", async () => {
   const harness = service();
   const first = await harness.taskBilling.precheck({

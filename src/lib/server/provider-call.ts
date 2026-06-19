@@ -32,6 +32,13 @@ class BillingSettlementRequiredError extends Error {
   }
 }
 
+class BillingDispatchRejectedError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "BillingDispatchRejectedError";
+  }
+}
+
 function asRecord(value: unknown): Record<string, unknown> {
   return value && typeof value === "object" && !Array.isArray(value)
     ? value as Record<string, unknown>
@@ -269,7 +276,7 @@ async function settleGeneratedTaskBilling(input: {
   }
 }
 
-async function verifyGenerationBilling(input: {
+async function claimGenerationBillingDispatch(input: {
   localUserId?: string | null;
   taskId?: string | null;
   idempotencyKey?: string | null;
@@ -280,19 +287,45 @@ async function verifyGenerationBilling(input: {
     throw new Error("生成任务缺少有效额度预检。");
   }
   const billing = getTaskBillingService();
-  const verified = await billing.verifyPrecheck({
+  const claimed = await billing.claimProviderDispatch({
     localUserId: input.localUserId,
     taskId: input.taskId,
     idempotencyKey: input.idempotencyKey,
     estimatedQuotaUnits: input.estimatedQuotaUnits,
     requestFingerprint: input.fingerprint,
   });
-  if (!verified.ok) throw new Error(verified.message);
-  const accepted = await billing.accept({
+  if (!claimed.ok) throw new BillingDispatchRejectedError(claimed.message);
+  if (claimed.action !== "dispatching") throw new BillingDispatchRejectedError("生成任务无法领取上游派发权限。");
+}
+
+async function markGenerationProviderStarted(input: {
+  localUserId?: string | null;
+  taskId?: string | null;
+  upstreamModel?: string | null;
+}) {
+  if (!input.localUserId || !input.taskId) return;
+  const result = await getTaskBillingService().markProviderStarted({
     localUserId: input.localUserId,
     taskId: input.taskId,
+    upstreamModel: input.upstreamModel || null,
   });
-  if (!accepted.ok) throw new Error(accepted.message);
+  if (!result.ok) throw new BillingDispatchRejectedError(result.message);
+}
+
+async function acceptGenerationBilling(input: {
+  localUserId?: string | null;
+  taskId?: string | null;
+  newApiTaskId?: string | null;
+  upstreamModel?: string | null;
+}) {
+  if (!input.localUserId || !input.taskId) return;
+  const result = await getTaskBillingService().accept({
+    localUserId: input.localUserId,
+    taskId: input.taskId,
+    newApiTaskId: input.newApiTaskId || null,
+    upstreamModel: input.upstreamModel || null,
+  });
+  if (!result.ok) throw new BillingSettlementRequiredError(result.message);
 }
 
 export async function generateImage(input: {
@@ -334,12 +367,17 @@ export async function generateImage(input: {
     if (input.mode === "image-to-image" && !input.files.length) {
       throw new Error("图生图模式需要上传参考图片。");
     }
-    await verifyGenerationBilling({
+    await claimGenerationBillingDispatch({
       localUserId: input.billingLocalUserId,
       taskId: input.billingTaskId,
       idempotencyKey: input.billingIdempotencyKey,
       fingerprint: billingFingerprint,
       estimatedQuotaUnits,
+    });
+    await markGenerationProviderStarted({
+      localUserId: input.billingLocalUserId,
+      taskId: input.billingTaskId,
+      upstreamModel: provider.model,
     });
 
     const output = await callImageProvider({
@@ -369,6 +407,12 @@ export async function generateImage(input: {
         billingRequestFingerprint: billingFingerprint,
       },
     });
+    await acceptGenerationBilling({
+      localUserId: input.billingLocalUserId,
+      taskId: input.billingTaskId,
+      newApiTaskId: output.jobId || item.id,
+      upstreamModel: provider.model,
+    });
     const settled = await settleGeneratedTaskBilling({
       localUserId: input.billingLocalUserId,
       taskId: input.billingTaskId,
@@ -382,7 +426,7 @@ export async function generateImage(input: {
     }
     return item;
   } catch (error) {
-    if (!(error instanceof BillingSettlementRequiredError)) {
+    if (!(error instanceof BillingSettlementRequiredError) && !(error instanceof BillingDispatchRejectedError)) {
       await settleGeneratedTaskBilling({
         localUserId: input.billingLocalUserId,
         taskId: input.billingTaskId,
@@ -444,12 +488,17 @@ export async function submitVideo(input: {
     if (!provider || provider.kind !== "video" || !provider.enabled || !provider.apiKey) {
       throw new Error("视频供应商未配置或未启用。");
     }
-    await verifyGenerationBilling({
+    await claimGenerationBillingDispatch({
       localUserId: input.billingLocalUserId,
       taskId: input.billingTaskId,
       idempotencyKey: input.billingIdempotencyKey,
       fingerprint: billingFingerprint,
       estimatedQuotaUnits,
+    });
+    await markGenerationProviderStarted({
+      localUserId: input.billingLocalUserId,
+      taskId: input.billingTaskId,
+      upstreamModel: provider.model,
     });
 
     const providerPayload: Record<string, string | number | string[]> = {
@@ -496,6 +545,12 @@ export async function submitVideo(input: {
           billingRequestFingerprint: billingFingerprint,
         },
       });
+      await acceptGenerationBilling({
+        localUserId: input.billingLocalUserId,
+        taskId: input.billingTaskId,
+        newApiTaskId: output.jobId || item.id,
+        upstreamModel: provider.model,
+      });
       const settled = await settleGeneratedTaskBilling({
         localUserId: input.billingLocalUserId,
         taskId: input.billingTaskId,
@@ -525,6 +580,12 @@ export async function submitVideo(input: {
       },
     });
     const jobId = output.jobId || randomUUID();
+    await acceptGenerationBilling({
+      localUserId: input.billingLocalUserId,
+      taskId: input.billingTaskId,
+      newApiTaskId: jobId,
+      upstreamModel: provider.model,
+    });
     const job = await addJob({
       id: jobId,
       libraryItemId: item.id,
@@ -542,7 +603,7 @@ export async function submitVideo(input: {
     });
     return { item, job };
   } catch (error) {
-    if (!(error instanceof BillingSettlementRequiredError)) {
+    if (!(error instanceof BillingSettlementRequiredError) && !(error instanceof BillingDispatchRejectedError)) {
       await settleGeneratedTaskBilling({
         localUserId: input.billingLocalUserId,
         taskId: input.billingTaskId,

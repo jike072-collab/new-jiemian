@@ -489,7 +489,6 @@ export function StudioApp() {
     } catch (error) {
       const text = error instanceof ApiError ? error.message : error instanceof Error ? error.message : "创建订单失败。";
       setMessage(text);
-      billingRequestKeyRef.current.delete(requestKey);
     } finally {
       setBillingSubmitting(false);
     }

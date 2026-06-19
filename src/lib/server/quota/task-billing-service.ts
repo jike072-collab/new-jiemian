@@ -82,6 +82,7 @@ const billableOperations = new Set<BillableOperation>([
   "cloud_image_upscale",
   "cloud_video_upscale",
 ]);
+const providerDispatchTimeoutMs = 2 * 60 * 1000;
 
 const quotaErrors: Record<QuotaErrorCode, { status: number; message: string; retryable: boolean }> = {
   invalid_quota_request: { status: 400, message: "Quota request is invalid.", retryable: false },
@@ -157,6 +158,11 @@ function errorFailure(error: unknown): TaskBillingFailure {
 
 function isTaskBillingFailure(value: TaskBillingRecord | null | TaskBillingFailure): value is TaskBillingFailure {
   return Boolean(value && "ok" in value && value.ok === false);
+}
+
+function isDispatchStale(record: TaskBillingRecord, now: Date) {
+  const updatedAt = Date.parse(record.updated_at);
+  return Number.isFinite(updatedAt) && now.getTime() - updatedAt > providerDispatchTimeoutMs;
 }
 
 async function defaultAdjustQuota(input: AdjustQuotaInput): Promise<AdjustQuotaResult> {
@@ -353,12 +359,114 @@ export class TaskBillingService {
     return { ok: true, status: 200, action: "idempotent", record };
   }
 
+  async claimProviderDispatch(input: TaskBillingVerifyPrecheckInput): Promise<TaskBillingResult> {
+    if (
+      !nonBlank(input.localUserId)
+      || !nonBlank(input.taskId)
+      || !nonBlank(input.idempotencyKey)
+      || !Number.isInteger(input.estimatedQuotaUnits)
+      || input.estimatedQuotaUnits < 0
+    ) {
+      return invalidTaskBillingRequest();
+    }
+    return this.withTaskLock(input.localUserId, input.taskId, () => this.claimProviderDispatchLocked(input));
+  }
+
+  private async claimProviderDispatchLocked(input: TaskBillingVerifyPrecheckInput): Promise<TaskBillingResult> {
+    const record = await this.safeGetByTaskId(input.localUserId, input.taskId);
+    if (isTaskBillingFailure(record)) return record;
+    if (!record) return this.notFound();
+    if (
+      record.idempotency_key !== input.idempotencyKey.trim()
+      || record.estimated_quota_units !== input.estimatedQuotaUnits
+      || (record.request_fingerprint || null) !== (input.requestFingerprint || null)
+    ) {
+      return failure({
+        code: "task_billing_conflict",
+        status: 409,
+        message: "Task billing precheck does not match the generation request.",
+        retryable: false,
+      });
+    }
+
+    if (record.billing_state === "prechecked") {
+      return this.claimDispatchState(record);
+    }
+    if (record.billing_state === "dispatching") {
+      if (isDispatchStale(record, this.now())) return this.claimDispatchState(record);
+      return failure({
+        code: "task_billing_conflict",
+        status: 409,
+        message: "Task billing dispatch is already in progress.",
+        retryable: true,
+      });
+    }
+    if (record.billing_state === "provider_started") {
+      if (isDispatchStale(record, this.now())) {
+        return this.markReconciliationRequired(record, "Provider dispatch was interrupted after the upstream call may have started.");
+      }
+      return failure({
+        code: "task_billing_conflict",
+        status: 409,
+        message: "Task billing provider dispatch has already started.",
+        retryable: true,
+      });
+    }
+
+    return failure({
+      code: "task_billing_conflict",
+      status: 409,
+      message: "Task billing dispatch has already been finalized.",
+      retryable: false,
+    });
+  }
+
+  async markProviderStarted(input: TaskBillingAcceptInput): Promise<TaskBillingResult> {
+    if (!nonBlank(input.localUserId) || !nonBlank(input.taskId)) return invalidTaskBillingRequest();
+    return this.withTaskLock(input.localUserId, input.taskId, () => this.markProviderStartedLocked(input));
+  }
+
+  private async markProviderStartedLocked(input: TaskBillingAcceptInput): Promise<TaskBillingResult> {
+    const record = await this.safeGetByTaskId(input.localUserId, input.taskId);
+    if (isTaskBillingFailure(record)) return record;
+    if (!record) return this.notFound();
+    if (record.billing_state === "provider_started" || record.billing_state === "accepted") {
+      return { ok: true, status: 200, action: "idempotent", record };
+    }
+    if (record.billing_state !== "dispatching") {
+      return failure({
+        code: "task_billing_conflict",
+        status: 409,
+        message: "Task billing dispatch was not claimed by this request.",
+        retryable: false,
+      });
+    }
+    const usage = await this.updateUsageForRecord(record, {
+      status: "accepted",
+      actualQuotaUnits: null,
+      upstreamRequestId: input.upstreamRequestId || null,
+      upstreamModel: input.upstreamModel || null,
+    });
+    const updated = await this.updateWithRetry(record, {
+      billing_state: "provider_started",
+      new_api_task_id: input.newApiTaskId || record.new_api_task_id,
+      usage_record_id: usage?.id || record.usage_record_id,
+      updated_at: nowIso(this.now()),
+      last_error: null,
+    });
+    if (!updated.ok) return updated;
+    return { ok: true, status: 200, action: "provider_started", record: updated.record, usage: usage || undefined };
+  }
+
   async accept(input: TaskBillingAcceptInput): Promise<TaskBillingResult> {
     if (!nonBlank(input.localUserId) || !nonBlank(input.taskId)) return invalidTaskBillingRequest();
     const record = await this.safeGetByTaskId(input.localUserId, input.taskId);
     if (isTaskBillingFailure(record)) return record;
     if (!record) return this.notFound();
-    if (record.billing_state !== "prechecked") {
+    if (record.billing_state === "accepted") {
+      return { ok: true, status: 200, action: "idempotent", record };
+    }
+    if (!["prechecked", "dispatching", "provider_started"].includes(record.billing_state)) {
       return { ok: true, status: 200, action: "idempotent", record };
     }
     const usage = await this.updateUsageForRecord(record, {
@@ -654,6 +762,41 @@ export class TaskBillingService {
       return this.taskRepository.withQuotaAdjustmentLock(input.newApiUserId, operation);
     }
     return operation();
+  }
+
+  private async claimDispatchState(
+    record: TaskBillingRecord,
+    attempt = 0,
+  ): Promise<TaskBillingResult> {
+    try {
+      const updated = await this.taskRepository.update(record.id, {
+        billing_state: "dispatching",
+        updated_at: nowIso(this.now()),
+        last_error: null,
+      }, record.version);
+      const usage = await this.updateUsageForRecord(updated, {
+        status: "accepted",
+        actualQuotaUnits: null,
+      });
+      return { ok: true, status: 200, action: "dispatching", record: updated, usage: usage || undefined };
+    } catch (error) {
+      if (!(error instanceof TaskBillingRepositoryError) || error.code !== "TASK_BILLING_VERSION_CONFLICT" || attempt >= 3) {
+        return errorFailure(error);
+      }
+      const fresh = await this.safeGetByTaskId(record.local_user_id, record.task_id);
+      if (isTaskBillingFailure(fresh)) return fresh;
+      if (!fresh) return this.notFound();
+      if (fresh.billing_state === "prechecked") return this.claimDispatchState(fresh, attempt + 1);
+      if (fresh.billing_state === "dispatching" && isDispatchStale(fresh, this.now())) {
+        return this.claimDispatchState(fresh, attempt + 1);
+      }
+      return failure({
+        code: "task_billing_conflict",
+        status: 409,
+        message: "Task billing dispatch is already in progress.",
+        retryable: true,
+      });
+    }
   }
 
   private async updateWithRetry(

@@ -508,6 +508,41 @@ test("creates orders idempotently and rejects invalid amount or inactive mapping
   assert.equal(pending.code, "mapping_pending");
 });
 
+test("retries a lost create-order response with the same key without duplicating the order", async () => {
+  const harness = service();
+  const first = await harness.billing.createOrder({
+    localUserId: "local-user",
+    channel: "sandbox_alipay",
+    currency: "CNY",
+    requestedAmount: 1000,
+    idempotencyKey: "lost-response-key",
+  });
+  assert.equal(first.ok, true);
+  if (!first.ok) return;
+
+  const retry = await harness.billing.createOrder({
+    localUserId: "local-user",
+    channel: "sandbox_alipay",
+    currency: "CNY",
+    requestedAmount: 1000,
+    idempotencyKey: "lost-response-key",
+  });
+  assert.equal(retry.ok, true);
+  if (!retry.ok) return;
+  assert.equal(retry.order.order_id, first.order.order_id);
+
+  const newOperation = await harness.billing.createOrder({
+    localUserId: "local-user",
+    channel: "sandbox_alipay",
+    currency: "CNY",
+    requestedAmount: 1000,
+    idempotencyKey: "second-click-key",
+  });
+  assert.equal(newOperation.ok, true);
+  if (!newOperation.ok) return;
+  assert.notEqual(newOperation.order.order_id, first.order.order_id);
+});
+
 test("rejects missing webhook secret and invalid signatures without paying the order", async () => {
   const harness = service();
   const order = await createOrder(harness);
