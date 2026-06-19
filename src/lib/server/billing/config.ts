@@ -40,11 +40,31 @@ const sandboxChannels: PaymentChannelConfig[] = [
     quota_units_per_minor_unit: 10,
   },
 ];
+function productionChannels(): PaymentChannelConfig[] {
+  return [
+    {
+      channel: "production_generic",
+      name: "Production Payment",
+      display_color: "#334155",
+      min_amount: 500,
+      fixed_amounts: [500, 1000, 3000, 5000, 10000],
+      custom_amount_range: {
+        min_amount: 500,
+        max_amount: 200000,
+      },
+      discounts: [],
+      currency: "CNY",
+      enabled: productionPaymentEnabled() && Boolean(productionWebhookSecret().trim()),
+      sort_order: 1000,
+      quota_units_per_minor_unit: 10,
+    },
+  ];
+}
 
 export const BILLING_WEBHOOK_TOLERANCE_SECONDS = 300;
 
 export function listPaymentChannels() {
-  return sandboxChannels
+  return [...sandboxChannels, ...productionChannels()]
     .slice()
     .sort((a, b) => a.sort_order - b.sort_order)
     .map((channel) => ({ ...channel, fixed_amounts: channel.fixed_amounts.slice(), discounts: channel.discounts.slice() }));
@@ -69,6 +89,25 @@ export function assertSandboxWebhookEnabled() {
   const secret = sandboxWebhookSecret();
   if (!secret.trim()) {
     throw new Error("PAYMENT_SANDBOX_WEBHOOK_SECRET is required for sandbox webhooks.");
+  }
+  return secret;
+}
+
+export function productionPaymentEnabled() {
+  return process.env.PAYMENT_PRODUCTION_ENABLED === "true";
+}
+
+export function productionWebhookSecret() {
+  return process.env.PAYMENT_PRODUCTION_WEBHOOK_SECRET || "";
+}
+
+export function assertProductionPaymentEnabled() {
+  if (!productionPaymentEnabled()) {
+    throw new Error("PAYMENT_PRODUCTION_ENABLED must be true to use production payment.");
+  }
+  const secret = productionWebhookSecret();
+  if (!secret.trim()) {
+    throw new Error("PAYMENT_PRODUCTION_WEBHOOK_SECRET is required for production payment.");
   }
   return secret;
 }

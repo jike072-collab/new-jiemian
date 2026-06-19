@@ -7,16 +7,14 @@ import {
 } from "../integrations/new-api";
 import {
   amountAllowed,
-  assertSandboxWebhookEnabled,
   calculateCreditedQuota,
   getPaymentChannel,
   listPaymentChannels,
   publicPaymentChannels,
-  sandboxWebhookSecret,
 } from "./config";
 import { createBillingPersistenceRepository } from "./persistence";
 import { BillingRepositoryError, type BillingRepository } from "./repository";
-import { verifySandboxWebhook } from "./sandbox-provider";
+import { getPaymentAdapter, type PaymentAdapter } from "./payment-adapters";
 import {
   type BillingErrorCode,
   type BillingFailure,
@@ -28,6 +26,7 @@ import {
   type BillingWebhookResult,
   type CreateBillingOrderInput,
   type CreateBillingOrderResult,
+  type PaymentProviderOperationResult,
   type PaymentProviderStatus,
   type ReconciliationResult,
 } from "./types";
@@ -55,6 +54,7 @@ export type BillingServiceDependencies = {
   mappingRepository?: NewApiUserMappingRepository;
   creditQuota?: (input: CreditQuotaInput) => Promise<CreditQuotaResult>;
   getProviderStatus?: (order: BillingOrder) => Promise<PaymentProviderStatus>;
+  getPaymentAdapter?: (channel: string) => PaymentAdapter;
   now?: () => Date;
 };
 
@@ -140,6 +140,7 @@ export class BillingService {
   private readonly mappingRepository: NewApiUserMappingRepository;
   private readonly creditQuota: (input: CreditQuotaInput) => Promise<CreditQuotaResult>;
   private readonly getProviderStatus?: (order: BillingOrder) => Promise<PaymentProviderStatus>;
+  private readonly getPaymentAdapter: (channel: string) => PaymentAdapter;
   private readonly now: () => Date;
 
   constructor(dependencies: BillingServiceDependencies = {}) {
@@ -147,6 +148,7 @@ export class BillingService {
     this.mappingRepository = dependencies.mappingRepository || createJsonNewApiUserMappingRepository();
     this.creditQuota = dependencies.creditQuota || defaultCreditQuota;
     this.getProviderStatus = dependencies.getProviderStatus;
+    this.getPaymentAdapter = dependencies.getPaymentAdapter || getPaymentAdapter;
     this.now = dependencies.now || (() => new Date());
   }
 
@@ -192,6 +194,29 @@ export class BillingService {
     const timestamp = nowIso(this.now());
     const orderId = `bo_${randomUUID()}`;
     const creditedQuota = calculateCreditedQuota(channel, input.requestedAmount);
+    const adapter = this.getPaymentAdapter(channel.channel);
+    const providerOrder = await adapter.createOrder({
+      orderId,
+      localUserId: input.localUserId,
+      newApiUserId: mapping.new_api_user_id,
+      channel: channel.channel,
+      currency: channel.currency,
+      requestedAmount: input.requestedAmount,
+      idempotencyKey,
+    });
+    if (!providerOrder.ok) {
+      await this.repository.appendAudit({
+        order_id: null,
+        event: "billing.order.provider_rejected",
+        local_user_id: input.localUserId,
+        safe_details: safeDetails({
+          channel: channel.channel,
+          code: providerOrder.code,
+          request_id: context.requestId || null,
+        }),
+      });
+      return billingFailure(providerOrder.code, providerOrder.status, providerOrder.message);
+    }
     const order = await this.repository.createOrder({
       order_id: orderId,
       local_user_id: input.localUserId,
@@ -203,7 +228,7 @@ export class BillingService {
       credited_quota: creditedQuota,
       status: "pending",
       idempotency_key: idempotencyKey,
-      provider_order_id: `sandbox_${orderId}`,
+      provider_order_id: providerOrder.providerOrderId,
       created_at: timestamp,
       updated_at: timestamp,
       paid_at: null,
@@ -259,6 +284,71 @@ export class BillingService {
     };
   }
 
+  async queryProviderOrder(localUserId: string, orderId: string): Promise<PaymentProviderOperationResult> {
+    const order = await this.repository.getOrder(orderId);
+    if (!order || order.local_user_id !== localUserId) {
+      return billingFailure("payment_not_found", 404, "Payment order was not found.");
+    }
+    const result = await this.getPaymentAdapter(order.channel).queryOrder(order);
+    if (!result.ok) return billingFailure(result.code, result.status, result.message);
+    return {
+      ok: true,
+      status: 200,
+      provider: this.getPaymentAdapter(order.channel).kind,
+      provider_order_id: order.provider_order_id,
+      provider_status: result.providerStatus,
+    };
+  }
+
+  async closeProviderOrder(localUserId: string, orderId: string): Promise<PaymentProviderOperationResult> {
+    const order = await this.repository.getOrder(orderId);
+    if (!order || order.local_user_id !== localUserId) {
+      return billingFailure("payment_not_found", 404, "Payment order was not found.");
+    }
+    if (order.status !== "pending") {
+      return billingFailure("invalid_billing_request", 409, "Only pending payment orders can be closed.");
+    }
+    const adapter = this.getPaymentAdapter(order.channel);
+    const result = await adapter.closeOrder(order);
+    if (!result.ok) return billingFailure(result.code, result.status, result.message);
+    return {
+      ok: true,
+      status: 200,
+      provider: adapter.kind,
+      provider_order_id: order.provider_order_id,
+      provider_operation_id: result.providerCloseId,
+    };
+  }
+
+  async requestProviderRefund(input: {
+    localUserId: string;
+    orderId: string;
+    idempotencyKey: string;
+    reason: string;
+  }): Promise<PaymentProviderOperationResult> {
+    const order = await this.repository.getOrder(input.orderId);
+    if (!order || order.local_user_id !== input.localUserId) {
+      return billingFailure("payment_not_found", 404, "Payment order was not found.");
+    }
+    if (order.status !== "paid") {
+      return billingFailure("invalid_billing_request", 409, "Only paid payment orders can be refunded.");
+    }
+    const adapter = this.getPaymentAdapter(order.channel);
+    const result = await adapter.refundOrder({
+      order,
+      idempotencyKey: input.idempotencyKey,
+      reason: input.reason,
+    });
+    if (!result.ok) return billingFailure(result.code, result.status, result.message);
+    return {
+      ok: true,
+      status: 202,
+      provider: adapter.kind,
+      provider_order_id: order.provider_order_id,
+      provider_operation_id: result.providerRefundId,
+    };
+  }
+
   async handleSandboxWebhook(input: {
     rawBody: string;
     timestamp: string | null;
@@ -266,18 +356,42 @@ export class BillingService {
     now?: Date;
     context?: BillingRequestContext;
   }): Promise<BillingWebhookResult> {
-    let secret: string;
-    try {
-      secret = assertSandboxWebhookEnabled();
-    } catch {
-      return billingFailure("billing_disabled", 503, "Sandbox payment webhook is disabled.");
-    }
-
-    const verification = verifySandboxWebhook({
-      secret,
+    return this.handlePaymentWebhook("sandbox_alipay", {
+      rawBody: input.rawBody,
       timestamp: input.timestamp,
       signature: input.signature,
-      body: input.rawBody,
+      now: input.now || this.now(),
+      context: input.context,
+    });
+  }
+
+  async handleProductionWebhook(input: {
+    rawBody: string;
+    timestamp: string | null;
+    signature: string | null;
+    now?: Date;
+    context?: BillingRequestContext;
+  }): Promise<BillingWebhookResult> {
+    return this.handlePaymentWebhook("production_generic", {
+      rawBody: input.rawBody,
+      timestamp: input.timestamp,
+      signature: input.signature,
+      now: input.now || this.now(),
+      context: input.context,
+    });
+  }
+
+  async handlePaymentWebhook(channel: string, input: {
+    rawBody: string;
+    timestamp: string | null;
+    signature: string | null;
+    now?: Date;
+    context?: BillingRequestContext;
+  }): Promise<BillingWebhookResult> {
+    const verification = await this.getPaymentAdapter(channel).verifyWebhook({
+      rawBody: input.rawBody,
+      timestamp: input.timestamp,
+      signature: input.signature,
       now: input.now || this.now(),
     });
     if (!verification.ok) {
@@ -290,20 +404,9 @@ export class BillingService {
           request_id: input.context?.requestId || null,
         }),
       });
-      return billingFailure(
-        verification.code === "replay" ? "payment_replay_detected" : "payment_invalid_signature",
-        verification.code === "replay" ? 409 : 401,
-        verification.message,
-      );
+      return billingFailure(verification.code, verification.status, verification.message);
     }
-
-    let payload: BillingWebhookPayload;
-    try {
-      payload = JSON.parse(input.rawBody) as BillingWebhookPayload;
-    } catch {
-      return billingFailure("invalid_billing_request", 400, "Webhook payload is invalid.");
-    }
-    return this.applyWebhookPayload(payload, input.context || {});
+    return this.applyWebhookPayload(verification.payload, input.context || {});
   }
 
   async applyWebhookPayload(payload: BillingWebhookPayload, context: BillingRequestContext = {}): Promise<BillingWebhookResult> {
@@ -417,7 +520,7 @@ export class BillingService {
   }
 
   sandboxWebhookSecretConfigured() {
-    return Boolean(sandboxWebhookSecret().trim());
+    return Boolean(process.env.PAYMENT_SANDBOX_WEBHOOK_SECRET?.trim());
   }
 
   rawPaymentChannelsForTests() {
@@ -425,11 +528,7 @@ export class BillingService {
   }
 
   private paymentDescriptor(order: BillingOrder) {
-    return {
-      channel: order.channel,
-      provider_order_id: order.provider_order_id,
-      sandbox_webhook_path: "/api/billing/webhooks/sandbox",
-    };
+    return this.getPaymentAdapter(order.channel).paymentDescriptor(order);
   }
 
   private webhookMismatch(order: BillingOrder, payload: BillingWebhookPayload) {

@@ -4,6 +4,7 @@ export {
   createBillingOrderResponse,
   listBillingOrdersResponse,
   paymentConfigResponse,
+  productionWebhookResponse,
   sandboxWebhookResponse,
 } from "./http";
 export { createMemoryBillingRepository, createJsonBillingRepository, BillingRepositoryError } from "./repository";
@@ -11,6 +12,7 @@ export { createBillingPersistenceRepository, getBillingPersistenceMode, createDu
 export { createPostgresBillingRepository } from "./postgres-repository";
 export { createJsonBillingDualRepairRepository } from "./dual-repair";
 export { signSandboxWebhook, verifySandboxWebhook } from "./sandbox-provider";
+export { createProductionPaymentAdapter, createSandboxPaymentAdapter, getPaymentAdapter } from "./payment-adapters";
 export { BillingService, createBillingService, getBillingService } from "./service";
 export type {
   BillingAuditEvent,

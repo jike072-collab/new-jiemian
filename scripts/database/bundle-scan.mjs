@@ -10,6 +10,9 @@ const patterns = [
   "postgres://",
   "postgresql://",
   "PGPASSWORD",
+  "PAYMENT_SANDBOX_WEBHOOK_SECRET",
+  "PAYMENT_PRODUCTION_ENABLED",
+  "PAYMENT_PRODUCTION_WEBHOOK_SECRET",
 ];
 
 async function files(dir) {

@@ -145,3 +145,19 @@ export async function sandboxWebhookResponse(request: NextRequest) {
     order: result.order,
   }, { status: result.status });
 }
+
+export async function productionWebhookResponse(request: NextRequest) {
+  const rawBody = await request.text();
+  const result = await getBillingService().handleProductionWebhook({
+    rawBody,
+    timestamp: request.headers.get("x-payment-timestamp"),
+    signature: request.headers.get("x-payment-signature"),
+    context: authRequestContext(request),
+  });
+  if (!result.ok) return billingErrorResponse(result);
+  return NextResponse.json({
+    ok: true,
+    action: result.action,
+    order: result.order,
+  }, { status: result.status });
+}

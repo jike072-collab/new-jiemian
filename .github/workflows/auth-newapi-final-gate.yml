@@ -568,7 +568,7 @@ jobs:
       - name: Client bundle leak scan
         run: |
           set -eu
-          if grep -R -n -I -E 'NEW_API_ADMIN_ACCESS_TOKEN|NEW_API_ADMIN_USER_ID|PAYMENT_SANDBOX_WEBHOOK_SECRET|AUTH_SESSION_SECRET|SESSION_SECRET|CRYPTO_SECRET|SQL_DSN|REDIS_CONN_STRING|admin-secret' .next/static; then
+          if grep -R -n -I -E 'NEW_API_ADMIN_ACCESS_TOKEN|NEW_API_ADMIN_USER_ID|PAYMENT_SANDBOX_WEBHOOK_SECRET|PAYMENT_PRODUCTION_ENABLED|PAYMENT_PRODUCTION_WEBHOOK_SECRET|AUTH_SESSION_SECRET|SESSION_SECRET|CRYPTO_SECRET|SQL_DSN|REDIS_CONN_STRING|admin-secret' .next/static; then
             echo "server secret marker leaked into client static bundle" >&2
             exit 1
           fi

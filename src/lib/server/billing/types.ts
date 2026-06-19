@@ -125,7 +125,9 @@ export type CreateBillingOrderSuccess = {
   payment: {
     channel: string;
     provider_order_id: string;
-    sandbox_webhook_path: string;
+    provider: "sandbox" | "production";
+    webhook_path: string;
+    sandbox_webhook_path?: string;
   };
 };
 
@@ -166,6 +168,15 @@ export type BillingWebhookSuccess = {
 export type BillingWebhookResult = BillingWebhookSuccess | BillingFailure;
 
 export type PaymentProviderStatus = "pending" | "paid" | "failed" | "cancelled" | "refunded" | "unknown";
+
+export type PaymentProviderOperationResult = {
+  ok: true;
+  status: number;
+  provider: "sandbox" | "production";
+  provider_order_id: string;
+  provider_status?: PaymentProviderStatus;
+  provider_operation_id?: string;
+} | BillingFailure;
 
 export type ReconciliationIssue = {
   order_id: string;
