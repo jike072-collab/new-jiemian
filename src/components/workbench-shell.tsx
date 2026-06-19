@@ -39,7 +39,6 @@ type WorkbenchShellProps = {
   previewSlot: ReactNode;
   mobileActionSlot?: ReactNode;
   toolTitle?: string;
-  toolDescription?: string;
 };
 
 export function WorkbenchShell({
@@ -51,7 +50,6 @@ export function WorkbenchShell({
   previewSlot,
   mobileActionSlot,
   toolTitle,
-  toolDescription,
 }: WorkbenchShellProps) {
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [pane, setPane] = useState<ShellPane>("parameters");
@@ -149,9 +147,6 @@ export function WorkbenchShell({
             <div className="shell-panel__header shell-panel__header--tool">
               <div>
                 <h2 className="shell-title">{toolTitle || activeTool.label}</h2>
-                {toolDescription || activeTool.description ? (
-                  <p className="shell-description">{toolDescription || activeTool.description}</p>
-                ) : null}
               </div>
             </div>
             <div id="shell-parameters-panel" data-shell-scroll="parameters" className="shell-panel__body">

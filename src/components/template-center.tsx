@@ -1,5 +1,7 @@
 "use client";
 
+/* eslint-disable @next/next/no-img-element */
+
 import Link from "next/link";
 import { ArrowRight, Search } from "lucide-react";
 import { useCallback, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent } from "react";
@@ -11,7 +13,6 @@ import {
   imagePromptTemplates,
   templateCategories,
   templateCloneHref,
-  templateScopeLabel,
   templateTabHref,
   type TemplateCategory,
   type TemplatePromptTemplate,
@@ -31,7 +32,7 @@ type TemplateRailProps = {
 };
 
 export function TemplateRail({
-  title = "从模板开始",
+  title = "模板",
   viewAllHref,
   viewAllLabel = "查看全部",
   templates,
@@ -107,7 +108,6 @@ export function TemplateRail({
       <div className="studio-template-section__head">
         <div>
           <p className="shell-eyebrow">{title}</p>
-          <p className="studio-template-section__desc">点击模板直接填充参数，不需要二次确认。</p>
         </div>
         {viewAllHref ? (
           <Link href={viewAllHref} className="studio-secondary-button studio-template-section__link">
@@ -154,7 +154,6 @@ export function TemplateCenterView() {
   const scope: TemplateScope = searchParams.get("tab") === "video" ? "video" : "image";
   const [search, setSearch] = useState("");
   const [category, setCategory] = useState<TemplateCategory | "全部">("全部");
-  const [selectedTemplateId, setSelectedTemplateId] = useState("");
 
   const templates = scope === "image" ? imagePromptTemplates : videoPromptTemplates;
 
@@ -170,17 +169,21 @@ export function TemplateCenterView() {
     });
   }, [category, search, templates]);
 
-  const effectiveSelectedTemplateId = useMemo(() => {
-    if (filteredTemplates.some((template) => template.id === selectedTemplateId)) return selectedTemplateId;
-    return filteredTemplates[0]?.id || templates[0]?.id || "";
-  }, [filteredTemplates, selectedTemplateId, templates]);
-
-  const selectedTemplate = useMemo(() => {
-    return filteredTemplates.find((template) => template.id === effectiveSelectedTemplateId)
-      || filteredTemplates[0]
-      || templates[0]
-      || null;
-  }, [effectiveSelectedTemplateId, filteredTemplates, templates]);
+  const categoryCounts = useMemo(() => {
+    const allTemplates = [...imagePromptTemplates, ...videoPromptTemplates];
+    return templateCategories.reduce<Record<TemplateCategory | "全部", number>>((result, item) => {
+      result[item] = item === "全部"
+        ? allTemplates.length
+        : allTemplates.filter((template) => template.category === item).length;
+      return result;
+    }, {
+      "全部": 0,
+      "商品": 0,
+      "背景": 0,
+      "广告": 0,
+      "创意": 0,
+    });
+  }, []);
 
   const handleToolAction = (action: WorkspaceAction, tool: WorkspaceToolId) => {
     if (action.kind === "route") {
@@ -196,121 +199,111 @@ export function TemplateCenterView() {
       onToolAction={handleToolAction}
       isAuthenticated={false}
       toolTitle="模板中心"
-      toolDescription="中间选择模板，右侧查看详情，克隆后直接进入工作台。"
       parameterSlot={
-        <TemplateCatalogPanel
-          scope={scope}
-          search={search}
+        <TemplateCategoryPanel
           category={category}
-          templates={filteredTemplates}
-          selectedTemplateId={selectedTemplate?.id || ""}
-          onScopeChange={(nextScope) => router.push(templateTabHref(nextScope), { scroll: false })}
-          onSearchChange={setSearch}
+          counts={categoryCounts}
           onCategoryChange={setCategory}
-          onSelectTemplate={(template) => setSelectedTemplateId(template.id)}
         />
       }
       previewSlot={
-        <TemplateDetailPanel
-          template={selectedTemplate}
+        <TemplateBrowserPanel
           scope={scope}
+          search={search}
+          templates={filteredTemplates}
           totalCount={templates.length}
+          onScopeChange={(nextScope) => router.push(templateTabHref(nextScope), { scroll: false })}
+          onSearchChange={setSearch}
         />
       }
     />
   );
 }
 
-function TemplateCatalogPanel({
+const templateCategoryMeta: Record<TemplateCategory | "全部", { title: string; description: string }> = {
+  "全部": {
+    title: "全部模板",
+    description: "查看图片和视频的全部模板分类。",
+  },
+  "商品": {
+    title: "电商模板",
+    description: "商品主图、细节、展示和使用场景。",
+  },
+  "背景": {
+    title: "背景模板",
+    description: "纯白背景、场景背景和基础视觉整理。",
+  },
+  "广告": {
+    title: "广告模板",
+    description: "促销海报、短视频广告和转化素材。",
+  },
+  "创意": {
+    title: "创意模板",
+    description: "抠图、翻译、对比和更多创意玩法。",
+  },
+};
+
+function TemplateCategoryPanel({
+  category,
+  counts,
+  onCategoryChange,
+}: {
+  category: TemplateCategory | "全部";
+  counts: Record<TemplateCategory | "全部", number>;
+  onCategoryChange: (value: TemplateCategory | "全部") => void;
+}) {
+  return (
+    <div className="template-center-panel">
+      <div className="template-center-categories" role="group" aria-label="模板分类">
+        {templateCategories.map((item) => {
+          const meta = templateCategoryMeta[item];
+          return (
+            <button
+              key={item}
+              type="button"
+              className={cn("template-center-category", category === item && "is-active")}
+              onClick={() => onCategoryChange(item)}
+              aria-pressed={category === item}
+            >
+              <span>
+                <strong>{meta.title}</strong>
+                <small>{meta.description}</small>
+              </span>
+              <em>{counts[item]}</em>
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+function TemplateBrowserPanel({
   scope,
   search,
-  category,
   templates,
-  selectedTemplateId,
+  totalCount,
   onScopeChange,
   onSearchChange,
-  onCategoryChange,
-  onSelectTemplate,
 }: {
   scope: TemplateScope;
   search: string;
-  category: TemplateCategory | "全部";
   templates: TemplatePromptTemplate[];
-  selectedTemplateId: string;
+  totalCount: number;
   onScopeChange: (scope: TemplateScope) => void;
   onSearchChange: (value: string) => void;
-  onCategoryChange: (value: TemplateCategory | "全部") => void;
-  onSelectTemplate: (template: TemplatePromptTemplate) => void;
 }) {
-  const listRef = useRef<HTMLDivElement | null>(null);
-  const dragStateRef = useRef({
-    pointerId: -1,
-    startX: 0,
-    startScrollLeft: 0,
-    dragging: false,
-    suppressClick: false,
-  });
-
-  const releaseDrag = useCallback((pointerId: number) => {
-    const list = listRef.current;
-    const state = dragStateRef.current;
-    if (list && list.hasPointerCapture(pointerId)) {
-      list.releasePointerCapture(pointerId);
-    }
-    if (state.dragging) {
-      list?.classList.remove("is-dragging");
-    }
-    state.pointerId = -1;
-    state.dragging = false;
-  }, []);
-
-  const handlePointerDown = useCallback((event: ReactPointerEvent<HTMLDivElement>) => {
-    if (event.button !== 0) return;
-    const list = listRef.current;
-    if (!list) return;
-    const state = dragStateRef.current;
-    state.pointerId = event.pointerId;
-    state.startX = event.clientX;
-    state.startScrollLeft = list.scrollLeft;
-    state.dragging = false;
-    state.suppressClick = false;
-    list.setPointerCapture(event.pointerId);
-  }, []);
-
-  const handlePointerMove = useCallback((event: ReactPointerEvent<HTMLDivElement>) => {
-    const list = listRef.current;
-    const state = dragStateRef.current;
-    if (!list || state.pointerId !== event.pointerId) return;
-
-    const delta = event.clientX - state.startX;
-    if (!state.dragging && Math.abs(delta) > 6) {
-      state.dragging = true;
-      list.classList.add("is-dragging");
-    }
-
-    if (state.dragging) {
-      event.preventDefault();
-      list.scrollLeft = state.startScrollLeft - delta;
-    }
-  }, []);
-
-  const handlePointerUp = useCallback((event: ReactPointerEvent<HTMLDivElement>) => {
-    const state = dragStateRef.current;
-    if (state.pointerId !== event.pointerId) return;
-    state.suppressClick = state.dragging;
-    releaseDrag(event.pointerId);
-  }, [releaseDrag]);
-
-  const handleClickCapture = useCallback((event: React.MouseEvent<HTMLDivElement>) => {
-    if (!dragStateRef.current.suppressClick) return;
-    event.preventDefault();
-    event.stopPropagation();
-    dragStateRef.current.suppressClick = false;
-  }, []);
-
   return (
-    <div className="template-center-panel">
-      <div className="template-center-tabs" role="tablist" aria-label="模板分类">
+    <div className="template-center-browser">
+      <div className="template-center-browser__head">
+        <div>
+          <p className="shell-eyebrow">模板中心</p>
+          <h3>{scope === "image" ? "AI 图片模板" : "AI 视频模板"}</h3>
+        </div>
+        <span className="shell-chip">{totalCount} 个模板</span>
+      </div>
+
+      <div className="template-center-tabs" role="tablist" aria-label="模板类型">
         <button
           type="button"
           className={cn("template-center-tab", scope === "image" && "is-active")}
@@ -340,127 +333,36 @@ function TemplateCatalogPanel({
         />
       </label>
 
-      <div className="template-center-categories" role="group" aria-label="场景筛选">
-        {templateCategories.map((item) => (
-          <button
-            key={item}
-            type="button"
-            className={cn("template-center-category", category === item && "is-active")}
-            onClick={() => onCategoryChange(item)}
-            aria-pressed={category === item}
-          >
-            {item}
-          </button>
-        ))}
-      </div>
-
-      <div
-        ref={listRef}
-        className="template-center-list"
-        aria-label="模板列表"
-        onPointerDown={handlePointerDown}
-        onPointerMove={handlePointerMove}
-        onPointerUp={handlePointerUp}
-        onPointerCancel={handlePointerUp}
-        onClickCapture={handleClickCapture}
-      >
+      <div className="template-center-grid" aria-label="模板列表">
         {templates.length ? templates.map((template) => (
-          <button
+          <article
             key={template.id}
-            type="button"
-            className={cn("template-center-item", selectedTemplateId === template.id && "is-active")}
-            onClick={() => onSelectTemplate(template)}
-            aria-pressed={selectedTemplateId === template.id}
+            className="template-center-card"
           >
-            <span className="template-center-item__thumb">
+            <span className="template-center-card__thumb">
               <img src={template.thumbnail} alt={template.label} loading="lazy" />
-              <span className="template-center-item__fade" aria-hidden="true" />
+              <span className="template-center-card__ratio">{template.aspectRatio}</span>
             </span>
-            <span className="template-center-item__body">
+            <span className="template-center-card__body">
               <strong>{template.label}</strong>
-              <span>{template.category}</span>
               <small>{template.summary}</small>
+              <span className="template-center-card__meta">
+                <span>{template.category}</span>
+                <span>{template.scope === "image" ? template.quality.toUpperCase() : `${template.duration} 秒`}</span>
+                <span>{template.requiresImage ? "需图像" : "无须图像"}</span>
+              </span>
             </span>
-          </button>
+            <Link href={templateCloneHref(template.id)} className="studio-secondary-button template-center-card__clone">
+              克隆
+              <ArrowRight className="size-4" aria-hidden="true" />
+            </Link>
+          </article>
         )) : (
           <div className="template-center-empty" role="status">
             <strong>没有找到模板</strong>
             <span>可以换一个关键词或分类再试。</span>
           </div>
         )}
-      </div>
-    </div>
-  );
-}
-
-function TemplateDetailPanel({
-  template,
-  scope,
-  totalCount,
-}: {
-  template: TemplatePromptTemplate | null;
-  scope: TemplateScope;
-  totalCount: number;
-}) {
-  if (!template) {
-    return (
-      <div className="template-center-detail">
-        <div className="template-center-detail__empty" role="status">
-          <p className="shell-eyebrow">模板详情</p>
-          <strong>还没有选中模板</strong>
-          <span>在中间栏点一个模板，右侧会显示完整信息。</span>
-        </div>
-      </div>
-    );
-  }
-
-  return (
-    <div className="template-center-detail">
-      <article className="template-center-detail__card">
-        <div className="template-center-detail__hero">
-          <img src={template.thumbnail} alt={template.label} loading="lazy" />
-          <span className="template-center-detail__scope">{templateScopeLabel(template.scope)}</span>
-        </div>
-
-        <div className="template-center-detail__body">
-          <div className="template-center-detail__head">
-            <div>
-              <p className="shell-eyebrow">模板详情</p>
-              <h1>{template.label}</h1>
-            </div>
-            <span className="shell-chip">{scope === "image" ? `${imagePromptTemplates.length} 个图片模板` : `${videoPromptTemplates.length} 个视频模板`}</span>
-          </div>
-
-          <p className="template-center-detail__summary">{template.summary}</p>
-
-          <div className="template-center-detail__chips" aria-label="模板信息">
-            <span className="shell-chip">{template.category}</span>
-            <span className="shell-chip">{template.aspectRatio}</span>
-            <span className="shell-chip">{template.scope === "image" ? template.quality : `${template.duration} 秒`}</span>
-            <span className="shell-chip">{template.requiresImage ? "需要图像" : "无需图像"}</span>
-          </div>
-
-          <div className="template-center-detail__prompt">
-            <strong>模板提示词</strong>
-            <p>{template.prompt}</p>
-          </div>
-
-          <div className="template-center-detail__actions">
-            <Link href={templateCloneHref(template.id)} className="studio-primary-action">
-              <ArrowRight className="size-4" aria-hidden="true" />
-              克隆到工作台
-            </Link>
-            <Link href={templateTabHref(scope)} className="studio-secondary-button">
-              返回模板列表
-            </Link>
-          </div>
-        </div>
-      </article>
-
-      <div className="template-center-detail__note">
-        <p className="shell-eyebrow">浏览中</p>
-        <strong>{totalCount} 个模板</strong>
-        <span>选中后，右侧会保留完整预览和参数信息。</span>
       </div>
     </div>
   );

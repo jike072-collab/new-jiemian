@@ -2,7 +2,7 @@
 
 /* eslint-disable @next/next/no-img-element */
 
-import { useCallback, useEffect, useId, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent } from "react";
+import { useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
 import { AlertTriangle, Check, ChevronDown, Download, ExternalLink, ImageUp, Loader2, RefreshCw, Search, Trash2, UploadCloud, Wand2, X } from "lucide-react";
 import { useRouter, useSearchParams } from "next/navigation";
 
@@ -1439,7 +1439,6 @@ export function StudioApp() {
         onToolAction={handleToolAction}
         isAuthenticated={false}
         toolTitle={activeWorkspaceTool.label}
-        toolDescription={activeWorkspaceTool.description}
         parameterSlot={parameterSlot}
         previewSlot={
           activeBusinessTool === "library" ? (
@@ -1581,7 +1580,7 @@ function ImageGenerator({
 
   return (
     <FormPanel>
-      <ModelRail
+      <ProviderSelect
         providers={providers}
         value={selectedProvider?.id || state.providerId}
         loading={providersLoading}
@@ -1591,7 +1590,7 @@ function ImageGenerator({
       />
       {showTemplates ? (
         <TemplateRail
-          title="从模板开始"
+          title="模板"
           viewAllHref={templateTabHref("image")}
           templates={featuredImagePromptTemplates}
           activeTemplateId={state.templateId}
@@ -1758,7 +1757,7 @@ function VideoGenerator({
 
   return (
     <FormPanel>
-      <ModelRail
+      <ProviderSelect
         providers={providers}
         value={selectedProvider?.id || state.providerId}
         loading={providersLoading}
@@ -1767,7 +1766,7 @@ function VideoGenerator({
         onReload={onReloadProviders}
       />
       <TemplateRail
-        title="从模板开始"
+        title="模板"
         viewAllHref={templateTabHref("video")}
         templates={featuredVideoPromptTemplates}
         activeTemplateId={state.templateId}
@@ -3256,6 +3255,7 @@ function CustomSelect({
   const buttonRef = useRef<HTMLButtonElement | null>(null);
   const listRef = useRef<HTMLDivElement | null>(null);
   const [open, setOpen] = useState(false);
+  const [openAbove, setOpenAbove] = useState(false);
   const selectedIndex = options.findIndex((option) => option.value === value);
   const selectedOption = selectedIndex >= 0 ? options[selectedIndex] : null;
   const [activeIndex, setActiveIndex] = useState(selectedIndex >= 0 ? selectedIndex : 0);
@@ -3273,6 +3273,11 @@ function CustomSelect({
   }, [open]);
 
   const openMenu = useCallback(() => {
+    const rect = buttonRef.current?.getBoundingClientRect();
+    if (rect) {
+      const availableBelow = window.innerHeight - rect.bottom;
+      setOpenAbove(availableBelow < 280 && rect.top > availableBelow);
+    }
     setActiveIndex(selectedIndex >= 0 ? selectedIndex : 0);
     setOpen(true);
   }, [selectedIndex]);
@@ -3338,7 +3343,13 @@ function CustomSelect({
         <ChevronDown className={cn("size-4 transition", open && "rotate-180")} aria-hidden="true" />
       </button>
       {open ? (
-        <div ref={listRef} id={listId} className="studio-custom-select__menu" role="listbox" aria-label={label}>
+        <div
+          ref={listRef}
+          id={listId}
+          className={cn("studio-custom-select__menu", openAbove && "is-above")}
+          role="listbox"
+          aria-label={label}
+        >
           {options.map((option, index) => {
             const selected = option.value === value;
             const active = index === activeIndex;
@@ -3374,7 +3385,7 @@ function CustomSelect({
   );
 }
 
-function ModelRail({
+function ProviderSelect({
   providers,
   value,
   loading,
@@ -3391,106 +3402,22 @@ function ModelRail({
   onReload?: () => Promise<void>;
   label?: string;
 }) {
-  const trackRef = useRef<HTMLDivElement | null>(null);
-  const dragStateRef = useRef({
-    pointerId: -1,
-    startX: 0,
-    startScrollLeft: 0,
-    dragging: false,
-    suppressClick: false,
-  });
-
-  const releaseDrag = useCallback((pointerId: number) => {
-    const track = trackRef.current;
-    const state = dragStateRef.current;
-    if (track && track.hasPointerCapture(pointerId)) {
-      track.releasePointerCapture(pointerId);
-    }
-    if (state.dragging) {
-      track?.classList.remove("is-dragging");
-    }
-    state.pointerId = -1;
-    state.dragging = false;
-  }, []);
-
-  const handlePointerDown = useCallback((event: ReactPointerEvent<HTMLDivElement>) => {
-    if (event.button !== 0) return;
-    const track = trackRef.current;
-    if (!track) return;
-    const state = dragStateRef.current;
-    state.pointerId = event.pointerId;
-    state.startX = event.clientX;
-    state.startScrollLeft = track.scrollLeft;
-    state.dragging = false;
-    state.suppressClick = false;
-    track.setPointerCapture(event.pointerId);
-  }, []);
-
-  const handlePointerMove = useCallback((event: ReactPointerEvent<HTMLDivElement>) => {
-    const track = trackRef.current;
-    const state = dragStateRef.current;
-    if (!track || state.pointerId !== event.pointerId) return;
-    const delta = event.clientX - state.startX;
-    if (!state.dragging && Math.abs(delta) > 6) {
-      state.dragging = true;
-      track.classList.add("is-dragging");
-    }
-    if (state.dragging) {
-      event.preventDefault();
-      track.scrollLeft = state.startScrollLeft - delta;
-    }
-  }, []);
-
-  const handlePointerUp = useCallback((event: ReactPointerEvent<HTMLDivElement>) => {
-    const state = dragStateRef.current;
-    if (state.pointerId !== event.pointerId) return;
-    state.suppressClick = state.dragging;
-    releaseDrag(event.pointerId);
-  }, [releaseDrag]);
-
-  const handleClickCapture = useCallback((event: React.MouseEvent<HTMLDivElement>) => {
-    if (!dragStateRef.current.suppressClick) return;
-    event.preventDefault();
-    event.stopPropagation();
-    dragStateRef.current.suppressClick = false;
-  }, []);
+  const options = providers.map((provider) => ({
+    value: provider.id,
+    label: provider.displayName || provider.model,
+  }));
 
   return (
     <FieldFrame label={label} required>
       <div className="studio-provider">
-        <div
-          ref={trackRef}
-          className="studio-model-scroll"
-          onPointerDown={handlePointerDown}
-          onPointerMove={handlePointerMove}
-          onPointerUp={handlePointerUp}
-          onPointerCancel={handlePointerUp}
-          onClickCapture={handleClickCapture}
-        >
-          <div className="studio-model-track" role="listbox" aria-label={label}>
-            {providers.map((provider) => {
-              const selected = provider.id === value;
-              const title = provider.displayName || provider.model;
-              const subtitle = provider.displayName && provider.displayName !== provider.model ? provider.model : provider.title;
-              return (
-                <button
-                  key={provider.id}
-                  type="button"
-                  role="option"
-                  aria-selected={selected}
-                  className={cn("studio-model-card", selected && "is-active")}
-                  onClick={() => onChange(provider.id)}
-                >
-                  <span className="studio-model-card__body">
-                    <strong>{title}</strong>
-                    {subtitle ? <span>{subtitle}</span> : null}
-                  </span>
-                  {selected ? <Check className="size-4" aria-hidden="true" /> : null}
-                </button>
-              );
-            })}
-          </div>
-        </div>
+        <CustomSelect
+          label={label}
+          value={value}
+          options={options}
+          disabled={loading || Boolean(error)}
+          placeholder={loading ? "正在读取模型" : "选择模型"}
+          onChange={onChange}
+        />
         {loading ? <p id="image-provider-status" className="studio-help-text" role="status" aria-live="polite">正在读取可用模型。</p> : null}
         {!loading && !error && !providers.length ? (
           <p id="image-provider-empty" className="studio-help-text" role="status" aria-live="polite">
