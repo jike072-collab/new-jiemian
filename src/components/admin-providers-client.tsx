@@ -99,12 +99,51 @@ function modelOptionsFor(provider: EditableProvider, fetched: ModelOption[] = []
   const defaults = provider.endpointType === "grok-videos"
     ? grokVideoModelOptions
     : provider.kind === "prompt" ? promptOptimizerModelOptions : [];
-  const byValue = new Map([...defaults, ...fetched].map((option) => [option.value, option]));
+  const stored = (provider.models || []).map((model) => {
+    const displayName = provider.modelDisplayNames?.[model] || model;
+    return {
+      value: model,
+      label: displayName === model ? model : `${displayName} · ${model}`,
+      displayName,
+    };
+  });
+  const byValue = new Map([...defaults, ...fetched, ...stored].map((option) => [option.value, option]));
   return Array.from(byValue.values());
 }
 
 function isLocalCli(endpointType: EndpointType) {
   return endpointType === "upscayl-cli" || endpointType === "video2x-cli";
+}
+
+function canManageModelList(provider: EditableProvider) {
+  return (provider.kind === "image" || provider.kind === "video") && !isLocalCli(provider.endpointType);
+}
+
+function providerModelIds(provider: EditableProvider) {
+  return provider.models?.length ? provider.models : provider.model ? [provider.model] : [];
+}
+
+function cleanModelDisplayNames(models: string[], displayNames: Record<string, string> = {}) {
+  const modelSet = new Set(models);
+  return Object.fromEntries(
+    Object.entries(displayNames)
+      .map(([model, displayName]) => [model.trim(), displayName.trim()] as const)
+      .filter(([model, displayName]) => modelSet.has(model) && displayName),
+  );
+}
+
+function nextModelPatch(
+  provider: EditableProvider,
+  models: string[],
+  displayNames: Record<string, string> = provider.modelDisplayNames || {},
+) {
+  const cleanModels = Array.from(new Set(models.map((model) => model.trim()).filter(Boolean)));
+  const modelDisplayNames = cleanModelDisplayNames(cleanModels, displayNames);
+  return {
+    models: cleanModels,
+    model: cleanModels.includes(provider.model) ? provider.model : cleanModels[0] || provider.model,
+    modelDisplayNames,
+  };
 }
 
 async function readJson(response: Response) {
@@ -170,6 +209,8 @@ export function AdminProvidersClient() {
             role: provider.role,
             apiUrl: provider.apiUrl,
             model: provider.model,
+            models: provider.models,
+            modelDisplayNames: provider.modelDisplayNames,
             displayName: provider.displayName,
             endpointType: provider.endpointType,
             enabled: provider.enabled,
@@ -248,7 +289,8 @@ export function AdminProvidersClient() {
     const options = modelOptionsFor(provider, providerModels[provider.id]?.options);
     const option = options.find((item) => item.value === model);
     const managedDisplayNames = new Set(options.map((item) => item.displayName));
-    const shouldSyncDisplayName = Boolean(option)
+    const shouldSyncDisplayName = !canManageModelList(provider)
+      && Boolean(option)
       && (!provider.displayName || managedDisplayNames.has(provider.displayName));
     update(provider.id, {
       model,
@@ -281,10 +323,20 @@ export function AdminProvidersClient() {
       const options = Array.from(new Set(data.models || []))
         .filter(Boolean)
         .map((model) => ({ value: model, label: model, displayName: model }));
+      const modelIds = options.map((option) => option.value);
+      const defaultDisplayNames = Object.fromEntries(
+        options.map((option) => [
+          option.value,
+          provider.modelDisplayNames?.[option.value] || option.displayName,
+        ]),
+      );
       setProviderModels((current) => ({
         ...current,
         [provider.id]: { loading: false, options, error: "" },
       }));
+      update(provider.id, {
+        ...nextModelPatch(provider, modelIds, defaultDisplayNames),
+      });
       setStatus(options.length ? `已读取 ${provider.title} 的 ${options.length} 个模型。` : `${provider.title} 没有返回可用模型。`);
     } catch (error) {
       const text = error instanceof Error ? error.message : "读取模型失败。";
@@ -476,11 +528,11 @@ export function AdminProvidersClient() {
                             </div>
                           </div>
                           <label className="admin-field">
-                            前台名称
+                            地址名称
                             <input
                               value={provider.displayName || ""}
                               onChange={(event) => update(provider.id, { displayName: event.target.value })}
-                              placeholder="不填则显示模型 ID"
+                              placeholder="只用于后台区分地址"
                               className="admin-input"
                             />
                           </label>
@@ -497,6 +549,65 @@ export function AdminProvidersClient() {
                             </select>
                           </label>
                         </div>
+
+                        {canManageModelList(provider) ? (
+                          <div className="mt-4 rounded-[1.1rem] border border-white/10 bg-white/[0.03] p-3">
+                            <div className="flex flex-col justify-between gap-2 sm:flex-row sm:items-center">
+                              <div>
+                                <h4 className="text-sm font-bold text-white">前台模型列表</h4>
+                                <p className="mt-1 text-xs text-white/40">前台显示名称可单独修改；模型 ID 用于真实调用。</p>
+                              </div>
+                              <span className="rounded-full bg-white/8 px-2 py-1 text-xs text-white/45">
+                                {providerModelIds(provider).length} 个模型
+                              </span>
+                            </div>
+                            <div className="mt-3 grid gap-2">
+                              {providerModelIds(provider).map((model, modelIndex) => (
+                                <div key={`${provider.id}-${modelIndex}`} className="grid gap-2 rounded-2xl border border-white/10 bg-black/20 p-2 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
+                                  <label className="grid gap-1 text-xs text-white/50">
+                                    模型 ID
+                                    <input
+                                      value={model}
+                                      onChange={(event) => {
+                                        const nextValue = event.target.value;
+                                        const models = providerModelIds(provider);
+                                        const oldModel = models[modelIndex];
+                                        const nextModels = models.map((item, index) => index === modelIndex ? nextValue : item);
+                                        const nextDisplayNames = { ...(provider.modelDisplayNames || {}) };
+                                        if (oldModel !== nextValue) {
+                                          const oldDisplayName = nextDisplayNames[oldModel];
+                                          delete nextDisplayNames[oldModel];
+                                          if (oldDisplayName) nextDisplayNames[nextValue] = oldDisplayName;
+                                        }
+                                        update(provider.id, {
+                                          ...nextModelPatch(provider, nextModels, nextDisplayNames),
+                                          ...(provider.model === oldModel ? { model: nextValue.trim() } : {}),
+                                        });
+                                      }}
+                                      className="admin-input h-10 rounded-xl text-sm"
+                                    />
+                                  </label>
+                                  <label className="grid gap-1 text-xs text-white/50">
+                                    前台显示名称
+                                    <input
+                                      value={provider.modelDisplayNames?.[model] || ""}
+                                      onChange={(event) => {
+                                        const displayName = event.target.value;
+                                        const nextDisplayNames = {
+                                          ...(provider.modelDisplayNames || {}),
+                                          [model]: displayName,
+                                        };
+                                        update(provider.id, nextModelPatch(provider, providerModelIds(provider), nextDisplayNames));
+                                      }}
+                                      placeholder={model}
+                                      className="admin-input h-10 rounded-xl text-sm"
+                                    />
+                                  </label>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        ) : null}
 
                         {isLocalCli(provider.endpointType) ? (
                           <div className="mt-4 flex items-center gap-3 rounded-2xl border border-emerald-400/15 bg-emerald-500/8 px-4 py-3 text-sm text-emerald-200">

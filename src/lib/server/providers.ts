@@ -10,6 +10,7 @@ import {
 import { dataRoot, readJsonFile, writeJsonFile } from "./paths";
 
 const providersPath = join(dataRoot, "providers.json");
+const virtualModelSeparator = "::model::";
 
 function env(name: string, fallback = "") {
   return process.env[name] || fallback;
@@ -17,6 +18,23 @@ function env(name: string, fallback = "") {
 
 function hasKey(value: string) {
   return Boolean(value && value.trim() && value.trim() !== "replace_me");
+}
+
+function normalizeModels(value: unknown) {
+  return Array.isArray(value)
+    ? Array.from(new Set(value.map((item) => String(item || "").trim()).filter(Boolean)))
+    : [];
+}
+
+function normalizeModelDisplayNames(value: unknown) {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return undefined;
+  const entries = Object.entries(value as Record<string, unknown>)
+    .map(([model, displayName]) => [
+      String(model || "").trim(),
+      String(displayName || "").trim(),
+    ] as const)
+    .filter(([model, displayName]) => model && displayName);
+  return entries.length ? Object.fromEntries(entries) : undefined;
 }
 
 export function isLocalProvider(endpointType: EndpointType) {
@@ -103,10 +121,14 @@ export function defaultProviders(): ProviderConfig[] {
 }
 
 function normalizeProvider(provider: ProviderConfig): ProviderConfig {
+  const models = normalizeModels(provider.models);
+  const modelDisplayNames = normalizeModelDisplayNames(provider.modelDisplayNames);
   return {
     ...provider,
     apiUrl: String(provider.apiUrl || "").trim(),
     model: String(provider.model || "").trim(),
+    models: models.length ? models : undefined,
+    modelDisplayNames,
     displayName: String(provider.displayName || "").trim() || undefined,
     apiKey: String(provider.apiKey || "").trim(),
     enabled: Boolean(provider.enabled),
@@ -124,6 +146,8 @@ export function sanitizeProvider(provider: ProviderConfig): PublicProvider {
     role: normalized.role,
     apiUrl: normalized.apiUrl,
     model: normalized.model,
+    models: normalized.models,
+    modelDisplayNames: normalized.modelDisplayNames,
     displayName: normalized.displayName,
     enabled: normalized.enabled,
     endpointType: normalized.endpointType,
@@ -131,6 +155,46 @@ export function sanitizeProvider(provider: ProviderConfig): PublicProvider {
     configured: normalized.enabled && (localProvider || hasKey(normalized.apiKey)),
     keyPreview: maskedKeyPreview(normalized.apiKey),
   };
+}
+
+function shouldExpandProvider(provider: ProviderConfig) {
+  return (provider.kind === "image" || provider.kind === "video") && !isLocalProvider(provider.endpointType);
+}
+
+function virtualProviderId(providerId: string, model: string) {
+  return `${providerId}${virtualModelSeparator}${encodeURIComponent(model)}`;
+}
+
+function parseVirtualProviderId(id: string) {
+  const index = id.indexOf(virtualModelSeparator);
+  if (index === -1) return null;
+  const providerId = id.slice(0, index);
+  const encodedModel = id.slice(index + virtualModelSeparator.length);
+  try {
+    const model = decodeURIComponent(encodedModel);
+    return providerId && model ? { providerId, model } : null;
+  } catch {
+    return null;
+  }
+}
+
+function publicDisplayName(provider: ProviderConfig, model: string, hasMultipleModels: boolean) {
+  const modelDisplayName = normalizeModelDisplayNames(provider.modelDisplayNames)?.[model];
+  if (modelDisplayName) return modelDisplayName;
+  if (!hasMultipleModels) return provider.displayName;
+  return `${provider.title} · ${model}`;
+}
+
+function expandProviderModels(provider: ProviderConfig) {
+  if (!shouldExpandProvider(provider)) return [sanitizeProvider(provider)];
+  const models = normalizeModels(provider.models);
+  if (!models.length) return [sanitizeProvider(provider)];
+  return models.map((model) => sanitizeProvider({
+    ...provider,
+    id: virtualProviderId(provider.id, model),
+    model,
+    displayName: publicDisplayName(provider, model, models.length > 1),
+  }));
 }
 
 export async function readProviders(): Promise<ProviderConfig[]> {
@@ -177,11 +241,25 @@ export async function readEnabledProviders(kind?: ProviderKind) {
       && provider.enabled
       && (isLocalProvider(provider.endpointType) || hasKey(provider.apiKey))
     ))
-    .map(sanitizeProvider);
+    .flatMap(expandProviderModels);
 }
 
 export async function providerById(id: string) {
-  return (await readProviders()).find((provider) => provider.id === id) || null;
+  const providers = await readProviders();
+  const direct = providers.find((provider) => provider.id === id);
+  if (direct) return direct;
+  const virtual = parseVirtualProviderId(id);
+  if (!virtual) return null;
+  const provider = providers.find((item) => item.id === virtual.providerId);
+  if (!provider || !shouldExpandProvider(provider)) return null;
+  const knownModels = normalizeModels(provider.models);
+  if (!knownModels.includes(virtual.model)) return null;
+  return {
+    ...provider,
+    id,
+    model: virtual.model,
+    displayName: publicDisplayName(provider, virtual.model, knownModels.length > 1),
+  };
 }
 
 export function modelsEndpointFor(apiUrl: string) {
@@ -244,6 +322,8 @@ export async function updateProviders(updates: ProviderUpdate[]) {
       role: update.role || "自定义模型配置",
       apiUrl: "",
       model: "",
+      models: [],
+      modelDisplayNames: {},
       displayName: "",
       apiKey: "",
       enabled: false,
@@ -258,6 +338,10 @@ export async function updateProviders(updates: ProviderUpdate[]) {
       role: update.role === undefined ? baseProvider.role : update.role,
       apiUrl: update.apiUrl === undefined ? baseProvider.apiUrl : update.apiUrl,
       model: update.model === undefined ? baseProvider.model : update.model,
+      models: update.models === undefined ? baseProvider.models : normalizeModels(update.models),
+      modelDisplayNames: update.modelDisplayNames === undefined
+        ? baseProvider.modelDisplayNames
+        : normalizeModelDisplayNames(update.modelDisplayNames),
       displayName: update.displayName === undefined ? baseProvider.displayName : update.displayName,
       enabled: update.enabled === undefined ? baseProvider.enabled : update.enabled,
       endpointType: update.endpointType === undefined ? baseProvider.endpointType : update.endpointType,
