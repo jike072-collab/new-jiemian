@@ -338,6 +338,7 @@ export function StudioApp() {
   const [message, setMessage] = useState("");
   const [outputs, setOutputs] = useState<Partial<Record<BusinessToolId, OutputState>>>({});
   const [mobileAction, setMobileAction] = useState<MobileActionState>(null);
+  const [mobilePreviewSignal, setMobilePreviewSignal] = useState(0);
   const [libraryFilter, setLibraryFilter] = useState<LibraryFilter>("image");
   const [librarySort, setLibrarySort] = useState<LibrarySort>("recent");
   const [librarySearch, setLibrarySearch] = useState("");
@@ -809,6 +810,7 @@ export function StudioApp() {
       submitError: "",
       fileError: "",
     }));
+    setMobilePreviewSignal((value) => value + 1);
     setMessage("");
     try {
       const form = new FormData();
@@ -1078,6 +1080,7 @@ export function StudioApp() {
       submitError: "",
       fileError: "",
     });
+    setMobilePreviewSignal((value) => value + 1);
     setMessage("");
     try {
       const form = new FormData();
@@ -1186,6 +1189,7 @@ export function StudioApp() {
       fileError: "",
       job: null,
     });
+    setMobilePreviewSignal((value) => value + 1);
     setMessage("");
     try {
       const form = new FormData();
@@ -1304,6 +1308,7 @@ export function StudioApp() {
       submitError: "",
       fileError: "",
     });
+    setMobilePreviewSignal((value) => value + 1);
     setMessage("");
     try {
       const form = new FormData();
@@ -1440,6 +1445,7 @@ export function StudioApp() {
         isAuthenticated={false}
         toolTitle={activeWorkspaceTool.label}
         parameterSlot={parameterSlot}
+        mobilePreviewSignal={mobilePreviewSignal}
         previewSlot={
           activeBusinessTool === "library" ? (
             <LibraryWorkspace
@@ -1468,10 +1474,10 @@ export function StudioApp() {
                 output={activeOutput}
                 loading={imageWorkspace.loading}
                 submitError={imageWorkspace.submitError}
+                isEditor={activeWorkspaceToolId === "image-editor"}
                 promptFilled={Boolean(imageWorkspacePrompt)}
                 hasProvider={Boolean(selectedImageProvider)}
                 hasFiles={imageWorkspaceHasFiles}
-                libraryCount={library.length}
                 onSubmit={submitImageWorkspace}
                 onReloadProviders={refreshProviders}
                 onOpenLibrary={() => setActiveWorkspaceToolId("library")}
@@ -1485,18 +1491,15 @@ export function StudioApp() {
                 promptFilled={Boolean(videoWorkspacePrompt)}
                 hasProvider={Boolean(selectedVideoProvider)}
                 hasFiles={videoWorkspaceHasFiles}
-                libraryCount={library.length}
                 onSubmit={submitVideoWorkspace}
                 onReloadProviders={refreshProviders}
                 onOpenLibrary={() => setActiveWorkspaceToolId("library")}
-                firstFrame={videoWorkspace.files[0] || null}
               />
             ) : activeBusinessTool === "image-upscale" ? (
               <ImageUpscalePreviewPanel
                 state={imageUpscaleWorkspace}
                 output={activeOutput}
                 canSubmit={imageUpscaleCanSubmit}
-                libraryCount={library.length}
                 onSubmit={submitImageUpscale}
                 onOpenLibrary={() => setActiveWorkspaceToolId("library")}
               />
@@ -1505,7 +1508,6 @@ export function StudioApp() {
                 state={videoUpscaleWorkspace}
                 output={activeOutput}
                 canSubmit={videoUpscaleCanSubmit}
-                libraryCount={library.length}
                 onSubmit={submitVideoUpscale}
                 onOpenLibrary={() => setActiveWorkspaceToolId("library")}
               />
@@ -2038,104 +2040,175 @@ function ImageUpscaleForm({
   );
 }
 
+type ToolTutorialKind = "image" | "image-editor" | "video" | "image-upscale" | "video-upscale";
+
+const toolTutorials: Record<ToolTutorialKind, {
+  description: string;
+  steps: Array<{ title: string; description: string; motion?: boolean }>;
+}> = {
+  image: {
+    description: "按步骤完成设置后开始生成。",
+    steps: [
+      { title: "输入提示词", description: "输入提示词，可选上传图像" },
+      { title: "选择参数", description: "选择比例和清晰度" },
+      { title: "生成图片", description: "生成图片" },
+    ],
+  },
+  "image-editor": {
+    description: "上传图像并描述要修改的内容。",
+    steps: [
+      { title: "上传图像", description: "上传需要编辑的图像" },
+      { title: "描述修改", description: "描述需要修改的内容" },
+      { title: "生成结果", description: "生成编辑结果" },
+    ],
+  },
+  video: {
+    description: "先完成视频参数，再开始生成。",
+    steps: [
+      { title: "输入提示词", description: "输入提示词，可选上传图像", motion: true },
+      { title: "选择参数", description: "选择比例、时长和清晰度", motion: true },
+      { title: "生成视频", description: "生成视频", motion: true },
+    ],
+  },
+  "image-upscale": {
+    description: "上传图片后选择放大倍数。",
+    steps: [
+      { title: "上传图片", description: "上传图片" },
+      { title: "选择倍数", description: "选择放大倍数" },
+      { title: "开始处理", description: "开始高清处理" },
+    ],
+  },
+  "video-upscale": {
+    description: "上传视频后选择放大倍数。",
+    steps: [
+      { title: "上传视频", description: "上传视频", motion: true },
+      { title: "选择倍数", description: "选择放大倍数", motion: true },
+      { title: "开始处理", description: "开始高清处理", motion: true },
+    ],
+  },
+};
+
+function ToolTutorial({ kind }: { kind: ToolTutorialKind }) {
+  const tutorial = toolTutorials[kind];
+
+  return (
+    <PreviewState eyebrow="快速教程" title="快速教程" description={tutorial.description}>
+      <div className="studio-tutorial">
+        {tutorial.steps.map((step, index) => (
+          <article key={step.title} className="studio-tutorial__step">
+            <div className={cn("studio-tutorial__visual", step.motion && "is-motion")} aria-hidden="true">
+              {step.motion ? (
+                <>
+                  <span />
+                  <span />
+                  <span />
+                </>
+              ) : index === 0 ? (
+                <UploadCloud className="size-6" />
+              ) : index === 1 ? (
+                <ImageUp className="size-6" />
+              ) : (
+                <Wand2 className="size-6" />
+              )}
+            </div>
+            <div>
+              <span className="studio-tutorial__index">{index + 1}</span>
+              <h4>{step.title}</h4>
+              <p>{step.description}</p>
+            </div>
+          </article>
+        ))}
+      </div>
+    </PreviewState>
+  );
+}
+
+function ProcessingPreview({ label }: { label: string }) {
+  return (
+    <PreviewState eyebrow="处理中" title={label} role="status" live>
+      <div className="studio-processing-state">
+        <span className="studio-processing-state__icon" aria-hidden="true">
+          <Loader2 className="size-6" />
+        </span>
+        <p>{label}</p>
+      </div>
+    </PreviewState>
+  );
+}
+
+function ErrorPreview({
+  canRetry,
+  onRetry,
+  onOpenLibrary,
+  onReloadProviders,
+}: {
+  canRetry: boolean;
+  onRetry: () => void;
+  onOpenLibrary?: () => void;
+  onReloadProviders?: () => Promise<void>;
+}) {
+  return (
+    <PreviewState eyebrow="失败" title="生成失败" description="生成失败，请检查设置后重试" role="alert">
+      <div className="studio-preview__empty">
+        <div className="studio-actions">
+          {onReloadProviders ? (
+            <button type="button" className="studio-secondary-button" onClick={() => void onReloadProviders()}>
+              重新加载模型
+            </button>
+          ) : null}
+          <button type="button" className="studio-secondary-button" onClick={onRetry} disabled={!canRetry}>
+            重试
+          </button>
+          {onOpenLibrary ? (
+            <button type="button" className="studio-secondary-button" onClick={onOpenLibrary}>
+              进入作品库
+            </button>
+          ) : null}
+        </div>
+      </div>
+    </PreviewState>
+  );
+}
+
+function UpscaleUnavailablePreview() {
+  return (
+    <PreviewState eyebrow="暂不可用" title="高清处理暂时不可用" description="高清处理暂时不可用，请稍后重试" role="alert">
+      <div className="studio-preview__empty">
+        <p>请稍后重试。</p>
+      </div>
+    </PreviewState>
+  );
+}
+
 function ImageUpscalePreviewPanel({
   state,
   output,
   canSubmit,
-  libraryCount,
   onSubmit,
   onOpenLibrary,
 }: {
   state: ImageUpscaleWorkspaceState;
   output: OutputState;
   canSubmit: boolean;
-  libraryCount: number;
   onSubmit: () => void;
   onOpenLibrary: () => void;
 }) {
   const source = state.file;
 
   if (state.loading) {
-    return (
-      <PreviewState eyebrow="处理中" title="创作预览" description="正在增强图片，请稍候。" badge={`${state.scale}x`} role="status" live>
-        <div className="studio-upscale-preview">
-          {source ? (
-            <figure className="studio-upscale-preview__figure">
-              <span className="studio-upscale-preview__label">原图</span>
-              <img src={source.previewUrl} alt={source.file.name} />
-            </figure>
-          ) : null}
-          <div className="studio-preview__empty">
-            <p>增强完成后，高清结果会显示在右侧。</p>
-          </div>
-        </div>
-      </PreviewState>
-    );
+    return <ProcessingPreview label="正在处理" />;
   }
 
   if (state.submitError) {
-    return (
-      <PreviewState eyebrow="失败" title="生成结果" description={state.submitError} badge="可重试" role="alert">
-        <div className="studio-upscale-preview">
-          {source ? (
-            <figure className="studio-upscale-preview__figure">
-              <span className="studio-upscale-preview__label">原图</span>
-              <img src={source.previewUrl} alt={source.file.name} />
-            </figure>
-          ) : null}
-          <div className="studio-preview__empty">
-            <p>参数会保留，你可以调整图片或倍数后再次尝试。</p>
-            <div className="studio-actions">
-              <button type="button" className="studio-secondary-button" onClick={onSubmit} disabled={!canSubmit}>
-                重试
-              </button>
-              <button type="button" className="studio-secondary-button" onClick={onOpenLibrary}>
-                进入作品库
-              </button>
-            </div>
-          </div>
-        </div>
-      </PreviewState>
-    );
+    return <ErrorPreview canRetry={canSubmit} onRetry={onSubmit} onOpenLibrary={onOpenLibrary} />;
   }
 
   if (!state.checked || state.statusLoading || (!state.availability?.ready && !state.statusError)) {
-    return (
-      <PreviewState
-        eyebrow="创作预览"
-        title="创作预览"
-        description={state.statusLoading ? "正在准备高清处理。" : "先上传一张图像，再选择 2x 或 4x。"}
-        badge={`${libraryCount} 条作品`}
-      >
-        <div className="studio-preview__empty">
-          <p>这里会显示原图和高清结果对比。</p>
-        </div>
-        <div className="studio-steps">
-          <div className="studio-step">
-            <span>1</span>
-            <p>上传一张 PNG、JPEG 或 WebP 图像</p>
-          </div>
-          <div className="studio-step">
-            <span>2</span>
-            <p>选择 2x 或 4x 放大倍数</p>
-          </div>
-          <div className="studio-step">
-            <span>3</span>
-            <p>结果成功后可直接下载</p>
-          </div>
-        </div>
-      </PreviewState>
-    );
+    return state.statusLoading ? <ProcessingPreview label="正在处理" /> : <ToolTutorial kind="image-upscale" />;
   }
 
   if (!state.availability?.ready) {
-    return (
-      <PreviewState eyebrow="暂不可用" title="生成结果" description={upscaleUnavailableMessage} badge="请稍后" role="alert">
-        <div className="studio-preview__empty">
-          <p>当前无法开始高清处理，请稍后再试。</p>
-        </div>
-      </PreviewState>
-    );
+    return <UpscaleUnavailablePreview />;
   }
 
   if (output?.item.output?.url) {
@@ -2148,7 +2221,7 @@ function ImageUpscalePreviewPanel({
       : "未记录";
     const resultScale = typeof params.scale === "number" ? `${params.scale}x` : `${state.scale}x`;
     return (
-      <PreviewState eyebrow="结果" title="高清结果" description={`真实输出，${state.scale}x。`} badge={output.job?.status || output.item.status} role="status" live>
+      <PreviewState eyebrow="结果" title="高清结果" description={`${state.scale}x 高清处理完成。`} badge={output.job?.status || output.item.status} role="status" live>
         <div className="studio-upscale-preview">
           {source ? (
             <figure className="studio-upscale-preview__figure">
@@ -2190,113 +2263,38 @@ function ImageUpscalePreviewPanel({
     );
   }
 
-  return (
-    <PreviewState eyebrow="创作预览" title="创作预览" description="上传图像后，原图和高清结果会在这里对比显示。" badge={`${libraryCount} 条作品`}>
-      <div className="studio-preview__empty">
-        <p>上传后开始增强，成功后这里会显示真实结果。</p>
-      </div>
-    </PreviewState>
-  );
+  return <ToolTutorial kind="image-upscale" />;
 }
 
 function VideoUpscalePreviewPanel({
   state,
   output,
   canSubmit,
-  libraryCount,
   onSubmit,
   onOpenLibrary,
 }: {
   state: VideoUpscaleWorkspaceState;
   output: OutputState;
   canSubmit: boolean;
-  libraryCount: number;
   onSubmit: () => void;
   onOpenLibrary: () => void;
 }) {
   const source = state.file;
 
   if (state.loading || state.job?.status === "generating" || state.job?.status === "queued") {
-    return (
-      <PreviewState eyebrow="处理中" title="创作预览" description="正在增强视频，请稍候。" badge={`${state.scale}x`} role="status" live>
-        <div className="studio-upscale-preview">
-          {source ? (
-            <figure className="studio-upscale-preview__figure">
-              <span className="studio-upscale-preview__label">源视频</span>
-              <video src={source.previewUrl} controls />
-            </figure>
-          ) : null}
-          <div className="studio-preview__empty">
-            <p>增强完成后，结果会在这里播放。</p>
-          </div>
-        </div>
-      </PreviewState>
-    );
+    return <ProcessingPreview label="正在处理" />;
   }
 
   if (state.submitError) {
-    return (
-      <PreviewState eyebrow="失败" title="生成结果" description={state.submitError} badge="可重试" role="alert">
-        <div className="studio-upscale-preview">
-          {source ? (
-            <figure className="studio-upscale-preview__figure">
-              <span className="studio-upscale-preview__label">源视频</span>
-              <video src={source.previewUrl} controls />
-            </figure>
-          ) : null}
-          <div className="studio-preview__empty">
-            <p>参数会保留，你可以调整视频或倍数后再次尝试。</p>
-            <div className="studio-actions">
-              <button type="button" className="studio-secondary-button" onClick={onSubmit} disabled={!canSubmit}>
-                重试
-              </button>
-              <button type="button" className="studio-secondary-button" onClick={onOpenLibrary}>
-                进入作品库
-              </button>
-            </div>
-          </div>
-        </div>
-      </PreviewState>
-    );
+    return <ErrorPreview canRetry={canSubmit} onRetry={onSubmit} onOpenLibrary={onOpenLibrary} />;
   }
 
   if (!state.checked || state.statusLoading || (!state.availability?.ready && !state.statusError)) {
-    return (
-      <PreviewState
-        eyebrow="创作预览"
-        title="创作预览"
-        description={state.statusLoading ? "正在准备高清处理。" : "先上传一个视频，再选择 2x 或 4x。"}
-        badge={`${libraryCount} 条作品`}
-      >
-        <div className="studio-preview__empty">
-          <p>这里会显示源视频和增强结果对比。</p>
-        </div>
-        <div className="studio-steps">
-          <div className="studio-step">
-            <span>1</span>
-            <p>上传一个 MP4、WebM 或 MOV 视频</p>
-          </div>
-          <div className="studio-step">
-            <span>2</span>
-            <p>选择 2x 或 4x 放大倍数</p>
-          </div>
-          <div className="studio-step">
-            <span>3</span>
-            <p>成功后可直接播放和下载</p>
-          </div>
-        </div>
-      </PreviewState>
-    );
+    return state.statusLoading ? <ProcessingPreview label="正在处理" /> : <ToolTutorial kind="video-upscale" />;
   }
 
   if (!state.availability?.ready) {
-    return (
-      <PreviewState eyebrow="暂不可用" title="生成结果" description={upscaleUnavailableMessage} badge="请稍后" role="alert">
-        <div className="studio-preview__empty">
-          <p>当前无法开始高清处理，请稍后再试。</p>
-        </div>
-      </PreviewState>
-    );
+    return <UpscaleUnavailablePreview />;
   }
 
   if (output?.item.output?.url) {
@@ -2309,7 +2307,7 @@ function VideoUpscalePreviewPanel({
       : "未记录";
     const resultScale = typeof params.scale === "number" ? `${params.scale}x` : `${state.scale}x`;
     return (
-      <PreviewState eyebrow="结果" title="高清结果" description={`真实输出，${state.scale}x。`} badge={output.job?.status || output.item.status} role="status" live>
+      <PreviewState eyebrow="结果" title="高清结果" description={`${state.scale}x 高清处理完成。`} badge={output.job?.status || output.item.status} role="status" live>
         <div className="studio-upscale-preview">
           {source ? (
             <figure className="studio-upscale-preview__figure">
@@ -2351,13 +2349,7 @@ function VideoUpscalePreviewPanel({
     );
   }
 
-  return (
-    <PreviewState eyebrow="创作预览" title="创作预览" description="上传视频后，源视频和增强结果会在这里对比显示。" badge={`${libraryCount} 条作品`}>
-      <div className="studio-preview__empty">
-        <p>上传后开始增强，成功后这里会显示真实结果。</p>
-      </div>
-    </PreviewState>
-  );
+  return <ToolTutorial kind="video-upscale" />;
 }
 
 function VideoUpscaleForm({
@@ -2695,10 +2687,10 @@ function ImagePreviewPanel({
   output,
   loading,
   submitError,
+  isEditor,
   promptFilled,
   hasProvider,
   hasFiles,
-  libraryCount,
   onSubmit,
   onReloadProviders,
   onOpenLibrary,
@@ -2707,69 +2699,46 @@ function ImagePreviewPanel({
   output: OutputState;
   loading: boolean;
   submitError: string;
+  isEditor: boolean;
   promptFilled: boolean;
   hasProvider: boolean;
   hasFiles: boolean;
-  libraryCount: number;
   onSubmit: () => void;
   onReloadProviders: () => Promise<void>;
   onOpenLibrary: () => void;
 }) {
-  const meta = imageWorkspaceModeMeta[mode];
+  const canRetry = hasProvider && promptFilled && (mode === "text-to-image" || hasFiles) && !loading;
 
   if (loading) {
-    return (
-      <PreviewState eyebrow="处理中" title="创作预览" description={meta.loadingLabel} badge="请稍候" role="status" live>
-        <div className="studio-preview__empty">
-          <p>正在处理请求，生成完成后会在这里显示结果。</p>
-        </div>
-      </PreviewState>
-    );
+    return <ProcessingPreview label="正在生成图片" />;
   }
 
   if (submitError) {
     return (
-      <PreviewState eyebrow="失败" title="生成结果" description={submitError} badge="请重试" role="alert">
-        <div className="studio-preview__empty">
-        <p>参数会保留，你可以先修改模型、提示词或图像，再重新提交。</p>
-          <div className="studio-actions">
-            {!hasProvider ? (
-              <button type="button" className="studio-secondary-button" onClick={() => void onReloadProviders()}>
-                重新加载模型
-              </button>
-            ) : null}
-            <button
-              type="button"
-              className="studio-secondary-button"
-              onClick={onSubmit}
-              disabled={!hasProvider || !promptFilled || (mode === "image-to-image" && !hasFiles)}
-            >
-              重试
-            </button>
-            <button type="button" className="studio-secondary-button" onClick={onOpenLibrary}>
-              进入作品库
-            </button>
-          </div>
-        </div>
-      </PreviewState>
+      <ErrorPreview
+        canRetry={canRetry}
+        onRetry={onSubmit}
+        onOpenLibrary={onOpenLibrary}
+        onReloadProviders={!hasProvider ? onReloadProviders : undefined}
+      />
     );
   }
 
   if (output) {
     return (
-      <PreviewState eyebrow="结果" title="生成结果" description="生成完成后，这里就是你的真实结果，支持直接查看和下载。" badge={output.job?.status || output.item.status} role="status" live>
+      <PreviewState eyebrow="结果" title="生成结果" description="生成完成。" badge={output.job?.status || output.item.status} role="status" live>
         <MediaCard item={output.item} large />
         <div className="studio-actions">
           {output.item.output?.url ? (
-            <a className="studio-secondary-button" href={output.item.output.url} target="_blank" rel="noreferrer">
-              查看原图
+            <a className="studio-secondary-button" href={output.item.output.url} download>
+              下载图片
             </a>
           ) : null}
           <button
             type="button"
             className="studio-secondary-button"
             onClick={onSubmit}
-            disabled={!hasProvider || !promptFilled || (mode === "image-to-image" && !hasFiles) || loading}
+            disabled={!canRetry}
           >
             再次生成
           </button>
@@ -2781,23 +2750,7 @@ function ImagePreviewPanel({
     );
   }
 
-  const content = imageWorkspaceModeMeta[mode];
-
-  return (
-    <PreviewState eyebrow="创作预览" title="创作预览" description={content.guideDescription} badge={`${libraryCount} 条作品`}>
-      <div className="studio-preview__empty">
-        <p>上传素材开始创作，结果会在这里显示。</p>
-      </div>
-      <div className="studio-steps">
-        {content.guideNotes.map((note, index) => (
-          <div key={note} className="studio-step">
-            <span>{index + 1}</span>
-            <p>{note}</p>
-          </div>
-        ))}
-      </div>
-    </PreviewState>
-  );
+  return <ToolTutorial kind={isEditor ? "image-editor" : "image"} />;
 }
 
 function VideoPreviewPanel({
@@ -2808,11 +2761,9 @@ function VideoPreviewPanel({
   promptFilled,
   hasProvider,
   hasFiles,
-  libraryCount,
   onSubmit,
   onReloadProviders,
   onOpenLibrary,
-  firstFrame,
 }: {
   mode: WorkspaceVideoMode;
   output: OutputState;
@@ -2821,53 +2772,37 @@ function VideoPreviewPanel({
   promptFilled: boolean;
   hasProvider: boolean;
   hasFiles: boolean;
-  libraryCount: number;
   onSubmit: () => void;
   onReloadProviders: () => Promise<void>;
   onOpenLibrary: () => void;
-  firstFrame: VideoWorkspaceFile | null;
 }) {
-  const meta = videoWorkspaceModeMeta[mode];
   const canRetry = hasProvider && promptFilled && (mode === "text-to-video" || hasFiles) && !loading;
 
   if (loading) {
-    return (
-      <PreviewState eyebrow="处理中" title="创作预览" description={meta.loadingLabel} badge="请稍候" role="status" live>
-        <div className="studio-preview__empty">
-          <p>真实视频任务正在运行，供应商返回结果后会显示在这里。</p>
-        </div>
-      </PreviewState>
-    );
+    return <ProcessingPreview label="正在生成视频" />;
   }
 
   if (submitError) {
     return (
-      <PreviewState eyebrow="失败" title="生成结果" description={submitError} badge="可重试" role="alert">
-        <div className="studio-preview__empty">
-        <p>参数会保留。你可以调整模型、提示词、时长、比例或图像后重试。</p>
-          <div className="studio-actions">
-            {!hasProvider ? (
-              <button type="button" className="studio-secondary-button" onClick={() => void onReloadProviders()}>
-                重新加载模型
-              </button>
-            ) : null}
-            <button type="button" className="studio-secondary-button" onClick={onSubmit} disabled={!canRetry}>
-              重试
-            </button>
-            <button type="button" className="studio-secondary-button" onClick={onOpenLibrary}>
-              进入作品库
-            </button>
-          </div>
-        </div>
-      </PreviewState>
+      <ErrorPreview
+        canRetry={canRetry}
+        onRetry={onSubmit}
+        onOpenLibrary={onOpenLibrary}
+        onReloadProviders={!hasProvider ? onReloadProviders : undefined}
+      />
     );
   }
 
   if (output) {
     return (
-      <PreviewState eyebrow="结果" title="生成结果" description="这里只显示真实供应商返回的视频结果。" badge={output.job?.status || output.item.status} role="status" live>
+      <PreviewState eyebrow="结果" title="生成结果" description="生成完成。" badge={output.job?.status || output.item.status} role="status" live>
         <MediaCard item={output.item} large />
         <div className="studio-actions">
+          {output.item.output?.url ? (
+            <a className="studio-secondary-button" href={output.item.output.url} download>
+              下载视频
+            </a>
+          ) : null}
           <button type="button" className="studio-secondary-button" onClick={onSubmit} disabled={!canRetry}>
             再次生成
           </button>
@@ -2879,28 +2814,7 @@ function VideoPreviewPanel({
     );
   }
 
-  return (
-    <PreviewState eyebrow="创作预览" title="创作预览" description={meta.guideDescription} badge={`${libraryCount} 条作品`}>
-      {mode === "image-to-video" && firstFrame ? (
-        <div className="studio-preview__media is-example">
-          <span className="studio-example-badge">图像</span>
-          <img src={firstFrame.previewUrl} alt={firstFrame.file.name} />
-        </div>
-      ) : (
-        <div className="studio-preview__empty">
-          <p>{promptFilled && (mode === "text-to-video" || hasFiles) ? meta.guideReady : meta.guideEmpty}</p>
-        </div>
-      )}
-      <div className="studio-steps">
-        {meta.guideNotes.map((note, index) => (
-          <div key={note} className="studio-step">
-            <span>{index + 1}</span>
-            <p>{note}</p>
-          </div>
-        ))}
-      </div>
-    </PreviewState>
-  );
+  return <ToolTutorial kind="video" />;
 }
 
 function OutputPanel({

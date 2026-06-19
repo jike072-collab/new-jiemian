@@ -1773,6 +1773,11 @@
     min-width: 0;
   }
 
+  .studio-preview {
+    min-height: 100%;
+    align-content: start;
+  }
+
   .studio-preview__media {
     position: relative;
     overflow: hidden;
@@ -1811,6 +1816,150 @@
     padding: var(--space-panel);
     color: var(--muted);
     text-align: center;
+  }
+
+  .studio-tutorial {
+    display: grid;
+    gap: var(--space-stack);
+    min-width: 0;
+  }
+
+  .studio-tutorial__step {
+    display: grid;
+    grid-template-columns: minmax(92px, 120px) minmax(0, 1fr);
+    gap: var(--space-stack);
+    align-items: center;
+    overflow: hidden;
+    border: 1px solid var(--border-subtle);
+    border-radius: var(--radius-card);
+    background: color-mix(in srgb, var(--panel-2) 68%, transparent);
+    padding: 12px;
+  }
+
+  .studio-tutorial__visual {
+    position: relative;
+    display: grid;
+    min-height: 92px;
+    place-items: center;
+    overflow: hidden;
+    border-radius: var(--radius-card);
+    background:
+      linear-gradient(135deg, color-mix(in srgb, var(--primary) 30%, transparent), transparent 58%),
+      color-mix(in srgb, var(--surface) 78%, transparent);
+    color: var(--primary);
+  }
+
+  .studio-tutorial__visual.is-motion {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 8px;
+    padding: 12px;
+  }
+
+  .studio-tutorial__visual.is-motion span {
+    height: 100%;
+    min-height: 54px;
+    border-radius: 8px;
+    background:
+      linear-gradient(180deg, color-mix(in srgb, var(--primary) 54%, transparent), transparent),
+      color-mix(in srgb, var(--panel) 88%, transparent);
+    opacity: 0.88;
+  }
+
+  .studio-tutorial__visual.is-motion span:nth-child(2) {
+    opacity: 0.68;
+  }
+
+  .studio-tutorial__visual.is-motion span:nth-child(3) {
+    opacity: 0.5;
+  }
+
+  .studio-tutorial__index {
+    display: inline-grid;
+    width: 24px;
+    height: 24px;
+    place-items: center;
+    border-radius: var(--radius-chip);
+    background: var(--primary-soft);
+    color: var(--primary);
+    font-size: 12px;
+    font-weight: 600;
+  }
+
+  .studio-tutorial__step h4 {
+    margin-top: 10px;
+    color: var(--text);
+    font-size: 15px;
+    font-weight: 600;
+    line-height: 1.25;
+  }
+
+  .studio-tutorial__step p {
+    margin-top: 6px;
+    color: var(--muted);
+    font-size: 13px;
+    line-height: 1.45;
+  }
+
+  .studio-processing-state {
+    display: grid;
+    min-height: 260px;
+    place-items: center;
+    gap: var(--space-stack);
+    border: 1px solid var(--border-subtle);
+    border-radius: var(--radius-card);
+    background: color-mix(in srgb, var(--panel-2) 68%, transparent);
+    color: var(--muted-strong);
+    text-align: center;
+  }
+
+  .studio-processing-state__icon {
+    display: grid;
+    width: 48px;
+    height: 48px;
+    place-items: center;
+    border-radius: 999px;
+    background: var(--primary-soft);
+    color: var(--primary);
+  }
+
+  @media (prefers-reduced-motion: no-preference) {
+    .studio-tutorial__visual.is-motion span {
+      animation: studio-tutorial-frame 1.8s ease-in-out infinite;
+    }
+
+    .studio-tutorial__visual.is-motion span:nth-child(2) {
+      animation-delay: 0.16s;
+    }
+
+    .studio-tutorial__visual.is-motion span:nth-child(3) {
+      animation-delay: 0.32s;
+    }
+
+    .studio-processing-state__icon {
+      animation: studio-soft-pulse 1.6s ease-in-out infinite;
+    }
+  }
+
+  @keyframes studio-tutorial-frame {
+    0%,
+    100% {
+      transform: translateY(0);
+    }
+
+    50% {
+      transform: translateY(-8px);
+    }
+  }
+
+  @keyframes studio-soft-pulse {
+    0%,
+    100% {
+      box-shadow: 0 0 0 0 color-mix(in srgb, var(--primary) 22%, transparent);
+    }
+
+    50% {
+      box-shadow: 0 0 0 10px color-mix(in srgb, var(--primary) 0%, transparent);
+    }
   }
 
   .studio-preview__media img {
@@ -2208,6 +2357,15 @@
   .shell-tab.is-active {
     background: var(--primary-soft);
     color: var(--primary);
+  }
+
+  .studio-tutorial__step {
+    grid-template-columns: 86px minmax(0, 1fr);
+    padding: 10px;
+  }
+
+  .studio-tutorial__visual {
+    min-height: 76px;
   }
 
   .shell-mobile-action-slot {

@@ -38,6 +38,7 @@ type WorkbenchShellProps = {
   parameterSlot: ReactNode;
   previewSlot: ReactNode;
   mobileActionSlot?: ReactNode;
+  mobilePreviewSignal?: number;
   toolTitle?: string;
 };
 
@@ -49,6 +50,7 @@ export function WorkbenchShell({
   parameterSlot,
   previewSlot,
   mobileActionSlot,
+  mobilePreviewSignal,
   toolTitle,
 }: WorkbenchShellProps) {
   const [drawerOpen, setDrawerOpen] = useState(false);
@@ -66,6 +68,15 @@ export function WorkbenchShell({
     rootRef.current?.querySelector<HTMLElement>("[data-shell-scroll='parameters']")?.scrollTo({ top: 0 });
     rootRef.current?.querySelector<HTMLElement>("[data-shell-scroll='preview']")?.scrollTo({ top: 0 });
   }, [state.activeToolId]);
+
+  useEffect(() => {
+    if (!mobilePreviewSignal) return;
+    const frame = window.requestAnimationFrame(() => {
+      setPane("preview");
+      rootRef.current?.querySelector<HTMLElement>("[data-shell-scroll='preview']")?.scrollTo({ top: 0 });
+    });
+    return () => window.cancelAnimationFrame(frame);
+  }, [mobilePreviewSignal]);
 
   useEffect(() => {
     if (!drawerOpen) return;
