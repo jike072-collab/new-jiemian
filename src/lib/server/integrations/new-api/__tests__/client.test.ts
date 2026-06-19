@@ -7,6 +7,7 @@ import { NewApiHttpClient } from "../client";
 import { getNewApiConfig, normalizeNewApiBaseUrl } from "../config";
 import { NewApiError } from "../errors";
 import { redactHeaders, redactJson, redactSecret } from "../redaction";
+import { adminSetNewApiUserQuota } from "../topup";
 import { type NewApiConfig } from "../types";
 
 type Handler = (request: IncomingMessage, response: ServerResponse) => void | Promise<void>;
@@ -171,6 +172,28 @@ test("retries GET but not write operations", async () => {
     (error) => error instanceof NewApiError && error.upstreamStatus === 500,
   );
   assert.equal(postCalls, 1);
+});
+
+test("sets user quota through the New API manage endpoint", async () => {
+  handlers.set("POST /api/user/manage", async (request, response) => {
+    assert.equal(request.headers.authorization, "Bearer admin-secret");
+    assert.equal(request.headers["new-api-user"], "1");
+
+    const chunks: Buffer[] = [];
+    for await (const chunk of request) chunks.push(Buffer.from(chunk));
+    const body = JSON.parse(Buffer.concat(chunks).toString("utf8"));
+    assert.deepEqual(body, {
+      id: 2,
+      action: "add_quota",
+      mode: "override",
+      value: 880,
+    });
+    json(response, 200, { success: true });
+  });
+
+  const result = await adminSetNewApiUserQuota({ newApiUserId: 2, quota: 880 }, client());
+
+  assert.equal(result.upstreamStatus, 200);
 });
 
 test("handles timeouts and network failures", async () => {

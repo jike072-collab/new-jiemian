@@ -18,12 +18,14 @@ export async function adminSetNewApiUserQuota(input: {
   quota: number;
 }, client = new NewApiHttpClient()) {
   return client.request<{ success?: boolean; data?: NewApiUserSelf; user?: NewApiUserSelf; message?: string }>({
-    method: "PUT",
-    path: "/api/user/",
+    method: "POST",
+    path: "/api/user/manage",
     context: newApiAdminRequestContext(client.config),
     body: {
       id: input.newApiUserId,
-      quota: input.quota,
+      action: "add_quota",
+      mode: "override",
+      value: input.quota,
     },
     retry: false,
   });

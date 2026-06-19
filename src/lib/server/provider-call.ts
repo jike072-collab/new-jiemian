@@ -110,7 +110,12 @@ function deriveStatusUrl(apiUrl: string, jobId: string) {
   if (!jobId) return "";
   try {
     const parsed = new URL(apiUrl);
-    parsed.pathname = parsed.pathname.replace(/\/videos\/generations\/?$/i, `/videos/${encodeURIComponent(jobId)}`);
+    const encodedJobId = encodeURIComponent(jobId);
+    if (/\/videos\/generations\/?$/i.test(parsed.pathname)) {
+      parsed.pathname = parsed.pathname.replace(/\/videos\/generations\/?$/i, `/videos/${encodedJobId}`);
+    } else if (/\/videos\/?$/i.test(parsed.pathname)) {
+      parsed.pathname = parsed.pathname.replace(/\/videos\/?$/i, `/videos/${encodedJobId}`);
+    }
     parsed.search = "";
     return parsed.toString();
   } catch {
