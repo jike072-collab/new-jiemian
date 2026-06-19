@@ -7,7 +7,7 @@ import {
   Wand2,
 } from "lucide-react";
 
-export type WorkspaceToolGroup = "创建视频与图片" | "增强工具" | "作品" | "系统";
+export type WorkspaceToolGroup = "创作工具" | "增强工具" | "作品" | "系统";
 
 export type WorkspaceToolId =
   | "video"
@@ -55,7 +55,7 @@ export type WorkspaceAccountEntry = {
 };
 
 export const workspaceToolGroups: Array<{ title: WorkspaceToolGroup; items: WorkspaceToolId[] }> = [
-  { title: "创建视频与图片", items: ["video", "image", "image-editor"] },
+  { title: "创作工具", items: ["video", "image", "image-editor"] },
   { title: "增强工具", items: ["image-upscale", "video-upscale"] },
   { title: "作品", items: ["library"] },
   { title: "系统", items: ["admin-settings"] },
@@ -67,7 +67,7 @@ export const workspaceToolEntries: WorkspaceToolEntry[] = [
     label: "AI 视频生成器",
     description: "文生视频 / 图生视频",
     icon: Film,
-    group: "创建视频与图片",
+    group: "创作工具",
     action: { kind: "workspace", toolId: "video", mode: "text-to-video" },
     visible: true,
     requiresAuth: false,
@@ -77,7 +77,7 @@ export const workspaceToolEntries: WorkspaceToolEntry[] = [
     label: "AI 图像生成器",
     description: "文生图 / 图生图",
     icon: ImageIcon,
-    group: "创建视频与图片",
+    group: "创作工具",
     action: { kind: "workspace", toolId: "image", mode: "text-to-image" },
     visible: true,
     requiresAuth: false,
@@ -87,7 +87,7 @@ export const workspaceToolEntries: WorkspaceToolEntry[] = [
     label: "AI 图片编辑器",
     description: "上传参考图进行编辑",
     icon: Wand2,
-    group: "创建视频与图片",
+    group: "创作工具",
     action: { kind: "workspace", toolId: "image", mode: "image-to-image" },
     visible: true,
     requiresAuth: false,
@@ -174,7 +174,7 @@ export function workspaceToolById(id: WorkspaceToolId) {
 }
 
 export function workspaceToolGroupFor(id: WorkspaceToolId) {
-  return workspaceToolById(id)?.group || "创建视频与图片";
+  return workspaceToolById(id)?.group || "创作工具";
 }
 
 export function workspaceToolIdForImageMode(mode: WorkspaceImageMode): WorkspaceToolId {

@@ -8,7 +8,11 @@ export const maxDuration = 900;
 export async function POST(request: Request) {
   try {
     const form = await request.formData();
-    const scale = Number(form.get("scale")) === 2 ? 2 : 4;
+    const requestedScale = Number(form.get("scale"));
+    if (requestedScale !== 2 && requestedScale !== 4) {
+      throw new Error("图片高清仅支持 2x 或 4x。");
+    }
+    const scale = requestedScale;
     const file = await uploadedUpscaleFile(form, "image");
     return NextResponse.json({ item: await upscaleImage(file, scale), job: null });
   } catch (error) {

@@ -1,12 +1,13 @@
 import { execFile, spawn } from "node:child_process";
 import { randomUUID } from "node:crypto";
-import { access, mkdir, stat, unlink, writeFile } from "node:fs/promises";
+import { access, mkdir, readFile, stat, unlink, writeFile } from "node:fs/promises";
 import { dirname, extname, join } from "node:path";
 import { promisify } from "node:util";
 
 import {
   addJob,
   addLibraryItem,
+  readLibrary,
   updateJob,
   updateLibraryItem,
 } from "./library";
@@ -23,6 +24,7 @@ type LocalToolStatus = {
   ready: boolean;
   detail: string;
   executable?: string;
+  ffprobeExecutable?: string;
 };
 
 type UploadedFile = {
@@ -31,8 +33,23 @@ type UploadedFile = {
   fileName: string;
 };
 
+type ImageDimensions = {
+  width: number;
+  height: number;
+};
+
+type VideoDimensions = {
+  width: number;
+  height: number;
+};
+
+type VideoProbeMetadata = VideoDimensions & {
+  duration: number;
+};
+
 const workRoot = join(dataRoot, "work");
 const execFileAsync = promisify(execFile);
+const minimumVideoOutputSize = 64 * 1024;
 
 function executableCandidates(kind: "image" | "video", configuredPath: string) {
   const localAppData = process.env.LOCALAPPDATA || "";
@@ -100,6 +117,48 @@ async function findOnPath(commands: string[]) {
   return "";
 }
 
+async function executableReady(executable: string, args: string[]) {
+  try {
+    await execFileAsync(executable, args, {
+      cwd: dirname(executable),
+      windowsHide: true,
+      timeout: 10000,
+    });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+async function video2xFfmpegRuntimeReady(executable: string) {
+  const directory = dirname(executable);
+  const requiredDlls = [
+    "avcodec-61.dll",
+    "avformat-61.dll",
+    "avfilter-10.dll",
+    "avutil-59.dll",
+    "swscale-8.dll",
+    "swresample-5.dll",
+  ];
+  const bundledRuntime = await Promise.all(requiredDlls.map((name) => firstExisting([join(directory, name)])));
+  if (bundledRuntime.every(Boolean)) return true;
+  return Boolean(await findOnPath(["ffmpeg.exe", "ffmpeg"]));
+}
+
+async function ffprobeExecutable(video2xExecutable: string) {
+  return await firstExisting([
+    process.env.FFPROBE_BIN || "",
+    join(dirname(video2xExecutable), "ffprobe.exe"),
+  ].filter(Boolean)) || await findOnPath(["ffprobe.exe", "ffprobe"]);
+}
+
+function sanitizeProcessDetail(value: string) {
+  return value
+    .replace(/[A-Z]:[\\/][^\r\n"'`]+/gi, "[local path]")
+    .replace(/(?:\/[^\s"'`]+){2,}/g, "[local path]")
+    .slice(0, 1200);
+}
+
 async function upscaylModelsPath(executable: string) {
   const candidates = [
     process.env.UPSCAYL_MODELS_DIR || "",
@@ -140,8 +199,8 @@ export async function readUpscaleStatus() {
     const model = imageProvider?.model || "upscayl-standard-4x";
     const modelsReady = await upscaylModelReady(modelsPath, model);
     image = modelsReady
-      ? { ready: true, detail: `已检测到 Upscayl：${imageExecutable}`, executable: imageExecutable }
-      : { ready: false, detail: `已找到 Upscayl，但模型 ${model} 在目录 ${modelsPath} 中不完整。` };
+      ? { ready: true, detail: "已检测到 Upscayl，本机图片高清工具可用。", executable: imageExecutable }
+      : { ready: false, detail: `已找到 Upscayl，但模型 ${model} 不完整。` };
   }
 
   let video: LocalToolStatus;
@@ -152,11 +211,31 @@ export async function readUpscaleStatus() {
       ready: false,
       detail: "未检测到 Video2X。安装 CLI 发行版后可在供应商后台填写 video2x.exe 路径。",
     };
+  } else if (!await executableReady(videoExecutable, ["--version"])) {
+    video = {
+      ready: false,
+      detail: "已找到 Video2X，但命令行程序无法启动。请确认安装完整后重新检测。",
+    };
+  } else if (!await video2xFfmpegRuntimeReady(videoExecutable)) {
+    video = {
+      ready: false,
+      detail: "已找到 Video2X，但未检测到 FFmpeg 运行库。请使用完整的 Video2X Windows 发行包或配置 FFmpeg。",
+    };
   } else {
+    const probe = await ffprobeExecutable(videoExecutable);
+    if (!probe) {
+      video = {
+        ready: false,
+        detail: "已检测到 Video2X 和 FFmpeg 运行库，但未检测到 FFprobe。请配置 FFPROBE_BIN 或安装完整 FFmpeg 后重新检测。",
+        executable: videoExecutable,
+      };
+      return { image, video };
+    }
     video = {
       ready: true,
-      detail: `已检测到 Video2X：${videoExecutable}`,
+      detail: "已检测到 Video2X、FFmpeg 运行库和 FFprobe，视频高清工具可用。",
       executable: videoExecutable,
+      ffprobeExecutable: probe,
     };
   }
   return { image, video };
@@ -192,7 +271,7 @@ function runProcess(executable: string, args: string[], timeoutMs: number) {
 
 async function writeInput(file: UploadedFile, prefix: string) {
   await Promise.all([ensureRuntimeDirs(), mkdir(workRoot, { recursive: true })]);
-  const extension = extname(file.fileName) || extensionForUpload(file.mimeType);
+  const extension = extensionForUpload(file.mimeType) || extname(file.fileName);
   const path = join(workRoot, `${prefix}-${randomUUID()}${extension}`);
   await writeFile(path, file.bytes);
   return path;
@@ -215,6 +294,171 @@ async function storedOutput(storedName: string, mimeType: string) {
     mimeType,
     size: fileStat.size,
   };
+}
+
+function readPngDimensions(bytes: Buffer): ImageDimensions | null {
+  if (bytes.length < 24 || bytes.toString("ascii", 1, 4) !== "PNG") return null;
+  return {
+    width: bytes.readUInt32BE(16),
+    height: bytes.readUInt32BE(20),
+  };
+}
+
+function readJpegDimensions(bytes: Buffer): ImageDimensions | null {
+  if (bytes.length < 4 || bytes[0] !== 0xff || bytes[1] !== 0xd8) return null;
+  let offset = 2;
+  while (offset < bytes.length) {
+    if (bytes[offset] !== 0xff) {
+      offset += 1;
+      continue;
+    }
+    const marker = bytes[offset + 1];
+    const length = bytes.readUInt16BE(offset + 2);
+    if (length < 2) return null;
+    if (
+      marker >= 0xc0
+      && marker <= 0xcf
+      && ![0xc4, 0xc8, 0xcc].includes(marker)
+      && offset + 8 < bytes.length
+    ) {
+      return {
+        width: bytes.readUInt16BE(offset + 7),
+        height: bytes.readUInt16BE(offset + 5),
+      };
+    }
+    offset += 2 + length;
+  }
+  return null;
+}
+
+function readWebpDimensions(bytes: Buffer): ImageDimensions | null {
+  if (bytes.length < 30 || bytes.toString("ascii", 0, 4) !== "RIFF" || bytes.toString("ascii", 8, 12) !== "WEBP") {
+    return null;
+  }
+  const chunk = bytes.toString("ascii", 12, 16);
+  if (chunk === "VP8X") {
+    return {
+      width: 1 + bytes.readUIntLE(24, 3),
+      height: 1 + bytes.readUIntLE(27, 3),
+    };
+  }
+  if (chunk === "VP8L") {
+    const value = bytes.readUInt32LE(21);
+    return {
+      width: 1 + (value & 0x3fff),
+      height: 1 + ((value >> 14) & 0x3fff),
+    };
+  }
+  if (chunk === "VP8 " && bytes.length >= 30) {
+    return {
+      width: bytes.readUInt16LE(26) & 0x3fff,
+      height: bytes.readUInt16LE(28) & 0x3fff,
+    };
+  }
+  return null;
+}
+
+function readImageDimensions(bytes: Buffer): ImageDimensions | null {
+  return readPngDimensions(bytes) || readJpegDimensions(bytes) || readWebpDimensions(bytes);
+}
+
+async function probeVideoMetadata(path: string, executable?: string): Promise<VideoProbeMetadata | null> {
+  if (!executable) return null;
+  try {
+    const { stdout } = await execFileAsync(executable, [
+      "-v", "error",
+      "-select_streams", "v:0",
+      "-show_entries", "stream=width,height:format=duration",
+      "-of", "default=noprint_wrappers=1:nokey=1",
+      path,
+    ], {
+      windowsHide: true,
+      timeout: 10000,
+    });
+    const [widthText, heightText, durationText] = stdout.trim().split(/\r?\n/);
+    const width = Number(widthText);
+    const height = Number(heightText);
+    const duration = Number(durationText);
+    if (!Number.isFinite(width) || !Number.isFinite(height) || !Number.isFinite(duration)) return null;
+    if (width <= 0 || height <= 0 || duration <= 0) return null;
+    return {
+      width,
+      height,
+      duration,
+    };
+  } catch {
+    return null;
+  }
+}
+
+function readMp4Dimensions(bytes: Buffer): VideoDimensions | null {
+  const scan = (start: number, end: number): VideoDimensions | null => {
+    let offset = start;
+    while (offset + 8 <= end) {
+      let size = bytes.readUInt32BE(offset);
+      const type = bytes.toString("ascii", offset + 4, offset + 8);
+      let headerSize = 8;
+      if (size === 1 && offset + 16 <= end) {
+        const largeSize = bytes.readBigUInt64BE(offset + 8);
+        if (largeSize > BigInt(Number.MAX_SAFE_INTEGER)) return null;
+        size = Number(largeSize);
+        headerSize = 16;
+      } else if (size === 0) {
+        size = end - offset;
+      }
+      if (size < headerSize || offset + size > end) return null;
+      const contentStart = offset + headerSize;
+      const contentEnd = offset + size;
+      if (type === "tkhd") {
+        const version = bytes[contentStart];
+        const dimensionOffset = contentStart + (version === 1 ? 88 : 76);
+        if (dimensionOffset + 8 <= contentEnd) {
+          const width = bytes.readUInt32BE(dimensionOffset) / 65536;
+          const height = bytes.readUInt32BE(dimensionOffset + 4) / 65536;
+          if (width > 0 && height > 0) {
+            return {
+              width: Math.round(width),
+              height: Math.round(height),
+            };
+          }
+        }
+      }
+      if (["moov", "trak", "mdia", "minf", "stbl"].includes(type)) {
+        const nested = scan(contentStart, contentEnd);
+        if (nested) return nested;
+      }
+      offset += size;
+    }
+    return null;
+  };
+  return scan(0, bytes.length);
+}
+
+async function readVideoDimensions(path: string, probe?: string): Promise<VideoDimensions | null> {
+  const probed = await probeVideoMetadata(path, probe);
+  if (probed) return probed;
+  const fileStat = await stat(path);
+  if (fileStat.size > 256 * 1024 * 1024) return null;
+  return readMp4Dimensions(await readFile(path));
+}
+
+async function validateVideoOutput(path: string, probe: string): Promise<VideoProbeMetadata | null> {
+  try {
+    const fileStat = await stat(path);
+    if (fileStat.size < minimumVideoOutputSize) return null;
+    const file = await import("node:fs/promises");
+    const handle = await file.open(path, "r");
+    try {
+      const header = Buffer.alloc(12);
+      await handle.read(header, 0, header.length, 0);
+      if (header.toString("ascii", 4, 8) !== "ftyp") return null;
+    } finally {
+      await handle.close();
+    }
+    return await probeVideoMetadata(path, probe);
+  } catch {
+    return null;
+  }
 }
 
 export async function upscaleImage(file: UploadedFile, scale: 2 | 4) {
@@ -241,9 +485,12 @@ export async function upscaleImage(file: UploadedFile, scale: 2 | 4) {
   if (scale !== nativeScale) args.push("-s", String(scale));
   if (process.env.UPSCAYL_GPU_ID) args.push("-g", process.env.UPSCAYL_GPU_ID);
 
+  let completed = false;
   try {
     await runProcess(status.image.executable, args, 15 * 60 * 1000);
-    return addLibraryItem({
+    const sourceDimensions = readImageDimensions(file.bytes);
+    const outputDimensions = readImageDimensions(await readFile(outputPath));
+    const item = await addLibraryItem({
       type: "image",
       mode: "image-upscale",
       title: `图片高清 ${scale}x`,
@@ -252,23 +499,38 @@ export async function upscaleImage(file: UploadedFile, scale: 2 | 4) {
       model: provider.model,
       status: "done",
       output: await storedOutput(storedName, "image/png"),
-      params: { scale, sourceName: file.fileName },
+      params: {
+        scale,
+        sourceName: file.fileName,
+        ...(sourceDimensions ? {
+          sourceWidth: sourceDimensions.width,
+          sourceHeight: sourceDimensions.height,
+        } : {}),
+        ...(outputDimensions ? {
+          outputWidth: outputDimensions.width,
+          outputHeight: outputDimensions.height,
+        } : {}),
+      },
     });
+    completed = true;
+    return item;
   } finally {
     await unlink(inputPath).catch(() => undefined);
+    if (!completed) await unlink(outputPath).catch(() => undefined);
   }
 }
 
 export async function submitVideoUpscale(file: UploadedFile, scale: 2 | 4) {
   const provider = await providerById("video-upscale");
   const status = await readUpscaleStatus();
-  if (!provider || provider.endpointType !== "video2x-cli" || !status.video.ready || !status.video.executable) {
+  if (!provider || provider.endpointType !== "video2x-cli" || !status.video.ready || !status.video.executable || !status.video.ffprobeExecutable) {
     throw new Error(status.video.detail);
   }
 
   const inputPath = await writeInput(file, "video-upscale-input");
   const storedName = safeStoredName(`video-upscale-${randomUUID()}.mp4`);
   const outputPath = join(uploadsRoot, storedName);
+  const sourceDimensions = await readVideoDimensions(inputPath, status.video.ffprobeExecutable);
   const item = await addLibraryItem({
     type: "video",
     mode: "video-upscale",
@@ -277,7 +539,14 @@ export async function submitVideoUpscale(file: UploadedFile, scale: 2 | 4) {
     providerId: provider.id,
     model: provider.model,
     status: "queued",
-    params: { scale, sourceName: file.fileName },
+    params: {
+      scale,
+      sourceName: file.fileName,
+      ...(sourceDimensions ? {
+        sourceWidth: sourceDimensions.width,
+        sourceHeight: sourceDimensions.height,
+      } : {}),
+    },
   });
   const job = await addJob({
     id: randomUUID(),
@@ -302,6 +571,7 @@ export async function submitVideoUpscale(file: UploadedFile, scale: 2 | 4) {
   await updateJob(job.id, { status: "generating" });
   await updateLibraryItem(item.id, { status: "generating" });
   const child = spawn(status.video.executable, args, {
+    cwd: dirname(status.video.executable),
     windowsHide: true,
     detached: process.platform !== "win32",
     stdio: ["ignore", "pipe", "pipe"],
@@ -325,6 +595,7 @@ export async function submitVideoUpscale(file: UploadedFile, scale: 2 | 4) {
     storedName,
     itemId: item.id,
     jobId: job.id,
+    ffprobeExecutable: status.video.ffprobeExecutable,
     getLog: () => processLog,
   });
 
@@ -342,60 +613,76 @@ async function monitorVideoProcess(
     storedName: string;
     itemId: string;
     jobId: string;
+    ffprobeExecutable?: string;
     getLog: () => string;
   },
 ) {
   let settled = false;
+  const timeout = setTimeout(() => {
+    child.kill();
+    void fail("Video2X 任务运行超时。");
+  }, 60 * 60 * 1000);
+
+  const fail = async (message: string) => {
+    if (settled) return;
+    settled = true;
+    clearTimeout(timeout);
+    await unlink(context.outputPath).catch(() => undefined);
+    await updateLibraryItem(context.itemId, { status: "failed", error: sanitizeProcessDetail(message) });
+    await updateJob(context.jobId, { status: "failed", error: sanitizeProcessDetail(message) });
+    await unlink(context.inputPath).catch(() => undefined);
+  };
+
   const complete = async (code: number | null) => {
     if (settled) return;
     settled = true;
+    clearTimeout(timeout);
     try {
       const processLog = context.getLog();
-      const recoveredWindowsSuccess = code === 3221226505
+      const recoverableWindowsExit = [3221226505, 3221225477].includes(code ?? -1);
+      const logIndicatesSuccess = processLog.includes("Video processed successfully") || processLog.includes("Output written to:");
+      const outputDimensions = await validateVideoOutput(context.outputPath, context.ffprobeExecutable || "");
+      const recoveredWindowsSuccess = recoverableWindowsExit
         && processLog.includes("Video processed successfully")
-        && await isValidMp4Output(context.outputPath);
-      if (code === 0 || recoveredWindowsSuccess) {
+        && Boolean(outputDimensions);
+      const outputWrittenSuccess = recoverableWindowsExit
+        && processLog.includes("Output written to:")
+        && Boolean(outputDimensions);
+      if ((code === 0 || recoveredWindowsSuccess || outputWrittenSuccess) && outputDimensions) {
         const output = await storedOutput(context.storedName, "video/mp4");
-        await updateLibraryItem(context.itemId, { status: "done", output });
+        const currentItems = await readLibrary();
+        const currentItem = currentItems.find((item) => item.id === context.itemId);
+        await updateLibraryItem(context.itemId, {
+          status: "done",
+          output,
+          params: {
+            ...(currentItem?.params || {}),
+            ...(outputDimensions ? {
+              outputWidth: outputDimensions.width,
+              outputHeight: outputDimensions.height,
+              outputDuration: outputDimensions.duration,
+            } : {}),
+          },
+        });
         await updateJob(context.jobId, { status: "done" });
       } else {
         const detail = processLog.trim().split(/\r?\n/).filter(Boolean).slice(-4).join(" ");
-        const message = `Video2X 任务失败，退出代码 ${code ?? "unknown"}。${detail ? ` ${detail}` : ""}`;
+        const validationError = code === 0 || (recoverableWindowsExit && logIndicatesSuccess)
+          ? "输出文件未通过 MP4 文件头、文件大小和 FFprobe 分辨率/时长校验。"
+          : "";
+        const message = `Video2X 任务失败，退出代码 ${code ?? "unknown"}。${validationError}${detail ? ` ${detail}` : ""}`;
         await unlink(context.outputPath).catch(() => undefined);
-        await updateLibraryItem(context.itemId, { status: "failed", error: message });
-        await updateJob(context.jobId, { status: "failed", error: message });
+        await updateLibraryItem(context.itemId, { status: "failed", error: sanitizeProcessDetail(message) });
+        await updateJob(context.jobId, { status: "failed", error: sanitizeProcessDetail(message) });
       }
     } finally {
       await unlink(context.inputPath).catch(() => undefined);
     }
   };
   child.once("error", async (error) => {
-    if (settled) return;
-    settled = true;
-    await unlink(context.outputPath).catch(() => undefined);
-    await updateLibraryItem(context.itemId, { status: "failed", error: error.message });
-    await updateJob(context.jobId, { status: "failed", error: error.message });
-    await unlink(context.inputPath).catch(() => undefined);
+    await fail(error.message);
   });
   child.once("close", complete);
-}
-
-async function isValidMp4Output(path: string) {
-  try {
-    const fileStat = await stat(path);
-    if (fileStat.size < 1024) return false;
-    const file = await import("node:fs/promises");
-    const handle = await file.open(path, "r");
-    try {
-      const header = Buffer.alloc(12);
-      await handle.read(header, 0, header.length, 0);
-      return header.toString("ascii", 4, 8) === "ftyp";
-    } finally {
-      await handle.close();
-    }
-  } catch {
-    return false;
-  }
 }
 
 export async function uploadedUpscaleFile(

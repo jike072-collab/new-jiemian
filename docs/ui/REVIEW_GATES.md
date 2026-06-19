@@ -52,3 +52,73 @@
 - Button-based selected controls must expose selection semantics with `aria-pressed` or another correct role-specific state.
 - Mobile parameter/preview tabs must expose `role="tablist"`, `role="tab"`, `aria-selected`, and `aria-controls`.
 - Module 4 final review must include a bidi Unicode control-character scan over `src/` and `docs/`.
+
+## Module 5 Gate
+
+- Module 5 must not proceed to module 6 until it is manually approved.
+- Feature modules must not casually rebuild global visual structure while implementing business features.
+- Shared component changes must include before/after screenshots.
+- Build passing does not prove visual correctness.
+- Module 5 must not restore the old five-step shoe-ad workflow, white workspace, fluorescent green brand color, narrow AI Inspector, or Shoe Ad Studio page.
+- Module 5 must not modify B-side New API, authentication, quota, payment, Docker, database, Redis, BFF, callback, reconciliation, or port configuration.
+- When no real model is configured, the UI must keep the real unavailable state and must not introduce fake models, fake balances, or fake results.
+- Public shell screenshots must verify Header, Sidebar, parameter panel, preview panel, mobile Drawer, mobile tabs, and horizontal overflow.
+- WorkbenchShell must remain a layout shell only: no fake account state, no fake model state, no fixed business preview copy, and no second submit path.
+- Shared controls in module 5 must stay controlled by existing tool state and must not own model, upload, prompt, job, or result business data.
+- Module 5 must not merge until the before/after screenshot set and visual comparison table have human review.
+- Module 5 Draft PR must explicitly state that module 6 has not started and B-side New API/auth/quota/payment code was not modified.
+- Module 5 final visual evidence must come from a clean production preview, not a stale dev server or static mock.
+- Production evidence must verify CSS and JS chunks load successfully; a passing build alone is not sufficient visual acceptance.
+
+## Module 6 Gate
+
+- Module 6 must not proceed to module 7 until it is manually approved.
+- Module 6 must not merge until segment 3 browser evidence, quality checks, and Draft PR text have human review.
+- `text-to-video` and `image-to-video` must be genuinely different in validation, copy, empty state, and request behavior before acceptance.
+- When no real video model is configured, do not replace the unavailable state with a mock video result, fake progress, or static success state.
+- Module 6 must reuse the module 5 visual foundation and must not redesign Header, Sidebar, ratio controls, upload controls, primary action, preview shell, or scrollbar behavior.
+- A-side module 6 must not modify B-side New API, authentication, quota, payment, Docker, database, Redis, BFF, callback, reconciliation, or port configuration.
+- If the current provider API exposes no capability fields, A-side code must record the limitation and must not hard-code guessed vendor capability maps.
+- Image-to-video accepts exactly one first-frame image. Zero files and more than one file must be rejected by both the UI contract and API validation; screenshots must not label an unuploaded state as uploaded.
+- Module 6 upload evidence must verify real upload, replace, delete, and object URL cleanup, or explicitly record the automation limitation instead of using a fake uploaded state.
+
+## Module 7 Gate
+
+- Module 7 must not proceed to module 8 until it is manually approved.
+- A-side module 7 must not modify B-side New API, authentication, quota, payment, Docker, database, Redis, BFF, callback, reconciliation, or port configuration.
+- Module 7 must not modify video upscale business while repairing image upscale.
+- Image upscale remains a local processing capability and must not be converted into a New API model call.
+- The local Upscayl dependency must be truly detected before the UI marks image upscale as available.
+- Final module 7 acceptance must include real local Upscayl 2x and 4x output dimensions, not only dependency detection.
+- When the local dependency is missing, the UI must show a real dependency-missing state and must not fake processing or success.
+- No static sample image may be used as an accepted image-upscale result.
+- Download actions must point only to real stored output files created by the local process.
+- Normal workspace errors must not expose local absolute executable paths, model paths, command lines, secrets, or full stack traces.
+- Module 7 must keep the module 5 visual foundation and must not redesign Header, Sidebar, upload controls, primary action, preview shell, or scrollbar behavior.
+
+## Module 8 Gate
+
+- Module 8 must not proceed to module 9 until it is manually approved.
+- A-side module 8 must not modify B-side New API, authentication, quota, payment, Docker, database, Redis, BFF, callback, reconciliation, or port configuration.
+- Video upscale must use the real local Video2X command-line workflow and must not automate the desktop UI.
+- Video2X and FFmpeg runtime availability must be truly detected before the UI marks video upscale as available.
+- Final module 8 acceptance must include real Video2X 2x and 4x output dimensions, not only dependency detection.
+- When Video2X or FFmpeg is missing, the UI must show a real dependency-missing state and must not fake processing or success.
+- No static sample video may be used as an accepted video-upscale result.
+- Download actions must point only to real stored output files created by the local process.
+- Normal workspace errors must not expose local absolute executable paths, command lines, secrets, or full stack traces.
+- Module 8 must keep the module 5 visual foundation and must not redesign Header, Sidebar, upload controls, primary action, preview shell, or scrollbar behavior.
+
+## Module 9 Gate
+
+- Module 9 must not proceed to module 10 until it is manually approved.
+- A-side module 9 must not modify B-side New API, authentication, quota, payment, Docker, database, Redis, BFF, callback, reconciliation, or port configuration.
+- The works library must display real records from the existing library data source and must not use static sample works as user data.
+- Generated image/video results and local upscale results must reuse the existing `addLibraryItem()` flow instead of creating a second library store.
+- Download actions must point only to allowed stored output files.
+- Delete actions must delete only the selected library item's allowed file and metadata.
+- Delete actions must remove the real file before metadata; file deletion failure must preserve the work record.
+- Related job cleanup must go through the jobs write queue and must not race with job status updates.
+- Missing output files must render a file-invalid state without crashing the page.
+- Normal workspace errors must not expose local absolute paths, command lines, secrets, or full stack traces.
+- Module 9 must keep the module 5 visual foundation and must not redesign Header, Sidebar, upload controls, primary action, preview shell, or scrollbar behavior.
