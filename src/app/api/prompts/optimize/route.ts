@@ -31,9 +31,13 @@ function firstString(...values: unknown[]) {
 function promptOptimizerEndpoint(apiUrl: string) {
   try {
     const parsed = new URL(apiUrl);
-    parsed.pathname = parsed.pathname.replace(/\/v1\/.*$/i, "/v1/chat/completions");
-    if (!/\/v1\/chat\/completions\/?$/i.test(parsed.pathname)) {
-      parsed.pathname = parsed.pathname.replace(/\/$/, "") + "/v1/chat/completions";
+    const pathname = parsed.pathname.replace(/\/+$/, "");
+    if (/\/(?:v1\/)?chat\/completions$/i.test(pathname)) {
+      parsed.pathname = pathname;
+    } else if (/\/v1(?:\/.*)?$/i.test(pathname)) {
+      parsed.pathname = pathname.replace(/\/v1(?:\/.*)?$/i, "/v1/chat/completions");
+    } else {
+      parsed.pathname = `${pathname === "" ? "" : pathname}/chat/completions`;
     }
     parsed.search = "";
     return parsed.toString();

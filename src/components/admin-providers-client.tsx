@@ -33,6 +33,11 @@ const grokVideoModelOptions: ModelOption[] = [
   { value: "grok-video-1.5", label: "grok-video-1.5（必须 1 张参考图）", displayName: "Grok 视频 1.5" },
 ];
 
+const promptOptimizerModelOptions: ModelOption[] = [
+  { value: "deepseek-v4-flash", label: "deepseek-v4-flash（DeepSeek 官方）", displayName: "DeepSeek V4 Flash" },
+  { value: "deepseek-v4-pro", label: "deepseek-v4-pro（DeepSeek 官方）", displayName: "DeepSeek V4 Pro" },
+];
+
 function endpointOptionsFor(provider: EditableProvider) {
   if (provider.kind === "image") return endpointOptions.filter((option) => option.value.startsWith("images-"));
   if (provider.kind === "video") return endpointOptions.filter((option) => option.value === "videos-generations" || option.value === "grok-videos");
@@ -43,6 +48,7 @@ function endpointOptionsFor(provider: EditableProvider) {
 
 function modelOptionsFor(provider: EditableProvider) {
   if (provider.endpointType === "grok-videos") return grokVideoModelOptions;
+  if (provider.kind === "prompt") return promptOptimizerModelOptions;
   return [];
 }
 
