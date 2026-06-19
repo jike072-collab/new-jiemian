@@ -1,6 +1,7 @@
 import { type NextRequest, NextResponse } from "next/server";
 
 import { authRequestContext, requireAuthSession, readJsonBody } from "../auth";
+import { getTaskBillingService } from "./task-billing-service";
 import { getQuotaService } from "./service";
 import { type BillableOperation, type QuotaErrorCode } from "./types";
 
@@ -12,7 +13,7 @@ const billableOperations = new Set<BillableOperation>([
 ]);
 
 function quotaErrorResponse(input: {
-  code: QuotaErrorCode;
+  code: QuotaErrorCode | string;
   status: number;
   message: string;
   retryAfterSeconds?: number;
@@ -89,18 +90,21 @@ export async function precheckResponse(request: NextRequest) {
   const idempotencyKey = String(body.idempotencyKey || body.taskId || "").trim();
   if (!operation || !taskId || !idempotencyKey) return invalidQuotaRequest();
 
-  const result = await getQuotaService().precheck({
+  const result = await getTaskBillingService().precheck({
     localUserId: auth.localUserId,
     estimatedQuotaUnits: Number(body.estimatedQuotaUnits),
     operation,
     taskId,
     idempotencyKey,
+    requestFingerprint: String(body.requestFingerprint || "").trim() || null,
   });
   if (!result.ok) return quotaErrorResponse(result);
+  const quota = await getQuotaService().getCurrentQuota(auth.localUserId, { allowCached: true });
   return NextResponse.json({
     ok: true,
-    quota: result.snapshot,
-    estimatedQuotaUnits: result.estimatedQuotaUnits,
+    quota: quota.ok ? quota.snapshot : null,
+    estimatedQuotaUnits: result.record.estimated_quota_units,
+    taskBilling: result.record,
     usage: result.usage,
   });
 }

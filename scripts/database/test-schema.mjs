@@ -112,6 +112,8 @@ async function assertMigrationStatus() {
     "002_harden_database_baseline",
     "003_billing_webhook_processing_status",
     "004_task_billing_lifecycle",
+    "005_task_billing_precheck_fingerprint",
+    "006_task_billing_dispatch_states",
   ]);
   for (const row of result.rows) {
     assert.match(row.checksum, /^[a-f0-9]{64}$/);
@@ -243,6 +245,12 @@ async function assertConstraints() {
       estimated_quota_units, created_at, updated_at
     ) values ($1,$2,'task-3','task-billing-invalid','unknown',10,now(),now())
   `, [randomUUID(), userId]));
+  await q(`
+    update task_billing_records set billing_state = 'dispatching' where task_id = 'task-1'
+  `);
+  await q(`
+    update task_billing_records set billing_state = 'provider_started' where task_id = 'task-1'
+  `);
   await q(`
     insert into task_quota_adjustments(
       id, local_user_id, new_api_user_id, task_billing_record_id, task_id,

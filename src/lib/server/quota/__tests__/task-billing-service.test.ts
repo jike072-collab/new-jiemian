@@ -127,11 +127,13 @@ test("prechecks sufficient quota and denies insufficient quota before upstream s
     operation: "cloud_video_generation",
     estimatedQuotaUnits: 10,
     idempotencyKey: "idem-precheck",
+    requestFingerprint: "video:task-precheck:10",
   });
   assert.equal(prechecked.ok, true);
   if (!prechecked.ok) return;
   assert.equal(prechecked.action, "prechecked");
   assert.equal(prechecked.record.billing_state, "prechecked");
+  assert.equal(prechecked.record.request_fingerprint, "video:task-precheck:10");
 
   const low = service({ availableQuota: 5 });
   const rejected = await low.taskBilling.precheck({
@@ -146,6 +148,198 @@ test("prechecks sufficient quota and denies insufficient quota before upstream s
   assert.equal(rejected.code, "insufficient_quota");
   assert.equal((await low.usageRepository.getByTaskId("local-user", "task-low"))?.status, "failed");
   assert.equal(low.adjustments.length, 0);
+});
+
+test("server-side generation requires a matching precheck record", async () => {
+  const harness = service();
+  const missing = await harness.taskBilling.verifyPrecheck({
+    localUserId: "local-user",
+    taskId: "direct-call",
+    idempotencyKey: "direct-call",
+    estimatedQuotaUnits: 40,
+    requestFingerprint: "image:direct-call:40",
+  });
+  assert.equal(missing.ok, false);
+  if (missing.ok) return;
+  assert.equal(missing.code, "task_billing_not_found");
+
+  const prechecked = await harness.taskBilling.precheck({
+    localUserId: "local-user",
+    taskId: "server-priced",
+    operation: "cloud_image_generation",
+    estimatedQuotaUnits: 40,
+    idempotencyKey: "server-priced",
+    requestFingerprint: "image:server-priced:40",
+  });
+  assert.equal(prechecked.ok, true);
+
+  const tamperedEstimate = await harness.taskBilling.verifyPrecheck({
+    localUserId: "local-user",
+    taskId: "server-priced",
+    idempotencyKey: "server-priced",
+    estimatedQuotaUnits: 0,
+    requestFingerprint: "image:server-priced:0",
+  });
+  assert.equal(tamperedEstimate.ok, false);
+  if (tamperedEstimate.ok) return;
+  assert.equal(tamperedEstimate.code, "task_billing_conflict");
+
+  const tamperedUser = await harness.taskBilling.verifyPrecheck({
+    localUserId: "other-user",
+    taskId: "server-priced",
+    idempotencyKey: "server-priced",
+    estimatedQuotaUnits: 40,
+    requestFingerprint: "image:server-priced:40",
+  });
+  assert.equal(tamperedUser.ok, false);
+  if (tamperedUser.ok) return;
+  assert.equal(tamperedUser.code, "task_billing_not_found");
+
+  const matched = await harness.taskBilling.verifyPrecheck({
+    localUserId: "local-user",
+    taskId: "server-priced",
+    idempotencyKey: "server-priced",
+    estimatedQuotaUnits: 40,
+    requestFingerprint: "image:server-priced:40",
+  });
+  assert.equal(matched.ok, true);
+});
+
+test("same task can claim provider dispatch only once", async () => {
+  const harness = service();
+  const input = {
+    localUserId: "local-user",
+    taskId: "dispatch-once",
+    operation: "cloud_image_generation" as const,
+    estimatedQuotaUnits: 40,
+    idempotencyKey: "dispatch-once",
+    requestFingerprint: "image:dispatch-once:40",
+  };
+  const prechecked = await harness.taskBilling.precheck(input);
+  assert.equal(prechecked.ok, true);
+
+  let providerCalls = 0;
+  const attempts = await Promise.all([
+    harness.taskBilling.claimProviderDispatch(input),
+    harness.taskBilling.claimProviderDispatch(input),
+  ]);
+  for (const attempt of attempts) {
+    if (attempt.ok && attempt.action === "dispatching") providerCalls += 1;
+  }
+  assert.equal(providerCalls, 1);
+  assert.equal(attempts.filter((attempt) => !attempt.ok && attempt.code === "task_billing_conflict").length, 1);
+});
+
+test("accepted task replay cannot claim provider dispatch again", async () => {
+  const harness = service();
+  const input = {
+    localUserId: "local-user",
+    taskId: "accepted-replay",
+    operation: "cloud_video_generation" as const,
+    estimatedQuotaUnits: 60,
+    idempotencyKey: "accepted-replay",
+    requestFingerprint: "video:accepted-replay:60",
+  };
+  const prechecked = await harness.taskBilling.precheck(input);
+  assert.equal(prechecked.ok, true);
+  const claimed = await harness.taskBilling.claimProviderDispatch(input);
+  assert.equal(claimed.ok, true);
+  if (!claimed.ok) return;
+  assert.equal(claimed.action, "dispatching");
+  const started = await harness.taskBilling.markProviderStarted({
+    localUserId: "local-user",
+    taskId: "accepted-replay",
+    upstreamModel: "video-model",
+  });
+  assert.equal(started.ok, true);
+  const accepted = await harness.taskBilling.accept({
+    localUserId: "local-user",
+    taskId: "accepted-replay",
+    newApiTaskId: "new-api-accepted-replay",
+  });
+  assert.equal(accepted.ok, true);
+
+  const replay = await harness.taskBilling.claimProviderDispatch(input);
+  assert.equal(replay.ok, false);
+  if (replay.ok) return;
+  assert.equal(replay.code, "task_billing_conflict");
+});
+
+test("interrupted provider dispatch recovers before start and reconciles after start", async () => {
+  const beforeStart = service();
+  const beforeStartInput = {
+    localUserId: "local-user",
+    taskId: "dispatch-before-start",
+    operation: "cloud_image_generation" as const,
+    estimatedQuotaUnits: 40,
+    idempotencyKey: "dispatch-before-start",
+    requestFingerprint: "image:dispatch-before-start:40",
+  };
+  assert.equal((await beforeStart.taskBilling.precheck(beforeStartInput)).ok, true);
+  const firstClaim = await beforeStart.taskBilling.claimProviderDispatch(beforeStartInput);
+  assert.equal(firstClaim.ok, true);
+  const staleDispatch = await beforeStart.taskRepository.getByTaskId("local-user", "dispatch-before-start");
+  assert.ok(staleDispatch);
+  await beforeStart.taskRepository.update(staleDispatch.id, {
+    updated_at: "2026-06-17T23:50:00.000Z",
+  }, staleDispatch.version);
+  const recovered = await beforeStart.taskBilling.claimProviderDispatch(beforeStartInput);
+  assert.equal(recovered.ok, true);
+  if (!recovered.ok) return;
+  assert.equal(recovered.action, "dispatching");
+
+  const afterStart = service();
+  const afterStartInput = {
+    localUserId: "local-user",
+    taskId: "dispatch-after-start",
+    operation: "cloud_image_generation" as const,
+    estimatedQuotaUnits: 40,
+    idempotencyKey: "dispatch-after-start",
+    requestFingerprint: "image:dispatch-after-start:40",
+  };
+  assert.equal((await afterStart.taskBilling.precheck(afterStartInput)).ok, true);
+  assert.equal((await afterStart.taskBilling.claimProviderDispatch(afterStartInput)).ok, true);
+  const started = await afterStart.taskBilling.markProviderStarted({
+    localUserId: "local-user",
+    taskId: "dispatch-after-start",
+    upstreamModel: "image-model",
+  });
+  assert.equal(started.ok, true);
+  const staleStarted = await afterStart.taskRepository.getByTaskId("local-user", "dispatch-after-start");
+  assert.ok(staleStarted);
+  await afterStart.taskRepository.update(staleStarted.id, {
+    updated_at: "2026-06-17T23:50:00.000Z",
+  }, staleStarted.version);
+  const reconciled = await afterStart.taskBilling.claimProviderDispatch(afterStartInput);
+  assert.equal(reconciled.ok, true);
+  if (!reconciled.ok) return;
+  assert.equal(reconciled.action, "reconciliation_required");
+  assert.equal(reconciled.record.billing_state, "reconciliation_required");
+});
+
+test("precheck retries reject mismatched request parameters", async () => {
+  const harness = service();
+  const first = await harness.taskBilling.precheck({
+    localUserId: "local-user",
+    taskId: "same-task",
+    operation: "cloud_image_generation",
+    estimatedQuotaUnits: 40,
+    idempotencyKey: "same-task",
+    requestFingerprint: "image:same-task:40",
+  });
+  assert.equal(first.ok, true);
+
+  const changed = await harness.taskBilling.precheck({
+    localUserId: "local-user",
+    taskId: "same-task",
+    operation: "cloud_image_generation",
+    estimatedQuotaUnits: 80,
+    idempotencyKey: "same-task",
+    requestFingerprint: "image:same-task:80",
+  });
+  assert.equal(changed.ok, false);
+  if (changed.ok) return;
+  assert.equal(changed.code, "task_billing_conflict");
 });
 
 test("settles successful task only once across duplicate callbacks", async () => {
@@ -369,6 +563,32 @@ test("local write failure after quota adjustment recovers without duplicate char
   assert.equal(harness.adjustments.length, 1);
   assert.equal(JSON.stringify(first).includes("secret-token"), false);
   assert.equal(JSON.stringify(first).includes("hidden"), false);
+});
+
+test("settlement failure leaves a reconciliation record", async () => {
+  const harness = service({
+    adjustQuota: async () => ({
+      ok: false,
+      code: "NEW_API_DOWN",
+      message: "New API quota adjustment failed token=hidden",
+      retryable: true,
+    }),
+  });
+  await precheckAndAccept(harness, "task-settlement-failure");
+
+  const result = await harness.taskBilling.settleSuccess({
+    localUserId: "local-user",
+    taskId: "task-settlement-failure",
+    actualQuotaUnits: 6,
+  });
+
+  assert.equal(result.ok, true);
+  if (!result.ok) return;
+  assert.equal(result.action, "reconciliation_required");
+  assert.equal(result.record.billing_state, "reconciliation_required");
+  assert.equal(result.record.last_error?.includes("hidden"), false);
+  const usage = await harness.usageRepository.getByTaskId("local-user", "task-settlement-failure");
+  assert.equal(usage?.status, "reconciliation_required");
 });
 
 test("interrupted provider charge is recovered from target quota without duplicate debit", async () => {

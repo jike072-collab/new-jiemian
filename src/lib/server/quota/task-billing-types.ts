@@ -2,6 +2,8 @@ import { type BillableOperation, type QuotaErrorCode, type UsageLogEntry } from 
 
 export type TaskBillingState =
   | "prechecked"
+  | "dispatching"
+  | "provider_started"
   | "accepted"
   | "settled"
   | "failed"
@@ -10,6 +12,8 @@ export type TaskBillingState =
 
 export type TaskBillingAction =
   | "prechecked"
+  | "dispatching"
+  | "provider_started"
   | "accepted"
   | "settled"
   | "failed"
@@ -32,6 +36,7 @@ export type TaskBillingRecord = {
   new_api_task_id: string | null;
   usage_record_id: string | null;
   idempotency_key: string;
+  request_fingerprint: string | null;
   billing_state: TaskBillingState;
   estimated_quota_units: number;
   final_quota_units: number | null;
@@ -67,6 +72,15 @@ export type TaskBillingPrecheckInput = {
   operation: BillableOperation;
   estimatedQuotaUnits: number;
   idempotencyKey: string;
+  requestFingerprint?: string | null;
+};
+
+export type TaskBillingVerifyPrecheckInput = {
+  localUserId: string;
+  taskId: string;
+  estimatedQuotaUnits: number;
+  idempotencyKey: string;
+  requestFingerprint?: string | null;
 };
 
 export type TaskBillingAcceptInput = {

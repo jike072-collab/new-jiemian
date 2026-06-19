@@ -65,6 +65,7 @@ function taskRecord(input: Partial<TaskBillingRecord> = {}): TaskBillingRecord {
     new_api_task_id: input.new_api_task_id ?? null,
     usage_record_id: input.usage_record_id ?? null,
     idempotency_key: input.idempotency_key || "task-key",
+    request_fingerprint: input.request_fingerprint ?? null,
     billing_state: input.billing_state || "reconciliation_required",
     estimated_quota_units: input.estimated_quota_units ?? 100,
     final_quota_units: input.final_quota_units ?? null,

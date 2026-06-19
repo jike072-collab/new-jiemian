@@ -29,6 +29,7 @@ type TaskBillingRecordRow = QueryResultRow & {
   new_api_task_id: string | null;
   usage_record_id: string | null;
   idempotency_key: string;
+  request_fingerprint: string | null;
   billing_state: TaskBillingState;
   estimated_quota_units: number;
   final_quota_units: number | null;
@@ -78,6 +79,7 @@ function fromRow(row: TaskBillingRecordRow): TaskBillingRecord {
     new_api_task_id: row.new_api_task_id,
     usage_record_id: row.usage_record_id,
     idempotency_key: row.idempotency_key,
+    request_fingerprint: row.request_fingerprint,
     billing_state: row.billing_state,
     estimated_quota_units: Number(row.estimated_quota_units),
     final_quota_units: row.final_quota_units === null ? null : Number(row.final_quota_units),
@@ -203,9 +205,9 @@ export class PostgresTaskBillingRepository implements TaskBillingRepository {
       const result = await applicationQuery<TaskBillingRecordRow>(`
         insert into task_billing_records(
           id, local_user_id, task_id, new_api_task_id, usage_record_id, idempotency_key,
-          billing_state, estimated_quota_units, final_quota_units, created_at, updated_at,
+          request_fingerprint, billing_state, estimated_quota_units, final_quota_units, created_at, updated_at,
           settled_at, refunded_at, last_error, version
-        ) values ($1,$2,$3,null,$4,$5,'prechecked',$6,null,$7,$7,null,null,null,1)
+        ) values ($1,$2,$3,null,$4,$5,$6,'prechecked',$7,null,$8,$8,null,null,null,1)
         returning *
       `, [
         randomUUID(),
@@ -213,6 +215,7 @@ export class PostgresTaskBillingRepository implements TaskBillingRepository {
         input.taskId.trim(),
         input.usageRecordId || null,
         input.idempotencyKey.trim(),
+        input.requestFingerprint || null,
         input.estimatedQuotaUnits,
         timestamp,
       ]);

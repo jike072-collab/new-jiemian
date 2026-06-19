@@ -86,6 +86,8 @@ const orderStatuses = new Set<BillingOrderStatus>([
 ]);
 const taskStates = new Set<TaskBillingState>([
   "prechecked",
+  "dispatching",
+  "provider_started",
   "accepted",
   "settled",
   "failed",
