@@ -82,6 +82,10 @@ function parseOptimizedPrompt(payload: unknown) {
   return firstString(message.content, first.text, root.content, root.prompt);
 }
 
+function promptOptimizerModel(providerModel: string) {
+  return providerModel.startsWith("grok-video-") ? "gpt-5.5" : providerModel;
+}
+
 export async function POST(request: Request) {
   try {
     const body = await request.json() as OptimizePromptRequest;
@@ -117,7 +121,7 @@ export async function POST(request: Request) {
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
-        model: "gpt-5.4",
+        model: promptOptimizerModel(provider.model),
         messages: [
           { role: "user", content: optimizerInstruction({ ...body, tool: body.tool || "image-generator", prompt }) },
         ],
