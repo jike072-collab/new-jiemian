@@ -112,6 +112,7 @@ async function assertMigrationStatus() {
     "002_harden_database_baseline",
     "003_billing_webhook_processing_status",
     "004_task_billing_lifecycle",
+    "005_task_billing_precheck_fingerprint",
   ]);
   for (const row of result.rows) {
     assert.match(row.checksum, /^[a-f0-9]{64}$/);
