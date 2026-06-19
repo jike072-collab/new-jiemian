@@ -86,8 +86,8 @@ export function defaultProviders(): ProviderConfig[] {
     {
       id: "prompt-optimizer",
       kind: "prompt",
-      title: "提示词优化",
-      role: "用于图片和视频提示词优化",
+      title: "文生识别优化",
+      role: "用于图片和视频文生识别优化",
       apiUrl: env("PROMPT_OPTIMIZER_API_URL", "https://api.deepseek.com/chat/completions"),
       model: env("PROMPT_OPTIMIZER_MODEL", "deepseek-v4-flash"),
       displayName: env("PROMPT_OPTIMIZER_DISPLAY_NAME", "DeepSeek V4 Flash"),
@@ -228,7 +228,11 @@ export async function readProviders(): Promise<ProviderConfig[]> {
           endpointType: fallback.endpointType,
         };
       }
-      return saved;
+      return {
+        ...saved,
+        title: fallback.title,
+        role: fallback.role,
+      };
     })(),
   }));
   const customProviders = stored

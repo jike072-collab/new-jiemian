@@ -66,8 +66,8 @@ const customProviderDefaults: Record<Extract<ProviderKind, "image" | "video" | "
     model: "",
   },
   prompt: {
-    title: "自定义提示词优化",
-    role: "提示词优化文本模型配置",
+    title: "自定义文生识别优化",
+    role: "文生识别优化文本模型配置",
     endpointType: "chat-completions",
     apiUrl: "https://api.deepseek.com/chat/completions",
     model: "deepseek-v4-flash",
@@ -82,9 +82,7 @@ const providerGroups: Array<{
 }> = [
   { kind: "image", title: "图片生成", description: "图片生成与图片编辑模型", addKind: "image" },
   { kind: "video", title: "视频生成", description: "文生视频与图生视频模型", addKind: "video" },
-  { kind: "prompt", title: "提示词优化", description: "图片和视频提示词优化模型", addKind: "prompt" },
-  { kind: "image-upscale", title: "图片高清", description: "本地图片放大工具" },
-  { kind: "video-upscale", title: "视频高清", description: "本地视频放大工具" },
+  { kind: "prompt", title: "文生识别优化", description: "图片和视频文生识别优化模型", addKind: "prompt" },
 ];
 
 function endpointOptionsFor(provider: EditableProvider) {
