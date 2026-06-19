@@ -66,9 +66,13 @@ export function WorkbenchShell({
   const singlePaneMobile = activeTool.id === "templates" || activeTool.id === "library";
 
   useEffect(() => {
+    const frame = window.requestAnimationFrame(() => {
+      setPane(singlePaneMobile ? "preview" : "parameters");
+    });
     rootRef.current?.querySelector<HTMLElement>("[data-shell-scroll='parameters']")?.scrollTo({ top: 0 });
     rootRef.current?.querySelector<HTMLElement>("[data-shell-scroll='preview']")?.scrollTo({ top: 0 });
-  }, [state.activeToolId]);
+    return () => window.cancelAnimationFrame(frame);
+  }, [singlePaneMobile, state.activeToolId]);
 
   useEffect(() => {
     if (!mobilePreviewSignal) return;
