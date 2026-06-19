@@ -64,7 +64,23 @@ type SelectOption = {
 
 type ImagePromptTemplate = {
   id: string;
-  label: string;
+  title: string;
+  thumbnail: string;
+  tool: "image-generator";
+  aspectRatio: string | null;
+  qualityOrDuration: string;
+  requiresImage: boolean;
+  prompt: string;
+};
+
+type VideoPromptTemplate = {
+  id: string;
+  title: string;
+  thumbnail: string;
+  tool: "video-generator";
+  aspectRatio: string;
+  qualityOrDuration: number;
+  requiresImage: boolean;
   prompt: string;
 };
 
@@ -92,7 +108,11 @@ type VideoWorkspaceState = {
   providerId: string;
   ratio: string;
   duration: number;
+  templateId: string;
   prompt: string;
+  promptOptimizing: boolean;
+  promptOptimizeError: string;
+  promptOptimizeUndo: string;
   files: VideoWorkspaceFile[];
   fileError: string;
   submitError: string;
@@ -135,24 +155,132 @@ type VideoUpscaleWorkspaceState = {
   job: JobRecord | null;
 };
 
-const ratios = ["1:1", "16:9", "9:16", "4:3", "3:4"];
+const ratios = ["1:1", "16:9", "9:16", "4:3", "3:4", "4:5"];
 const upscaleUnavailableMessage = "高清处理暂时不可用，请稍后重试";
 const promptOptimizationTargetPlatform = "TikTok Shop";
 const imagePromptTemplates: ImagePromptTemplate[] = [
   {
     id: "product-hero",
-    label: "商品主图",
-    prompt: "生成一张 TikTok Shop 商品主图，主体居中清晰，背景干净，光线柔和，突出商品质感和核心卖点。",
+    title: "商品主图",
+    thumbnail: "主图",
+    tool: "image-generator",
+    aspectRatio: "1:1",
+    qualityOrDuration: "2k",
+    requiresImage: false,
+    prompt: "生成一张 TikTok Shop 商品主图，商品主体居中，占画面主要位置，背景干净，光线柔和，突出材质、颜色和核心卖点。",
   },
   {
-    id: "lifestyle-scene",
-    label: "生活方式",
-    prompt: "生成一张适合 TikTok Shop 的生活方式场景图，展示商品被真实使用的画面，氛围自然，有轻微景深。",
+    id: "white-background",
+    title: "纯白背景",
+    thumbnail: "白底",
+    tool: "image-generator",
+    aspectRatio: "1:1",
+    qualityOrDuration: "2k",
+    requiresImage: false,
+    prompt: "生成一张纯白背景商品图，主体边缘清晰，阴影自然，画面干净，适合 TikTok Shop 商品展示。",
   },
   {
-    id: "detail-focus",
-    label: "细节展示",
-    prompt: "生成一张商品细节展示图，突出材质、纹理、结构和功能亮点，画面干净，适合电商详情页。",
+    id: "smart-cutout",
+    title: "智能抠图",
+    thumbnail: "抠图",
+    tool: "image-generator",
+    aspectRatio: null,
+    qualityOrDuration: "2k",
+    requiresImage: true,
+    prompt: "基于上传图像智能抠出商品主体，保持原始比例和主体细节，输出透明背景，边缘干净自然。",
+  },
+  {
+    id: "text-translation",
+    title: "图片文字翻译",
+    thumbnail: "翻译",
+    tool: "image-generator",
+    aspectRatio: null,
+    qualityOrDuration: "2k",
+    requiresImage: true,
+    prompt: "基于上传图像翻译画面中的文字，保持原始排版、布局、字体风格和商品主体不变，翻译后画面自然清晰。",
+  },
+  {
+    id: "product-scene",
+    title: "商品场景图",
+    thumbnail: "场景",
+    tool: "image-generator",
+    aspectRatio: "1:1",
+    qualityOrDuration: "2k",
+    requiresImage: false,
+    prompt: "生成一张商品场景图，把商品放在真实使用环境中，场景自然、有生活感，突出商品用途和 TikTok Shop 转化卖点。",
+  },
+  {
+    id: "promo-poster",
+    title: "促销海报",
+    thumbnail: "促销",
+    tool: "image-generator",
+    aspectRatio: "4:5",
+    qualityOrDuration: "2k",
+    requiresImage: false,
+    prompt: "生成一张 TikTok Shop 促销海报，商品醒目，画面有促销氛围，留出适合放置优惠信息和行动号召的空间。",
+  },
+];
+
+const videoPromptTemplates: VideoPromptTemplate[] = [
+  {
+    id: "product-rotation",
+    title: "商品旋转展示",
+    thumbnail: "旋转",
+    tool: "video-generator",
+    aspectRatio: "9:16",
+    qualityOrDuration: 5,
+    requiresImage: true,
+    prompt: "生成 TikTok Shop 商品旋转展示短视频，商品居中缓慢旋转，镜头稳定，光线干净，突出外观、材质和卖点。",
+  },
+  {
+    id: "detail-closeup",
+    title: "商品细节特写",
+    thumbnail: "特写",
+    tool: "video-generator",
+    aspectRatio: "9:16",
+    qualityOrDuration: 5,
+    requiresImage: true,
+    prompt: "生成商品细节特写短视频，镜头缓慢推进，展示材质、纹理、按键、接口或功能细节，节奏清楚，适合 TikTok 商品展示。",
+  },
+  {
+    id: "usage-demo",
+    title: "穿戴/使用展示",
+    thumbnail: "使用",
+    tool: "video-generator",
+    aspectRatio: "9:16",
+    qualityOrDuration: 8,
+    requiresImage: false,
+    prompt: "生成穿戴或使用展示短视频，展示用户如何自然使用商品，动作连贯，场景真实，突出使用效果和日常适用性。",
+  },
+  {
+    id: "unboxing",
+    title: "开箱展示",
+    thumbnail: "开箱",
+    tool: "video-generator",
+    aspectRatio: "9:16",
+    qualityOrDuration: 8,
+    requiresImage: false,
+    prompt: "生成 TikTok 风格开箱展示短视频，从包装到取出商品，镜头节奏轻快，展示配件、质感和第一眼亮点。",
+  },
+  {
+    id: "lifestyle-video",
+    title: "场景展示短视频",
+    thumbnail: "场景",
+    tool: "video-generator",
+    aspectRatio: "9:16",
+    qualityOrDuration: 8,
+    requiresImage: false,
+    prompt: "生成商品场景展示短视频，商品出现在真实生活环境中，镜头有轻微推进和转场，氛围自然，适合 TikTok Shop 种草。",
+  },
+  {
+    id: "promo-video",
+    title: "促销短视频",
+    thumbnail: "促销",
+    tool: "video-generator",
+    aspectRatio: "9:16",
+    qualityOrDuration: 10,
+    requiresImage: false,
+    prompt: "生成促销短视频，前 2 秒快速展示商品和卖点，随后展示使用场景和优惠氛围，节奏明快，适合 TikTok Shop 推广。",
   },
 ];
 
@@ -351,7 +479,7 @@ export function StudioApp() {
     providerId: "",
     ratio: "1:1",
     quality: "1k",
-    templateId: imagePromptTemplates[0].id,
+    templateId: "",
     prompt: "",
     promptOptimizing: false,
     promptOptimizeError: "",
@@ -365,7 +493,11 @@ export function StudioApp() {
     providerId: "",
     ratio: "16:9",
     duration: 5,
+    templateId: "",
     prompt: "",
+    promptOptimizing: false,
+    promptOptimizeError: "",
+    promptOptimizeUndo: "",
     files: [],
     fileError: "",
     submitError: "",
@@ -592,10 +724,13 @@ export function StudioApp() {
   const imageWorkspaceFiles = imageWorkspace.files;
   const imageWorkspaceHasFiles = imageWorkspaceFiles.length > 0;
   const imageWorkspacePrompt = imageWorkspace.prompt.trim();
+  const selectedImageTemplate = imagePromptTemplates.find((template) => template.id === imageWorkspace.templateId) || null;
+  const imageWorkspaceNeedsTemplateImage = Boolean(selectedImageTemplate?.requiresImage);
   const imageWorkspaceCanSubmit = Boolean(selectedImageProvider)
     && !providersLoading
     && !imageWorkspace.loading
     && Boolean(imageWorkspacePrompt)
+    && (!imageWorkspaceNeedsTemplateImage || imageWorkspaceHasFiles)
     && (activeImageMode === "text-to-image" || imageWorkspaceHasFiles);
 
   const updateImageWorkspace = useCallback((patch: Partial<ImageWorkspaceState>) => {
@@ -607,7 +742,10 @@ export function StudioApp() {
     setImageWorkspace((prev) => ({
       ...prev,
       templateId,
+      ratio: template?.aspectRatio || prev.ratio,
+      quality: template?.qualityOrDuration || prev.quality,
       prompt: template?.prompt || prev.prompt,
+      fileError: "",
       promptOptimizeError: "",
       promptOptimizeUndo: "",
       submitError: "",
@@ -636,7 +774,7 @@ export function StudioApp() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          tool: activeImageMode,
+          tool: "image-generator",
           templateId: imageWorkspace.templateId,
           prompt: originalPrompt,
           hasImage: imageWorkspaceHasFiles,
@@ -662,7 +800,6 @@ export function StudioApp() {
       });
     }
   }, [
-    activeImageMode,
     imageWorkspace.prompt,
     imageWorkspace.promptOptimizing,
     imageWorkspace.quality,
@@ -749,6 +886,15 @@ export function StudioApp() {
       }));
       return;
     }
+    if (imageWorkspaceNeedsTemplateImage && !imageWorkspaceHasFiles) {
+      const text = "请先上传图像。";
+      setImageWorkspace((prev) => ({
+        ...prev,
+        fileError: text,
+        submitError: text,
+      }));
+      return;
+    }
     if (imageWorkspace.loading) return;
 
     setImageWorkspace((prev) => ({
@@ -789,6 +935,8 @@ export function StudioApp() {
     activeImageMode,
     handleImageResult,
     imageWorkspace.files,
+    imageWorkspaceHasFiles,
+    imageWorkspaceNeedsTemplateImage,
     imageWorkspace.loading,
     imageWorkspace.quality,
     imageWorkspace.ratio,
@@ -812,14 +960,102 @@ export function StudioApp() {
   const videoWorkspaceHasFiles = videoWorkspaceFiles.length > 0;
   const videoWorkspacePrompt = videoWorkspace.prompt.trim();
   const videoWorkspaceNeedsFile = activeVideoMode === "image-to-video";
+  const selectedVideoTemplate = videoPromptTemplates.find((template) => template.id === videoWorkspace.templateId) || null;
+  const videoWorkspaceNeedsTemplateImage = Boolean(selectedVideoTemplate?.requiresImage);
   const videoWorkspaceCanSubmit = Boolean(selectedVideoProvider)
     && !providersLoading
     && !videoWorkspace.loading
     && Boolean(videoWorkspacePrompt)
+    && (!videoWorkspaceNeedsTemplateImage || videoWorkspaceHasFiles)
     && (!videoWorkspaceNeedsFile || videoWorkspaceHasFiles);
 
   const updateVideoWorkspace = useCallback((patch: Partial<VideoWorkspaceState>) => {
     setVideoWorkspace((prev) => ({ ...prev, ...patch }));
+  }, []);
+
+  const applyVideoPromptTemplate = useCallback((templateId: string) => {
+    const template = videoPromptTemplates.find((item) => item.id === templateId);
+    setVideoWorkspace((prev) => ({
+      ...prev,
+      templateId,
+      ratio: template?.aspectRatio || prev.ratio,
+      duration: template?.qualityOrDuration || prev.duration,
+      prompt: template?.prompt || prev.prompt,
+      fileError: "",
+      promptOptimizeError: "",
+      promptOptimizeUndo: "",
+      submitError: "",
+    }));
+  }, []);
+
+  const optimizeVideoPrompt = useCallback(async () => {
+    const prompt = videoWorkspace.prompt.trim();
+    if (!prompt) {
+      updateVideoWorkspace({
+        promptOptimizeError: "请先填写提示词。",
+        promptOptimizeUndo: "",
+      });
+      return;
+    }
+    if (videoWorkspace.promptOptimizing) return;
+
+    const originalPrompt = videoWorkspace.prompt;
+    updateVideoWorkspace({
+      promptOptimizing: true,
+      promptOptimizeError: "",
+      promptOptimizeUndo: "",
+    });
+    try {
+      const data = await jsonFetch<{ prompt?: string; optimizedPrompt?: string }>("/api/prompts/optimize", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          tool: "video-generator",
+          templateId: videoWorkspace.templateId,
+          prompt: originalPrompt,
+          hasImage: videoWorkspaceHasFiles,
+          aspectRatio: videoWorkspace.ratio,
+          duration: videoWorkspace.duration,
+          targetPlatform: promptOptimizationTargetPlatform,
+        }),
+      });
+      const optimizedPrompt = String(data.optimizedPrompt || data.prompt || "").trim();
+      if (!optimizedPrompt) throw new Error("优化失败，请稍后重试");
+      updateVideoWorkspace({
+        prompt: optimizedPrompt,
+        promptOptimizing: false,
+        promptOptimizeUndo: originalPrompt,
+        promptOptimizeError: "",
+        submitError: "",
+      });
+    } catch {
+      updateVideoWorkspace({
+        promptOptimizing: false,
+        promptOptimizeUndo: "",
+        promptOptimizeError: "优化失败，请稍后重试",
+      });
+    }
+  }, [
+    updateVideoWorkspace,
+    videoWorkspace.duration,
+    videoWorkspace.prompt,
+    videoWorkspace.promptOptimizing,
+    videoWorkspace.ratio,
+    videoWorkspace.templateId,
+    videoWorkspaceHasFiles,
+  ]);
+
+  const undoVideoPromptOptimization = useCallback(() => {
+    setVideoWorkspace((prev) => {
+      if (!prev.promptOptimizeUndo) return prev;
+      return {
+        ...prev,
+        prompt: prev.promptOptimizeUndo,
+        promptOptimizeUndo: "",
+        promptOptimizeError: "",
+        submitError: "",
+      };
+    });
   }, []);
 
   const replaceVideoWorkspaceFiles = useCallback((files: File[]) => {
@@ -1160,6 +1396,11 @@ export function StudioApp() {
       updateVideoWorkspace({ fileError: text, submitError: text });
       return;
     }
+    if (videoWorkspaceNeedsTemplateImage && !videoWorkspaceHasFiles) {
+      const text = "请先上传图像。";
+      updateVideoWorkspace({ fileError: text, submitError: text });
+      return;
+    }
     if (videoWorkspace.loading) return;
 
     updateVideoWorkspace({
@@ -1206,6 +1447,7 @@ export function StudioApp() {
     videoWorkspace.ratio,
     videoWorkspaceHasFiles,
     videoWorkspaceNeedsFile,
+    videoWorkspaceNeedsTemplateImage,
     videoWorkspacePrompt,
   ]);
 
@@ -1220,6 +1462,7 @@ export function StudioApp() {
           selectedProvider={selectedImageProvider}
           state={imageWorkspace}
           canSubmit={imageWorkspaceCanSubmit}
+          templateRequiresImage={imageWorkspaceNeedsTemplateImage}
           onProviderChange={(value) => updateImageWorkspace({ providerId: value })}
           onRatioChange={(value) => updateImageWorkspace({ ratio: value })}
           onQualityChange={(value) => updateImageWorkspace({ quality: value })}
@@ -1244,10 +1487,14 @@ export function StudioApp() {
           selectedProvider={selectedVideoProvider}
           state={videoWorkspace}
           canSubmit={videoWorkspaceCanSubmit}
+          templateRequiresImage={videoWorkspaceNeedsTemplateImage}
           onProviderChange={(value) => updateVideoWorkspace({ providerId: value, submitError: "" })}
           onRatioChange={(value) => updateVideoWorkspace({ ratio: value })}
           onDurationChange={(value) => updateVideoWorkspace({ duration: value })}
-          onPromptChange={(value) => updateVideoWorkspace({ prompt: value, submitError: "" })}
+          onTemplateChange={applyVideoPromptTemplate}
+          onPromptChange={(value) => updateVideoWorkspace({ prompt: value, promptOptimizeError: "", submitError: "" })}
+          onPromptOptimize={optimizeVideoPrompt}
+          onPromptOptimizeUndo={undoVideoPromptOptimization}
           onFilesChange={replaceVideoWorkspaceFiles}
           onFileRemove={removeVideoWorkspaceFile}
           onFilesClear={clearVideoWorkspaceFiles}
@@ -1388,6 +1635,7 @@ function ImageGenerator({
   selectedProvider,
   state,
   canSubmit,
+  templateRequiresImage,
   onProviderChange,
   onRatioChange,
   onQualityChange,
@@ -1409,6 +1657,7 @@ function ImageGenerator({
   selectedProvider: PublicProvider | null;
   state: ImageWorkspaceState;
   canSubmit: boolean;
+  templateRequiresImage: boolean;
   onProviderChange: (value: string) => void;
   onRatioChange: (value: string) => void;
   onQualityChange: (value: string) => void;
@@ -1446,7 +1695,7 @@ function ImageGenerator({
         onReload={onReloadProviders}
       />
       <ReferenceImageInput
-        mode={mode}
+        required={templateRequiresImage}
         files={state.files}
         error={state.fileError}
         onChange={onFilesChange}
@@ -1469,16 +1718,12 @@ function ImageGenerator({
           onChange={onQualityChange}
         />
       </StackedControl>
-      <FieldFrame label="模板">
-        <ModeSegmentedControl
-          label="模板"
-          labelHidden
-          groupId="image-prompt-template"
-          value={state.templateId}
-          options={imagePromptTemplates.map((template) => [template.id, template.label])}
-          onChange={onTemplateChange}
-        />
-      </FieldFrame>
+      <PromptTemplateStrip
+        label="从模板开始"
+        templates={imagePromptTemplates}
+        value={state.templateId}
+        onChange={onTemplateChange}
+      />
       <PromptBox
         value={state.prompt}
         onChange={onPromptChange}
@@ -1502,14 +1747,14 @@ function ImageGenerator({
 }
 
 function ReferenceImageInput({
-  mode,
+  required,
   files,
   error,
   onChange,
   onRemove,
   onClear,
 }: {
-  mode: WorkspaceImageMode;
+  required: boolean;
   files: ImageWorkspaceFile[];
   error: string;
   onChange: (files: File[]) => void;
@@ -1526,7 +1771,7 @@ function ReferenceImageInput({
   }, [onChange]);
 
   return (
-    <FieldFrame label="图像" hint={mode === "image-to-image" ? "已上传" : "可选"}>
+    <FieldFrame label="图像" hint={files.length ? "已上传" : required ? "需要图像" : "可选"}>
       <CompactDropzone
         inputRef={fileInputRef}
         inputId="reference-image-input"
@@ -1566,10 +1811,14 @@ function VideoGenerator({
   selectedProvider,
   state,
   canSubmit,
+  templateRequiresImage,
   onProviderChange,
   onRatioChange,
   onDurationChange,
+  onTemplateChange,
   onPromptChange,
+  onPromptOptimize,
+  onPromptOptimizeUndo,
   onFilesChange,
   onFileRemove,
   onFilesClear,
@@ -1584,10 +1833,14 @@ function VideoGenerator({
   selectedProvider: PublicProvider | null;
   state: VideoWorkspaceState;
   canSubmit: boolean;
+  templateRequiresImage: boolean;
   onProviderChange: (value: string) => void;
   onRatioChange: (value: string) => void;
   onDurationChange: (value: number) => void;
+  onTemplateChange: (value: string) => void;
   onPromptChange: (value: string) => void;
+  onPromptOptimize: () => void;
+  onPromptOptimizeUndo: () => void;
   onFilesChange: (files: File[]) => void;
   onFileRemove: (index: number) => void;
   onFilesClear: () => void;
@@ -1622,6 +1875,7 @@ function VideoGenerator({
         error={state.fileError}
         label={meta.uploadLabel}
         mode={mode}
+        required={templateRequiresImage}
         emptyTitle={meta.uploadEmptyTitle}
         filledTitle={meta.uploadFilledTitle}
         helpText={meta.uploadHelpText}
@@ -1643,10 +1897,23 @@ function VideoGenerator({
           onChange={(value) => onDurationChange(Number(value))}
         />
       </FieldFrame>
-      <VideoPromptBox
+      <PromptTemplateStrip
+        label="从模板开始"
+        templates={videoPromptTemplates}
+        value={state.templateId}
+        onChange={onTemplateChange}
+      />
+      <PromptBox
+        inputId="video-prompt"
+        testId="video-prompt-input"
         label={meta.promptLabel}
         value={state.prompt}
         onChange={onPromptChange}
+        optimizing={state.promptOptimizing}
+        optimizeError={state.promptOptimizeError}
+        canUndoOptimize={Boolean(state.promptOptimizeUndo)}
+        onOptimize={onPromptOptimize}
+        onUndoOptimize={onPromptOptimizeUndo}
         required
         placeholder={meta.promptPlaceholder}
       />
@@ -1665,6 +1932,7 @@ function VideoReferenceInput({
   error,
   label,
   mode,
+  required,
   emptyTitle,
   filledTitle,
   helpText,
@@ -1676,6 +1944,7 @@ function VideoReferenceInput({
   error: string;
   label: string;
   mode: WorkspaceVideoMode;
+  required: boolean;
   emptyTitle: string;
   filledTitle: string;
   helpText: string;
@@ -1687,7 +1956,7 @@ function VideoReferenceInput({
   const [dragging, setDragging] = useState(false);
 
   return (
-    <FieldFrame label={label} hint={mode === "image-to-video" ? "已上传" : "可选"}>
+    <FieldFrame label={label} hint={files.length ? "已上传" : required || mode === "image-to-video" ? "需要图像" : "可选"}>
       <CompactDropzone
         inputRef={inputRef}
         inputId="video-first-frame-input"
@@ -1709,42 +1978,6 @@ function VideoReferenceInput({
         onDraggingChange={setDragging}
       />
       {error ? <p className="studio-error-text" role="alert">{error}</p> : null}
-    </FieldFrame>
-  );
-}
-
-function VideoPromptBox({
-  label,
-  value,
-  onChange,
-  placeholder,
-  required,
-}: {
-  label: string;
-  value: string;
-  onChange: (value: string) => void;
-  placeholder: string;
-  required?: boolean;
-}) {
-  const descriptionId = "video-prompt-counter";
-
-  return (
-    <FieldFrame label={label} required={required}>
-      <label className="studio-sr-only" htmlFor="video-prompt">
-        {label}
-      </label>
-      <div className="studio-textarea-wrap">
-        <textarea
-          id="video-prompt"
-          data-testid="video-prompt-input"
-          value={value}
-          onChange={(event) => onChange(event.target.value)}
-          placeholder={placeholder}
-          aria-describedby={descriptionId}
-          className="studio-textarea"
-        />
-        <span id={descriptionId} className="studio-counter">{value.length} 个字符</span>
-      </div>
     </FieldFrame>
   );
 }
@@ -3037,6 +3270,51 @@ function ModeSegmentedControl({
   );
 }
 
+function PromptTemplateStrip({
+  label,
+  templates,
+  value,
+  onChange,
+}: {
+  label: string;
+  templates: Array<ImagePromptTemplate | VideoPromptTemplate>;
+  value: string;
+  onChange: (value: string) => void;
+}) {
+  return (
+    <FieldFrame label={label}>
+      <div className="studio-template-strip" role="group" aria-label={label}>
+        {templates.map((template) => {
+          const selected = template.id === value;
+          const parameter = typeof template.qualityOrDuration === "number"
+            ? `${template.qualityOrDuration}秒`
+            : template.qualityOrDuration.toUpperCase();
+          const ratioLabel = template.aspectRatio || "原比例";
+          return (
+            <button
+              key={template.id}
+              type="button"
+              aria-pressed={selected}
+              data-tool={template.tool}
+              className={cn("studio-template-card", selected && "is-active")}
+              onClick={() => onChange(template.id)}
+            >
+              <span className="studio-template-card__thumb" aria-hidden="true">{template.thumbnail}</span>
+              <span className="studio-template-card__title">{template.title}</span>
+              <span className="studio-template-card__meta">
+                {ratioLabel} · {parameter}
+              </span>
+              <span className="studio-template-card__meta">
+                {template.requiresImage ? "需要图像" : "可选图像"}
+              </span>
+            </button>
+          );
+        })}
+      </div>
+    </FieldFrame>
+  );
+}
+
 function CustomSelect({
   label,
   value,
@@ -3225,6 +3503,9 @@ function ProviderSelect({
 }
 
 function PromptBox({
+  inputId = "image-prompt",
+  testId = "prompt-input",
+  label = "提示词",
   value,
   onChange,
   placeholder,
@@ -3235,6 +3516,9 @@ function PromptBox({
   onOptimize,
   onUndoOptimize,
 }: {
+  inputId?: string;
+  testId?: string;
+  label?: string;
   value: string;
   onChange: (value: string) => void;
   placeholder: string;
@@ -3245,9 +3529,10 @@ function PromptBox({
   onOptimize: () => void;
   onUndoOptimize: () => void;
 }) {
+  const descriptionId = `${inputId}-counter`;
   return (
     <FieldFrame
-      label="提示词"
+      label={label}
       required={required}
       action={(
         <div className="studio-prompt-actions">
@@ -3275,20 +3560,20 @@ function PromptBox({
         </div>
       )}
     >
-      <label className="studio-sr-only" htmlFor="image-prompt">
-        提示词
+      <label className="studio-sr-only" htmlFor={inputId}>
+        {label}
       </label>
       <div className="studio-textarea-wrap">
         <textarea
-          id="image-prompt"
-          data-testid="prompt-input"
+          id={inputId}
+          data-testid={testId}
           value={value}
           onChange={(event) => onChange(event.target.value)}
           placeholder={placeholder}
-          aria-describedby="image-prompt-counter"
+          aria-describedby={descriptionId}
           className="studio-textarea"
         />
-        <span id="image-prompt-counter" className="studio-counter">{value.length} 个字符</span>
+        <span id={descriptionId} className="studio-counter">{value.length} 个字符</span>
       </div>
       {optimizeError ? <p className="studio-error-text" role="alert">{optimizeError}</p> : null}
     </FieldFrame>
