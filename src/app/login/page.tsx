@@ -1,5 +1,5 @@
-import { CustomerLogin } from "@/components/customer-login";
+import { CustomerAuthForm } from "@/components/customer-auth-form";
 
 export default function LoginPage() {
-  return <CustomerLogin />;
+  return <CustomerAuthForm mode="login" />;
 }

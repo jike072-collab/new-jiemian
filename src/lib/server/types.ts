@@ -15,6 +15,7 @@ export type ProviderConfig = {
   role: string;
   apiUrl: string;
   model: string;
+  displayName?: string;
   apiKey: string;
   enabled: boolean;
   endpointType: EndpointType;

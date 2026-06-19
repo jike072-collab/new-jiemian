@@ -65,7 +65,7 @@ export const workspaceToolEntries: WorkspaceToolEntry[] = [
   {
     id: "video",
     label: "AI 视频生成器",
-    description: "文生视频 / 图生视频",
+    description: "描述镜头，可选首帧图片",
     icon: Film,
     group: "创作工具",
     action: { kind: "workspace", toolId: "video", mode: "text-to-video" },
@@ -75,7 +75,7 @@ export const workspaceToolEntries: WorkspaceToolEntry[] = [
   {
     id: "image",
     label: "AI 图像生成器",
-    description: "文生图 / 图生图",
+    description: "描述画面，可选参考图片",
     icon: ImageIcon,
     group: "创作工具",
     action: { kind: "workspace", toolId: "image", mode: "text-to-image" },
@@ -95,7 +95,7 @@ export const workspaceToolEntries: WorkspaceToolEntry[] = [
   {
     id: "image-upscale",
     label: "图片高清",
-    description: "本机放大处理",
+    description: "放大图片清晰度",
     icon: Sparkles,
     group: "增强工具",
     action: { kind: "workspace", toolId: "image-upscale" },
@@ -105,7 +105,7 @@ export const workspaceToolEntries: WorkspaceToolEntry[] = [
   {
     id: "video-upscale",
     label: "视频高清",
-    description: "本机增强处理",
+    description: "放大视频清晰度",
     icon: Sparkles,
     group: "增强工具",
     action: { kind: "workspace", toolId: "video-upscale" },

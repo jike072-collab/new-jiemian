@@ -3,7 +3,7 @@
 /* eslint-disable @next/next/no-img-element */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { AlertTriangle, Download, ExternalLink, ImageUp, Loader2, RefreshCw, Trash2, UploadCloud, Wand2, X } from "lucide-react";
+import { AlertTriangle, Download, ExternalLink, ImageUp, Loader2, RefreshCw, Search, Trash2, UploadCloud, Wand2, X } from "lucide-react";
 import { useRouter } from "next/navigation";
 
 import { WorkbenchShell } from "@/components/workbench-shell";
@@ -19,7 +19,7 @@ import {
 } from "@/lib/workspace-registry";
 
 type BusinessToolId = "image" | "video" | "image-upscale" | "video-upscale" | "library";
-type LibraryFilter = "all" | "image" | "video";
+type LibraryFilter = "image" | "video";
 type LibrarySort = "recent" | "title";
 type UpscaleKind = "image" | "video";
 type UpscaleAvailability = { ready: boolean; detail: string };
@@ -57,7 +57,6 @@ type UploadFilePreview = {
 };
 
 type ImageWorkspaceState = {
-  mode: WorkspaceImageMode;
   providerId: string;
   ratio: string;
   quality: string;
@@ -74,7 +73,6 @@ type VideoWorkspaceFile = {
 };
 
 type VideoWorkspaceState = {
-  mode: WorkspaceVideoMode;
   providerId: string;
   ratio: string;
   duration: number;
@@ -122,6 +120,7 @@ type VideoUpscaleWorkspaceState = {
 };
 
 const ratios = ["1:1", "16:9", "9:16", "4:3", "3:4"];
+const upscaleUnavailableMessage = "高清处理组件暂不可用，请稍后重试";
 
 const imageWorkspaceModeMeta: Record<WorkspaceImageMode, {
   title: string;
@@ -135,22 +134,22 @@ const imageWorkspaceModeMeta: Record<WorkspaceImageMode, {
 }> = {
   "text-to-image": {
     title: "AI 图像生成器",
-    subtitle: "输入提示词并选择模型。",
+    subtitle: "描述画面，可选参考图片。",
     submitLabel: "生成图片",
     loadingLabel: "正在生成",
     promptPlaceholder: "描述你要生成的画面、风格、主体和氛围。",
     guideTitle: "准备开始生成",
-    guideDescription: "先选模型、比例和清晰度，再写清楚你想生成什么。",
-    guideNotes: ["确认模型可用", "填写提示词", "结果会自动进入作品库"],
+    guideDescription: "描述你想生成的画面。",
+    guideNotes: ["选择模型", "填写提示词", "结果会自动进入作品库"],
   },
   "image-to-image": {
     title: "AI 图片编辑器",
-    subtitle: "上传参考图并输入修改要求。",
+    subtitle: "上传参考图并描述修改要求。",
     submitLabel: "开始编辑",
     loadingLabel: "正在编辑",
     promptPlaceholder: "描述你要如何修改这张图，保留哪些元素、替换哪些内容。",
     guideTitle: "准备开始编辑",
-    guideDescription: "先上传参考图，再补充你要修改的内容和保留的细节。",
+    guideDescription: "描述希望如何修改参考图片。",
     guideNotes: ["上传参考图", "写清修改要求", "结果会自动进入作品库"],
   },
 };
@@ -183,15 +182,15 @@ const videoWorkspaceModeMeta: Record<WorkspaceVideoMode, {
     loadingLabel: "正在生成视频",
     uploadLabel: "首帧图片",
     uploadRequired: false,
-    uploadEmptyTitle: "文生视频不需要首帧图片",
+    uploadEmptyTitle: "上传图片",
     uploadFilledTitle: "首帧图片已在本地保留",
-    uploadHelpText: "当前模型数据没有暴露参考图能力字段，文生视频请求不会发送图片。",
+    uploadHelpText: "支持 JPG、PNG、WEBP",
     promptLabel: "视频提示词",
     promptPlaceholder: "描述主体、动作、场景、镜头、运镜、光线和氛围。例如：雨夜霓虹街道，低机位缓慢推进，人物回头看向镜头。",
     guideDescription: "描述你想生成的视频画面、动作和镜头。",
     guideEmpty: "描述你想生成的视频画面、动作和镜头，真实视频结果会显示在这里。",
     guideReady: "提示词已填写，可以提交真实视频任务。",
-    guideNotes: ["选择已启用的视频模型", "描述画面动作和镜头运动", "结果会进入作品库"],
+    guideNotes: ["选择视频模型", "描述画面动作和镜头", "结果会进入作品库"],
   },
   "image-to-video": {
     submitLabel: "生成视频",
@@ -200,7 +199,7 @@ const videoWorkspaceModeMeta: Record<WorkspaceVideoMode, {
     uploadRequired: true,
     uploadEmptyTitle: "上传首帧图片",
     uploadFilledTitle: "已选择首帧图片",
-    uploadHelpText: "仅支持 1 张 PNG、JPEG 或 WebP 图片，单张不超过 10MB。",
+    uploadHelpText: "支持 JPG、PNG、WEBP",
     promptLabel: "动态描述",
     promptPlaceholder: "描述图片中的主体如何运动、镜头如何推进/拉远/环绕、背景如何变化，以及哪些元素必须保持一致。",
     guideDescription: "上传首帧图片，再描述希望画面如何运动。",
@@ -231,7 +230,7 @@ function createImageWorkspaceFiles(files: File[]) {
 
 function createVideoWorkspaceFiles(files: File[]) {
   if (files.length > maxVideoFirstFrameCount) {
-    throw new Error("图生视频模式只能上传 1 张首帧图片。");
+    throw new Error("首帧图片只能上传 1 张。");
   }
   const nextFiles = files.slice(0, maxVideoFirstFrameCount);
   if (!nextFiles.length) return [];
@@ -308,13 +307,13 @@ export function StudioApp() {
   const [message, setMessage] = useState("");
   const [outputs, setOutputs] = useState<Partial<Record<BusinessToolId, OutputState>>>({});
   const [mobileAction, setMobileAction] = useState<MobileActionState>(null);
-  const [libraryFilter, setLibraryFilter] = useState<LibraryFilter>("all");
+  const [libraryFilter, setLibraryFilter] = useState<LibraryFilter>("image");
   const [librarySort, setLibrarySort] = useState<LibrarySort>("recent");
+  const [librarySearch, setLibrarySearch] = useState("");
   const [selectedLibraryItemId, setSelectedLibraryItemId] = useState<string | null>(null);
   const [deletingLibraryItemId, setDeletingLibraryItemId] = useState<string | null>(null);
   const [missingLibraryMediaIds, setMissingLibraryMediaIds] = useState<Set<string>>(() => new Set());
   const [imageWorkspace, setImageWorkspace] = useState<ImageWorkspaceState>({
-    mode: "text-to-image",
     providerId: "",
     ratio: "1:1",
     quality: "1k",
@@ -325,7 +324,6 @@ export function StudioApp() {
     loading: false,
   });
   const [videoWorkspace, setVideoWorkspace] = useState<VideoWorkspaceState>({
-    mode: "text-to-video",
     providerId: "",
     ratio: "16:9",
     duration: 5,
@@ -467,16 +465,12 @@ export function StudioApp() {
 
     const nextImageMode = action.mode === "text-to-image" || action.mode === "image-to-image" ? action.mode : null;
     if (action.toolId === "image" && nextImageMode) {
-      setImageWorkspace((prev) => (
-        prev.mode === nextImageMode ? prev : { ...prev, mode: nextImageMode, submitError: "" }
-      ));
+      setImageWorkspace((prev) => ({ ...prev, submitError: "", fileError: "" }));
     }
 
     const nextVideoMode = action.mode === "text-to-video" || action.mode === "image-to-video" ? action.mode : null;
     if (action.toolId === "video" && nextVideoMode) {
-      setVideoWorkspace((prev) => (
-        prev.mode === nextVideoMode ? prev : { ...prev, mode: nextVideoMode, fileError: "", submitError: "" }
-      ));
+      setVideoWorkspace((prev) => ({ ...prev, fileError: "", submitError: "" }));
     }
 
     setActiveWorkspaceToolId(tool);
@@ -486,13 +480,16 @@ export function StudioApp() {
   const activeAction = activeWorkspaceTool.action.kind === "workspace" ? activeWorkspaceTool.action : null;
   const activeBusinessTool = activeAction?.toolId || "library";
   const activeOutput = outputs[activeBusinessTool] || null;
-  const activeImageMode: WorkspaceImageMode = imageWorkspace.mode;
-  const activeVideoMode: WorkspaceVideoMode = videoWorkspace.mode;
+  const activeImageMode: WorkspaceImageMode = imageWorkspace.files.length ? "image-to-image" : "text-to-image";
+  const activeVideoMode: WorkspaceVideoMode = videoWorkspace.files.length ? "image-to-video" : "text-to-video";
   const currentLibraryItems = useMemo(() => {
-    const filtered = library.filter((item) => {
-      if (libraryFilter === "all") return true;
-      return item.type === libraryFilter;
-    });
+    const search = librarySearch.trim().toLowerCase();
+    const filtered = library.filter((item) => (
+      item.type === libraryFilter
+      && (!search
+        || item.title.toLowerCase().includes(search)
+        || item.prompt.toLowerCase().includes(search))
+    ));
     const sorted = [...filtered];
     if (librarySort === "title") {
       sorted.sort((a, b) => a.title.localeCompare(b.title, "zh-Hans-CN"));
@@ -500,10 +497,10 @@ export function StudioApp() {
       sorted.sort((a, b) => Number(new Date(b.createdAt)) - Number(new Date(a.createdAt)));
     }
     return sorted;
-  }, [library, libraryFilter, librarySort]);
+  }, [library, libraryFilter, librarySearch, librarySort]);
 
   const selectedLibraryItem = useMemo(
-    () => currentLibraryItems.find((item) => item.id === selectedLibraryItemId) || currentLibraryItems[0] || null,
+    () => currentLibraryItems.find((item) => item.id === selectedLibraryItemId) || null,
     [currentLibraryItems, selectedLibraryItemId],
   );
   const markLibraryMediaMissing = useCallback((id: string) => {
@@ -566,22 +563,6 @@ export function StudioApp() {
   const updateImageWorkspace = useCallback((patch: Partial<ImageWorkspaceState>) => {
     setImageWorkspace((prev) => ({ ...prev, ...patch }));
   }, []);
-
-  const handleImageModeChange = useCallback((mode: WorkspaceImageMode) => {
-    setImageWorkspace((prev) => (
-      prev.mode === mode
-        ? prev
-        : {
-            ...prev,
-            mode,
-            fileError: mode === "text-to-image" ? "" : prev.fileError,
-            submitError: "",
-          }
-    ));
-    if (activeWorkspaceToolId === "image-editor" && mode === "text-to-image") {
-      setActiveWorkspaceToolId("image");
-    }
-  }, [activeWorkspaceToolId]);
 
   const replaceImageWorkspaceFiles = useCallback((files: File[]) => {
     let nextFiles: ImageWorkspaceFile[];
@@ -647,14 +628,6 @@ export function StudioApp() {
       }));
       return;
     }
-    if (activeImageMode === "image-to-image" && !imageWorkspaceHasFiles) {
-      setImageWorkspace((prev) => ({
-        ...prev,
-        fileError: "图片编辑需要先上传参考图片。",
-        submitError: "图片编辑需要先上传参考图片。",
-      }));
-      return;
-    }
     if (imageWorkspace.loading) return;
 
     setImageWorkspace((prev) => ({
@@ -699,7 +672,6 @@ export function StudioApp() {
     imageWorkspace.quality,
     imageWorkspace.ratio,
     imageWorkspace.prompt,
-    imageWorkspaceHasFiles,
     imageWorkspacePrompt,
     refreshLibrary,
     selectedImageProvider,
@@ -727,19 +699,6 @@ export function StudioApp() {
 
   const updateVideoWorkspace = useCallback((patch: Partial<VideoWorkspaceState>) => {
     setVideoWorkspace((prev) => ({ ...prev, ...patch }));
-  }, []);
-
-  const handleVideoModeChange = useCallback((mode: WorkspaceVideoMode) => {
-    setVideoWorkspace((prev) => (
-      prev.mode === mode
-        ? prev
-        : {
-            ...prev,
-            mode,
-            fileError: "",
-            submitError: "",
-          }
-    ));
   }, []);
 
   const replaceVideoWorkspaceFiles = useCallback((files: File[]) => {
@@ -803,7 +762,7 @@ export function StudioApp() {
       updateImageUpscaleWorkspace({
         availability: null,
         statusLoading: false,
-        statusError: error instanceof Error ? error.message : "本机高清依赖检测失败。",
+        statusError: error instanceof Error ? error.message : upscaleUnavailableMessage,
       });
     }
   }, [updateImageUpscaleWorkspace]);
@@ -857,7 +816,7 @@ export function StudioApp() {
     }
     if (!imageUpscaleWorkspace.availability?.ready) {
       updateImageUpscaleWorkspace({
-        submitError: imageUpscaleWorkspace.statusError || imageUpscaleWorkspace.availability?.detail || "本机图片高清工具还没有准备好。",
+        submitError: upscaleUnavailableMessage,
       });
       return;
     }
@@ -886,7 +845,7 @@ export function StudioApp() {
     } finally {
       updateImageUpscaleWorkspace({ loading: false });
     }
-  }, [imageUpscaleWorkspace.availability?.detail, imageUpscaleWorkspace.availability?.ready, imageUpscaleWorkspace.file, imageUpscaleWorkspace.loading, imageUpscaleWorkspace.scale, imageUpscaleWorkspace.statusError, refreshLibrary, setMessage, updateImageUpscaleWorkspace]);
+  }, [imageUpscaleWorkspace.availability?.ready, imageUpscaleWorkspace.file, imageUpscaleWorkspace.loading, imageUpscaleWorkspace.scale, refreshLibrary, setMessage, updateImageUpscaleWorkspace]);
 
   const imageUpscaleCanSubmit = Boolean(imageUpscaleWorkspace.file)
     && Boolean(imageUpscaleWorkspace.availability?.ready)
@@ -906,7 +865,7 @@ export function StudioApp() {
       updateVideoUpscaleWorkspace({
         availability: null,
         statusLoading: false,
-        statusError: error instanceof Error ? error.message : "本机视频高清依赖检测失败。",
+        statusError: error instanceof Error ? error.message : upscaleUnavailableMessage,
       });
     }
   }, [updateVideoUpscaleWorkspace]);
@@ -964,7 +923,7 @@ export function StudioApp() {
     }
     if (!videoUpscaleWorkspace.availability?.ready) {
       updateVideoUpscaleWorkspace({
-        submitError: videoUpscaleWorkspace.statusError || videoUpscaleWorkspace.availability?.detail || "本机视频高清工具还没有准备好。",
+        submitError: upscaleUnavailableMessage,
       });
       return;
     }
@@ -999,13 +958,11 @@ export function StudioApp() {
     refreshLibrary,
     setMessage,
     updateVideoUpscaleWorkspace,
-    videoUpscaleWorkspace.availability?.detail,
     videoUpscaleWorkspace.availability?.ready,
     videoUpscaleWorkspace.file,
     videoUpscaleWorkspace.job,
     videoUpscaleWorkspace.loading,
     videoUpscaleWorkspace.scale,
-    videoUpscaleWorkspace.statusError,
   ]);
 
   const videoUpscaleProcessing = Boolean(videoUpscaleWorkspace.job)
@@ -1078,7 +1035,7 @@ export function StudioApp() {
       return;
     }
     if (videoWorkspaceNeedsFile && !videoWorkspaceHasFiles) {
-      const text = "图生视频需要先上传首帧图片。";
+      const text = "请先上传首帧图片。";
       updateVideoWorkspace({ fileError: text, submitError: text });
       return;
     }
@@ -1142,7 +1099,6 @@ export function StudioApp() {
           selectedProvider={selectedImageProvider}
           state={imageWorkspace}
           canSubmit={imageWorkspaceCanSubmit}
-          onModeChange={handleImageModeChange}
           onProviderChange={(value) => updateImageWorkspace({ providerId: value })}
           onRatioChange={(value) => updateImageWorkspace({ ratio: value })}
           onQualityChange={(value) => updateImageWorkspace({ quality: value })}
@@ -1164,7 +1120,6 @@ export function StudioApp() {
           selectedProvider={selectedVideoProvider}
           state={videoWorkspace}
           canSubmit={videoWorkspaceCanSubmit}
-          onModeChange={handleVideoModeChange}
           onProviderChange={(value) => updateVideoWorkspace({ providerId: value, submitError: "" })}
           onRatioChange={(value) => updateVideoWorkspace({ ratio: value })}
           onDurationChange={(value) => updateVideoWorkspace({ duration: value })}
@@ -1185,7 +1140,6 @@ export function StudioApp() {
           onFilesChange={replaceImageUpscaleFile}
           onFileRemove={removeImageUpscaleFile}
           onFilesClear={removeImageUpscaleFile}
-          onCheckAvailability={checkImageUpscaleAvailability}
           onSubmit={submitImageUpscale}
           registerMobileAction={setMobileAction}
         />
@@ -1198,7 +1152,6 @@ export function StudioApp() {
           onFilesChange={replaceVideoUpscaleFile}
           onFileRemove={removeVideoUpscaleFile}
           onFilesClear={removeVideoUpscaleFile}
-          onCheckAvailability={checkVideoUpscaleAvailability}
           onSubmit={submitVideoUpscale}
           registerMobileAction={setMobileAction}
         />
@@ -1207,9 +1160,7 @@ export function StudioApp() {
         <LibrarySidebar
           count={libraryCounts}
           filter={libraryFilter}
-          sort={librarySort}
           onFilterChange={setLibraryFilter}
-          onSortChange={setLibrarySort}
         />
       ) : null}
     </>
@@ -1233,8 +1184,13 @@ export function StudioApp() {
               loading={libraryLoading}
               error={libraryError}
               filter={libraryFilter}
+              sort={librarySort}
+              search={librarySearch}
               deletingItemId={deletingLibraryItemId}
               missingMediaIds={missingLibraryMediaIds}
+              onFilterChange={setLibraryFilter}
+              onSortChange={setLibrarySort}
+              onSearchChange={setLibrarySearch}
               onSelectItem={setSelectedLibraryItemId}
               onDelete={handleDeleteLibraryItem}
               onRefresh={refreshLibrary}
@@ -1277,7 +1233,6 @@ export function StudioApp() {
                 canSubmit={imageUpscaleCanSubmit}
                 libraryCount={library.length}
                 onSubmit={submitImageUpscale}
-                onCheckAvailability={checkImageUpscaleAvailability}
                 onOpenLibrary={() => setActiveWorkspaceToolId("library")}
               />
             ) : activeBusinessTool === "video-upscale" ? (
@@ -1287,7 +1242,6 @@ export function StudioApp() {
                 canSubmit={videoUpscaleCanSubmit}
                 libraryCount={library.length}
                 onSubmit={submitVideoUpscale}
-                onCheckAvailability={checkVideoUpscaleAvailability}
                 onOpenLibrary={() => setActiveWorkspaceToolId("library")}
               />
             ) : (
@@ -1310,7 +1264,6 @@ function ImageGenerator({
   selectedProvider,
   state,
   canSubmit,
-  onModeChange,
   onProviderChange,
   onRatioChange,
   onQualityChange,
@@ -1329,7 +1282,6 @@ function ImageGenerator({
   selectedProvider: PublicProvider | null;
   state: ImageWorkspaceState;
   canSubmit: boolean;
-  onModeChange: (mode: WorkspaceImageMode) => void;
   onProviderChange: (value: string) => void;
   onRatioChange: (value: string) => void;
   onQualityChange: (value: string) => void;
@@ -1355,8 +1307,6 @@ function ImageGenerator({
 
   return (
     <FormPanel>
-      <ImageModeSwitch mode={mode} onModeChange={onModeChange} />
-
       <ProviderSelect
         providers={providers}
         value={selectedProvider?.id || state.providerId}
@@ -1379,6 +1329,7 @@ function ImageGenerator({
       <StackedControl label="清晰度" required>
         <ModeSegmentedControl
           label="清晰度"
+          labelHidden
           groupId="image-quality"
           value={state.quality}
           options={[
@@ -1405,27 +1356,6 @@ function ImageGenerator({
   );
 }
 
-function ImageModeSwitch({
-  mode,
-  onModeChange,
-}: {
-  mode: WorkspaceImageMode;
-  onModeChange: (mode: WorkspaceImageMode) => void;
-}) {
-  return (
-    <ModeSegmentedControl
-      label="图像模式"
-      groupId="image-mode"
-      value={mode}
-      options={[
-        ["text-to-image", "文生图"],
-        ["image-to-image", "图生图"],
-      ]}
-      onChange={(value) => onModeChange(value as WorkspaceImageMode)}
-    />
-  );
-}
-
 function ReferenceImageInput({
   mode,
   files,
@@ -1442,7 +1372,6 @@ function ReferenceImageInput({
   onClear: () => void;
 }) {
   const [dragging, setDragging] = useState(false);
-  const required = mode === "image-to-image";
   const fileInputRef = useRef<HTMLInputElement | null>(null);
 
   const applyFiles = useCallback((fileList: FileList | File[]) => {
@@ -1452,13 +1381,12 @@ function ReferenceImageInput({
   }, [onChange]);
 
   return (
-    <FieldFrame label="参考图片" required={required} hint={required ? undefined : "可选"}>
+    <FieldFrame label="参考图片" hint={mode === "image-to-image" ? "已上传" : "可选"}>
       <CompactDropzone
         inputRef={fileInputRef}
         inputId="reference-image-input"
         accept="image/png,image/jpeg,image/webp"
         multiple
-        required={required}
         dragging={dragging}
         error={error}
         files={files.map((item) => ({
@@ -1466,17 +1394,15 @@ function ReferenceImageInput({
           size: item.file.size,
           previewUrl: item.previewUrl,
         }))}
-        emptyTitle={required ? "上传参考图片开始编辑" : "可上传参考图片辅助生成"}
+        emptyTitle="上传图片"
         filledTitle="已选择参考图片"
-        helpText="支持 PNG、JPEG、WebP，最多 10 张，单张不超过 10MB。"
-        chooseLabel={files.length ? "替换图片" : "选择图片"}
+        helpText="支持 JPG、PNG、WEBP"
         onFiles={applyFiles}
         onRemove={onRemove}
         onClear={files.length ? onClear : undefined}
         onDraggingChange={setDragging}
       />
       {error ? <p id="reference-image-error" className="studio-error-text" role="alert">{error}</p> : null}
-      {!error && required && !files.length ? <p className="studio-help-text" role="status" aria-live="polite">图片编辑必须先上传参考图片。</p> : null}
     </FieldFrame>
   );
 }
@@ -1495,7 +1421,6 @@ function VideoGenerator({
   selectedProvider,
   state,
   canSubmit,
-  onModeChange,
   onProviderChange,
   onRatioChange,
   onDurationChange,
@@ -1514,7 +1439,6 @@ function VideoGenerator({
   selectedProvider: PublicProvider | null;
   state: VideoWorkspaceState;
   canSubmit: boolean;
-  onModeChange: (mode: WorkspaceVideoMode) => void;
   onProviderChange: (value: string) => void;
   onRatioChange: (value: string) => void;
   onDurationChange: (value: number) => void;
@@ -1527,8 +1451,6 @@ function VideoGenerator({
   registerMobileAction: (action: MobileActionState) => void;
 }) {
   const meta = videoWorkspaceModeMeta[mode];
-  const hasFiles = state.files.length > 0;
-  const showUpload = mode === "image-to-video";
 
   useEffect(() => {
     registerMobileAction({
@@ -1542,16 +1464,6 @@ function VideoGenerator({
 
   return (
     <FormPanel>
-      <ModeSegmentedControl
-        label="视频模式"
-        groupId="video-mode"
-        value={mode}
-        options={[
-          ["text-to-video", "文生视频"],
-          ["image-to-video", "图生视频"],
-        ]}
-        onChange={(value) => onModeChange(value as WorkspaceVideoMode)}
-      />
       <ProviderSelect
         providers={providers}
         value={selectedProvider?.id || state.providerId}
@@ -1560,20 +1472,18 @@ function VideoGenerator({
         onChange={onProviderChange}
         onReload={onReloadProviders}
       />
-      {showUpload ? (
-        <VideoReferenceInput
-          files={state.files}
-          required={meta.uploadRequired}
-          error={state.fileError}
-          label={meta.uploadLabel}
-          emptyTitle={meta.uploadEmptyTitle}
-          filledTitle={meta.uploadFilledTitle}
-          helpText={meta.uploadHelpText}
-          onChange={onFilesChange}
-          onRemove={onFileRemove}
-          onClear={onFilesClear}
-        />
-      ) : null}
+      <VideoReferenceInput
+        files={state.files}
+        error={state.fileError}
+        label={meta.uploadLabel}
+        mode={mode}
+        emptyTitle={meta.uploadEmptyTitle}
+        filledTitle={meta.uploadFilledTitle}
+        helpText={meta.uploadHelpText}
+        onChange={onFilesChange}
+        onRemove={onFileRemove}
+        onClear={onFilesClear}
+      />
       <StackedControl label="视频比例" required>
         <AspectRatioSelector label="视频比例" value={state.ratio} onChange={onRatioChange} />
       </StackedControl>
@@ -1602,7 +1512,6 @@ function VideoGenerator({
         <SubmitButton disabled={!canSubmit} loading={state.loading} onClick={onSubmit}>
           {state.loading ? meta.loadingLabel : meta.submitLabel}
         </SubmitButton>
-        {!hasFiles && meta.uploadRequired ? <span className="studio-help-text">上传首帧图片后才能生成视频。</span> : null}
       </StickyPrimaryAction>
     </FormPanel>
   );
@@ -1610,9 +1519,9 @@ function VideoGenerator({
 
 function VideoReferenceInput({
   files,
-  required,
   error,
   label,
+  mode,
   emptyTitle,
   filledTitle,
   helpText,
@@ -1621,9 +1530,9 @@ function VideoReferenceInput({
   onClear,
 }: {
   files: VideoWorkspaceFile[];
-  required: boolean;
   error: string;
   label: string;
+  mode: WorkspaceVideoMode;
   emptyTitle: string;
   filledTitle: string;
   helpText: string;
@@ -1635,13 +1544,12 @@ function VideoReferenceInput({
   const [dragging, setDragging] = useState(false);
 
   return (
-    <FieldFrame label={label} required={required}>
+    <FieldFrame label={label} hint={mode === "image-to-video" ? "已上传" : "可选"}>
       <CompactDropzone
         inputRef={inputRef}
         inputId="video-first-frame-input"
         accept="image/png,image/jpeg,image/webp"
         multiple={false}
-        required={required}
         dragging={dragging}
         error={error}
         files={files.map((item) => ({
@@ -1652,7 +1560,6 @@ function VideoReferenceInput({
         emptyTitle={emptyTitle}
         filledTitle={filledTitle}
         helpText={helpText}
-        chooseLabel={files.length ? "替换图片" : "选择图片"}
         onFiles={onChange}
         onRemove={onRemove}
         onClear={files.length ? onClear : undefined}
@@ -1706,7 +1613,6 @@ function ImageUpscaleForm({
   onFilesChange,
   onFileRemove,
   onFilesClear,
-  onCheckAvailability,
   onSubmit,
   registerMobileAction,
 }: {
@@ -1716,27 +1622,12 @@ function ImageUpscaleForm({
   onFilesChange: (files: File[]) => void;
   onFileRemove: () => void;
   onFilesClear: () => void;
-  onCheckAvailability: () => Promise<void>;
   onSubmit: () => void;
   registerMobileAction: (action: MobileActionState) => void;
 }) {
   const inputRef = useRef<HTMLInputElement | null>(null);
   const [dragging, setDragging] = useState(false);
   const file = state.file;
-  const statusTitle = !state.checked
-    ? "未检测"
-    : state.statusLoading
-      ? "正在检测本机依赖..."
-      : state.statusError
-        ? "检测失败"
-        : state.availability?.ready
-          ? "工具可用"
-          : "工具不可用";
-  const statusTone = state.statusError
-    ? "is-warning"
-    : state.availability?.ready
-      ? "is-ready"
-      : "is-warning";
 
   useEffect(() => {
     registerMobileAction({
@@ -1756,13 +1647,11 @@ function ImageUpscaleForm({
           inputId="image-upscale-input"
           accept="image/png,image/jpeg,image/webp"
           multiple={false}
-          required
           dragging={dragging}
           files={file ? [{ name: file.file.name, size: file.file.size, previewUrl: file.previewUrl }] : []}
           emptyTitle="上传图片"
           filledTitle="已选择图片"
-          helpText="支持 PNG、JPEG、WebP，单张不超过 25MB。"
-          chooseLabel={file ? "替换图片" : "选择图片"}
+          helpText="支持 JPG、PNG、WEBP"
           onFiles={onFilesChange}
           onRemove={file ? () => onFileRemove() : undefined}
           onClear={file ? onFilesClear : undefined}
@@ -1774,6 +1663,7 @@ function ImageUpscaleForm({
       <StackedControl label="放大倍数" required>
         <ModeSegmentedControl
           label="放大倍数"
+          labelHidden
           groupId="image-upscale-scale"
           value={state.scale}
           options={[
@@ -1784,25 +1674,11 @@ function ImageUpscaleForm({
         />
       </StackedControl>
 
-      <div className={cn("studio-status", statusTone)}>
-        <div className="min-w-0">
-          <strong className="block">{statusTitle}</strong>
-          <p className="mt-1 break-all text-xs opacity-75">
-            {state.statusError || state.availability?.detail || "先检测本机 Upscayl，再开始增强。"}
-          </p>
-        </div>
-        <button
-          type="button"
-          onClick={() => void onCheckAvailability()}
-          disabled={state.statusLoading}
-          className="studio-icon-button"
-          aria-label="重新检测本机依赖"
-        >
-          <RefreshCw className={cn("size-4", state.statusLoading && "animate-spin")} />
-        </button>
-      </div>
+      {state.checked && !state.statusLoading && !state.availability?.ready ? (
+        <p className="studio-error-text" role="alert">{upscaleUnavailableMessage}</p>
+      ) : null}
 
-      <StickyPrimaryAction helpText="本机增强，不需要 Key">
+      <StickyPrimaryAction>
         <SubmitButton disabled={!canSubmit} loading={state.loading} loadingLabel="正在增强" onClick={onSubmit}>
           开始增强
         </SubmitButton>
@@ -1817,7 +1693,6 @@ function ImageUpscalePreviewPanel({
   canSubmit,
   libraryCount,
   onSubmit,
-  onCheckAvailability,
   onOpenLibrary,
 }: {
   state: ImageUpscaleWorkspaceState;
@@ -1825,7 +1700,6 @@ function ImageUpscalePreviewPanel({
   canSubmit: boolean;
   libraryCount: number;
   onSubmit: () => void;
-  onCheckAvailability: () => Promise<void>;
   onOpenLibrary: () => void;
 }) {
   const source = state.file;
@@ -1859,11 +1733,8 @@ function ImageUpscalePreviewPanel({
             </figure>
           ) : null}
           <div className="studio-preview__empty">
-            <p>参数会保留，你可以重新检测本机依赖后再次尝试。</p>
+            <p>参数会保留，你可以调整图片或倍数后再次尝试。</p>
             <div className="studio-actions">
-              <button type="button" className="studio-secondary-button" onClick={() => void onCheckAvailability()}>
-                重新检测
-              </button>
               <button type="button" className="studio-secondary-button" onClick={onSubmit} disabled={!canSubmit}>
                 重试
               </button>
@@ -1882,7 +1753,7 @@ function ImageUpscalePreviewPanel({
       <PreviewState
         eyebrow="创作预览"
         title="创作预览"
-        description={state.statusLoading ? "正在检测本机依赖。" : "先上传一张图片，再选择 2x 或 4x。"}
+        description={state.statusLoading ? "正在准备高清处理组件。" : "先上传一张图片，再选择 2x 或 4x。"}
         badge={`${libraryCount} 条作品`}
       >
         <div className="studio-preview__empty">
@@ -1908,14 +1779,9 @@ function ImageUpscalePreviewPanel({
 
   if (!state.availability?.ready) {
     return (
-      <PreviewState eyebrow="依赖不可用" title="生成结果" description={state.statusError || state.availability?.detail || "本机图片高清工具不可用。"} badge="请重试" role="alert">
+      <PreviewState eyebrow="暂不可用" title="生成结果" description={upscaleUnavailableMessage} badge="请稍后" role="alert">
         <div className="studio-preview__empty">
-          <p>工具可用后才能开始增强。</p>
-          <div className="studio-actions">
-            <button type="button" className="studio-secondary-button" onClick={() => void onCheckAvailability()}>
-              重新检测
-            </button>
-          </div>
+          <p>当前无法开始高清处理，请稍后再试。</p>
         </div>
       </PreviewState>
     );
@@ -1988,7 +1854,6 @@ function VideoUpscalePreviewPanel({
   canSubmit,
   libraryCount,
   onSubmit,
-  onCheckAvailability,
   onOpenLibrary,
 }: {
   state: VideoUpscaleWorkspaceState;
@@ -1996,7 +1861,6 @@ function VideoUpscalePreviewPanel({
   canSubmit: boolean;
   libraryCount: number;
   onSubmit: () => void;
-  onCheckAvailability: () => Promise<void>;
   onOpenLibrary: () => void;
 }) {
   const source = state.file;
@@ -2030,11 +1894,8 @@ function VideoUpscalePreviewPanel({
             </figure>
           ) : null}
           <div className="studio-preview__empty">
-            <p>参数会保留，你可以重新检测本机依赖后再次尝试。</p>
+            <p>参数会保留，你可以调整视频或倍数后再次尝试。</p>
             <div className="studio-actions">
-              <button type="button" className="studio-secondary-button" onClick={() => void onCheckAvailability()}>
-                重新检测
-              </button>
               <button type="button" className="studio-secondary-button" onClick={onSubmit} disabled={!canSubmit}>
                 重试
               </button>
@@ -2053,7 +1914,7 @@ function VideoUpscalePreviewPanel({
       <PreviewState
         eyebrow="创作预览"
         title="创作预览"
-        description={state.statusLoading ? "正在检测本机依赖。" : "先上传一个视频，再选择 2x 或 4x。"}
+        description={state.statusLoading ? "正在准备高清处理组件。" : "先上传一个视频，再选择 2x 或 4x。"}
         badge={`${libraryCount} 条作品`}
       >
         <div className="studio-preview__empty">
@@ -2079,14 +1940,9 @@ function VideoUpscalePreviewPanel({
 
   if (!state.availability?.ready) {
     return (
-      <PreviewState eyebrow="依赖不可用" title="生成结果" description={state.statusError || state.availability?.detail || "本机视频高清工具不可用。"} badge="请重试" role="alert">
+      <PreviewState eyebrow="暂不可用" title="生成结果" description={upscaleUnavailableMessage} badge="请稍后" role="alert">
         <div className="studio-preview__empty">
-          <p>工具可用后才能开始增强。</p>
-          <div className="studio-actions">
-            <button type="button" className="studio-secondary-button" onClick={() => void onCheckAvailability()}>
-              重新检测
-            </button>
-          </div>
+          <p>当前无法开始高清处理，请稍后再试。</p>
         </div>
       </PreviewState>
     );
@@ -2160,7 +2016,6 @@ function VideoUpscaleForm({
   onFilesChange,
   onFileRemove,
   onFilesClear,
-  onCheckAvailability,
   onSubmit,
   registerMobileAction,
 }: {
@@ -2170,27 +2025,12 @@ function VideoUpscaleForm({
   onFilesChange: (files: File[]) => void;
   onFileRemove: () => void;
   onFilesClear: () => void;
-  onCheckAvailability: () => Promise<void>;
   onSubmit: () => void;
   registerMobileAction: (action: MobileActionState) => void;
 }) {
   const inputRef = useRef<HTMLInputElement | null>(null);
   const [dragging, setDragging] = useState(false);
   const file = state.file;
-  const statusTitle = !state.checked
-    ? "未检测"
-    : state.statusLoading
-      ? "正在检测本机依赖..."
-      : state.statusError
-        ? "检测失败"
-        : state.availability?.ready
-          ? "工具可用"
-          : "工具不可用";
-  const statusTone = state.statusError
-    ? "is-warning"
-    : state.availability?.ready
-      ? "is-ready"
-      : "is-warning";
   const processing = state.loading || state.job?.status === "queued" || state.job?.status === "generating";
 
   useEffect(() => {
@@ -2211,7 +2051,6 @@ function VideoUpscaleForm({
           inputId="video-upscale-input"
           accept="video/mp4,video/webm,video/quicktime"
           multiple={false}
-          required
           dragging={dragging}
           files={file ? [{
             name: file.file.name,
@@ -2221,8 +2060,7 @@ function VideoUpscaleForm({
           }] : []}
           emptyTitle="上传视频"
           filledTitle="已选择视频"
-          helpText="支持 MP4、WebM、MOV，单个视频不超过 1GB。"
-          chooseLabel={file ? "替换视频" : "选择视频"}
+          helpText="支持常见视频格式"
           onFiles={onFilesChange}
           onRemove={file ? () => onFileRemove() : undefined}
           onClear={file ? onFilesClear : undefined}
@@ -2234,6 +2072,7 @@ function VideoUpscaleForm({
       <StackedControl label="放大倍数" required>
         <ModeSegmentedControl
           label="放大倍数"
+          labelHidden
           groupId="video-upscale-scale"
           value={state.scale}
           options={[
@@ -2244,25 +2083,11 @@ function VideoUpscaleForm({
         />
       </StackedControl>
 
-      <div className={cn("studio-status", statusTone)}>
-        <div className="min-w-0">
-          <strong className="block">{statusTitle}</strong>
-          <p className="mt-1 break-all text-xs opacity-75">
-            {state.statusError || state.availability?.detail || "先检测本机 Video2X，再开始增强视频。"}
-          </p>
-        </div>
-        <button
-          type="button"
-          onClick={() => void onCheckAvailability()}
-          disabled={state.statusLoading}
-          className="studio-icon-button"
-          aria-label="重新检测本机依赖"
-        >
-          <RefreshCw className={cn("size-4", state.statusLoading && "animate-spin")} />
-        </button>
-      </div>
+      {state.checked && !state.statusLoading && !state.availability?.ready ? (
+        <p className="studio-error-text" role="alert">{upscaleUnavailableMessage}</p>
+      ) : null}
 
-      <StickyPrimaryAction helpText="本机增强，不需要 Key">
+      <StickyPrimaryAction>
         <SubmitButton disabled={!canSubmit || processing} loading={processing} loadingLabel="正在增强" onClick={onSubmit}>
           开始增强
         </SubmitButton>
@@ -2274,44 +2099,31 @@ function VideoUpscaleForm({
 function LibrarySidebar({
   count,
   filter,
-  sort,
   onFilterChange,
-  onSortChange,
 }: {
   count: { all: number; image: number; video: number };
   filter: LibraryFilter;
-  sort: LibrarySort;
   onFilterChange: (value: LibraryFilter) => void;
-  onSortChange: (value: LibrarySort) => void;
 }) {
   return (
     <div className="studio-library-sidebar">
-      <StackedControl label="分类">
-        <ModeSegmentedControl
-          label="作品分类"
-          groupId="library-filter"
-          value={filter}
-          options={[
-            ["all", `全部 ${count.all}`],
-            ["image", `图片 ${count.image}`],
-            ["video", `视频 ${count.video}`],
-          ]}
-          onChange={(value) => onFilterChange(value as LibraryFilter)}
-        />
-      </StackedControl>
-      <StackedControl label="排序">
-        <ModeSegmentedControl
-          label="作品排序"
-          groupId="library-sort"
-          value={sort}
-          options={[
-            ["recent", "最新"],
-            ["title", "标题"],
-          ]}
-          onChange={(value) => onSortChange(value as LibrarySort)}
-        />
-      </StackedControl>
-      <p className="studio-help-text">点击作品后会在右侧预览区显示详情。</p>
+      <div className="studio-library-kind" role="group" aria-label="作品类型">
+        {([
+          ["image", "图片", count.image],
+          ["video", "视频", count.video],
+        ] as const).map(([id, label, value]) => (
+          <button
+            key={id}
+            type="button"
+            aria-pressed={filter === id}
+            className={cn("studio-library-kind__button", filter === id && "is-active")}
+            onClick={() => onFilterChange(id)}
+          >
+            <span>{label}</span>
+            <strong>{value}</strong>
+          </button>
+        ))}
+      </div>
     </div>
   );
 }
@@ -2323,8 +2135,13 @@ function LibraryWorkspace({
   loading,
   error,
   filter,
+  sort,
+  search,
   deletingItemId,
   missingMediaIds,
+  onFilterChange,
+  onSortChange,
+  onSearchChange,
   onSelectItem,
   onDelete,
   onRefresh,
@@ -2336,8 +2153,13 @@ function LibraryWorkspace({
   loading: boolean;
   error: string;
   filter: LibraryFilter;
+  sort: LibrarySort;
+  search: string;
   deletingItemId: string | null;
   missingMediaIds: Set<string>;
+  onFilterChange: (value: LibraryFilter) => void;
+  onSortChange: (value: LibrarySort) => void;
+  onSearchChange: (value: string) => void;
   onSelectItem: (id: string | null) => void;
   onDelete: (id: string) => Promise<void>;
   onRefresh: () => Promise<void>;
@@ -2368,16 +2190,24 @@ function LibraryWorkspace({
   }
 
   if (!items.length) {
-    const hasFilter = totalCount > 0 && filter !== "all";
+    const hasFilter = totalCount > 0 || Boolean(search.trim());
     return (
       <PreviewState
         eyebrow="空作品库"
         title="作品库"
-        description={hasFilter ? "当前分类下没有作品。" : "生成或高清处理成功后，真实结果会自动出现在这里。"}
+        description={hasFilter ? "当前条件下没有作品。" : "生成或高清处理成功后，真实结果会自动出现在这里。"}
         badge={`${totalCount} 条作品`}
       >
+        <LibraryToolbar
+          filter={filter}
+          sort={sort}
+          search={search}
+          onFilterChange={onFilterChange}
+          onSortChange={onSortChange}
+          onSearchChange={onSearchChange}
+        />
         <div className="studio-preview__empty">
-          <p>{hasFilter ? "切换到“全部”可以查看其他类型作品。" : "这里不会展示静态示例作品。"}</p>
+          <p>{hasFilter ? "可以更换类型或搜索关键词。" : "这里不会展示静态示例作品。"}</p>
           <button type="button" className="studio-secondary-button" onClick={() => void onRefresh()}>
             刷新作品库
           </button>
@@ -2387,8 +2217,16 @@ function LibraryWorkspace({
   }
 
   return (
-    <PreviewState eyebrow="作品库" title="作品库" description="真实作品按时间排列，可筛选、预览、下载和删除。" badge={`${items.length} 条作品`}>
+    <PreviewState eyebrow="作品库" title="作品库" description="真实作品按条件展示，可预览、下载和删除。" badge={`${items.length} 条作品`}>
       <div className="studio-library-workspace">
+        <LibraryToolbar
+          filter={filter}
+          sort={sort}
+          search={search}
+          onFilterChange={onFilterChange}
+          onSortChange={onSortChange}
+          onSearchChange={onSearchChange}
+        />
         <div className="studio-library-grid">
           {items.map((item) => (
             <button
@@ -2407,7 +2245,12 @@ function LibraryWorkspace({
         </div>
 
         {selectedItem ? (
-          <div className="studio-library-detail">
+          <div className="studio-library-modal" role="dialog" aria-modal="true" aria-label={selectedItem.title}>
+            <div className="studio-library-modal__backdrop" onClick={() => onSelectItem(null)} />
+            <div className="studio-library-detail">
+              <button type="button" className="studio-icon-button studio-library-detail__close" aria-label="关闭预览" onClick={() => onSelectItem(null)}>
+                <X className="size-4" aria-hidden="true" />
+              </button>
             <MediaCard
               item={selectedItem}
               large
@@ -2439,9 +2282,60 @@ function LibraryWorkspace({
               </button>
             </div>
           </div>
+          </div>
         ) : null}
       </div>
     </PreviewState>
+  );
+}
+
+function LibraryToolbar({
+  filter,
+  sort,
+  search,
+  onFilterChange,
+  onSortChange,
+  onSearchChange,
+}: {
+  filter: LibraryFilter;
+  sort: LibrarySort;
+  search: string;
+  onFilterChange: (value: LibraryFilter) => void;
+  onSortChange: (value: LibrarySort) => void;
+  onSearchChange: (value: string) => void;
+}) {
+  return (
+    <div className="studio-library-toolbar">
+      <div className="studio-library-toolbar__search">
+        <Search className="size-4" aria-hidden="true" />
+        <label className="studio-sr-only" htmlFor="library-search">查找作品</label>
+        <input
+          id="library-search"
+          value={search}
+          onChange={(event) => onSearchChange(event.target.value)}
+          placeholder="按标题查找"
+          className="studio-input"
+        />
+      </div>
+      <select
+        value={filter}
+        onChange={(event) => onFilterChange(event.target.value as LibraryFilter)}
+        className="studio-select studio-library-toolbar__select"
+        aria-label="作品类型"
+      >
+        <option value="image">图片</option>
+        <option value="video">视频</option>
+      </select>
+      <select
+        value={sort}
+        onChange={(event) => onSortChange(event.target.value as LibrarySort)}
+        className="studio-select studio-library-toolbar__select"
+        aria-label="排序"
+      >
+        <option value="recent">最新</option>
+        <option value="title">标题</option>
+      </select>
+    </div>
   );
 }
 
@@ -2785,14 +2679,12 @@ function CompactDropzone({
   inputId,
   accept,
   multiple = true,
-  required,
   dragging,
   error,
   files,
   emptyTitle,
   filledTitle,
   helpText,
-  chooseLabel,
   onFiles,
   onRemove,
   onClear,
@@ -2802,14 +2694,12 @@ function CompactDropzone({
   inputId: string;
   accept: string;
   multiple?: boolean;
-  required?: boolean;
   dragging?: boolean;
   error?: string;
   files: UploadFilePreview[];
   emptyTitle: string;
   filledTitle: string;
   helpText: string;
-  chooseLabel?: string;
   onFiles: (files: File[]) => void;
   onRemove?: (index: number) => void;
   onClear?: () => void;
@@ -2853,7 +2743,7 @@ function CompactDropzone({
           ref={inputRef}
           id={inputId}
           type="file"
-          aria-label={required ? emptyTitle : chooseLabel || emptyTitle}
+          aria-label={files.length ? filledTitle : emptyTitle}
           aria-describedby={helpId}
           accept={accept}
           multiple={multiple}
@@ -2869,22 +2759,8 @@ function CompactDropzone({
         <div className="studio-upload__content">
           <strong>{files.length ? filledTitle : emptyTitle}</strong>
           <p id={helpId}>{helpText}</p>
+          {files.length ? <span>点击区域可替换文件</span> : null}
         </div>
-      </div>
-
-      <div className="studio-upload__actions">
-        <button
-          type="button"
-          className="studio-secondary-button"
-          onClick={() => inputRef.current?.click()}
-        >
-          {chooseLabel || (files.length ? "替换文件" : "选择文件")}
-        </button>
-        {files.length && onClear ? (
-          <button type="button" className="studio-secondary-button" onClick={onClear}>
-            全部删除
-          </button>
-        ) : null}
       </div>
 
       {files.length ? (
@@ -2911,6 +2787,11 @@ function CompactDropzone({
               ) : null}
             </div>
           ))}
+          {files.length > 1 && onClear ? (
+            <button type="button" className="studio-secondary-button studio-upload-clear" onClick={onClear}>
+              全部删除
+            </button>
+          ) : null}
         </div>
       ) : null}
     </div>
@@ -2962,12 +2843,14 @@ function PreviewState({
 
 function ModeSegmentedControl({
   label,
+  labelHidden,
   groupId,
   value,
   options,
   onChange,
 }: {
   label?: string;
+  labelHidden?: boolean;
   groupId?: string;
   value: string;
   options: Array<[string, string]>;
@@ -2975,7 +2858,11 @@ function ModeSegmentedControl({
 }) {
   return (
     <div className="studio-mode">
-      {label ? <span id={groupId ? `${groupId}-label` : undefined} className="studio-label">{label}</span> : null}
+      {label ? (
+        <span id={groupId ? `${groupId}-label` : undefined} className={cn("studio-label", labelHidden && "studio-sr-only")}>
+          {label}
+        </span>
+      ) : null}
       <div className="studio-mode__options" role="group" aria-labelledby={label && groupId ? `${groupId}-label` : undefined}>
         {options.map(([id, text]) => (
           <button
@@ -3029,7 +2916,7 @@ function ProviderSelect({
           ) : providers.length ? (
             providers.map((provider) => (
               <option key={provider.id} value={provider.id}>
-                {provider.model} · {provider.title}
+                {provider.displayName || provider.model}
               </option>
             ))
           ) : (
@@ -3039,7 +2926,7 @@ function ProviderSelect({
         {loading ? <p id="image-provider-status" className="studio-help-text" role="status" aria-live="polite">正在读取后台已启用的图片模型。</p> : null}
         {!loading && !error && !providers.length ? (
           <p id="image-provider-empty" className="studio-help-text" role="status" aria-live="polite">
-            当前尚未配置可用模型，请到 <a href="/admin/providers">后台设置</a> 启用对应模型。
+            当前尚未配置可用模型。
           </p>
         ) : null}
         {error ? (
@@ -3182,10 +3069,10 @@ function MediaCard({
 }
 
 function libraryModeLabel(item: LibraryItem) {
-  if (item.mode === "text-to-image") return "图片 · 文生图";
-  if (item.mode === "image-to-image") return "图片 · 图生图";
-  if (item.mode === "text-to-video") return "视频 · 文生视频";
-  if (item.mode === "image-to-video") return "视频 · 图生视频";
+  if (item.mode === "text-to-image") return "图片生成";
+  if (item.mode === "image-to-image") return "图片编辑";
+  if (item.mode === "text-to-video") return "视频生成";
+  if (item.mode === "image-to-video") return "首帧视频";
   if (item.mode === "image-upscale") return "图片高清";
   if (item.mode === "video-upscale") return "视频高清";
   return item.type === "image" ? "图片作品" : "视频作品";
@@ -3254,15 +3141,15 @@ const previewContent: Record<
   },
   "image-upscale": {
     title: "图片高清",
-    desc: "本机 Upscayl 放大能力继续通过原接口处理。",
+    desc: "上传图片后选择倍数，结果会在这里显示。",
     image: "/images/reference/sample-2.png",
     notes: ["上传图片", "选择 2x 或 4x", "处理后进入作品库"],
   },
   "video-upscale": {
     title: "视频高清",
-    desc: "本机 Video2X 增强能力继续通过原接口处理。",
+    desc: "上传视频后选择倍数，结果会在这里播放。",
     image: "/images/reference/sample-3.png",
-    notes: ["上传视频", "检测本机依赖", "处理后刷新作品库"],
+    notes: ["上传视频", "选择 2x 或 4x", "处理后刷新作品库"],
   },
   library: {
     title: "作品库",
