@@ -8,7 +8,7 @@ import { useRouter } from "next/navigation";
 
 import { WorkbenchShell } from "@/components/workbench-shell";
 import { cn } from "@/lib/utils";
-import type { JobRecord, LibraryItem, PublicProvider } from "@/lib/server/types";
+import type { FrontendProvider, JobRecord, LibraryItem } from "@/lib/server/types";
 import {
   type WorkspaceAction,
   type WorkspaceImageMode,
@@ -25,8 +25,8 @@ type UpscaleAvailability = { ready: boolean; detail: string };
 type UpscaleStatusResponse = Record<UpscaleKind, UpscaleAvailability>;
 
 type EnabledProviders = {
-  image: PublicProvider[];
-  video: PublicProvider[];
+  image: FrontendProvider[];
+  video: FrontendProvider[];
 };
 
 type OutputState = {
@@ -557,10 +557,10 @@ function ImageGenerator({
   registerMobileAction,
 }: {
   mode: WorkspaceImageMode;
-  providers: PublicProvider[];
+  providers: FrontendProvider[];
   providersLoading: boolean;
   providersError: string;
-  selectedProvider: PublicProvider | null;
+  selectedProvider: FrontendProvider | null;
   state: ImageWorkspaceState;
   canSubmit: boolean;
   onModeChange: (mode: WorkspaceImageMode) => void;
@@ -767,7 +767,7 @@ function VideoGenerator({
   registerMobileAction,
 }: {
   initialMode: WorkspaceVideoMode;
-  providers: PublicProvider[];
+  providers: FrontendProvider[];
   onDone: () => Promise<void>;
   onResult: (item: LibraryItem, job?: JobRecord | null) => void;
   setMessage: (value: string) => void;
@@ -1467,7 +1467,7 @@ function ProviderSelect({
   onChange,
   onReload,
 }: {
-  providers: PublicProvider[];
+  providers: FrontendProvider[];
   value: string;
   loading?: boolean;
   error?: string;
@@ -1494,7 +1494,7 @@ function ProviderSelect({
           ) : providers.length ? (
             providers.map((provider) => (
               <option key={provider.id} value={provider.id}>
-                {provider.model} · {provider.title}
+                {provider.displayName || provider.model}
               </option>
             ))
           ) : (

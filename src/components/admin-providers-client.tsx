@@ -87,6 +87,7 @@ export function AdminProvidersClient() {
             id: provider.id,
             apiUrl: provider.apiUrl,
             model: provider.model,
+            displayName: provider.displayName,
             endpointType: provider.endpointType,
             enabled: provider.enabled,
             ...(provider.newApiKey ? { apiKey: provider.newApiKey } : {}),
@@ -188,7 +189,7 @@ export function AdminProvidersClient() {
                 </label>
               </div>
 
-              <div className="mt-5 grid gap-4 xl:grid-cols-[1.2fr_.75fr_1fr]">
+              <div className="mt-5 grid gap-4 xl:grid-cols-[1.2fr_.75fr_.75fr_1fr]">
                 <label className="admin-field">
                   {isLocalCli(provider.endpointType) ? "可执行文件路径（留空自动检测）" : "接口地址"}
                   <input
@@ -204,6 +205,15 @@ export function AdminProvidersClient() {
                   <input
                     value={provider.model}
                     onChange={(event) => update(provider.id, { model: event.target.value })}
+                    className="admin-input"
+                  />
+                </label>
+                <label className="admin-field">
+                  前台显示名称
+                  <input
+                    value={provider.displayName}
+                    onChange={(event) => update(provider.id, { displayName: event.target.value })}
+                    placeholder={provider.model}
                     className="admin-input"
                   />
                 </label>

@@ -15,6 +15,7 @@ export type ProviderConfig = {
   role: string;
   apiUrl: string;
   model: string;
+  displayName: string;
   apiKey: string;
   enabled: boolean;
   endpointType: EndpointType;
@@ -25,8 +26,16 @@ export type PublicProvider = Omit<ProviderConfig, "apiKey"> & {
   keyPreview: string;
 };
 
+export type FrontendProvider = {
+  id: string;
+  model: string;
+  displayName: string;
+  capabilities: string[];
+  enabled: boolean;
+};
+
 export type ProviderUpdate = Partial<
-  Pick<ProviderConfig, "apiUrl" | "model" | "enabled" | "endpointType">
+  Pick<ProviderConfig, "apiUrl" | "model" | "displayName" | "enabled" | "endpointType">
 > & {
   id: string;
   apiKey?: string;

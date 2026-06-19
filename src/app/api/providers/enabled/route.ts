@@ -1,13 +1,13 @@
 import { NextResponse } from "next/server";
 
-import { readEnabledProviders } from "@/lib/server/providers";
+import { readFrontendProviders } from "@/lib/server/providers";
 
 export const runtime = "nodejs";
 
 export async function GET() {
   const [image, video] = await Promise.all([
-    readEnabledProviders("image"),
-    readEnabledProviders("video"),
+    readFrontendProviders("image"),
+    readFrontendProviders("video"),
   ]);
   return NextResponse.json({ providers: { image, video } });
 }
