@@ -265,6 +265,69 @@ blocked because the requested production readiness result requires approved test
 runtime configuration and Provider credentials supplied through environment
 variables.
 
+## Provider Key Follow-Up Validation
+
+Attempt date: 2026-06-19.
+
+Commit under test before this report update:
+`cf23b8f5a4d165807f0f4ec96407e920539d2516`.
+
+The user reported that the model keys were configured on local port `3106`.
+That instance was checked without printing secrets.
+
+3106 findings:
+
+- `/` returned `200`.
+- `/login` returned `200`.
+- `/api/providers/enabled` returned configured image and video providers.
+- `/api/auth/csrf` returned `404`.
+- `/api/auth/session` returned `404`.
+- `/api/quota` returned `404`.
+- `/api/billing/config` returned `404`.
+- `/api/health/backend?mode=liveness` returned `404`.
+- `/api/health/backend?mode=readiness` returned `404`.
+
+Conclusion: port `3106` is not running the current Final QA backend surface, so
+it cannot be used as the PR #37 release candidate for auth, quota, billing,
+health, readiness, or production validation.
+
+The local provider configuration used by port `3106` was found in another
+worktree under `data/providers.json`. That ignored local runtime file was copied
+into this worktree's ignored `data/providers.json` only for local validation and
+was not committed.
+
+Current PR #37 runtime on `127.0.0.1:3206` after copying the ignored provider
+configuration:
+
+- `/api/providers/enabled` returned configured image and video providers.
+- The public provider response contained only frontend-safe fields: `id`,
+  `model`, `displayName`, `capabilities`, and `enabled`.
+- `/api/auth/csrf` returned `200`.
+- `/api/health/backend?mode=liveness` returned `200`.
+- `/api/health/backend?mode=readiness` returned `503`.
+- Readiness failure details were safe and indicated `NEW_API_DISABLED` plus
+  application database configuration failure.
+
+Registration and quota probe on the current PR #37 runtime:
+
+- `POST /api/auth/register` returned `202`.
+- The new test user session was created.
+- The user mapping status was `repair_required`.
+- `GET /api/quota` returned `409 mapping_pending`.
+- `POST /api/quota/precheck` did not produce an accepted quota precheck.
+
+Result:
+
+- Image/video Provider keys are now visible to the current PR #37 runtime via an
+  ignored local runtime file.
+- The release candidate is still blocked because application-level New API
+  administration, active user mapping, and application PostgreSQL readiness are
+  not configured for the current runtime.
+- Real image generation remains `BLOCKED`.
+- Real video generation remains `BLOCKED`.
+- Debit-once and duplicate-request live Provider validation remain `BLOCKED`.
+- The final conclusion remains `BLOCKED`.
+
 ## Not Fully Exercised Locally
 
 - Real third-party or approved test image/video Provider calls were not executed
