@@ -110,6 +110,7 @@ function normalizeProvider(provider: ProviderConfig): ProviderConfig {
     displayName: String(provider.displayName || "").trim() || undefined,
     apiKey: String(provider.apiKey || "").trim(),
     enabled: Boolean(provider.enabled),
+    custom: Boolean(provider.custom),
   };
 }
 
@@ -126,6 +127,7 @@ export function sanitizeProvider(provider: ProviderConfig): PublicProvider {
     displayName: normalized.displayName,
     enabled: normalized.enabled,
     endpointType: normalized.endpointType,
+    custom: normalized.custom,
     configured: normalized.enabled && (localProvider || hasKey(normalized.apiKey)),
     keyPreview: maskedKeyPreview(normalized.apiKey),
   };
@@ -137,7 +139,8 @@ export async function readProviders(): Promise<ProviderConfig[]> {
   if (!stored) return defaults;
 
   const byId = new Map(stored.map((provider) => [provider.id, normalizeProvider(provider)]));
-  return defaults.map((fallback) => ({
+  const defaultIds = new Set(defaults.map((provider) => provider.id));
+  const mergedDefaults = defaults.map((fallback) => ({
     ...fallback,
     ...(() => {
       const saved = byId.get(fallback.id);
@@ -157,6 +160,10 @@ export async function readProviders(): Promise<ProviderConfig[]> {
       return saved;
     })(),
   }));
+  const customProviders = stored
+    .map(normalizeProvider)
+    .filter((provider) => provider.custom && !defaultIds.has(provider.id));
+  return [...mergedDefaults, ...customProviders];
 }
 
 export async function readPublicProviders() {
@@ -222,22 +229,49 @@ export async function updateProviders(updates: ProviderUpdate[]) {
 
   for (const update of updates) {
     const current = byId.get(update.id);
-    if (!current) throw new Error(`不支持的供应商：${update.id}`);
+    if (update.delete) {
+      if (!current) continue;
+      if (!current.custom) throw new Error("内置供应商不能删除，只能停用。");
+      byId.delete(update.id);
+      continue;
+    }
+
+    if (!current && !update.custom) throw new Error(`不支持的供应商：${update.id}`);
+    const baseProvider = current || {
+      id: update.id,
+      kind: update.kind || "video",
+      title: update.title || "自定义模型",
+      role: update.role || "自定义模型配置",
+      apiUrl: "",
+      model: "",
+      displayName: "",
+      apiKey: "",
+      enabled: false,
+      endpointType: update.endpointType || "videos-generations",
+      custom: true,
+    } satisfies ProviderConfig;
 
     const next: ProviderConfig = {
-      ...current,
-      apiUrl: update.apiUrl === undefined ? current.apiUrl : update.apiUrl,
-      model: update.model === undefined ? current.model : update.model,
-      displayName: update.displayName === undefined ? current.displayName : update.displayName,
-      enabled: update.enabled === undefined ? current.enabled : update.enabled,
-      endpointType: update.endpointType === undefined ? current.endpointType : update.endpointType,
-      apiKey: update.clearApiKey ? "" : update.apiKey?.trim() || current.apiKey,
+      ...baseProvider,
+      kind: update.kind === undefined ? baseProvider.kind : update.kind,
+      title: update.title === undefined ? baseProvider.title : update.title,
+      role: update.role === undefined ? baseProvider.role : update.role,
+      apiUrl: update.apiUrl === undefined ? baseProvider.apiUrl : update.apiUrl,
+      model: update.model === undefined ? baseProvider.model : update.model,
+      displayName: update.displayName === undefined ? baseProvider.displayName : update.displayName,
+      enabled: update.enabled === undefined ? baseProvider.enabled : update.enabled,
+      endpointType: update.endpointType === undefined ? baseProvider.endpointType : update.endpointType,
+      custom: baseProvider.custom || Boolean(update.custom),
+      apiKey: update.clearApiKey ? "" : update.apiKey?.trim() || baseProvider.apiKey,
     };
     validateProviderUpdate(next);
     byId.set(update.id, normalizeProvider(next));
   }
 
-  const ordered = providers.map((provider) => byId.get(provider.id) || provider);
+  const ordered = [
+    ...defaultProviders().map((provider) => byId.get(provider.id) || provider),
+    ...Array.from(byId.values()).filter((provider) => provider.custom),
+  ];
   await writeJsonFile(providersPath, ordered);
   return ordered.map(sanitizeProvider);
 }

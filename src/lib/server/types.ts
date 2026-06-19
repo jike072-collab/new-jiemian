@@ -21,6 +21,7 @@ export type ProviderConfig = {
   apiKey: string;
   enabled: boolean;
   endpointType: EndpointType;
+  custom?: boolean;
 };
 
 export type PublicProvider = Omit<ProviderConfig, "apiKey"> & {
@@ -32,6 +33,11 @@ export type ProviderUpdate = Partial<
   Pick<ProviderConfig, "apiUrl" | "model" | "displayName" | "enabled" | "endpointType">
 > & {
   id: string;
+  kind?: ProviderKind;
+  title?: string;
+  role?: string;
+  custom?: boolean;
+  delete?: boolean;
   apiKey?: string;
   clearApiKey?: boolean;
 };

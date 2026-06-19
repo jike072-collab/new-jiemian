@@ -1,11 +1,11 @@
 "use client";
 
-import { ArrowLeft, KeyRound, Loader2, RefreshCw, Save, ShieldCheck } from "lucide-react";
+import { ArrowLeft, KeyRound, Loader2, Plus, RefreshCw, Save, ShieldCheck, Trash2 } from "lucide-react";
 import Link from "next/link";
 import { useState } from "react";
 
 import { BrandLogo } from "@/components/brand-logo";
-import type { EndpointType, PublicProvider } from "@/lib/server/types";
+import type { EndpointType, ProviderKind, PublicProvider } from "@/lib/server/types";
 
 type EditableProvider = PublicProvider & {
   newApiKey: string;
@@ -44,6 +44,36 @@ const promptOptimizerModelOptions: ModelOption[] = [
   { value: "deepseek-v4-pro", label: "deepseek-v4-pro（DeepSeek 官方）", displayName: "DeepSeek V4 Pro" },
 ];
 
+const customProviderDefaults: Record<Extract<ProviderKind, "image" | "video" | "prompt">, {
+  title: string;
+  role: string;
+  endpointType: EndpointType;
+  apiUrl: string;
+  model: string;
+}> = {
+  image: {
+    title: "自定义图片模型",
+    role: "图片生成或图片编辑模型配置",
+    endpointType: "images-generations",
+    apiUrl: "",
+    model: "",
+  },
+  video: {
+    title: "自定义视频模型",
+    role: "视频生成模型配置",
+    endpointType: "videos-generations",
+    apiUrl: "",
+    model: "",
+  },
+  prompt: {
+    title: "自定义提示词优化",
+    role: "提示词优化文本模型配置",
+    endpointType: "chat-completions",
+    apiUrl: "https://api.deepseek.com/chat/completions",
+    model: "deepseek-v4-flash",
+  },
+};
+
 function endpointOptionsFor(provider: EditableProvider) {
   if (provider.kind === "image") return endpointOptions.filter((option) => option.value.startsWith("images-"));
   if (provider.kind === "video") return endpointOptions.filter((option) => option.value === "videos-generations" || option.value === "grok-videos");
@@ -79,6 +109,7 @@ async function readJson(response: Response) {
 export function AdminProvidersClient() {
   const [providers, setProviders] = useState<EditableProvider[]>([]);
   const [providerModels, setProviderModels] = useState<Record<string, ProviderModelState>>({});
+  const [deletedProviderIds, setDeletedProviderIds] = useState<string[]>([]);
   const [password, setPassword] = useState("");
   const [status, setStatus] = useState("输入管理密码后读取配置；未设置密码时可直接读取。");
   const [loading, setLoading] = useState(false);
@@ -101,6 +132,7 @@ export function AdminProvidersClient() {
         newApiKey: "",
         clearApiKey: false,
       })));
+      setDeletedProviderIds([]);
       setStatus(`已读取 ${data.providers.length} 个供应商配置。`);
     } catch (error) {
       setStatus(error instanceof Error ? error.message : "读取失败。");
@@ -117,16 +149,23 @@ export function AdminProvidersClient() {
         method: "PUT",
         headers: headers(),
         body: JSON.stringify({
-          providers: providers.map((provider) => ({
+          providers: [
+            ...providers.map((provider) => ({
             id: provider.id,
+            kind: provider.kind,
+            title: provider.title,
+            role: provider.role,
             apiUrl: provider.apiUrl,
             model: provider.model,
             displayName: provider.displayName,
             endpointType: provider.endpointType,
             enabled: provider.enabled,
+            custom: provider.custom,
             ...(provider.newApiKey ? { apiKey: provider.newApiKey } : {}),
             ...(provider.clearApiKey ? { clearApiKey: true } : {}),
-          })),
+            })),
+            ...deletedProviderIds.map((id) => ({ id, delete: true })),
+          ],
         }),
       });
       const data = await readJson(response);
@@ -135,6 +174,7 @@ export function AdminProvidersClient() {
         newApiKey: "",
         clearApiKey: false,
       })));
+      setDeletedProviderIds([]);
       setStatus("配置已保存。前台会自动只显示已启用且配置完整的模型。");
     } catch (error) {
       setStatus(error instanceof Error ? error.message : "保存失败。");
@@ -147,6 +187,41 @@ export function AdminProvidersClient() {
     setProviders((current) => current.map((provider) => (
       provider.id === id ? { ...provider, ...patch } : provider
     )));
+  }
+
+  function addCustomProvider(kind: Extract<ProviderKind, "image" | "video" | "prompt">) {
+    const defaults = customProviderDefaults[kind];
+    const suffix = `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 7)}`;
+    setProviders((current) => [
+      ...current,
+      {
+        id: `custom-${kind}-${suffix}`,
+        kind,
+        title: defaults.title,
+        role: defaults.role,
+        apiUrl: defaults.apiUrl,
+        model: defaults.model,
+        displayName: "",
+        enabled: false,
+        endpointType: defaults.endpointType,
+        custom: true,
+        configured: false,
+        keyPreview: "",
+        newApiKey: "",
+        clearApiKey: false,
+      },
+    ]);
+    setStatus(`已新增${defaults.title}，填写接口、模型和 Key 后保存即可并行使用。`);
+  }
+
+  function removeCustomProvider(provider: EditableProvider) {
+    if (!provider.custom) {
+      setStatus("内置供应商不能删除，只能停用。");
+      return;
+    }
+    setProviders((current) => current.filter((item) => item.id !== provider.id));
+    setDeletedProviderIds((current) => current.includes(provider.id) ? current : [...current, provider.id]);
+    setStatus(`已移除 ${provider.title}，保存后生效。`);
   }
 
   function updateModel(provider: EditableProvider, model: string) {
@@ -255,6 +330,21 @@ export function AdminProvidersClient() {
           </div>
         </section>
 
+        <section className="mt-4 flex flex-wrap gap-2 rounded-[1.5rem] border border-white/10 bg-white/[0.03] p-4">
+          <button type="button" className="admin-secondary" onClick={() => addCustomProvider("image")}>
+            <Plus className="size-4" />
+            新增图片模型
+          </button>
+          <button type="button" className="admin-secondary" onClick={() => addCustomProvider("video")}>
+            <Plus className="size-4" />
+            新增视频模型
+          </button>
+          <button type="button" className="admin-secondary" onClick={() => addCustomProvider("prompt")}>
+            <Plus className="size-4" />
+            新增提示词优化
+          </button>
+        </section>
+
         <section className="mt-5 grid gap-4">
           {providers.map((provider) => {
             const modelState = providerModels[provider.id] || { loading: false, options: [], error: "" };
@@ -266,6 +356,9 @@ export function AdminProvidersClient() {
                 <div>
                   <div className="flex items-center gap-3">
                     <h2 className="text-xl font-black">{provider.title}</h2>
+                    {provider.custom ? (
+                      <span className="rounded-full bg-fuchsia-500/15 px-2 py-1 text-xs text-fuchsia-200">自定义</span>
+                    ) : null}
                     <span className={`rounded-full px-2 py-1 text-xs ${provider.configured || isLocalCli(provider.endpointType) ? "bg-emerald-500/15 text-emerald-300" : "bg-amber-500/15 text-amber-200"}`}>
                       {isLocalCli(provider.endpointType) ? "无需密钥" : provider.configured ? "已配置" : "缺少密钥"}
                     </span>
@@ -281,9 +374,29 @@ export function AdminProvidersClient() {
                   />
                   前台启用
                 </label>
+                {provider.custom ? (
+                  <button
+                    type="button"
+                    onClick={() => removeCustomProvider(provider)}
+                    className="admin-secondary border-red-400/20 text-red-200 hover:text-red-100"
+                  >
+                    <Trash2 className="size-4" />
+                    删除
+                  </button>
+                ) : null}
               </div>
 
-              <div className="mt-5 grid gap-4 xl:grid-cols-[1.2fr_.7fr_.7fr_1fr]">
+              <div className="mt-5 grid gap-4 xl:grid-cols-[repeat(auto-fit,minmax(260px,1fr))]">
+                {provider.custom ? (
+                  <label className="admin-field">
+                    配置名称
+                    <input
+                      value={provider.title}
+                      onChange={(event) => update(provider.id, { title: event.target.value })}
+                      className="admin-input"
+                    />
+                  </label>
+                ) : null}
                 <label className="admin-field">
                   {isLocalCli(provider.endpointType) ? "可执行文件路径（留空自动检测）" : "接口地址"}
                   <input

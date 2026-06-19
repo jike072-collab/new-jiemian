@@ -28,12 +28,12 @@ export async function POST(request: NextRequest) {
     };
     const id = String(body.id || "").trim();
     const provider = id ? await providerById(id) : null;
-    if (!provider) {
+    if (!provider && !body.apiUrl) {
       return NextResponse.json({ error: "供应商不存在。" }, { status: 404 });
     }
 
-    const apiUrl = String(body.apiUrl || provider.apiUrl || "").trim();
-    const apiKey = String(body.apiKey || provider.apiKey || "").trim();
+    const apiUrl = String(body.apiUrl || provider?.apiUrl || "").trim();
+    const apiKey = String(body.apiKey || provider?.apiKey || "").trim();
     if (!apiUrl) {
       return NextResponse.json({ error: "请先填写接口地址。" }, { status: 400 });
     }
