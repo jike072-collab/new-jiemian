@@ -2480,7 +2480,7 @@ function ImageUpscalePreviewPanel({
       : "未记录";
     const resultScale = typeof params.scale === "number" ? `${params.scale}x` : `${state.scale}x`;
     return (
-      <PreviewState eyebrow="结果" title="高清结果" description={`${state.scale}x 高清处理完成。`} badge={libraryStatusLabel(output.item.status)} role="status" live>
+      <PreviewState eyebrow="结果" title="高清结果" description={`${state.scale}x 高清处理完成。`} badge={libraryStatusBadgeLabel(output.item.status)} role="status" live>
         <div className="studio-upscale-preview">
           {source ? (
             <figure className="studio-upscale-preview__figure">
@@ -2561,7 +2561,7 @@ function VideoUpscalePreviewPanel({
       : "未记录";
     const resultScale = typeof params.scale === "number" ? `${params.scale}x` : `${state.scale}x`;
     return (
-      <PreviewState eyebrow="结果" title="高清结果" description={`${state.scale}x 高清处理完成。`} badge={libraryStatusLabel(output.item.status)} role="status" live>
+      <PreviewState eyebrow="结果" title="高清结果" description={`${state.scale}x 高清处理完成。`} badge={libraryStatusBadgeLabel(output.item.status)} role="status" live>
         <div className="studio-upscale-preview">
           {source ? (
             <figure className="studio-upscale-preview__figure">
@@ -2978,7 +2978,7 @@ function ImagePreviewPanel({
 
   if (output) {
     return (
-      <PreviewState eyebrow="结果" title="结果" badge={libraryStatusLabel(output.item.status)} role="status" live>
+      <PreviewState eyebrow="结果" title="结果" badge={libraryStatusBadgeLabel(output.item.status)} role="status" live>
         <MediaCard item={output.item} large compact />
         <div className="studio-actions studio-actions--result">
           {output.item.output?.url ? (
@@ -3046,7 +3046,7 @@ function VideoPreviewPanel({
 
   if (output) {
     return (
-      <PreviewState eyebrow="结果" title="结果" badge={libraryStatusLabel(output.item.status)} role="status" live>
+      <PreviewState eyebrow="结果" title="结果" badge={libraryStatusBadgeLabel(output.item.status)} role="status" live>
         <MediaCard item={output.item} large compact />
         <div className="studio-actions studio-actions--result">
           {output.item.output?.url ? (
@@ -3099,7 +3099,7 @@ function OutputPanel({
   }
 
   return (
-    <PreviewState eyebrow="结果" title="结果" badge={libraryStatusLabel(output.item.status)}>
+    <PreviewState eyebrow="结果" title="结果" badge={libraryStatusBadgeLabel(output.item.status)}>
       <MediaCard item={output.item} large />
     </PreviewState>
   );
@@ -3742,6 +3742,10 @@ function MediaCard({
   const canDownloadStoredFile = Boolean(media?.storedName);
   const showActions = large && !compact;
   const showMediaControls = large;
+  const showOverlay = !large && !compact;
+  const showBody = !compact && !showOverlay;
+  const statusBadge = mediaMissing ? "文件失效" : libraryStatusBadgeLabel(item.status);
+  const overlayMeta = [typeLabel, createdAt, scaleText, dimensionText, fileSizeText].filter(Boolean);
   return (
     <article className={cn("studio-media-card", compact && "is-compact")}>
       <div className={cn("studio-media-card__frame", large && "is-large")}>
@@ -3757,11 +3761,22 @@ function MediaCard({
             <span>{mediaMissing ? "文件失效" : libraryStatusLabel(item.status)}</span>
           </div>
         ) : null}
+        {showOverlay ? (
+          <div className="studio-media-card__overlay">
+            <div className="studio-media-card__overlay-head">
+              <strong>{item.title}</strong>
+              {statusBadge ? <span>{statusBadge}</span> : null}
+            </div>
+            <div className="studio-media-card__overlay-meta" aria-label="作品信息">
+              {overlayMeta.map((text) => <span key={text}>{text}</span>)}
+            </div>
+          </div>
+        ) : null}
       </div>
-      {!compact ? <div className="studio-media-card__body">
+      {showBody ? <div className="studio-media-card__body">
         <div className="studio-media-card__head">
           <strong>{item.title}</strong>
-          <span>{libraryStatusLabel(item.status)}</span>
+          {statusBadge ? <span>{statusBadge}</span> : null}
         </div>
         <div className="studio-media-card__meta" aria-label="作品信息">
           <span>{typeLabel}</span>
@@ -3770,7 +3785,7 @@ function MediaCard({
           {dimensionText ? <span>{dimensionText}</span> : null}
           {fileSizeText ? <span>{fileSizeText}</span> : null}
         </div>
-        <p>{item.error || item.prompt || "无提示词记录"}</p>
+        {large && item.error ? <p>{item.error}</p> : null}
         {mediaMissing ? <p className="studio-inline-error" role="alert">结果文件不存在，作品记录仍保留，可刷新或删除。</p> : null}
         {showActions && media?.url && !mediaMissing ? (
           <div className="studio-media-card__actions">
@@ -3806,6 +3821,10 @@ function libraryStatusLabel(status: LibraryItem["status"]) {
   if (status === "queued") return "排队中";
   if (status === "generating") return "处理中";
   return "失败";
+}
+
+function libraryStatusBadgeLabel(status: LibraryItem["status"]) {
+  return status === "done" ? undefined : libraryStatusLabel(status);
 }
 
 function formatDateTime(value: string) {
