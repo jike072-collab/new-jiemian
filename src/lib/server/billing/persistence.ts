@@ -5,6 +5,7 @@ import {
   redactedBillingDualRepairKey,
   sanitizeBillingDualRepairError,
 } from "./dual-repair";
+import { createPostgresBillingRepository } from "./postgres-repository";
 
 export type BillingPersistenceMode = "json" | "dual" | "postgres";
 
@@ -47,14 +48,8 @@ export function createBillingPersistenceRepository(
   return createDualBillingRepository(createJsonBillingRepository(), loadPostgresBillingRepository());
 }
 
-function serverRequire<T>(path: string): T {
-  const requireFn = (0, eval)("require") as NodeRequire;
-  return requireFn(path) as T;
-}
-
 function loadPostgresBillingRepository() {
-  const postgresRepositoryModule = serverRequire<typeof import("./postgres-repository")>("./postgres-repository");
-  return postgresRepositoryModule.createPostgresBillingRepository();
+  return createPostgresBillingRepository();
 }
 
 function stableComparable(value: unknown) {

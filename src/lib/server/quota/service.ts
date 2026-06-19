@@ -14,6 +14,7 @@ import {
   type RecordUsageInput,
   type UsageLogRepository,
 } from "./repository";
+import { createTaskBillingPersistenceRepositories } from "./task-billing-persistence";
 import {
   type BillableOperation,
   type QuotaErrorCode,
@@ -167,8 +168,11 @@ export class QuotaService {
   private readonly now: () => Date;
 
   constructor(dependencies: QuotaServiceDependencies = {}) {
-    this.mappingRepository = dependencies.mappingRepository || createJsonNewApiUserMappingRepository();
-    this.usageRepository = dependencies.usageRepository || createJsonUsageLogRepository();
+    const persistence = dependencies.mappingRepository && dependencies.usageRepository
+      ? null
+      : createTaskBillingPersistenceRepositories();
+    this.mappingRepository = dependencies.mappingRepository || persistence!.mappingRepository || createJsonNewApiUserMappingRepository();
+    this.usageRepository = dependencies.usageRepository || persistence!.usageRepository || createJsonUsageLogRepository();
     this.quotaCache = dependencies.quotaCache || new QuotaDisplayCache(QUOTA_CACHE_TTL_MS);
     this.getNewApiUser = dependencies.getNewApiUser || adminGetNewApiUser;
     this.getNewApiLogs = dependencies.getNewApiLogs || adminGetNewApiLogs;
@@ -294,12 +298,13 @@ export class QuotaService {
   }
 }
 
-const defaultQuotaService = new QuotaService();
+let defaultQuotaService: QuotaService | null = null;
 
 export function createQuotaService(dependencies?: QuotaServiceDependencies) {
   return new QuotaService(dependencies);
 }
 
 export function getQuotaService() {
+  defaultQuotaService ||= new QuotaService();
   return defaultQuotaService;
 }

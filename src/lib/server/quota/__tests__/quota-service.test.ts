@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
+import { applicationQuery, closeApplicationDatabasePool } from "../../database";
 import {
   NewApiError,
   createMemoryNewApiUserMappingRepository,
@@ -11,6 +12,9 @@ import { QuotaDisplayCache } from "../cache";
 import { createMemoryUsageLogRepository } from "../repository";
 import { QuotaService } from "../service";
 import { type UsageLogEntry } from "../types";
+
+const hasDatabase = Boolean(process.env.APP_DATABASE_URL && process.env.APP_DATABASE_EXPECTED_NAME);
+const dbTest = hasDatabase ? test : test.skip;
 
 function mappingSeed(localUserId = "local-user", newApiUserId = "100"): NewApiUserMapping[] {
   const now = "2026-06-18T00:00:00.000Z";
@@ -302,4 +306,69 @@ test("returns usage_unavailable for upstream log failures and rate_limited for 4
   assert.equal("ok" in limited && limited.ok, false);
   if (!("ok" in limited) || limited.ok) return;
   assert.equal(limited.code, "rate_limited");
+});
+
+async function resetQuotaTables() {
+  await applicationQuery("truncate table audit_events, task_quota_adjustments, task_billing_records, usage_records, billing_idempotency_keys, billing_webhook_events, billing_orders, new_api_user_mappings, auth_sessions, app_users restart identity cascade");
+}
+
+dbTest("default quota service uses PostgreSQL mapping and usage repositories in postgres mode", async () => {
+  await resetQuotaTables();
+  const previousMode = process.env.APP_TASK_BILLING_PERSISTENCE_MODE;
+  const localUserId = "66666666-6666-4666-8666-666666666666";
+  try {
+    process.env.APP_TASK_BILLING_PERSISTENCE_MODE = "postgres";
+    await applicationQuery(`
+      insert into app_users(
+        local_user_id, email, username, display_name, password_hash, status, role,
+        session_version, created_at, updated_at, last_login_at
+      ) values ($1,'quota-pg@example.com','quota_pg','Quota PG',$2,'active','user',1,$3,$3,null)
+    `, [
+      localUserId,
+      "scrypt$v=1$n=16384$r=8$p=1$len=64$c2FsdA$0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+      "2026-06-18T00:00:00.000Z",
+    ]);
+    await applicationQuery(`
+      insert into new_api_user_mappings(
+        local_user_id, new_api_user_id, sync_status, created_at, updated_at, last_sync_at,
+        last_error_code, last_error_message, retry_count, version, idempotency_key
+      ) values ($1,'9601','active',$2,$2,$2,null,null,0,1,'register:quota-pg')
+    `, [localUserId, "2026-06-18T00:00:00.000Z"]);
+
+    const quotaService = new QuotaService({
+      getNewApiUser: (async () => response({
+        id: 9601,
+        username: "quota-pg",
+        quota: 25,
+        used_quota: 5,
+      })) as never,
+    });
+    const snapshot = await quotaService.getCurrentQuota(localUserId, { allowCached: false });
+    assert.equal(snapshot.ok, true);
+    if (!snapshot.ok) return;
+    assert.equal(snapshot.snapshot.new_api_user_id, "9601");
+
+    await quotaService.recordUsage({
+      localUserId,
+      newApiUserId: "9601",
+      taskId: "quota-pg-task",
+      operation: "cloud_image_generation",
+      status: "prechecked",
+      estimatedQuotaUnits: 5,
+      actualQuotaUnits: null,
+      idempotencyKey: "quota-pg-task",
+    });
+    const rows = await applicationQuery<{ count: string }>(
+      "select count(*)::text as count from usage_records where local_user_id = $1 and task_id = 'quota-pg-task'",
+      [localUserId],
+    );
+    assert.equal(rows.rows[0]?.count, "1");
+  } finally {
+    if (previousMode === undefined) delete process.env.APP_TASK_BILLING_PERSISTENCE_MODE;
+    else process.env.APP_TASK_BILLING_PERSISTENCE_MODE = previousMode;
+  }
+});
+
+test.after(async () => {
+  await closeApplicationDatabasePool();
 });

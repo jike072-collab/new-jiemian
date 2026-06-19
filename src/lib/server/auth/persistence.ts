@@ -2,7 +2,9 @@ import {
   createJsonNewApiUserMappingRepository,
   type NewApiUserMappingRepository,
 } from "../integrations/new-api/user-mapping";
+import { createPostgresNewApiUserMappingRepository } from "../integrations/new-api/postgres-user-mapping";
 import { getJsonAuthDualRepairRepository, redactedAuthDualRepairKey, sanitizeAuthDualRepairError } from "./dual-repair";
+import { createPostgresAuthRepository } from "./postgres-repository";
 import { createJsonAuthRepository, type AuthRepository } from "./repository";
 
 export type AuthPersistenceMode = "json" | "dual" | "postgres";
@@ -75,21 +77,12 @@ export function createAuthPersistenceRepositories(
   };
 }
 
-function serverRequire<T>(path: string): T {
-  const requireFn = (0, eval)("require") as NodeRequire;
-  return requireFn(path) as T;
-}
-
 function loadPostgresAuthRepository() {
-  const postgresRepositoryModule = serverRequire<typeof import("./postgres-repository")>("./postgres-repository");
-  return postgresRepositoryModule.createPostgresAuthRepository();
+  return createPostgresAuthRepository();
 }
 
 function loadPostgresMappingRepository() {
-  const postgresMappingModule = serverRequire<typeof import("../integrations/new-api/postgres-user-mapping")>(
-    "../integrations/new-api/postgres-user-mapping",
-  );
-  return postgresMappingModule.createPostgresNewApiUserMappingRepository();
+  return createPostgresNewApiUserMappingRepository();
 }
 
 function warnDualMismatch(scope: string, key: string, jsonValue: unknown, postgresValue: unknown) {
