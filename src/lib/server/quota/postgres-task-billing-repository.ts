@@ -16,6 +16,7 @@ import {
   type TaskQuotaAdjustment,
   type TaskQuotaAdjustmentInput,
   type TaskQuotaAdjustmentStatus,
+  type TaskBillingRecordListFilter,
   type TaskBillingRecordPatch,
   type TaskBillingRepository,
 } from "./task-billing-repository";
@@ -156,6 +157,44 @@ export class PostgresTaskBillingRepository implements TaskBillingRepository {
       where local_user_id = $1 and idempotency_key = $2
     `, [localUserId.trim(), idempotencyKey.trim()]);
     return result.rows[0] ? fromRow(result.rows[0]) : null;
+  }
+
+  async listRecordsPage(filter: TaskBillingRecordListFilter = {}) {
+    const values: unknown[] = [];
+    const clauses: string[] = [];
+    if (filter.localUserId?.trim()) {
+      values.push(filter.localUserId.trim());
+      clauses.push(`local_user_id = $${values.length}`);
+    }
+    if (filter.taskId?.trim()) {
+      values.push(filter.taskId.trim());
+      clauses.push(`task_id = $${values.length}`);
+    }
+    if (filter.states?.length) {
+      values.push(filter.states);
+      clauses.push(`billing_state = any($${values.length}::text[])`);
+    }
+    const whereClause = clauses.length ? `where ${clauses.join(" and ")}` : "";
+    const count = await applicationQuery<{ count: string }>(
+      `select count(*)::text as count from task_billing_records ${whereClause}`,
+      values,
+    );
+    const page = Math.max(1, Math.trunc(filter.page || 1));
+    const pageSize = Math.min(100, Math.max(1, Math.trunc(filter.pageSize || 20)));
+    const queryValues = values.slice();
+    queryValues.push(pageSize, (page - 1) * pageSize);
+    const result = await applicationQuery<TaskBillingRecordRow>(`
+      select *
+      from task_billing_records
+      ${whereClause}
+      order by updated_at desc, id desc
+      limit $${queryValues.length - 1}
+      offset $${queryValues.length}
+    `, queryValues);
+    return {
+      records: result.rows.map(fromRow),
+      total: Number(count.rows[0]?.count || 0),
+    };
   }
 
   async createPrecheck(input: CreateTaskBillingRecordInput) {

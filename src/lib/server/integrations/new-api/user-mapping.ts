@@ -63,6 +63,7 @@ export type NewApiUserMappingRepository = {
   getByLocalUserId(localUserId: string): Promise<NewApiUserMapping | null>;
   getByNewApiUserId(newApiUserId: string | number): Promise<NewApiUserMapping | null>;
   listByStatus(status: NewApiUserMappingStatus): Promise<NewApiUserMapping[]>;
+  listMappingsPage?(filter?: NewApiUserMappingListFilter): Promise<NewApiUserMappingListPage>;
   createPending(input: NewApiUserMappingCreateInput): Promise<NewApiUserMapping>;
   markActive(input: NewApiUserMappingTransitionInput & { newApiUserId: string | number }): Promise<NewApiUserMapping>;
   markFailed(input: NewApiUserMappingFailureInput): Promise<NewApiUserMapping>;
@@ -70,6 +71,18 @@ export type NewApiUserMappingRepository = {
   markOrphaned(input: NewApiUserMappingTransitionInput): Promise<NewApiUserMapping>;
   scheduleRepair(input: NewApiUserMappingTransitionInput): Promise<NewApiUserMapping>;
   prepareRetry(input: NewApiUserMappingPrepareRetryInput): Promise<NewApiUserMapping>;
+};
+
+export type NewApiUserMappingListFilter = {
+  status?: NewApiUserMappingStatus;
+  localUserId?: string;
+  page?: number;
+  pageSize?: number;
+};
+
+export type NewApiUserMappingListPage = {
+  mappings: NewApiUserMapping[];
+  total: number;
 };
 
 export type NewApiUserMappingErrorCode =
@@ -245,6 +258,22 @@ class NewApiUserMappingStoreRepository implements NewApiUserMappingRepository {
   async listByStatus(status: NewApiUserMappingStatus) {
     const records = await this.storage.read();
     return records.filter((record) => record.sync_status === status).map(cloneMapping);
+  }
+
+  async listMappingsPage(filter: NewApiUserMappingListFilter = {}) {
+    const page = Math.max(1, Math.trunc(filter.page || 1));
+    const pageSize = Math.min(100, Math.max(1, Math.trunc(filter.pageSize || 20)));
+    const localUserId = filter.localUserId?.trim();
+    const records = (await this.storage.read())
+      .filter((record) => !filter.status || record.sync_status === filter.status)
+      .filter((record) => !localUserId || record.local_user_id === localUserId)
+      .sort((a, b) => b.updated_at.localeCompare(a.updated_at))
+      .map(cloneMapping);
+    const start = (page - 1) * pageSize;
+    return {
+      mappings: records.slice(start, start + pageSize),
+      total: records.length,
+    };
   }
 
   async createPending(input: NewApiUserMappingCreateInput) {

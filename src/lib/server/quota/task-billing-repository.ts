@@ -29,6 +29,19 @@ export type TaskBillingRecordPatch = {
   last_error?: string | null;
 };
 
+export type TaskBillingRecordListFilter = {
+  localUserId?: string;
+  states?: TaskBillingState[];
+  taskId?: string;
+  page?: number;
+  pageSize?: number;
+};
+
+export type TaskBillingRecordListPage = {
+  records: TaskBillingRecord[];
+  total: number;
+};
+
 export type TaskQuotaAdjustmentStatus = "pending" | "applied" | "failed";
 
 export type TaskQuotaAdjustment = {
@@ -66,6 +79,7 @@ export type TaskQuotaAdjustmentInput = {
 export type TaskBillingRepository = {
   getByTaskId(localUserId: string, taskId: string): Promise<TaskBillingRecord | null>;
   getByIdempotencyKey(localUserId: string, idempotencyKey: string): Promise<TaskBillingRecord | null>;
+  listRecordsPage?(filter?: TaskBillingRecordListFilter): Promise<TaskBillingRecordListPage>;
   createPrecheck(input: CreateTaskBillingRecordInput): Promise<TaskBillingRecord>;
   update(recordId: string, patch: TaskBillingRecordPatch, expectedVersion?: number): Promise<TaskBillingRecord>;
   withQuotaAdjustmentLock?<T>(newApiUserId: string, operation: () => Promise<T>): Promise<T>;
@@ -201,6 +215,25 @@ class StoreTaskBillingRepository implements TaskBillingRepository {
       && record.idempotency_key === idempotencyKey.trim()
     ));
     return found ? cloneRecord(found) : null;
+  }
+
+  async listRecordsPage(filter: TaskBillingRecordListFilter = {}) {
+    const page = Math.max(1, Math.trunc(filter.page || 1));
+    const pageSize = Math.min(100, Math.max(1, Math.trunc(filter.pageSize || 20)));
+    const states = filter.states?.length ? new Set(filter.states) : null;
+    const localUserId = filter.localUserId?.trim();
+    const taskId = filter.taskId?.trim();
+    const records = (await this.storage.read())
+      .filter((record) => !localUserId || record.local_user_id === localUserId)
+      .filter((record) => !taskId || record.task_id === taskId)
+      .filter((record) => !states || states.has(record.billing_state))
+      .sort((a, b) => b.updated_at.localeCompare(a.updated_at))
+      .map(cloneRecord);
+    const start = (page - 1) * pageSize;
+    return {
+      records: records.slice(start, start + pageSize),
+      total: records.length,
+    };
   }
 
   async createPrecheck(input: CreateTaskBillingRecordInput) {
