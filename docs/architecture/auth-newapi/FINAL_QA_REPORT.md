@@ -10,7 +10,7 @@ Develop SHA at branch creation: `3d8ad9cb010727d08231f07930e2d3ddb8c29ff2`
 
 PR #35 merge commit: `3d8ad9cb010727d08231f07930e2d3ddb8c29ff2`
 
-Conclusion: `BLOCKED`
+Conclusion: `READY_FOR_PRODUCTION`
 
 This report records the final QA passes after AB-I02 was merged into `develop`.
 It does not enable production payment and does not approve production deployment
@@ -489,17 +489,63 @@ automatically on PR #37:
 - `Auth New API Final Gate` run `27837120161`: queued/in progress at report
   update time.
 
-Current conclusion after mapped Provider validation: `BLOCKED`.
+Intermediate conclusion after mapped Provider validation: `BLOCKED`.
 
-Blocking item: an approved image Provider credential with access to an image
-model is still required before production readiness can be honestly marked as
-passed.
+Blocking item at that time: an approved image Provider credential with access
+to an image model was still required before production readiness could be
+honestly marked as passed.
+
+## Final Image Provider Revalidation
+
+Attempt date: 2026-06-20.
+
+Commit under test before this report update:
+`85352cb926ef75ff994c833086200a99a16d2df3`.
+
+The approved image Provider configuration was updated in an ignored local
+runtime file and then synced into the current PR #37 runtime for validation
+only. No Provider key was committed or recorded in this report.
+
+Image Provider validation:
+
+- Provider endpoint: `https://shunfen6.win/v1/images/generations`.
+- Provider model: `gpt-image-2`.
+- Provider key presence verified by suffix only; the key itself is not recorded.
+- `GET /api/providers/enabled`: returned `image-main` with `gpt-image-2`.
+- `GET /api/health/backend?mode=readiness`: `200`, verifying PostgreSQL and
+  New API.
+- `POST /api/quota/precheck`: accepted for the image task.
+- Precheck estimated quota: `40`.
+- `POST /api/generate/image`: `200`.
+- Image item status: `done`.
+- Output stored as a local runtime file; generated media URL is not recorded in
+  this report.
+- Duplicate submit with the same local `taskId`: rejected before another
+  Provider dispatch.
+- Usage state: `succeeded`.
+- Actual quota units: `40`.
+- New API quota before image settlement: `880`.
+- New API quota after image settlement: `840`.
+- Failed earlier image attempts remained recorded with `actual_quota_units=0`
+  and did not debit quota.
+
+Combined Provider and billing result:
+
+- Real video Provider call: passed with `grok-video-1.0`.
+- Real image Provider call: passed with `gpt-image-2`.
+- Successful task debit-once verification through the live API: passed.
+- Duplicate generation request/provider dispatch verification through the live
+  API: passed.
+- Failed live Provider task no-charge verification through the live API:
+  passed for the failed image attempts.
+- Application readiness passing both PostgreSQL and New API: passed.
+
+Final conclusion after image revalidation: `READY_FOR_PRODUCTION`.
 
 ## Not Fully Exercised Locally
 
-- Real approved video Provider execution was completed with Grok. Real approved
-  image Provider execution remains blocked because the current test key has no
-  image model entitlement.
+- Real approved video Provider execution was completed with Grok.
+- Real approved image Provider execution was completed with `gpt-image-2`.
 - Real New API container health, BFF checks, PostgreSQL migration, backup, and
   restore were executed in remote CI and New API Ops, not in this local runtime.
 - Application readiness against both PostgreSQL and New API passed in the local
@@ -518,21 +564,13 @@ passed.
 
 ## Release Status
 
-Final QA remains blocked for production release.
+Final QA is ready for production release review.
 
-`BLOCKED` is caused by the remaining image Provider entitlement gap. The local
-mapped runtime now verifies PostgreSQL readiness, New API readiness, active user
-mapping, Grok video execution, duplicate dispatch protection, and real New API
-debit-once behavior. However, production readiness still requires one successful
-approved image Provider call, and the current test key only exposes Grok video
-models.
+`READY_FOR_PRODUCTION` means the release validation evidence is complete for
+the scoped backend and current A/B integration: PostgreSQL readiness, New API
+readiness, active user mapping, image generation, Grok video generation,
+duplicate dispatch protection, failed-task no-charge behavior, and real New API
+debit-once behavior were verified.
 
-`BLOCKED` is not a code regression finding by itself. It is a release evidence
-gap that must be closed by running this same QA pass with:
-
-- test PostgreSQL configured through `APP_DATABASE_URL`;
-- test New API configured through `NEW_API_ENABLED=true`, `NEW_API_BASE_URL`,
-  `NEW_API_ADMIN_USER_ID`, and `NEW_API_ADMIN_ACCESS_TOKEN`;
-- approved test image Provider credentials with access to an image model;
-- production payment still disabled unless a separate payment launch task
-  explicitly approves it.
+Production payment remains disabled. Enabling production payment still requires
+a separate explicit payment launch task and approval.
