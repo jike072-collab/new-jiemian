@@ -13,6 +13,11 @@ export { createPostgresBillingRepository } from "./postgres-repository";
 export { createJsonBillingDualRepairRepository } from "./dual-repair";
 export { signSandboxWebhook, verifySandboxWebhook } from "./sandbox-provider";
 export { createProductionPaymentAdapter, createSandboxPaymentAdapter, getPaymentAdapter } from "./payment-adapters";
+export {
+  getRegisteredProductionPaymentProvider,
+  hasProductionPaymentProvider,
+  registerProductionPaymentProvider,
+} from "./payment-provider-registry";
 export { BillingService, createBillingService, getBillingService } from "./service";
 export type {
   BillingAuditEvent,

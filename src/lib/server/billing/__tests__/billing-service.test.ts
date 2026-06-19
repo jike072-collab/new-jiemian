@@ -11,6 +11,8 @@ import { createDualBillingRepository } from "../persistence";
 import { createJsonBillingDualRepairRepository } from "../dual-repair";
 import { createMemoryBillingRepository, type BillingRepository } from "../repository";
 import { createPostgresBillingRepository } from "../postgres-repository";
+import { registerProductionPaymentProvider } from "../payment-provider-registry";
+import { type PaymentAdapter } from "../payment-adapters";
 import { signSandboxWebhook } from "../sandbox-provider";
 import { BillingService, type CreditQuotaInput, type CreditQuotaResult } from "../service";
 import { type BillingOrder, type BillingWebhookPayload } from "../types";
@@ -142,6 +144,74 @@ async function createProductionOrder(harness = service(), input: Partial<Billing
   });
 }
 
+function createTestProductionProvider(): PaymentAdapter {
+  return {
+    kind: "production",
+    async createOrder(input) {
+      return { ok: true, providerOrderId: `test_production_${input.orderId}` };
+    },
+    async queryOrder(order) {
+      if (
+        order.status === "pending"
+        || order.status === "paid"
+        || order.status === "failed"
+        || order.status === "cancelled"
+        || order.status === "refunded"
+      ) {
+        return { ok: true, providerStatus: order.status };
+      }
+      return { ok: true, providerStatus: "unknown" };
+    },
+    async closeOrder(order) {
+      return { ok: true, providerCloseId: `test-production:close:${order.order_id}` };
+    },
+    async refundOrder(input) {
+      return { ok: true, providerRefundId: `test-production:refund:${input.order.order_id}:${input.idempotencyKey}` };
+    },
+    async verifyWebhook(input) {
+      const verification = await withProductionPaymentEnv({ enabled: "true", secret }, () => {
+        const expected = signSandboxWebhook({
+          secret,
+          timestamp: input.timestamp || "",
+          body: input.rawBody,
+        });
+        if (!input.timestamp || !input.signature || input.signature !== expected) {
+          return { ok: false as const, status: 401, code: "payment_invalid_signature" as const, message: "Production webhook signature is invalid." };
+        }
+        const timestampSeconds = Number(input.timestamp);
+        const nowSeconds = Math.floor((input.now || new Date()).getTime() / 1000);
+        if (!Number.isFinite(timestampSeconds) || Math.abs(nowSeconds - timestampSeconds) > 300) {
+          return { ok: false as const, status: 409, code: "payment_replay_detected" as const, message: "Production webhook timestamp is outside the allowed window." };
+        }
+        return { ok: true as const };
+      });
+      if (!verification.ok) return verification;
+      try {
+        return { ok: true, payload: JSON.parse(input.rawBody) as BillingWebhookPayload };
+      } catch {
+        return { ok: false, status: 400, code: "invalid_billing_request", message: "Webhook payload is invalid." };
+      }
+    },
+    paymentDescriptor(order) {
+      return {
+        channel: order.channel,
+        provider_order_id: order.provider_order_id,
+        provider: "production",
+        webhook_path: "/api/billing/webhooks/production",
+      };
+    },
+  };
+}
+
+async function withTestProductionProvider<T>(callback: () => T | Promise<T>) {
+  const unregister = registerProductionPaymentProvider(() => createTestProductionProvider());
+  try {
+    return await callback();
+  } finally {
+    unregister();
+  }
+}
+
 function payloadFor(order: BillingOrder, overrides: Partial<BillingWebhookPayload> = {}): BillingWebhookPayload {
   return {
     event_id: "evt-1",
@@ -224,10 +294,10 @@ test("production payment channel is disabled by default", async () => {
   });
   const query = await withProductionPaymentEnv({}, () => harness.billing.queryProviderOrder("local-user", pendingOrder.order_id));
   assert.equal(query.ok, false);
-  if (!query.ok) assert.equal(query.code, "billing_disabled");
+  if (!query.ok) assert.equal(query.code, "payment_channel_unavailable");
   const close = await withProductionPaymentEnv({}, () => harness.billing.closeProviderOrder("local-user", pendingOrder.order_id));
   assert.equal(close.ok, false);
-  if (!close.ok) assert.equal(close.code, "billing_disabled");
+  if (!close.ok) assert.equal(close.code, "payment_channel_unavailable");
   const refund = await withProductionPaymentEnv({}, () => harness.billing.requestProviderRefund({
     localUserId: "local-user",
     orderId: paidOrder.order_id,
@@ -235,7 +305,7 @@ test("production payment channel is disabled by default", async () => {
     reason: "test disabled production refund",
   }));
   assert.equal(refund.ok, false);
-  if (!refund.ok) assert.equal(refund.code, "billing_disabled");
+  if (!refund.ok) assert.equal(refund.code, "payment_channel_unavailable");
 
   const rawBody = JSON.stringify({
     event_id: "prod-disabled-event",
@@ -257,12 +327,75 @@ test("production payment channel is disabled by default", async () => {
   }));
   assert.equal(webhook.ok, false);
   if (webhook.ok) return;
-  assert.equal(webhook.code, "billing_disabled");
+  assert.equal(webhook.code, "payment_channel_unavailable");
+});
+
+test("production payment fails closed without a registered provider even when enabled", async () => {
+  const harness = service();
+  const order = await createProductionOrder(harness, {
+    order_id: "bo_prod_no_provider",
+    provider_order_id: "production_bo_prod_no_provider",
+    idempotency_key: "prod-no-provider",
+  });
+  await withProductionPaymentEnv({ enabled: "true", secret }, async () => {
+    const channels = harness.billing.listPaymentChannels();
+    const production = channels.find((channel) => channel.channel === "production_generic");
+    assert.equal(production?.enabled, false);
+
+    const create = await harness.billing.createOrder({
+      localUserId: "local-user",
+      channel: "production_generic",
+      currency: "CNY",
+      requestedAmount: 1000,
+      idempotencyKey: "prod-no-provider-create",
+    });
+    assert.equal(create.ok, false);
+    if (!create.ok) assert.equal(create.code, "payment_channel_unavailable");
+
+    const query = await harness.billing.queryProviderOrder("local-user", order.order_id);
+    assert.equal(query.ok, false);
+    if (!query.ok) assert.equal(query.code, "payment_channel_unavailable");
+
+    const close = await harness.billing.closeProviderOrder("local-user", order.order_id);
+    assert.equal(close.ok, false);
+    if (!close.ok) assert.equal(close.code, "payment_channel_unavailable");
+
+    const paidOrder = await createProductionOrder(harness, {
+      order_id: "bo_prod_no_provider_paid",
+      provider_order_id: "production_bo_prod_no_provider_paid",
+      idempotency_key: "prod-no-provider-paid",
+      status: "paid",
+      paid_amount: 1000,
+      paid_at: "2026-06-18T00:02:00.000Z",
+      quota_credit_applied_at: "2026-06-18T00:02:00.000Z",
+    });
+    const refund = await harness.billing.requestProviderRefund({
+      localUserId: "local-user",
+      orderId: paidOrder.order_id,
+      idempotencyKey: "prod-no-provider-refund",
+      reason: "no provider",
+    });
+    assert.equal(refund.ok, false);
+    if (!refund.ok) assert.equal(refund.code, "payment_channel_unavailable");
+
+    const payload = payloadFor(order, { event_id: "prod-no-provider-webhook" });
+    const body = JSON.stringify(payload);
+    const webhook = await harness.billing.handleProductionWebhook({
+      rawBody: body,
+      timestamp: "1781740800",
+      signature: signSandboxWebhook({ secret, timestamp: "1781740800", body }),
+      now: new Date("2026-06-18T00:00:00.000Z"),
+    });
+    assert.equal(webhook.ok, false);
+    if (!webhook.ok) assert.equal(webhook.code, "payment_channel_unavailable");
+  });
+  assert.equal(harness.creditCalls.length, 0);
+  assert.equal((await harness.repository.getOrder(order.order_id))?.status, "pending");
 });
 
 test("production adapter supports explicit test create, query, close, and refund operations", async () => {
   const harness = service();
-  await withProductionPaymentEnv({ enabled: "true", secret: secret }, async () => {
+  await withTestProductionProvider(() => withProductionPaymentEnv({ enabled: "true", secret }, async () => {
     const created = await harness.billing.createOrder({
       localUserId: "local-user",
       channel: "production_generic",
@@ -275,7 +408,7 @@ test("production adapter supports explicit test create, query, close, and refund
     assert.equal(created.payment.provider, "production");
     assert.equal(created.payment.webhook_path, "/api/billing/webhooks/production");
     assert.equal(created.payment.sandbox_webhook_path, undefined);
-    assert.equal(created.order.provider_order_id.startsWith("production_"), true);
+    assert.equal(created.order.provider_order_id.startsWith("test_production_"), true);
 
     const query = await harness.billing.queryProviderOrder("local-user", created.order.order_id);
     assert.equal(query.ok, true);
@@ -288,7 +421,7 @@ test("production adapter supports explicit test create, query, close, and refund
     assert.equal(close.ok, true);
     if (close.ok) {
       assert.equal(close.provider, "production");
-      assert.equal(close.provider_operation_id?.startsWith("production:close:"), true);
+      assert.equal(close.provider_operation_id?.startsWith("test-production:close:"), true);
     }
 
     const paidOrder = await createProductionOrder(harness, {
@@ -309,10 +442,10 @@ test("production adapter supports explicit test create, query, close, and refund
     assert.equal(refund.ok, true);
     if (refund.ok) {
       assert.equal(refund.provider, "production");
-      assert.equal(refund.provider_operation_id?.startsWith("production:refund:"), true);
+      assert.equal(refund.provider_operation_id?.startsWith("test-production:refund:"), true);
     }
     assert.equal((await harness.repository.getOrder(paidOrder.order_id))?.status, "paid");
-  });
+  }));
 });
 
 test("creates orders idempotently and rejects invalid amount or inactive mapping", async () => {
@@ -783,7 +916,7 @@ test("production adapter rejects bad signatures and delayed callbacks when expli
   const rawBody = JSON.stringify(payloadFor(order, {
     event_id: "prod-bad-signature",
   }));
-  await withProductionPaymentEnv({ enabled: "true", secret: secret }, async () => {
+  await withTestProductionProvider(() => withProductionPaymentEnv({ enabled: "true", secret }, async () => {
     const badSignature = await harness.billing.handleProductionWebhook({
       rawBody,
       timestamp: "1781740800",
@@ -802,7 +935,7 @@ test("production adapter rejects bad signatures and delayed callbacks when expli
     });
     assert.equal(delayed.ok, false);
     if (!delayed.ok) assert.equal(delayed.code, "payment_replay_detected");
-  });
+  }));
   assert.equal((await harness.repository.getOrder(order.order_id))?.status, "pending");
 });
 
@@ -813,7 +946,7 @@ test("production adapter sends amount and currency mismatch to review", async ()
     provider_order_id: "production_bo_prod_amount",
     idempotency_key: "prod-amount",
   });
-  await withProductionPaymentEnv({ enabled: "true", secret: secret }, async () => {
+  await withTestProductionProvider(() => withProductionPaymentEnv({ enabled: "true", secret }, async () => {
     const amountPayload = payloadFor(amountOrder, {
       event_id: "prod-amount-mismatch",
       paid_amount: amountOrder.requested_amount - 1,
@@ -830,7 +963,7 @@ test("production adapter sends amount and currency mismatch to review", async ()
       assert.equal(amount.action, "review");
       assert.equal(amount.order.status, "review");
     }
-  });
+  }));
   assert.equal(amountHarness.creditCalls.length, 0);
 
   const currencyHarness = service();
@@ -839,7 +972,7 @@ test("production adapter sends amount and currency mismatch to review", async ()
     provider_order_id: "production_bo_prod_currency",
     idempotency_key: "prod-currency",
   });
-  await withProductionPaymentEnv({ enabled: "true", secret: secret }, async () => {
+  await withTestProductionProvider(() => withProductionPaymentEnv({ enabled: "true", secret }, async () => {
     const currencyPayload = payloadFor(currencyOrder, {
       event_id: "prod-currency-mismatch",
       currency: "USD" as never,
@@ -856,14 +989,14 @@ test("production adapter sends amount and currency mismatch to review", async ()
       assert.equal(currency.action, "review");
       assert.equal(currency.order.status, "review");
     }
-  });
+  }));
   assert.equal(currencyHarness.creditCalls.length, 0);
 });
 
 test("production adapter payment and refund callbacks are idempotent", async () => {
   const harness = service();
   const order = await createProductionOrder(harness);
-  await withProductionPaymentEnv({ enabled: "true", secret: secret }, async () => {
+  await withTestProductionProvider(() => withProductionPaymentEnv({ enabled: "true", secret }, async () => {
     const paidPayload = payloadFor(order, {
       event_id: "prod-paid",
     });
@@ -913,7 +1046,7 @@ test("production adapter payment and refund callbacks are idempotent", async () 
     assert.equal(duplicateRefund.ok, true);
     if (!duplicateRefund.ok) return;
     assert.equal(duplicateRefund.action, "idempotent");
-  });
+  }));
   assert.equal(harness.creditCalls.length, 1);
   assert.equal((await harness.repository.getOrder(order.order_id))?.status, "refunded");
 });

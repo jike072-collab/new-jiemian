@@ -1,4 +1,5 @@
 import { type PaymentChannelConfig, type PublicPaymentChannelConfig } from "./types";
+import { hasProductionPaymentProvider } from "./payment-provider-registry";
 
 const sandboxChannels: PaymentChannelConfig[] = [
   {
@@ -54,7 +55,9 @@ function productionChannels(): PaymentChannelConfig[] {
       },
       discounts: [],
       currency: "CNY",
-      enabled: productionPaymentEnabled() && Boolean(productionWebhookSecret().trim()),
+      enabled: productionPaymentEnabled()
+        && Boolean(productionWebhookSecret().trim())
+        && hasProductionPaymentProvider(),
       sort_order: 1000,
       quota_units_per_minor_unit: 10,
     },

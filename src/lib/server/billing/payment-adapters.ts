@@ -1,5 +1,6 @@
 import { type BillingCurrency, type BillingOrder, type BillingWebhookPayload, type PaymentProviderStatus } from "./types";
 import { assertProductionPaymentEnabled, assertSandboxWebhookEnabled, getPaymentChannel } from "./config";
+import { getRegisteredProductionPaymentProvider } from "./payment-provider-registry";
 import { verifySandboxWebhook } from "./sandbox-provider";
 
 export type PaymentAdapterKind = "sandbox" | "production";
@@ -157,46 +158,19 @@ export function createSandboxPaymentAdapter(): PaymentAdapter {
 }
 
 export function createProductionPaymentAdapter(): PaymentAdapter {
-  const disabled = () => {
-    try {
-      assertProductionPaymentEnabled();
-      return null;
-    } catch {
-      return failure({
-        ok: false as const,
-        status: 503,
-        code: "billing_disabled" as const,
-        message: "Production payment is disabled.",
-      });
-    }
-  };
+  const unavailableWithoutProvider = () => failure({
+    ok: false as const,
+    status: 503,
+    code: "payment_channel_unavailable" as const,
+    message: "Production payment provider is not installed.",
+  });
   return {
     kind: "production",
     async createOrder(input) {
-      const blocked = disabled();
-      if (blocked) return blocked;
-      if (!assertChannelEnabled(input.channel)) return unavailable("Production payment channel is unavailable.");
-      return { ok: true, providerOrderId: `production_${input.orderId}` };
-    },
-    async queryOrder(order) {
-      const blocked = disabled();
-      if (blocked) return blocked;
-      return { ok: true, providerStatus: providerStatusFor(order) };
-    },
-    async closeOrder(order) {
-      const blocked = disabled();
-      if (blocked) return blocked;
-      return { ok: true, providerCloseId: `production:close:${order.order_id}` };
-    },
-    async refundOrder(input) {
-      const blocked = disabled();
-      if (blocked) return blocked;
-      return { ok: true, providerRefundId: `production:refund:${input.order.order_id}:${input.idempotencyKey}` };
-    },
-    async verifyWebhook(input) {
-      let secret: string;
+      const provider = getRegisteredProductionPaymentProvider();
+      if (!provider) return unavailableWithoutProvider();
       try {
-        secret = assertProductionPaymentEnabled();
+        assertProductionPaymentEnabled();
       } catch {
         return failure({
           ok: false,
@@ -205,15 +179,68 @@ export function createProductionPaymentAdapter(): PaymentAdapter {
           message: "Production payment is disabled.",
         });
       }
-      const verification = verifySandboxWebhook({
-        secret,
-        timestamp: input.timestamp,
-        signature: input.signature,
-        body: input.rawBody,
-        now: input.now,
-      });
-      if (!verification.ok) return mapVerificationFailure(verification);
-      return parsePayload(input.rawBody);
+      if (!assertChannelEnabled(input.channel)) return unavailable("Production payment channel is unavailable.");
+      return provider.createOrder(input);
+    },
+    async queryOrder(order) {
+      const provider = getRegisteredProductionPaymentProvider();
+      if (!provider) return unavailableWithoutProvider();
+      try {
+        assertProductionPaymentEnabled();
+      } catch {
+        return failure({
+          ok: false,
+          status: 503,
+          code: "billing_disabled",
+          message: "Production payment is disabled.",
+        });
+      }
+      return provider.queryOrder(order);
+    },
+    async closeOrder(order) {
+      const provider = getRegisteredProductionPaymentProvider();
+      if (!provider) return unavailableWithoutProvider();
+      try {
+        assertProductionPaymentEnabled();
+      } catch {
+        return failure({
+          ok: false,
+          status: 503,
+          code: "billing_disabled",
+          message: "Production payment is disabled.",
+        });
+      }
+      return provider.closeOrder(order);
+    },
+    async refundOrder(input) {
+      const provider = getRegisteredProductionPaymentProvider();
+      if (!provider) return unavailableWithoutProvider();
+      try {
+        assertProductionPaymentEnabled();
+      } catch {
+        return failure({
+          ok: false,
+          status: 503,
+          code: "billing_disabled",
+          message: "Production payment is disabled.",
+        });
+      }
+      return provider.refundOrder(input);
+    },
+    async verifyWebhook(input) {
+      const provider = getRegisteredProductionPaymentProvider();
+      if (!provider) return unavailableWithoutProvider();
+      try {
+        assertProductionPaymentEnabled();
+      } catch {
+        return failure({
+          ok: false,
+          status: 503,
+          code: "billing_disabled",
+          message: "Production payment is disabled.",
+        });
+      }
+      return provider.verifyWebhook(input);
     },
     paymentDescriptor(order) {
       return {
