@@ -1165,8 +1165,12 @@
 
   .studio-custom-select {
     position: relative;
-    z-index: 4;
+    z-index: 0;
     min-width: 0;
+  }
+
+  .studio-custom-select.is-open {
+    z-index: 45;
   }
 
   .studio-custom-select__button {
@@ -1202,7 +1206,7 @@
     top: 100%;
     right: 0;
     left: 0;
-    z-index: calc(var(--z-dropdown) + 20);
+    z-index: 1;
     display: grid;
     gap: 4px;
     margin-top: 6px;

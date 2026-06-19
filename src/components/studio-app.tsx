@@ -3575,7 +3575,7 @@ function CustomSelect({
   }, [activeIndex, enabledOptions, options]);
 
   return (
-    <div className="studio-custom-select">
+    <div className={cn("studio-custom-select", open && "is-open")}>
       <button
         ref={buttonRef}
         type="button"
