@@ -1534,6 +1534,16 @@
     height: 40px;
   }
 
+  .ratio-3-2 {
+    width: 45px;
+    height: 30px;
+  }
+
+  .ratio-2-3 {
+    width: 30px;
+    height: 45px;
+  }
+
   .studio-actions {
     display: flex;
     align-items: center;

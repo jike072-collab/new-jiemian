@@ -4,6 +4,7 @@
 
 import { useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
 import { AlertTriangle, ArrowDownUp, Check, ChevronDown, Download, ExternalLink, ImageUp, ListFilter, Loader2, RefreshCw, Search, Trash2, UploadCloud, Wand2, X } from "lucide-react";
+import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 
 import { WorkbenchShell } from "@/components/workbench-shell";
@@ -141,6 +142,10 @@ type VideoUpscaleWorkspaceState = {
 };
 
 const ratios = ["1:1", "16:9", "9:16", "4:3", "3:4"];
+const defaultVideoDurations = [5, 8, 10, 15];
+const grokVideoDurations = [4, 6, 8, 10, 12, 15];
+const grokVideo10Ratios = ["1:1", "16:9", "9:16", "4:3", "3:4", "3:2", "2:3"];
+const grokVideo15Ratios = ["16:9", "9:16"];
 const upscaleUnavailableMessage = "高清处理暂时不可用，请稍后重试";
 const promptOptimizationTargetPlatform = "TikTok Shop";
 
@@ -341,6 +346,25 @@ async function fileFromLibraryOutput(item: LibraryItem, fallbackExtension: strin
   const safeName = (rawName.split(/[\\/]/).pop() || `result${extension}`).replace(/[^\w.-]+/g, "-");
   return new File([blob], safeName, { type: mimeType });
 }
+
+function isGrokVideoProvider(provider: PublicProvider | null | undefined) {
+  return provider?.endpointType === "grok-videos" || Boolean(provider?.model.startsWith("grok-video-"));
+}
+
+function videoDurationOptions(provider: PublicProvider | null | undefined) {
+  return isGrokVideoProvider(provider) ? grokVideoDurations : defaultVideoDurations;
+}
+
+function videoRatioOptions(provider: PublicProvider | null | undefined) {
+  if (!isGrokVideoProvider(provider)) return ratios;
+  return provider?.model === "grok-video-1.5" ? grokVideo15Ratios : grokVideo10Ratios;
+}
+
+function videoProviderRequiresReferenceImage(provider: PublicProvider | null | undefined) {
+  return provider?.model === "grok-video-1.5";
+}
+
+const videoModelReferenceMessage = "当前模型需要上传 1 张图像。";
 
 export function StudioApp() {
   const router = useRouter();
@@ -888,18 +912,22 @@ export function StudioApp() {
     if (!providers.video.length) return null;
     return providers.video.find((provider) => provider.id === videoWorkspace.providerId) || providers.video[0];
   }, [providers.video, videoWorkspace.providerId]);
+  const selectedVideoDurationOptions = useMemo(() => videoDurationOptions(selectedVideoProvider), [selectedVideoProvider]);
+  const selectedVideoRatioOptions = useMemo(() => videoRatioOptions(selectedVideoProvider), [selectedVideoProvider]);
 
   const videoWorkspaceFiles = videoWorkspace.files;
   const videoWorkspaceHasFiles = videoWorkspaceFiles.length > 0;
   const videoWorkspacePrompt = videoWorkspace.prompt.trim();
   const videoWorkspaceNeedsFile = activeVideoMode === "image-to-video";
   const videoWorkspaceRequiresFile = activeVideoTemplate?.scope === "video" && activeVideoTemplate.requiresImage;
+  const selectedVideoModelRequiresFile = videoProviderRequiresReferenceImage(selectedVideoProvider);
   const videoWorkspaceCanSubmit = Boolean(selectedVideoProvider)
     && !providersLoading
     && !videoWorkspace.loading
     && Boolean(videoWorkspacePrompt)
     && (!videoWorkspaceNeedsFile || videoWorkspaceHasFiles)
-    && (!videoWorkspaceRequiresFile || videoWorkspaceHasFiles);
+    && (!videoWorkspaceRequiresFile || videoWorkspaceHasFiles)
+    && (!selectedVideoModelRequiresFile || videoWorkspaceHasFiles);
 
   const updateVideoWorkspace = useCallback((patch: Partial<VideoWorkspaceState>) => {
     setVideoWorkspace((prev) => ({ ...prev, ...patch }));
@@ -908,6 +936,28 @@ export function StudioApp() {
   const applyVideoPromptTemplate = useCallback((templateId: string) => {
     applyTemplatePreset(templateId);
   }, [applyTemplatePreset]);
+
+  useEffect(() => {
+    if (!selectedVideoProvider) return;
+    setVideoWorkspace((prev) => {
+      const durationOptions = videoDurationOptions(selectedVideoProvider);
+      const ratioOptions = videoRatioOptions(selectedVideoProvider);
+      const nextDuration = durationOptions.includes(prev.duration) ? prev.duration : durationOptions[0];
+      const nextRatio = ratioOptions.includes(prev.ratio) ? prev.ratio : ratioOptions[0];
+      const modelNeedsFile = videoProviderRequiresReferenceImage(selectedVideoProvider);
+      const nextFileError = modelNeedsFile && !prev.files.length
+        ? videoModelReferenceMessage
+        : prev.fileError === videoModelReferenceMessage ? "" : prev.fileError;
+      if (nextDuration === prev.duration && nextRatio === prev.ratio && nextFileError === prev.fileError) return prev;
+      return {
+        ...prev,
+        duration: nextDuration,
+        ratio: nextRatio,
+        fileError: nextFileError,
+        submitError: "",
+      };
+    });
+  }, [selectedVideoProvider]);
 
   const optimizeVideoPrompt = useCallback(async () => {
     const prompt = videoWorkspace.prompt.trim();
@@ -1010,11 +1060,11 @@ export function StudioApp() {
       return {
         ...prev,
         files: nextFiles,
-        fileError: "",
+        fileError: selectedVideoModelRequiresFile && !nextFiles.length ? videoModelReferenceMessage : "",
         submitError: "",
       };
     });
-  }, []);
+  }, [selectedVideoModelRequiresFile]);
 
   const clearVideoWorkspaceFiles = useCallback(() => {
     videoWorkspaceFilesRef.current.forEach((file) => URL.revokeObjectURL(file.previewUrl));
@@ -1022,10 +1072,10 @@ export function StudioApp() {
     setVideoWorkspace((prev) => ({
       ...prev,
       files: [],
-      fileError: "",
+      fileError: selectedVideoModelRequiresFile ? videoModelReferenceMessage : "",
       submitError: "",
     }));
-  }, []);
+  }, [selectedVideoModelRequiresFile]);
 
   const updateImageUpscaleWorkspace = useCallback((patch: Partial<ImageUpscaleWorkspaceState>) => {
     setImageUpscaleWorkspace((prev) => ({ ...prev, ...patch }));
@@ -1344,11 +1394,16 @@ export function StudioApp() {
       updateVideoWorkspace({ fileError: text, submitError: text });
       return;
     }
+    if (selectedVideoModelRequiresFile && !videoWorkspaceHasFiles) {
+      const text = videoModelReferenceMessage;
+      updateVideoWorkspace({ fileError: text, submitError: text });
+      return;
+    }
     if (videoWorkspace.loading) return;
-    if ((videoWorkspaceRequiresFile || videoWorkspaceNeedsFile) && !videoWorkspaceHasFiles) {
+    if ((videoWorkspaceRequiresFile || videoWorkspaceNeedsFile || selectedVideoModelRequiresFile) && !videoWorkspaceHasFiles) {
       setVideoWorkspace((prev) => ({
         ...prev,
-        fileError: "请先上传图像。",
+        fileError: selectedVideoModelRequiresFile ? videoModelReferenceMessage : "请先上传图像。",
       }));
       return;
     }
@@ -1389,6 +1444,7 @@ export function StudioApp() {
     handleVideoResult,
     refreshLibrary,
     selectedVideoProvider,
+    selectedVideoModelRequiresFile,
     setMessage,
     updateVideoWorkspace,
     videoWorkspace.duration,
@@ -1448,6 +1504,9 @@ export function StudioApp() {
           onFilesChange={replaceVideoWorkspaceFiles}
           onFileRemove={removeVideoWorkspaceFile}
           onFilesClear={clearVideoWorkspaceFiles}
+          ratioOptions={selectedVideoRatioOptions}
+          durationOptions={selectedVideoDurationOptions}
+          modelRequiresImage={selectedVideoModelRequiresFile}
           onReloadProviders={refreshProviders}
           onSubmit={submitVideoWorkspace}
           registerMobileAction={setMobileAction}
@@ -1565,6 +1624,7 @@ export function StudioApp() {
           )
         }
         mobileActionSlot={mobileAction ? <MobileActionBar {...mobileAction} /> : null}
+        headerRightSlot={<Link href="/admin/providers" className="studio-secondary-button">后台配置</Link>}
       />
       {message ? <Toast message={message} onClose={() => setMessage("")} /> : null}
     </>
@@ -1768,6 +1828,9 @@ function VideoGenerator({
   onFilesChange,
   onFileRemove,
   onFilesClear,
+  ratioOptions,
+  durationOptions,
+  modelRequiresImage,
   onReloadProviders,
   onSubmit,
   registerMobileAction,
@@ -1789,6 +1852,9 @@ function VideoGenerator({
   onFilesChange: (files: File[]) => void;
   onFileRemove: (index: number) => void;
   onFilesClear: () => void;
+  ratioOptions: string[];
+  durationOptions: number[];
+  modelRequiresImage: boolean;
   onReloadProviders: () => Promise<void>;
   onSubmit: () => void;
   registerMobileAction: (action: MobileActionState) => void;
@@ -1834,14 +1900,17 @@ function VideoGenerator({
         onRemove={onFileRemove}
         onClear={onFilesClear}
       />
+      {modelRequiresImage && !state.files.length ? (
+        <p className="studio-help-text">{videoModelReferenceMessage}</p>
+      ) : null}
       <StackedControl label="比例" required>
-        <AspectRatioSelector label="比例" value={state.ratio} onChange={onRatioChange} />
+        <AspectRatioSelector label="比例" value={state.ratio} options={ratioOptions} onChange={onRatioChange} />
       </StackedControl>
       <FieldFrame label="时长" required>
         <CustomSelect
           label="时长"
           value={String(state.duration)}
-          options={[5, 8, 10, 15].map((value) => ({
+          options={durationOptions.map((value) => ({
             value: String(value),
           label: `${value} 秒`,
           }))}
@@ -3181,10 +3250,20 @@ function StackedControl({
   return <FieldFrame label={label} required={required}>{children}</FieldFrame>;
 }
 
-function AspectRatioSelector({ label, value, onChange }: { label: string; value: string; onChange: (value: string) => void }) {
+function AspectRatioSelector({
+  label,
+  value,
+  options = ratios,
+  onChange,
+}: {
+  label: string;
+  value: string;
+  options?: string[];
+  onChange: (value: string) => void;
+}) {
   return (
     <div className="studio-ratio" role="group" aria-label={label}>
-      {ratios.map((ratio) => (
+      {options.map((ratio) => (
         <button
           key={ratio}
           type="button"

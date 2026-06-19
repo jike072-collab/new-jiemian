@@ -19,6 +19,10 @@ type ProviderOutput = {
   mimeType?: string;
 };
 
+const grokVideoDurations = new Set([4, 6, 8, 10, 12, 15]);
+const grokVideo10Ratios = new Set(["1:1", "16:9", "9:16", "4:3", "3:4", "3:2", "2:3"]);
+const grokVideo15Ratios = new Set(["16:9", "9:16"]);
+
 function asRecord(value: unknown): Record<string, unknown> {
   return value && typeof value === "object" && !Array.isArray(value)
     ? value as Record<string, unknown>
@@ -35,18 +39,24 @@ function firstString(...values: unknown[]) {
 function parseProviderOutput(payload: unknown): ProviderOutput {
   const root = asRecord(payload);
   const data = Array.isArray(root.data) ? root.data : [];
+  const metadata = asRecord(root.metadata);
   const first = asRecord(data[0] || root.video || root.result || root.output || payload);
+  const firstMetadata = asRecord(first.metadata);
   const url = firstString(
     first.url,
     first.image_url,
     first.video_url,
     first.output_url,
     first.download_url,
+    first.result_url,
+    firstMetadata.url,
     root.url,
     root.image_url,
     root.video_url,
     root.output_url,
     root.download_url,
+    root.result_url,
+    metadata.url,
   );
   const base64 = firstString(
     first.b64_json,
@@ -59,7 +69,7 @@ function parseProviderOutput(payload: unknown): ProviderOutput {
   return {
     url,
     base64,
-    jobId: firstString(first.id, first.video_id, root.id, root.video_id),
+    jobId: firstString(first.task_id, first.id, first.video_id, root.task_id, root.id, root.video_id),
     status: firstString(first.status, root.status),
     statusUrl: firstString(first.status_url, root.status_url),
     mimeType: firstString(first.mime_type, root.mime_type),
@@ -96,6 +106,141 @@ function deriveStatusUrl(apiUrl: string, jobId: string) {
   } catch {
     return "";
   }
+}
+
+function isGrokVideoProvider(provider: ProviderConfig) {
+  return provider.endpointType === "grok-videos" || provider.model.startsWith("grok-video-");
+}
+
+function grokVideosEndpoint(apiUrl: string) {
+  try {
+    const parsed = new URL(apiUrl);
+    if (parsed.pathname === "/" || parsed.pathname === "") {
+      parsed.pathname = "/v1/videos";
+    } else if (!/\/videos\/?$/i.test(parsed.pathname)) {
+      parsed.pathname = parsed.pathname.replace(/\/$/, "") + "/videos";
+    }
+    parsed.search = "";
+    return parsed.toString();
+  } catch {
+    return apiUrl;
+  }
+}
+
+function absolutizeProviderUrl(provider: ProviderConfig, value: string) {
+  if (!value.startsWith("/")) return value;
+  try {
+    const parsed = new URL(provider.apiUrl);
+    return `${parsed.origin}${value}`;
+  } catch {
+    return value;
+  }
+}
+
+function grokVideoRatioOptions(provider: ProviderConfig) {
+  return provider.model === "grok-video-1.5" ? grokVideo15Ratios : grokVideo10Ratios;
+}
+
+function validateGrokVideoInput(provider: ProviderConfig, input: {
+  mode: "text-to-video" | "image-to-video";
+  ratio: string;
+  duration: number;
+  files: UploadedMedia[];
+}) {
+  if (!grokVideoDurations.has(input.duration)) {
+    throw new Error("当前 Grok 视频模型只支持 4、6、8、10、12、15 秒。");
+  }
+  if (!grokVideoRatioOptions(provider).has(input.ratio)) {
+    throw new Error(provider.model === "grok-video-1.5"
+      ? "grok-video-1.5 只支持 16:9 和 9:16。"
+      : "grok-video-1.0 不支持当前比例。");
+  }
+  if (provider.model === "grok-video-1.5" && input.files.length !== 1) {
+    throw new Error("grok-video-1.5 必须且只能上传 1 张参考图。");
+  }
+  if (provider.model === "grok-video-1.0" && input.files.length > 7) {
+    throw new Error("grok-video-1.0 最多支持 7 张参考图。");
+  }
+}
+
+function grokReferenceImageEndpoint(apiUrl: string) {
+  try {
+    const parsed = new URL(grokVideosEndpoint(apiUrl));
+    parsed.pathname = parsed.pathname.replace(/\/videos\/?$/i, "/video-reference-images");
+    parsed.search = "";
+    return parsed.toString();
+  } catch {
+    return "https://api.manxiaobai.online/v1/video-reference-images";
+  }
+}
+
+function grokStatusUrl(apiUrl: string, jobId: string) {
+  if (!jobId) return "";
+  try {
+    const parsed = new URL(grokVideosEndpoint(apiUrl));
+    parsed.pathname = parsed.pathname.replace(/\/videos\/?$/i, `/videos/${encodeURIComponent(jobId)}`);
+    parsed.search = "";
+    return parsed.toString();
+  } catch {
+    return "";
+  }
+}
+
+async function uploadGrokReferenceImage(provider: ProviderConfig, file: UploadedMedia) {
+  const response = await fetch(grokReferenceImageEndpoint(provider.apiUrl), {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      ...authHeaders(provider),
+    },
+    body: JSON.stringify({
+      image: `data:${file.mimeType};base64,${file.bytes.toString("base64")}`,
+    }),
+    signal: AbortSignal.timeout(120000),
+  });
+  const payload = await readProviderJson(response);
+  const url = firstString(asRecord(payload).url);
+  if (!url) throw new Error("Grok 参考图上传未返回可用 URL。");
+  return url;
+}
+
+async function callGrokVideoProvider(provider: ProviderConfig, input: {
+  mode: "text-to-video" | "image-to-video";
+  prompt: string;
+  ratio: string;
+  duration: number;
+  files: UploadedMedia[];
+}) {
+  validateGrokVideoInput(provider, input);
+  const form = new FormData();
+  form.append("model", provider.model);
+  form.append("prompt", input.prompt);
+  form.append("seconds", String(input.duration));
+  form.append("aspect_ratio", input.ratio);
+  form.append("resolution", "720p");
+
+  for (const file of input.files) {
+    form.append("input_reference[image_url]", await uploadGrokReferenceImage(provider, file));
+  }
+
+  const response = await fetch(grokVideosEndpoint(provider.apiUrl), {
+    method: "POST",
+    headers: authHeaders(provider),
+    body: form,
+    signal: AbortSignal.timeout(180000),
+  });
+  return parseProviderOutput(await readProviderJson(response));
+}
+
+async function outputToLibraryFromAuthenticatedUrl(provider: ProviderConfig, url: string, prefix: string) {
+  const response = await fetch(url, {
+    method: "GET",
+    headers: authHeaders(provider),
+    signal: AbortSignal.timeout(180000),
+  });
+  if (!response.ok) throw new Error(`下载视频结果失败：HTTP ${response.status}`);
+  const mimeType = response.headers.get("content-type") || "video/mp4";
+  return storeBytes(Buffer.from(await response.arrayBuffer()), mimeType, prefix);
 }
 
 function imageEndpoint(provider: ProviderConfig, useEdits: boolean) {
@@ -273,6 +418,40 @@ export async function submitVideo(input: {
     throw new Error("视频供应商未配置或未启用。");
   }
 
+  if (isGrokVideoProvider(provider)) {
+    const output = await callGrokVideoProvider(provider, input);
+    const item = await addLibraryItem({
+      type: "video",
+      mode: input.mode,
+      title: input.prompt.slice(0, 42) || "视频生成",
+      prompt: input.prompt,
+      providerId: provider.id,
+      model: provider.model,
+      status: output.url ? "done" : normalizeStatus(output.status || ""),
+      output: output.url ? await outputToLibrary({
+        ...output,
+        url: absolutizeProviderUrl(provider, output.url),
+      }, "video", "video") : undefined,
+      params: {
+        ratio: input.ratio,
+        duration: input.duration,
+        referenceImages: input.files.length,
+        resolution: "720p",
+      },
+    });
+    if (output.url) return { item, job: null };
+    const jobId = output.jobId || randomUUID();
+    const job = await addJob({
+      id: jobId,
+      libraryItemId: item.id,
+      type: "video",
+      providerId: provider.id,
+      status: normalizeStatus(output.status || ""),
+      statusUrl: output.statusUrl ? absolutizeProviderUrl(provider, output.statusUrl) : grokStatusUrl(provider.apiUrl, jobId),
+    });
+    return { item, job };
+  }
+
   const providerPayload: Record<string, string | number | string[]> = {
     model: provider.model,
     prompt: input.prompt,
@@ -364,14 +543,30 @@ export async function refreshVideoJob(jobId: string) {
   const status = normalizeStatus(output.status || "");
 
   if (output.url) {
-    const stored = await outputToLibrary(output, "video", "video");
+    const outputUrl = absolutizeProviderUrl(provider, output.url);
+    const stored = outputUrl.includes("/content")
+      ? await outputToLibraryFromAuthenticatedUrl(provider, outputUrl, "video")
+      : await outputToLibrary({ ...output, url: outputUrl }, "video", "video");
     await updateLibraryItem(job.libraryItemId, {
       status: "done",
       output: stored,
     } satisfies Partial<LibraryItem>);
     return updateJob(job.id, {
       status: "done",
-      sourceUrl: output.url,
+      sourceUrl: outputUrl,
+    });
+  }
+
+  if (isGrokVideoProvider(provider) && status === "done" && !output.url) {
+    const contentUrl = `${job.statusUrl.replace(/\/$/, "")}/content`;
+    const stored = await outputToLibraryFromAuthenticatedUrl(provider, contentUrl, "video");
+    await updateLibraryItem(job.libraryItemId, {
+      status: "done",
+      output: stored,
+    } satisfies Partial<LibraryItem>);
+    return updateJob(job.id, {
+      status: "done",
+      sourceUrl: contentUrl,
     });
   }
 

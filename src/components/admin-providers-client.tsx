@@ -16,13 +16,14 @@ const endpointOptions: Array<{ value: EndpointType; label: string }> = [
   { value: "images-generations", label: "OpenAI-compatible images/generations" },
   { value: "images-edits", label: "OpenAI-compatible images/edits (multipart)" },
   { value: "videos-generations", label: "OpenAI-compatible videos/generations" },
+  { value: "grok-videos", label: "Grok 视频 /v1/videos（异步）" },
   { value: "upscayl-cli", label: "本地 Upscayl CLI（图片高清）" },
   { value: "video2x-cli", label: "本地 Video2X CLI（视频高清）" },
 ];
 
 function endpointOptionsFor(provider: EditableProvider) {
   if (provider.kind === "image") return endpointOptions.filter((option) => option.value.startsWith("images-"));
-  if (provider.kind === "video") return endpointOptions.filter((option) => option.value === "videos-generations");
+  if (provider.kind === "video") return endpointOptions.filter((option) => option.value === "videos-generations" || option.value === "grok-videos");
   if (provider.kind === "image-upscale") return endpointOptions.filter((option) => option.value === "upscayl-cli");
   return endpointOptions.filter((option) => option.value === "video2x-cli");
 }
@@ -87,6 +88,7 @@ export function AdminProvidersClient() {
             id: provider.id,
             apiUrl: provider.apiUrl,
             model: provider.model,
+            displayName: provider.displayName,
             endpointType: provider.endpointType,
             enabled: provider.enabled,
             ...(provider.newApiKey ? { apiKey: provider.newApiKey } : {}),
@@ -188,7 +190,7 @@ export function AdminProvidersClient() {
                 </label>
               </div>
 
-              <div className="mt-5 grid gap-4 xl:grid-cols-[1.2fr_.75fr_1fr]">
+              <div className="mt-5 grid gap-4 xl:grid-cols-[1.2fr_.7fr_.7fr_1fr]">
                 <label className="admin-field">
                   {isLocalCli(provider.endpointType) ? "可执行文件路径（留空自动检测）" : "接口地址"}
                   <input
@@ -204,6 +206,15 @@ export function AdminProvidersClient() {
                   <input
                     value={provider.model}
                     onChange={(event) => update(provider.id, { model: event.target.value })}
+                    className="admin-input"
+                  />
+                </label>
+                <label className="admin-field">
+                  前台名称
+                  <input
+                    value={provider.displayName || ""}
+                    onChange={(event) => update(provider.id, { displayName: event.target.value })}
+                    placeholder="不填则显示模型 ID"
                     className="admin-input"
                   />
                 </label>

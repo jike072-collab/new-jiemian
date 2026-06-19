@@ -4,6 +4,7 @@ export type EndpointType =
   | "images-generations"
   | "images-edits"
   | "videos-generations"
+  | "grok-videos"
   | "upscayl-cli"
   | "video2x-cli"
   | "upscale-placeholder";
@@ -27,7 +28,7 @@ export type PublicProvider = Omit<ProviderConfig, "apiKey"> & {
 };
 
 export type ProviderUpdate = Partial<
-  Pick<ProviderConfig, "apiUrl" | "model" | "enabled" | "endpointType">
+  Pick<ProviderConfig, "apiUrl" | "model" | "displayName" | "enabled" | "endpointType">
 > & {
   id: string;
   apiKey?: string;
