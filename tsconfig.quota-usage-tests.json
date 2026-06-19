@@ -1,0 +1,22 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "allowImportingTsExtensions": false,
+    "declaration": false,
+    "emitDeclarationOnly": false,
+    "incremental": false,
+    "module": "NodeNext",
+    "moduleResolution": "NodeNext",
+    "noEmit": false,
+    "outDir": "dist/quota-usage-tests",
+    "rootDir": ".",
+    "target": "ES2022",
+    "tsBuildInfoFile": "dist/quota-usage-tests.tsbuildinfo"
+  },
+  "include": [
+    "src/lib/server/quota/**/*.ts",
+    "src/lib/server/database/**/*.ts",
+    "src/lib/server/auth/**/*.ts",
+    "src/lib/server/integrations/new-api/**/*.ts"
+  ]
+}

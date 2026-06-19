@@ -1,0 +1,21 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "allowImportingTsExtensions": false,
+    "declaration": false,
+    "emitDeclarationOnly": false,
+    "incremental": false,
+    "module": "NodeNext",
+    "moduleResolution": "NodeNext",
+    "noEmit": false,
+    "outDir": "dist/prompt-optimizer-tests",
+    "rootDir": ".",
+    "target": "ES2022",
+    "tsBuildInfoFile": "dist/prompt-optimizer-tests.tsbuildinfo"
+  },
+  "include": [
+    "src/lib/server/prompts/optimizer.ts",
+    "src/lib/server/prompts/__tests__/prompt-optimizer.test.ts",
+    "src/lib/server/integrations/new-api/**/*.ts"
+  ]
+}

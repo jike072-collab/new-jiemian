@@ -1,0 +1,623 @@
+name: Auth New API Final Gate
+
+on:
+  pull_request:
+    branches:
+      - develop
+      - integration/auth-newapi
+  workflow_dispatch:
+
+jobs:
+  static-quality:
+    name: Typecheck, lint, build
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Type check
+        run: npm run typecheck
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Build
+        run: npm run build
+
+  auth-session:
+    name: Auth and session tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Auth session tests
+        run: node scripts/test-auth-session.mjs
+
+  bff-user-mapping:
+    name: BFF and user mapping tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: BFF and mapping tests
+        run: node scripts/test-new-api-bff.mjs
+
+  quota-usage:
+    name: Quota and usage tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Quota and usage tests
+        run: node scripts/test-quota-usage.mjs
+
+  billing-webhook:
+    name: Billing, webhook, reconciliation
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Billing sandbox tests
+        run: node scripts/test-billing-sandbox.mjs
+
+      - name: Billing reconciliation dry run
+        run: node scripts/reconcile-billing-sandbox.mjs --dry-run --json
+
+  admin-api:
+    name: Admin API tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Admin API tests
+        run: node scripts/test-admin-api.mjs
+
+  new-api-docker-health:
+    name: New API Docker health and real BFF
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Prepare New API environment
+        working-directory: infra/new-api
+        run: |
+          set -eu
+          POSTGRES_PASSWORD=$(openssl rand -hex 18)
+          REDIS_PASSWORD=$(openssl rand -hex 18)
+          SESSION_SECRET=$(openssl rand -hex 32)
+          CRYPTO_SECRET=$(openssl rand -hex 32)
+          ADMIN_PASSWORD=$(openssl rand -hex 18)
+          echo "::add-mask::$POSTGRES_PASSWORD"
+          echo "::add-mask::$REDIS_PASSWORD"
+          echo "::add-mask::$SESSION_SECRET"
+          echo "::add-mask::$CRYPTO_SECRET"
+          echo "::add-mask::$ADMIN_PASSWORD"
+          {
+            echo "ADMIN_PASSWORD=$ADMIN_PASSWORD"
+          } >> "$GITHUB_ENV"
+          cat > .env <<'ENV'
+          NEW_API_IMAGE=calciumion/new-api:v1.0.0-rc.11@sha256:bd30213d808857bb569ef47d3c9209d061a66ea089c2472ef46ce51e75517f19
+          NEW_API_BIND_ADDRESS=127.0.0.1
+          NEW_API_PORT=3000
+          PORT=3000
+          TZ=Asia/Shanghai
+          NODE_TYPE=master
+          NODE_NAME=new-api-final-gate-health
+          LOG_LEVEL=info
+          ERROR_LOG_ENABLED=true
+          BATCH_UPDATE_ENABLED=true
+          POSTGRES_DB=new_api_test
+          POSTGRES_USER=new_api_test
+          POSTGRES_PASSWORD=__POSTGRES_PASSWORD__
+          SQL_DSN=postgresql://new_api_test:__POSTGRES_PASSWORD__@postgres:5432/new_api_test?sslmode=disable
+          REDIS_PASSWORD=__REDIS_PASSWORD__
+          REDIS_CONN_STRING=redis://:__REDIS_PASSWORD__@redis:6379/0
+          SESSION_SECRET=__SESSION_SECRET__
+          CRYPTO_SECRET=__CRYPTO_SECRET__
+          ADMIN_USERNAME=testroot
+          ADMIN_PASSWORD=__ADMIN_PASSWORD__
+          ADMIN_CONFIRM_PASSWORD=__ADMIN_PASSWORD__
+          ADMIN_SELF_USE_MODE_ENABLED=true
+          ADMIN_DEMO_SITE_ENABLED=false
+          ENV
+          sed -i \
+            -e "s#__POSTGRES_PASSWORD__#$POSTGRES_PASSWORD#g" \
+            -e "s#__REDIS_PASSWORD__#$REDIS_PASSWORD#g" \
+            -e "s#__SESSION_SECRET__#$SESSION_SECRET#g" \
+            -e "s#__CRYPTO_SECRET__#$CRYPTO_SECRET#g" \
+            -e "s#__ADMIN_PASSWORD__#$ADMIN_PASSWORD#g" \
+            .env
+          mkdir -p .runtime/new-api/data .runtime/new-api/logs .runtime/new-api/postgres .runtime/new-api/redis
+
+      - name: Start New API stack
+        working-directory: infra/new-api
+        run: |
+          set -eu
+          scripts/preflight
+          scripts/start
+          for i in $(seq 1 60); do
+            if curl -fsS http://127.0.0.1:3000/api/status >/dev/null; then
+              exit 0
+            fi
+            sleep 5
+          done
+          docker compose logs --tail=200
+          exit 1
+
+      - name: Healthcheck
+        working-directory: infra/new-api
+        run: scripts/healthcheck
+
+      - name: Verify database and Redis are not public
+        working-directory: infra/new-api
+        run: |
+          set -eu
+          docker compose config --format json > compose-config.json
+          node <<'NODE'
+          const fs = require("node:fs");
+          const config = JSON.parse(fs.readFileSync("compose-config.json", "utf8"));
+          const services = config.services || {};
+          const ports = (service) => Array.isArray(services[service]?.ports) ? services[service].ports : [];
+
+          for (const service of ["postgres", "redis"]) {
+            if (ports(service).length > 0) {
+              console.error(`${service} must not define host ports in docker compose config`);
+              console.error(JSON.stringify(ports(service), null, 2));
+              process.exit(1);
+            }
+          }
+
+          const newApiPorts = ports("new-api");
+          if (newApiPorts.length === 0) {
+            console.error("new-api must expose its HTTP port for local CI verification");
+            process.exit(1);
+          }
+
+          for (const port of newApiPorts) {
+            const hostIp = port.host_ip || port.host_ip_address || "";
+            if (hostIp !== "127.0.0.1") {
+              console.error(`new-api must bind only to 127.0.0.1, got ${hostIp || "<empty>"}`);
+              console.error(JSON.stringify(port, null, 2));
+              process.exit(1);
+            }
+          }
+          NODE
+          docker compose ps
+          for SERVICE in postgres redis; do
+            CONTAINER_ID=$(docker compose ps -q "$SERVICE")
+            test -n "$CONTAINER_ID"
+            PORT_BINDINGS=$(docker inspect "$CONTAINER_ID" --format '{{json .HostConfig.PortBindings}}')
+            case "$PORT_BINDINGS" in
+              null|'{}')
+                ;;
+              *)
+                echo "$SERVICE has unexpected host port bindings: $PORT_BINDINGS" >&2
+                exit 1
+                ;;
+            esac
+          done
+
+          NEW_API_CONTAINER_ID=$(docker compose ps -q new-api)
+          test -n "$NEW_API_CONTAINER_ID"
+          NEW_API_BINDINGS=$(docker inspect "$NEW_API_CONTAINER_ID" --format '{{json .HostConfig.PortBindings}}')
+          node -e '
+            const bindings = JSON.parse(process.argv[1]);
+            const entries = Object.values(bindings || {}).flat();
+            if (entries.length === 0) {
+              console.error("new-api has no runtime port binding");
+              process.exit(1);
+            }
+            for (const entry of entries) {
+              if (entry.HostIp !== "127.0.0.1") {
+                console.error(`new-api must bind only to 127.0.0.1, got ${entry.HostIp || "<empty>"}`);
+                console.error(JSON.stringify(bindings));
+                process.exit(1);
+              }
+            }
+          ' "$NEW_API_BINDINGS"
+
+      - name: Initialize test admin
+        working-directory: infra/new-api
+        run: |
+          set -eu
+          curl -fsS http://127.0.0.1:3000/api/setup \
+            -H "Content-Type: application/json" \
+            --data-raw '{
+              "username": "testroot",
+              "password": "'"$ADMIN_PASSWORD"'",
+              "confirmPassword": "'"$ADMIN_PASSWORD"'",
+              "SelfUseModeEnabled": true,
+              "DemoSiteEnabled": false
+            }' > setup-response.json
+          grep -q '"success":true' setup-response.json
+
+      - name: Generate admin access token
+        run: |
+          set -eu
+          curl -fsS -c new-api.cookies http://127.0.0.1:3000/api/user/login \
+            -H "Content-Type: application/json" \
+            --data-raw '{"username":"testroot","password":"'"$ADMIN_PASSWORD"'"}' \
+            > login-response.json
+          grep -q '"success":true' login-response.json
+          ADMIN_TOKEN=$(curl -fsS -b new-api.cookies http://127.0.0.1:3000/api/user/token -H "New-Api-User: 1" | node -e "let data=''; process.stdin.on('data', c => data += c); process.stdin.on('end', () => { const parsed = JSON.parse(data); if (!parsed.success || !parsed.data) process.exit(1); console.log(parsed.data); });")
+          echo "::add-mask::$ADMIN_TOKEN"
+          {
+            echo "NEW_API_ENABLED=true"
+            echo "NEW_API_BASE_URL=http://127.0.0.1:3000"
+            echo "NEW_API_ADMIN_USER_ID=1"
+            echo "NEW_API_ADMIN_ACCESS_TOKEN=$ADMIN_TOKEN"
+          } >> "$GITHUB_ENV"
+
+      - name: Real BFF and mapping verification
+        run: node scripts/test-new-api-bff.mjs --real
+
+      - name: Redacted log scan
+        working-directory: infra/new-api
+        run: |
+          set -eu
+          scripts/redact-logs --input .env --output env.redacted.log
+          if grep -E '(POSTGRES_PASSWORD|REDIS_PASSWORD|SESSION_SECRET|CRYPTO_SECRET|ADMIN_PASSWORD)=[^[]' env.redacted.log; then
+            echo "redacted log still contains secret values" >&2
+            exit 1
+          fi
+
+      - name: Stop New API stack
+        if: always()
+        working-directory: infra/new-api
+        run: docker compose down --remove-orphans
+
+  backup-restore:
+    name: Backup, restore, bad backup rejection
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Prepare New API environment
+        working-directory: infra/new-api
+        run: |
+          set -eu
+          POSTGRES_PASSWORD=$(openssl rand -hex 18)
+          REDIS_PASSWORD=$(openssl rand -hex 18)
+          SESSION_SECRET=$(openssl rand -hex 32)
+          CRYPTO_SECRET=$(openssl rand -hex 32)
+          ADMIN_PASSWORD=$(openssl rand -hex 18)
+          echo "::add-mask::$POSTGRES_PASSWORD"
+          echo "::add-mask::$REDIS_PASSWORD"
+          echo "::add-mask::$SESSION_SECRET"
+          echo "::add-mask::$CRYPTO_SECRET"
+          echo "::add-mask::$ADMIN_PASSWORD"
+          {
+            echo "ADMIN_PASSWORD=$ADMIN_PASSWORD"
+          } >> "$GITHUB_ENV"
+          cat > .env <<'ENV'
+          NEW_API_IMAGE=calciumion/new-api:v1.0.0-rc.11@sha256:bd30213d808857bb569ef47d3c9209d061a66ea089c2472ef46ce51e75517f19
+          NEW_API_BIND_ADDRESS=127.0.0.1
+          NEW_API_PORT=3000
+          PORT=3000
+          TZ=Asia/Shanghai
+          NODE_TYPE=master
+          NODE_NAME=new-api-final-gate-backup
+          LOG_LEVEL=info
+          ERROR_LOG_ENABLED=true
+          BATCH_UPDATE_ENABLED=true
+          POSTGRES_DB=new_api_test
+          POSTGRES_USER=new_api_test
+          POSTGRES_PASSWORD=__POSTGRES_PASSWORD__
+          SQL_DSN=postgresql://new_api_test:__POSTGRES_PASSWORD__@postgres:5432/new_api_test?sslmode=disable
+          REDIS_PASSWORD=__REDIS_PASSWORD__
+          REDIS_CONN_STRING=redis://:__REDIS_PASSWORD__@redis:6379/0
+          SESSION_SECRET=__SESSION_SECRET__
+          CRYPTO_SECRET=__CRYPTO_SECRET__
+          ADMIN_USERNAME=testroot
+          ADMIN_PASSWORD=__ADMIN_PASSWORD__
+          ADMIN_CONFIRM_PASSWORD=__ADMIN_PASSWORD__
+          ADMIN_SELF_USE_MODE_ENABLED=true
+          ADMIN_DEMO_SITE_ENABLED=false
+          ENV
+          sed -i \
+            -e "s#__POSTGRES_PASSWORD__#$POSTGRES_PASSWORD#g" \
+            -e "s#__REDIS_PASSWORD__#$REDIS_PASSWORD#g" \
+            -e "s#__SESSION_SECRET__#$SESSION_SECRET#g" \
+            -e "s#__CRYPTO_SECRET__#$CRYPTO_SECRET#g" \
+            -e "s#__ADMIN_PASSWORD__#$ADMIN_PASSWORD#g" \
+            .env
+          mkdir -p .runtime/new-api/data .runtime/new-api/logs .runtime/new-api/postgres .runtime/new-api/redis
+
+      - name: Start New API stack
+        working-directory: infra/new-api
+        run: |
+          set -eu
+          scripts/preflight
+          scripts/start
+          for i in $(seq 1 60); do
+            if curl -fsS http://127.0.0.1:3000/api/status >/dev/null; then
+              exit 0
+            fi
+            sleep 5
+          done
+          docker compose logs --tail=200
+          exit 1
+
+      - name: Initialize and verify admin login
+        working-directory: infra/new-api
+        run: |
+          set -eu
+          curl -fsS http://127.0.0.1:3000/api/setup \
+            -H "Content-Type: application/json" \
+            --data-raw '{
+              "username": "testroot",
+              "password": "'"$ADMIN_PASSWORD"'",
+              "confirmPassword": "'"$ADMIN_PASSWORD"'",
+              "SelfUseModeEnabled": true,
+              "DemoSiteEnabled": false
+            }' > setup-response.json
+          grep -q '"success":true' setup-response.json
+          curl -fsS http://127.0.0.1:3000/api/user/login \
+            -H "Content-Type: application/json" \
+            --data-raw '{"username":"testroot","password":"'"$ADMIN_PASSWORD"'"}' \
+            > login-response.json
+          grep -q '"success":true' login-response.json
+
+      - name: Seed restore marker
+        working-directory: infra/new-api
+        run: |
+          set -eu
+          docker compose exec -T postgres psql -U new_api_test -d new_api_test -v ON_ERROR_STOP=1 \
+            -c "create table if not exists ops_restore_marker (id int primary key, value text not null);" \
+            -c "insert into ops_restore_marker (id, value) values (1, 'before-restore') on conflict (id) do update set value = excluded.value;"
+
+      - name: Backup
+        working-directory: infra/new-api
+        run: |
+          set -eu
+          BACKUP_DIR=$(scripts/backup)
+          echo "BACKUP_DIR=$BACKUP_DIR" >> "$GITHUB_ENV"
+          test -f "$BACKUP_DIR/postgres.sql.gz"
+          test -f "$BACKUP_DIR/runtime.tar.gz"
+          test -f "$BACKUP_DIR/checksums.sha256"
+          grep -q "REDACTED" "$BACKUP_DIR/env.redacted"
+
+      - name: Mutate and restore
+        working-directory: infra/new-api
+        run: |
+          set -eu
+          docker compose exec -T postgres psql -U new_api_test -d new_api_test -v ON_ERROR_STOP=1 \
+            -c "update ops_restore_marker set value = 'after-backup' where id = 1;"
+          scripts/restore --backup "$BACKUP_DIR" --confirm RESTORE_NEW_API_TEST
+          VALUE=$(docker compose exec -T postgres psql -U new_api_test -d new_api_test -tA -c "select value from ops_restore_marker where id = 1;")
+          test "$VALUE" = "before-restore"
+
+      - name: Verify login after restore
+        working-directory: infra/new-api
+        run: |
+          set -eu
+          curl -fsS http://127.0.0.1:3000/api/user/login \
+            -H "Content-Type: application/json" \
+            --data-raw '{"username":"testroot","password":"'"$ADMIN_PASSWORD"'"}' \
+            > login-after-restore.json
+          grep -q '"success":true' login-after-restore.json
+
+      - name: Reject bad backup
+        working-directory: infra/new-api
+        run: |
+          set -eu
+          mkdir -p backups/bad-backup
+          if scripts/restore --backup backups/bad-backup --confirm RESTORE_NEW_API_TEST; then
+            echo "bad backup was accepted" >&2
+            exit 1
+          fi
+
+      - name: Stop New API stack
+        if: always()
+        working-directory: infra/new-api
+        run: docker compose down --remove-orphans
+
+  security-scans:
+    name: Server secrets, client bundle, diff scan
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Tracked runtime file scan
+        run: |
+          set -eu
+          if git ls-files | grep -E '(^|/)\.env$|(^|/)\.next/|(^|/)data/|auth-store\.json|billing-store\.json|quota-usage-log\.json|\.sqlite$|\.db$|\.sqlite3$'; then
+            echo "tracked runtime, database, or environment file found" >&2
+            exit 1
+          fi
+
+      - name: Server secret pattern scan
+        run: |
+          set -eu
+          PATTERN='[-]{5}BEGIN (RSA |DSA |EC |OPENSSH |PGP )?PRIVATE KEY[-]{5}|ghp_[A-Za-z0-9_]{30,}|github_pat_[A-Za-z0-9_]{50,}|AKIA[0-9A-Z]{16}|sk-[A-Za-z0-9]{32,}'
+          set +e
+          git grep -n -I -E -e "$PATTERN" -- ':!package-lock.json' > secret-scan.txt
+          STATUS=$?
+          set -e
+
+          if [ "$STATUS" -eq 0 ]; then
+            cat secret-scan.txt >&2
+            echo "potential secret pattern found" >&2
+            exit 1
+          fi
+
+          if [ "$STATUS" -ne 1 ]; then
+            echo "git grep failed with status $STATUS" >&2
+            exit "$STATUS"
+          fi
+
+      - name: Git diff sensitive scan
+        run: |
+          set -eu
+          PATTERN='[-]{5}BEGIN (RSA |DSA |EC |OPENSSH |PGP )?PRIVATE KEY[-]{5}|ghp_[A-Za-z0-9_]{30,}|github_pat_[A-Za-z0-9_]{50,}|AKIA[0-9A-Z]{16}|sk-[A-Za-z0-9]{32,}'
+          BASE_REF="${GITHUB_BASE_REF:-develop}"
+          git fetch origin "$BASE_REF" --depth=1
+          git diff --unified=0 "origin/$BASE_REF...HEAD" > pr.diff
+          if grep -n -E -- "$PATTERN" pr.diff; then
+            echo "sensitive pattern found in pull request diff" >&2
+            exit 1
+          fi
+
+      - name: Build for bundle scan
+        env:
+          AUTH_SESSION_SECRET: final-gate-test-session-secret-not-production
+          PAYMENT_SANDBOX_WEBHOOK_SECRET: final-gate-test-webhook-secret-not-production
+          NEW_API_ENABLED: "false"
+        run: npm run build
+
+      - name: Client bundle leak scan
+        run: |
+          set -eu
+          if grep -R -n -I -E 'NEW_API_ADMIN_ACCESS_TOKEN|NEW_API_ADMIN_USER_ID|PAYMENT_SANDBOX_WEBHOOK_SECRET|PAYMENT_PRODUCTION_ENABLED|PAYMENT_PRODUCTION_WEBHOOK_SECRET|AUTH_SESSION_SECRET|SESSION_SECRET|CRYPTO_SECRET|SQL_DSN|REDIS_CONN_STRING|admin-secret' .next/static; then
+            echo "server secret marker leaked into client static bundle" >&2
+            exit 1
+          fi
+
+      - name: npm audit record
+        run: |
+          set -eu
+          node <<'NODE'
+          const { spawnSync } = require("node:child_process");
+          const fs = require("node:fs");
+
+          const result = spawnSync("npm", ["audit", "--json"], {
+            encoding: "utf8",
+            shell: false,
+          });
+
+          if (result.error) {
+            console.error(result.error);
+            process.exit(1);
+          }
+
+          fs.writeFileSync("npm-audit.json", result.stdout || "{}");
+
+          if (result.status !== 0 && result.status !== 1) {
+            console.error(result.stderr || `npm audit failed with status ${result.status}`);
+            process.exit(result.status || 1);
+          }
+
+          let audit;
+          try {
+            audit = JSON.parse(result.stdout || "{}");
+          } catch (error) {
+            console.error("failed to parse npm audit JSON");
+            console.error(error);
+            process.exit(1);
+          }
+
+          const vulnerabilities = audit.metadata?.vulnerabilities || {};
+          const summary = {
+            info: vulnerabilities.info || 0,
+            low: vulnerabilities.low || 0,
+            moderate: vulnerabilities.moderate || 0,
+            high: vulnerabilities.high || 0,
+            critical: vulnerabilities.critical || 0,
+            total: vulnerabilities.total || 0,
+          };
+
+          console.log(`npm audit summary: ${JSON.stringify(summary)}`);
+          if (summary.high > 0 || summary.critical > 0) {
+            console.log("production dependency blocker: high or critical npm audit findings remain unresolved");
+          }
+          NODE

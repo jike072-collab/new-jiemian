@@ -1,0 +1,606 @@
+# Parallel Line B Execution Log
+
+## B01 - Isolated Workspace And Git Baseline
+
+Status: Completed
+
+Branch: `feature/auth-newapi-01-workspace`
+
+Base: `origin/integration/auth-newapi`
+
+Integration target: `integration/auth-newapi`
+
+Pull request: `#4`
+
+## Initial Baseline
+
+- Original checkout: `E:\codex工作台\p003\new-jiemian`
+- Original branch: `feature/03-multi-device-shell`
+- Original checkout has uncommitted main line A work. B01 did not clean, reset, or overwrite it.
+- Remote: `https://github.com/jike072-collab/new-jiemian.git`
+- Integration branch was created from `origin/develop` because the remote branch did not exist.
+- Isolated worktree: `E:\codex工作台\p003\new-jiemian-auth-newapi`
+
+## B01 Scope
+
+- Created line B scope, file ownership, execution log, Git workflow, and UI work matrix documents.
+- No authentication research was performed.
+- No New API deployment was performed.
+- No business code was written.
+
+## Gate Notes
+
+- One module uses one branch and one pull request.
+- Module pull requests target `integration/auth-newapi`.
+- The final line handoff may only create a Draft PR to `develop`.
+- Main line A files remain out of scope.
+
+## B01 Verification
+
+- `git diff --check` passed before commit.
+- Changed files were limited to `docs/architecture/auth-newapi/**` and `docs/ui/PARALLEL_WORK_MATRIX.md`.
+- No `src/**`, package files, database files, or protected main line A files were modified.
+- Sensitive-pattern scan on the new B01 documents found no secret values.
+- Remote PR diff was reviewed after push.
+
+## B02 - Current Authentication And Account Capability Audit
+
+Status: Completed locally
+
+Branch: `feature/auth-newapi-02-auth-audit`
+
+Base: `origin/integration/auth-newapi`
+
+Integration target: `integration/auth-newapi`
+
+## B02 Scope
+
+- Audited current login, registration, logout, account, admin provider, session, cookie, token, local storage, user/customer model, quota, points, usage, and route protection surfaces.
+- Created current-state audit documents only.
+- No login page fixes were made.
+- No auth library, user table, schema, New API deployment, or placeholder user was added.
+
+## B02 Verification
+
+- Source search found no user database, customer table, session table, cookie session, JWT lifecycle, register route, logout route, account route, or quota ledger.
+- `/login` was traced to `LoginPage` and `CustomerLogin`; the form navigates to `/` without authentication.
+- `/admin/providers` was traced to `AdminProvidersClient`, `/api/admin/providers`, `requireAdmin`, and provider JSON storage.
+- Generation, upscale, library, job, and files APIs were traced and found to run without auth, user ownership, or charge hooks.
+
+## B03 - New API Official Capability, Version, Security, And License Audit
+
+Status: Completed locally
+
+Branch: `feature/auth-newapi-03-newapi-audit`
+
+Base: `origin/integration/auth-newapi`
+
+Integration target: `integration/auth-newapi`
+
+## B03 Scope
+
+- Reviewed only official New API sources: GitHub repository, public documentation, OpenAPI spec, Docker release workflow, and Docker Hub registry data.
+- No deployment was performed.
+- No project business code, schema, or main line A file was changed.
+
+## B03 Verification
+
+- Latest visible official release verified as `v1.0.0-rc.11` on 2026-06-13.
+- Docker Hub manifest digest for `calciumion/new-api:v1.0.0-rc.11` verified as `sha256:bd30213d808857bb569ef47d3c9209d061a66ea089c2472ef46ce51e75517f19`.
+- Official code and docs confirm user/auth, quota, payment, webhook, deployment, and license behavior.
+
+## B04 - Account, Session, Mapping, And Quota Truth Sources
+
+Status: Completed locally
+
+Branch: `feature/auth-newapi-04-source-of-truth`
+
+Base: `origin/integration/auth-newapi`
+
+Integration target: `integration/auth-newapi`
+
+## B04 Scope
+
+- Compared local-project-primary accounts against New-API-primary accounts.
+- Selected local project account identity with New API mapped backend users.
+- Defined single truth sources for user identity, session, user ID, cloud quota, payment orders, usage logs, and management permissions.
+- Defined user mapping states, session cookie policy, quota boundaries, payment ledger boundary, failure recovery behavior, and BFF trust boundary.
+- No code, schema, auth library, New API deployment, fake user, fake balance, or fake payment was added.
+
+## B04 Verification
+
+- Session truth source is singular: project BFF HttpOnly session.
+- Cloud quota ledger is singular: New API user quota for cloud AI/API usage.
+- Payment order truth source is singular: project billing/order table planned for B11.
+- User identity and management permission truth sources are local project records planned for B09.
+- Local image/video HD work that does not call New API or another upstream cloud provider does not deduct New API quota.
+- New API outage allows local login but blocks billable cloud actions and quota settlement.
+
+## B05 - New API Isolated Test Deployment
+
+Status: In progress
+
+Branch: `feature/auth-newapi-05-deployment`
+
+Base: `origin/integration/auth-newapi`
+
+Integration target: `integration/auth-newapi`
+
+## B05 Scope
+
+- Add an isolated New API Docker Compose test deployment under `infra/new-api/`.
+- Keep New API detached from the frontend and from real payment credentials.
+- Use fixed New API release/image references from B03 and a fresh official release check on 2026-06-18.
+
+## B05 Notes
+
+- Official latest GitHub Release rechecked as `v1.0.0-rc.11`, published `2026-06-13T08:15:40Z`.
+- Official `controller/setup.go` at `v1.0.0-rc.11` was checked for `/api/setup` bootstrap fields.
+- An attempted official docs raw path for `docs/installation/deployment-methods/docker-compose-installation.md` returned 404; this was not used as deployment evidence.
+- Local Docker validation is currently blocked on this machine because `docker`, `docker-compose`, `podman`, `nerdctl`, and `wsl` are not available in `PATH`, and the default Docker Desktop install path is absent.
+- The B05 deployment definition still requires real container verification on a Docker-enabled host before it can be treated as fully operational.
+
+## B06 - Health, Backup, Restore, Upgrade, And Rollback Operations
+
+Status: Completed
+
+Branch: `feature/auth-newapi-06-operations`
+
+Base: `origin/integration/auth-newapi`
+
+Integration target: `integration/auth-newapi`
+
+Pull request: `#9`
+
+## B06 Scope
+
+- Add operational scripts for preflight, health check, backup, restore, upgrade check, rollback, and log redaction.
+- Add operations documentation for backup/restore, upgrade/rollback, healthcheck, and incident handling.
+- Keep all destructive steps parameterized and non-interactive.
+
+## B06 Notes
+
+- The local machine still does not provide Docker, Docker Compose, Podman, nerdctl, or WSL in `PATH`.
+- The local machine also does not provide a POSIX `sh`, so the POSIX shell scripts cannot be executed directly on this host.
+- Because of that environment gap, the isolated real restore test required by B06 cannot yet be executed here.
+- The scripts are written to make the restore path safer by taking an automatic backup before destructive restoration steps.
+
+## B06 Verification
+
+- GitHub Actions run `27733418637` passed the `New API Ops / operations` job on PR `#9`.
+- The remote Docker-enabled validation covered script syntax, preflight, stack startup, `/api/status`, healthcheck, test admin setup, login, database marker backup, restore, login after restore, bad backup rejection, and log redaction.
+- The first remote validation attempt found that Docker `internal: true` prevented host health probes even though the New API container was healthy internally; the compose network was adjusted so New API can bind to the configured host address while PostgreSQL and Redis remain without host port mappings.
+- Local verification remains limited to static checks because this machine does not provide Docker, Docker Compose, Podman, nerdctl, WSL, or POSIX `sh`.
+
+## B07 - Server BFF Client And Configuration Safety
+
+Status: In progress
+
+Branch: `feature/auth-newapi-07-bff-client`
+
+Base: `origin/integration/auth-newapi`
+
+Integration target: `integration/auth-newapi`
+
+Pull request: `#10`
+
+## B07 Scope
+
+- Add a server-only New API BFF client foundation under `src/lib/server/integrations/new-api/`.
+- Separate health, user, and admin contexts so ordinary user code cannot call admin helpers accidentally.
+- Add config validation, timeouts, request IDs, JSON/content-type guards, response-size limits, structured safe errors, redacted logging, GET retries, and fail-closed behavior.
+- Add Node built-in tests and a GitHub Actions workflow that verifies the client against the isolated New API test stack.
+
+## B07 Notes
+
+- Existing server helpers live under `src/lib/server`; B07 follows that structure instead of creating a new top-level server root.
+- The project has no dedicated test framework or test script in `package.json`; B07 uses Node 24 built-in `node:test` and does not modify `package.json`.
+- Official New API `AdminAuth` and `UserAuth` require `Authorization` plus `New-Api-User`, so both admin and user contexts carry a New API user id.
+
+## B07 Local Verification
+
+- `npm ci` completed from the existing lockfile; it reported existing dependency audit findings, but no dependency or lockfile change was made.
+- `node scripts/test-new-api-bff.mjs` passed local unit and client-boundary tests.
+- `npm run typecheck` passed.
+- `npm run lint` passed after aligning ESLint ignores with the existing ignored `dist/` build output.
+- `npm run build` passed.
+- `.next/static` was scanned for `NEW_API_ADMIN_ACCESS_TOKEN`, `NEW_API_ADMIN_USER_ID`, `NEW_API_BASE_URL`, and `admin-secret`; no client static bundle match was found.
+- GitHub Actions run `27735759479` passed the `New API BFF / bff-client` job on PR `#10`, including unit tests, real New API container startup, health check, test admin setup, access-token generation, real BFF health call, unauthorized admin rejection, authorized admin call, production build, and static bundle leak scan.
+- Initial local Git push failed with `schannel: failed to receive handshake`; the branch was pushed with a per-command OpenSSL backend override and no remote/global Git config change.
+
+## B08 - User Mapping, Sync, Compensation, And Repair
+
+Status: In progress
+
+Branch: `feature/auth-newapi-08-user-mapping`
+
+Base: `origin/integration/auth-newapi`
+
+Integration target: `integration/auth-newapi`
+
+Pull request: `#12`
+
+## B08 Scope
+
+- Add server-side New API user mapping Repository capabilities.
+- Add sync orchestration for local user to New API user creation/lookup/activation.
+- Cover idempotency, retry, compensation, conflict, orphan, disabled, and repair states.
+- Add implementation documentation, state machine, repair runbook, and migration draft.
+
+## B08 Notes
+
+- The current repo has no Prisma, Drizzle, TypeORM, Knex, Sequelize, SQL schema, or formal migration runner.
+- Existing persistence uses runtime JSON files under `data/`; B08 follows this pattern for the temporary Repository while documenting the future SQL migration shape.
+- B08 does not add a local user table, login/register routes, sessions, schema migration, quota charging, billing, payment, frontend pages, or New API UI.
+- The mapping model keeps one identity truth source: future B09 local project user identity. New API remains the mapped quota/execution account.
+- Automatic repair never deletes New API users and never creates a second cloud quota ledger.
+
+## B08 Local Verification
+
+- `npm ci` completed from the existing lockfile; it reported existing dependency audit findings, but no dependency or lockfile change was made.
+- `node scripts/test-new-api-bff.mjs` passed 31 local unit and boundary tests including B08 Repository and sync cases.
+- `npm run typecheck` passed.
+- `npm run lint` passed.
+- `npm run build` passed.
+- Local real container verification remains blocked because `docker` and `docker compose` are not available in `PATH`; PR CI must run `node scripts/test-new-api-bff.mjs --real` against the isolated New API stack.
+
+## B08 Remote Verification
+
+- GitHub Actions run `27737484928` passed the `New API BFF / bff-client` job on PR `#12`.
+- The remote Docker-enabled validation covered unit tests, isolated New API startup, test admin initialization, admin access-token generation, real BFF health call, unauthorized admin rejection, authorized admin call, real user mapping creation/activation, production build, and static bundle leak scan.
+- A previous remote validation attempt found that New API rejects user creation when `User.Email` exceeds the official 50-character limit. The sync layer now sends local email upstream only when it fits the New API field limit; overlong local emails remain local identity data and are confirmed upstream by the normalized username.
+
+## B09 - Registration, Login, Logout, And Secure Session Backend
+
+Status: In progress
+
+Branch: `feature/auth-newapi-09-auth-session`
+
+Base: `origin/integration/auth-newapi`
+
+Integration target: `integration/auth-newapi`
+
+Pull request: `#13`
+
+## B09 Scope
+
+- Add a real local project account backend.
+- Add password hashing, login, registration, logout, current user, session refresh, CSRF, rate limiting, and audit logging.
+- Use B08 `NewApiUserSyncService` for New API user mapping during registration.
+- Keep New API credentials server-only and out of browser cookies/localStorage.
+- Do not build the final login/register visual pages.
+
+## B09 Notes
+
+- Current repo still has no formal ORM, SQL schema, or migration runner; B09 follows the existing runtime JSON persistence pattern and documents the future compensation boundary.
+- The existing provider-admin `x-admin-password` gate remains separate and is not reused as customer auth.
+- The project account store is the single user identity truth source.
+- The project HttpOnly session store is the single customer session truth source.
+- Registration may return `mapping_pending` when the local user exists but New API mapping is not active; billable cloud actions remain blocked for that state.
+
+## B09 Local Verification
+
+- `npm ci` completed from the existing lockfile; it reported existing dependency audit findings, but no dependency or lockfile change was made.
+- `node scripts/test-auth-session.mjs` passed 17 B09 auth/session tests covering registration, duplicate registration, weak password, concurrent registration, mapping failure, login, session rotation, invalid credentials, disabled user, verification-required user, rate limiting, session expiry, logout, route protection helper, refresh, CSRF, open redirect protection, audit redaction, and cookie attributes.
+- `node scripts/test-new-api-bff.mjs` passed 31 B07/B08 BFF and mapping tests.
+- `npm run typecheck` passed.
+- `npm run lint` passed.
+- `npm run build` passed.
+
+## B09 Remote Verification
+
+- GitHub Actions run `27738455649` passed the `Auth Session / auth-session` job on PR `#13`.
+- The remote validation covered `node scripts/test-auth-session.mjs`, `npm run typecheck`, `npm run lint`, and `npm run build`.
+
+## B10 - Quota, Usage, And Log Adapter
+
+Status: In progress
+
+Branch: `feature/auth-newapi-10-quota-usage`
+
+Base: `origin/integration/auth-newapi`
+
+Integration target: `integration/auth-newapi`
+
+## B10 Scope
+
+- Add a New API-backed quota and usage adapter for authenticated project users.
+- Add current quota, usage pagination, and CSRF-protected quota precheck API routes.
+- Add local usage audit logging without creating a second mutable balance ledger.
+- Add upstream New API log normalization for read-only usage views.
+- Define task billing boundary for future workbench integration.
+
+## B10 Notes
+
+- New API user `quota` and `used_quota` remain the only cloud quota ledger.
+- The display unit is `credits` because B03/B04 did not define a reviewed product conversion to RMB, points, or tokens.
+- Local image/video HD work that does not call New API or another upstream cloud provider remains non-billable against New API quota.
+- B10 does not modify the workbench UI or generation/upscale task routes.
+- Runtime `data/quota-usage-log.json` is an audit log and is ignored by Git.
+- The local quota cache is short-lived display state only; precheck forces a fresh New API quota read.
+
+## B10 Local Verification
+
+- `npm ci` completed from the existing lockfile; it reported existing dependency audit findings, but no dependency or lockfile change was made.
+- `node scripts/test-quota-usage.mjs` passed 10 B10 quota and usage tests covering normal quota, zero quota, insufficient quota, large values, New API unavailable, mapping missing, pagination, idempotency, failed-task audit logging, cache invalidation, user isolation, upstream log mapping, usage failure, and rate limiting.
+- `node scripts/test-auth-session.mjs` passed 17 B09 auth/session tests after the quota changes.
+- `node scripts/test-new-api-bff.mjs` passed 31 B07/B08 New API BFF, mapping, and sync tests after the quota changes.
+- `npm run typecheck` passed.
+- `npm run lint` passed without warnings after cleanup.
+- `npm run build` passed and listed the new `/api/quota`, `/api/quota/precheck`, and `/api/usage` routes.
+- `git diff --check` passed.
+- Protected main line files, `package.json`, and `AGENTS.md` were not modified.
+
+## B10 Remote Verification
+
+- Pull request `#14` was created from `feature/auth-newapi-10-quota-usage` to `integration/auth-newapi`.
+- GitHub Actions passed `Auth Session / auth-session`, `New API BFF / bff-client`, and `Quota Usage / quota-usage`.
+- PR `#14` was merged into `integration/auth-newapi` at merge commit `f4cb873`.
+
+## B11 - Recharge Orders, Webhook, And Payment Sandbox
+
+Status: In progress
+
+Branch: `feature/auth-newapi-11-billing-sandbox`
+
+Base: `origin/integration/auth-newapi` at `f4cb873`
+
+Integration target: `integration/auth-newapi`
+
+## B11 Scope
+
+- Add sandbox-only payment channel configuration returned by the server.
+- Add local payment order repository and state machine.
+- Add authenticated order creation and current-user order read APIs.
+- Add HMAC-verified sandbox webhook handling with timestamp/replay protection.
+- Add idempotent New API quota credit boundary after verified payment.
+- Add reconciliation logic for timed-out or quota-credit-failed orders.
+- Add a sandbox reconciliation script with dry-run default and explicit `--execute` repair mode.
+
+## B11 Notes
+
+- No real payment provider, real funds, production domain, or production payment credential is enabled.
+- The local order store is the payment truth source; New API user quota remains the only cloud quota ledger.
+- Runtime `data/billing-store.json` is ignored by Git.
+- Paid status is only assigned after verified sandbox payment and successful New API quota credit.
+- Payment success with quota credit failure enters `review` and is repairable.
+
+## B11 Local Verification
+
+- `npm ci` completed from the existing lockfile; it reported existing dependency audit findings, but no dependency or lockfile change was made.
+- `node scripts/test-billing-sandbox.mjs` passed 11 B11 tests covering config, order creation, duplicate order idempotency, invalid amounts, inactive mapping, missing secret, bad signature, replay, duplicate webhook, concurrent webhook, amount/user/currency/channel tamper, out-of-order callbacks, quota-credit failure and reconciliation, refund, and user isolation.
+- A final B11 self-review added a distinct-event concurrent paid webhook test; `node scripts/test-billing-sandbox.mjs` now passes 12 tests including duplicate and concurrent webhook idempotency.
+- `node scripts/reconcile-billing-sandbox.mjs --dry-run --json` passed and reported the local sandbox order reconciliation preview without writing runtime data.
+- `node scripts/test-quota-usage.mjs` passed 10 B10 regression tests after the billing changes.
+- `node scripts/test-auth-session.mjs` passed 17 B09 regression tests after the billing changes.
+- `node scripts/test-new-api-bff.mjs` passed 31 B07/B08 regression tests after the billing changes.
+- `npm run typecheck` passed.
+- `npm run lint` passed without warnings after cleanup.
+- `npm run build` passed and listed `/api/billing/config`, `/api/billing/orders`, `/api/billing/orders/[id]`, and `/api/billing/webhooks/sandbox`.
+
+## B11 Remote Verification
+
+- Pull request `#15` was created from `feature/auth-newapi-11-billing-sandbox` to `integration/auth-newapi`.
+- GitHub Actions passed `Auth Session / auth-session`, `Billing Sandbox / billing-sandbox`, `New API BFF / bff-client`, and `Quota Usage / quota-usage`.
+- PR `#15` was merged into `integration/auth-newapi` at merge commit `f7151ef`.
+
+## B12 - Final Security Acceptance And Mainline Handoff
+
+Status: Completed; final corrective validation recorded under B12-FG
+
+Branch: `feature/auth-newapi-12-final-handoff`
+
+Base: `origin/integration/auth-newapi` at `f7151ef`
+
+Final draft target: `develop`
+
+## B12 Scope
+
+- Validate B01 through B11 Git, PR, remote branch, and merge status.
+- Validate New API, BFF, auth, mapping, quota, usage, and billing sandbox evidence.
+- Run B12 local backend regression tests, typecheck, lint, production build, security scans, and final diff checks.
+- Create final mainline handoff documents for auth UI, admin UI, Workbench quota integration, and production payment boundaries.
+- Create only a final Draft PR from `integration/auth-newapi` to `develop`; do not merge it.
+
+## B12 Notes
+
+- B12 synced latest `origin/develop` into `feature/auth-newapi-12-final-handoff` with merge commit `87fe841` to prevent the final draft PR from showing main line A UI files as regressions.
+- After that merge, protected main line A files are absent from the final `origin/develop..HEAD` diff.
+- Local Docker validation remains unavailable on this Windows host because `docker` and `docker compose` are not in `PATH`.
+- New API real container evidence is therefore taken from prior Docker-enabled GitHub Actions runs, especially New API Ops and New API BFF workflows.
+- `npm ci` in the B12 worktree reported existing dependency audit findings: 12 total vulnerabilities, including 4 high. B12 records the risk and does not upgrade dependencies because this module is final handoff only.
+
+## B12 Git Acceptance
+
+- B01 through B11 remote feature branches exist.
+- B01 through B11 PRs target `integration/auth-newapi`, use their expected module branch as head, and are merged.
+- `origin/integration/auth-newapi` includes merge commits `40ac0c6`, `2ff3e71`, `7d79663`, `cf1c275`, `ca74ff1`, `1c91ce2`, `b380f48`, `0bdc3b0`, `98733c6`, `f4cb873`, and `f7151ef`.
+- No uncommitted code existed before B12 document edits.
+
+## B12 Local Verification
+
+- `node scripts/test-new-api-bff.mjs` passed 31 tests.
+- `node scripts/test-auth-session.mjs` passed 17 tests.
+- `node scripts/test-quota-usage.mjs` passed 10 tests.
+- `node scripts/test-billing-sandbox.mjs` passed 12 tests.
+- `node scripts/reconcile-billing-sandbox.mjs --dry-run --json` passed.
+- `npm run typecheck` passed.
+- `npm run lint` passed.
+- `npm run build` passed and listed auth, quota, usage, and billing API routes.
+- `git diff --check` passed.
+- `.next/static` was scanned for New API admin config, webhook secret, session secret, and known test tokens; no match was found.
+- Current file scan found only placeholders, tests, sample redaction fixtures, or redaction code for secret-like patterns; no real secret was identified.
+- Git history scan for common private key, GitHub token, AWS key, and OpenAI-style key patterns found no match outside documented/test exclusions.
+
+## B12 Security Acceptance
+
+- No `.env` runtime file is tracked; only `.env.example` files are tracked.
+- New API image remains pinned to `calciumion/new-api:v1.0.0-rc.11@sha256:bd30213d808857bb569ef47d3c9209d061a66ea089c2472ef46ce51e75517f19`.
+- PostgreSQL and Redis services have no host port mapping in `infra/new-api/docker-compose.yml`.
+- New API binds through `NEW_API_BIND_ADDRESS`, with `.env.example` defaulting to `127.0.0.1`.
+- Backups are under ignored runtime directories and include redacted environment snapshots.
+- Webhook secret is required for sandbox callback acceptance.
+- Client bundle leak checks passed locally and in prior remote BFF workflow.
+
+## B12 Open Issues
+
+- Local host cannot rerun Docker container startup or restore tests.
+- Production persistence still needs a formal database schema and migration runner.
+- Account recharge history needs an order-list endpoint before a full account center history page.
+- Admin user/mapping/quota/order review APIs and UI are not implemented.
+- Workbench generation/upscale routes are not yet connected to B10 quota precheck or usage settlement.
+- Production payment remains disabled and requires a separate launch checklist.
+- Dependency audit findings remain unresolved and should be remediated before production.
+- New API backup archives include runtime logs; operators need a log redaction, encryption, or retention policy before production.
+- New API server modules rely on server directory ownership plus bundle scans; a hard `server-only` guard should be added before production if dependency policy allows.
+- Non-production auth secret fallback must not be used for exposed staging/test environments.
+- PostgreSQL and Redis images are pinned by tag but not digest.
+
+## BP-01B - Auth PostgreSQL persistence
+
+Status: In progress
+
+Branch: `feature/backend-production-01b-auth-postgres`
+
+Scope:
+
+- Added PostgreSQL repositories for auth users, auth sessions, auth audit events, and New API user mappings.
+- Added auth persistence mode selection with `json`, `dual`, and `postgres`.
+- Added auth data migration dry-run, apply, and verify scripts.
+- Added auth persistence consistency verification.
+- Extended the application database workflow to exercise the auth PostgreSQL path.
+
+Current local verification:
+
+- `npm run typecheck` passed.
+- `node scripts/test-auth-session.mjs` passed 17 tests with the `react-server` Node condition.
+- `npm run test:auth-persistence` passed the configuration checks and skipped PostgreSQL integration cases because this workstation lacks `APP_DATABASE_URL` and Docker.
+- Real PostgreSQL validation is delegated to GitHub Actions through the application database workflow.
+
+Guardrails:
+
+- A-side files remain untouched.
+- Production payment remains disabled.
+- Production PostgreSQL primary writes still require explicit release approval.
+- Missing production `APP_AUTH_PERSISTENCE_MODE` fails closed.
+
+## B12-FG - Final Gate Corrective Validation
+
+Status: Completed for reviewer handoff
+
+Branch: `fix/auth-newapi-final-validation`
+
+Base: `origin/integration/auth-newapi`
+
+Corrective pull request: `#19`
+
+PR #19 state: Open, Draft
+
+PR #17 state: Open, Draft
+
+Latest validated CI head before documentation-only report commit:
+`aaf258db7d1dc55c6290b6390e297454bad51f29`
+
+## B12-FG Scope
+
+- Added a dedicated `Auth New API Final Gate` workflow for integration and
+  final-review validation.
+- Repaired the final secret scan so no-match `git grep` status is accepted,
+  matches fail, and scanner errors fail.
+- Repaired pull request diff scanning with `grep -n -E -- "$PATTERN"`.
+- Repaired Docker exposure checks with both static compose JSON validation and
+  runtime Docker `PortBindings` validation.
+- Did not modify A-side UI files, Workbench shell files, global tokens/styles,
+  production payment, or final frontend UI.
+- Did not merge PR #19 or PR #17 and did not force push.
+
+## B12-FG Remote Verification
+
+GitHub Actions run `27744908374` passed all eight final-gate jobs on
+`aaf258db7d1dc55c6290b6390e297454bad51f29`:
+
+- `Typecheck, lint, build`
+- `Auth and session tests`
+- `BFF and user mapping tests`
+- `Quota and usage tests`
+- `Billing, webhook, reconciliation`
+- `New API Docker health and real BFF`
+- `Backup, restore, bad backup rejection`
+- `Server secrets, client bundle, diff scan`
+
+The Docker job completed healthcheck, port exposure validation, test admin
+initialization, login, masked management token generation, real BFF calls, real
+user mapping creation and activation, log redaction validation, and container
+cleanup.
+
+The backup/restore job completed backup creation, restore verification, login
+after restore, and rejection of a malformed backup.
+
+The security job completed tracked runtime file scan, server secret pattern
+scan, pull request diff scan, build, client bundle scan, and npm audit
+recording. No real secret was reported. The npm audit summary remains
+`{"info":0,"low":1,"moderate":7,"high":4,"critical":0,"total":12}` and is a
+production release blocker.
+
+Final conclusion for B12-FG: `READY_FOR_MAINLINE_REVIEW`.
+
+## BP-06 - Backend Security Release Baseline
+
+Status: Implementation complete; awaiting Draft PR validation
+
+Branch: `feature/backend-production-06-security-release`
+
+Base: `origin/integration/auth-newapi`
+
+Scope:
+
+- Upgrade safely remediable vulnerable dependencies.
+- Add backend release preflight checks and a safe backend health endpoint.
+- Verify production configuration fails closed for Session Secret, PostgreSQL persistence, New API config, and production payment.
+- Add a backend security release CI gate.
+- Record release findings in `BP_06_SECURITY_RELEASE_REPORT.md`.
+
+Guardrails:
+
+- A-side workbench files remain out of scope.
+- Production payment remains disabled.
+- PR #17 remains Draft and must not be merged by BP-06.
+
+Initial dependency audit before remediation:
+
+- total: 12
+- high: 4
+- moderate: 7
+- low: 1
+- critical: 0
+
+Dependency remediation target:
+
+- `next` and `eslint-config-next` patched to `16.2.9`.
+- Transitive advisory fixes applied with non-major upgrades.
+- `postcss` overridden to `8.5.15` to remove the remaining Next-bundled PostCSS audit finding.
+
+Local verification:
+
+- `npm audit --json` reports `{"info":0,"low":0,"moderate":0,"high":0,"critical":0,"total":0}`.
+- `npm run test:security-release` passed.
+- `npm run typecheck` passed.
+- `npm run lint` passed.
+- `npm run build` passed.
+- `node scripts/database/bundle-scan.mjs` passed after build.
+- `npm run security:release-check` passed after build and included client bundle scanning.
+- `node scripts/test-auth-session.mjs` passed.
+- `node scripts/test-quota-usage.mjs` passed with PostgreSQL integration cases skipped locally because no `APP_DATABASE_URL` is configured.
+- `node scripts/test-billing-sandbox.mjs` passed with PostgreSQL integration cases skipped locally because no `APP_DATABASE_URL` is configured.
+- `node scripts/test-admin-api.mjs` passed.
+- `node scripts/test-new-api-bff.mjs` passed.
+- `node scripts/test-provider-display-names.mjs` passed.
+- `npm run database:boundary` passed.
+- `npm run test:auth-persistence` passed with PostgreSQL integration cases skipped locally because no `APP_DATABASE_URL` is configured.
+
+Release notes:
+
+- Local Docker is unavailable, so Docker exposure validation used static compose checks locally; CI must run the pushed workflow before merge.
+- `npm run migrate:status` failed closed locally with `APP_DATABASE_URL is required`, which is expected without a release database environment.
+- Production payment remains disabled and no real production payment provider is registered.
+- No A-side workbench, formal frontend, or production UI files are modified by BP-06.

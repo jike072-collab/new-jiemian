@@ -1,0 +1,13 @@
+#!/usr/bin/env sh
+set -eu
+
+SCRIPT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
+DEPLOY_DIR=$(CDPATH= cd -- "$SCRIPT_DIR/.." && pwd)
+
+cd "$DEPLOY_DIR"
+
+if docker compose version >/dev/null 2>&1; then
+  docker compose -f docker-compose.yml ps
+else
+  docker-compose -f docker-compose.yml ps
+fi

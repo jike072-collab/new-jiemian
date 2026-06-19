@@ -1,0 +1,93 @@
+#!/usr/bin/env sh
+set -eu
+
+SCRIPT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
+DEPLOY_DIR=$(CDPATH= cd -- "$SCRIPT_DIR/.." && pwd)
+BACKUP_ROOT="$DEPLOY_DIR/backups"
+TS=$(date -u +%Y%m%dT%H%M%SZ)
+OUTDIR=
+
+require_cmd() {
+  command -v "$1" >/dev/null 2>&1 || {
+    echo "Missing required command: $1" >&2
+    exit 1
+  }
+}
+
+require_cmd tar
+require_cmd gzip
+require_cmd sha256sum
+require_cmd date
+require_cmd find
+require_cmd awk
+
+compose() {
+  if docker compose version >/dev/null 2>&1; then
+    docker compose -f "$DEPLOY_DIR/docker-compose.yml" "$@"
+  elif docker-compose version >/dev/null 2>&1; then
+    docker-compose -f "$DEPLOY_DIR/docker-compose.yml" "$@"
+  else
+    echo "Missing docker compose binary." >&2
+    exit 1
+  fi
+}
+
+get_env() {
+  awk -F= -v key="$1" '$1 == key {print substr($0, index($0, "=") + 1)}' "$DEPLOY_DIR/.env" | tail -n 1
+}
+
+mkdir -p "$BACKUP_ROOT"
+i=0
+while :; do
+  if [ "$i" -eq 0 ]; then
+    candidate="$BACKUP_ROOT/$TS"
+  else
+    candidate="$BACKUP_ROOT/$TS-$i"
+  fi
+
+  if mkdir "$candidate" 2>/dev/null; then
+    OUTDIR=$candidate
+    break
+  fi
+
+  i=$((i + 1))
+  if [ "$i" -gt 99 ]; then
+    echo "Unable to allocate a unique backup directory for $TS" >&2
+    exit 1
+  fi
+done
+chmod 700 "$BACKUP_ROOT" "$OUTDIR" 2>/dev/null || true
+
+if [ ! -f "$DEPLOY_DIR/.env" ]; then
+  echo "Missing $DEPLOY_DIR/.env" >&2
+  exit 1
+fi
+
+if [ ! -d "$DEPLOY_DIR/.runtime/new-api" ]; then
+  echo "Missing runtime directory: $DEPLOY_DIR/.runtime/new-api" >&2
+  exit 1
+fi
+
+cp "$DEPLOY_DIR/.env.example" "$OUTDIR/env.example.snapshot"
+cp "$DEPLOY_DIR/docker-compose.yml" "$OUTDIR/docker-compose.snapshot.yml"
+sed -E \
+  -e 's#(PASSWORD|SECRET|KEY|TOKEN|COOKIE|AUTH|DSN|CONN_STRING)=.*#\1=[REDACTED]#I' \
+  "$DEPLOY_DIR/.env" > "$OUTDIR/env.redacted"
+
+compose exec -T postgres pg_dump --clean --if-exists -U "$(get_env POSTGRES_USER)" "$(get_env POSTGRES_DB)" | gzip -c > "$OUTDIR/postgres.sql.gz"
+tar -czf "$OUTDIR/runtime.tar.gz" -C "$DEPLOY_DIR" .runtime/new-api/data .runtime/new-api/logs
+(cd "$OUTDIR" && sha256sum postgres.sql.gz runtime.tar.gz env.redacted docker-compose.snapshot.yml env.example.snapshot > checksums.sha256)
+
+cat > "$OUTDIR/README.txt" <<EOF
+timestamp=$TS
+source=$DEPLOY_DIR
+retention_days=${BACKUP_RETENTION_DAYS:-14}
+permissions=directory-only, owner-read-write
+database=postgres.sql.gz
+runtime=runtime.tar.gz
+EOF
+
+find "$BACKUP_ROOT" -mindepth 1 -maxdepth 1 -type d -name '20????????????Z*' -mtime "+${BACKUP_RETENTION_DAYS:-14}" \
+  > "$OUTDIR/retention-expired.txt"
+
+printf '%s\n' "$OUTDIR"

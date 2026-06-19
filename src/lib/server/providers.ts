@@ -2,6 +2,7 @@ import { join } from "node:path";
 
 import {
   type EndpointType,
+  type FrontendProvider,
   type ProviderConfig,
   type ProviderKind,
   type ProviderUpdate,
@@ -38,6 +39,7 @@ export function defaultProviders(): ProviderConfig[] {
       role: "文生图与图生图/图片编辑",
       apiUrl: env("IMAGE_API_URL", "https://www.right.codes/draw/v1/images/generations"),
       model: env("IMAGE_MODEL", "gpt-image-2"),
+      displayName: env("IMAGE_DISPLAY_NAME", env("IMAGE_MODEL", "gpt-image-2")),
       apiKey: env("IMAGE_MODEL_API_KEY"),
       enabled: hasKey(env("IMAGE_MODEL_API_KEY")),
       endpointType: (env("IMAGE_ENDPOINT_TYPE", "images-generations") as EndpointType),
@@ -49,6 +51,7 @@ export function defaultProviders(): ProviderConfig[] {
       role: "文生视频与图生视频",
       apiUrl: env("VIDEO_API_URL", "https://clmm-mall.top/v1/videos/generations"),
       model: env("VIDEO_MODEL", "seedance2.0 720p-fast-sr"),
+      displayName: env("VIDEO_DISPLAY_NAME", env("VIDEO_MODEL", "seedance2.0 720p-fast-sr")),
       apiKey: env("VIDEO_MODEL_API_KEY"),
       enabled: hasKey(env("VIDEO_MODEL_API_KEY")),
       endpointType: (env("VIDEO_ENDPOINT_TYPE", "videos-generations") as EndpointType),
@@ -60,6 +63,7 @@ export function defaultProviders(): ProviderConfig[] {
       role: "使用 Upscayl 在本机进行图片放大",
       apiUrl: env("UPSCAYL_BIN"),
       model: env("UPSCAYL_MODEL", "upscayl-standard-4x"),
+      displayName: env("UPSCAYL_DISPLAY_NAME", env("UPSCAYL_MODEL", "upscayl-standard-4x")),
       apiKey: "",
       enabled: true,
       endpointType: "upscayl-cli",
@@ -71,6 +75,7 @@ export function defaultProviders(): ProviderConfig[] {
       role: "使用 Video2X 在本机进行视频放大",
       apiUrl: env("VIDEO2X_BIN"),
       model: env("VIDEO2X_MODEL", "realesr-animevideov3"),
+      displayName: env("VIDEO2X_DISPLAY_NAME", env("VIDEO2X_MODEL", "realesr-animevideov3")),
       apiKey: "",
       enabled: true,
       endpointType: "video2x-cli",
@@ -83,9 +88,19 @@ function normalizeProvider(provider: ProviderConfig): ProviderConfig {
     ...provider,
     apiUrl: String(provider.apiUrl || "").trim(),
     model: String(provider.model || "").trim(),
+    displayName: String(provider.displayName || provider.model || "").trim(),
     apiKey: String(provider.apiKey || "").trim(),
     enabled: Boolean(provider.enabled),
   };
+}
+
+function capabilitiesFor(provider: ProviderConfig) {
+  if (provider.endpointType === "images-edits") return ["image", "image-edit"];
+  if (provider.endpointType === "images-generations") return ["image"];
+  if (provider.endpointType === "videos-generations") return ["video"];
+  if (provider.endpointType === "upscayl-cli") return ["image-upscale"];
+  if (provider.endpointType === "video2x-cli") return ["video-upscale"];
+  return [];
 }
 
 export function sanitizeProvider(provider: ProviderConfig): PublicProvider {
@@ -98,10 +113,22 @@ export function sanitizeProvider(provider: ProviderConfig): PublicProvider {
     role: normalized.role,
     apiUrl: normalized.apiUrl,
     model: normalized.model,
+    displayName: normalized.displayName || normalized.model,
     enabled: normalized.enabled,
     endpointType: normalized.endpointType,
     configured: normalized.enabled && (localProvider || hasKey(normalized.apiKey)),
     keyPreview: maskedKeyPreview(normalized.apiKey),
+  };
+}
+
+export function sanitizeFrontendProvider(provider: ProviderConfig): FrontendProvider {
+  const normalized = normalizeProvider(provider);
+  return {
+    id: normalized.id,
+    model: normalized.model,
+    displayName: normalized.displayName || normalized.model,
+    capabilities: capabilitiesFor(normalized),
+    enabled: normalized.enabled,
   };
 }
 
@@ -124,6 +151,7 @@ export async function readProviders(): Promise<ProviderConfig[]> {
           ...saved,
           apiUrl: saved.apiUrl || fallback.apiUrl,
           model: saved.model || fallback.model,
+          displayName: saved.displayName || saved.model || fallback.displayName || fallback.model,
           enabled: true,
           endpointType: fallback.endpointType,
         };
@@ -145,6 +173,16 @@ export async function readEnabledProviders(kind?: ProviderKind) {
       && (isLocalProvider(provider.endpointType) || hasKey(provider.apiKey))
     ))
     .map(sanitizeProvider);
+}
+
+export async function readFrontendProviders(kind?: ProviderKind) {
+  return (await readProviders())
+    .filter((provider) => (
+      (!kind || provider.kind === kind)
+      && provider.enabled
+      && (isLocalProvider(provider.endpointType) || hasKey(provider.apiKey))
+    ))
+    .map(sanitizeFrontendProvider);
 }
 
 export async function providerById(id: string) {
@@ -182,6 +220,7 @@ export async function updateProviders(updates: ProviderUpdate[]) {
       ...current,
       apiUrl: update.apiUrl === undefined ? current.apiUrl : update.apiUrl,
       model: update.model === undefined ? current.model : update.model,
+      displayName: update.displayName === undefined ? current.displayName : update.displayName,
       enabled: update.enabled === undefined ? current.enabled : update.enabled,
       endpointType: update.endpointType === undefined ? current.endpointType : update.endpointType,
       apiKey: update.clearApiKey ? "" : update.apiKey?.trim() || current.apiKey,

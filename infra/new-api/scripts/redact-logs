@@ -1,0 +1,44 @@
+#!/usr/bin/env sh
+set -eu
+
+SCRIPT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
+DEPLOY_DIR=$(CDPATH= cd -- "$SCRIPT_DIR/.." && pwd)
+
+usage() {
+  echo "Usage: $0 --input <log-file> --output <log-file>" >&2
+  exit 1
+}
+
+INPUT=
+OUTPUT=
+
+while [ "$#" -gt 0 ]; do
+  case "$1" in
+    --input)
+      shift
+      [ "$#" -gt 0 ] || usage
+      INPUT=$1
+      ;;
+    --output)
+      shift
+      [ "$#" -gt 0 ] || usage
+      OUTPUT=$1
+      ;;
+    *)
+      usage
+      ;;
+  esac
+  shift
+done
+
+[ -n "$INPUT" ] || usage
+[ -n "$OUTPUT" ] || usage
+[ -f "$INPUT" ] || { echo "Missing input log: $INPUT" >&2; exit 1; }
+
+sed -E \
+  -e 's#(Authorization:|Cookie:|Set-Cookie:|X-Admin-Password:)[^[:cntrl:]]+#\1 [REDACTED]#Ig' \
+  -e 's#(PASSWORD|SECRET|KEY|TOKEN|COOKIE|AUTH|DSN|CONN_STRING)=([^[:space:]]+)#\1=[REDACTED]#Ig' \
+  -e 's#sk-[A-Za-z0-9_-]+#sk-[REDACTED]#g' \
+  "$INPUT" > "$OUTPUT"
+
+printf '%s\n' "$OUTPUT"

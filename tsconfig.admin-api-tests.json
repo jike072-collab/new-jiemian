@@ -1,0 +1,24 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "allowImportingTsExtensions": false,
+    "declaration": false,
+    "emitDeclarationOnly": false,
+    "incremental": false,
+    "module": "NodeNext",
+    "moduleResolution": "NodeNext",
+    "noEmit": false,
+    "outDir": "dist/admin-api-tests",
+    "rootDir": ".",
+    "target": "ES2022",
+    "tsBuildInfoFile": "dist/admin-api-tests.tsbuildinfo"
+  },
+  "include": [
+    "src/lib/server/admin/**/*.ts",
+    "src/lib/server/auth/**/*.ts",
+    "src/lib/server/billing/**/*.ts",
+    "src/lib/server/quota/**/*.ts",
+    "src/lib/server/database/**/*.ts",
+    "src/lib/server/integrations/new-api/**/*.ts"
+  ]
+}

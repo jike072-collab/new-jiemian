@@ -1,0 +1,131 @@
+#!/usr/bin/env sh
+set -eu
+
+SCRIPT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
+DEPLOY_DIR=$(CDPATH= cd -- "$SCRIPT_DIR/.." && pwd)
+
+usage() {
+  echo "Usage: $0 --backup <backup-dir> --confirm RESTORE_NEW_API_TEST [--dry-run]" >&2
+  exit 1
+}
+
+BACKUP_DIR=
+DRY_RUN=false
+CONFIRM=
+
+require_cmd() {
+  command -v "$1" >/dev/null 2>&1 || {
+    echo "Missing required command: $1" >&2
+    exit 1
+  }
+}
+
+require_cmd awk
+require_cmd date
+require_cmd gzip
+require_cmd sha256sum
+require_cmd sleep
+require_cmd tar
+
+if ! command -v curl >/dev/null 2>&1 && ! command -v wget >/dev/null 2>&1; then
+  echo "Missing required command: curl or wget" >&2
+  exit 1
+fi
+
+compose() {
+  if docker compose version >/dev/null 2>&1; then
+    docker compose -f "$DEPLOY_DIR/docker-compose.yml" "$@"
+  elif docker-compose version >/dev/null 2>&1; then
+    docker-compose -f "$DEPLOY_DIR/docker-compose.yml" "$@"
+  else
+    echo "Missing docker compose binary." >&2
+    exit 1
+  fi
+}
+
+check_url() {
+  url=$1
+  if command -v curl >/dev/null 2>&1; then
+    curl -fsS "$url" >/dev/null
+  elif command -v wget >/dev/null 2>&1; then
+    wget -q -O - "$url" >/dev/null
+  else
+    echo "Missing curl or wget." >&2
+    exit 1
+  fi
+}
+
+wait_for_status() {
+  status_url=${NEW_API_STATUS_URL:-}
+  if [ -z "$status_url" ]; then
+    bind_address=$(get_env NEW_API_BIND_ADDRESS)
+    host_port=$(get_env NEW_API_PORT)
+    status_url="http://${bind_address:-127.0.0.1}:${host_port:-3000}/api/status"
+  fi
+
+  i=1
+  while [ "$i" -le 60 ]; do
+    if check_url "$status_url" >/dev/null 2>&1; then
+      return 0
+    fi
+    i=$((i + 1))
+    sleep 5
+  done
+
+  echo "Timed out waiting for $status_url" >&2
+  exit 1
+}
+
+get_env() {
+  awk -F= -v key="$1" '$1 == key {print substr($0, index($0, "=") + 1)}' "$DEPLOY_DIR/.env" | tail -n 1
+}
+
+while [ "$#" -gt 0 ]; do
+  case "$1" in
+    --backup)
+      shift
+      [ "$#" -gt 0 ] || usage
+      BACKUP_DIR=$1
+      ;;
+    --dry-run)
+      DRY_RUN=true
+      ;;
+    --confirm)
+      shift
+      [ "$#" -gt 0 ] || usage
+      CONFIRM=$1
+      ;;
+    *)
+      usage
+      ;;
+  esac
+  shift
+done
+
+[ -n "$BACKUP_DIR" ] || usage
+[ -d "$BACKUP_DIR" ] || { echo "Missing backup dir: $BACKUP_DIR" >&2; exit 1; }
+
+if [ ! -f "$BACKUP_DIR/runtime.tar.gz" ] || [ ! -f "$BACKUP_DIR/postgres.sql.gz" ] || [ ! -f "$BACKUP_DIR/checksums.sha256" ]; then
+  echo "Backup dir is incomplete: $BACKUP_DIR" >&2
+  exit 1
+fi
+
+(cd "$BACKUP_DIR" && sha256sum -c checksums.sha256 >/dev/null)
+
+if [ "$DRY_RUN" = false ]; then
+  [ "$CONFIRM" = "RESTORE_NEW_API_TEST" ] || usage
+  "$SCRIPT_DIR/backup" >/dev/null
+fi
+
+if [ "$DRY_RUN" = true ]; then
+  echo "restore dry-run ok"
+  exit 0
+fi
+
+compose stop new-api >/dev/null
+gzip -dc "$BACKUP_DIR/postgres.sql.gz" | compose exec -T postgres psql -U "$(get_env POSTGRES_USER)" -d "$(get_env POSTGRES_DB)" -v ON_ERROR_STOP=1
+tar -xzf "$BACKUP_DIR/runtime.tar.gz" -C "$DEPLOY_DIR"
+cp "$BACKUP_DIR/env.redacted" "$DEPLOY_DIR/.env.restored.redacted"
+compose up -d new-api >/dev/null
+wait_for_status
+printf '%s\n' "restore ok"
