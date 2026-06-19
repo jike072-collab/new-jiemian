@@ -27,7 +27,7 @@ import {
   createTaskBillingPersistenceRepositories,
   type TaskBillingState,
 } from "../quota";
-import { type TaskBillingRepository } from "../quota/task-billing-repository";
+import { type TaskBillingRepository, type TaskQuotaAdjustment } from "../quota/task-billing-repository";
 
 export type AdminFailureCode =
   | "admin_auth_required"
@@ -95,12 +95,13 @@ const taskStates = new Set<TaskBillingState>([
 const safeOrderReviewTransitions: Record<BillingOrderStatus, BillingOrderStatus[]> = {
   pending: ["review", "cancelled", "failed"],
   processing: ["review", "cancelled", "failed"],
-  paid: ["review", "refunded"],
+  paid: ["review"],
   failed: ["review"],
   cancelled: ["review"],
-  review: ["processing", "failed", "cancelled", "refunded"],
+  review: ["processing", "failed", "cancelled"],
   refunded: ["review"],
 };
+const financialSideEffectOrderStatuses = new Set<BillingOrderStatus>(["paid", "refunded"]);
 
 function failure(code: AdminFailureCode, status: number, message: string): AdminFailure {
   return { ok: false, code, status, message };
@@ -148,6 +149,20 @@ function extractQuota(payload: Awaited<ReturnType<typeof adminGetNewApiUser>>["d
   const root = payload as { quota?: unknown; data?: { quota?: unknown }; user?: { quota?: unknown } };
   const quota = Number(root.quota ?? root.data?.quota ?? root.user?.quota);
   return Number.isFinite(quota) ? quota : null;
+}
+
+function quotaAdjustmentRequestConflicts(
+  adjustment: TaskQuotaAdjustment,
+  input: { localUserId: string; quotaDelta: number },
+  newApiUserId: string,
+  taskId: string,
+) {
+  const conflicts: string[] = [];
+  if (adjustment.local_user_id !== input.localUserId.trim()) conflicts.push("local_user_id");
+  if (adjustment.new_api_user_id !== newApiUserId.trim()) conflicts.push("new_api_user_id");
+  if (adjustment.task_id !== taskId.trim()) conflicts.push("task_id");
+  if (adjustment.quota_delta !== input.quotaDelta) conflicts.push("quota_delta");
+  return conflicts;
 }
 
 async function defaultGetProviderQuota(newApiUserId: string) {
@@ -323,16 +338,28 @@ export class AdminService {
         const currentQuota = await this.getProviderQuota(mapping.new_api_user_id!);
         const originalQuota = currentQuota;
         const targetQuota = originalQuota + input.quotaDelta;
+        const newApiUserId = mapping.new_api_user_id!;
+        const taskId = `admin:${input.idempotencyKey.trim()}`;
         const adjustment = await this.taskRepository.claimQuotaAdjustment!({
           localUserId: input.localUserId,
-          newApiUserId: mapping.new_api_user_id!,
-          taskId: `admin:${input.idempotencyKey.trim()}`,
+          newApiUserId,
+          taskId,
           idempotencyKey: `admin-quota:${input.idempotencyKey.trim()}`,
           quotaDelta: input.quotaDelta,
           originalQuota,
           targetQuota,
           now: this.now(),
         });
+        const conflictFields = quotaAdjustmentRequestConflicts(adjustment, input, newApiUserId, taskId);
+        if (conflictFields.length) {
+          await this.audit("admin.quota.adjustment_idempotency_conflict", actor.localUserId, context, {
+            target_user_id: input.localUserId,
+            idempotency_key: input.idempotencyKey.trim(),
+            conflict_fields: conflictFields.join(","),
+            reason: sanitize(input.reason),
+          });
+          return failure("admin_conflict", 409, "Idempotency key is already used for a different quota adjustment.");
+        }
         if (adjustment.status === "applied") {
           await this.audit("admin.quota.adjustment_idempotent", actor.localUserId, context, {
             target_user_id: input.localUserId,
@@ -429,6 +456,27 @@ export class AdminService {
     const order = await this.billingRepository.getOrder(orderId);
     if (!order) return failure("admin_not_found", 404, "Order was not found.");
     const nextStatus = targetStatus as BillingOrderStatus;
+    if (financialSideEffectOrderStatuses.has(nextStatus)) {
+      await this.billingRepository.appendAudit({
+        event: "admin.billing.orders.review_blocked",
+        order_id: order.order_id,
+        local_user_id: actor.localUserId,
+        safe_details: {
+          target_order_id: order.order_id,
+          previous_status: order.status,
+          requested_status: nextStatus,
+          block_reason: "financial_side_effect_required",
+          reason: sanitize(reason),
+        },
+      });
+      await this.audit("admin.billing.orders.review_blocked", actor.localUserId, context, {
+        order_id: order.order_id,
+        status: nextStatus,
+        block_reason: "financial_side_effect_required",
+        reason: sanitize(reason),
+      });
+      return failure("admin_conflict", 409, "Order transition requires a dedicated financial workflow.");
+    }
     const allowedNext = safeOrderReviewTransitions[order.status as BillingOrderStatus] || [];
     if (order.status !== nextStatus && !allowedNext.includes(nextStatus)) {
       return failure("admin_conflict", 409, "Order transition is not allowed.");

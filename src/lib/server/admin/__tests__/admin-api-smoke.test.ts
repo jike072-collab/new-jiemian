@@ -78,7 +78,11 @@ function taskRecord(input: Partial<TaskBillingRecord> = {}): TaskBillingRecord {
 }
 
 function harness() {
-  let providerQuota = 1000;
+  const providerQuotas = new Map([
+    ["100", 1000],
+    ["200", 2000],
+  ]);
+  const providerWrites = new Map<string, number>();
   const authRepository = createMemoryAuthRepository({
     users: [
       {
@@ -107,19 +111,44 @@ function harness() {
         updated_at: "2026-06-19T00:00:00.000Z",
         last_login_at: null,
       },
+      {
+        local_user_id: "other-user",
+        email: "other@example.com",
+        username: "other",
+        display_name: "Other",
+        password_hash: "hash",
+        status: "active",
+        role: "user",
+        session_version: 1,
+        created_at: "2026-06-19T00:00:00.000Z",
+        updated_at: "2026-06-19T00:00:00.000Z",
+        last_login_at: null,
+      },
     ],
   });
-  const mappingRepository = createMemoryNewApiUserMappingRepository([mapping()]);
-  const billingRepository = createMemoryBillingRepository({ orders: [order()] });
+  const mappingRepository = createMemoryNewApiUserMappingRepository([mapping(), mapping("other-user", "200")]);
+  const billingRepository = createMemoryBillingRepository({
+    orders: [
+      order(),
+      order({
+        order_id: "bo_paid",
+        status: "paid",
+        paid_amount: 1000,
+        paid_at: "2026-06-19T00:00:00.000Z",
+        quota_credit_applied_at: "2026-06-19T00:00:00.000Z",
+      }),
+    ],
+  });
   const taskRepository = createMemoryTaskBillingRepository([taskRecord()]);
   const service = createAdminService({
     authRepository,
     mappingRepository,
     billingRepository,
     taskRepository,
-    getProviderQuota: async () => providerQuota,
-    setProviderQuota: async (_newApiUserId, quota) => {
-      providerQuota = quota;
+    getProviderQuota: async (newApiUserId) => providerQuotas.get(newApiUserId) ?? 0,
+    setProviderQuota: async (newApiUserId, quota) => {
+      providerWrites.set(newApiUserId, (providerWrites.get(newApiUserId) || 0) + 1);
+      providerQuotas.set(newApiUserId, quota);
     },
     now,
   });
@@ -127,11 +156,17 @@ function harness() {
     service,
     authRepository,
     billingRepository,
+    providerQuotaFor(newApiUserId: string) {
+      return providerQuotas.get(newApiUserId) ?? 0;
+    },
+    providerWriteCount(newApiUserId: string) {
+      return providerWrites.get(newApiUserId) || 0;
+    },
     get providerQuota() {
-      return providerQuota;
+      return providerQuotas.get("100") ?? 0;
     },
     set providerQuota(value: number) {
-      providerQuota = value;
+      providerQuotas.set("100", value);
     },
   };
 }
@@ -141,7 +176,7 @@ test("admin can query users, orders, mappings, and reconciliation records", asyn
   const users = await service.listUsers(adminActor, { page: 1, pageSize: 20 });
   assert.equal(users.ok, true);
   if (!users.ok) return;
-  assert.equal(users.total, 2);
+  assert.equal(users.total, 3);
 
   const orders = await service.listOrders(adminActor, { status: "review" });
   assert.equal(orders.ok, true);
@@ -151,7 +186,7 @@ test("admin can query users, orders, mappings, and reconciliation records", asyn
   const mappings = await service.listMappings(adminActor, { status: "active" });
   assert.equal(mappings.ok, true);
   if (!mappings.ok) return;
-  assert.equal(mappings.total, 1);
+  assert.equal(mappings.total, 2);
 
   const tasks = await service.listTaskBillingRecords(adminActor, { state: "reconciliation_required" });
   assert.equal(tasks.ok, true);
@@ -240,6 +275,89 @@ test("quota adjustment is idempotent and does not create a second local balance"
   });
   assert.equal(duplicate.ok, true);
   assert.equal(harnessed.providerQuota, 1050);
+  assert.equal(harnessed.providerWriteCount("100"), 1);
+});
+
+test("quota adjustment idempotency key is bound to the target user", async () => {
+  const harnessed = harness();
+  const first = await harnessed.service.adjustQuota(adminActor, {
+    localUserId: "target-user",
+    quotaDelta: 50,
+    idempotencyKey: "quota-admin-shared-user",
+    reason: "support adjustment",
+  });
+  assert.equal(first.ok, true);
+  assert.equal(harnessed.providerQuotaFor("100"), 1050);
+
+  const conflict = await harnessed.service.adjustQuota(adminActor, {
+    localUserId: "other-user",
+    quotaDelta: 50,
+    idempotencyKey: "quota-admin-shared-user",
+    reason: "unsafe retry password:hidden",
+  });
+  assert.equal(conflict.ok, false);
+  if (!conflict.ok) {
+    assert.equal(conflict.status, 409);
+    assert.equal(conflict.code, "admin_conflict");
+  }
+  assert.equal(harnessed.providerQuotaFor("200"), 2000);
+  assert.equal(harnessed.providerWriteCount("100"), 1);
+  assert.equal(harnessed.providerWriteCount("200"), 0);
+
+  const audit = await harnessed.authRepository.listAuditEvents();
+  assert.equal(audit.some((event) => event.event === "admin.quota.adjustment_idempotency_conflict"), true);
+  assert.equal(JSON.stringify(audit).includes("password:hidden"), false);
+});
+
+test("quota adjustment idempotency key is bound to quota parameters", async () => {
+  const harnessed = harness();
+  const first = await harnessed.service.adjustQuota(adminActor, {
+    localUserId: "target-user",
+    quotaDelta: 50,
+    idempotencyKey: "quota-admin-shared-delta",
+    reason: "support adjustment",
+  });
+  assert.equal(first.ok, true);
+  assert.equal(harnessed.providerQuota, 1050);
+
+  const conflict = await harnessed.service.adjustQuota(adminActor, {
+    localUserId: "target-user",
+    quotaDelta: 60,
+    idempotencyKey: "quota-admin-shared-delta",
+    reason: "unsafe retry token:hidden",
+  });
+  assert.equal(conflict.ok, false);
+  if (!conflict.ok) {
+    assert.equal(conflict.status, 409);
+    assert.equal(conflict.code, "admin_conflict");
+  }
+  assert.equal(harnessed.providerQuota, 1050);
+  assert.equal(harnessed.providerWriteCount("100"), 1);
+
+  const audit = await harnessed.authRepository.listAuditEvents();
+  assert.equal(audit.some((event) => event.event === "admin.quota.adjustment_idempotency_conflict"), true);
+  assert.equal(JSON.stringify(audit).includes("token:hidden"), false);
+});
+
+test("paid orders cannot be marked refunded through generic review", async () => {
+  const { service, billingRepository, authRepository } = harness();
+  const rejected = await service.reviewOrder(adminActor, "bo_paid", "refunded", "manual refund token:hidden");
+  assert.equal(rejected.ok, false);
+  if (!rejected.ok) {
+    assert.equal(rejected.status, 409);
+    assert.equal(rejected.code, "admin_conflict");
+  }
+
+  const paidOrder = await billingRepository.getOrder("bo_paid");
+  assert.equal(paidOrder?.status, "paid");
+
+  const billingAudit = await billingRepository.listAuditEvents();
+  assert.equal(billingAudit.some((event) => event.event === "admin.billing.orders.review_blocked"), true);
+  assert.equal(JSON.stringify(billingAudit).includes("token:hidden"), false);
+
+  const authAudit = await authRepository.listAuditEvents();
+  assert.equal(authAudit.some((event) => event.event === "admin.billing.orders.review_blocked"), true);
+  assert.equal(JSON.stringify(authAudit).includes("token:hidden"), false);
 });
 
 test("unknown provider quota change blocks automatic overwrite", async () => {
