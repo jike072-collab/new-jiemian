@@ -354,7 +354,6 @@ function MobileOverlay({
             <BrandLogo className="shell-brand__logo" />
             <div>
               <strong className="shell-brand__text">奥皇 AI</strong>
-              <p className="shell-drawer__sub">选择创作工具</p>
             </div>
           </div>
           <button type="button" className="shell-icon-button" onClick={onClose} aria-label="关闭导航">
@@ -377,7 +376,7 @@ function MobileOverlay({
                       key={item.id}
                       item={item}
                       active={activeTool.id === item.id}
-                      showDescription
+                      showDescription={false}
                       onClick={() => {
                         onSelect(item.action, item.id);
                         onClose();

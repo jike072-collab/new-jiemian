@@ -2536,6 +2536,10 @@
     display: flex;
   }
 
+  .shell-panel--controls .shell-panel__header--tool {
+    display: none;
+  }
+
   .shell-mobile-tabs {
     display: flex;
     align-items: center;
