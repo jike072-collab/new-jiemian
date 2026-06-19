@@ -122,12 +122,14 @@ export function defaultProviders(): ProviderConfig[] {
 
 function normalizeProvider(provider: ProviderConfig): ProviderConfig {
   const models = normalizeModels(provider.models);
+  const enabledModels = normalizeModels(provider.enabledModels);
   const modelDisplayNames = normalizeModelDisplayNames(provider.modelDisplayNames);
   return {
     ...provider,
     apiUrl: String(provider.apiUrl || "").trim(),
     model: String(provider.model || "").trim(),
     models: models.length ? models : undefined,
+    enabledModels: enabledModels.length ? enabledModels.filter((model) => models.includes(model)) : undefined,
     modelDisplayNames,
     displayName: String(provider.displayName || "").trim() || undefined,
     apiKey: String(provider.apiKey || "").trim(),
@@ -148,6 +150,7 @@ export function sanitizeProvider(provider: ProviderConfig): PublicProvider {
     model: normalized.model,
     models: normalized.models,
     modelDisplayNames: normalized.modelDisplayNames,
+    enabledModels: normalized.enabledModels,
     displayName: normalized.displayName,
     enabled: normalized.enabled,
     endpointType: normalized.endpointType,
@@ -189,11 +192,15 @@ function expandProviderModels(provider: ProviderConfig) {
   if (!shouldExpandProvider(provider)) return [sanitizeProvider(provider)];
   const models = normalizeModels(provider.models);
   if (!models.length) return [sanitizeProvider(provider)];
-  return models.map((model) => sanitizeProvider({
+  const enabledModels = normalizeModels(provider.enabledModels);
+  const visibleModels = enabledModels.length
+    ? models.filter((model) => enabledModels.includes(model))
+    : models;
+  return visibleModels.map((model) => sanitizeProvider({
     ...provider,
     id: virtualProviderId(provider.id, model),
     model,
-    displayName: publicDisplayName(provider, model, models.length > 1),
+    displayName: publicDisplayName(provider, model, visibleModels.length > 1),
   }));
 }
 
@@ -324,6 +331,7 @@ export async function updateProviders(updates: ProviderUpdate[]) {
       model: "",
       models: [],
       modelDisplayNames: {},
+      enabledModels: [],
       displayName: "",
       apiKey: "",
       enabled: false,
@@ -342,6 +350,9 @@ export async function updateProviders(updates: ProviderUpdate[]) {
       modelDisplayNames: update.modelDisplayNames === undefined
         ? baseProvider.modelDisplayNames
         : normalizeModelDisplayNames(update.modelDisplayNames),
+      enabledModels: update.enabledModels === undefined
+        ? baseProvider.enabledModels
+        : normalizeModels(update.enabledModels),
       displayName: update.displayName === undefined ? baseProvider.displayName : update.displayName,
       enabled: update.enabled === undefined ? baseProvider.enabled : update.enabled,
       endpointType: update.endpointType === undefined ? baseProvider.endpointType : update.endpointType,

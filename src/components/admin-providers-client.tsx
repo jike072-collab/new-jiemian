@@ -136,13 +136,16 @@ function nextModelPatch(
   provider: EditableProvider,
   models: string[],
   displayNames: Record<string, string> = provider.modelDisplayNames || {},
+  enabledModels: string[] = provider.enabledModels || provider.models || [],
 ) {
   const cleanModels = Array.from(new Set(models.map((model) => model.trim()).filter(Boolean)));
   const modelDisplayNames = cleanModelDisplayNames(cleanModels, displayNames);
+  const cleanEnabledModels = cleanModels.filter((model) => enabledModels.includes(model));
   return {
     models: cleanModels,
     model: cleanModels.includes(provider.model) ? provider.model : cleanModels[0] || provider.model,
     modelDisplayNames,
+    enabledModels: cleanEnabledModels.length ? cleanEnabledModels : cleanModels,
   };
 }
 
@@ -211,6 +214,7 @@ export function AdminProvidersClient() {
             model: provider.model,
             models: provider.models,
             modelDisplayNames: provider.modelDisplayNames,
+            enabledModels: provider.enabledModels,
             displayName: provider.displayName,
             endpointType: provider.endpointType,
             enabled: provider.enabled,
@@ -330,12 +334,13 @@ export function AdminProvidersClient() {
           provider.modelDisplayNames?.[option.value] || option.displayName,
         ]),
       );
+      const enabledModels = provider.enabledModels?.length ? provider.enabledModels : modelIds;
       setProviderModels((current) => ({
         ...current,
         [provider.id]: { loading: false, options, error: "" },
       }));
       update(provider.id, {
-        ...nextModelPatch(provider, modelIds, defaultDisplayNames),
+        ...nextModelPatch(provider, modelIds, defaultDisplayNames, enabledModels),
       });
       setStatus(options.length ? `已读取 ${provider.title} 的 ${options.length} 个模型。` : `${provider.title} 没有返回可用模型。`);
     } catch (error) {
@@ -505,37 +510,20 @@ export function AdminProvidersClient() {
                                   ))}
                                 </select>
                               ) : null}
-                              <div className="grid grid-cols-[minmax(0,1fr)_auto] gap-2">
-                                <input
-                                  value={provider.model}
-                                  onChange={(event) => update(provider.id, { model: event.target.value })}
-                                  placeholder="手动填写模型 ID"
-                                  className="admin-input"
-                                />
-                                {canFetchModels ? (
-                                  <button
-                                    type="button"
-                                    onClick={() => void fetchModels(provider)}
-                                    disabled={modelState.loading || loading}
-                                    className="admin-secondary h-12 whitespace-nowrap px-3 py-0"
-                                  >
-                                    {modelState.loading ? <Loader2 className="size-4 animate-spin" /> : <RefreshCw className="size-4" />}
-                                    读取模型
-                                  </button>
-                                ) : null}
-                              </div>
+                              {canFetchModels ? (
+                                <button
+                                  type="button"
+                                  onClick={() => void fetchModels(provider)}
+                                  disabled={modelState.loading || loading}
+                                  className="admin-secondary h-12 w-fit whitespace-nowrap px-3 py-0"
+                                >
+                                  {modelState.loading ? <Loader2 className="size-4 animate-spin" /> : <RefreshCw className="size-4" />}
+                                  读取模型
+                                </button>
+                              ) : null}
                               {modelState.error ? <p className="text-xs text-red-300">{modelState.error}</p> : null}
                             </div>
                           </div>
-                          <label className="admin-field">
-                            地址名称
-                            <input
-                              value={provider.displayName || ""}
-                              onChange={(event) => update(provider.id, { displayName: event.target.value })}
-                              placeholder="只用于后台区分地址"
-                              className="admin-input"
-                            />
-                          </label>
                           <label className="admin-field">
                             接口类型
                             <select
@@ -551,19 +539,42 @@ export function AdminProvidersClient() {
                         </div>
 
                         {canManageModelList(provider) ? (
-                          <div className="mt-4 rounded-[1.1rem] border border-white/10 bg-white/[0.03] p-3">
-                            <div className="flex flex-col justify-between gap-2 sm:flex-row sm:items-center">
+                          <details className="mt-4 rounded-[1.1rem] border border-white/10 bg-white/[0.03] p-3">
+                            <summary className="flex cursor-pointer list-none flex-col justify-between gap-2 rounded-2xl px-1 py-1 sm:flex-row sm:items-center">
                               <div>
                                 <h4 className="text-sm font-bold text-white">前台模型列表</h4>
-                                <p className="mt-1 text-xs text-white/40">前台显示名称可单独修改；模型 ID 用于真实调用。</p>
+                                <p className="mt-1 text-xs text-white/40">可展开修改前台名称和启用状态。</p>
                               </div>
-                              <span className="rounded-full bg-white/8 px-2 py-1 text-xs text-white/45">
-                                {providerModelIds(provider).length} 个模型
-                              </span>
-                            </div>
+                              <div className="flex items-center gap-2 text-xs text-white/45">
+                                <span className="rounded-full bg-white/8 px-2 py-1">
+                                  {(provider.enabledModels?.length || providerModelIds(provider).length)} / {providerModelIds(provider).length} 已启用
+                                </span>
+                                <span className="rounded-full border border-white/10 px-2 py-1">展开</span>
+                              </div>
+                            </summary>
                             <div className="mt-3 grid gap-2">
                               {providerModelIds(provider).map((model, modelIndex) => (
-                                <div key={`${provider.id}-${modelIndex}`} className="grid gap-2 rounded-2xl border border-white/10 bg-black/20 p-2 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
+                                <div key={`${provider.id}-${modelIndex}`} className="grid gap-2 rounded-2xl border border-white/10 bg-black/20 p-2 lg:grid-cols-[auto_minmax(0,1fr)_minmax(0,1fr)] lg:items-end">
+                                  <label className="flex h-10 items-center gap-2 rounded-xl border border-white/10 px-3 text-xs text-white/65">
+                                    <input
+                                      type="checkbox"
+                                      checked={(provider.enabledModels || providerModelIds(provider)).includes(model)}
+                                      onChange={(event) => {
+                                        const enabled = provider.enabledModels || providerModelIds(provider);
+                                        const nextEnabledModels = event.target.checked
+                                          ? Array.from(new Set([...enabled, model]))
+                                          : enabled.filter((item) => item !== model);
+                                        update(provider.id, nextModelPatch(
+                                          provider,
+                                          providerModelIds(provider),
+                                          provider.modelDisplayNames || {},
+                                          nextEnabledModels,
+                                        ));
+                                      }}
+                                      className="size-4 accent-fuchsia-500"
+                                    />
+                                    前台启用
+                                  </label>
                                   <label className="grid gap-1 text-xs text-white/50">
                                     模型 ID
                                     <input
@@ -574,13 +585,14 @@ export function AdminProvidersClient() {
                                         const oldModel = models[modelIndex];
                                         const nextModels = models.map((item, index) => index === modelIndex ? nextValue : item);
                                         const nextDisplayNames = { ...(provider.modelDisplayNames || {}) };
+                                        const nextEnabledModels = (provider.enabledModels || models).map((item) => item === oldModel ? nextValue : item);
                                         if (oldModel !== nextValue) {
                                           const oldDisplayName = nextDisplayNames[oldModel];
                                           delete nextDisplayNames[oldModel];
                                           if (oldDisplayName) nextDisplayNames[nextValue] = oldDisplayName;
                                         }
                                         update(provider.id, {
-                                          ...nextModelPatch(provider, nextModels, nextDisplayNames),
+                                          ...nextModelPatch(provider, nextModels, nextDisplayNames, nextEnabledModels),
                                           ...(provider.model === oldModel ? { model: nextValue.trim() } : {}),
                                         });
                                       }}
@@ -597,7 +609,12 @@ export function AdminProvidersClient() {
                                           ...(provider.modelDisplayNames || {}),
                                           [model]: displayName,
                                         };
-                                        update(provider.id, nextModelPatch(provider, providerModelIds(provider), nextDisplayNames));
+                                        update(provider.id, nextModelPatch(
+                                          provider,
+                                          providerModelIds(provider),
+                                          nextDisplayNames,
+                                          provider.enabledModels || providerModelIds(provider),
+                                        ));
                                       }}
                                       placeholder={model}
                                       className="admin-input h-10 rounded-xl text-sm"
@@ -606,7 +623,7 @@ export function AdminProvidersClient() {
                                 </div>
                               ))}
                             </div>
-                          </div>
+                          </details>
                         ) : null}
 
                         {isLocalCli(provider.endpointType) ? (

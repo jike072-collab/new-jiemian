@@ -19,6 +19,7 @@ export type ProviderConfig = {
   model: string;
   models?: string[];
   modelDisplayNames?: Record<string, string>;
+  enabledModels?: string[];
   displayName?: string;
   apiKey: string;
   enabled: boolean;
@@ -32,7 +33,7 @@ export type PublicProvider = Omit<ProviderConfig, "apiKey"> & {
 };
 
 export type ProviderUpdate = Partial<
-  Pick<ProviderConfig, "apiUrl" | "model" | "models" | "modelDisplayNames" | "displayName" | "enabled" | "endpointType">
+  Pick<ProviderConfig, "apiUrl" | "model" | "models" | "modelDisplayNames" | "enabledModels" | "displayName" | "enabled" | "endpointType">
 > & {
   id: string;
   kind?: ProviderKind;
