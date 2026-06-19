@@ -83,6 +83,24 @@ function withProductionPaymentEnv<T>(input: { enabled?: string; secret?: string 
   });
 }
 
+function withPersistenceModes<T>(
+  input: { auth?: string; billing?: string },
+  callback: () => T | Promise<T>,
+) {
+  const previousAuth = process.env.APP_AUTH_PERSISTENCE_MODE;
+  const previousBilling = process.env.APP_BILLING_PERSISTENCE_MODE;
+  if (input.auth === undefined) delete process.env.APP_AUTH_PERSISTENCE_MODE;
+  else process.env.APP_AUTH_PERSISTENCE_MODE = input.auth;
+  if (input.billing === undefined) delete process.env.APP_BILLING_PERSISTENCE_MODE;
+  else process.env.APP_BILLING_PERSISTENCE_MODE = input.billing;
+  return Promise.resolve(callback()).finally(() => {
+    if (previousAuth === undefined) delete process.env.APP_AUTH_PERSISTENCE_MODE;
+    else process.env.APP_AUTH_PERSISTENCE_MODE = previousAuth;
+    if (previousBilling === undefined) delete process.env.APP_BILLING_PERSISTENCE_MODE;
+    else process.env.APP_BILLING_PERSISTENCE_MODE = previousBilling;
+  });
+}
+
 function service(overrides: {
   mappings?: NewApiUserMapping[];
   creditQuota?: (input: CreditQuotaInput) => Promise<CreditQuotaResult>;
@@ -1228,6 +1246,31 @@ dbTest("postgres billing mode does not read JSON order storage", async () => {
   assert.equal(found.ok, false);
   if (found.ok) return;
   assert.equal(found.code, "payment_not_found");
+});
+
+dbTest("billing defaults use auth mapping persistence in postgres mode", async () => {
+  await withPersistenceModes({ auth: "postgres", billing: "postgres" }, async () => {
+    await resetBillingTables();
+    const localUserId = "44444444-4444-4444-8444-444444444444";
+    await seedPostgresUser({ localUserId, email: "billing-default-pg@example.com", username: "billing_default_pg" });
+    await seedPostgresMapping(localUserId, "9201");
+
+    const billing = new BillingService({
+      now: () => new Date("2026-06-18T00:00:00.000Z"),
+      creditQuota: async (input) => ({ ok: true, providerCreditId: `credit:${input.orderId}` }),
+    });
+    const created = await billing.createOrder({
+      localUserId,
+      channel: "sandbox_alipay",
+      currency: "CNY",
+      requestedAmount: 1000,
+      idempotencyKey: "pg-default-idem",
+    });
+
+    assert.equal(created.ok, true);
+    if (!created.ok) return;
+    assert.equal(created.order.new_api_user_id, "9201");
+  });
 });
 
 test.after(async () => {
