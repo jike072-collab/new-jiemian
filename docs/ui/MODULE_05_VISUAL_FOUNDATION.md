@@ -125,7 +125,6 @@ Likely implementation files:
 - `styles/tokens.css`
 - New shared display component file only if it reduces real duplication, for example `src/components/workspace-controls.tsx`
 - `docs/ui/MODULE_05_VISUAL_FOUNDATION.md`
-- `docs/ui/IMPLEMENTATION_BOARD.md`
 - `docs/ui/REVIEW_GATES.md`
 
 Files that must stay out of scope:

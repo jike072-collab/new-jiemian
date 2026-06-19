@@ -10,6 +10,11 @@ database migration, rollback, authentication, quota, billing, webhook, task
 billing, New API mapping, backup, readiness, or security gate file is deleted in
 this branch.
 
+Update: cleanup-01 removed the three low-risk superseded planning documents that
+were marked as suggested deletes. Their planning content is now covered by the
+final handoff, Final QA, current mainline integration documents, and execution
+log.
+
 ## Release Baseline
 
 - Release branch: `release/v0.9-small-test`
@@ -68,13 +73,10 @@ this branch.
 | `public/brand/logo.svg` | App brand logo. | Yes, referenced by shared brand components. | High: deleting would break header/login/admin branding. |保留| `npm run build`, login/admin/workbench smoke. |
 | `docs/ui/MODULE_03_ROOT_CAUSE.md` | Historical root-cause analysis mentioning fake login and early shell problems. | No runtime code reference found. | Medium: old statements are stale but useful for why later work exists. |待确认| Documentation review only. |
 | `docs/ui/MODULE_04_IMAGE_WORKSPACE.md` through `docs/ui/MODULE_09_LIBRARY.md` | Module delivery reports and acceptance notes. | No runtime code reference found. | Medium: can be archived later, but currently useful for traceability. |待确认| Documentation review only. |
-| `docs/ui/IMPLEMENTATION_BOARD.md` | Historical implementation tracker. | No runtime code reference found. | Low to medium: may duplicate GitHub PR history. |建议删除| Documentation link scan. |
 | `docs/ui/FEATURE_FREEZE.md` | Historical freeze policy for UI modules. | No runtime code reference found. | Medium: may still explain why some UI features are intentionally absent. |待确认| Documentation review only. |
 | `docs/architecture/auth-newapi/CURRENT_AUTH_AUDIT.md` | Pre-auth audit documenting old fake login behavior. | No runtime code reference found. | Medium: stale as current state, useful as historical evidence. |待确认| Documentation review only. |
 | `docs/architecture/auth-newapi/CURRENT_AUTH_FLOW.md` | Pre-auth flow documentation. | No runtime code reference found. | Medium: may confuse readers if not clearly marked historical. |待确认| Documentation review only. |
 | `docs/architecture/auth-newapi/CURRENT_ACCOUNT_DATA_MODEL.md` | Pre-integration account model audit. | No runtime code reference found. | Medium: superseded by final contracts but useful migration history. |待确认| Documentation review only. |
-| `docs/architecture/auth-newapi/REUSE_AND_GAPS.md` | Early reuse and gap analysis. | No runtime code reference found. | Low to medium: likely superseded by final handoff and QA reports. |建议删除| Documentation link scan. |
-| `docs/architecture/auth-newapi/PARALLEL_LINE_SCOPE.md` | Historical branch-scope definition for B-line work. | No runtime code reference found. | Low to medium: useful only for archaeology after develop merge. |建议删除| Documentation link scan. |
 | `docs/architecture/auth-newapi/FINAL_GATE_AUDIT.md`, `FINAL_VALIDATION_REPORT.md`, `FINAL_QA_REPORT.md`, `FINAL_HANDOFF.md` | Final validation and handoff evidence. | No runtime code reference found. | High: release evidence for `v0.9.0-rc1`. |保留| None. |
 | `docs/architecture/auth-newapi/USER_*`, `QUOTA_*`, `BILLING_*`, `PAYMENT_*`, `TASK_BILLING_BOUNDARY.md`, `RECONCILIATION_RUNBOOK.md` | Active backend API, state-machine, and operations documentation. | No runtime code reference found. | High: still needed for operations and future UI/admin work. |保留| None. |
 | `.github/workflows/admin-api.yml`, `auth-session.yml`, `quota-usage.yml`, `billing-sandbox.yml`, `new-api-bff.yml` | Module-specific CI retained alongside final gates. | Yes, GitHub Actions. | Medium: possibly redundant with `auth-newapi-final-gate.yml`, but useful for targeted reruns. |待确认| Trigger affected workflows and `Auth New API Final Gate`. |
@@ -117,6 +119,6 @@ this branch.
 
 ## Candidate Counts
 
-- Suggested delete: 3 grouped documentation candidates.
+- Suggested delete: 0 grouped documentation candidates after cleanup-01.
 - Awaiting confirmation: 16 grouped documentation or local-artifact candidates.
 - Explicitly retained high-risk items: 18 grouped candidates.
