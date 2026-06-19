@@ -141,7 +141,7 @@ type VideoUpscaleWorkspaceState = {
   job: JobRecord | null;
 };
 
-const ratios = ["1:1", "16:9", "9:16", "4:3", "3:4"];
+const ratios = ["1:1", "16:9", "9:16", "4:3", "3:4", "3:2", "2:3"];
 const defaultVideoDurations = [5, 8, 10, 15];
 const grokVideoDurations = [4, 6, 8, 10, 12, 15];
 const grokVideo10Ratios = ["1:1", "16:9", "9:16", "4:3", "3:4", "3:2", "2:3"];
@@ -365,6 +365,16 @@ function videoProviderRequiresReferenceImage(provider: PublicProvider | null | u
 }
 
 const videoModelReferenceMessage = "当前模型需要上传 1 张图像。";
+
+const ratioShapeClass: Record<string, string> = {
+  "1:1": "ratio-1-1",
+  "16:9": "ratio-16-9",
+  "9:16": "ratio-9-16",
+  "4:3": "ratio-4-3",
+  "3:4": "ratio-3-4",
+  "3:2": "ratio-3-2",
+  "2:3": "ratio-2-3",
+};
 
 export function StudioApp() {
   const router = useRouter();
@@ -1896,6 +1906,7 @@ function VideoGenerator({
         emptyTitle={meta.uploadEmptyTitle}
         filledTitle={meta.uploadFilledTitle}
         helpText={meta.uploadHelpText}
+        required={modelRequiresImage || meta.uploadRequired}
         onChange={onFilesChange}
         onRemove={onFileRemove}
         onClear={onFilesClear}
@@ -1947,6 +1958,7 @@ function VideoReferenceInput({
   emptyTitle,
   filledTitle,
   helpText,
+  required,
   onChange,
   onRemove,
   onClear,
@@ -1958,6 +1970,7 @@ function VideoReferenceInput({
   emptyTitle: string;
   filledTitle: string;
   helpText: string;
+  required: boolean;
   onChange: (files: File[]) => void;
   onRemove: (index: number) => void;
   onClear: () => void;
@@ -1966,7 +1979,7 @@ function VideoReferenceInput({
   const [dragging, setDragging] = useState(false);
 
   return (
-    <FieldFrame label={label} hint={mode === "image-to-video" ? "已上传" : "可选"}>
+    <FieldFrame label={label} required={required} hint={required ? "必填" : mode === "image-to-video" ? "已上传" : "可选"}>
       <CompactDropzone
         inputRef={inputRef}
         inputId="video-first-frame-input"
@@ -3273,7 +3286,7 @@ function AspectRatioSelector({
           className={cn("studio-ratio__item", value === ratio && "is-active")}
         >
           <span className="studio-ratio__graphic" aria-hidden="true">
-            <span className={cn("studio-ratio__shape", `ratio-${ratio.replace(":", "-")}`)} />
+            <span className={cn("studio-ratio__shape", ratioShapeClass[ratio])} />
           </span>
           <span className="studio-ratio__label">{ratio}</span>
         </button>

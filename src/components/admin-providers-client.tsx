@@ -12,6 +12,12 @@ type EditableProvider = PublicProvider & {
   clearApiKey: boolean;
 };
 
+type ModelOption = {
+  value: string;
+  label: string;
+  displayName: string;
+};
+
 const endpointOptions: Array<{ value: EndpointType; label: string }> = [
   { value: "images-generations", label: "OpenAI-compatible images/generations" },
   { value: "images-edits", label: "OpenAI-compatible images/edits (multipart)" },
@@ -21,11 +27,21 @@ const endpointOptions: Array<{ value: EndpointType; label: string }> = [
   { value: "video2x-cli", label: "本地 Video2X CLI（视频高清）" },
 ];
 
+const grokVideoModelOptions: ModelOption[] = [
+  { value: "grok-video-1.0", label: "grok-video-1.0（文生视频 / 可选参考图）", displayName: "Grok 视频 1.0" },
+  { value: "grok-video-1.5", label: "grok-video-1.5（必须 1 张参考图）", displayName: "Grok 视频 1.5" },
+];
+
 function endpointOptionsFor(provider: EditableProvider) {
   if (provider.kind === "image") return endpointOptions.filter((option) => option.value.startsWith("images-"));
   if (provider.kind === "video") return endpointOptions.filter((option) => option.value === "videos-generations" || option.value === "grok-videos");
   if (provider.kind === "image-upscale") return endpointOptions.filter((option) => option.value === "upscayl-cli");
   return endpointOptions.filter((option) => option.value === "video2x-cli");
+}
+
+function modelOptionsFor(provider: EditableProvider) {
+  if (provider.endpointType === "grok-videos") return grokVideoModelOptions;
+  return [];
 }
 
 function isLocalCli(endpointType: EndpointType) {
@@ -116,6 +132,18 @@ export function AdminProvidersClient() {
     )));
   }
 
+  function updateModel(provider: EditableProvider, model: string) {
+    const options = modelOptionsFor(provider);
+    const option = options.find((item) => item.value === model);
+    const managedDisplayNames = new Set(options.map((item) => item.displayName));
+    const shouldSyncDisplayName = Boolean(option)
+      && (!provider.displayName || managedDisplayNames.has(provider.displayName));
+    update(provider.id, {
+      model,
+      ...(shouldSyncDisplayName ? { displayName: option?.displayName } : {}),
+    });
+  }
+
   return (
     <main className="min-h-screen bg-[#050507] px-4 py-6 text-white md:px-8">
       <div className="pointer-events-none fixed inset-0 bg-[radial-gradient(circle_at_70%_0%,rgba(236,0,122,0.18),transparent_30%)]" />
@@ -203,11 +231,26 @@ export function AdminProvidersClient() {
                 </label>
                 <label className="admin-field">
                   模型
-                  <input
-                    value={provider.model}
-                    onChange={(event) => update(provider.id, { model: event.target.value })}
-                    className="admin-input"
-                  />
+                  {modelOptionsFor(provider).length ? (
+                    <select
+                      value={provider.model}
+                      onChange={(event) => updateModel(provider, event.target.value)}
+                      className="admin-input"
+                    >
+                      {modelOptionsFor(provider).some((option) => option.value === provider.model) ? null : (
+                        <option value={provider.model}>{provider.model}</option>
+                      )}
+                      {modelOptionsFor(provider).map((option) => (
+                        <option key={option.value} value={option.value}>{option.label}</option>
+                      ))}
+                    </select>
+                  ) : (
+                    <input
+                      value={provider.model}
+                      onChange={(event) => update(provider.id, { model: event.target.value })}
+                      className="admin-input"
+                    />
+                  )}
                 </label>
                 <label className="admin-field">
                   前台名称
