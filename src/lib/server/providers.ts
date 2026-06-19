@@ -177,6 +177,26 @@ export async function providerById(id: string) {
   return (await readProviders()).find((provider) => provider.id === id) || null;
 }
 
+export function modelsEndpointFor(apiUrl: string) {
+  try {
+    const parsed = new URL(apiUrl);
+    const pathname = parsed.pathname.replace(/\/+$/, "");
+    if (/\/models$/i.test(pathname)) {
+      parsed.pathname = pathname;
+    } else if (/\/v1(?:\/.*)?$/i.test(pathname)) {
+      parsed.pathname = pathname.replace(/\/v1(?:\/.*)?$/i, "/v1/models");
+    } else if (/\/(?:chat\/completions|videos|video-reference-images|images\/(?:generations|edits))$/i.test(pathname)) {
+      parsed.pathname = pathname.replace(/\/(?:chat\/completions|videos|video-reference-images|images\/(?:generations|edits))$/i, "/models");
+    } else {
+      parsed.pathname = `${pathname === "" ? "" : pathname}/models`;
+    }
+    parsed.search = "";
+    return parsed.toString();
+  } catch {
+    return "";
+  }
+}
+
 function validateProviderUpdate(provider: ProviderConfig) {
   if (provider.enabled && isLocalProvider(provider.endpointType)) {
     if (!provider.model) throw new Error(`${provider.title} 缺少模型。`);

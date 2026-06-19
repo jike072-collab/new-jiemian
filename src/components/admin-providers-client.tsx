@@ -12,6 +12,12 @@ type EditableProvider = PublicProvider & {
   clearApiKey: boolean;
 };
 
+type ProviderModelState = {
+  loading: boolean;
+  options: ModelOption[];
+  error: string;
+};
+
 type ModelOption = {
   value: string;
   label: string;
@@ -46,10 +52,12 @@ function endpointOptionsFor(provider: EditableProvider) {
   return endpointOptions.filter((option) => option.value === "video2x-cli");
 }
 
-function modelOptionsFor(provider: EditableProvider) {
-  if (provider.endpointType === "grok-videos") return grokVideoModelOptions;
-  if (provider.kind === "prompt") return promptOptimizerModelOptions;
-  return [];
+function modelOptionsFor(provider: EditableProvider, fetched: ModelOption[] = []) {
+  const defaults = provider.endpointType === "grok-videos"
+    ? grokVideoModelOptions
+    : provider.kind === "prompt" ? promptOptimizerModelOptions : [];
+  const byValue = new Map([...defaults, ...fetched].map((option) => [option.value, option]));
+  return Array.from(byValue.values());
 }
 
 function isLocalCli(endpointType: EndpointType) {
@@ -70,6 +78,7 @@ async function readJson(response: Response) {
 
 export function AdminProvidersClient() {
   const [providers, setProviders] = useState<EditableProvider[]>([]);
+  const [providerModels, setProviderModels] = useState<Record<string, ProviderModelState>>({});
   const [password, setPassword] = useState("");
   const [status, setStatus] = useState("输入管理密码后读取配置；未设置密码时可直接读取。");
   const [loading, setLoading] = useState(false);
@@ -141,7 +150,7 @@ export function AdminProvidersClient() {
   }
 
   function updateModel(provider: EditableProvider, model: string) {
-    const options = modelOptionsFor(provider);
+    const options = modelOptionsFor(provider, providerModels[provider.id]?.options);
     const option = options.find((item) => item.value === model);
     const managedDisplayNames = new Set(options.map((item) => item.displayName));
     const shouldSyncDisplayName = Boolean(option)
@@ -150,6 +159,50 @@ export function AdminProvidersClient() {
       model,
       ...(shouldSyncDisplayName ? { displayName: option?.displayName } : {}),
     });
+  }
+
+  async function fetchModels(provider: EditableProvider) {
+    if (isLocalCli(provider.endpointType)) return;
+    setProviderModels((current) => ({
+      ...current,
+      [provider.id]: {
+        loading: true,
+        options: current[provider.id]?.options || [],
+        error: "",
+      },
+    }));
+    try {
+      const response = await fetch("/api/admin/providers/models", {
+        method: "POST",
+        headers: headers(),
+        body: JSON.stringify({
+          id: provider.id,
+          apiUrl: provider.apiUrl,
+          apiKey: provider.newApiKey || undefined,
+        }),
+      });
+      const data = await response.json().catch(() => ({})) as { models?: string[]; error?: string };
+      if (!response.ok) throw new Error(data.error || "读取模型失败。");
+      const options = Array.from(new Set(data.models || []))
+        .filter(Boolean)
+        .map((model) => ({ value: model, label: model, displayName: model }));
+      setProviderModels((current) => ({
+        ...current,
+        [provider.id]: { loading: false, options, error: "" },
+      }));
+      setStatus(options.length ? `已读取 ${provider.title} 的 ${options.length} 个模型。` : `${provider.title} 没有返回可用模型。`);
+    } catch (error) {
+      const text = error instanceof Error ? error.message : "读取模型失败。";
+      setProviderModels((current) => ({
+        ...current,
+        [provider.id]: {
+          loading: false,
+          options: current[provider.id]?.options || [],
+          error: text,
+        },
+      }));
+      setStatus(text);
+    }
   }
 
   return (
@@ -203,7 +256,11 @@ export function AdminProvidersClient() {
         </section>
 
         <section className="mt-5 grid gap-4">
-          {providers.map((provider) => (
+          {providers.map((provider) => {
+            const modelState = providerModels[provider.id] || { loading: false, options: [], error: "" };
+            const modelOptions = modelOptionsFor(provider, modelState.options);
+            const canFetchModels = !isLocalCli(provider.endpointType);
+            return (
             <article key={provider.id} className="rounded-[1.5rem] border border-white/10 bg-[#101012]/92 p-5">
               <div className="flex flex-col justify-between gap-4 md:flex-row md:items-start">
                 <div>
@@ -237,29 +294,45 @@ export function AdminProvidersClient() {
                     className="admin-input"
                   />
                 </label>
-                <label className="admin-field">
+                <div className="admin-field">
                   模型
-                  {modelOptionsFor(provider).length ? (
-                    <select
-                      value={provider.model}
-                      onChange={(event) => updateModel(provider, event.target.value)}
-                      className="admin-input"
-                    >
-                      {modelOptionsFor(provider).some((option) => option.value === provider.model) ? null : (
-                        <option value={provider.model}>{provider.model}</option>
-                      )}
-                      {modelOptionsFor(provider).map((option) => (
-                        <option key={option.value} value={option.value}>{option.label}</option>
-                      ))}
-                    </select>
-                  ) : (
-                    <input
-                      value={provider.model}
-                      onChange={(event) => update(provider.id, { model: event.target.value })}
-                      className="admin-input"
-                    />
-                  )}
-                </label>
+                  <div className="grid gap-2">
+                    {modelOptions.length ? (
+                      <select
+                        value={provider.model}
+                        onChange={(event) => updateModel(provider, event.target.value)}
+                        className="admin-input"
+                      >
+                        {modelOptions.some((option) => option.value === provider.model) ? null : (
+                          <option value={provider.model}>{provider.model || "当前模型"}</option>
+                        )}
+                        {modelOptions.map((option) => (
+                          <option key={option.value} value={option.value}>{option.label}</option>
+                        ))}
+                      </select>
+                    ) : null}
+                    <div className="grid grid-cols-[minmax(0,1fr)_auto] gap-2">
+                      <input
+                        value={provider.model}
+                        onChange={(event) => update(provider.id, { model: event.target.value })}
+                        placeholder="手动填写模型 ID"
+                        className="admin-input"
+                      />
+                      {canFetchModels ? (
+                        <button
+                          type="button"
+                          onClick={() => void fetchModels(provider)}
+                          disabled={modelState.loading || loading}
+                          className="admin-secondary h-12 whitespace-nowrap px-3 py-0"
+                        >
+                          {modelState.loading ? <Loader2 className="size-4 animate-spin" /> : <RefreshCw className="size-4" />}
+                          读取模型
+                        </button>
+                      ) : null}
+                    </div>
+                    {modelState.error ? <p className="text-xs text-red-300">{modelState.error}</p> : null}
+                  </div>
+                </div>
                 <label className="admin-field">
                   前台名称
                   <input
@@ -316,7 +389,8 @@ export function AdminProvidersClient() {
                 </div>
               )}
             </article>
-          ))}
+            );
+          })}
         </section>
       </div>
     </main>
