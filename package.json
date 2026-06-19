@@ -26,7 +26,8 @@
   "scripts": {
     "dev": "next dev -H 127.0.0.1",
     "build": "next build",
-    "start": "next start -H 127.0.0.1",
+    "start": "npm run release:preflight && next start -H 127.0.0.1",
+    "start:next": "next start -H 127.0.0.1",
     "lint": "eslint",
     "typecheck": "tsc --noEmit",
     "check": "npm run lint && npm run typecheck && npm run build",
@@ -41,8 +42,9 @@
     "database:boundary": "node scripts/database/test-server-boundary.mjs",
     "db:health": "node scripts/database/migrate.mjs health",
     "test:security-release": "node scripts/test-security-release.mjs",
+    "release:preflight": "node scripts/release-preflight.mjs",
     "security:release-check": "node scripts/security-release-check.mjs",
-    "start:release": "node scripts/security-release-check.mjs && next start -H 127.0.0.1"
+    "start:release": "npm start"
   },
   "dependencies": {
     "@base-ui/react": "^1.3.0",

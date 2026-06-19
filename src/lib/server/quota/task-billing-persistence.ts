@@ -38,7 +38,11 @@ export function getTaskBillingPersistenceMode(): TaskBillingPersistenceMode {
   if (!allowedModes.has(raw as TaskBillingPersistenceMode)) {
     throw new TaskBillingPersistenceConfigError("APP_TASK_BILLING_PERSISTENCE_MODE must be json or postgres.");
   }
-  return raw as TaskBillingPersistenceMode;
+  const mode = raw as TaskBillingPersistenceMode;
+  if (process.env.NODE_ENV === "production" && mode !== "postgres") {
+    throw new TaskBillingPersistenceConfigError("APP_TASK_BILLING_PERSISTENCE_MODE must be postgres in production.");
+  }
+  return mode;
 }
 
 export function createTaskBillingPersistenceRepositories(

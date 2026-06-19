@@ -1,8 +1,11 @@
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
+import { spawnSync } from "node:child_process";
 import { test } from "node:test";
 
 import { publicPaymentChannels } from "../../billing/config";
-import { backendHealthReport } from "../health";
+import { backendHealthHttpReport, backendLivenessReport, backendReadinessReport } from "../health";
 import { runBackendReleaseChecks } from "../release-check";
 
 type EnvPatch = Record<string, string | undefined>;
@@ -78,6 +81,26 @@ test("production release checks pass with explicit backend configuration and pro
   });
 });
 
+test("production release checks reject json and dual persistence modes", async () => {
+  for (const patch of [
+    { APP_AUTH_PERSISTENCE_MODE: "json" },
+    { APP_AUTH_PERSISTENCE_MODE: "dual" },
+    { APP_BILLING_PERSISTENCE_MODE: "json" },
+    { APP_BILLING_PERSISTENCE_MODE: "dual" },
+    { APP_TASK_BILLING_PERSISTENCE_MODE: "json" },
+    { APP_TASK_BILLING_PERSISTENCE_MODE: "dual" },
+  ]) {
+    await withEnv({ ...productionEnv, ...patch }, () => {
+      const report = runBackendReleaseChecks(new Date("2026-06-19T00:00:00.000Z"));
+      assert.equal(report.ok, false);
+      assert.equal(report.summary.fail > 0, true);
+      const serialized = JSON.stringify(report);
+      assert.equal(serialized.includes("postgresql://"), false);
+      assert.equal(serialized.includes("release-test-admin-token"), false);
+    });
+  }
+});
+
 test("production payment stays fail closed without a registered provider even when env is enabled", async () => {
   await withEnv({
     ...productionEnv,
@@ -92,12 +115,13 @@ test("production payment stays fail closed without a registered provider even wh
   });
 });
 
-test("backend health report omits secrets, URLs, and internal paths", async () => {
+test("backend liveness report omits secrets, URLs, and internal paths", async () => {
   await withEnv(productionEnv, () => {
-    const report = backendHealthReport("req-health", new Date("2026-06-19T00:00:00.000Z"));
+    const report = backendLivenessReport("req-health", new Date("2026-06-19T00:00:00.000Z"));
     assert.equal(report.ok, true);
+    assert.equal(report.mode, "liveness");
     assert.equal(report.requestId, "req-health");
-    assert.deepEqual(Object.keys(report.checks).sort(), ["newApi", "productionPayment"]);
+    assert.deepEqual(Object.keys(report.checks).sort(), ["newApi", "process", "productionPayment"]);
     const serialized = JSON.stringify(report);
     for (const leaked of [
       "release_pass",
@@ -109,4 +133,78 @@ test("backend health report omits secrets, URLs, and internal paths", async () =
       assert.equal(serialized.includes(leaked), false, `health response leaked ${leaked}`);
     }
   });
+});
+
+test("backend readiness fails closed when required dependencies are unavailable", async () => {
+  await withEnv(productionEnv, async () => {
+    const report = await backendReadinessReport("req-ready", new Date("2026-06-19T00:00:00.000Z"), { timeoutMs: 25 });
+    assert.equal(report.ok, false);
+    assert.equal(report.mode, "readiness");
+    assert.equal(report.checks.process.ok, true);
+    assert.equal(report.checks.database?.ok, false);
+    assert.equal(report.checks.newApi.ok, false);
+    const serialized = JSON.stringify(report);
+    for (const leaked of [
+      "release_pass",
+      "release-test-admin-token",
+      "postgresql://",
+      "new-api.example.test",
+      process.cwd(),
+    ]) {
+      assert.equal(serialized.includes(leaked), false, `readiness response leaked ${leaked}`);
+    }
+  });
+});
+
+test("backend health HTTP report returns 503 for failed readiness and 200 for liveness", async () => {
+  await withEnv(productionEnv, async () => {
+    const ready = await backendHealthHttpReport("readiness", "req-ready-route", new Date("2026-06-19T00:00:00.000Z"));
+    assert.equal(ready.status, 503);
+    assert.equal(ready.report.ok, false);
+    assert.equal(ready.report.mode, "readiness");
+
+    const live = await backendHealthHttpReport("liveness", "req-live-route", new Date("2026-06-19T00:00:00.000Z"));
+    assert.equal(live.status, 200);
+    assert.equal(live.report.ok, true);
+    assert.equal(live.report.mode, "liveness");
+
+    const serialized = JSON.stringify({ ready, live });
+    for (const leaked of ["release_pass", "release-test-admin-token", "postgresql://", "new-api.example.test", process.cwd()]) {
+      assert.equal(serialized.includes(leaked), false, `health HTTP report leaked ${leaked}`);
+    }
+  });
+});
+
+test("standard npm start includes the release preflight", () => {
+  const pkg = JSON.parse(readFileSync(join(process.cwd(), "package.json"), "utf8")) as {
+    scripts?: Record<string, string>;
+  };
+  assert.match(pkg.scripts?.start || "", /release:preflight/);
+  assert.equal(pkg.scripts?.start?.includes("next start"), true);
+});
+
+test("release preflight rejects missing production configuration", () => {
+  const run = spawnSync("npm", ["run", "release:preflight"], {
+    cwd: process.cwd(),
+    encoding: "utf8",
+    shell: process.platform === "win32",
+    env: {
+      ...process.env,
+      NODE_ENV: "production",
+      AUTH_SESSION_SECRET: "",
+      SESSION_SECRET: "",
+      APP_DATABASE_URL: "",
+      APP_DATABASE_EXPECTED_NAME: "",
+      APP_AUTH_PERSISTENCE_MODE: "",
+      APP_BILLING_PERSISTENCE_MODE: "",
+      APP_TASK_BILLING_PERSISTENCE_MODE: "",
+      NEW_API_ENABLED: "false",
+    },
+  });
+  assert.notEqual(run.status, 0);
+  const output = `${run.stdout || ""}\n${run.stderr || ""}`;
+  assert.match(output, /Backend release preflight failed|AUTH_SESSION_SECRET|APP_DATABASE_URL/);
+  for (const leaked of ["postgresql://", "release-test-admin-token", "new-api.example.test"]) {
+    assert.equal(output.includes(leaked), false, `preflight output leaked ${leaked}`);
+  }
 });

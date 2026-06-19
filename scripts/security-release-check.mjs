@@ -232,6 +232,18 @@ function migrationScripts() {
   return { checked: required.length };
 }
 
+function standardStartPreflight() {
+  const packageJson = JSON.parse(readFileSync(join(root, "package.json"), "utf8"));
+  const scripts = packageJson.scripts || {};
+  if (!String(scripts.start || "").includes("release:preflight")) {
+    fail("npm start must run release:preflight before next start.");
+  }
+  if (scripts["release:preflight"] !== "node scripts/release-preflight.mjs") {
+    fail("release:preflight must run scripts/release-preflight.mjs.");
+  }
+  return { enforced: true };
+}
+
 function main() {
   const report = {
     generatedAt: new Date().toISOString(),
@@ -243,6 +255,7 @@ function main() {
     bundleScan: bundleScanIfBuilt(),
     backupRestoreScripts: backupRestoreScripts(),
     migrationScripts: migrationScripts(),
+    standardStartPreflight: standardStartPreflight(),
   };
   const outputPath = process.argv.includes("--write-report")
     ? join(root, "docs", "architecture", "auth-newapi", "BP_06_SECURITY_RELEASE_CHECK.json")
