@@ -1,5 +1,10 @@
 import { randomUUID } from "node:crypto";
 
+import {
+  estimateGenerationQuota,
+  generationBillingFingerprint,
+} from "@/lib/generation-quota";
+
 import { addJob, addLibraryItem, storeBytes, storeDataUrl, storeRemoteUrl, updateJob, updateLibraryItem } from "./library";
 import { getTaskBillingService } from "./quota";
 import { providerById } from "./providers";
@@ -19,6 +24,13 @@ type ProviderOutput = {
   statusUrl?: string;
   mimeType?: string;
 };
+
+class BillingSettlementRequiredError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "BillingSettlementRequiredError";
+  }
+}
 
 function asRecord(value: unknown): Record<string, unknown> {
   return value && typeof value === "object" && !Array.isArray(value)
@@ -215,15 +227,15 @@ async function settleGeneratedTaskBilling(input: {
   upstreamRequestId?: string | null;
   upstreamModel?: string | null;
   newApiTaskId?: string | null;
-}) {
-  if (!input.localUserId || !input.taskId) return;
+}): Promise<{ ok: true } | { ok: false; status: number; message: string; action?: string }> {
+  if (!input.localUserId || !input.taskId) return { ok: true };
   const billing = getTaskBillingService();
   const actualQuotaUnits = Number.isInteger(input.estimatedQuotaUnits)
     ? Math.max(0, input.estimatedQuotaUnits as number)
     : 0;
   try {
     if (input.outcome === "success") {
-      await billing.settleSuccess({
+      const result = await billing.settleSuccess({
         localUserId: input.localUserId,
         taskId: input.taskId,
         actualQuotaUnits,
@@ -231,8 +243,17 @@ async function settleGeneratedTaskBilling(input: {
         upstreamRequestId: input.upstreamRequestId || null,
         upstreamModel: input.upstreamModel || null,
       });
+      if (!result.ok) return { ok: false, status: result.status, message: result.message };
+      if (result.action === "reconciliation_required") {
+        return {
+          ok: false,
+          status: 202,
+          message: result.record.last_error || "Task billing requires reconciliation.",
+          action: result.action,
+        };
+      }
     } else {
-      await billing.fail({
+      const result = await billing.fail({
         localUserId: input.localUserId,
         taskId: input.taskId,
         reason: input.reason || "generation failed",
@@ -240,10 +261,38 @@ async function settleGeneratedTaskBilling(input: {
         upstreamRequestId: input.upstreamRequestId || null,
         upstreamModel: input.upstreamModel || null,
       });
+      if (!result.ok) return { ok: false, status: result.status, message: result.message };
     }
+    return { ok: true };
   } catch {
-    // Billing reconciliation stays inside the task-billing service.
+    return { ok: false, status: 503, message: "Task billing settlement failed." };
   }
+}
+
+async function verifyGenerationBilling(input: {
+  localUserId?: string | null;
+  taskId?: string | null;
+  idempotencyKey?: string | null;
+  fingerprint: string;
+  estimatedQuotaUnits: number;
+}) {
+  if (!input.localUserId || !input.taskId || !input.idempotencyKey) {
+    throw new Error("生成任务缺少有效额度预检。");
+  }
+  const billing = getTaskBillingService();
+  const verified = await billing.verifyPrecheck({
+    localUserId: input.localUserId,
+    taskId: input.taskId,
+    idempotencyKey: input.idempotencyKey,
+    estimatedQuotaUnits: input.estimatedQuotaUnits,
+    requestFingerprint: input.fingerprint,
+  });
+  if (!verified.ok) throw new Error(verified.message);
+  const accepted = await billing.accept({
+    localUserId: input.localUserId,
+    taskId: input.taskId,
+  });
+  if (!accepted.ok) throw new Error(accepted.message);
 }
 
 export async function generateImage(input: {
@@ -259,6 +308,24 @@ export async function generateImage(input: {
   billingEstimatedQuotaUnits?: number | null;
 }) {
   const provider = await providerById(input.providerId);
+  const estimatedQuotaUnits = estimateGenerationQuota({
+    kind: "image",
+    providerId: input.providerId,
+    mode: input.mode,
+    ratio: input.ratio,
+    quality: input.quality,
+    referenceImages: input.files.length,
+  });
+  const billingFingerprint = generationBillingFingerprint({
+    kind: "image",
+    providerId: input.providerId,
+    mode: input.mode,
+    ratio: input.ratio,
+    quality: input.quality,
+    referenceImages: input.files.length,
+    taskId: input.billingTaskId || "",
+    estimatedQuotaUnits,
+  });
   try {
     if (!provider || provider.kind !== "image" || !provider.enabled || !provider.apiKey) {
       throw new Error("图片供应商未配置或未启用。");
@@ -267,6 +334,13 @@ export async function generateImage(input: {
     if (input.mode === "image-to-image" && !input.files.length) {
       throw new Error("图生图模式需要上传参考图片。");
     }
+    await verifyGenerationBilling({
+      localUserId: input.billingLocalUserId,
+      taskId: input.billingTaskId,
+      idempotencyKey: input.billingIdempotencyKey,
+      fingerprint: billingFingerprint,
+      estimatedQuotaUnits,
+    });
 
     const output = await callImageProvider({
       provider,
@@ -291,29 +365,33 @@ export async function generateImage(input: {
         referenceImages: input.files.length,
         ...(input.billingTaskId ? { billingTaskId: input.billingTaskId } : {}),
         ...(input.billingIdempotencyKey ? { billingIdempotencyKey: input.billingIdempotencyKey } : {}),
-        ...(Number.isInteger(input.billingEstimatedQuotaUnits)
-          ? { billingEstimatedQuotaUnits: input.billingEstimatedQuotaUnits as number }
-          : {}),
+        billingEstimatedQuotaUnits: estimatedQuotaUnits,
+        billingRequestFingerprint: billingFingerprint,
       },
     });
-    await settleGeneratedTaskBilling({
+    const settled = await settleGeneratedTaskBilling({
       localUserId: input.billingLocalUserId,
       taskId: input.billingTaskId,
-      estimatedQuotaUnits: input.billingEstimatedQuotaUnits,
+      estimatedQuotaUnits,
       outcome: "success",
       upstreamModel: provider.model,
       newApiTaskId: output.jobId || item.id,
     });
+    if (!settled.ok) {
+      throw new BillingSettlementRequiredError(settled.status === 202 ? "生成已完成，但计费结算需要人工对账。" : settled.message);
+    }
     return item;
   } catch (error) {
-    await settleGeneratedTaskBilling({
-      localUserId: input.billingLocalUserId,
-      taskId: input.billingTaskId,
-      estimatedQuotaUnits: input.billingEstimatedQuotaUnits,
-      outcome: "failed",
-      reason: error instanceof Error ? error.message : "generation failed",
-      upstreamModel: provider?.model || null,
-    });
+    if (!(error instanceof BillingSettlementRequiredError)) {
+      await settleGeneratedTaskBilling({
+        localUserId: input.billingLocalUserId,
+        taskId: input.billingTaskId,
+        estimatedQuotaUnits,
+        outcome: "failed",
+        reason: error instanceof Error ? error.message : "generation failed",
+        upstreamModel: provider?.model || null,
+      });
+    }
     throw error;
   }
 }
@@ -331,6 +409,24 @@ export async function submitVideo(input: {
   billingEstimatedQuotaUnits?: number | null;
 }) {
   const provider = await providerById(input.providerId);
+  const estimatedQuotaUnits = estimateGenerationQuota({
+    kind: "video",
+    providerId: input.providerId,
+    mode: input.mode,
+    ratio: input.ratio,
+    durationSeconds: input.duration,
+    referenceImages: input.files.length,
+  });
+  const billingFingerprint = generationBillingFingerprint({
+    kind: "video",
+    providerId: input.providerId,
+    mode: input.mode,
+    ratio: input.ratio,
+    durationSeconds: input.duration,
+    referenceImages: input.files.length,
+    taskId: input.billingTaskId || "",
+    estimatedQuotaUnits,
+  });
   try {
     if (!input.prompt.trim()) throw new Error("请输入视频提示词。");
     if (input.mode === "text-to-video" && input.files.length) {
@@ -348,6 +444,13 @@ export async function submitVideo(input: {
     if (!provider || provider.kind !== "video" || !provider.enabled || !provider.apiKey) {
       throw new Error("视频供应商未配置或未启用。");
     }
+    await verifyGenerationBilling({
+      localUserId: input.billingLocalUserId,
+      taskId: input.billingTaskId,
+      idempotencyKey: input.billingIdempotencyKey,
+      fingerprint: billingFingerprint,
+      estimatedQuotaUnits,
+    });
 
     const providerPayload: Record<string, string | number | string[]> = {
       model: provider.model,
@@ -389,19 +492,21 @@ export async function submitVideo(input: {
           referenceImages: input.files.length,
           ...(input.billingTaskId ? { billingTaskId: input.billingTaskId } : {}),
           ...(input.billingIdempotencyKey ? { billingIdempotencyKey: input.billingIdempotencyKey } : {}),
-          ...(Number.isInteger(input.billingEstimatedQuotaUnits)
-            ? { billingEstimatedQuotaUnits: input.billingEstimatedQuotaUnits as number }
-            : {}),
+          billingEstimatedQuotaUnits: estimatedQuotaUnits,
+          billingRequestFingerprint: billingFingerprint,
         },
       });
-      await settleGeneratedTaskBilling({
+      const settled = await settleGeneratedTaskBilling({
         localUserId: input.billingLocalUserId,
         taskId: input.billingTaskId,
-        estimatedQuotaUnits: input.billingEstimatedQuotaUnits,
+        estimatedQuotaUnits,
         outcome: "success",
         upstreamModel: provider.model,
         newApiTaskId: output.jobId || item.id,
       });
+      if (!settled.ok) {
+        throw new BillingSettlementRequiredError(settled.status === 202 ? "生成已完成，但计费结算需要人工对账。" : settled.message);
+      }
       return { item, job: null };
     }
 
@@ -431,19 +536,22 @@ export async function submitVideo(input: {
       billing_task_id: input.billingTaskId || null,
       billing_local_user_id: input.billingLocalUserId || null,
       billing_idempotency_key: input.billingIdempotencyKey || null,
-      billing_estimated_quota_units: input.billingEstimatedQuotaUnits ?? null,
-      billing_state: input.billingTaskId ? "prechecked" : undefined,
+      billing_estimated_quota_units: estimatedQuotaUnits,
+      billing_state: input.billingTaskId ? "accepted" : undefined,
+      billing_last_error: null,
     });
     return { item, job };
   } catch (error) {
-    await settleGeneratedTaskBilling({
-      localUserId: input.billingLocalUserId,
-      taskId: input.billingTaskId,
-      estimatedQuotaUnits: input.billingEstimatedQuotaUnits,
-      outcome: "failed",
-      reason: error instanceof Error ? error.message : "generation failed",
-      upstreamModel: provider?.model || null,
-    });
+    if (!(error instanceof BillingSettlementRequiredError)) {
+      await settleGeneratedTaskBilling({
+        localUserId: input.billingLocalUserId,
+        taskId: input.billingTaskId,
+        estimatedQuotaUnits,
+        outcome: "failed",
+        reason: error instanceof Error ? error.message : "generation failed",
+        upstreamModel: provider?.model || null,
+      });
+    }
     throw error;
   }
 }
@@ -452,7 +560,7 @@ async function reconcileFinalizedVideoJob(job: JobRecord, localUserId?: string |
   const billingLocalUserId = job.billing_local_user_id || job.ownerLocalUserId || localUserId || null;
   if (!job.billing_task_id || !billingLocalUserId) return;
   if (job.status === "done") {
-    await settleGeneratedTaskBilling({
+    const settled = await settleGeneratedTaskBilling({
       localUserId: billingLocalUserId,
       taskId: job.billing_task_id,
       estimatedQuotaUnits: job.billing_estimated_quota_units ?? null,
@@ -460,6 +568,12 @@ async function reconcileFinalizedVideoJob(job: JobRecord, localUserId?: string |
       upstreamModel: null,
       newApiTaskId: job.id,
     });
+    if (!settled.ok) {
+      await updateJob(job.id, {
+        billing_state: "reconciliation_required",
+        billing_last_error: settled.message,
+      });
+    }
   } else if (job.status === "failed") {
     await settleGeneratedTaskBilling({
       localUserId: billingLocalUserId,
@@ -511,7 +625,7 @@ export async function refreshVideoJob(jobId: string, localUserId?: string | null
       billing_state: job.billing_task_id ? "settled" : job.billing_state,
       billing_last_error: null,
     });
-    await settleGeneratedTaskBilling({
+    const settled = await settleGeneratedTaskBilling({
       localUserId: job.billing_local_user_id || job.ownerLocalUserId || localUserId || null,
       taskId: job.billing_task_id,
       estimatedQuotaUnits: job.billing_estimated_quota_units ?? null,
@@ -520,6 +634,12 @@ export async function refreshVideoJob(jobId: string, localUserId?: string | null
       upstreamModel: provider.model,
       newApiTaskId: output.jobId || job.id,
     });
+    if (!settled.ok) {
+      await updateJob(job.id, {
+        billing_state: "reconciliation_required",
+        billing_last_error: settled.message,
+      });
+    }
     return updated;
   }
 

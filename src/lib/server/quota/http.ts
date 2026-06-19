@@ -96,6 +96,7 @@ export async function precheckResponse(request: NextRequest) {
     operation,
     taskId,
     idempotencyKey,
+    requestFingerprint: String(body.requestFingerprint || "").trim() || null,
   });
   if (!result.ok) return quotaErrorResponse(result);
   const quota = await getQuotaService().getCurrentQuota(auth.localUserId, { allowCached: true });

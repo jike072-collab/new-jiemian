@@ -474,6 +474,28 @@ test("creates orders idempotently and rejects invalid amount or inactive mapping
   if (invalid.ok) return;
   assert.equal(invalid.code, "invalid_billing_request");
 
+  const sameAmountNewKey = await harness.billing.createOrder({
+    localUserId: "local-user",
+    channel: "sandbox_alipay",
+    currency: "CNY",
+    requestedAmount: 1000,
+    idempotencyKey: "idem-order-new-click",
+  });
+  assert.equal(sameAmountNewKey.ok, true);
+  if (!sameAmountNewKey.ok) return;
+  assert.notEqual(sameAmountNewKey.order.order_id, first.order_id);
+
+  const retrySameClick = await harness.billing.createOrder({
+    localUserId: "local-user",
+    channel: "sandbox_alipay",
+    currency: "CNY",
+    requestedAmount: 1000,
+    idempotencyKey: "idem-order-new-click",
+  });
+  assert.equal(retrySameClick.ok, true);
+  if (!retrySameClick.ok) return;
+  assert.equal(retrySameClick.order.order_id, sameAmountNewKey.order.order_id);
+
   const pending = await service({ mappings: failedMappingSeed() }).billing.createOrder({
     localUserId: "local-user",
     channel: "sandbox_alipay",

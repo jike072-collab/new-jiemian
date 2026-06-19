@@ -127,11 +127,13 @@ test("prechecks sufficient quota and denies insufficient quota before upstream s
     operation: "cloud_video_generation",
     estimatedQuotaUnits: 10,
     idempotencyKey: "idem-precheck",
+    requestFingerprint: "video:task-precheck:10",
   });
   assert.equal(prechecked.ok, true);
   if (!prechecked.ok) return;
   assert.equal(prechecked.action, "prechecked");
   assert.equal(prechecked.record.billing_state, "prechecked");
+  assert.equal(prechecked.record.request_fingerprint, "video:task-precheck:10");
 
   const low = service({ availableQuota: 5 });
   const rejected = await low.taskBilling.precheck({
@@ -146,6 +148,86 @@ test("prechecks sufficient quota and denies insufficient quota before upstream s
   assert.equal(rejected.code, "insufficient_quota");
   assert.equal((await low.usageRepository.getByTaskId("local-user", "task-low"))?.status, "failed");
   assert.equal(low.adjustments.length, 0);
+});
+
+test("server-side generation requires a matching precheck record", async () => {
+  const harness = service();
+  const missing = await harness.taskBilling.verifyPrecheck({
+    localUserId: "local-user",
+    taskId: "direct-call",
+    idempotencyKey: "direct-call",
+    estimatedQuotaUnits: 40,
+    requestFingerprint: "image:direct-call:40",
+  });
+  assert.equal(missing.ok, false);
+  if (missing.ok) return;
+  assert.equal(missing.code, "task_billing_not_found");
+
+  const prechecked = await harness.taskBilling.precheck({
+    localUserId: "local-user",
+    taskId: "server-priced",
+    operation: "cloud_image_generation",
+    estimatedQuotaUnits: 40,
+    idempotencyKey: "server-priced",
+    requestFingerprint: "image:server-priced:40",
+  });
+  assert.equal(prechecked.ok, true);
+
+  const tamperedEstimate = await harness.taskBilling.verifyPrecheck({
+    localUserId: "local-user",
+    taskId: "server-priced",
+    idempotencyKey: "server-priced",
+    estimatedQuotaUnits: 0,
+    requestFingerprint: "image:server-priced:0",
+  });
+  assert.equal(tamperedEstimate.ok, false);
+  if (tamperedEstimate.ok) return;
+  assert.equal(tamperedEstimate.code, "task_billing_conflict");
+
+  const tamperedUser = await harness.taskBilling.verifyPrecheck({
+    localUserId: "other-user",
+    taskId: "server-priced",
+    idempotencyKey: "server-priced",
+    estimatedQuotaUnits: 40,
+    requestFingerprint: "image:server-priced:40",
+  });
+  assert.equal(tamperedUser.ok, false);
+  if (tamperedUser.ok) return;
+  assert.equal(tamperedUser.code, "task_billing_not_found");
+
+  const matched = await harness.taskBilling.verifyPrecheck({
+    localUserId: "local-user",
+    taskId: "server-priced",
+    idempotencyKey: "server-priced",
+    estimatedQuotaUnits: 40,
+    requestFingerprint: "image:server-priced:40",
+  });
+  assert.equal(matched.ok, true);
+});
+
+test("precheck retries reject mismatched request parameters", async () => {
+  const harness = service();
+  const first = await harness.taskBilling.precheck({
+    localUserId: "local-user",
+    taskId: "same-task",
+    operation: "cloud_image_generation",
+    estimatedQuotaUnits: 40,
+    idempotencyKey: "same-task",
+    requestFingerprint: "image:same-task:40",
+  });
+  assert.equal(first.ok, true);
+
+  const changed = await harness.taskBilling.precheck({
+    localUserId: "local-user",
+    taskId: "same-task",
+    operation: "cloud_image_generation",
+    estimatedQuotaUnits: 80,
+    idempotencyKey: "same-task",
+    requestFingerprint: "image:same-task:80",
+  });
+  assert.equal(changed.ok, false);
+  if (changed.ok) return;
+  assert.equal(changed.code, "task_billing_conflict");
 });
 
 test("settles successful task only once across duplicate callbacks", async () => {
@@ -369,6 +451,32 @@ test("local write failure after quota adjustment recovers without duplicate char
   assert.equal(harness.adjustments.length, 1);
   assert.equal(JSON.stringify(first).includes("secret-token"), false);
   assert.equal(JSON.stringify(first).includes("hidden"), false);
+});
+
+test("settlement failure leaves a reconciliation record", async () => {
+  const harness = service({
+    adjustQuota: async () => ({
+      ok: false,
+      code: "NEW_API_DOWN",
+      message: "New API quota adjustment failed token=hidden",
+      retryable: true,
+    }),
+  });
+  await precheckAndAccept(harness, "task-settlement-failure");
+
+  const result = await harness.taskBilling.settleSuccess({
+    localUserId: "local-user",
+    taskId: "task-settlement-failure",
+    actualQuotaUnits: 6,
+  });
+
+  assert.equal(result.ok, true);
+  if (!result.ok) return;
+  assert.equal(result.action, "reconciliation_required");
+  assert.equal(result.record.billing_state, "reconciliation_required");
+  assert.equal(result.record.last_error?.includes("hidden"), false);
+  const usage = await harness.usageRepository.getByTaskId("local-user", "task-settlement-failure");
+  assert.equal(usage?.status, "reconciliation_required");
 });
 
 test("interrupted provider charge is recovered from target quota without duplicate debit", async () => {

@@ -26,6 +26,7 @@ import {
   type TaskBillingResult,
   type TaskBillingSettleInput,
   type TaskBillingAcceptInput,
+  type TaskBillingVerifyPrecheckInput,
 } from "./task-billing-types";
 import {
   type BillableOperation,
@@ -261,6 +262,17 @@ export class TaskBillingService {
     const existing = await this.safeGetExisting(input.localUserId, input.idempotencyKey, input.taskId);
     if (isTaskBillingFailure(existing)) return existing;
     if (existing) {
+      if (
+        existing.estimated_quota_units !== input.estimatedQuotaUnits
+        || (existing.request_fingerprint || null) !== (input.requestFingerprint || null)
+      ) {
+        return failure({
+          code: "task_billing_conflict",
+          status: 409,
+          message: "Task billing precheck does not match the existing request.",
+          retryable: false,
+        });
+      }
       return { ok: true, status: 200, action: "idempotent", record: existing };
     }
 
@@ -298,6 +310,7 @@ export class TaskBillingService {
         taskId: input.taskId,
         usageRecordId: usage.id,
         idempotencyKey: input.idempotencyKey,
+        requestFingerprint: input.requestFingerprint || null,
         estimatedQuotaUnits: input.estimatedQuotaUnits,
         now: this.now(),
       });
@@ -308,6 +321,36 @@ export class TaskBillingService {
       if (duplicate) return { ok: true, status: 200, action: "idempotent", record: duplicate };
       return errorFailure(error);
     }
+  }
+
+  async verifyPrecheck(input: TaskBillingVerifyPrecheckInput): Promise<TaskBillingResult> {
+    if (
+      !nonBlank(input.localUserId)
+      || !nonBlank(input.taskId)
+      || !nonBlank(input.idempotencyKey)
+      || !Number.isInteger(input.estimatedQuotaUnits)
+      || input.estimatedQuotaUnits < 0
+    ) {
+      return invalidTaskBillingRequest();
+    }
+
+    const record = await this.safeGetByTaskId(input.localUserId, input.taskId);
+    if (isTaskBillingFailure(record)) return record;
+    if (!record) return this.notFound();
+    if (
+      record.idempotency_key !== input.idempotencyKey.trim()
+      || record.estimated_quota_units !== input.estimatedQuotaUnits
+      || (record.request_fingerprint || null) !== (input.requestFingerprint || null)
+      || !["prechecked", "accepted"].includes(record.billing_state)
+    ) {
+      return failure({
+        code: "task_billing_conflict",
+        status: 409,
+        message: "Task billing precheck does not match the generation request.",
+        retryable: false,
+      });
+    }
+    return { ok: true, status: 200, action: "idempotent", record };
   }
 
   async accept(input: TaskBillingAcceptInput): Promise<TaskBillingResult> {

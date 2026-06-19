@@ -8,7 +8,11 @@ import { useRouter } from "next/navigation";
 
 import { WorkbenchShell } from "@/components/workbench-shell";
 import { ApiError, fetchJson, fetchJsonWithCsrf } from "@/lib/client/api";
-import { estimateImageGenerationQuota, estimateVideoGenerationQuota } from "@/lib/generation-quota";
+import {
+  estimateImageGenerationQuota,
+  estimateVideoGenerationQuota,
+  generationBillingFingerprint,
+} from "@/lib/generation-quota";
 import { cn } from "@/lib/utils";
 import type { PublicAuthUser } from "@/lib/server/auth";
 import type { BillingOrder, PublicPaymentChannelConfig } from "@/lib/server/billing";
@@ -342,6 +346,7 @@ export function StudioApp() {
   const [selectedBillingOrderId, setSelectedBillingOrderId] = useState<string | null>(null);
   const [accountLoading, setAccountLoading] = useState(true);
   const [billingSubmitting, setBillingSubmitting] = useState(false);
+  const billingRequestKeyRef = useRef(new Map<string, string>());
   const [message, setMessage] = useState("");
   const [outputs, setOutputs] = useState<Partial<Record<BusinessToolId, OutputState>>>({});
   const [mobileAction, setMobileAction] = useState<MobileActionState>(null);
@@ -461,6 +466,10 @@ export function StudioApp() {
       return;
     }
     if (billingSubmitting) return;
+    const requestKey = `${channel.channel}:${channel.currency}:${amount}`;
+    const idempotencyKey = billingRequestKeyRef.current.get(requestKey)
+      || createTaskId(`billing-${channel.channel}-${amount}`);
+    billingRequestKeyRef.current.set(requestKey, idempotencyKey);
     setBillingSubmitting(true);
     setMessage("");
     try {
@@ -470,15 +479,17 @@ export function StudioApp() {
           channel: channel.channel,
           currency: channel.currency,
           requestedAmount: amount,
-          idempotencyKey: `web-${channel.channel}-${amount}-${sessionUser.local_user_id}`,
+          idempotencyKey,
         }),
       });
       setBillingOrders((current) => [response.order, ...current.filter((order) => order.order_id !== response.order.order_id)]);
       setSelectedBillingOrderId(response.order.order_id);
       setMessage(`已创建 ${channel.name} 充值订单。`);
+      billingRequestKeyRef.current.delete(requestKey);
     } catch (error) {
       const text = error instanceof ApiError ? error.message : error instanceof Error ? error.message : "创建订单失败。";
       setMessage(text);
+      billingRequestKeyRef.current.delete(requestKey);
     } finally {
       setBillingSubmitting(false);
     }
@@ -862,6 +873,16 @@ export function StudioApp() {
       quality: imageWorkspace.quality,
       referenceImages: imageWorkspace.files.length,
     });
+    const requestFingerprint = generationBillingFingerprint({
+      kind: "image",
+      providerId: selectedImageProvider.id,
+      mode: activeImageMode,
+      ratio: imageWorkspace.ratio,
+      quality: imageWorkspace.quality,
+      referenceImages: imageWorkspace.files.length,
+      taskId,
+      estimatedQuotaUnits,
+    });
 
     try {
       await fetchJsonWithCsrf("/api/quota/precheck", {
@@ -871,6 +892,7 @@ export function StudioApp() {
           taskId,
           idempotencyKey: taskId,
           estimatedQuotaUnits,
+          requestFingerprint,
         }),
       });
     } catch (error) {
@@ -1325,6 +1347,16 @@ export function StudioApp() {
       durationSeconds: videoWorkspace.duration,
       referenceImages: videoWorkspace.files.length,
     });
+    const requestFingerprint = generationBillingFingerprint({
+      kind: "video",
+      providerId: selectedVideoProvider.id,
+      mode: activeVideoMode,
+      ratio: videoWorkspace.ratio,
+      durationSeconds: videoWorkspace.duration,
+      referenceImages: videoWorkspace.files.length,
+      taskId,
+      estimatedQuotaUnits,
+    });
 
     try {
       await fetchJsonWithCsrf("/api/quota/precheck", {
@@ -1334,6 +1366,7 @@ export function StudioApp() {
           taskId,
           idempotencyKey: taskId,
           estimatedQuotaUnits,
+          requestFingerprint,
         }),
       });
     } catch (error) {

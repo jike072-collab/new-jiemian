@@ -14,6 +14,7 @@ export type CreateTaskBillingRecordInput = {
   taskId: string;
   usageRecordId?: string | null;
   idempotencyKey: string;
+  requestFingerprint?: string | null;
   estimatedQuotaUnits: number;
   now?: Date;
 };
@@ -129,6 +130,7 @@ function normalizeRecord(record: Partial<TaskBillingRecord>): TaskBillingRecord 
     new_api_task_id: record.new_api_task_id ?? null,
     usage_record_id: record.usage_record_id ?? null,
     idempotency_key: String(record.idempotency_key || ""),
+    request_fingerprint: record.request_fingerprint === undefined ? null : record.request_fingerprint,
     billing_state: record.billing_state || "prechecked",
     estimated_quota_units: Number(record.estimated_quota_units || 0),
     final_quota_units: record.final_quota_units === undefined ? null : record.final_quota_units,
@@ -256,6 +258,7 @@ class StoreTaskBillingRepository implements TaskBillingRepository {
         new_api_task_id: null,
         usage_record_id: input.usageRecordId || null,
         idempotency_key: idempotencyKey,
+        request_fingerprint: input.requestFingerprint || null,
         billing_state: "prechecked",
         estimated_quota_units: input.estimatedQuotaUnits,
         final_quota_units: null,
