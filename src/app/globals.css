@@ -617,8 +617,18 @@
 
   .studio-form-panel__content {
     min-height: 100%;
+    min-width: 0;
     align-content: start;
     padding-bottom: var(--space-stack);
+  }
+
+  .studio-field {
+    min-width: 0;
+  }
+
+  .studio-field__body {
+    width: 100%;
+    min-width: 0;
   }
 
   .studio-field__label {
@@ -678,75 +688,6 @@
   .studio-prompt-action:disabled {
     cursor: not-allowed;
     opacity: 0.72;
-  }
-
-  .studio-template-strip {
-    display: flex;
-    gap: 10px;
-    min-width: 0;
-    overflow-x: auto;
-    padding: 2px 2px 8px;
-    scrollbar-width: thin;
-  }
-
-  .studio-template-card {
-    display: grid;
-    flex: 0 0 min(138px, 42vw);
-    gap: 7px;
-    min-height: 132px;
-    border: 1px solid var(--border-subtle);
-    border-radius: var(--radius-control);
-    background: color-mix(in srgb, var(--surface) 76%, transparent);
-    color: var(--muted-strong);
-    padding: 10px;
-    text-align: left;
-    transition:
-      border-color var(--motion-base),
-      background var(--motion-base),
-      color var(--motion-base);
-  }
-
-  .studio-template-card:hover,
-  .studio-template-card:focus-visible {
-    border-color: color-mix(in srgb, var(--primary) 42%, transparent);
-    background: color-mix(in srgb, var(--primary-soft) 34%, var(--surface));
-    color: var(--foreground);
-  }
-
-  .studio-template-card:focus-visible {
-    outline: 2px solid var(--primary);
-    outline-offset: 2px;
-  }
-
-  .studio-template-card.is-active {
-    border-color: color-mix(in srgb, var(--primary) 58%, transparent);
-    background: color-mix(in srgb, var(--primary-soft) 70%, var(--surface));
-    color: var(--foreground);
-  }
-
-  .studio-template-card__thumb {
-    display: grid;
-    width: 46px;
-    height: 36px;
-    place-items: center;
-    border-radius: 8px;
-    background: color-mix(in srgb, var(--panel-2) 78%, transparent);
-    color: var(--primary);
-    font-size: 12px;
-    font-weight: 700;
-  }
-
-  .studio-template-card__title {
-    color: var(--foreground);
-    font-size: 13px;
-    font-weight: 680;
-    line-height: 1.25;
-  }
-
-  .studio-template-card__meta {
-    color: var(--muted);
-    font-size: 12px;
-    line-height: 1.25;
   }
 
   .studio-sr-only {
@@ -810,6 +751,33 @@
   .studio-mode__button.is-active {
     background: color-mix(in srgb, var(--primary-soft) 84%, var(--surface));
     color: var(--primary);
+  }
+
+  .studio-template-scroll {
+    width: 100%;
+    max-width: 100%;
+    min-width: 0;
+    overflow-x: auto;
+    padding-bottom: 4px;
+    scrollbar-width: thin;
+  }
+
+  .studio-template-scroll .studio-mode {
+    width: 100%;
+    min-width: 0;
+  }
+
+  .studio-template-scroll .studio-mode__options {
+    display: flex;
+    width: max-content;
+    min-width: 100%;
+    grid-template-columns: none;
+  }
+
+  .studio-template-scroll .studio-mode__button {
+    width: auto;
+    min-width: 112px;
+    white-space: nowrap;
   }
 
   .studio-custom-select {
@@ -1063,15 +1031,20 @@
   }
 
   .studio-ratio {
-    display: grid;
-    grid-template-columns: repeat(6, minmax(0, 1fr));
-    gap: 6px;
+    display: flex;
+    width: fit-content;
+    max-width: 100%;
+    align-items: start;
+    gap: 10px;
     min-width: 0;
+    overflow-x: auto;
+    scrollbar-width: thin;
   }
 
   .studio-ratio__item {
     display: grid;
-    min-width: 0;
+    width: 60px;
+    min-width: 60px;
     min-height: 82px;
     justify-items: center;
     gap: 4px;
@@ -1161,11 +1134,6 @@
   .ratio-3-4 {
     width: 29px;
     height: 40px;
-  }
-
-  .ratio-4-5 {
-    width: 31px;
-    height: 39px;
   }
 
   .studio-actions {
