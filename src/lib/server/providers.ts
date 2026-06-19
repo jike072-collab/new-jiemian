@@ -66,6 +66,18 @@ export function defaultProviders(): ProviderConfig[] {
       endpointType: "grok-videos",
     },
     {
+      id: "prompt-optimizer",
+      kind: "prompt",
+      title: "提示词优化",
+      role: "用于图片和视频提示词优化",
+      apiUrl: env("PROMPT_OPTIMIZER_API_URL", "https://api.manxiaobai.online/v1/chat/completions"),
+      model: env("PROMPT_OPTIMIZER_MODEL", ""),
+      displayName: env("PROMPT_OPTIMIZER_DISPLAY_NAME", "提示词优化模型"),
+      apiKey: env("PROMPT_OPTIMIZER_API_KEY"),
+      enabled: hasKey(env("PROMPT_OPTIMIZER_API_KEY")),
+      endpointType: "chat-completions",
+    },
+    {
       id: "image-upscale",
       kind: "image-upscale",
       title: "图片高清",

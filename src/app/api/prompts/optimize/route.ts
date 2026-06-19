@@ -48,9 +48,20 @@ async function readProviderJson(response: Response) {
     const record = asRecord(payload);
     const message = firstString(asRecord(record.error).message, record.message)
       || `提示词优化请求失败：HTTP ${response.status}`;
-    throw new Error(message);
+    throw new Error(normalizePromptOptimizerError(message));
   }
   return payload;
+}
+
+function normalizePromptOptimizerError(message: string) {
+  const noAccess = message.match(/no access to model\s+([^\s(]+)/i);
+  if (noAccess?.[1]) {
+    return `当前密钥没有访问提示词优化模型 ${noAccess[1]} 的权限，请在后台切换模型或更换密钥。`;
+  }
+  if (/video model.*not available|not available on this endpoint/i.test(message)) {
+    return "当前选择的是视频模型，不能用于提示词优化，请在后台填写可用的文本模型。";
+  }
+  return message;
 }
 
 function optimizerInstruction(input: Required<Pick<OptimizePromptRequest, "tool" | "prompt">> & OptimizePromptRequest) {
@@ -82,10 +93,6 @@ function parseOptimizedPrompt(payload: unknown) {
   return firstString(message.content, first.text, root.content, root.prompt);
 }
 
-function promptOptimizerModel(providerModel: string) {
-  return providerModel.startsWith("grok-video-") ? "gpt-5.5" : providerModel;
-}
-
 export async function POST(request: Request) {
   try {
     const body = await request.json() as OptimizePromptRequest;
@@ -96,17 +103,18 @@ export async function POST(request: Request) {
 
     const providers = await readProviders();
     const provider = providers.find((item) => (
-      item.endpointType === "grok-videos"
-      && item.enabled
-      && item.apiKey.trim()
-    )) || providers.find((item) => (
-      !item.endpointType.endsWith("-cli")
+      item.kind === "prompt"
+      && item.endpointType === "chat-completions"
       && item.enabled
       && item.apiKey.trim()
     ));
 
     if (!provider) {
-      return NextResponse.json({ error: "提示词优化接口暂未配置，请先在后台配置可用密钥。" }, { status: 400 });
+      return NextResponse.json({ error: "提示词优化模型暂未配置，请先在后台配置可用的文本模型。" }, { status: 400 });
+    }
+
+    if (!provider.model.trim()) {
+      return NextResponse.json({ error: "提示词优化模型暂未填写，请先在后台填写可用的文本模型 ID。" }, { status: 400 });
     }
 
     const endpoint = promptOptimizerEndpoint(provider.apiUrl);
@@ -121,7 +129,7 @@ export async function POST(request: Request) {
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
-        model: promptOptimizerModel(provider.model),
+        model: provider.model,
         messages: [
           { role: "user", content: optimizerInstruction({ ...body, tool: body.tool || "image-generator", prompt }) },
         ],

@@ -21,6 +21,7 @@ type ModelOption = {
 const endpointOptions: Array<{ value: EndpointType; label: string }> = [
   { value: "images-generations", label: "OpenAI-compatible images/generations" },
   { value: "images-edits", label: "OpenAI-compatible images/edits (multipart)" },
+  { value: "chat-completions", label: "OpenAI-compatible chat/completions" },
   { value: "videos-generations", label: "OpenAI-compatible videos/generations" },
   { value: "grok-videos", label: "Grok 视频 /v1/videos（异步）" },
   { value: "upscayl-cli", label: "本地 Upscayl CLI（图片高清）" },
@@ -35,6 +36,7 @@ const grokVideoModelOptions: ModelOption[] = [
 function endpointOptionsFor(provider: EditableProvider) {
   if (provider.kind === "image") return endpointOptions.filter((option) => option.value.startsWith("images-"));
   if (provider.kind === "video") return endpointOptions.filter((option) => option.value === "videos-generations" || option.value === "grok-videos");
+  if (provider.kind === "prompt") return endpointOptions.filter((option) => option.value === "chat-completions");
   if (provider.kind === "image-upscale") return endpointOptions.filter((option) => option.value === "upscayl-cli");
   return endpointOptions.filter((option) => option.value === "video2x-cli");
 }

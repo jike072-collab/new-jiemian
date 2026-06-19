@@ -722,10 +722,12 @@ export function StudioApp() {
   const optimizeImagePrompt = useCallback(async () => {
     const prompt = imageWorkspace.prompt.trim();
     if (!prompt) {
+      const text = "请先填写提示词。";
       updateImageWorkspace({
-        promptOptimizeError: "请先填写提示词。",
+        promptOptimizeError: text,
         promptOptimizeUndo: "",
       });
+      setMessage(text);
       return;
     }
     if (imageWorkspace.promptOptimizing) return;
@@ -741,7 +743,7 @@ export function StudioApp() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          tool: activeImageMode,
+          tool: "image-generator",
           templateId: imageWorkspace.templateId,
           prompt: originalPrompt,
           hasImage: imageWorkspaceHasFiles,
@@ -760,14 +762,15 @@ export function StudioApp() {
         submitError: "",
       });
     } catch (error) {
+      const text = error instanceof Error ? error.message : "优化失败，请稍后重试";
       updateImageWorkspace({
         promptOptimizing: false,
         promptOptimizeUndo: "",
-        promptOptimizeError: error instanceof Error ? error.message : "优化失败，请稍后重试",
+        promptOptimizeError: text,
       });
+      setMessage(text);
     }
   }, [
-    activeImageMode,
     imageWorkspace.prompt,
     imageWorkspace.promptOptimizing,
     imageWorkspace.quality,
@@ -972,10 +975,12 @@ export function StudioApp() {
   const optimizeVideoPrompt = useCallback(async () => {
     const prompt = videoWorkspace.prompt.trim();
     if (!prompt) {
+      const text = "请先填写提示词。";
       updateVideoWorkspace({
-        promptOptimizeError: "请先填写提示词。",
+        promptOptimizeError: text,
         promptOptimizeUndo: "",
       });
+      setMessage(text);
       return;
     }
     if (videoWorkspace.promptOptimizing) return;
@@ -1010,11 +1015,13 @@ export function StudioApp() {
         submitError: "",
       });
     } catch (error) {
+      const text = error instanceof Error ? error.message : "优化失败，请稍后重试";
       updateVideoWorkspace({
         promptOptimizing: false,
         promptOptimizeUndo: "",
-        promptOptimizeError: error instanceof Error ? error.message : "优化失败，请稍后重试",
+        promptOptimizeError: text,
       });
+      setMessage(text);
     }
   }, [
     updateVideoWorkspace,

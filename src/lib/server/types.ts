@@ -1,8 +1,9 @@
-export type ProviderKind = "image" | "video" | "image-upscale" | "video-upscale";
+export type ProviderKind = "image" | "video" | "prompt" | "image-upscale" | "video-upscale";
 
 export type EndpointType =
   | "images-generations"
   | "images-edits"
+  | "chat-completions"
   | "videos-generations"
   | "grok-videos"
   | "upscayl-cli"
