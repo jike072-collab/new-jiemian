@@ -1021,15 +1021,17 @@
     display: grid;
     grid-template-columns: repeat(auto-fill, minmax(min(100%, 168px), 1fr));
     gap: 12px;
+    align-items: stretch;
     min-width: 0;
   }
 
   .template-center-card {
     display: grid;
-    grid-template-rows: auto minmax(116px, 1fr) auto;
+    grid-template-rows: auto auto 34px;
     gap: 10px;
-    align-content: start;
+    align-content: stretch;
     min-width: 0;
+    height: 100%;
     border: 1px solid var(--border-subtle);
     border-radius: var(--radius-card);
     background: color-mix(in srgb, var(--surface) 64%, transparent);
@@ -1068,7 +1070,7 @@
 
   .template-center-card__body {
     display: grid;
-    grid-template-rows: 20px 42px minmax(27px, auto);
+    grid-template-rows: 20px 42px auto;
     gap: 6px;
     min-width: 0;
     align-content: start;
@@ -1097,7 +1099,6 @@
     display: flex;
     flex-wrap: wrap;
     gap: 6px;
-    min-height: 60px;
     align-content: start;
   }
 

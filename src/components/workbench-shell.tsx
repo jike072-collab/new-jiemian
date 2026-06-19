@@ -302,6 +302,8 @@ function MobileOverlay({
   drawerRef: RefObject<HTMLDivElement | null>;
   drawerId: string;
 }) {
+  const parametersTabLabel = activeTool.id === "templates" || activeTool.id === "library" ? "选项" : "参数";
+
   return (
     <>
       <div className="shell-mobile-tabs">
@@ -320,7 +322,7 @@ function MobileOverlay({
             onClick={() => onChangePane("parameters")}
           >
             <PanelLeft className="size-4" aria-hidden="true" />
-            参数
+            {parametersTabLabel}
           </button>
           <button
             type="button"
