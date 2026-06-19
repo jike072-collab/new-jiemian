@@ -41,6 +41,7 @@
     "test:auth-persistence": "node scripts/database/test-auth-persistence.mjs",
     "database:boundary": "node scripts/database/test-server-boundary.mjs",
     "db:health": "node scripts/database/migrate.mjs health",
+    "test:prompt-optimizer": "node scripts/test-prompt-optimizer.mjs",
     "test:security-release": "node scripts/test-security-release.mjs",
     "release:preflight": "node scripts/release-preflight.mjs",
     "security:release-check": "node scripts/security-release-check.mjs",
