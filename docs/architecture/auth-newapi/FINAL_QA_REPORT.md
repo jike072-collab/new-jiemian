@@ -206,6 +206,65 @@ Application readiness result:
   present in this worktree.
 - The current missing-environment state is not a production readiness pass.
 
+## Final Real Environment Validation Attempt
+
+Attempt date: 2026-06-19.
+
+Commit under test before this report update:
+`ff7880a57fbcc77e69d67080147e048473bbb239`.
+
+Remote validation already green on that commit:
+
+- `Auth New API Final Gate` run `27829132979`: success.
+- `Backend Security Release Gate` run `27829132906`: success.
+- `CI` run `27829132934`: success.
+
+Environment configuration probe:
+
+- `APP_DATABASE_URL`: not provided.
+- `APP_DATABASE_EXPECTED_NAME`: not provided.
+- `APP_AUTH_PERSISTENCE_MODE`: not provided.
+- `APP_BILLING_PERSISTENCE_MODE`: not provided.
+- `TASK_BILLING_PERSISTENCE_MODE`: not provided.
+- `NEW_API_ENABLED`: not provided.
+- `NEW_API_BASE_URL`: not provided.
+- `NEW_API_ADMIN_USER_ID`: not provided.
+- `NEW_API_ADMIN_ACCESS_TOKEN`: not provided.
+- `IMAGE_API_URL`: not provided.
+- `IMAGE_MODEL`: not provided.
+- `IMAGE_MODEL_API_KEY`: not provided.
+- `VIDEO_API_URL`: not provided.
+- `VIDEO_MODEL`: not provided.
+- `VIDEO_MODEL_API_KEY`: not provided.
+- `PAYMENT_PRODUCTION_ENABLED`: not provided.
+
+Local Docker availability:
+
+- `docker --version`: unavailable in this shell.
+- `docker compose version`: unavailable in this shell.
+- Because Docker is unavailable, this workstation cannot start an isolated local
+  PostgreSQL/New API stack for this final validation attempt.
+
+Result:
+
+- Test PostgreSQL could not be configured from approved environment variables.
+- Test New API could not be configured from approved environment variables.
+- Test user mapping could not be activated against a real New API runtime.
+- Test image Provider could not be configured from approved environment
+  variables.
+- Test video Provider could not be configured from approved environment
+  variables.
+- Real image generation: `BLOCKED`.
+- Real video generation: `BLOCKED`.
+- Live debit-once and duplicate-request Provider verification: `BLOCKED`.
+- Live failed-task no-charge verification: `BLOCKED`.
+- Application readiness passing both PostgreSQL and New API: `BLOCKED`.
+
+This is an environment evidence gap, not a new code change. The report remains
+blocked because the requested production readiness result requires approved test
+runtime configuration and Provider credentials supplied through environment
+variables.
+
 ## Not Fully Exercised Locally
 
 - Real third-party or approved test image/video Provider calls were not executed
