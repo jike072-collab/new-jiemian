@@ -2,8 +2,11 @@ import {
   createJsonNewApiUserMappingRepository,
   type NewApiUserMappingRepository,
 } from "../integrations/new-api";
+import { createPostgresNewApiUserMappingRepository } from "../integrations/new-api/postgres-user-mapping";
 import { type UsageLogRepository, createJsonUsageLogRepository } from "./repository";
+import { createPostgresUsageLogRepository } from "./postgres-usage-repository";
 import { type TaskBillingRepository, createJsonTaskBillingRepository } from "./task-billing-repository";
+import { createPostgresTaskBillingRepository } from "./postgres-task-billing-repository";
 
 export type TaskBillingPersistenceMode = "json" | "postgres";
 
@@ -65,24 +68,14 @@ export function createTaskBillingPersistenceRepositories(
   };
 }
 
-function serverRequire<T>(path: string): T {
-  const requireFn = (0, eval)("require") as NodeRequire;
-  return requireFn(path) as T;
-}
-
 function loadPostgresTaskBillingRepository() {
-  const repositoryModule = serverRequire<typeof import("./postgres-task-billing-repository")>("./postgres-task-billing-repository");
-  return repositoryModule.createPostgresTaskBillingRepository();
+  return createPostgresTaskBillingRepository();
 }
 
 function loadPostgresUsageLogRepository() {
-  const repositoryModule = serverRequire<typeof import("./postgres-usage-repository")>("./postgres-usage-repository");
-  return repositoryModule.createPostgresUsageLogRepository();
+  return createPostgresUsageLogRepository();
 }
 
 function loadPostgresMappingRepository() {
-  const mappingModule = serverRequire<typeof import("../integrations/new-api/postgres-user-mapping")>(
-    "../integrations/new-api/postgres-user-mapping",
-  );
-  return mappingModule.createPostgresNewApiUserMappingRepository();
+  return createPostgresNewApiUserMappingRepository();
 }
