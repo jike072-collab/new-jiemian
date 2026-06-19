@@ -759,11 +759,11 @@ export function StudioApp() {
         promptOptimizeError: "",
         submitError: "",
       });
-    } catch {
+    } catch (error) {
       updateImageWorkspace({
         promptOptimizing: false,
         promptOptimizeUndo: "",
-        promptOptimizeError: "优化失败，请稍后重试",
+        promptOptimizeError: error instanceof Error ? error.message : "优化失败，请稍后重试",
       });
     }
   }, [
@@ -1009,11 +1009,11 @@ export function StudioApp() {
         promptOptimizeError: "",
         submitError: "",
       });
-    } catch {
+    } catch (error) {
       updateVideoWorkspace({
         promptOptimizing: false,
         promptOptimizeUndo: "",
-        promptOptimizeError: "优化失败，请稍后重试",
+        promptOptimizeError: error instanceof Error ? error.message : "优化失败，请稍后重试",
       });
     }
   }, [

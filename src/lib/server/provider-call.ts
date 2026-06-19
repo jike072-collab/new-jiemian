@@ -261,9 +261,20 @@ async function readProviderJson(response: Response) {
     const record = asRecord(payload);
     const message = firstString(asRecord(record.error).message, record.message)
       || `供应商请求失败：HTTP ${response.status}`;
-    throw new Error(message);
+    throw new Error(normalizeProviderError(message));
   }
   return payload;
+}
+
+function normalizeProviderError(message: string) {
+  const noAccess = message.match(/no access to model\s+([^\s(]+)/i);
+  if (noAccess?.[1]) {
+    return `当前密钥没有访问模型 ${noAccess[1]} 的权限，请在后台切换模型或更换密钥。`;
+  }
+  if (/requires exactly one reference image/i.test(message)) {
+    return "当前模型必须且只能上传 1 张参考图。";
+  }
+  return message;
 }
 
 async function callImageProvider({
