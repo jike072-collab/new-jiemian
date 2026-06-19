@@ -2,9 +2,9 @@ import { randomUUID } from "node:crypto";
 
 import {
   adminCreditNewApiUserQuota,
-  createJsonNewApiUserMappingRepository,
   type NewApiUserMappingRepository,
 } from "../integrations/new-api";
+import { createAuthPersistenceRepositories } from "../auth/persistence";
 import {
   amountAllowed,
   calculateCreditedQuota,
@@ -145,7 +145,7 @@ export class BillingService {
 
   constructor(dependencies: BillingServiceDependencies = {}) {
     this.repository = dependencies.repository || createBillingPersistenceRepository();
-    this.mappingRepository = dependencies.mappingRepository || createJsonNewApiUserMappingRepository();
+    this.mappingRepository = dependencies.mappingRepository || createAuthPersistenceRepositories().mappingRepository;
     this.creditQuota = dependencies.creditQuota || defaultCreditQuota;
     this.getProviderStatus = dependencies.getProviderStatus;
     this.getPaymentAdapter = dependencies.getPaymentAdapter || getPaymentAdapter;
