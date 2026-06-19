@@ -15,7 +15,7 @@ type EditableProvider = PublicProvider & {
 const endpointOptions: Array<{ value: EndpointType; label: string }> = [
   { value: "images-generations", label: "OpenAI-compatible images/generations" },
   { value: "images-edits", label: "OpenAI-compatible images/edits (multipart)" },
-  { value: "videos-generations", label: "OpenAI-compatible videos/generations" },
+  { value: "videos-generations", label: "OpenAI-compatible async video (/v1/videos or videos/generations)" },
   { value: "upscayl-cli", label: "本地 Upscayl CLI（图片高清）" },
   { value: "video2x-cli", label: "本地 Video2X CLI（视频高清）" },
 ];
