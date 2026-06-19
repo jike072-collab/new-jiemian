@@ -47,8 +47,8 @@ test("provider display names are saved, re-read, and exposed safely to the front
     },
     {
       id: "video-main",
-      apiUrl: "https://example.test/v1/videos/generations",
-      model: "seedance-raw-model",
+      apiUrl: "https://example.test/v1/videos",
+      model: "grok-video-1.0",
       displayName: "Seedance 视频模型",
       endpointType: "videos-generations",
       enabled: true,

@@ -55,13 +55,22 @@ function firstString(...values: unknown[]) {
 function parseProviderOutput(payload: unknown): ProviderOutput {
   const root = asRecord(payload);
   const data = Array.isArray(root.data) ? root.data : [];
-  const first = asRecord(data[0] || root.video || root.result || root.output || payload);
+  const result = asRecord(root.result);
+  const resultData = Array.isArray(result.data) ? result.data : [];
+  const metadata = asRecord(root.metadata);
+  const first = asRecord(data[0] || resultData[0] || root.video || root.result || root.output || payload);
   const url = firstString(
+    metadata.url,
     first.url,
     first.image_url,
     first.video_url,
     first.output_url,
     first.download_url,
+    result.url,
+    result.video_url,
+    result.output_url,
+    result.download_url,
+    root.result_url,
     root.url,
     root.image_url,
     root.video_url,
@@ -79,7 +88,7 @@ function parseProviderOutput(payload: unknown): ProviderOutput {
   return {
     url,
     base64,
-    jobId: firstString(first.id, first.video_id, root.id, root.video_id),
+    jobId: firstString(first.task_id, first.id, first.video_id, root.task_id, root.id, root.video_id),
     status: firstString(first.status, root.status),
     statusUrl: firstString(first.status_url, root.status_url),
     mimeType: firstString(first.mime_type, root.mime_type),
@@ -110,7 +119,30 @@ function deriveStatusUrl(apiUrl: string, jobId: string) {
   if (!jobId) return "";
   try {
     const parsed = new URL(apiUrl);
-    parsed.pathname = parsed.pathname.replace(/\/videos\/generations\/?$/i, `/videos/${encodeURIComponent(jobId)}`);
+    if (/\/videos\/generations\/?$/i.test(parsed.pathname)) {
+      parsed.pathname = parsed.pathname.replace(/\/videos\/generations\/?$/i, `/videos/${encodeURIComponent(jobId)}`);
+    } else if (/\/videos\/?$/i.test(parsed.pathname)) {
+      parsed.pathname = parsed.pathname.replace(/\/videos\/?$/i, `/videos/${encodeURIComponent(jobId)}`);
+    }
+    parsed.search = "";
+    return parsed.toString();
+  } catch {
+    return "";
+  }
+}
+
+function isMultipartVideoEndpoint(apiUrl: string) {
+  try {
+    return /\/videos\/?$/i.test(new URL(apiUrl).pathname);
+  } catch {
+    return false;
+  }
+}
+
+function deriveVideoReferenceUploadUrl(apiUrl: string) {
+  try {
+    const parsed = new URL(apiUrl);
+    parsed.pathname = parsed.pathname.replace(/\/videos\/?$/i, "/video-reference-images");
     parsed.search = "";
     return parsed.toString();
   } catch {
@@ -199,6 +231,59 @@ async function callImageProvider({
       ...(quality === "2k" ? { upscale: "2k" } : {}),
     }),
     signal: AbortSignal.timeout(300000),
+  });
+  return parseProviderOutput(await readProviderJson(response));
+}
+
+async function uploadVideoReferenceImage(provider: ProviderConfig, file: UploadedMedia) {
+  const uploadUrl = deriveVideoReferenceUploadUrl(provider.apiUrl);
+  if (!uploadUrl) throw new Error("当前视频接口地址无法推导参考图上传接口。");
+
+  const response = await fetch(uploadUrl, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      ...authHeaders(provider),
+    },
+    body: JSON.stringify({
+      image: `data:${file.mimeType};base64,${file.bytes.toString("base64")}`,
+    }),
+    signal: AbortSignal.timeout(120000),
+  });
+  const output = parseProviderOutput(await readProviderJson(response));
+  if (!output.url) throw new Error("视频参考图上传未返回可用 URL。");
+  return output.url;
+}
+
+async function callMultipartVideoProvider({
+  provider,
+  prompt,
+  ratio,
+  duration,
+  files,
+}: {
+  provider: ProviderConfig;
+  prompt: string;
+  ratio: string;
+  duration: number;
+  files: UploadedMedia[];
+}) {
+  const form = new FormData();
+  form.append("model", provider.model);
+  form.append("prompt", prompt);
+  form.append("seconds", String(duration));
+  form.append("aspect_ratio", ratio);
+  form.append("resolution", "720p");
+
+  for (const file of files) {
+    form.append("input_reference[image_url]", await uploadVideoReferenceImage(provider, file));
+  }
+
+  const response = await fetch(provider.apiUrl, {
+    method: "POST",
+    headers: authHeaders(provider),
+    body: form,
+    signal: AbortSignal.timeout(180000),
   });
   return parseProviderOutput(await readProviderJson(response));
 }
@@ -501,28 +586,38 @@ export async function submitVideo(input: {
       upstreamModel: provider.model,
     });
 
-    const providerPayload: Record<string, string | number | string[]> = {
-      model: provider.model,
-      prompt: input.prompt,
-      duration: input.duration,
-      aspect_ratio: input.ratio,
-      response_format: "url",
-    };
-    if (input.mode === "image-to-video") {
-      const [file] = input.files;
-      providerPayload.image = [`data:${file.mimeType};base64,${file.bytes.toString("base64")}`];
-    }
+    const output = isMultipartVideoEndpoint(provider.apiUrl)
+      ? await callMultipartVideoProvider({
+        provider,
+        prompt: input.prompt,
+        ratio: input.ratio,
+        duration: input.duration,
+        files: input.files,
+      })
+      : await (async () => {
+        const providerPayload: Record<string, string | number | string[]> = {
+          model: provider.model,
+          prompt: input.prompt,
+          duration: input.duration,
+          aspect_ratio: input.ratio,
+          response_format: "url",
+        };
+        if (input.mode === "image-to-video") {
+          const [file] = input.files;
+          providerPayload.image = [`data:${file.mimeType};base64,${file.bytes.toString("base64")}`];
+        }
 
-    const response = await fetch(provider.apiUrl, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        ...authHeaders(provider),
-      },
-      body: JSON.stringify(providerPayload),
-      signal: AbortSignal.timeout(180000),
-    });
-    const output = parseProviderOutput(await readProviderJson(response));
+        const response = await fetch(provider.apiUrl, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            ...authHeaders(provider),
+          },
+          body: JSON.stringify(providerPayload),
+          signal: AbortSignal.timeout(180000),
+        });
+        return parseProviderOutput(await readProviderJson(response));
+      })();
 
     if (output.url) {
       const stored = await outputToLibrary(output, "video", "video");
