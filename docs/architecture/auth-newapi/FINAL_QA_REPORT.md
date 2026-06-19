@@ -387,14 +387,123 @@ not provided. The previously configured Provider keys alone are not sufficient
 for production readiness because current PR #37 requires an active local user to
 New API mapping and successful quota precheck before provider dispatch.
 
+## Mapped Provider Validation
+
+Attempt date: 2026-06-19.
+
+Commits under test:
+
+- `65357df6527447d17681f0476ad8669a61d9527b`
+- `ed9bcc79373174fae18de638eaa093207393f8d8`
+
+Local uncommitted runtime configuration was used only for validation:
+
+- Test PostgreSQL application database on localhost.
+- Test New API runtime on localhost.
+- `NEW_API_ENABLED=true`.
+- Auth, billing, and task billing persistence modes set to PostgreSQL.
+- Production payment disabled.
+- Provider credentials loaded only from ignored local runtime files.
+
+No token, database password, Provider key, or generated media URL is recorded in
+this report.
+
+Readiness and mapping:
+
+- `GET /api/health/backend?mode=liveness`: `200`.
+- `GET /api/health/backend?mode=readiness`: `200`.
+- Readiness verified both application PostgreSQL and New API.
+- Test user session returned `mappingStatus=active`.
+- Test user's New API mapping resolved to an active New API user.
+- `GET /api/quota`: `200`.
+- `POST /api/quota/precheck`: accepted for video and image task attempts.
+
+Fixes made during this validation:
+
+- Production build PostgreSQL repository loading no longer depends on runtime
+  relative `require()` paths.
+- Default quota service uses PostgreSQL mapping and usage repositories in
+  PostgreSQL task billing mode.
+- Video job polling now derives `GET /v1/videos/{task_id}` for Grok-style
+  asynchronous video endpoints as well as the previous
+  `/v1/videos/generations` shape.
+- New API quota adjustment now uses the real management endpoint
+  `POST /api/user/manage` with `action=add_quota`, `mode=override`, and
+  `value`, because this New API build returns success for the previous
+  `PUT /api/user/` payload without changing quota.
+
+Grok video validation:
+
+- Provider: `grok-video-1.0` through the approved test Provider key.
+- Request mode: text-to-video.
+- Precheck estimated quota: `120`.
+- Generation submit: success, asynchronous task accepted.
+- Duplicate submit with the same local `taskId`: rejected before another
+  Provider dispatch.
+- Polling result: task reached `done`.
+- Task billing state: `settled`.
+- Usage state: `succeeded`.
+- Actual quota units: `120`.
+- New API quota before settlement: `1000`.
+- New API quota after settlement: `880`.
+- Result: video generation, duplicate-request protection, and debit-once
+  validation passed.
+
+Image validation:
+
+- Original configured image endpoint returned Provider HTTP `524`.
+- The test Provider key was then checked against
+  `https://api.manxiaobai.online/v1/models`; it only returned
+  `grok-video-1.0` and `grok-video-1.5`.
+- A real image attempt against `gpt-image-2` returned
+  `This token has no access to model gpt-image-2`.
+- Duplicate image submit with the same local `taskId` was rejected before
+  another Provider dispatch.
+- Failed image usage was recorded with `actual_quota_units=0`.
+- New API quota stayed at `880` after the failed image task.
+- Result: image generation remains `BLOCKED` because the approved test key does
+  not have an image model entitlement.
+
+Local checks rerun after the fixes:
+
+- `npm run typecheck`: passed.
+- `npm run lint`: passed.
+- `npm run build`: passed with the existing Turbopack NFT warning from
+  `src/lib/server/local-upscale.ts`.
+- `node scripts/test-new-api-bff.mjs`: passed, including the new
+  `/api/user/manage` quota endpoint assertion.
+- `node scripts/test-quota-usage.mjs`: passed.
+- `node scripts/test-auth-session.mjs`: passed.
+- `node scripts/test-billing-sandbox.mjs`: passed.
+- `node scripts/test-admin-api.mjs`: passed.
+- `node scripts/test-security-release.mjs`: passed.
+
+Remote CI for `ed9bcc79373174fae18de638eaa093207393f8d8` started
+automatically on PR #37:
+
+- `Application Database Migration` run `27837120154`: in progress at report
+  update time.
+- `CI` run `27837120159`: in progress at report update time.
+- `Backend Security Release Gate` run `27837120162`: in progress at report
+  update time.
+- `Auth New API Final Gate` run `27837120161`: queued/in progress at report
+  update time.
+
+Current conclusion after mapped Provider validation: `BLOCKED`.
+
+Blocking item: an approved image Provider credential with access to an image
+model is still required before production readiness can be honestly marked as
+passed.
+
 ## Not Fully Exercised Locally
 
-- Real third-party or approved test image/video Provider calls were not executed
-  because no test Provider credentials are configured.
+- Real approved video Provider execution was completed with Grok. Real approved
+  image Provider execution remains blocked because the current test key has no
+  image model entitlement.
 - Real New API container health, BFF checks, PostgreSQL migration, backup, and
   restore were executed in remote CI and New API Ops, not in this local runtime.
-- Application readiness against both PostgreSQL and New API requires an approved
-  test or release environment with `APP_DATABASE_URL` and `NEW_API_*` configured.
+- Application readiness against both PostgreSQL and New API passed in the local
+  mapped validation runtime.
 - Visual pixel QA was not performed; this pass only confirmed desktop/mobile
   core pages build and respond.
 
@@ -411,11 +520,12 @@ New API mapping and successful quota precheck before provider dispatch.
 
 Final QA remains blocked for production release.
 
-`BLOCKED` is caused by missing approved test Provider credentials and missing
-application-level PostgreSQL/New API runtime configuration in this worktree. The
-backend CI and infrastructure workflows are green, but the live provider,
-readiness, and debit-once smoke requirements cannot be honestly marked as passed
-without that environment.
+`BLOCKED` is caused by the remaining image Provider entitlement gap. The local
+mapped runtime now verifies PostgreSQL readiness, New API readiness, active user
+mapping, Grok video execution, duplicate dispatch protection, and real New API
+debit-once behavior. However, production readiness still requires one successful
+approved image Provider call, and the current test key only exposes Grok video
+models.
 
 `BLOCKED` is not a code regression finding by itself. It is a release evidence
 gap that must be closed by running this same QA pass with:
@@ -423,6 +533,6 @@ gap that must be closed by running this same QA pass with:
 - test PostgreSQL configured through `APP_DATABASE_URL`;
 - test New API configured through `NEW_API_ENABLED=true`, `NEW_API_BASE_URL`,
   `NEW_API_ADMIN_USER_ID`, and `NEW_API_ADMIN_ACCESS_TOKEN`;
-- approved test image and video Provider credentials;
+- approved test image Provider credentials with access to an image model;
 - production payment still disabled unless a separate payment launch task
   explicitly approves it.
