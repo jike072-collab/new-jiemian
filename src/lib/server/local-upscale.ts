@@ -1,7 +1,7 @@
 import { execFile, spawn } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import { access, mkdir, readFile, stat, unlink, writeFile } from "node:fs/promises";
-import { dirname, extname, join } from "node:path";
+import { dirname, extname, join, resolve } from "node:path";
 import { promisify } from "node:util";
 
 import {
@@ -146,9 +146,13 @@ async function video2xFfmpegRuntimeReady(executable: string) {
 }
 
 async function ffprobeExecutable(video2xExecutable: string) {
+  const workspaceToolsRoot = resolve(process.cwd(), "..", "tools");
+  const parentWorkspaceToolsRoot = resolve(process.cwd(), "..", "..", "tools");
   return await firstExisting([
     process.env.FFPROBE_BIN || "",
     join(dirname(video2xExecutable), "ffprobe.exe"),
+    join(workspaceToolsRoot, "ffmpeg", "n7.1", "ffmpeg-n7.1-latest-win64-gpl-7.1", "bin", "ffprobe.exe"),
+    join(parentWorkspaceToolsRoot, "ffmpeg", "n7.1", "ffmpeg-n7.1-latest-win64-gpl-7.1", "bin", "ffprobe.exe"),
   ].filter(Boolean)) || await findOnPath(["ffprobe.exe", "ffprobe"]);
 }
 

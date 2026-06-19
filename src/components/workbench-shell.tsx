@@ -142,6 +142,7 @@ export function WorkbenchShell({
             activeToolId={state.activeToolId}
             onSelect={(action, tool) => onToolAction(action, tool)}
             groups={workspaceToolGroups}
+            isAuthenticated={isAuthenticated}
           />
 
           <section className="shell-panel shell-panel--controls">
@@ -231,25 +232,26 @@ function DesktopNavigation({
   activeToolId,
   onSelect,
   groups,
+  isAuthenticated,
 }: {
   activeToolId: WorkspaceToolId;
   onSelect: (action: WorkspaceAction, tool: WorkspaceToolId) => void;
   groups: Array<{ title: WorkspaceToolGroup; items: WorkspaceToolId[] }>;
+  isAuthenticated: boolean;
 }) {
   return (
     <aside className="shell-nav">
-      <div className="shell-nav__head">
-        <p className="shell-eyebrow">工具导航</p>
-      </div>
       <div className="shell-nav__groups">
-        {groups.map((group) => (
-          <section key={group.title} className="shell-nav__group">
-            <h3 className="shell-nav__group-title">{group.title}</h3>
-            <div className="shell-nav__items">
-              {group.items.map((id) => {
-                const item = workspaceToolById(id);
-                if (!item || !item.visible) return null;
-                return (
+        {groups.map((group) => {
+          const visibleItems = group.items
+            .map((id) => workspaceToolById(id))
+            .filter((item): item is WorkspaceToolEntry => Boolean(item?.visible && (!item.requiresAuth || isAuthenticated)));
+          if (!visibleItems.length) return null;
+          return (
+            <section key={group.title} className="shell-nav__group">
+              <h3 className="shell-nav__group-title">{group.title}</h3>
+              <div className="shell-nav__items">
+                {visibleItems.map((item) => (
                   <ToolButton
                     key={item.id}
                     item={item}
@@ -257,11 +259,11 @@ function DesktopNavigation({
                     showDescription={false}
                     onClick={() => onSelect(item.action, item.id)}
                   />
-                );
-              })}
-            </div>
-          </section>
-        ))}
+                ))}
+              </div>
+            </section>
+          );
+        })}
       </div>
     </aside>
   );
@@ -336,7 +338,7 @@ function MobileOverlay({
         className={cn("shell-drawer", drawerOpen && "is-open")}
         role="dialog"
         aria-modal="true"
-        aria-label="工具导航"
+        aria-label="导航"
         aria-hidden={!drawerOpen}
       >
         <div className="shell-drawer__head">
@@ -353,14 +355,16 @@ function MobileOverlay({
         </div>
 
         <nav className="shell-drawer__nav">
-          {workspaceToolGroups.map((group) => (
-            <section key={group.title} className="shell-nav__group">
-              <h3 className="shell-nav__group-title">{group.title}</h3>
-              <div className="shell-nav__items">
-                {group.items.map((id) => {
-                  const item = workspaceToolById(id);
-                  if (!item || !item.visible) return null;
-                  return (
+          {workspaceToolGroups.map((group) => {
+            const visibleItems = group.items
+              .map((id) => workspaceToolById(id))
+              .filter((item): item is WorkspaceToolEntry => Boolean(item?.visible && (!item.requiresAuth || isAuthenticated)));
+            if (!visibleItems.length) return null;
+            return (
+              <section key={group.title} className="shell-nav__group">
+                <h3 className="shell-nav__group-title">{group.title}</h3>
+                <div className="shell-nav__items">
+                  {visibleItems.map((item) => (
                     <ToolButton
                       key={item.id}
                       item={item}
@@ -371,11 +375,11 @@ function MobileOverlay({
                         onClose();
                       }}
                     />
-                  );
-                })}
-              </div>
-            </section>
-          ))}
+                  ))}
+                </div>
+              </section>
+            );
+          })}
 
           {!isAuthenticated ? (
             <Link href="/login" className="shell-drawer__link" onClick={onClose}>
@@ -414,6 +418,7 @@ function ToolButton({
   onClick: () => void;
 }) {
   const Icon = item.icon;
+  const SecondaryIcon = item.secondaryIcon;
   return (
     <button
       type="button"
@@ -421,7 +426,10 @@ function ToolButton({
       className={cn("shell-nav-item", active && "is-active", compact && "is-compact")}
       aria-current={active ? "page" : undefined}
     >
-      <Icon className="shell-nav-item__icon" aria-hidden="true" />
+      <span className="shell-nav-item__icon-wrap" aria-hidden="true">
+        <Icon className="shell-nav-item__icon" />
+        {SecondaryIcon ? <SecondaryIcon className="shell-nav-item__icon-secondary" /> : null}
+      </span>
       <span className={cn("shell-nav-item__text", compact && "sr-only")}>
         <span className="shell-nav-item__label">{item.label}</span>
         {showDescription ? <span className="shell-nav-item__desc">{item.description}</span> : null}

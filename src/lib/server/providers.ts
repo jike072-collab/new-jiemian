@@ -83,6 +83,7 @@ function normalizeProvider(provider: ProviderConfig): ProviderConfig {
     ...provider,
     apiUrl: String(provider.apiUrl || "").trim(),
     model: String(provider.model || "").trim(),
+    displayName: String(provider.displayName || "").trim() || undefined,
     apiKey: String(provider.apiKey || "").trim(),
     enabled: Boolean(provider.enabled),
   };
@@ -98,6 +99,7 @@ export function sanitizeProvider(provider: ProviderConfig): PublicProvider {
     role: normalized.role,
     apiUrl: normalized.apiUrl,
     model: normalized.model,
+    displayName: normalized.displayName,
     enabled: normalized.enabled,
     endpointType: normalized.endpointType,
     configured: normalized.enabled && (localProvider || hasKey(normalized.apiKey)),
