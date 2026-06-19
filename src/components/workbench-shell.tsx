@@ -63,6 +63,7 @@ export function WorkbenchShell({
 
   const activeTool = workspaceToolById(state.activeToolId) || workspaceToolEntries[0];
   const drawerId = "workspace-mobile-drawer";
+  const singlePaneMobile = activeTool.id === "templates" || activeTool.id === "library";
 
   useEffect(() => {
     rootRef.current?.querySelector<HTMLElement>("[data-shell-scroll='parameters']")?.scrollTo({ top: 0 });
@@ -132,6 +133,7 @@ export function WorkbenchShell({
         activeTool={activeTool}
         drawerOpen={drawerOpen}
         pane={pane}
+        singlePane={singlePaneMobile}
         onClose={() => setDrawerOpen(false)}
         onSelect={(action, tool) => {
           onToolAction(action, tool);
@@ -154,7 +156,7 @@ export function WorkbenchShell({
             isAuthenticated={isAuthenticated}
           />
 
-          <section className="shell-panel shell-panel--controls">
+          <section className={cn("shell-panel shell-panel--controls", singlePaneMobile && "shell-panel--mobile-single-hidden")}>
             <div className="shell-panel__header shell-panel__header--tool">
               <div>
                 <h2 className="shell-title">{toolTitle || activeTool.label}</h2>
@@ -165,7 +167,7 @@ export function WorkbenchShell({
             </div>
           </section>
 
-          <section className="shell-panel shell-panel--preview">
+          <section className={cn("shell-panel shell-panel--preview", singlePaneMobile && "shell-panel--mobile-single")}>
             <div id="shell-preview-panel" data-shell-scroll="preview" className="shell-panel__body shell-panel__body--preview">
               {previewSlot}
             </div>
@@ -281,6 +283,7 @@ function MobileOverlay({
   activeTool,
   drawerOpen,
   pane,
+  singlePane,
   onClose,
   onSelect,
   onChangePane,
@@ -293,6 +296,7 @@ function MobileOverlay({
   activeTool: WorkspaceToolEntry;
   drawerOpen: boolean;
   pane: ShellPane;
+  singlePane: boolean;
   onClose: () => void;
   onSelect: (action: WorkspaceAction, tool: WorkspaceToolId) => void;
   onChangePane: (value: ShellPane) => void;
@@ -306,12 +310,12 @@ function MobileOverlay({
 
   return (
     <>
-      <div className="shell-mobile-tabs">
+      <div className={cn("shell-mobile-tabs", singlePane && "is-single-pane")}>
         <div className="shell-mobile-tabs__left">
           <span className="shell-eyebrow">当前工具</span>
           <strong className="shell-mobile-tabs__title">{activeTool.label}</strong>
         </div>
-        <div className="shell-mobile-tabs__switch" role="tablist" aria-label="参数和预览视图">
+        {!singlePane ? <div className="shell-mobile-tabs__switch" role="tablist" aria-label="参数和预览视图">
           <button
             type="button"
             id="shell-parameters-tab"
@@ -336,7 +340,7 @@ function MobileOverlay({
             <PanelRight className="size-4" aria-hidden="true" />
             预览
           </button>
-        </div>
+        </div> : null}
       </div>
 
       <div className="shell-mobile-action-slot">{mobileActionSlot}</div>

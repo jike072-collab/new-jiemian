@@ -3,7 +3,7 @@
 /* eslint-disable @next/next/no-img-element */
 
 import { useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
-import { AlertTriangle, Check, ChevronDown, Download, ExternalLink, ImageUp, Loader2, RefreshCw, Search, Trash2, UploadCloud, Wand2, X } from "lucide-react";
+import { AlertTriangle, ArrowDownUp, Check, ChevronDown, Download, ExternalLink, ImageUp, ListFilter, Loader2, RefreshCw, Search, Trash2, UploadCloud, Wand2, X } from "lucide-react";
 import { useRouter, useSearchParams } from "next/navigation";
 
 import { WorkbenchShell } from "@/components/workbench-shell";
@@ -2881,6 +2881,7 @@ function LibraryToolbar({
       <CustomSelect
         label="作品类型"
         value={filter}
+        icon={<ListFilter className="size-4" />}
         options={[
           { value: "image", label: "图片" },
           { value: "video", label: "视频" },
@@ -2890,6 +2891,7 @@ function LibraryToolbar({
       <CustomSelect
         label="排序"
         value={sort}
+        icon={<ArrowDownUp className="size-4" />}
         options={[
           { value: "recent", label: "最新" },
           { value: "title", label: "标题" },
@@ -3381,6 +3383,7 @@ function CustomSelect({
   label,
   value,
   options,
+  icon,
   disabled,
   placeholder = "请选择",
   onChange,
@@ -3388,6 +3391,7 @@ function CustomSelect({
   label: string;
   value: string;
   options: SelectOption[];
+  icon?: React.ReactNode;
   disabled?: boolean;
   placeholder?: string;
   onChange: (value: string) => void;
@@ -3480,7 +3484,8 @@ function CustomSelect({
           }
         }}
       >
-        <span>{selectedOption?.label || placeholder}</span>
+        {icon ? <span className="studio-custom-select__icon" aria-hidden="true">{icon}</span> : null}
+        <span className="studio-custom-select__value">{selectedOption?.label || placeholder}</span>
         <ChevronDown className={cn("size-4 transition", open && "rotate-180")} aria-hidden="true" />
       </button>
       {open ? (

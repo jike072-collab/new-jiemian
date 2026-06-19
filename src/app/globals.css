@@ -1146,11 +1146,17 @@
     text-align: left;
   }
 
-  .studio-custom-select__button span {
+  .studio-custom-select__value {
     min-width: 0;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
+  }
+
+  .studio-custom-select__icon {
+    display: inline-flex;
+    flex: 0 0 auto;
+    color: var(--muted-strong);
   }
 
   .studio-custom-select__button:disabled {
@@ -2545,6 +2551,14 @@
     display: flex;
   }
 
+  .shell-panel--mobile-single {
+    display: flex;
+  }
+
+  .shell-panel--mobile-single-hidden {
+    display: none;
+  }
+
   .shell-panel--controls .shell-panel__header--tool {
     display: none;
   }
@@ -2597,6 +2611,93 @@
   .shell-tab.is-active {
     background: var(--primary-soft);
     color: var(--primary);
+  }
+
+  .shell-mobile-tabs.is-single-pane {
+    padding-bottom: 12px;
+  }
+
+  .shell-mobile-tabs.is-single-pane .shell-mobile-tabs__left {
+    display: grid;
+    gap: 2px;
+  }
+
+  .shell-panel--mobile-single .studio-preview__top,
+  .shell-panel--mobile-single .template-center-browser__head {
+    display: none;
+  }
+
+  .shell-panel--mobile-single .studio-preview__content {
+    gap: 12px;
+  }
+
+  .shell-panel--mobile-single .studio-library-toolbar {
+    grid-template-columns: 1fr auto auto;
+    gap: 8px;
+    align-items: center;
+  }
+
+  .shell-panel--mobile-single .studio-library-toolbar__search .studio-input {
+    height: 38px;
+    min-height: 38px;
+    padding-left: 34px;
+    font-size: 13px;
+  }
+
+  .shell-panel--mobile-single .studio-library-toolbar__search svg {
+    left: 10px;
+  }
+
+  .shell-panel--mobile-single .studio-library-toolbar .studio-field {
+    gap: 0;
+  }
+
+  .shell-panel--mobile-single .studio-library-toolbar .studio-field__label {
+    display: none;
+  }
+
+  .shell-panel--mobile-single .studio-library-toolbar .studio-custom-select__button {
+    width: 42px;
+    min-width: 42px;
+    height: 38px;
+    min-height: 38px;
+    justify-content: center;
+    padding: 0;
+  }
+
+  .shell-panel--mobile-single .studio-library-toolbar .studio-custom-select__value {
+    display: none;
+  }
+
+  .shell-panel--mobile-single .studio-library-toolbar .studio-custom-select__menu {
+    right: 0;
+    left: auto;
+    min-width: 150px;
+  }
+
+  .shell-panel--mobile-single .template-center-tabs {
+    width: 100%;
+    min-height: 38px;
+  }
+
+  .shell-panel--mobile-single .template-center-search .studio-input {
+    height: 38px;
+    min-height: 38px;
+    font-size: 13px;
+  }
+
+  .shell-panel--mobile-single .template-center-browser {
+    gap: 10px;
+  }
+
+  .shell-panel--mobile-single .template-center-tab {
+    min-height: 32px;
+    font-size: 13px;
+  }
+
+  .shell-panel--mobile-single .template-center-grid,
+  .shell-panel--mobile-single .studio-library-grid {
+    gap: 10px;
   }
 
   .studio-walkthrough__section,
