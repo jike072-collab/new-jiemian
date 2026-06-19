@@ -2,12 +2,19 @@
 
 /* eslint-disable @next/next/no-img-element */
 
-import { useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useId, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent } from "react";
 import { AlertTriangle, Check, ChevronDown, Download, ExternalLink, ImageUp, Loader2, RefreshCw, Search, Trash2, UploadCloud, Wand2, X } from "lucide-react";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 
 import { WorkbenchShell } from "@/components/workbench-shell";
+import { TemplateRail } from "@/components/template-center";
 import { cn } from "@/lib/utils";
+import {
+  featuredImagePromptTemplates,
+  featuredVideoPromptTemplates,
+  templateById,
+  templateTabHref,
+} from "@/lib/template-catalog";
 import type { JobRecord, LibraryItem, PublicProvider } from "@/lib/server/types";
 import {
   type WorkspaceAction,
@@ -60,18 +67,6 @@ type SelectOption = {
   value: string;
   label: string;
   disabled?: boolean;
-};
-
-type ImagePromptTemplate = {
-  id: string;
-  label: string;
-  prompt: string;
-};
-
-type VideoPromptTemplate = {
-  id: string;
-  label: string;
-  prompt: string;
 };
 
 type ImageWorkspaceState = {
@@ -148,71 +143,6 @@ type VideoUpscaleWorkspaceState = {
 const ratios = ["1:1", "16:9", "9:16", "4:3", "3:4"];
 const upscaleUnavailableMessage = "高清处理暂时不可用，请稍后重试";
 const promptOptimizationTargetPlatform = "TikTok Shop";
-const imagePromptTemplates: ImagePromptTemplate[] = [
-  {
-    id: "product-hero",
-    label: "商品主图",
-    prompt: "生成一张 TikTok Shop 商品主图，商品主体居中，占画面主要位置，背景干净，光线柔和，突出材质、颜色和核心卖点。",
-  },
-  {
-    id: "white-background",
-    label: "纯白背景",
-    prompt: "生成一张纯白背景商品图，主体边缘清晰，阴影自然，画面干净，适合 TikTok Shop 商品展示。",
-  },
-  {
-    id: "smart-cutout",
-    label: "智能抠图",
-    prompt: "基于上传图像智能抠出商品主体，保持原始比例和主体细节，输出透明背景，边缘干净自然。",
-  },
-  {
-    id: "text-translation",
-    label: "图片文字翻译",
-    prompt: "基于上传图像翻译画面中的文字，保持原始排版、布局、字体风格和商品主体不变，翻译后画面自然清晰。",
-  },
-  {
-    id: "product-scene",
-    label: "商品场景图",
-    prompt: "生成一张商品场景图，把商品放在真实使用环境中，场景自然、有生活感，突出商品用途和 TikTok Shop 转化卖点。",
-  },
-  {
-    id: "promo-poster",
-    label: "促销海报",
-    prompt: "生成一张 TikTok Shop 促销海报，商品醒目，画面有促销氛围，留出适合放置优惠信息和行动号召的空间。",
-  },
-];
-
-const videoPromptTemplates: VideoPromptTemplate[] = [
-  {
-    id: "product-rotation",
-    label: "商品旋转展示",
-    prompt: "生成 TikTok Shop 商品旋转展示短视频，商品居中缓慢旋转，镜头稳定，光线干净，突出外观、材质和卖点。",
-  },
-  {
-    id: "detail-closeup",
-    label: "商品细节特写",
-    prompt: "生成商品细节特写短视频，镜头缓慢推进，展示材质、纹理、按键、接口或功能细节，节奏清楚，适合 TikTok 商品展示。",
-  },
-  {
-    id: "usage-demo",
-    label: "穿戴/使用展示",
-    prompt: "生成穿戴或使用展示短视频，展示用户如何自然使用商品，动作连贯，场景真实，突出使用效果和日常适用性。",
-  },
-  {
-    id: "unboxing",
-    label: "开箱展示",
-    prompt: "生成 TikTok 风格开箱展示短视频，从包装到取出商品，镜头节奏轻快，展示配件、质感和第一眼亮点。",
-  },
-  {
-    id: "lifestyle-video",
-    label: "场景展示短视频",
-    prompt: "生成商品场景展示短视频，商品出现在真实生活环境中，镜头有轻微推进和转场，氛围自然，适合 TikTok Shop 种草。",
-  },
-  {
-    id: "promo-video",
-    label: "促销短视频",
-    prompt: "生成促销短视频，前 2 秒快速展示商品和卖点，随后展示使用场景和优惠氛围，节奏明快，适合 TikTok Shop 推广。",
-  },
-];
 
 const imageWorkspaceModeMeta: Record<WorkspaceImageMode, {
   title: string;
@@ -389,7 +319,16 @@ async function jsonFetch<T>(url: string, options?: RequestInit): Promise<T> {
 
 export function StudioApp() {
   const router = useRouter();
-  const [activeWorkspaceToolId, setActiveWorkspaceToolId] = useState<WorkspaceToolId>("image");
+  const searchParams = useSearchParams();
+  const toolParam = searchParams.get("tool");
+  const initialWorkspaceToolId = useMemo<WorkspaceToolId>(() => {
+    if (toolParam) {
+      const tool = workspaceToolById(toolParam as WorkspaceToolId);
+      if (tool) return tool.id;
+    }
+    return "image";
+  }, [toolParam]);
+  const [activeWorkspaceToolId, setActiveWorkspaceToolId] = useState<WorkspaceToolId>(initialWorkspaceToolId);
   const [providers, setProviders] = useState<EnabledProviders>({ image: [], video: [] });
   const [providersLoading, setProvidersLoading] = useState(true);
   const [providersError, setProvidersError] = useState("");
@@ -409,7 +348,7 @@ export function StudioApp() {
     providerId: "",
     ratio: "1:1",
     quality: "1k",
-    templateId: imagePromptTemplates[0].id,
+    templateId: featuredImagePromptTemplates[0]?.id || "",
     prompt: "",
     promptOptimizing: false,
     promptOptimizeError: "",
@@ -423,7 +362,7 @@ export function StudioApp() {
     providerId: "",
     ratio: "16:9",
     duration: 5,
-    templateId: videoPromptTemplates[0].id,
+    templateId: featuredVideoPromptTemplates[0]?.id || "",
     prompt: "",
     promptOptimizing: false,
     promptOptimizeError: "",
@@ -461,6 +400,7 @@ export function StudioApp() {
   const videoWorkspaceFilesRef = useRef<VideoWorkspaceFile[]>([]);
   const imageUpscaleFileRef = useRef<ImageUpscaleWorkspaceFile | null>(null);
   const videoUpscaleFileRef = useRef<VideoUpscaleWorkspaceFile | null>(null);
+  const appliedTemplateIdRef = useRef<string | null>(null);
 
   const refreshLibrary = useCallback(async () => {
     setLibraryLoading(true);
@@ -580,8 +520,58 @@ export function StudioApp() {
   const activeAction = activeWorkspaceTool.action.kind === "workspace" ? activeWorkspaceTool.action : null;
   const activeBusinessTool = activeAction?.toolId || "library";
   const activeOutput = outputs[activeBusinessTool] || null;
-  const activeImageMode: WorkspaceImageMode = imageWorkspace.files.length ? "image-to-image" : "text-to-image";
+  const activeImageMode: WorkspaceImageMode = activeWorkspaceToolId === "image-editor" || imageWorkspace.files.length
+    ? "image-to-image"
+    : "text-to-image";
   const activeVideoMode: WorkspaceVideoMode = videoWorkspace.files.length ? "image-to-video" : "text-to-video";
+  const templateParam = searchParams.get("template") || "";
+  const activeImageTemplate = useMemo(() => templateById(imageWorkspace.templateId), [imageWorkspace.templateId]);
+  const activeVideoTemplate = useMemo(() => templateById(videoWorkspace.templateId), [videoWorkspace.templateId]);
+
+  const applyTemplatePreset = useCallback((templateId: string) => {
+    const template = templateById(templateId);
+    if (!template) return;
+
+    setMessage("");
+
+    if (template.scope === "image") {
+      setActiveWorkspaceToolId(template.targetToolId);
+      setImageWorkspace((prev) => ({
+        ...prev,
+        templateId: template.id,
+        prompt: template.prompt,
+        ratio: template.aspectRatio,
+        quality: template.quality,
+        fileError: template.requiresImage && !prev.files.length ? "请先上传图像。" : "",
+        promptOptimizeError: "",
+        promptOptimizeUndo: "",
+        submitError: "",
+      }));
+      return;
+    }
+
+    setActiveWorkspaceToolId("video");
+    setVideoWorkspace((prev) => ({
+      ...prev,
+      templateId: template.id,
+      prompt: template.prompt,
+      ratio: template.aspectRatio,
+      duration: template.duration,
+      fileError: template.requiresImage && !prev.files.length ? "请先上传图像。" : "",
+      promptOptimizeError: "",
+      promptOptimizeUndo: "",
+      submitError: "",
+    }));
+  }, []);
+
+  useEffect(() => {
+    if (!templateParam || appliedTemplateIdRef.current === templateParam) return;
+    const template = templateById(templateParam);
+    if (!template) return;
+    appliedTemplateIdRef.current = templateParam;
+    applyTemplatePreset(templateParam);
+  }, [applyTemplatePreset, templateParam]);
+
   const currentLibraryItems = useMemo(() => {
     const search = librarySearch.trim().toLowerCase();
     const filtered = library.filter((item) => (
@@ -654,27 +644,20 @@ export function StudioApp() {
   const imageWorkspaceFiles = imageWorkspace.files;
   const imageWorkspaceHasFiles = imageWorkspaceFiles.length > 0;
   const imageWorkspacePrompt = imageWorkspace.prompt.trim();
+  const imageWorkspaceRequiresFile = activeImageTemplate?.scope === "image" && activeImageTemplate.requiresImage;
   const imageWorkspaceCanSubmit = Boolean(selectedImageProvider)
     && !providersLoading
     && !imageWorkspace.loading
     && Boolean(imageWorkspacePrompt)
-    && (activeImageMode === "text-to-image" || imageWorkspaceHasFiles);
+    && (!imageWorkspaceRequiresFile || imageWorkspaceHasFiles);
 
   const updateImageWorkspace = useCallback((patch: Partial<ImageWorkspaceState>) => {
     setImageWorkspace((prev) => ({ ...prev, ...patch }));
   }, []);
 
   const applyImagePromptTemplate = useCallback((templateId: string) => {
-    const template = imagePromptTemplates.find((item) => item.id === templateId);
-    setImageWorkspace((prev) => ({
-      ...prev,
-      templateId,
-      prompt: template?.prompt || prev.prompt,
-      promptOptimizeError: "",
-      promptOptimizeUndo: "",
-      submitError: "",
-    }));
-  }, []);
+    applyTemplatePreset(templateId);
+  }, [applyTemplatePreset]);
 
   const optimizeImagePrompt = useCallback(async () => {
     const prompt = imageWorkspace.prompt.trim();
@@ -812,6 +795,13 @@ export function StudioApp() {
       return;
     }
     if (imageWorkspace.loading) return;
+    if (imageWorkspaceRequiresFile && !imageWorkspaceHasFiles) {
+      setImageWorkspace((prev) => ({
+        ...prev,
+        fileError: "请先上传图像。",
+      }));
+      return;
+    }
 
     setImageWorkspace((prev) => ({
       ...prev,
@@ -856,6 +846,8 @@ export function StudioApp() {
     imageWorkspace.ratio,
     imageWorkspace.prompt,
     imageWorkspacePrompt,
+    imageWorkspaceHasFiles,
+    imageWorkspaceRequiresFile,
     refreshLibrary,
     selectedImageProvider,
     setMessage,
@@ -874,27 +866,21 @@ export function StudioApp() {
   const videoWorkspaceHasFiles = videoWorkspaceFiles.length > 0;
   const videoWorkspacePrompt = videoWorkspace.prompt.trim();
   const videoWorkspaceNeedsFile = activeVideoMode === "image-to-video";
+  const videoWorkspaceRequiresFile = activeVideoTemplate?.scope === "video" && activeVideoTemplate.requiresImage;
   const videoWorkspaceCanSubmit = Boolean(selectedVideoProvider)
     && !providersLoading
     && !videoWorkspace.loading
     && Boolean(videoWorkspacePrompt)
-    && (!videoWorkspaceNeedsFile || videoWorkspaceHasFiles);
+    && (!videoWorkspaceNeedsFile || videoWorkspaceHasFiles)
+    && (!videoWorkspaceRequiresFile || videoWorkspaceHasFiles);
 
   const updateVideoWorkspace = useCallback((patch: Partial<VideoWorkspaceState>) => {
     setVideoWorkspace((prev) => ({ ...prev, ...patch }));
   }, []);
 
   const applyVideoPromptTemplate = useCallback((templateId: string) => {
-    const template = videoPromptTemplates.find((item) => item.id === templateId);
-    setVideoWorkspace((prev) => ({
-      ...prev,
-      templateId,
-      prompt: template?.prompt || prev.prompt,
-      promptOptimizeError: "",
-      promptOptimizeUndo: "",
-      submitError: "",
-    }));
-  }, []);
+    applyTemplatePreset(templateId);
+  }, [applyTemplatePreset]);
 
   const optimizeVideoPrompt = useCallback(async () => {
     const prompt = videoWorkspace.prompt.trim();
@@ -1305,6 +1291,13 @@ export function StudioApp() {
       return;
     }
     if (videoWorkspace.loading) return;
+    if ((videoWorkspaceRequiresFile || videoWorkspaceNeedsFile) && !videoWorkspaceHasFiles) {
+      setVideoWorkspace((prev) => ({
+        ...prev,
+        fileError: "请先上传图像。",
+      }));
+      return;
+    }
 
     updateVideoWorkspace({
       loading: true,
@@ -1349,6 +1342,7 @@ export function StudioApp() {
     videoWorkspace.prompt,
     videoWorkspace.ratio,
     videoWorkspaceHasFiles,
+    videoWorkspaceRequiresFile,
     videoWorkspaceNeedsFile,
     videoWorkspacePrompt,
   ]);
@@ -1358,6 +1352,7 @@ export function StudioApp() {
       {activeBusinessTool === "image" ? (
         <ImageGenerator
           mode={activeImageMode}
+          showTemplates={activeWorkspaceToolId !== "image-editor"}
           providers={providers.image}
           providersLoading={providersLoading}
           providersError={providersError}
@@ -1529,6 +1524,7 @@ export function StudioApp() {
 
 function ImageGenerator({
   mode,
+  showTemplates,
   providers,
   providersLoading,
   providersError,
@@ -1550,6 +1546,7 @@ function ImageGenerator({
   registerMobileAction,
 }: {
   mode: WorkspaceImageMode;
+  showTemplates: boolean;
   providers: PublicProvider[];
   providersLoading: boolean;
   providersError: string;
@@ -1584,7 +1581,7 @@ function ImageGenerator({
 
   return (
     <FormPanel>
-      <ProviderSelect
+      <ModelRail
         providers={providers}
         value={selectedProvider?.id || state.providerId}
         loading={providersLoading}
@@ -1592,6 +1589,15 @@ function ImageGenerator({
         onChange={onProviderChange}
         onReload={onReloadProviders}
       />
+      {showTemplates ? (
+        <TemplateRail
+          title="从模板开始"
+          viewAllHref={templateTabHref("image")}
+          templates={featuredImagePromptTemplates}
+          activeTemplateId={state.templateId}
+          onSelect={(template) => onTemplateChange(template.id)}
+        />
+      ) : null}
       <ReferenceImageInput
         mode={mode}
         files={state.files}
@@ -1616,18 +1622,6 @@ function ImageGenerator({
           onChange={onQualityChange}
         />
       </StackedControl>
-      <FieldFrame label="模板">
-        <div className="studio-template-scroll">
-          <ModeSegmentedControl
-            label="模板"
-            labelHidden
-            groupId="image-prompt-template"
-            value={state.templateId}
-            options={imagePromptTemplates.map((template) => [template.id, template.label])}
-            onChange={onTemplateChange}
-          />
-        </div>
-      </FieldFrame>
       <PromptBox
         value={state.prompt}
         onChange={onPromptChange}
@@ -1764,13 +1758,20 @@ function VideoGenerator({
 
   return (
     <FormPanel>
-      <ProviderSelect
+      <ModelRail
         providers={providers}
         value={selectedProvider?.id || state.providerId}
         loading={providersLoading}
         error={providersError}
         onChange={onProviderChange}
         onReload={onReloadProviders}
+      />
+      <TemplateRail
+        title="从模板开始"
+        viewAllHref={templateTabHref("video")}
+        templates={featuredVideoPromptTemplates}
+        activeTemplateId={state.templateId}
+        onSelect={(template) => onTemplateChange(template.id)}
       />
       <VideoReferenceInput
         files={state.files}
@@ -1793,22 +1794,10 @@ function VideoGenerator({
           value={String(state.duration)}
           options={[5, 8, 10, 15].map((value) => ({
             value: String(value),
-            label: `${value} 秒`,
+          label: `${value} 秒`,
           }))}
           onChange={(value) => onDurationChange(Number(value))}
         />
-      </FieldFrame>
-      <FieldFrame label="模板">
-        <div className="studio-template-scroll">
-          <ModeSegmentedControl
-            label="模板"
-            labelHidden
-            groupId="video-prompt-template"
-            value={state.templateId}
-            options={videoPromptTemplates.map((template) => [template.id, template.label])}
-            onChange={onTemplateChange}
-          />
-        </div>
       </FieldFrame>
       <VideoPromptBox
         label={meta.promptLabel}
@@ -3385,13 +3374,14 @@ function CustomSelect({
   );
 }
 
-function ProviderSelect({
+function ModelRail({
   providers,
   value,
   loading,
   error,
   onChange,
   onReload,
+  label = "模型",
 }: {
   providers: PublicProvider[];
   value: string;
@@ -3399,21 +3389,108 @@ function ProviderSelect({
   error?: string;
   onChange: (value: string) => void;
   onReload?: () => Promise<void>;
+  label?: string;
 }) {
+  const trackRef = useRef<HTMLDivElement | null>(null);
+  const dragStateRef = useRef({
+    pointerId: -1,
+    startX: 0,
+    startScrollLeft: 0,
+    dragging: false,
+    suppressClick: false,
+  });
+
+  const releaseDrag = useCallback((pointerId: number) => {
+    const track = trackRef.current;
+    const state = dragStateRef.current;
+    if (track && track.hasPointerCapture(pointerId)) {
+      track.releasePointerCapture(pointerId);
+    }
+    if (state.dragging) {
+      track?.classList.remove("is-dragging");
+    }
+    state.pointerId = -1;
+    state.dragging = false;
+  }, []);
+
+  const handlePointerDown = useCallback((event: ReactPointerEvent<HTMLDivElement>) => {
+    if (event.button !== 0) return;
+    const track = trackRef.current;
+    if (!track) return;
+    const state = dragStateRef.current;
+    state.pointerId = event.pointerId;
+    state.startX = event.clientX;
+    state.startScrollLeft = track.scrollLeft;
+    state.dragging = false;
+    state.suppressClick = false;
+    track.setPointerCapture(event.pointerId);
+  }, []);
+
+  const handlePointerMove = useCallback((event: ReactPointerEvent<HTMLDivElement>) => {
+    const track = trackRef.current;
+    const state = dragStateRef.current;
+    if (!track || state.pointerId !== event.pointerId) return;
+    const delta = event.clientX - state.startX;
+    if (!state.dragging && Math.abs(delta) > 6) {
+      state.dragging = true;
+      track.classList.add("is-dragging");
+    }
+    if (state.dragging) {
+      event.preventDefault();
+      track.scrollLeft = state.startScrollLeft - delta;
+    }
+  }, []);
+
+  const handlePointerUp = useCallback((event: ReactPointerEvent<HTMLDivElement>) => {
+    const state = dragStateRef.current;
+    if (state.pointerId !== event.pointerId) return;
+    state.suppressClick = state.dragging;
+    releaseDrag(event.pointerId);
+  }, [releaseDrag]);
+
+  const handleClickCapture = useCallback((event: React.MouseEvent<HTMLDivElement>) => {
+    if (!dragStateRef.current.suppressClick) return;
+    event.preventDefault();
+    event.stopPropagation();
+    dragStateRef.current.suppressClick = false;
+  }, []);
+
   return (
-    <FieldFrame label="模型" required>
+    <FieldFrame label={label} required>
       <div className="studio-provider">
-        <CustomSelect
-          label="模型"
-          value={value}
-          disabled={loading || !providers.length}
-          placeholder={loading ? "正在加载模型" : "当前尚未配置可用模型"}
-          options={providers.map((provider) => ({
-            value: provider.id,
-            label: provider.displayName || provider.model,
-          }))}
-          onChange={onChange}
-        />
+        <div
+          ref={trackRef}
+          className="studio-model-scroll"
+          onPointerDown={handlePointerDown}
+          onPointerMove={handlePointerMove}
+          onPointerUp={handlePointerUp}
+          onPointerCancel={handlePointerUp}
+          onClickCapture={handleClickCapture}
+        >
+          <div className="studio-model-track" role="listbox" aria-label={label}>
+            {providers.map((provider) => {
+              const selected = provider.id === value;
+              const title = provider.displayName || provider.model;
+              const subtitle = provider.displayName && provider.displayName !== provider.model ? provider.model : provider.title;
+              return (
+                <button
+                  key={provider.id}
+                  type="button"
+                  role="option"
+                  aria-selected={selected}
+                  className={cn("studio-model-card", selected && "is-active")}
+                  onClick={() => onChange(provider.id)}
+                >
+                  <span className="studio-model-card__body">
+                    <strong>{title}</strong>
+                    {subtitle ? <span>{subtitle}</span> : null}
+                  </span>
+                  {selected ? <Check className="size-4" aria-hidden="true" /> : null}
+                </button>
+              );
+            })}
+          </div>
+        </div>
         {loading ? <p id="image-provider-status" className="studio-help-text" role="status" aria-live="polite">正在读取可用模型。</p> : null}
         {!loading && !error && !providers.length ? (
           <p id="image-provider-empty" className="studio-help-text" role="status" aria-live="polite">

@@ -149,7 +149,9 @@ export function WorkbenchShell({
             <div className="shell-panel__header shell-panel__header--tool">
               <div>
                 <h2 className="shell-title">{toolTitle || activeTool.label}</h2>
-                <p className="shell-description">{toolDescription || activeTool.description}</p>
+                {toolDescription || activeTool.description ? (
+                  <p className="shell-description">{toolDescription || activeTool.description}</p>
+                ) : null}
               </div>
             </div>
             <div id="shell-parameters-panel" data-shell-scroll="parameters" className="shell-panel__body">

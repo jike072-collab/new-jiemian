@@ -3,14 +3,16 @@ import {
   FolderOpen,
   Image as ImageIcon,
   ImageUp,
+  LayoutGrid,
   Settings,
   TrendingUp,
   Wand2,
 } from "lucide-react";
 
-export type WorkspaceToolGroup = "创作工具" | "增强工具" | "作品" | "系统";
+export type WorkspaceToolGroup = "模板" | "创作工具" | "增强工具" | "作品" | "系统";
 
 export type WorkspaceToolId =
+  | "templates"
   | "video"
   | "image"
   | "image-editor"
@@ -19,7 +21,7 @@ export type WorkspaceToolId =
   | "library"
   | "admin-settings";
 
-export type WorkspaceBusinessToolId = Exclude<WorkspaceToolId, "image-editor" | "admin-settings">;
+export type WorkspaceBusinessToolId = Exclude<WorkspaceToolId, "templates" | "image-editor" | "admin-settings">;
 export type WorkspaceImageMode = "text-to-image" | "image-to-image";
 export type WorkspaceVideoMode = "text-to-video" | "image-to-video";
 
@@ -59,11 +61,22 @@ export type WorkspaceAccountEntry = {
 export const workspaceToolGroups: Array<{ title: WorkspaceToolGroup; items: WorkspaceToolId[] }> = [
   { title: "创作工具", items: ["video", "image", "image-editor"] },
   { title: "增强工具", items: ["image-upscale", "video-upscale"] },
+  { title: "模板", items: ["templates"] },
   { title: "作品", items: ["library"] },
   { title: "系统", items: ["admin-settings"] },
 ];
 
 export const workspaceToolEntries: WorkspaceToolEntry[] = [
+  {
+    id: "templates",
+    label: "模板",
+    description: "浏览和克隆模板",
+    icon: LayoutGrid,
+    group: "模板",
+    action: { kind: "route", href: "/templates" },
+    visible: true,
+    requiresAuth: false,
+  },
   {
     id: "video",
     label: "AI 视频生成器",
@@ -87,7 +100,7 @@ export const workspaceToolEntries: WorkspaceToolEntry[] = [
   {
     id: "image-editor",
     label: "AI 图片编辑器",
-    description: "上传图像进行编辑",
+    description: "",
     icon: Wand2,
     group: "创作工具",
     action: { kind: "workspace", toolId: "image", mode: "image-to-image" },
