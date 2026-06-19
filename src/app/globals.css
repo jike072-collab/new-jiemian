@@ -691,6 +691,12 @@
     opacity: 0.72;
   }
 
+  .studio-prompt-action--clear:not(:disabled) {
+    border-color: color-mix(in srgb, var(--primary) 64%, transparent);
+    background: color-mix(in srgb, var(--primary-soft) 82%, var(--surface));
+    color: var(--primary);
+  }
+
   .studio-sr-only {
     position: absolute;
     width: 1px;
@@ -1373,31 +1379,6 @@
     min-height: 144px;
     resize: vertical;
     padding: 14px 14px 44px;
-  }
-
-  .studio-textarea-clear {
-    position: absolute;
-    right: 10px;
-    bottom: 9px;
-    display: inline-flex;
-    min-height: 28px;
-    align-items: center;
-    justify-content: center;
-    border: 1px solid color-mix(in srgb, var(--border-subtle) 86%, transparent);
-    border-radius: var(--radius-chip);
-    background: color-mix(in srgb, var(--surface) 86%, var(--panel));
-    color: var(--muted-strong);
-    padding: 0 10px;
-    font-size: 12px;
-    font-weight: 600;
-    transition: border-color var(--motion-base), background var(--motion-base), color var(--motion-base);
-  }
-
-  .studio-textarea-clear:hover,
-  .studio-textarea-clear:focus-visible {
-    border-color: color-mix(in srgb, var(--primary) 42%, transparent);
-    background: color-mix(in srgb, var(--primary-soft) 54%, var(--surface));
-    color: var(--foreground);
   }
 
   .studio-counter {
