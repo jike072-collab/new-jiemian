@@ -74,6 +74,19 @@ const customProviderDefaults: Record<Extract<ProviderKind, "image" | "video" | "
   },
 };
 
+const providerGroups: Array<{
+  kind: ProviderKind;
+  title: string;
+  description: string;
+  addKind?: Extract<ProviderKind, "image" | "video" | "prompt">;
+}> = [
+  { kind: "image", title: "图片生成", description: "图片生成与图片编辑模型", addKind: "image" },
+  { kind: "video", title: "视频生成", description: "文生视频与图生视频模型", addKind: "video" },
+  { kind: "prompt", title: "提示词优化", description: "图片和视频提示词优化模型", addKind: "prompt" },
+  { kind: "image-upscale", title: "图片高清", description: "本地图片放大工具" },
+  { kind: "video-upscale", title: "视频高清", description: "本地视频放大工具" },
+];
+
 function endpointOptionsFor(provider: EditableProvider) {
   if (provider.kind === "image") return endpointOptions.filter((option) => option.value.startsWith("images-"));
   if (provider.kind === "video") return endpointOptions.filter((option) => option.value === "videos-generations" || option.value === "grok-videos");
@@ -191,11 +204,17 @@ export function AdminProvidersClient() {
 
   function addCustomProvider(kind: Extract<ProviderKind, "image" | "video" | "prompt">) {
     const defaults = customProviderDefaults[kind];
-    const suffix = `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 7)}`;
-    setProviders((current) => [
-      ...current,
-      {
-        id: `custom-${kind}-${suffix}`,
+    setProviders((current) => {
+      let index = current.filter((provider) => provider.kind === kind && provider.custom).length + 1;
+      let id = `custom-${kind}-${index}`;
+      while (current.some((provider) => provider.id === id)) {
+        index += 1;
+        id = `custom-${kind}-${index}`;
+      }
+      return [
+        ...current,
+        {
+          id,
         kind,
         title: defaults.title,
         role: defaults.role,
@@ -210,7 +229,8 @@ export function AdminProvidersClient() {
         newApiKey: "",
         clearApiKey: false,
       },
-    ]);
+      ];
+    });
     setStatus(`已新增${defaults.title}，填写接口、模型和 Key 后保存即可并行使用。`);
   }
 
@@ -330,178 +350,191 @@ export function AdminProvidersClient() {
           </div>
         </section>
 
-        <section className="mt-4 flex flex-wrap gap-2 rounded-[1.5rem] border border-white/10 bg-white/[0.03] p-4">
-          <button type="button" className="admin-secondary" onClick={() => addCustomProvider("image")}>
-            <Plus className="size-4" />
-            新增图片模型
-          </button>
-          <button type="button" className="admin-secondary" onClick={() => addCustomProvider("video")}>
-            <Plus className="size-4" />
-            新增视频模型
-          </button>
-          <button type="button" className="admin-secondary" onClick={() => addCustomProvider("prompt")}>
-            <Plus className="size-4" />
-            新增提示词优化
-          </button>
-        </section>
-
         <section className="mt-5 grid gap-4">
-          {providers.map((provider) => {
-            const modelState = providerModels[provider.id] || { loading: false, options: [], error: "" };
-            const modelOptions = modelOptionsFor(provider, modelState.options);
-            const canFetchModels = !isLocalCli(provider.endpointType);
+          {providerGroups.map((group) => {
+            const groupProviders = providers.filter((provider) => provider.kind === group.kind);
+            const addKind = group.addKind;
             return (
-            <article key={provider.id} className="rounded-[1.5rem] border border-white/10 bg-[#101012]/92 p-5">
-              <div className="flex flex-col justify-between gap-4 md:flex-row md:items-start">
-                <div>
-                  <div className="flex items-center gap-3">
-                    <h2 className="text-xl font-black">{provider.title}</h2>
-                    {provider.custom ? (
-                      <span className="rounded-full bg-fuchsia-500/15 px-2 py-1 text-xs text-fuchsia-200">自定义</span>
-                    ) : null}
-                    <span className={`rounded-full px-2 py-1 text-xs ${provider.configured || isLocalCli(provider.endpointType) ? "bg-emerald-500/15 text-emerald-300" : "bg-amber-500/15 text-amber-200"}`}>
-                      {isLocalCli(provider.endpointType) ? "无需密钥" : provider.configured ? "已配置" : "缺少密钥"}
-                    </span>
-                  </div>
-                  <p className="mt-1 text-sm text-white/45">{provider.role}</p>
-                </div>
-                <label className="flex items-center gap-2 text-sm text-white/65">
-                  <input
-                    type="checkbox"
-                    checked={provider.enabled}
-                    onChange={(event) => update(provider.id, { enabled: event.target.checked })}
-                    className="size-4 accent-fuchsia-500"
-                  />
-                  前台启用
-                </label>
-                {provider.custom ? (
-                  <button
-                    type="button"
-                    onClick={() => removeCustomProvider(provider)}
-                    className="admin-secondary border-red-400/20 text-red-200 hover:text-red-100"
-                  >
-                    <Trash2 className="size-4" />
-                    删除
-                  </button>
-                ) : null}
-              </div>
-
-              <div className="mt-5 grid gap-4 xl:grid-cols-[repeat(auto-fit,minmax(260px,1fr))]">
-                {provider.custom ? (
-                  <label className="admin-field">
-                    配置名称
-                    <input
-                      value={provider.title}
-                      onChange={(event) => update(provider.id, { title: event.target.value })}
-                      className="admin-input"
-                    />
-                  </label>
-                ) : null}
-                <label className="admin-field">
-                  {isLocalCli(provider.endpointType) ? "可执行文件路径（留空自动检测）" : "接口地址"}
-                  <input
-                    type={isLocalCli(provider.endpointType) ? "text" : "url"}
-                    value={provider.apiUrl}
-                    onChange={(event) => update(provider.id, { apiUrl: event.target.value })}
-                    placeholder={isLocalCli(provider.endpointType) ? "留空时自动检测本机安装路径" : undefined}
-                    className="admin-input"
-                  />
-                </label>
-                <div className="admin-field">
-                  模型
-                  <div className="grid gap-2">
-                    {modelOptions.length ? (
-                      <select
-                        value={provider.model}
-                        onChange={(event) => updateModel(provider, event.target.value)}
-                        className="admin-input"
-                      >
-                        {modelOptions.some((option) => option.value === provider.model) ? null : (
-                          <option value={provider.model}>{provider.model || "当前模型"}</option>
-                        )}
-                        {modelOptions.map((option) => (
-                          <option key={option.value} value={option.value}>{option.label}</option>
-                        ))}
-                      </select>
-                    ) : null}
-                    <div className="grid grid-cols-[minmax(0,1fr)_auto] gap-2">
-                      <input
-                        value={provider.model}
-                        onChange={(event) => update(provider.id, { model: event.target.value })}
-                        placeholder="手动填写模型 ID"
-                        className="admin-input"
-                      />
-                      {canFetchModels ? (
-                        <button
-                          type="button"
-                          onClick={() => void fetchModels(provider)}
-                          disabled={modelState.loading || loading}
-                          className="admin-secondary h-12 whitespace-nowrap px-3 py-0"
-                        >
-                          {modelState.loading ? <Loader2 className="size-4 animate-spin" /> : <RefreshCw className="size-4" />}
-                          读取模型
-                        </button>
-                      ) : null}
+              <article key={group.kind} className="rounded-[1.5rem] border border-white/10 bg-[#101012]/92 p-5">
+                <div className="flex flex-col justify-between gap-4 md:flex-row md:items-start">
+                  <div>
+                    <div className="flex flex-wrap items-center gap-3">
+                      <h2 className="text-xl font-black">{group.title}</h2>
+                      <span className="rounded-full bg-white/8 px-2 py-1 text-xs text-white/55">{groupProviders.length} 个地址</span>
                     </div>
-                    {modelState.error ? <p className="text-xs text-red-300">{modelState.error}</p> : null}
+                    <p className="mt-1 text-sm text-white/45">{group.description}</p>
                   </div>
+                  {addKind ? (
+                    <button type="button" className="admin-secondary" onClick={() => addCustomProvider(addKind)}>
+                      <Plus className="size-4" />
+                      新增地址
+                    </button>
+                  ) : null}
                 </div>
-                <label className="admin-field">
-                  前台名称
-                  <input
-                    value={provider.displayName || ""}
-                    onChange={(event) => update(provider.id, { displayName: event.target.value })}
-                    placeholder="不填则显示模型 ID"
-                    className="admin-input"
-                  />
-                </label>
-                <label className="admin-field">
-                  接口类型
-                  <select
-                    value={provider.endpointType}
-                    onChange={(event) => update(provider.id, { endpointType: event.target.value as EndpointType })}
-                    className="admin-input"
-                  >
-                    {endpointOptionsFor(provider).map((option) => (
-                      <option key={option.value} value={option.value}>{option.label}</option>
-                    ))}
-                  </select>
-                </label>
-              </div>
 
-              {isLocalCli(provider.endpointType) ? (
-                <div className="mt-4 flex items-center gap-3 rounded-2xl border border-emerald-400/15 bg-emerald-500/8 px-4 py-3 text-sm text-emerald-200">
-                  <KeyRound className="size-4 shrink-0" />
-                  本地 CLI 直接在本机运行，无需 API Key。
+                <div className="mt-5 grid gap-4">
+                  {groupProviders.map((provider, index) => {
+                    const modelState = providerModels[provider.id] || { loading: false, options: [], error: "" };
+                    const modelOptions = modelOptionsFor(provider, modelState.options);
+                    const canFetchModels = !isLocalCli(provider.endpointType);
+                    return (
+                      <section key={provider.id} className="rounded-[1.25rem] border border-white/10 bg-black/20 p-4">
+                        <div className="flex flex-col justify-between gap-3 md:flex-row md:items-start">
+                          <div>
+                            <div className="flex flex-wrap items-center gap-2">
+                              <h3 className="text-base font-black text-white">地址 {index + 1}</h3>
+                              {provider.custom ? (
+                                <span className="rounded-full bg-fuchsia-500/15 px-2 py-1 text-xs text-fuchsia-200">自定义</span>
+                              ) : null}
+                              <span className={`rounded-full px-2 py-1 text-xs ${provider.configured || isLocalCli(provider.endpointType) ? "bg-emerald-500/15 text-emerald-300" : "bg-amber-500/15 text-amber-200"}`}>
+                                {isLocalCli(provider.endpointType) ? "无需密钥" : provider.configured ? "已配置" : "缺少密钥"}
+                              </span>
+                            </div>
+                            <p className="mt-1 text-sm text-white/45">{provider.custom ? provider.title : provider.role}</p>
+                          </div>
+                          <div className="flex flex-wrap gap-2">
+                            <label className="flex h-10 items-center gap-2 rounded-2xl border border-white/10 px-3 text-sm text-white/65">
+                              <input
+                                type="checkbox"
+                                checked={provider.enabled}
+                                onChange={(event) => update(provider.id, { enabled: event.target.checked })}
+                                className="size-4 accent-fuchsia-500"
+                              />
+                              前台启用
+                            </label>
+                            {provider.custom ? (
+                              <button
+                                type="button"
+                                onClick={() => removeCustomProvider(provider)}
+                                className="admin-secondary h-10 border-red-400/20 px-3 py-0 text-red-200 hover:text-red-100"
+                              >
+                                <Trash2 className="size-4" />
+                                删除
+                              </button>
+                            ) : null}
+                          </div>
+                        </div>
+
+                        <div className="mt-4 grid gap-4 xl:grid-cols-[repeat(auto-fit,minmax(260px,1fr))]">
+                          {provider.custom ? (
+                            <label className="admin-field">
+                              配置名称
+                              <input
+                                value={provider.title}
+                                onChange={(event) => update(provider.id, { title: event.target.value })}
+                                className="admin-input"
+                              />
+                            </label>
+                          ) : null}
+                          <label className="admin-field">
+                            {isLocalCli(provider.endpointType) ? "可执行文件路径（留空自动检测）" : "接口地址"}
+                            <input
+                              type={isLocalCli(provider.endpointType) ? "text" : "url"}
+                              value={provider.apiUrl}
+                              onChange={(event) => update(provider.id, { apiUrl: event.target.value })}
+                              placeholder={isLocalCli(provider.endpointType) ? "留空时自动检测本机安装路径" : undefined}
+                              className="admin-input"
+                            />
+                          </label>
+                          <div className="admin-field">
+                            模型
+                            <div className="grid gap-2">
+                              {modelOptions.length ? (
+                                <select
+                                  value={provider.model}
+                                  onChange={(event) => updateModel(provider, event.target.value)}
+                                  className="admin-input"
+                                >
+                                  {modelOptions.some((option) => option.value === provider.model) ? null : (
+                                    <option value={provider.model}>{provider.model || "当前模型"}</option>
+                                  )}
+                                  {modelOptions.map((option) => (
+                                    <option key={option.value} value={option.value}>{option.label}</option>
+                                  ))}
+                                </select>
+                              ) : null}
+                              <div className="grid grid-cols-[minmax(0,1fr)_auto] gap-2">
+                                <input
+                                  value={provider.model}
+                                  onChange={(event) => update(provider.id, { model: event.target.value })}
+                                  placeholder="手动填写模型 ID"
+                                  className="admin-input"
+                                />
+                                {canFetchModels ? (
+                                  <button
+                                    type="button"
+                                    onClick={() => void fetchModels(provider)}
+                                    disabled={modelState.loading || loading}
+                                    className="admin-secondary h-12 whitespace-nowrap px-3 py-0"
+                                  >
+                                    {modelState.loading ? <Loader2 className="size-4 animate-spin" /> : <RefreshCw className="size-4" />}
+                                    读取模型
+                                  </button>
+                                ) : null}
+                              </div>
+                              {modelState.error ? <p className="text-xs text-red-300">{modelState.error}</p> : null}
+                            </div>
+                          </div>
+                          <label className="admin-field">
+                            前台名称
+                            <input
+                              value={provider.displayName || ""}
+                              onChange={(event) => update(provider.id, { displayName: event.target.value })}
+                              placeholder="不填则显示模型 ID"
+                              className="admin-input"
+                            />
+                          </label>
+                          <label className="admin-field">
+                            接口类型
+                            <select
+                              value={provider.endpointType}
+                              onChange={(event) => update(provider.id, { endpointType: event.target.value as EndpointType })}
+                              className="admin-input"
+                            >
+                              {endpointOptionsFor(provider).map((option) => (
+                                <option key={option.value} value={option.value}>{option.label}</option>
+                              ))}
+                            </select>
+                          </label>
+                        </div>
+
+                        {isLocalCli(provider.endpointType) ? (
+                          <div className="mt-4 flex items-center gap-3 rounded-2xl border border-emerald-400/15 bg-emerald-500/8 px-4 py-3 text-sm text-emerald-200">
+                            <KeyRound className="size-4 shrink-0" />
+                            本地 CLI 直接在本机运行，无需 API Key。
+                          </div>
+                        ) : (
+                          <div className="mt-4 grid gap-4 md:grid-cols-[1fr_auto] md:items-end">
+                            <label className="admin-field">
+                              <span className="flex items-center gap-2">
+                                <KeyRound className="size-4" />
+                                替换 API Key
+                              </span>
+                              <input
+                                type="password"
+                                value={provider.newApiKey}
+                                disabled={provider.clearApiKey}
+                                onChange={(event) => update(provider.id, { newApiKey: event.target.value })}
+                                placeholder={provider.keyPreview ? `当前密钥：${provider.keyPreview}；留空保持不变` : "尚未配置密钥"}
+                                className="admin-input"
+                              />
+                            </label>
+                            <label className="flex h-12 items-center gap-2 rounded-2xl border border-white/10 px-4 text-sm text-white/55">
+                              <input
+                                type="checkbox"
+                                checked={provider.clearApiKey}
+                                onChange={(event) => update(provider.id, { clearApiKey: event.target.checked, newApiKey: "" })}
+                                className="size-4 accent-red-500"
+                              />
+                              清除密钥
+                            </label>
+                          </div>
+                        )}
+                      </section>
+                    );
+                  })}
                 </div>
-              ) : (
-                <div className="mt-4 grid gap-4 md:grid-cols-[1fr_auto] md:items-end">
-                  <label className="admin-field">
-                    <span className="flex items-center gap-2">
-                      <KeyRound className="size-4" />
-                      替换 API Key
-                    </span>
-                    <input
-                      type="password"
-                      value={provider.newApiKey}
-                      disabled={provider.clearApiKey}
-                      onChange={(event) => update(provider.id, { newApiKey: event.target.value })}
-                      placeholder={provider.keyPreview ? `当前密钥：${provider.keyPreview}；留空保持不变` : "尚未配置密钥"}
-                      className="admin-input"
-                    />
-                  </label>
-                  <label className="flex h-12 items-center gap-2 rounded-2xl border border-white/10 px-4 text-sm text-white/55">
-                    <input
-                      type="checkbox"
-                      checked={provider.clearApiKey}
-                      onChange={(event) => update(provider.id, { clearApiKey: event.target.checked, newApiKey: "" })}
-                      className="size-4 accent-red-500"
-                    />
-                    清除密钥
-                  </label>
-                </div>
-              )}
-            </article>
+              </article>
             );
           })}
         </section>
