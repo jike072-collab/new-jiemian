@@ -95,16 +95,18 @@ because this workstation does not expose `APP_DATABASE_URL`.
 
 ## Final Provider And UI Smoke Validation
 
-Latest report update: 2026-06-19.
+Latest report update: 2026-06-19, final production readiness attempt.
 
-Commit under test: `47b5b0022a90257474a6a77a9431331a5ac470fe`.
+Commit under test before this report update:
+`e223e6e816cd314583f3eaea45498af04e35dad8`.
 
 Remote infrastructure validation:
 
-- `Application Database Migration` run `27820892552`: success.
-- `Auth New API Final Gate` run `27820059999`: success.
-- `Backend Security Release Gate` run `27820059992`: success.
-- `New API Ops` run `27821058866`: success.
+- `Application Database Migration` run `27821976204`: success.
+- `Auth New API Final Gate` run `27821889333`: success.
+- `Backend Security Release Gate` run `27821889334`: success.
+- `New API Ops` run `27821986939`: success.
+- `CI` run `27821889379`: success.
 
 The database migration run covered PostgreSQL schema, migrations `001` through
 `004`, webhook status upgrade, schema and transaction tests, auth PostgreSQL
@@ -119,7 +121,10 @@ restore, bad backup rejection, and log redaction.
 
 Local environment availability check:
 
-- `.env` is not present in this worktree; only `.env.example` exists.
+- Root `.env` is not present in this worktree.
+- Root `.env.local` is not present in this worktree.
+- `infra/new-api/.env` exists for the isolated New API stack, but it is not an
+  application runtime Provider or production configuration source.
 - `APP_DATABASE_URL` is not present.
 - `APP_DATABASE_EXPECTED_NAME` is not present.
 - `NEW_API_ENABLED` is not present.
@@ -131,12 +136,38 @@ Local environment availability check:
 - `PAYMENT_PRODUCTION_ENABLED` is not present.
 - `PAYMENT_PRODUCTION_WEBHOOK_SECRET` is not present.
 
+Local checks rerun on 2026-06-19:
+
+- `npm run typecheck`: passed.
+- `npm run lint`: passed.
+- `npm run build`: passed with the existing Turbopack NFT warning from
+  `src/lib/server/local-upscale.ts`.
+- `node scripts/test-auth-session.mjs`: passed, 17 tests.
+- `node scripts/test-quota-usage.mjs`: passed, 28 tests and 2 PostgreSQL-mode
+  skips because this workstation has no application database DSN.
+- `node scripts/test-billing-sandbox.mjs`: passed, 22 tests and 2
+  PostgreSQL-mode skips because this workstation has no application database
+  DSN.
+- `node scripts/test-admin-api.mjs`: passed, 9 tests.
+- `node scripts/test-new-api-bff.mjs`: passed, 31 tests.
+- `node scripts/test-security-release.mjs`: passed, 9 tests.
+- `node scripts/test-prompt-optimizer.mjs`: passed, 5 tests.
+- `node scripts/test-provider-display-names.mjs`: passed, 3 tests.
+- `node scripts/database/bundle-scan.mjs`: passed.
+- `npm run database:boundary`: passed after stopping the temporary local dev
+  server that was holding `.next/dev/types`.
+- `npm audit --audit-level=high`: passed, `0` vulnerabilities.
+
 Local runtime smoke against `next dev` on `127.0.0.1:3206`:
 
 - Desktop `/` opened successfully.
 - Desktop `/login` opened successfully.
-- Mobile viewport `/` opened successfully.
-- Login entry, image tool, and video tool were visible without layout crash.
+- Mobile User-Agent HTTP GET `/` returned `200`.
+- Mobile User-Agent HTTP GET `/login` returned `200`.
+- Browser mobile viewport `/` opened successfully.
+- Browser mobile viewport `/login` opened successfully.
+- Login entry, image tool, video tool, account entry, order/use surfaces, and
+  provider/admin links rendered without route crash.
 - `GET /api/auth/csrf` returned a CSRF token and CSRF cookie.
 - A browser-independent request without the CSRF cookie was rejected with `403`,
   confirming CSRF protection.
@@ -146,6 +177,10 @@ Local runtime smoke against `next dev` on `127.0.0.1:3206`:
   user because no application-level test New API binding was configured.
 - `GET /api/quota` returned `409 mapping_pending` for that user because the
   New API mapping was not active.
+- `GET /api/health/backend?mode=liveness` returned `200`.
+- `GET /api/health/backend?mode=readiness` returned `503`, which is the
+  expected fail-closed result for this missing application PostgreSQL and New
+  API runtime configuration.
 
 Provider and billing smoke result:
 
@@ -154,6 +189,8 @@ Provider and billing smoke result:
 - Successful task debit-once verification through the live API: `BLOCKED`.
 - Duplicate generation request/provider dispatch verification through the live
   API: `BLOCKED`.
+- Failed live Provider task no-charge verification through the live API:
+  `BLOCKED`.
 
 Reason: this worktree has no configured test image Provider, test video
 Provider, application PostgreSQL DSN, or application-level New API credentials.
