@@ -37,7 +37,11 @@ export function getAuthPersistenceMode(): AuthPersistenceMode {
   if (!allowedModes.has(raw as AuthPersistenceMode)) {
     throw new AuthPersistenceConfigError("APP_AUTH_PERSISTENCE_MODE must be json, dual, or postgres.");
   }
-  return raw as AuthPersistenceMode;
+  const mode = raw as AuthPersistenceMode;
+  if (process.env.NODE_ENV === "production" && mode !== "postgres") {
+    throw new AuthPersistenceConfigError("APP_AUTH_PERSISTENCE_MODE must be postgres in production.");
+  }
+  return mode;
 }
 
 export function createAuthPersistenceRepositories(

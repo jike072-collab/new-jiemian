@@ -1,0 +1,36 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "allowImportingTsExtensions": false,
+    "declaration": false,
+    "emitDeclarationOnly": false,
+    "incremental": false,
+    "module": "NodeNext",
+    "moduleResolution": "NodeNext",
+    "noEmit": false,
+    "outDir": "dist/security-release-tests",
+    "rootDir": ".",
+    "target": "ES2022",
+    "tsBuildInfoFile": "dist/security-release-tests.tsbuildinfo"
+  },
+  "include": [
+    "src/app/api/health/backend/route.ts",
+    "src/lib/server/security/**/*.ts",
+    "src/lib/server/auth/cookies.ts",
+    "src/lib/server/auth/csrf.ts",
+    "src/lib/server/auth/persistence.ts",
+    "src/lib/server/auth/secrets.ts",
+    "src/lib/server/auth/types.ts",
+    "src/lib/server/billing/config.ts",
+    "src/lib/server/billing/payment-adapters.ts",
+    "src/lib/server/billing/payment-provider-registry.ts",
+    "src/lib/server/billing/sandbox-provider.ts",
+    "src/lib/server/billing/types.ts",
+    "src/lib/server/billing/persistence.ts",
+    "src/lib/server/database/config.ts",
+    "src/lib/server/integrations/new-api/config.ts",
+    "src/lib/server/integrations/new-api/errors.ts",
+    "src/lib/server/integrations/new-api/types.ts",
+    "src/lib/server/quota/task-billing-persistence.ts"
+  ]
+}

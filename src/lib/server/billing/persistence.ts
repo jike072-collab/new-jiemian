@@ -32,7 +32,11 @@ export function getBillingPersistenceMode(): BillingPersistenceMode {
   if (!allowedModes.has(raw as BillingPersistenceMode)) {
     throw new BillingPersistenceConfigError("APP_BILLING_PERSISTENCE_MODE must be json, dual, or postgres.");
   }
-  return raw as BillingPersistenceMode;
+  const mode = raw as BillingPersistenceMode;
+  if (process.env.NODE_ENV === "production" && mode !== "postgres") {
+    throw new BillingPersistenceConfigError("APP_BILLING_PERSISTENCE_MODE must be postgres in production.");
+  }
+  return mode;
 }
 
 export function createBillingPersistenceRepository(
