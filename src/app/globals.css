@@ -631,6 +631,13 @@
     line-height: 1.35;
   }
 
+  .studio-field__label-text {
+    display: inline-flex;
+    min-width: 0;
+    align-items: baseline;
+    gap: 3px;
+  }
+
   .studio-field__meta,
   .studio-prompt-actions {
     display: flex;

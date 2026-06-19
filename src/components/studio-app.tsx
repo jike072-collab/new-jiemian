@@ -2774,14 +2774,22 @@ function FieldFrame({
   action?: React.ReactNode;
   children: React.ReactNode;
 }) {
+  const showHint = !required && Boolean(hint);
+  const hasMeta = showHint || Boolean(action);
+
   return (
     <div className="studio-field">
       <div className="studio-field__label">
-        <span>{label}</span>
-        <div className="studio-field__meta">
-          {required ? <span className="studio-required">*</span> : hint ? <span className="shell-chip">{hint}</span> : null}
-          {action}
-        </div>
+        <span className="studio-field__label-text">
+          {label}
+          {required ? <span className="studio-required">*</span> : null}
+        </span>
+        {hasMeta ? (
+          <div className="studio-field__meta">
+            {showHint ? <span className="shell-chip">{hint}</span> : null}
+            {action}
+          </div>
+        ) : null}
       </div>
       <div className="studio-field__body">{children}</div>
     </div>
