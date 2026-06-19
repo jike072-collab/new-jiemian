@@ -1941,6 +1941,16 @@ function VideoPromptBox({
           aria-describedby={descriptionId}
           className="studio-textarea"
         />
+        {value ? (
+          <button
+            type="button"
+            className="studio-textarea-clear"
+            onClick={() => onChange("")}
+            aria-label="清除提示词"
+          >
+            清除
+          </button>
+        ) : null}
         <span id={descriptionId} className="studio-counter">{value.length} 个字符</span>
       </div>
       {optimizeError ? <p className="studio-error-text" role="alert">{optimizeError}</p> : null}
@@ -3503,6 +3513,16 @@ function PromptBox({
           aria-describedby="image-prompt-counter"
           className="studio-textarea"
         />
+        {value ? (
+          <button
+            type="button"
+            className="studio-textarea-clear"
+            onClick={() => onChange("")}
+            aria-label="清除提示词"
+          >
+            清除
+          </button>
+        ) : null}
         <span id="image-prompt-counter" className="studio-counter">{value.length} 个字符</span>
       </div>
       {optimizeError ? <p className="studio-error-text" role="alert">{optimizeError}</p> : null}

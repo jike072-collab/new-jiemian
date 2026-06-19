@@ -352,7 +352,7 @@ function TemplateBrowserPanel({
                 <span>{template.requiresImage ? "需图像" : "无须图像"}</span>
               </span>
             </span>
-            <Link href={templateCloneHref(template.id)} className="studio-secondary-button template-center-card__clone">
+            <Link href={templateCloneHref(template.id)} className="studio-primary-action template-center-card__clone">
               克隆
               <ArrowRight className="size-4" aria-hidden="true" />
             </Link>
