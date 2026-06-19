@@ -5,7 +5,8 @@
 | Route | Type | Current state | Notes |
 | --- | --- | --- | --- |
 | `/` | page | Present | Renders `StudioApp` on the home page. |
-| `/login` | page | Present in current worktree | Imports `CustomerLogin`; historical blocker details are recorded separately in `KNOWN_BASELINE_FAILURES.md`. |
+| `/login` | page | Present | Renders the ordinary user login form. Historical blocker details are recorded separately in `KNOWN_BASELINE_FAILURES.md`. |
+| `/register` | page | Present | Renders the ordinary user registration form. |
 | `/admin/providers` | page | Present | Renders provider management UI. |
 | `/api/generate/image` | API | Present | Image generation entry. |
 | `/api/generate/video` | API | Present | Video generation entry. |
@@ -20,7 +21,7 @@
 
 ## Missing But Mentioned
 
-- No separate public `/register` page is present in current code.
+- Ordinary user auth API routes are not present in the current codebase: `/api/auth/login`, `/api/auth/register`, `/api/auth/me`, and `/api/auth/logout` remain integration blockers.
 - No separate admin overview route is present in current code.
 - No separate customer dashboard route is present in current code.
 
@@ -28,5 +29,6 @@
 
 - Home page: `src/app/page.tsx`
 - Login page: `src/app/login/page.tsx`
+- Register page: `src/app/register/page.tsx`
 - Admin providers: `src/app/admin/providers/page.tsx`
 - API routes: `src/app/api/**/route.ts`

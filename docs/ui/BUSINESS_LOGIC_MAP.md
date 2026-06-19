@@ -8,7 +8,9 @@
 
 ## Login Flow
 
-- `/login` mounts `CustomerLogin` in the current worktree.
+- `/login` mounts `AuthPages` in login mode.
+- `/register` mounts `AuthPages` in registration mode.
+- Ordinary user auth API routes are not present in the current repository yet, so login/register submissions surface a real integration error instead of creating a fake session.
 - Earlier missing-component failure is archived in `KNOWN_BASELINE_FAILURES.md` as historical evidence.
 
 ## Admin Flow
