@@ -73,10 +73,17 @@ export type JobRecord = {
   id: string;
   libraryItemId: string;
   type: "video";
+  ownerLocalUserId?: string | null;
   providerId: string;
   status: "queued" | "generating" | "done" | "failed";
   statusUrl: string;
   sourceUrl?: string;
+  billing_task_id?: string | null;
+  billing_local_user_id?: string | null;
+  billing_idempotency_key?: string | null;
+  billing_estimated_quota_units?: number | null;
+  billing_state?: string | null;
+  billing_last_error?: string | null;
   createdAt: string;
   updatedAt: string;
   error?: string;
