@@ -34,7 +34,9 @@ type WorkbenchShellProps = {
   state: WorkspaceShellState;
   onToolAction: (action: WorkspaceAction, tool: WorkspaceToolId) => void;
   isAuthenticated: boolean;
+  accountName?: string | null;
   headerRightSlot?: ReactNode;
+  accountSlot?: ReactNode;
   parameterSlot: ReactNode;
   previewSlot: ReactNode;
   mobileActionSlot?: ReactNode;
@@ -46,7 +48,9 @@ export function WorkbenchShell({
   state,
   onToolAction,
   isAuthenticated,
+  accountName,
   headerRightSlot,
+  accountSlot,
   parameterSlot,
   previewSlot,
   mobileActionSlot,
@@ -110,10 +114,12 @@ export function WorkbenchShell({
     <div ref={rootRef} className="shell-root min-h-[100dvh] overflow-hidden bg-[var(--background)] text-[var(--foreground)]">
       <Header
         isAuthenticated={isAuthenticated}
+        accountName={accountName}
         onToggleDrawer={() => setDrawerOpen((value) => !value)}
         onToggleAccount={() => setAccountOpen((value) => !value)}
         accountOpen={accountOpen}
         headerRightSlot={headerRightSlot}
+        accountSlot={accountSlot}
         drawerButtonRef={drawerButtonRef}
         drawerId={drawerId}
         drawerOpen={drawerOpen}
@@ -130,6 +136,7 @@ export function WorkbenchShell({
         }}
         onChangePane={setPane}
         isAuthenticated={isAuthenticated}
+        accountSlot={accountSlot}
         accountOpen={accountOpen}
         mobileActionSlot={mobileActionSlot}
         drawerRef={drawerRef}
@@ -171,25 +178,29 @@ export function WorkbenchShell({
 
 function Header({
   isAuthenticated,
+  accountName,
   onToggleDrawer,
   onToggleAccount,
   accountOpen,
   headerRightSlot,
+  accountSlot,
   drawerButtonRef,
   drawerId,
   drawerOpen,
 }: {
   isAuthenticated: boolean;
+  accountName?: string | null;
   onToggleDrawer: () => void;
   onToggleAccount: () => void;
   accountOpen: boolean;
   headerRightSlot?: ReactNode;
+  accountSlot?: ReactNode;
   drawerButtonRef: RefObject<HTMLButtonElement | null>;
   drawerId: string;
   drawerOpen: boolean;
 }) {
   return (
-    <header className="shell-header">
+    <header className="shell-header relative">
       <div className="shell-header__brand">
         <button
           ref={drawerButtonRef}
@@ -211,9 +222,9 @@ function Header({
       <div className="shell-header__actions">
         {headerRightSlot}
         {isAuthenticated ? (
-          <button type="button" className="shell-account" onClick={onToggleAccount}>
-            <span className="shell-account__avatar">OA</span>
-            <span className="shell-account__name">账户</span>
+          <button type="button" className="shell-account" onClick={onToggleAccount} title={accountName || "账户"}>
+            <span className="shell-account__avatar">{(accountName || "账户").slice(0, 2).toUpperCase()}</span>
+            <span className="shell-account__name">{accountName || "账户"}</span>
             <ChevronDown className={cn("size-4 transition", accountOpen && "rotate-180")} />
           </button>
         ) : (
@@ -223,6 +234,18 @@ function Header({
           </Link>
         )}
       </div>
+
+      {isAuthenticated && accountOpen ? (
+        <div className="absolute right-4 top-[calc(100%+12px)] z-[90] w-[min(92vw,420px)]">
+          {accountSlot ? (
+            accountSlot
+          ) : (
+            <div className="rounded-[1.5rem] border border-white/10 bg-[#0f0f13] p-4 text-sm text-white/68 shadow-[0_20px_60px_rgba(0,0,0,0.28)]">
+              <p className="text-white/92">账户功能暂未加载。</p>
+            </div>
+          )}
+        </div>
+      ) : null}
     </header>
   );
 }
@@ -275,6 +298,7 @@ function MobileOverlay({
   onSelect,
   onChangePane,
   isAuthenticated,
+  accountSlot,
   accountOpen,
   mobileActionSlot,
   drawerRef,
@@ -287,6 +311,7 @@ function MobileOverlay({
   onSelect: (action: WorkspaceAction, tool: WorkspaceToolId) => void;
   onChangePane: (value: ShellPane) => void;
   isAuthenticated: boolean;
+  accountSlot?: ReactNode;
   accountOpen: boolean;
   mobileActionSlot?: ReactNode;
   drawerRef: RefObject<HTMLDivElement | null>;
@@ -385,14 +410,18 @@ function MobileOverlay({
           ) : null}
 
           {accountOpen ? (
-            <div className="shell-account-menu">
-              {workspaceAccountMenu.filter((item) => item.visible).map((item) => (
-                <div key={item.id} className="shell-account-menu__item">
-                  <strong>{item.label}</strong>
-                  <span>{item.description}</span>
-                </div>
-              ))}
-            </div>
+            accountSlot ? (
+              accountSlot
+            ) : (
+              <div className="shell-account-menu">
+                {workspaceAccountMenu.filter((item) => item.visible).map((item) => (
+                  <div key={item.id} className="shell-account-menu__item">
+                    <strong>{item.label}</strong>
+                    <span>{item.description}</span>
+                  </div>
+                ))}
+              </div>
+            )
           ) : null}
         </nav>
       </aside>

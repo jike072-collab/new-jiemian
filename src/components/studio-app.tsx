@@ -7,7 +7,13 @@ import { AlertTriangle, Download, ExternalLink, ImageUp, Loader2, RefreshCw, Tra
 import { useRouter } from "next/navigation";
 
 import { WorkbenchShell } from "@/components/workbench-shell";
+import { ApiError, fetchJson, fetchJsonWithCsrf } from "@/lib/client/api";
+import { estimateImageGenerationQuota, estimateVideoGenerationQuota } from "@/lib/generation-quota";
 import { cn } from "@/lib/utils";
+import type { PublicAuthUser } from "@/lib/server/auth";
+import type { BillingOrder, PublicPaymentChannelConfig } from "@/lib/server/billing";
+import type { QuotaSnapshot, UsagePage } from "@/lib/server/quota";
+import { WorkspaceAccountPanel } from "@/components/workspace-account-panel";
 import type { JobRecord, LibraryItem, PublicProvider } from "@/lib/server/types";
 import {
   type WorkspaceAction,
@@ -29,6 +35,34 @@ type EnabledProviders = {
   image: PublicProvider[];
   video: PublicProvider[];
 };
+
+type BillingConfigResponse = {
+  ok: true;
+  channels: PublicPaymentChannelConfig[];
+};
+
+type AuthSessionResponse =
+  | { ok: true; user: PublicAuthUser; mappingStatus: string | null }
+  | { ok: false; code: string; uiState: string; message: string; retryAfterSeconds?: number };
+
+type BillingOrdersResponse = {
+  ok: true;
+  orders: BillingOrder[];
+  page: number;
+  page_size: number;
+  total: number;
+  has_more: boolean;
+};
+
+type BillingOrderDetailResponse = {
+  ok: true;
+  order: BillingOrder;
+};
+
+function createTaskId(prefix: string) {
+  const suffix = globalThis.crypto?.randomUUID?.() || `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+  return `${prefix}-${suffix}`;
+}
 
 type OutputState = {
   item: LibraryItem;
@@ -285,15 +319,7 @@ function createVideoUpscaleFile(files: File[]) {
 }
 
 async function jsonFetch<T>(url: string, options?: RequestInit): Promise<T> {
-  const response = await fetch(url, options);
-  const data = await response.json().catch(() => ({}));
-  if (!response.ok) {
-    const error = data && typeof data === "object" && "error" in data
-      ? String((data as { error?: string }).error)
-      : "请求失败。";
-    throw new Error(error);
-  }
-  return data as T;
+  return fetchJson<T>(url, options);
 }
 
 export function StudioApp() {
@@ -305,6 +331,17 @@ export function StudioApp() {
   const [library, setLibrary] = useState<LibraryItem[]>([]);
   const [libraryLoading, setLibraryLoading] = useState(true);
   const [libraryError, setLibraryError] = useState("");
+  const [sessionUser, setSessionUser] = useState<PublicAuthUser | null>(null);
+  const [mappingStatus, setMappingStatus] = useState<string | null>(null);
+  const [sessionLoading, setSessionLoading] = useState(true);
+  const [sessionError, setSessionError] = useState("");
+  const [quotaSnapshot, setQuotaSnapshot] = useState<QuotaSnapshot | null>(null);
+  const [usagePage, setUsagePage] = useState<UsagePage | null>(null);
+  const [billingChannels, setBillingChannels] = useState<PublicPaymentChannelConfig[]>([]);
+  const [billingOrders, setBillingOrders] = useState<BillingOrder[]>([]);
+  const [selectedBillingOrderId, setSelectedBillingOrderId] = useState<string | null>(null);
+  const [accountLoading, setAccountLoading] = useState(true);
+  const [billingSubmitting, setBillingSubmitting] = useState(false);
   const [message, setMessage] = useState("");
   const [outputs, setOutputs] = useState<Partial<Record<BusinessToolId, OutputState>>>({});
   const [mobileAction, setMobileAction] = useState<MobileActionState>(null);
@@ -364,6 +401,148 @@ export function StudioApp() {
   const imageUpscaleFileRef = useRef<ImageUpscaleWorkspaceFile | null>(null);
   const videoUpscaleFileRef = useRef<VideoUpscaleWorkspaceFile | null>(null);
 
+  const refreshAccountData = useCallback(async (userId?: string | null) => {
+    if (!userId) {
+      setQuotaSnapshot(null);
+      setUsagePage(null);
+      setBillingOrders([]);
+      setSelectedBillingOrderId(null);
+      setAccountLoading(false);
+      return;
+    }
+
+    setAccountLoading(true);
+    setSessionError("");
+    try {
+      const [quotaData, usageData, billingConfigData, ordersData] = await Promise.all([
+        fetchJson<{ ok: true; quota: QuotaSnapshot }>("/api/quota"),
+        fetchJson<{ ok: true; usage: UsagePage }>("/api/usage?page=1&pageSize=10"),
+        fetchJson<BillingConfigResponse>("/api/billing/config"),
+        fetchJson<BillingOrdersResponse>("/api/billing/orders?page=1&pageSize=8"),
+      ]);
+      setQuotaSnapshot(quotaData.quota);
+      setUsagePage(usageData.usage);
+      setBillingChannels(billingConfigData.channels);
+      setBillingOrders(ordersData.orders);
+      setSelectedBillingOrderId((current) => (
+        current && ordersData.orders.some((order) => order.order_id === current)
+          ? current
+          : ordersData.orders[0]?.order_id || null
+      ));
+    } catch (error) {
+      const text = error instanceof Error ? error.message : "账户信息加载失败。";
+      setSessionError(text);
+      setMessage(text);
+    } finally {
+      setAccountLoading(false);
+    }
+  }, []);
+
+  const refreshBillingOrderDetail = useCallback(async (orderId: string | null) => {
+    if (!orderId) return;
+    try {
+      const data = await fetchJson<BillingOrderDetailResponse>(`/api/billing/orders/${orderId}`);
+      setBillingOrders((current) => {
+        const next = current.filter((order) => order.order_id !== data.order.order_id);
+        next.unshift(data.order);
+        return next;
+      });
+      setSelectedBillingOrderId(data.order.order_id);
+    } catch (error) {
+      const text = error instanceof Error ? error.message : "订单详情加载失败。";
+      setMessage(text);
+    }
+  }, []);
+
+  const handleCreateSandboxOrder = useCallback(async (channel: PublicPaymentChannelConfig, amount: number) => {
+    if (!sessionUser) {
+      setMessage("请先登录后再创建充值订单。");
+      router.push("/login");
+      return;
+    }
+    if (billingSubmitting) return;
+    setBillingSubmitting(true);
+    setMessage("");
+    try {
+      const response = await fetchJsonWithCsrf<{ ok: true; order: BillingOrder }>("/api/billing/orders", {
+        method: "POST",
+        body: JSON.stringify({
+          channel: channel.channel,
+          currency: channel.currency,
+          requestedAmount: amount,
+          idempotencyKey: `web-${channel.channel}-${amount}-${sessionUser.local_user_id}`,
+        }),
+      });
+      setBillingOrders((current) => [response.order, ...current.filter((order) => order.order_id !== response.order.order_id)]);
+      setSelectedBillingOrderId(response.order.order_id);
+      setMessage(`已创建 ${channel.name} 充值订单。`);
+    } catch (error) {
+      const text = error instanceof ApiError ? error.message : error instanceof Error ? error.message : "创建订单失败。";
+      setMessage(text);
+    } finally {
+      setBillingSubmitting(false);
+    }
+  }, [billingSubmitting, router, sessionUser]);
+
+  const handleLogout = useCallback(async () => {
+    if (!sessionUser) return;
+    try {
+      await fetchJsonWithCsrf("/api/auth/logout", { method: "POST" });
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "退出失败。");
+    } finally {
+      setSessionUser(null);
+      setMappingStatus(null);
+      setQuotaSnapshot(null);
+      setUsagePage(null);
+      setBillingChannels([]);
+      setBillingOrders([]);
+      setSelectedBillingOrderId(null);
+      router.replace("/login");
+    }
+  }, [router, sessionUser]);
+
+  const refreshSession = useCallback(async () => {
+    setSessionLoading(true);
+    setSessionError("");
+    try {
+      const result = await fetchJson<AuthSessionResponse>("/api/auth/session");
+      if ("ok" in result && result.ok) {
+        setSessionUser(result.user);
+        setMappingStatus(result.mappingStatus || null);
+        await refreshAccountData(result.user.local_user_id);
+        return;
+      }
+      setSessionUser(null);
+      setMappingStatus(null);
+      setQuotaSnapshot(null);
+      setUsagePage(null);
+      setBillingChannels([]);
+      setBillingOrders([]);
+      setSelectedBillingOrderId(null);
+    } catch (error) {
+      if (error instanceof ApiError && error.status === 401) {
+        setSessionUser(null);
+        setMappingStatus(null);
+        setQuotaSnapshot(null);
+        setUsagePage(null);
+        setBillingChannels([]);
+        setBillingOrders([]);
+        setSelectedBillingOrderId(null);
+      } else {
+        const text = error instanceof Error ? error.message : "会话加载失败。";
+        setSessionError(text);
+        setMessage(text);
+      }
+    } finally {
+      setSessionLoading(false);
+    }
+  }, [refreshAccountData]);
+
+  const refreshAccountSnapshot = useCallback(async () => {
+    await refreshSession();
+  }, [refreshSession]);
+
   const refreshLibrary = useCallback(async () => {
     setLibraryLoading(true);
     setLibraryError("");
@@ -401,6 +580,7 @@ export function StudioApp() {
     void (async () => {
       try {
         setProvidersLoading(true);
+        setLibraryLoading(true);
         const [providersData, libraryData] = await Promise.all([
           jsonFetch<{ providers: EnabledProviders }>("/api/providers/enabled"),
           jsonFetch<{ items: LibraryItem[] }>("/api/library"),
@@ -425,10 +605,12 @@ export function StudioApp() {
       }
     })();
 
+    void refreshSession();
+
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [refreshSession]);
 
   useEffect(() => () => {
     imageWorkspaceFilesRef.current.forEach((file) => URL.revokeObjectURL(file.previewUrl));
@@ -506,6 +688,14 @@ export function StudioApp() {
     () => currentLibraryItems.find((item) => item.id === selectedLibraryItemId) || currentLibraryItems[0] || null,
     [currentLibraryItems, selectedLibraryItemId],
   );
+  const selectedBillingOrder = useMemo(
+    () => billingOrders.find((order) => order.order_id === selectedBillingOrderId) || billingOrders[0] || null,
+    [billingOrders, selectedBillingOrderId],
+  );
+
+  useEffect(() => {
+    void refreshBillingOrderDetail(selectedBillingOrderId);
+  }, [refreshBillingOrderDetail, selectedBillingOrderId]);
   const markLibraryMediaMissing = useCallback((id: string) => {
     setMissingLibraryMediaIds((prev) => {
       if (prev.has(id)) return prev;
@@ -544,6 +734,15 @@ export function StudioApp() {
     image: library.filter((item) => item.type === "image").length,
     video: library.filter((item) => item.type === "video").length,
   }), [library]);
+
+  const accountHeaderSlot = (
+    <div className="hidden items-center gap-2 rounded-full border border-white/10 bg-white/[0.03] px-3 py-2 text-xs text-white/68 md:flex">
+      <span>额度</span>
+      <strong className="text-white">{quotaSnapshot ? `${quotaSnapshot.available_quota_units}` : "—"}</strong>
+      <span className="text-white/38">/</span>
+      <span>{sessionUser ? sessionUser.display_name : "未登录"}</span>
+    </div>
+  );
 
   const handleImageResult = useCallback((item: LibraryItem) => {
     setOutputs((prev) => ({ ...prev, image: { item, title: "图片结果", tool: "image" } }));
@@ -657,6 +856,30 @@ export function StudioApp() {
     }
     if (imageWorkspace.loading) return;
 
+    const taskId = createTaskId("image");
+    const estimatedQuotaUnits = estimateImageGenerationQuota({
+      mode: activeImageMode,
+      quality: imageWorkspace.quality,
+      referenceImages: imageWorkspace.files.length,
+    });
+
+    try {
+      await fetchJsonWithCsrf("/api/quota/precheck", {
+        method: "POST",
+        body: JSON.stringify({
+          operation: "cloud_image_generation",
+          taskId,
+          idempotencyKey: taskId,
+          estimatedQuotaUnits,
+        }),
+      });
+    } catch (error) {
+      const text = error instanceof Error ? error.message : "额度预检失败。";
+      setImageWorkspace((prev) => ({ ...prev, submitError: text }));
+      setMessage(text);
+      return;
+    }
+
     setImageWorkspace((prev) => ({
       ...prev,
       loading: true,
@@ -671,13 +894,17 @@ export function StudioApp() {
       form.set("ratio", imageWorkspace.ratio);
       form.set("quality", imageWorkspace.quality);
       form.set("prompt", imageWorkspace.prompt);
+      form.set("taskId", taskId);
+      form.set("idempotencyKey", taskId);
+      form.set("estimatedQuotaUnits", String(estimatedQuotaUnits));
       imageWorkspace.files.forEach((attachment) => form.append("files", attachment.file));
-      const data = await jsonFetch<{ item: LibraryItem }>("/api/generate/image", {
+      const data = await fetchJsonWithCsrf<{ item: LibraryItem }>("/api/generate/image", {
         method: "POST",
         body: form,
       });
       handleImageResult(data.item);
       await refreshLibrary();
+      await refreshAccountData(sessionUser?.local_user_id || null);
     } catch (error) {
       const text = error instanceof Error ? error.message : "图片生成失败。";
       setImageWorkspace((prev) => ({
@@ -701,7 +928,9 @@ export function StudioApp() {
     imageWorkspace.prompt,
     imageWorkspaceHasFiles,
     imageWorkspacePrompt,
+    refreshAccountData,
     refreshLibrary,
+    sessionUser?.local_user_id,
     selectedImageProvider,
     setMessage,
   ]);
@@ -915,6 +1144,12 @@ export function StudioApp() {
     void checkVideoUpscaleAvailability();
   }, [checkVideoUpscaleAvailability]);
 
+  useEffect(() => {
+    if (!sessionLoading && !sessionUser && !sessionError) {
+      router.replace("/login");
+    }
+  }, [router, sessionError, sessionLoading, sessionUser]);
+
   const replaceVideoUpscaleFile = useCallback((files: File[]) => {
     const previous = videoUpscaleFileRef.current;
     try {
@@ -1084,6 +1319,30 @@ export function StudioApp() {
     }
     if (videoWorkspace.loading) return;
 
+    const taskId = createTaskId("video");
+    const estimatedQuotaUnits = estimateVideoGenerationQuota({
+      mode: activeVideoMode,
+      durationSeconds: videoWorkspace.duration,
+      referenceImages: videoWorkspace.files.length,
+    });
+
+    try {
+      await fetchJsonWithCsrf("/api/quota/precheck", {
+        method: "POST",
+        body: JSON.stringify({
+          operation: "cloud_video_generation",
+          taskId,
+          idempotencyKey: taskId,
+          estimatedQuotaUnits,
+        }),
+      });
+    } catch (error) {
+      const text = error instanceof Error ? error.message : "额度预检失败。";
+      updateVideoWorkspace({ submitError: text });
+      setMessage(text);
+      return;
+    }
+
     updateVideoWorkspace({
       loading: true,
       submitError: "",
@@ -1097,16 +1356,20 @@ export function StudioApp() {
       form.set("ratio", videoWorkspace.ratio);
       form.set("duration", String(videoWorkspace.duration));
       form.set("prompt", videoWorkspace.prompt);
+      form.set("taskId", taskId);
+      form.set("idempotencyKey", taskId);
+      form.set("estimatedQuotaUnits", String(estimatedQuotaUnits));
       if (activeVideoMode === "image-to-video") {
         videoWorkspace.files.forEach((attachment) => form.append("files", attachment.file));
       }
-      const data = await jsonFetch<{ item: LibraryItem; job: JobRecord | null }>("/api/generate/video", {
+      const data = await fetchJsonWithCsrf<{ item: LibraryItem; job: JobRecord | null }>("/api/generate/video", {
         method: "POST",
         body: form,
       });
       updateVideoWorkspace({ job: data.job });
       handleVideoResult(data.item, data.job);
       await refreshLibrary();
+      await refreshAccountData(sessionUser?.local_user_id || null);
     } catch (error) {
       const text = error instanceof Error ? error.message : "视频生成失败。";
       updateVideoWorkspace({ submitError: text });
@@ -1117,10 +1380,12 @@ export function StudioApp() {
   }, [
     activeVideoMode,
     handleVideoResult,
+    refreshAccountData,
     refreshLibrary,
     selectedVideoProvider,
     setMessage,
     updateVideoWorkspace,
+    sessionUser?.local_user_id,
     videoWorkspace.duration,
     videoWorkspace.files,
     videoWorkspace.loading,
@@ -1220,7 +1485,28 @@ export function StudioApp() {
       <WorkbenchShell
         state={{ activeToolId: activeWorkspaceToolId }}
         onToolAction={handleToolAction}
-        isAuthenticated={false}
+        isAuthenticated={Boolean(sessionUser)}
+        accountName={sessionUser?.display_name || sessionUser?.username || null}
+        headerRightSlot={accountHeaderSlot}
+        accountSlot={(
+          <WorkspaceAccountPanel
+            user={sessionUser}
+            mappingStatus={mappingStatus}
+            quota={quotaSnapshot}
+            usage={usagePage}
+            billingChannels={billingChannels}
+            billingOrders={billingOrders}
+            selectedOrderId={selectedBillingOrderId}
+            selectedOrder={selectedBillingOrder}
+            loading={sessionLoading || accountLoading}
+            loadingOrders={accountLoading}
+            submitting={billingSubmitting}
+            onSelectOrder={setSelectedBillingOrderId}
+            onCreateOrder={(channel, amount) => void handleCreateSandboxOrder(channel, amount)}
+            onRefresh={() => void refreshAccountSnapshot()}
+            onLogout={() => void handleLogout()}
+          />
+        )}
         toolTitle={activeWorkspaceTool.label}
         toolDescription={activeWorkspaceTool.description}
         parameterSlot={parameterSlot}

@@ -1,8 +1,9 @@
 import { randomUUID } from "node:crypto";
 
 import { addJob, addLibraryItem, storeBytes, storeDataUrl, storeRemoteUrl, updateJob, updateLibraryItem } from "./library";
+import { getTaskBillingService } from "./quota";
 import { providerById } from "./providers";
-import { type LibraryItem, type ProviderConfig } from "./types";
+import { type JobRecord, type LibraryItem, type ProviderConfig } from "./types";
 
 type UploadedMedia = {
   bytes: Buffer;
@@ -205,6 +206,46 @@ async function outputToLibrary(output: ProviderOutput, type: "image" | "video", 
   }
 }
 
+async function settleGeneratedTaskBilling(input: {
+  localUserId?: string | null;
+  taskId?: string | null;
+  estimatedQuotaUnits?: number | null;
+  outcome: "success" | "failed";
+  reason?: string | null;
+  upstreamRequestId?: string | null;
+  upstreamModel?: string | null;
+  newApiTaskId?: string | null;
+}) {
+  if (!input.localUserId || !input.taskId) return;
+  const billing = getTaskBillingService();
+  const actualQuotaUnits = Number.isInteger(input.estimatedQuotaUnits)
+    ? Math.max(0, input.estimatedQuotaUnits as number)
+    : 0;
+  try {
+    if (input.outcome === "success") {
+      await billing.settleSuccess({
+        localUserId: input.localUserId,
+        taskId: input.taskId,
+        actualQuotaUnits,
+        newApiTaskId: input.newApiTaskId || null,
+        upstreamRequestId: input.upstreamRequestId || null,
+        upstreamModel: input.upstreamModel || null,
+      });
+    } else {
+      await billing.fail({
+        localUserId: input.localUserId,
+        taskId: input.taskId,
+        reason: input.reason || "generation failed",
+        newApiTaskId: input.newApiTaskId || null,
+        upstreamRequestId: input.upstreamRequestId || null,
+        upstreamModel: input.upstreamModel || null,
+      });
+    }
+  } catch {
+    // Billing reconciliation stays inside the task-billing service.
+  }
+}
+
 export async function generateImage(input: {
   providerId: string;
   mode: "text-to-image" | "image-to-image";
@@ -212,39 +253,69 @@ export async function generateImage(input: {
   ratio: string;
   quality: string;
   files: UploadedMedia[];
+  billingLocalUserId?: string | null;
+  billingTaskId?: string | null;
+  billingIdempotencyKey?: string | null;
+  billingEstimatedQuotaUnits?: number | null;
 }) {
   const provider = await providerById(input.providerId);
-  if (!provider || provider.kind !== "image" || !provider.enabled || !provider.apiKey) {
-    throw new Error("图片供应商未配置或未启用。");
-  }
-  if (!input.prompt.trim()) throw new Error("请输入图片提示词。");
-  if (input.mode === "image-to-image" && !input.files.length) {
-    throw new Error("图生图模式需要上传参考图片。");
-  }
+  try {
+    if (!provider || provider.kind !== "image" || !provider.enabled || !provider.apiKey) {
+      throw new Error("图片供应商未配置或未启用。");
+    }
+    if (!input.prompt.trim()) throw new Error("请输入图片提示词。");
+    if (input.mode === "image-to-image" && !input.files.length) {
+      throw new Error("图生图模式需要上传参考图片。");
+    }
 
-  const output = await callImageProvider({
-    provider,
-    prompt: input.prompt,
-    ratio: input.ratio,
-    quality: input.quality,
-    files: input.files,
-  });
-  const stored = await outputToLibrary(output, "image", "image");
-  return addLibraryItem({
-    type: "image",
-    mode: input.mode,
-    title: input.prompt.slice(0, 42) || "图片生成",
-    prompt: input.prompt,
-    providerId: provider.id,
-    model: provider.model,
-    status: "done",
-    output: stored,
-    params: {
+    const output = await callImageProvider({
+      provider,
+      prompt: input.prompt,
       ratio: input.ratio,
       quality: input.quality,
-      referenceImages: input.files.length,
-    },
-  });
+      files: input.files,
+    });
+    const stored = await outputToLibrary(output, "image", "image");
+    const item = await addLibraryItem({
+      type: "image",
+      mode: input.mode,
+      title: input.prompt.slice(0, 42) || "图片生成",
+      prompt: input.prompt,
+      providerId: provider.id,
+      model: provider.model,
+      status: "done",
+      output: stored,
+      params: {
+        ratio: input.ratio,
+        quality: input.quality,
+        referenceImages: input.files.length,
+        ...(input.billingTaskId ? { billingTaskId: input.billingTaskId } : {}),
+        ...(input.billingIdempotencyKey ? { billingIdempotencyKey: input.billingIdempotencyKey } : {}),
+        ...(Number.isInteger(input.billingEstimatedQuotaUnits)
+          ? { billingEstimatedQuotaUnits: input.billingEstimatedQuotaUnits as number }
+          : {}),
+      },
+    });
+    await settleGeneratedTaskBilling({
+      localUserId: input.billingLocalUserId,
+      taskId: input.billingTaskId,
+      estimatedQuotaUnits: input.billingEstimatedQuotaUnits,
+      outcome: "success",
+      upstreamModel: provider.model,
+      newApiTaskId: output.jobId || item.id,
+    });
+    return item;
+  } catch (error) {
+    await settleGeneratedTaskBilling({
+      localUserId: input.billingLocalUserId,
+      taskId: input.billingTaskId,
+      estimatedQuotaUnits: input.billingEstimatedQuotaUnits,
+      outcome: "failed",
+      reason: error instanceof Error ? error.message : "generation failed",
+      upstreamModel: provider?.model || null,
+    });
+    throw error;
+  }
 }
 
 export async function submitVideo(input: {
@@ -254,52 +325,56 @@ export async function submitVideo(input: {
   ratio: string;
   duration: number;
   files: UploadedMedia[];
+  billingLocalUserId?: string | null;
+  billingTaskId?: string | null;
+  billingIdempotencyKey?: string | null;
+  billingEstimatedQuotaUnits?: number | null;
 }) {
-  if (!input.prompt.trim()) throw new Error("请输入视频提示词。");
-  if (input.mode === "text-to-video" && input.files.length) {
-    throw new Error("文生视频模式不接收首帧图片。");
-  }
-  if (input.mode === "image-to-video") {
-    if (!input.files.length) {
-      throw new Error("图生视频模式需要上传 1 张首帧图片。");
-    }
-    if (input.files.length > 1) {
-      throw new Error("图生视频模式只能上传 1 张首帧图片。");
-    }
-  }
-
   const provider = await providerById(input.providerId);
-  if (!provider || provider.kind !== "video" || !provider.enabled || !provider.apiKey) {
-    throw new Error("视频供应商未配置或未启用。");
-  }
+  try {
+    if (!input.prompt.trim()) throw new Error("请输入视频提示词。");
+    if (input.mode === "text-to-video" && input.files.length) {
+      throw new Error("文生视频模式不接收首帧图片。");
+    }
+    if (input.mode === "image-to-video") {
+      if (!input.files.length) {
+        throw new Error("图生视频模式需要上传 1 张首帧图片。");
+      }
+      if (input.files.length > 1) {
+        throw new Error("图生视频模式只能上传 1 张首帧图片。");
+      }
+    }
 
-  const providerPayload: Record<string, string | number | string[]> = {
-    model: provider.model,
-    prompt: input.prompt,
-    duration: input.duration,
-    aspect_ratio: input.ratio,
-    response_format: "url",
-  };
-  if (input.mode === "image-to-video") {
-    const [file] = input.files;
-    providerPayload.image = [`data:${file.mimeType};base64,${file.bytes.toString("base64")}`];
-  }
+    if (!provider || provider.kind !== "video" || !provider.enabled || !provider.apiKey) {
+      throw new Error("视频供应商未配置或未启用。");
+    }
 
-  const response = await fetch(provider.apiUrl, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      ...authHeaders(provider),
-    },
-    body: JSON.stringify(providerPayload),
-    signal: AbortSignal.timeout(180000),
-  });
-  const output = parseProviderOutput(await readProviderJson(response));
+    const providerPayload: Record<string, string | number | string[]> = {
+      model: provider.model,
+      prompt: input.prompt,
+      duration: input.duration,
+      aspect_ratio: input.ratio,
+      response_format: "url",
+    };
+    if (input.mode === "image-to-video") {
+      const [file] = input.files;
+      providerPayload.image = [`data:${file.mimeType};base64,${file.bytes.toString("base64")}`];
+    }
 
-  if (output.url) {
-    const stored = await outputToLibrary(output, "video", "video");
-    return {
-      item: await addLibraryItem({
+    const response = await fetch(provider.apiUrl, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        ...authHeaders(provider),
+      },
+      body: JSON.stringify(providerPayload),
+      signal: AbortSignal.timeout(180000),
+    });
+    const output = parseProviderOutput(await readProviderJson(response));
+
+    if (output.url) {
+      const stored = await outputToLibrary(output, "video", "video");
+      const item = await addLibraryItem({
         type: "video",
         mode: input.mode,
         title: input.prompt.slice(0, 42) || "视频生成",
@@ -312,43 +387,104 @@ export async function submitVideo(input: {
           ratio: input.ratio,
           duration: input.duration,
           referenceImages: input.files.length,
+          ...(input.billingTaskId ? { billingTaskId: input.billingTaskId } : {}),
+          ...(input.billingIdempotencyKey ? { billingIdempotencyKey: input.billingIdempotencyKey } : {}),
+          ...(Number.isInteger(input.billingEstimatedQuotaUnits)
+            ? { billingEstimatedQuotaUnits: input.billingEstimatedQuotaUnits as number }
+            : {}),
         },
-      }),
-      job: null,
-    };
-  }
+      });
+      await settleGeneratedTaskBilling({
+        localUserId: input.billingLocalUserId,
+        taskId: input.billingTaskId,
+        estimatedQuotaUnits: input.billingEstimatedQuotaUnits,
+        outcome: "success",
+        upstreamModel: provider.model,
+        newApiTaskId: output.jobId || item.id,
+      });
+      return { item, job: null };
+    }
 
-  const item = await addLibraryItem({
-    type: "video",
-    mode: input.mode,
-    title: input.prompt.slice(0, 42) || "视频生成",
-    prompt: input.prompt,
-    providerId: provider.id,
-    model: provider.model,
-    status: normalizeStatus(output.status || ""),
-    params: {
-      ratio: input.ratio,
-      duration: input.duration,
-      referenceImages: input.files.length,
-    },
-  });
-  const jobId = output.jobId || randomUUID();
-  const job = await addJob({
-    id: jobId,
-    libraryItemId: item.id,
-    type: "video",
-    providerId: provider.id,
-    status: normalizeStatus(output.status || ""),
-    statusUrl: output.statusUrl || deriveStatusUrl(provider.apiUrl, jobId),
-  });
-  return { item, job };
+    const item = await addLibraryItem({
+      type: "video",
+      mode: input.mode,
+      title: input.prompt.slice(0, 42) || "视频生成",
+      prompt: input.prompt,
+      providerId: provider.id,
+      model: provider.model,
+      status: normalizeStatus(output.status || ""),
+      params: {
+        ratio: input.ratio,
+        duration: input.duration,
+        referenceImages: input.files.length,
+      },
+    });
+    const jobId = output.jobId || randomUUID();
+    const job = await addJob({
+      id: jobId,
+      libraryItemId: item.id,
+      type: "video",
+      ownerLocalUserId: input.billingLocalUserId || null,
+      providerId: provider.id,
+      status: normalizeStatus(output.status || ""),
+      statusUrl: output.statusUrl || deriveStatusUrl(provider.apiUrl, jobId),
+      billing_task_id: input.billingTaskId || null,
+      billing_local_user_id: input.billingLocalUserId || null,
+      billing_idempotency_key: input.billingIdempotencyKey || null,
+      billing_estimated_quota_units: input.billingEstimatedQuotaUnits ?? null,
+      billing_state: input.billingTaskId ? "prechecked" : undefined,
+    });
+    return { item, job };
+  } catch (error) {
+    await settleGeneratedTaskBilling({
+      localUserId: input.billingLocalUserId,
+      taskId: input.billingTaskId,
+      estimatedQuotaUnits: input.billingEstimatedQuotaUnits,
+      outcome: "failed",
+      reason: error instanceof Error ? error.message : "generation failed",
+      upstreamModel: provider?.model || null,
+    });
+    throw error;
+  }
 }
 
-export async function refreshVideoJob(jobId: string) {
+async function reconcileFinalizedVideoJob(job: JobRecord, localUserId?: string | null) {
+  const billingLocalUserId = job.billing_local_user_id || job.ownerLocalUserId || localUserId || null;
+  if (!job.billing_task_id || !billingLocalUserId) return;
+  if (job.status === "done") {
+    await settleGeneratedTaskBilling({
+      localUserId: billingLocalUserId,
+      taskId: job.billing_task_id,
+      estimatedQuotaUnits: job.billing_estimated_quota_units ?? null,
+      outcome: "success",
+      upstreamModel: null,
+      newApiTaskId: job.id,
+    });
+  } else if (job.status === "failed") {
+    await settleGeneratedTaskBilling({
+      localUserId: billingLocalUserId,
+      taskId: job.billing_task_id,
+      estimatedQuotaUnits: job.billing_estimated_quota_units ?? null,
+      outcome: "failed",
+      reason: job.billing_last_error || "generation failed",
+      upstreamModel: null,
+      newApiTaskId: job.id,
+    });
+  }
+}
+
+export async function refreshVideoJob(jobId: string, localUserId?: string | null) {
   const { readJobs } = await import("./library");
   const job = (await readJobs()).find((item) => item.id === jobId);
   if (!job) throw new Error("任务不存在。");
-  if (job.status === "done" || job.status === "failed") return job;
+  const jobOwner = job.ownerLocalUserId || job.billing_local_user_id || null;
+  if (localUserId && jobOwner && jobOwner !== localUserId) {
+    throw new Error("任务不存在。");
+  }
+  if (job.status === "done" || job.status === "failed") {
+    await reconcileFinalizedVideoJob(job, localUserId);
+    return job;
+  }
   if (job.providerId === "video-upscale") return job;
 
   const provider = await providerById(job.providerId);
@@ -369,10 +505,22 @@ export async function refreshVideoJob(jobId: string) {
       status: "done",
       output: stored,
     } satisfies Partial<LibraryItem>);
-    return updateJob(job.id, {
+    const updated = await updateJob(job.id, {
       status: "done",
       sourceUrl: output.url,
+      billing_state: job.billing_task_id ? "settled" : job.billing_state,
+      billing_last_error: null,
     });
+    await settleGeneratedTaskBilling({
+      localUserId: job.billing_local_user_id || job.ownerLocalUserId || localUserId || null,
+      taskId: job.billing_task_id,
+      estimatedQuotaUnits: job.billing_estimated_quota_units ?? null,
+      outcome: "success",
+      upstreamRequestId: output.jobId || null,
+      upstreamModel: provider.model,
+      newApiTaskId: output.jobId || job.id,
+    });
+    return updated;
   }
 
   if (status === "failed") {
@@ -380,8 +528,21 @@ export async function refreshVideoJob(jobId: string) {
       status: "failed",
       error: "视频生成任务失败。",
     });
+    await settleGeneratedTaskBilling({
+      localUserId: job.billing_local_user_id || job.ownerLocalUserId || localUserId || null,
+      taskId: job.billing_task_id,
+      estimatedQuotaUnits: job.billing_estimated_quota_units ?? null,
+      outcome: "failed",
+      reason: output.status || "generation failed",
+      upstreamRequestId: output.jobId || null,
+      upstreamModel: provider.model,
+      newApiTaskId: output.jobId || job.id,
+    });
   }
-  return updateJob(job.id, { status });
+  return updateJob(job.id, {
+    status,
+    billing_state: job.billing_task_id ? job.billing_state || "prechecked" : job.billing_state,
+  });
 }
 
 export async function uploadedMediaFromForm(form: FormData, fieldName = "files") {
