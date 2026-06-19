@@ -1,11 +1,15 @@
-import { NextResponse } from "next/server";
+import { type NextRequest, NextResponse } from "next/server";
 
+import { authResultResponse, csrfFailure, requireAuthSession, requireCsrf } from "@/lib/server/auth";
 import { submitVideo, uploadedMediaFromForm } from "@/lib/server/provider-call";
 
 export const runtime = "nodejs";
 
-export async function POST(request: Request) {
+export async function POST(request: NextRequest) {
   try {
+    if (!requireCsrf(request)) return authResultResponse(request, csrfFailure());
+    const session = await requireAuthSession(request);
+    if (!session.ok) return authResultResponse(request, session);
     const form = await request.formData();
     const duration = Number(form.get("duration") || 5);
     const mode = String(form.get("mode") || "text-to-video") === "image-to-video" ? "image-to-video" : "text-to-video";
@@ -23,6 +27,10 @@ export async function POST(request: Request) {
       ratio: String(form.get("ratio") || "16:9"),
       duration: Number.isFinite(duration) ? duration : 5,
       files: await uploadedMediaFromForm(form),
+      billingLocalUserId: session.user.local_user_id,
+      billingTaskId: String(form.get("taskId") || form.get("billingTaskId") || ""),
+      billingIdempotencyKey: String(form.get("idempotencyKey") || form.get("billingIdempotencyKey") || ""),
+      billingEstimatedQuotaUnits: Number(form.get("estimatedQuotaUnits") || form.get("billingEstimatedQuotaUnits") || Number.NaN),
     });
     return NextResponse.json(result);
   } catch (error) {
