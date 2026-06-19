@@ -2,8 +2,8 @@
 
 /* eslint-disable @next/next/no-img-element */
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { AlertTriangle, Download, ExternalLink, ImageUp, Loader2, RefreshCw, Search, Trash2, UploadCloud, Wand2, X } from "lucide-react";
+import { useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
+import { AlertTriangle, Check, ChevronDown, Download, ExternalLink, ImageUp, Loader2, RefreshCw, Search, Trash2, UploadCloud, Wand2, X } from "lucide-react";
 import { useRouter } from "next/navigation";
 
 import { WorkbenchShell } from "@/components/workbench-shell";
@@ -54,6 +54,12 @@ type UploadFilePreview = {
   size: number;
   previewUrl?: string;
   mediaType?: "image" | "video";
+};
+
+type SelectOption = {
+  value: string;
+  label: string;
+  disabled?: boolean;
 };
 
 type ImageWorkspaceState = {
@@ -120,7 +126,7 @@ type VideoUpscaleWorkspaceState = {
 };
 
 const ratios = ["1:1", "16:9", "9:16", "4:3", "3:4"];
-const upscaleUnavailableMessage = "高清处理组件暂不可用，请稍后重试";
+const upscaleUnavailableMessage = "高清处理暂时不可用，请稍后重试";
 
 const imageWorkspaceModeMeta: Record<WorkspaceImageMode, {
   title: string;
@@ -134,7 +140,7 @@ const imageWorkspaceModeMeta: Record<WorkspaceImageMode, {
 }> = {
   "text-to-image": {
     title: "AI 图像生成器",
-    subtitle: "描述画面，可选参考图片。",
+    subtitle: "描述画面，可选图像。",
     submitLabel: "生成图片",
     loadingLabel: "正在生成",
     promptPlaceholder: "描述你要生成的画面、风格、主体和氛围。",
@@ -144,13 +150,13 @@ const imageWorkspaceModeMeta: Record<WorkspaceImageMode, {
   },
   "image-to-image": {
     title: "AI 图片编辑器",
-    subtitle: "上传参考图并描述修改要求。",
+    subtitle: "上传图像并描述修改要求。",
     submitLabel: "开始编辑",
     loadingLabel: "正在编辑",
-    promptPlaceholder: "描述你要如何修改这张图，保留哪些元素、替换哪些内容。",
+    promptPlaceholder: "描述你要如何修改这张图像，保留哪些元素、替换哪些内容。",
     guideTitle: "准备开始编辑",
-    guideDescription: "描述希望如何修改参考图片。",
-    guideNotes: ["上传参考图", "写清修改要求", "结果会自动进入作品库"],
+    guideDescription: "描述希望如何修改图像。",
+    guideNotes: ["上传图像", "写清修改要求", "结果会自动进入作品库"],
   },
 };
 
@@ -180,12 +186,12 @@ const videoWorkspaceModeMeta: Record<WorkspaceVideoMode, {
   "text-to-video": {
     submitLabel: "生成视频",
     loadingLabel: "正在生成视频",
-    uploadLabel: "首帧图片",
+    uploadLabel: "图像",
     uploadRequired: false,
-    uploadEmptyTitle: "上传图片",
-    uploadFilledTitle: "首帧图片已在本地保留",
+    uploadEmptyTitle: "上传图像",
+    uploadFilledTitle: "已选择图像",
     uploadHelpText: "支持 JPG、PNG、WEBP",
-    promptLabel: "视频提示词",
+    promptLabel: "提示词",
     promptPlaceholder: "描述主体、动作、场景、镜头、运镜、光线和氛围。例如：雨夜霓虹街道，低机位缓慢推进，人物回头看向镜头。",
     guideDescription: "描述你想生成的视频画面、动作和镜头。",
     guideEmpty: "描述你想生成的视频画面、动作和镜头，真实视频结果会显示在这里。",
@@ -195,31 +201,31 @@ const videoWorkspaceModeMeta: Record<WorkspaceVideoMode, {
   "image-to-video": {
     submitLabel: "生成视频",
     loadingLabel: "正在生成视频",
-    uploadLabel: "首帧图片",
+    uploadLabel: "图像",
     uploadRequired: true,
-    uploadEmptyTitle: "上传首帧图片",
-    uploadFilledTitle: "已选择首帧图片",
+    uploadEmptyTitle: "上传图像",
+    uploadFilledTitle: "已选择图像",
     uploadHelpText: "支持 JPG、PNG、WEBP",
-    promptLabel: "动态描述",
-    promptPlaceholder: "描述图片中的主体如何运动、镜头如何推进/拉远/环绕、背景如何变化，以及哪些元素必须保持一致。",
-    guideDescription: "上传首帧图片，再描述希望画面如何运动。",
-    guideEmpty: "先上传首帧图片，再补充动态描述。这里不会用假视频冒充结果。",
-    guideReady: "首帧图片已准备好，补充动态描述后可以提交真实视频任务。",
-    guideNotes: ["上传首帧图片", "描述运动和镜头变化", "结果会进入作品库"],
+    promptLabel: "提示词",
+    promptPlaceholder: "描述图像中的主体如何运动、镜头如何推进/拉远/环绕、背景如何变化，以及哪些元素必须保持一致。",
+    guideDescription: "上传图像，再描述希望画面如何运动。",
+    guideEmpty: "先上传图像，再补充提示词。这里不会用假视频冒充结果。",
+    guideReady: "图像已准备好，补充提示词后可以提交真实视频任务。",
+    guideNotes: ["上传图像", "描述运动和镜头变化", "结果会进入作品库"],
   },
 };
 
 function createImageWorkspaceFiles(files: File[]) {
   const nextFiles = files.slice(0, maxReferenceImageCount);
   if (files.length > maxReferenceImageCount) {
-    throw new Error(`最多上传 ${maxReferenceImageCount} 张参考图片。`);
+    throw new Error(`最多上传 ${maxReferenceImageCount} 张图像。`);
   }
   for (const file of nextFiles) {
     if (!allowedReferenceImageTypes.has(file.type)) {
-      throw new Error("参考图片仅支持 PNG、JPEG 和 WebP。");
+      throw new Error("图像仅支持 PNG、JPEG 和 WebP。");
     }
     if (file.size > maxReferenceImageSize) {
-      throw new Error("单张参考图片不能超过 10MB。");
+      throw new Error("单张图像不能超过 10MB。");
     }
   }
   return nextFiles.map((file) => ({
@@ -230,16 +236,16 @@ function createImageWorkspaceFiles(files: File[]) {
 
 function createVideoWorkspaceFiles(files: File[]) {
   if (files.length > maxVideoFirstFrameCount) {
-    throw new Error("首帧图片只能上传 1 张。");
+    throw new Error("图像只能上传 1 张。");
   }
   const nextFiles = files.slice(0, maxVideoFirstFrameCount);
   if (!nextFiles.length) return [];
   const [file] = nextFiles;
   if (!allowedReferenceImageTypes.has(file.type)) {
-    throw new Error("首帧图片仅支持 PNG、JPEG 和 WebP。");
+    throw new Error("图像仅支持 PNG、JPEG 和 WebP。");
   }
   if (file.size > maxReferenceImageSize) {
-    throw new Error("首帧图片不能超过 10MB。");
+    throw new Error("图像不能超过 10MB。");
   }
   return [{
     file,
@@ -571,7 +577,7 @@ export function StudioApp() {
     } catch (error) {
       setImageWorkspace((prev) => ({
         ...prev,
-        fileError: error instanceof Error ? error.message : "参考图片读取失败。",
+        fileError: error instanceof Error ? error.message : "图像读取失败。",
         submitError: "",
       }));
       return;
@@ -708,7 +714,7 @@ export function StudioApp() {
     } catch (error) {
       setVideoWorkspace((prev) => ({
         ...prev,
-        fileError: error instanceof Error ? error.message : "首帧图片读取失败。",
+        fileError: error instanceof Error ? error.message : "图像读取失败。",
         submitError: "",
       }));
       return;
@@ -788,7 +794,7 @@ export function StudioApp() {
       imageUpscaleFileRef.current = null;
       updateImageUpscaleWorkspace({
         file: null,
-        fileError: error instanceof Error ? error.message : "图片读取失败。",
+        fileError: error instanceof Error ? error.message : "图像读取失败。",
         submitError: "",
       });
       setOutputs((prev) => ({ ...prev, "image-upscale": null }));
@@ -811,7 +817,7 @@ export function StudioApp() {
   const submitImageUpscale = useCallback(async () => {
     const currentFile = imageUpscaleWorkspace.file;
     if (!currentFile) {
-      updateImageUpscaleWorkspace({ fileError: "请先上传一张图片。", submitError: "请先上传一张图片。" });
+      updateImageUpscaleWorkspace({ fileError: "请先上传一张图像。", submitError: "请先上传一张图像。" });
       return;
     }
     if (!imageUpscaleWorkspace.availability?.ready) {
@@ -1031,11 +1037,11 @@ export function StudioApp() {
       return;
     }
     if (!videoWorkspacePrompt) {
-      updateVideoWorkspace({ submitError: "请输入视频提示词。" });
+      updateVideoWorkspace({ submitError: "请输入提示词。" });
       return;
     }
     if (videoWorkspaceNeedsFile && !videoWorkspaceHasFiles) {
-      const text = "请先上传首帧图片。";
+      const text = "请先上传图像。";
       updateVideoWorkspace({ fileError: text, submitError: text });
       return;
     }
@@ -1323,8 +1329,8 @@ function ImageGenerator({
         onRemove={onFileRemove}
         onClear={onFilesClear}
       />
-      <StackedControl label="图片比例" required>
-        <AspectRatioSelector label="图片比例" value={state.ratio} onChange={onRatioChange} />
+      <StackedControl label="比例" required>
+        <AspectRatioSelector label="比例" value={state.ratio} onChange={onRatioChange} />
       </StackedControl>
       <StackedControl label="清晰度" required>
         <ModeSegmentedControl
@@ -1381,7 +1387,7 @@ function ReferenceImageInput({
   }, [onChange]);
 
   return (
-    <FieldFrame label="参考图片" hint={mode === "image-to-image" ? "已上传" : "可选"}>
+    <FieldFrame label="图像" hint={mode === "image-to-image" ? "已上传" : "可选"}>
       <CompactDropzone
         inputRef={fileInputRef}
         inputId="reference-image-input"
@@ -1394,8 +1400,8 @@ function ReferenceImageInput({
           size: item.file.size,
           previewUrl: item.previewUrl,
         }))}
-        emptyTitle="上传图片"
-        filledTitle="已选择参考图片"
+        emptyTitle="上传图像"
+        filledTitle="已选择图像"
         helpText="支持 JPG、PNG、WEBP"
         onFiles={applyFiles}
         onRemove={onRemove}
@@ -1484,21 +1490,19 @@ function VideoGenerator({
         onRemove={onFileRemove}
         onClear={onFilesClear}
       />
-      <StackedControl label="视频比例" required>
-        <AspectRatioSelector label="视频比例" value={state.ratio} onChange={onRatioChange} />
+      <StackedControl label="比例" required>
+        <AspectRatioSelector label="比例" value={state.ratio} onChange={onRatioChange} />
       </StackedControl>
-      <FieldFrame label="视频时长" required>
-        <select
-          value={state.duration}
-          onChange={(event) => onDurationChange(Number(event.target.value))}
-          className="studio-select"
-        >
-          {[5, 8, 10, 15].map((value) => (
-            <option key={value} value={value}>
-              {value} 秒
-            </option>
-          ))}
-        </select>
+      <FieldFrame label="时长" required>
+        <CustomSelect
+          label="时长"
+          value={String(state.duration)}
+          options={[5, 8, 10, 15].map((value) => ({
+            value: String(value),
+            label: `${value} 秒`,
+          }))}
+          onChange={(value) => onDurationChange(Number(value))}
+        />
       </FieldFrame>
       <VideoPromptBox
         label={meta.promptLabel}
@@ -1641,7 +1645,7 @@ function ImageUpscaleForm({
 
   return (
     <FormPanel>
-      <FieldFrame label="源图片" required>
+      <FieldFrame label="图像" required>
         <CompactDropzone
           inputRef={inputRef}
           inputId="image-upscale-input"
@@ -1649,8 +1653,8 @@ function ImageUpscaleForm({
           multiple={false}
           dragging={dragging}
           files={file ? [{ name: file.file.name, size: file.file.size, previewUrl: file.previewUrl }] : []}
-          emptyTitle="上传图片"
-          filledTitle="已选择图片"
+          emptyTitle="上传图像"
+          filledTitle="已选择图像"
           helpText="支持 JPG、PNG、WEBP"
           onFiles={onFilesChange}
           onRemove={file ? () => onFileRemove() : undefined}
@@ -1753,7 +1757,7 @@ function ImageUpscalePreviewPanel({
       <PreviewState
         eyebrow="创作预览"
         title="创作预览"
-        description={state.statusLoading ? "正在准备高清处理组件。" : "先上传一张图片，再选择 2x 或 4x。"}
+        description={state.statusLoading ? "正在准备高清处理。" : "先上传一张图像，再选择 2x 或 4x。"}
         badge={`${libraryCount} 条作品`}
       >
         <div className="studio-preview__empty">
@@ -1762,7 +1766,7 @@ function ImageUpscalePreviewPanel({
         <div className="studio-steps">
           <div className="studio-step">
             <span>1</span>
-            <p>上传一张 PNG、JPEG 或 WebP 图片</p>
+            <p>上传一张 PNG、JPEG 或 WebP 图像</p>
           </div>
           <div className="studio-step">
             <span>2</span>
@@ -1840,7 +1844,7 @@ function ImageUpscalePreviewPanel({
   }
 
   return (
-    <PreviewState eyebrow="创作预览" title="创作预览" description="上传图片后，原图和高清结果会在这里对比显示。" badge={`${libraryCount} 条作品`}>
+    <PreviewState eyebrow="创作预览" title="创作预览" description="上传图像后，原图和高清结果会在这里对比显示。" badge={`${libraryCount} 条作品`}>
       <div className="studio-preview__empty">
         <p>上传后开始增强，成功后这里会显示真实结果。</p>
       </div>
@@ -1914,7 +1918,7 @@ function VideoUpscalePreviewPanel({
       <PreviewState
         eyebrow="创作预览"
         title="创作预览"
-        description={state.statusLoading ? "正在准备高清处理组件。" : "先上传一个视频，再选择 2x 或 4x。"}
+        description={state.statusLoading ? "正在准备高清处理。" : "先上传一个视频，再选择 2x 或 4x。"}
         badge={`${libraryCount} 条作品`}
       >
         <div className="studio-preview__empty">
@@ -2045,7 +2049,7 @@ function VideoUpscaleForm({
 
   return (
     <FormPanel>
-      <FieldFrame label="源视频" required>
+      <FieldFrame label="视频" required>
         <CompactDropzone
           inputRef={inputRef}
           inputId="video-upscale-input"
@@ -2317,24 +2321,24 @@ function LibraryToolbar({
           className="studio-input"
         />
       </div>
-      <select
+      <CustomSelect
+        label="作品类型"
         value={filter}
-        onChange={(event) => onFilterChange(event.target.value as LibraryFilter)}
-        className="studio-select studio-library-toolbar__select"
-        aria-label="作品类型"
-      >
-        <option value="image">图片</option>
-        <option value="video">视频</option>
-      </select>
-      <select
+        options={[
+          { value: "image", label: "图片" },
+          { value: "video", label: "视频" },
+        ]}
+        onChange={(value) => onFilterChange(value as LibraryFilter)}
+      />
+      <CustomSelect
+        label="排序"
         value={sort}
-        onChange={(event) => onSortChange(event.target.value as LibrarySort)}
-        className="studio-select studio-library-toolbar__select"
-        aria-label="排序"
-      >
-        <option value="recent">最新</option>
-        <option value="title">标题</option>
-      </select>
+        options={[
+          { value: "recent", label: "最新" },
+          { value: "title", label: "标题" },
+        ]}
+        onChange={(value) => onSortChange(value as LibrarySort)}
+      />
     </div>
   );
 }
@@ -2380,7 +2384,7 @@ function ImagePreviewPanel({
     return (
       <PreviewState eyebrow="失败" title="生成结果" description={submitError} badge="请重试" role="alert">
         <div className="studio-preview__empty">
-          <p>参数会保留，你可以先修改模型、提示词或参考图片，再重新提交。</p>
+        <p>参数会保留，你可以先修改模型、提示词或图像，再重新提交。</p>
           <div className="studio-actions">
             {!hasProvider ? (
               <button type="button" className="studio-secondary-button" onClick={() => void onReloadProviders()}>
@@ -2493,7 +2497,7 @@ function VideoPreviewPanel({
     return (
       <PreviewState eyebrow="失败" title="生成结果" description={submitError} badge="可重试" role="alert">
         <div className="studio-preview__empty">
-          <p>参数会保留。你可以调整模型、提示词、时长、比例或首帧图片后重试。</p>
+        <p>参数会保留。你可以调整模型、提示词、时长、比例或图像后重试。</p>
           <div className="studio-actions">
             {!hasProvider ? (
               <button type="button" className="studio-secondary-button" onClick={() => void onReloadProviders()}>
@@ -2532,7 +2536,7 @@ function VideoPreviewPanel({
     <PreviewState eyebrow="创作预览" title="创作预览" description={meta.guideDescription} badge={`${libraryCount} 条作品`}>
       {mode === "image-to-video" && firstFrame ? (
         <div className="studio-preview__media is-example">
-          <span className="studio-example-badge">首帧图片</span>
+          <span className="studio-example-badge">图像</span>
           <img src={firstFrame.previewUrl} alt={firstFrame.file.name} />
         </div>
       ) : (
@@ -2881,6 +2885,133 @@ function ModeSegmentedControl({
   );
 }
 
+function CustomSelect({
+  label,
+  value,
+  options,
+  disabled,
+  placeholder = "请选择",
+  onChange,
+}: {
+  label: string;
+  value: string;
+  options: SelectOption[];
+  disabled?: boolean;
+  placeholder?: string;
+  onChange: (value: string) => void;
+}) {
+  const generatedId = useId();
+  const buttonRef = useRef<HTMLButtonElement | null>(null);
+  const listRef = useRef<HTMLDivElement | null>(null);
+  const [open, setOpen] = useState(false);
+  const selectedIndex = options.findIndex((option) => option.value === value);
+  const selectedOption = selectedIndex >= 0 ? options[selectedIndex] : null;
+  const [activeIndex, setActiveIndex] = useState(selectedIndex >= 0 ? selectedIndex : 0);
+  const listId = `${generatedId}-listbox`;
+
+  useEffect(() => {
+    if (!open) return undefined;
+    const onPointerDown = (event: PointerEvent) => {
+      const target = event.target as Node;
+      if (buttonRef.current?.contains(target) || listRef.current?.contains(target)) return;
+      setOpen(false);
+    };
+    document.addEventListener("pointerdown", onPointerDown);
+    return () => document.removeEventListener("pointerdown", onPointerDown);
+  }, [open]);
+
+  const openMenu = useCallback(() => {
+    setActiveIndex(selectedIndex >= 0 ? selectedIndex : 0);
+    setOpen(true);
+  }, [selectedIndex]);
+
+  const enabledOptions = options.filter((option) => !option.disabled);
+  const chooseOption = useCallback((option: SelectOption) => {
+    if (option.disabled) return;
+    onChange(option.value);
+    setOpen(false);
+    buttonRef.current?.focus();
+  }, [onChange]);
+
+  const moveActive = useCallback((direction: 1 | -1) => {
+    if (!enabledOptions.length) return;
+    const currentValue = options[activeIndex]?.value;
+    const enabledIndex = Math.max(0, enabledOptions.findIndex((option) => option.value === currentValue));
+    const nextEnabled = enabledOptions[(enabledIndex + direction + enabledOptions.length) % enabledOptions.length];
+    const nextIndex = options.findIndex((option) => option.value === nextEnabled.value);
+    setActiveIndex(nextIndex >= 0 ? nextIndex : 0);
+  }, [activeIndex, enabledOptions, options]);
+
+  return (
+    <div className="studio-custom-select">
+      <button
+        ref={buttonRef}
+        type="button"
+        className="studio-custom-select__button"
+        disabled={disabled || !options.length}
+        aria-label={label}
+        aria-haspopup="listbox"
+        aria-expanded={open}
+        aria-controls={listId}
+        onClick={() => {
+          if (open) {
+            setOpen(false);
+          } else {
+            openMenu();
+          }
+        }}
+        onKeyDown={(event) => {
+          if (event.key === "ArrowDown") {
+            event.preventDefault();
+            if (!open) openMenu();
+            moveActive(1);
+          } else if (event.key === "ArrowUp") {
+            event.preventDefault();
+            if (!open) openMenu();
+            moveActive(-1);
+          } else if (event.key === "Enter" || event.key === " ") {
+            event.preventDefault();
+            if (!open) {
+              openMenu();
+              return;
+            }
+            const option = options[activeIndex];
+            if (option) chooseOption(option);
+          } else if (event.key === "Escape") {
+            setOpen(false);
+          }
+        }}
+      >
+        <span>{selectedOption?.label || placeholder}</span>
+        <ChevronDown className={cn("size-4 transition", open && "rotate-180")} aria-hidden="true" />
+      </button>
+      {open ? (
+        <div ref={listRef} id={listId} className="studio-custom-select__menu" role="listbox" aria-label={label}>
+          {options.map((option, index) => {
+            const selected = option.value === value;
+            const active = index === activeIndex;
+            return (
+              <button
+                key={option.value}
+                type="button"
+                role="option"
+                aria-selected={selected}
+                disabled={option.disabled}
+                className={cn("studio-custom-select__option", selected && "is-selected", active && "is-active")}
+                onMouseEnter={() => setActiveIndex(index)}
+                onClick={() => chooseOption(option)}
+              >
+                <span>{option.label}</span>
+                {selected ? <Check className="size-4" aria-hidden="true" /> : null}
+              </button>
+            );
+          })}
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
 function ProviderSelect({
   providers,
   value,
@@ -2899,31 +3030,18 @@ function ProviderSelect({
   return (
     <FieldFrame label="模型" required>
       <div className="studio-provider">
-        <label className="studio-sr-only" htmlFor="image-provider-select">
-          模型
-        </label>
-        <select
-          id="image-provider-select"
+        <CustomSelect
+          label="模型"
           value={value}
-          onChange={(event) => onChange(event.target.value)}
-          className="studio-select"
           disabled={loading || !providers.length}
-          aria-invalid={Boolean(error)}
-          aria-describedby={error ? "image-provider-error" : loading ? "image-provider-status" : !providers.length ? "image-provider-empty" : undefined}
-        >
-          {loading ? (
-            <option value="">正在加载模型</option>
-          ) : providers.length ? (
-            providers.map((provider) => (
-              <option key={provider.id} value={provider.id}>
-                {provider.displayName || provider.model}
-              </option>
-            ))
-          ) : (
-            <option value="">当前尚未配置可用模型</option>
-          )}
-        </select>
-        {loading ? <p id="image-provider-status" className="studio-help-text" role="status" aria-live="polite">正在读取后台已启用的图片模型。</p> : null}
+          placeholder={loading ? "正在加载模型" : "当前尚未配置可用模型"}
+          options={providers.map((provider) => ({
+            value: provider.id,
+            label: provider.displayName || provider.model,
+          }))}
+          onChange={onChange}
+        />
+        {loading ? <p id="image-provider-status" className="studio-help-text" role="status" aria-live="polite">正在读取可用模型。</p> : null}
         {!loading && !error && !providers.length ? (
           <p id="image-provider-empty" className="studio-help-text" role="status" aria-live="polite">
             当前尚未配置可用模型。
@@ -3072,7 +3190,7 @@ function libraryModeLabel(item: LibraryItem) {
   if (item.mode === "text-to-image") return "图片生成";
   if (item.mode === "image-to-image") return "图片编辑";
   if (item.mode === "text-to-video") return "视频生成";
-  if (item.mode === "image-to-video") return "首帧视频";
+  if (item.mode === "image-to-video") return "图像生成视频";
   if (item.mode === "image-upscale") return "图片高清";
   if (item.mode === "video-upscale") return "视频高清";
   return item.type === "image" ? "图片作品" : "视频作品";
@@ -3141,9 +3259,9 @@ const previewContent: Record<
   },
   "image-upscale": {
     title: "图片高清",
-    desc: "上传图片后选择倍数，结果会在这里显示。",
+    desc: "上传图像后选择倍数，结果会在这里显示。",
     image: "/images/reference/sample-2.png",
-    notes: ["上传图片", "选择 2x 或 4x", "处理后进入作品库"],
+    notes: ["上传图像", "选择 2x 或 4x", "处理后进入作品库"],
   },
   "video-upscale": {
     title: "视频高清",

@@ -2,8 +2,9 @@ import {
   Film,
   FolderOpen,
   Image as ImageIcon,
+  ImageUp,
   Settings,
-  Sparkles,
+  TrendingUp,
   Wand2,
 } from "lucide-react";
 
@@ -38,6 +39,7 @@ export type WorkspaceToolEntry = {
   label: string;
   description: string;
   icon: typeof ImageIcon;
+  secondaryIcon?: typeof ImageIcon;
   group: WorkspaceToolGroup;
   action: WorkspaceAction;
   visible: boolean;
@@ -65,7 +67,7 @@ export const workspaceToolEntries: WorkspaceToolEntry[] = [
   {
     id: "video",
     label: "AI 视频生成器",
-    description: "描述镜头，可选首帧图片",
+    description: "描述镜头，可选图像",
     icon: Film,
     group: "创作工具",
     action: { kind: "workspace", toolId: "video", mode: "text-to-video" },
@@ -75,7 +77,7 @@ export const workspaceToolEntries: WorkspaceToolEntry[] = [
   {
     id: "image",
     label: "AI 图像生成器",
-    description: "描述画面，可选参考图片",
+    description: "描述画面，可选图像",
     icon: ImageIcon,
     group: "创作工具",
     action: { kind: "workspace", toolId: "image", mode: "text-to-image" },
@@ -85,7 +87,7 @@ export const workspaceToolEntries: WorkspaceToolEntry[] = [
   {
     id: "image-editor",
     label: "AI 图片编辑器",
-    description: "上传参考图进行编辑",
+    description: "上传图像进行编辑",
     icon: Wand2,
     group: "创作工具",
     action: { kind: "workspace", toolId: "image", mode: "image-to-image" },
@@ -96,7 +98,8 @@ export const workspaceToolEntries: WorkspaceToolEntry[] = [
     id: "image-upscale",
     label: "图片高清",
     description: "放大图片清晰度",
-    icon: Sparkles,
+    icon: ImageIcon,
+    secondaryIcon: ImageUp,
     group: "增强工具",
     action: { kind: "workspace", toolId: "image-upscale" },
     visible: true,
@@ -106,7 +109,8 @@ export const workspaceToolEntries: WorkspaceToolEntry[] = [
     id: "video-upscale",
     label: "视频高清",
     description: "放大视频清晰度",
-    icon: Sparkles,
+    icon: Film,
+    secondaryIcon: TrendingUp,
     group: "增强工具",
     action: { kind: "workspace", toolId: "video-upscale" },
     visible: true,
@@ -125,12 +129,12 @@ export const workspaceToolEntries: WorkspaceToolEntry[] = [
   {
     id: "admin-settings",
     label: "后台设置",
-    description: "供应商与本机配置",
+    description: "系统配置",
     icon: Settings,
     group: "系统",
     action: { kind: "route", href: "/admin/providers" },
-    visible: true,
-    requiresAuth: false,
+    visible: false,
+    requiresAuth: true,
   },
 ];
 
