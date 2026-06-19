@@ -328,6 +328,65 @@ Result:
 - Debit-once and duplicate-request live Provider validation remain `BLOCKED`.
 - The final conclusion remains `BLOCKED`.
 
+## Strict PR #37 Environment Validation Attempt
+
+Attempt date: 2026-06-19.
+
+Commit under test before this report update:
+`c0a2556da5c5c78699d69cbba6f2cb6fc3ac7ce3`.
+
+Scope of this attempt:
+
+- Use only the current PR #37 runtime, not the older `127.0.0.1:3106` instance.
+- Configure test PostgreSQL, test New API, application persistence modes, and
+  Provider keys only through uncommitted runtime configuration.
+- Do not directly edit the New API database or local mapping tables.
+- Use existing admin/session/mapping repair APIs only.
+
+Environment probe:
+
+- `NEW_API_ENABLED`: not provided.
+- `NEW_API_ENVIRONMENT`: not provided.
+- `NEW_API_BASE_URL`: not provided.
+- `NEW_API_ADMIN_USER_ID`: not provided.
+- `NEW_API_ADMIN_ACCESS_TOKEN`: not provided.
+- `APP_DATABASE_URL`: not provided.
+- `APP_DATABASE_EXPECTED_NAME`: not provided.
+- `APP_AUTH_PERSISTENCE_MODE`: not provided.
+- `APP_BILLING_PERSISTENCE_MODE`: not provided.
+- `TASK_BILLING_PERSISTENCE_MODE`: not provided.
+- `IMAGE_MODEL_API_KEY`: not provided through the process environment.
+- `VIDEO_MODEL_API_KEY`: not provided through the process environment.
+- `PAYMENT_PRODUCTION_ENABLED`: not provided.
+
+Local runtime tooling probe:
+
+- `docker`: not found in PATH.
+- `docker.exe`: not found under the standard Docker Desktop install path.
+- `docker compose`: unavailable.
+- `psql.exe`: not found under standard PostgreSQL 14/15/16 install paths.
+- Active checked listener: `127.0.0.1:3106`, explicitly rejected for this
+  attempt because it is not the current Final QA backend surface.
+
+Result:
+
+- Step 1, start test PostgreSQL and New API: `BLOCKED`.
+- Step 2, run application database migrations against test PostgreSQL:
+  `BLOCKED`.
+- Step 3, start current PR #37 app with release-like runtime configuration:
+  `BLOCKED`.
+- Step 4, readiness `200` for both PostgreSQL and New API: `BLOCKED`.
+- Step 5-10, register or use a test user, repair mapping through admin API, and
+  obtain active mapping plus quota precheck: `BLOCKED`.
+- Final real image/video generation and debit idempotency validation:
+  `BLOCKED`.
+
+Failure stage: local runtime prerequisites for test PostgreSQL/New API are not
+available to this shell, and the required application environment variables are
+not provided. The previously configured Provider keys alone are not sufficient
+for production readiness because current PR #37 requires an active local user to
+New API mapping and successful quota precheck before provider dispatch.
+
 ## Not Fully Exercised Locally
 
 - Real third-party or approved test image/video Provider calls were not executed
