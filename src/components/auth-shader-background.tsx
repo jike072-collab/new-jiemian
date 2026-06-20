@@ -21,11 +21,46 @@ float wave(vec2 p, float speed, float scale, float shift) {
   return sin((p.x * scale + p.y * (scale * 0.68) + u_time * speed + shift));
 }
 
+float hash12(vec2 p) {
+  vec3 p3 = fract(vec3(p.xyx) * 0.1031);
+  p3 += dot(p3, p3.yzx + 33.33);
+  return fract((p3.x + p3.y) * p3.z);
+}
+
+vec2 hash22(vec2 p) {
+  vec3 p3 = fract(vec3(p.xyx) * vec3(0.1031, 0.1030, 0.0973));
+  p3 += dot(p3, p3.yzx + 33.33);
+  return fract((p3.xx + p3.yz) * p3.zy);
+}
+
+float particleLayer(vec2 uv, float scale, float speed, float size, float density, float shift) {
+  vec2 grid = uv * scale - vec2(u_time * speed, u_time * speed * 0.62);
+  vec2 cell = floor(grid);
+  vec2 local = fract(grid);
+  float glow = 0.0;
+
+  for (int y = -1; y <= 1; y++) {
+    for (int x = -1; x <= 1; x++) {
+      vec2 neighbor = vec2(float(x), float(y));
+      vec2 seedCell = cell + neighbor + shift;
+      float seed = hash12(seedCell);
+      vec2 point = neighbor + hash22(seedCell + 11.7);
+      float visible = step(seed, density);
+      float dist = length(local - point);
+      float core = smoothstep(size, 0.0, dist);
+      float halo = smoothstep(size * 4.0, 0.0, dist) * 0.18;
+      glow += (core + halo) * visible * (0.72 + seed * 0.34);
+    }
+  }
+
+  return glow;
+}
+
 void main() {
   vec2 uv = gl_FragCoord.xy / u_resolution.xy;
   vec2 p = uv * 2.0 - 1.0;
   p.x *= u_resolution.x / u_resolution.y;
-  vec2 parallax = (u_pointer - 0.5) * (0.028 - u_mobile * 0.018);
+  vec2 parallax = (u_pointer - 0.5) * 0.007 * (1.0 - u_mobile);
   p += parallax;
 
   float leftGlow = 1.0 - smoothstep(-0.85, 0.88, uv.x);
@@ -35,6 +70,15 @@ void main() {
   float ribbon = smoothstep(0.50, 0.95, ribbonA * 0.54 + ribbonB * 0.46);
   float ripple = smoothstep(0.82, 0.2, length(p - vec2(-0.62, 0.05)));
   float bridge = exp(-abs(p.y - (0.08 * sin(p.x * 2.0 + u_time * 0.12))) * 10.0) * smoothstep(-0.2, 0.58, p.x) * smoothstep(1.05, 0.2, p.x);
+  float titleZone = smoothstep(0.45, 0.08, uv.x) * smoothstep(0.44, 0.70, uv.y) * smoothstep(0.98, 0.78, uv.y);
+  float cardZone = smoothstep(0.58, 0.05, uv.x) * smoothstep(0.12, 0.36, uv.y) * smoothstep(0.86, 0.46, uv.y);
+  float formQuiet = smoothstep(0.52, 0.78, uv.x) * smoothstep(0.12, 0.42, uv.y) * smoothstep(0.92, 0.62, uv.y);
+  float particleMask = (0.22 + leftGlow * 0.42 + titleZone * 0.44 + cardZone * 0.68) * (1.0 - formQuiet * 0.74);
+  particleMask *= 1.0 - u_mobile * 0.62;
+
+  float farParticles = particleLayer(uv + parallax * 0.22, 38.0 - u_mobile * 14.0, 0.010, 0.038, 0.50, 2.1);
+  float midParticles = particleLayer(uv + parallax * 0.46, 25.0 - u_mobile * 8.0, 0.017, 0.052, 0.34, 8.4);
+  float nearParticles = particleLayer(uv + parallax * 0.72, 13.0, 0.025, 0.075, 0.16, 15.8) * (1.0 - u_mobile);
 
   vec3 base = vec3(0.018, 0.016, 0.024);
   vec3 purple = vec3(0.24, 0.05, 0.42);
@@ -46,6 +90,9 @@ void main() {
   color += magenta * ribbon * (0.12 + leftGlow * 0.18);
   color += pink * ripple * 0.07 * breath;
   color += magenta * bridge * 0.035;
+  color += vec3(0.66, 0.56, 0.88) * farParticles * particleMask * 0.14;
+  color += vec3(1.0, 0.32, 0.72) * midParticles * particleMask * 0.20;
+  color += vec3(1.0, 0.78, 0.94) * nearParticles * particleMask * 0.13;
   color *= 1.0 - smoothstep(0.5, 1.18, length(p)) * 0.58;
 
   gl_FragColor = vec4(color, 1.0);
@@ -128,6 +175,8 @@ export default function AuthShaderBackground() {
     let startedAt = performance.now();
     let pointerX = 0.5;
     let pointerY = 0.5;
+    let targetPointerX = 0.5;
+    let targetPointerY = 0.5;
 
     targetGl.bindBuffer(targetGl.ARRAY_BUFFER, buffer);
     targetGl.bufferData(
@@ -154,17 +203,22 @@ export default function AuthShaderBackground() {
       targetGl.enableVertexAttribArray(positionLocation);
       targetGl.bindBuffer(targetGl.ARRAY_BUFFER, buffer);
       targetGl.vertexAttribPointer(positionLocation, 2, targetGl.FLOAT, false, 0, 0);
+      const isMobile = window.innerWidth < 768;
+      const smoothing = isMobile ? 0.08 : 0.035;
+      pointerX += ((isMobile ? 0.5 : targetPointerX) - pointerX) * smoothing;
+      pointerY += ((isMobile ? 0.5 : targetPointerY) - pointerY) * smoothing;
       targetGl.uniform2f(resolutionLocation, targetCanvas.width, targetCanvas.height);
       targetGl.uniform1f(timeLocation, (now - startedAt) / 1000);
-      targetGl.uniform1f(mobileLocation, window.innerWidth < 768 ? 1 : 0);
+      targetGl.uniform1f(mobileLocation, isMobile ? 1 : 0);
       targetGl.uniform2f(pointerLocation, pointerX, pointerY);
       targetGl.drawArrays(targetGl.TRIANGLES, 0, 6);
       animationFrame = window.requestAnimationFrame(render);
     }
 
     function handlePointerMove(event: PointerEvent) {
-      pointerX = event.clientX / Math.max(window.innerWidth, 1);
-      pointerY = 1 - event.clientY / Math.max(window.innerHeight, 1);
+      if (window.innerWidth < 768) return;
+      targetPointerX = event.clientX / Math.max(window.innerWidth, 1);
+      targetPointerY = 1 - event.clientY / Math.max(window.innerHeight, 1);
     }
 
     function handleVisibility() {

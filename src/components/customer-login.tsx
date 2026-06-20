@@ -27,6 +27,18 @@ type CustomerLoginProps = {
   initialMode?: AuthMode;
 };
 
+function AuthBrandLockup({ className = "" }: { className?: string }) {
+  return (
+    <div className={cn("auth-brand-lockup", className)}>
+      <BrandLogo className="auth-brand-lockup__icon" />
+      <span className="auth-brand-lockup__text">
+        <strong>奥皇 AI</strong>
+        <small>AI VISUAL STUDIO</small>
+      </span>
+    </div>
+  );
+}
+
 const showcaseCards = [
   {
     title: "商品主图",
@@ -195,10 +207,7 @@ export function CustomerLogin({ initialMode = "login" }: CustomerLoginProps) {
 
       <section className="auth-layout" aria-label={isLogin ? "登录" : "注册"}>
         <div className="auth-brand">
-          <div className="auth-brand__mark">
-            <BrandLogo className="auth-brand__logo" />
-            <span>奥皇 AI</span>
-          </div>
+          <AuthBrandLockup />
           <div className="auth-brand__copy">
             <h1>
               <span>让商品图片与视频</span>
@@ -245,10 +254,7 @@ export function CustomerLogin({ initialMode = "login" }: CustomerLoginProps) {
         </div>
 
         <div className="auth-form-shell">
-          <div className="auth-mobile-logo">
-            <BrandLogo className="auth-mobile-logo__mark" />
-            <span>奥皇 AI</span>
-          </div>
+          <AuthBrandLockup className="auth-mobile-logo" />
 
           <form
             className="auth-card"
@@ -261,108 +267,112 @@ export function CustomerLogin({ initialMode = "login" }: CustomerLoginProps) {
             aria-busy={loading}
           >
             <div className="auth-card__spotlight" aria-hidden="true" />
-            <div className="auth-card__head">
-              <h2>{isLogin ? "欢迎回来" : "创建账号"}</h2>
-              <p>{isLogin ? "登录后继续你的创作之旅" : "开始你的创作之旅"}</p>
-              <span aria-hidden="true" />
-            </div>
+            <div key={mode} className="auth-form-content">
+              <div className="auth-card__head">
+                <h2>{isLogin ? "欢迎回来" : "创建账号"}</h2>
+                <p>{isLogin ? "登录后继续你的创作之旅" : "开始你的创作之旅"}</p>
+                <span aria-hidden="true" />
+              </div>
 
-            <label className="auth-field">
-              <span>邮箱或账号</span>
-              <span className="auth-input">
-                <Mail className="size-5" aria-hidden="true" />
-                <input
-                  type={isLogin ? "text" : "email"}
-                  value={identifier}
-                  onChange={(event) => setIdentifier(event.target.value)}
-                  autoComplete={isLogin ? "username" : "email"}
-                  disabled={disabled}
-                  aria-invalid={Boolean(message && !identifier.trim())}
-                  placeholder={isLogin ? "请输入邮箱或账号" : "请输入邮箱"}
-                />
-              </span>
-            </label>
-
-            <label className="auth-field">
-              <span>密码</span>
-              <span className="auth-input auth-password">
-                <LockKeyhole className="size-5" aria-hidden="true" />
-                <input
-                  type={showPassword ? "text" : "password"}
-                  value={password}
-                  onChange={(event) => setPassword(event.target.value)}
-                  autoComplete={isLogin ? "current-password" : "new-password"}
-                  disabled={disabled}
-                  aria-invalid={Boolean(message && !password)}
-                  placeholder="请输入密码"
-                />
-                <button
-                  type="button"
-                  className="auth-password__toggle"
-                  onClick={() => setShowPassword((value) => !value)}
-                  disabled={disabled}
-                  aria-label={showPassword ? "隐藏密码" : "显示密码"}
-                >
-                  {showPassword ? <EyeOff className="size-4" /> : <Eye className="size-4" />}
-                </button>
-              </span>
-            </label>
-
-            {!isLogin ? (
               <label className="auth-field">
-                <span>确认密码</span>
+                <span>邮箱或账号</span>
+                <span className="auth-input">
+                  <Mail className="size-5" aria-hidden="true" />
+                  <input
+                    type={isLogin ? "text" : "email"}
+                    value={identifier}
+                    onChange={(event) => setIdentifier(event.target.value)}
+                    autoComplete={isLogin ? "username" : "email"}
+                    disabled={disabled}
+                    aria-invalid={Boolean(message && !identifier.trim())}
+                    placeholder={isLogin ? "请输入邮箱或账号" : "请输入邮箱"}
+                  />
+                </span>
+              </label>
+
+              <label className="auth-field">
+                <span>密码</span>
                 <span className="auth-input auth-password">
                   <LockKeyhole className="size-5" aria-hidden="true" />
                   <input
-                    type={showConfirmPassword ? "text" : "password"}
-                    value={confirmPassword}
-                    onChange={(event) => setConfirmPassword(event.target.value)}
-                    autoComplete="new-password"
+                    type={showPassword ? "text" : "password"}
+                    value={password}
+                    onChange={(event) => setPassword(event.target.value)}
+                    autoComplete={isLogin ? "current-password" : "new-password"}
                     disabled={disabled}
-                    aria-invalid={Boolean(message && password !== confirmPassword)}
-                    placeholder="请再次输入密码"
+                    aria-invalid={Boolean(message && !password)}
+                    placeholder="请输入密码"
                   />
                   <button
                     type="button"
                     className="auth-password__toggle"
-                    onClick={() => setShowConfirmPassword((value) => !value)}
+                    onMouseDown={(event) => event.preventDefault()}
+                    onClick={() => setShowPassword((value) => !value)}
                     disabled={disabled}
-                    aria-label={showConfirmPassword ? "隐藏确认密码" : "显示确认密码"}
+                    aria-label={showPassword ? "隐藏密码" : "显示密码"}
                   >
-                    {showConfirmPassword ? <EyeOff className="size-4" /> : <Eye className="size-4" />}
+                    {showPassword ? <EyeOff className="size-4" /> : <Eye className="size-4" />}
                   </button>
                 </span>
               </label>
-            ) : null}
 
-            {message ? (
-              <p className="auth-error" role="alert">
-                {message}
-              </p>
-            ) : null}
+              {!isLogin ? (
+                <label className="auth-field">
+                  <span>确认密码</span>
+                  <span className="auth-input auth-password">
+                    <LockKeyhole className="size-5" aria-hidden="true" />
+                    <input
+                      type={showConfirmPassword ? "text" : "password"}
+                      value={confirmPassword}
+                      onChange={(event) => setConfirmPassword(event.target.value)}
+                      autoComplete="new-password"
+                      disabled={disabled}
+                      aria-invalid={Boolean(message && password !== confirmPassword)}
+                      placeholder="请再次输入密码"
+                    />
+                    <button
+                      type="button"
+                      className="auth-password__toggle"
+                      onMouseDown={(event) => event.preventDefault()}
+                      onClick={() => setShowConfirmPassword((value) => !value)}
+                      disabled={disabled}
+                      aria-label={showConfirmPassword ? "隐藏确认密码" : "显示确认密码"}
+                    >
+                      {showConfirmPassword ? <EyeOff className="size-4" /> : <Eye className="size-4" />}
+                    </button>
+                  </span>
+                </label>
+              ) : null}
 
-            <button type="submit" className="auth-submit" disabled={disabled}>
-              <span className="auth-submit__shine" aria-hidden="true" />
-              {loading ? (isLogin ? "正在登录" : "正在注册") : success ? "已完成" : isLogin ? "登录" : "注册"}
-              {loading ? <Loader2 className="size-4 animate-spin" /> : success ? <Check className="size-4" /> : <ArrowRight className="size-4" />}
-            </button>
+              {message ? (
+                <p className="auth-error" role="alert">
+                  {message}
+                </p>
+              ) : null}
 
-            <Link href="/?preview=1" className="auth-guest-link">
-              免登录查看界面
-            </Link>
+              <button type="submit" className="auth-submit" disabled={disabled}>
+                <span className="auth-submit__shine" aria-hidden="true" />
+                {loading ? (isLogin ? "正在登录" : "正在注册") : success ? "已完成" : isLogin ? "登录" : "注册"}
+                {loading ? <Loader2 className="size-4 animate-spin" /> : success ? <Check className="size-4" /> : <ArrowRight className="size-4" />}
+              </button>
 
-            <p className="auth-switch">
-              {isLogin ? "还没有账号？" : "已有账号？"}
-              <Link
-                href={isLogin ? "/register" : "/login"}
-                onClick={(event) => {
-                  event.preventDefault();
-                  switchMode(isLogin ? "register" : "login");
-                }}
-              >
-                {isLogin ? "立即注册" : "返回登录"}
+              <Link href="/?preview=1" className="auth-guest-link">
+                免登录查看界面
               </Link>
-            </p>
+
+              <p className="auth-switch">
+                {isLogin ? "还没有账号？" : "已有账号？"}
+                <Link
+                  href={isLogin ? "/register" : "/login"}
+                  onClick={(event) => {
+                    event.preventDefault();
+                    switchMode(isLogin ? "register" : "login");
+                  }}
+                >
+                  {isLogin ? "立即注册" : "返回登录"}
+                </Link>
+              </p>
+            </div>
           </form>
         </div>
       </section>
