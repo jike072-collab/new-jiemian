@@ -175,7 +175,11 @@ function isLocalCli(endpointType: EndpointType) {
 }
 
 function canManageModelList(provider: EditableProvider) {
-  return (provider.kind === "image" || provider.kind === "video") && !isLocalCli(provider.endpointType);
+  return (
+    provider.kind === "image"
+    || provider.kind === "video"
+    || provider.kind === "prompt"
+  ) && !isLocalCli(provider.endpointType);
 }
 
 function providerModelIds(provider: EditableProvider) {

@@ -104,6 +104,16 @@ const jimengVideoDisplayNames: Record<string, string> = {
   "seedance2.0 720p-pro-sr": "即梦 720P Pro 超分",
 };
 
+const deepseekPromptModels = [
+  "deepseek-v4-flash",
+  "deepseek-v4-pro",
+];
+
+const deepseekPromptDisplayNames: Record<string, string> = {
+  "deepseek-v4-flash": "DeepSeek V4 Flash",
+  "deepseek-v4-pro": "DeepSeek V4 Pro",
+};
+
 export function isLocalProvider(endpointType: EndpointType) {
   return endpointType === "upscayl-cli" || endpointType === "video2x-cli";
 }
@@ -160,6 +170,9 @@ export function defaultProviders(): ProviderConfig[] {
       role: "用于图片和视频文生识别优化",
       apiUrl: env("PROMPT_OPTIMIZER_API_URL", "https://api.deepseek.com/chat/completions"),
       model: env("PROMPT_OPTIMIZER_MODEL", "deepseek-v4-flash"),
+      models: deepseekPromptModels,
+      modelDisplayNames: deepseekPromptDisplayNames,
+      enabledModels: deepseekPromptModels,
       displayName: env("PROMPT_OPTIMIZER_DISPLAY_NAME", "DeepSeek V4 Flash"),
       apiKey: env("PROMPT_OPTIMIZER_API_KEY", env("DEEPSEEK_API_KEY")),
       enabled: hasKey(env("PROMPT_OPTIMIZER_API_KEY", env("DEEPSEEK_API_KEY"))),
@@ -233,7 +246,11 @@ export function sanitizeProvider(provider: ProviderConfig): PublicProvider {
 }
 
 function shouldExpandProvider(provider: ProviderConfig) {
-  return (provider.kind === "image" || provider.kind === "video") && !isLocalProvider(provider.endpointType);
+  return (
+    provider.kind === "image"
+    || provider.kind === "video"
+    || provider.kind === "prompt"
+  ) && !isLocalProvider(provider.endpointType);
 }
 
 function virtualProviderId(providerId: string, model: string) {
