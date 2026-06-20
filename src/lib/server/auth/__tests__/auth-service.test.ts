@@ -139,16 +139,40 @@ test("rejects duplicate registration without creating another account", async ()
 
 test("rejects weak password and invalid input", async () => {
   assert(validatePasswordStrength("weak").length > 0);
-  const result = await service().service.register({
+  const invalidEmail = await service().service.register({
     email: "not-an-email",
+    username: "valid-user",
+    password: "StrongPass123",
+  });
+
+  assert.equal(invalidEmail.ok, false);
+  if (invalidEmail.ok) return;
+  assert.equal(invalidEmail.status, 400);
+  assert.equal(invalidEmail.uiState, "validation_error");
+  assert.equal(invalidEmail.message, "邮箱格式不正确，请填写有效邮箱。");
+
+  const invalidUsername = await service().service.register({
+    email: "valid@example.com",
     username: "bad username",
+    password: "StrongPass123",
+  });
+
+  assert.equal(invalidUsername.ok, false);
+  if (invalidUsername.ok) return;
+  assert.equal(invalidUsername.status, 400);
+  assert.equal(invalidUsername.message.includes("用户名不符合要求"), true);
+
+  const weakPassword = await service().service.register({
+    email: "valid@example.com",
+    username: "valid-user",
     password: "weak",
   });
 
-  assert.equal(result.ok, false);
-  if (result.ok) return;
-  assert.equal(result.status, 400);
-  assert.equal(result.uiState, "validation_error");
+  assert.equal(weakPassword.ok, false);
+  if (weakPassword.ok) return;
+  assert.equal(weakPassword.status, 400);
+  assert.equal(weakPassword.message.includes("密码不符合要求"), true);
+  assert.equal(weakPassword.message.includes("至少 10 位"), true);
 });
 
 test("serializes concurrent duplicate registration to one local account", async () => {

@@ -7,7 +7,7 @@ import {
 
 import { addJob, addLibraryItem, storeBytes, storeDataUrl, storeRemoteUrl, updateJob, updateLibraryItem } from "./library";
 import { getTaskBillingService } from "./quota";
-import { providerById } from "./providers";
+import { jimengVideoOptionsForModel, providerById } from "./providers";
 import { type JobRecord, type LibraryItem, type ProviderConfig } from "./types";
 
 type UploadedMedia = {
@@ -39,6 +39,11 @@ class BillingDispatchRejectedError extends Error {
   }
 }
 
+const grokVideoDurations = new Set([4, 6, 8, 10, 12, 15]);
+const grokVideo10Ratios = new Set(["1:1", "16:9", "9:16", "4:3", "3:4", "3:2", "2:3"]);
+const grokVideo15Ratios = new Set(["16:9", "9:16"]);
+const defaultVideoRatios = new Set(["1:1", "16:9", "9:16", "4:3", "3:4", "3:2", "2:3"]);
+
 function asRecord(value: unknown): Record<string, unknown> {
   return value && typeof value === "object" && !Array.isArray(value)
     ? value as Record<string, unknown>
@@ -55,18 +60,24 @@ function firstString(...values: unknown[]) {
 function parseProviderOutput(payload: unknown): ProviderOutput {
   const root = asRecord(payload);
   const data = Array.isArray(root.data) ? root.data : [];
+  const metadata = asRecord(root.metadata);
   const first = asRecord(data[0] || root.video || root.result || root.output || payload);
+  const firstMetadata = asRecord(first.metadata);
   const url = firstString(
     first.url,
     first.image_url,
     first.video_url,
     first.output_url,
     first.download_url,
+    first.result_url,
+    firstMetadata.url,
     root.url,
     root.image_url,
     root.video_url,
     root.output_url,
     root.download_url,
+    root.result_url,
+    metadata.url,
   );
   const base64 = firstString(
     first.b64_json,
@@ -79,7 +90,7 @@ function parseProviderOutput(payload: unknown): ProviderOutput {
   return {
     url,
     base64,
-    jobId: firstString(first.id, first.video_id, root.id, root.video_id),
+    jobId: firstString(first.task_id, first.id, first.video_id, root.task_id, root.id, root.video_id),
     status: firstString(first.status, root.status),
     statusUrl: firstString(first.status_url, root.status_url),
     mimeType: firstString(first.mime_type, root.mime_type),
@@ -96,6 +107,12 @@ function ratioToSize(ratio: string) {
   if (ratio === "4:3") return "1344x1024";
   if (ratio === "3:4") return "1024x1344";
   return "1024x1024";
+}
+
+function ratioTo720pSize(ratio: string) {
+  if (ratio === "16:9") return "1280x720";
+  if (ratio === "9:16") return "720x1280";
+  return "720x720";
 }
 
 function normalizeStatus(value: string) {
@@ -123,6 +140,172 @@ function deriveStatusUrl(apiUrl: string, jobId: string) {
   }
 }
 
+function isGrokVideoProvider(provider: ProviderConfig) {
+  return provider.endpointType === "grok-videos" || provider.model.startsWith("grok-video-");
+}
+
+function grokVideosEndpoint(apiUrl: string) {
+  try {
+    const parsed = new URL(apiUrl);
+    if (parsed.pathname === "/" || parsed.pathname === "") {
+      parsed.pathname = "/v1/videos";
+    } else if (!/\/videos\/?$/i.test(parsed.pathname)) {
+      parsed.pathname = parsed.pathname.replace(/\/$/, "") + "/videos";
+    }
+    parsed.search = "";
+    return parsed.toString();
+  } catch {
+    return apiUrl;
+  }
+}
+
+function absolutizeProviderUrl(provider: ProviderConfig, value: string) {
+  if (!value.startsWith("/")) return value;
+  try {
+    const parsed = new URL(provider.apiUrl);
+    return `${parsed.origin}${value}`;
+  } catch {
+    return value;
+  }
+}
+
+function grokVideoRatioOptions(provider: ProviderConfig) {
+  return provider.model === "grok-video-1.5" ? grokVideo15Ratios : grokVideo10Ratios;
+}
+
+function validateGrokVideoInput(provider: ProviderConfig, input: {
+  mode: "text-to-video" | "image-to-video";
+  ratio: string;
+  duration: number;
+  files: UploadedMedia[];
+}) {
+  if (!grokVideoDurations.has(input.duration)) {
+    throw new Error("当前 Grok 视频模型只支持 4、6、8、10、12、15 秒。");
+  }
+  if (!grokVideoRatioOptions(provider).has(input.ratio)) {
+    throw new Error(provider.model === "grok-video-1.5"
+      ? "grok-video-1.5 只支持 16:9 和 9:16。"
+      : "grok-video-1.0 不支持当前比例。");
+  }
+  if (provider.model === "grok-video-1.5" && input.files.length !== 1) {
+    throw new Error("grok-video-1.5 必须且只能上传 1 张参考图。");
+  }
+  if (provider.model === "grok-video-1.0" && input.files.length > 7) {
+    throw new Error("grok-video-1.0 最多支持 7 张参考图。");
+  }
+}
+
+function videoOptionsForProvider(provider: ProviderConfig) {
+  return jimengVideoOptionsForModel(provider.model) || provider.videoOptions;
+}
+
+function validateVideoInput(provider: ProviderConfig, input: {
+  mode: "text-to-video" | "image-to-video";
+  ratio: string;
+  duration: number;
+  files: UploadedMedia[];
+}) {
+  if (isGrokVideoProvider(provider)) {
+    validateGrokVideoInput(provider, input);
+    return;
+  }
+  const options = videoOptionsForProvider(provider);
+  const allowedDurations = options?.durations?.length ? new Set(options.durations) : new Set([5, 8, 10, 15]);
+  const allowedRatios = options?.ratios?.length ? new Set(options.ratios) : defaultVideoRatios;
+  if (!allowedDurations.has(input.duration)) {
+    throw new Error(`当前视频模型不支持 ${input.duration} 秒。`);
+  }
+  if (!allowedRatios.has(input.ratio)) {
+    throw new Error(`当前视频模型不支持 ${input.ratio} 比例。`);
+  }
+  if (input.mode === "image-to-video") {
+    const maxReferenceImages = options?.maxReferenceImages ?? 1;
+    if (input.files.length > maxReferenceImages) {
+      throw new Error(`当前视频模型最多支持 ${maxReferenceImages} 张参考图。`);
+    }
+  }
+}
+
+function grokReferenceImageEndpoint(apiUrl: string) {
+  try {
+    const parsed = new URL(grokVideosEndpoint(apiUrl));
+    parsed.pathname = parsed.pathname.replace(/\/videos\/?$/i, "/video-reference-images");
+    parsed.search = "";
+    return parsed.toString();
+  } catch {
+    return "https://api.manxiaobai.online/v1/video-reference-images";
+  }
+}
+
+function grokStatusUrl(apiUrl: string, jobId: string) {
+  if (!jobId) return "";
+  try {
+    const parsed = new URL(grokVideosEndpoint(apiUrl));
+    parsed.pathname = parsed.pathname.replace(/\/videos\/?$/i, `/videos/${encodeURIComponent(jobId)}`);
+    parsed.search = "";
+    return parsed.toString();
+  } catch {
+    return "";
+  }
+}
+
+async function uploadGrokReferenceImage(provider: ProviderConfig, file: UploadedMedia) {
+  const response = await fetch(grokReferenceImageEndpoint(provider.apiUrl), {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      ...authHeaders(provider),
+    },
+    body: JSON.stringify({
+      image: `data:${file.mimeType};base64,${file.bytes.toString("base64")}`,
+    }),
+    signal: AbortSignal.timeout(120000),
+  });
+  const payload = await readProviderJson(response);
+  const url = firstString(asRecord(payload).url);
+  if (!url) throw new Error("Grok 参考图上传未返回可用 URL。");
+  return url;
+}
+
+async function callGrokVideoProvider(provider: ProviderConfig, input: {
+  mode: "text-to-video" | "image-to-video";
+  prompt: string;
+  ratio: string;
+  duration: number;
+  files: UploadedMedia[];
+}) {
+  validateGrokVideoInput(provider, input);
+  const form = new FormData();
+  form.append("model", provider.model);
+  form.append("prompt", input.prompt);
+  form.append("seconds", String(input.duration));
+  form.append("aspect_ratio", input.ratio);
+  form.append("resolution", "720p");
+
+  for (const file of input.files) {
+    form.append("input_reference[image_url]", await uploadGrokReferenceImage(provider, file));
+  }
+
+  const response = await fetch(grokVideosEndpoint(provider.apiUrl), {
+    method: "POST",
+    headers: authHeaders(provider),
+    body: form,
+    signal: AbortSignal.timeout(180000),
+  });
+  return parseProviderOutput(await readProviderJson(response));
+}
+
+async function outputToLibraryFromAuthenticatedUrl(provider: ProviderConfig, url: string, prefix: string) {
+  const response = await fetch(url, {
+    method: "GET",
+    headers: authHeaders(provider),
+    signal: AbortSignal.timeout(180000),
+  });
+  if (!response.ok) throw new Error(`下载视频结果失败：HTTP ${response.status}`);
+  const mimeType = response.headers.get("content-type") || "video/mp4";
+  return storeBytes(Buffer.from(await response.arrayBuffer()), mimeType, prefix);
+}
+
 function imageEndpoint(provider: ProviderConfig, useEdits: boolean) {
   const target = useEdits ? "edits" : "generations";
   if (/\/images\/(?:edits|generations)\/?$/i.test(provider.apiUrl)) {
@@ -141,9 +324,20 @@ async function readProviderJson(response: Response) {
     const record = asRecord(payload);
     const message = firstString(asRecord(record.error).message, record.message)
       || `供应商请求失败：HTTP ${response.status}`;
-    throw new Error(message);
+    throw new Error(normalizeProviderError(message));
   }
   return payload;
+}
+
+function normalizeProviderError(message: string) {
+  const noAccess = message.match(/no access to model\s+([^\s(]+)/i);
+  if (noAccess?.[1]) {
+    return `当前密钥没有访问模型 ${noAccess[1]} 的权限，请在后台切换模型或更换密钥。`;
+  }
+  if (/requires exactly one reference image/i.test(message)) {
+    return "当前模型必须且只能上传 1 张参考图。";
+  }
+  return message;
 }
 
 async function callImageProvider({
@@ -493,6 +687,7 @@ export async function submitVideo(input: {
     if (!provider || provider.kind !== "video" || !provider.enabled || !provider.apiKey) {
       throw new Error("视频供应商未配置或未启用。");
     }
+    validateVideoInput(provider, input);
     await claimGenerationBillingDispatch({
       localUserId: input.billingLocalUserId,
       taskId: input.billingTaskId,
@@ -506,31 +701,44 @@ export async function submitVideo(input: {
       upstreamModel: provider.model,
     });
 
-    const providerPayload: Record<string, string | number | string[]> = {
-      model: provider.model,
-      prompt: input.prompt,
-      duration: input.duration,
-      aspect_ratio: input.ratio,
-      response_format: "url",
-    };
-    if (input.mode === "image-to-video") {
-      const [file] = input.files;
-      providerPayload.image = [`data:${file.mimeType};base64,${file.bytes.toString("base64")}`];
+    let output: ProviderOutput;
+    if (isGrokVideoProvider(provider)) {
+      output = await callGrokVideoProvider(provider, input);
+    } else {
+      const providerVideoOptions = videoOptionsForProvider(provider);
+      const resolution = providerVideoOptions?.resolution || "720p";
+      const providerPayload: Record<string, string | number | string[]> = {
+        model: provider.model,
+        prompt: input.prompt,
+        duration: input.duration,
+        seconds: input.duration,
+        aspect_ratio: input.ratio,
+        size: resolution === "720p" ? ratioTo720pSize(input.ratio) : ratioToSize(input.ratio),
+        resolution,
+        response_format: "url",
+      };
+      if (input.mode === "image-to-video") {
+        const [file] = input.files;
+        providerPayload.image = [`data:${file.mimeType};base64,${file.bytes.toString("base64")}`];
+      }
+
+      const response = await fetch(provider.apiUrl, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          ...authHeaders(provider),
+        },
+        body: JSON.stringify(providerPayload),
+        signal: AbortSignal.timeout(180000),
+      });
+      output = parseProviderOutput(await readProviderJson(response));
     }
 
-    const response = await fetch(provider.apiUrl, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        ...authHeaders(provider),
-      },
-      body: JSON.stringify(providerPayload),
-      signal: AbortSignal.timeout(180000),
-    });
-    const output = parseProviderOutput(await readProviderJson(response));
-
     if (output.url) {
-      const stored = await outputToLibrary(output, "video", "video");
+      const outputUrl = absolutizeProviderUrl(provider, output.url);
+      const stored = isGrokVideoProvider(provider) && outputUrl.includes("/content")
+        ? await outputToLibraryFromAuthenticatedUrl(provider, outputUrl, "video")
+        : await outputToLibrary({ ...output, url: outputUrl }, "video", "video");
       const item = await addLibraryItem({
         type: "video",
         mode: input.mode,
@@ -591,14 +799,16 @@ export async function submitVideo(input: {
       newApiTaskId: jobId,
       upstreamModel: provider.model,
     });
-    const job = await addJob({
+      const job = await addJob({
       id: jobId,
       libraryItemId: item.id,
       type: "video",
       ownerLocalUserId: input.billingLocalUserId || null,
       providerId: provider.id,
       status: normalizeStatus(output.status || ""),
-      statusUrl: output.statusUrl || deriveStatusUrl(provider.apiUrl, jobId),
+      statusUrl: output.statusUrl
+        ? absolutizeProviderUrl(provider, output.statusUrl)
+        : isGrokVideoProvider(provider) ? grokStatusUrl(provider.apiUrl, jobId) : deriveStatusUrl(provider.apiUrl, jobId),
       billing_task_id: input.billingTaskId || null,
       billing_local_user_id: input.billingLocalUserId || null,
       billing_idempotency_key: input.billingIdempotencyKey || null,
@@ -680,14 +890,48 @@ export async function refreshVideoJob(jobId: string, localUserId?: string | null
   const status = normalizeStatus(output.status || "");
 
   if (output.url) {
-    const stored = await outputToLibrary(output, "video", "video");
+    const outputUrl = absolutizeProviderUrl(provider, output.url);
+    const stored = outputUrl.includes("/content")
+      ? await outputToLibraryFromAuthenticatedUrl(provider, outputUrl, "video")
+      : await outputToLibrary({ ...output, url: outputUrl }, "video", "video");
     await updateLibraryItem(job.libraryItemId, {
       status: "done",
       output: stored,
     } satisfies Partial<LibraryItem>);
     const updated = await updateJob(job.id, {
       status: "done",
-      sourceUrl: output.url,
+      sourceUrl: outputUrl,
+      billing_state: job.billing_task_id ? "settled" : job.billing_state,
+      billing_last_error: null,
+    });
+    const settled = await settleGeneratedTaskBilling({
+      localUserId: job.billing_local_user_id || job.ownerLocalUserId || localUserId || null,
+      taskId: job.billing_task_id,
+      estimatedQuotaUnits: job.billing_estimated_quota_units ?? null,
+      outcome: "success",
+      upstreamRequestId: output.jobId || null,
+      upstreamModel: provider.model,
+      newApiTaskId: output.jobId || job.id,
+    });
+    if (!settled.ok) {
+      await updateJob(job.id, {
+        billing_state: "reconciliation_required",
+        billing_last_error: settled.message,
+      });
+    }
+    return updated;
+  }
+
+  if (isGrokVideoProvider(provider) && status === "done" && !output.url) {
+    const contentUrl = `${job.statusUrl.replace(/\/$/, "")}/content`;
+    const stored = await outputToLibraryFromAuthenticatedUrl(provider, contentUrl, "video");
+    await updateLibraryItem(job.libraryItemId, {
+      status: "done",
+      output: stored,
+    } satisfies Partial<LibraryItem>);
+    const updated = await updateJob(job.id, {
+      status: "done",
+      sourceUrl: contentUrl,
       billing_state: job.billing_task_id ? "settled" : job.billing_state,
       billing_last_error: null,
     });

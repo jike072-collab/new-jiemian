@@ -61,6 +61,29 @@ export type AuthServiceDependencies = {
 
 const genericInvalidCredentials = "Invalid email, username, or password.";
 
+function passwordRequirementMessage(errors: string[]) {
+  const details: string[] = [];
+  if (errors.includes("PASSWORD_TOO_SHORT")) details.push("至少 10 位");
+  if (errors.includes("PASSWORD_TOO_LONG")) details.push("不超过 128 位");
+  if (errors.includes("PASSWORD_REQUIRES_LOWERCASE")) details.push("包含小写字母");
+  if (errors.includes("PASSWORD_REQUIRES_UPPERCASE")) details.push("包含大写字母");
+  if (errors.includes("PASSWORD_REQUIRES_DIGIT")) details.push("包含数字");
+  return details.length
+    ? `密码不符合要求：需要${details.join("、")}。`
+    : "密码不符合要求。";
+}
+
+function registrationValidationMessage(input: {
+  email: string;
+  username: string;
+  passwordErrors: string[];
+}) {
+  if (!isValidEmail(input.email)) return "邮箱格式不正确，请填写有效邮箱。";
+  if (!isValidUsername(input.username)) return "用户名不符合要求：只能使用 3-32 位小写字母、数字、点、下划线或短横线，不能包含 @。";
+  if (input.passwordErrors.length > 0) return passwordRequirementMessage(input.passwordErrors);
+  return "注册信息不符合要求，请检查后再试。";
+}
+
 function failure(input: Omit<AuthFailure, "ok">): AuthFailure {
   return { ok: false, ...input };
 }
@@ -136,7 +159,7 @@ export class AuthService {
         status: 429,
         code: "AUTH_RATE_LIMITED",
         uiState: "rate_limited",
-        message: "Too many registration attempts.",
+        message: `注册操作太频繁，请 ${rate.retryAfterSeconds} 秒后再试。`,
         retryAfterSeconds: rate.retryAfterSeconds,
       });
     }
@@ -147,7 +170,7 @@ export class AuthService {
         status: 400,
         code: "AUTH_VALIDATION_ERROR",
         uiState: "validation_error",
-        message: "Registration input is invalid.",
+        message: registrationValidationMessage({ email, username: normalizedUsername, passwordErrors }),
       });
     }
 
@@ -160,7 +183,7 @@ export class AuthService {
         status: 409,
         code: "AUTH_DUPLICATE_ACCOUNT",
         uiState: "validation_error",
-        message: "Account already exists.",
+        message: "该邮箱或用户名已经注册，请直接登录或更换后再试。",
       });
     }
 
@@ -184,7 +207,7 @@ export class AuthService {
           status: 409,
           code: "AUTH_DUPLICATE_ACCOUNT",
           uiState: "validation_error",
-          message: "Account already exists.",
+          message: "该邮箱或用户名已经注册，请直接登录或更换后再试。",
         });
       }
       throw error;
