@@ -845,9 +845,9 @@ export function StudioApp() {
     if (!selectedImageProvider) {
       setImageWorkspace((prev) => ({
         ...prev,
-        submitError: "当前尚未配置可用模型。",
+        submitError: "当前尚未配置可用模型，请确认后台已启用对应模型。",
       }));
-      setMessage("当前尚未配置可用模型。");
+      setMessage("当前尚未配置可用模型，请确认后台已启用对应模型。");
       return;
     }
     if (!imageWorkspacePrompt) {
@@ -1918,7 +1918,7 @@ function VideoGenerator({
         onRemove={onFileRemove}
         onClear={onFilesClear}
       />
-      {modelRequiresImage && !state.files.length ? (
+      {modelRequiresImage && !state.files.length && !state.fileError ? (
         <p className="studio-help-text">{videoModelReferenceMessage}</p>
       ) : null}
       <StackedControl label="比例" required>
@@ -3697,7 +3697,7 @@ function ProviderSelect({
         {loading ? <p id="image-provider-status" className="studio-help-text" role="status" aria-live="polite">正在读取可用模型。</p> : null}
         {!loading && !error && !providers.length ? (
           <p id="image-provider-empty" className="studio-help-text" role="status" aria-live="polite">
-            当前尚未配置可用模型。
+            当前尚未配置可用模型，请确认后台已启用对应模型。
           </p>
         ) : null}
         {error ? (
