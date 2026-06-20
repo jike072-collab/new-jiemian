@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="178 243 668 537" role="img" aria-label="奥皇 AI">
+  <defs>
+    <linearGradient id="auth-logo-gradient" x1="221" y1="250" x2="811" y2="768" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#fff" />
+      <stop offset="0.48" stop-color="#ff3a93" />
+      <stop offset="1" stop-color="#a65cff" />
+    </linearGradient>
+  </defs>
+  <path
+    d="M 836 253 L 752 253 L 752 614 L 655 614 L 724 545 L 724 431 L 535 614 L 471 614 L 723 371 L 723 254 L 188 770 L 309 770 L 384 697 L 448 697 L 373 770 L 493 770 L 569 697 L 751 697 L 752 770 L 836 770 Z"
+    fill="url(#auth-logo-gradient)"
+  />
+</svg>

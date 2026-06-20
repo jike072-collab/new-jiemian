@@ -7,7 +7,6 @@ import { type FormEvent, type PointerEvent, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { ArrowRight, Check, Eye, EyeOff, ImageIcon, Loader2, LockKeyhole, Mail, Play, Sparkles, Video } from "lucide-react";
 
-import { BrandLogo } from "@/components/brand-logo";
 import { ApiError, fetchJson, fetchJsonWithCsrf } from "@/lib/client/api";
 import { motionTokens } from "@/lib/motion-tokens";
 import { cn } from "@/lib/utils";
@@ -30,7 +29,14 @@ type CustomerLoginProps = {
 function AuthBrandLockup({ className = "" }: { className?: string }) {
   return (
     <div className={cn("auth-brand-lockup", className)}>
-      <BrandLogo className="auth-brand-lockup__icon" />
+      <Image
+        src="/brand/logo-mark.svg"
+        alt=""
+        width={58}
+        height={58}
+        priority
+        className="auth-brand-lockup__icon"
+      />
       <span className="auth-brand-lockup__text">
         <strong>奥皇 AI</strong>
         <small>AI VISUAL STUDIO</small>
@@ -353,7 +359,13 @@ export function CustomerLogin({ initialMode = "login" }: CustomerLoginProps) {
               <button type="submit" className="auth-submit" disabled={disabled}>
                 <span className="auth-submit__shine" aria-hidden="true" />
                 {loading ? (isLogin ? "正在登录" : "正在注册") : success ? "已完成" : isLogin ? "登录" : "注册"}
-                {loading ? <Loader2 className="size-4 animate-spin" /> : success ? <Check className="size-4" /> : <ArrowRight className="size-4" />}
+                {loading ? (
+                  <Loader2 className="auth-submit__icon size-4 animate-spin" />
+                ) : success ? (
+                  <Check className="auth-submit__icon size-4" />
+                ) : (
+                  <ArrowRight className="auth-submit__icon size-4" />
+                )}
               </button>
 
               <Link href="/?preview=1" className="auth-guest-link">
