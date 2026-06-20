@@ -5,7 +5,7 @@ import Image from "next/image";
 import Link from "next/link";
 import { type FormEvent, type PointerEvent, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { ArrowRight, Check, Eye, EyeOff, ImageIcon, Loader2, LockKeyhole, Mail, Sparkles, Video, Wand2 } from "lucide-react";
+import { ArrowRight, Check, Eye, EyeOff, ImageIcon, Loader2, LockKeyhole, Mail, Play, Sparkles, Video } from "lucide-react";
 
 import { BrandLogo } from "@/components/brand-logo";
 import { ApiError, fetchJson, fetchJsonWithCsrf } from "@/lib/client/api";
@@ -31,20 +31,21 @@ const showcaseCards = [
   {
     title: "商品主图",
     subtitle: "一键生成精美主图",
-    image: "/auth-showcase/product-main.webp",
+    image: "/auth-showcase/product-main.png",
     className: "auth-showcase-card--left",
   },
   {
     title: "商品场景图",
     subtitle: "生成高质量场景图",
-    image: "/auth-showcase/product-scene.webp",
+    image: "/auth-showcase/product-scene.png",
     className: "auth-showcase-card--main",
   },
   {
     title: "视频生成",
     subtitle: "快速生成商品视频",
-    image: "/auth-showcase/video-cover.webp",
+    image: "/auth-showcase/video-cover.png",
     className: "auth-showcase-card--right",
+    kind: "video",
   },
 ];
 
@@ -82,8 +83,7 @@ export function CustomerLogin({ initialMode = "login" }: CustomerLoginProps) {
   const [success, setSuccess] = useState(false);
   const [message, setMessage] = useState("");
   const disabled = loading || success;
-  const activeMode = initialMode === "register" ? "register" : mode;
-  const isLogin = activeMode === "login";
+  const isLogin = mode === "login";
 
   useEffect(() => {
     let cancelled = false;
@@ -99,6 +99,29 @@ export function CustomerLogin({ initialMode = "login" }: CustomerLoginProps) {
       cancelled = true;
     };
   }, [router]);
+
+  useEffect(() => {
+    function handlePopState() {
+      setMode(window.location.pathname === "/register" ? "register" : "login");
+      setMessage("");
+      setSuccess(false);
+    }
+
+    window.addEventListener("popstate", handlePopState);
+    return () => window.removeEventListener("popstate", handlePopState);
+  }, []);
+
+  function switchMode(nextMode: AuthMode) {
+    if (disabled) return;
+    setMode(nextMode);
+    setMessage("");
+    setSuccess(false);
+
+    const nextPath = nextMode === "login" ? "/login" : "/register";
+    if (window.location.pathname !== nextPath) {
+      window.history.pushState(null, "", nextPath);
+    }
+  }
 
   function validateForm() {
     const trimmedIdentifier = identifier.trim();
@@ -207,6 +230,11 @@ export function CustomerLogin({ initialMode = "login" }: CustomerLoginProps) {
                   priority
                   className="auth-showcase-card__image"
                 />
+                {card.kind === "video" ? (
+                  <span className="auth-showcase-card__play" aria-hidden="true">
+                    <Play className="size-5" fill="currentColor" strokeWidth={2.2} />
+                  </span>
+                ) : null}
                 <div className="auth-showcase-card__footer">
                   <strong>{card.title}</strong>
                   <span>{card.subtitle}</span>
@@ -315,24 +343,21 @@ export function CustomerLogin({ initialMode = "login" }: CustomerLoginProps) {
 
             <button type="submit" className="auth-submit" disabled={disabled}>
               <span className="auth-submit__shine" aria-hidden="true" />
-              {loading ? <Loader2 className="size-4 animate-spin" /> : success ? <Check className="size-4" /> : isLogin ? <ArrowRight className="size-4" /> : <Wand2 className="size-4" />}
               {loading ? (isLogin ? "正在登录" : "正在注册") : success ? "已完成" : isLogin ? "登录" : "注册"}
+              {loading ? <Loader2 className="size-4 animate-spin" /> : success ? <Check className="size-4" /> : <ArrowRight className="size-4" />}
             </button>
 
-            {isLogin ? (
-              <Link href="/?preview=1" className="auth-guest-link">
-                免登录查看界面
-              </Link>
-            ) : null}
+            <Link href="/?preview=1" className="auth-guest-link">
+              免登录查看界面
+            </Link>
 
             <p className="auth-switch">
               {isLogin ? "还没有账号？" : "已有账号？"}
               <Link
                 href={isLogin ? "/register" : "/login"}
-                onClick={() => {
-                  setMode(isLogin ? "register" : "login");
-                  setMessage("");
-                  setSuccess(false);
+                onClick={(event) => {
+                  event.preventDefault();
+                  switchMode(isLogin ? "register" : "login");
                 }}
               >
                 {isLogin ? "立即注册" : "返回登录"}
