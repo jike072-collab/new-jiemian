@@ -104,7 +104,7 @@ void main() {
   float cardZone = smoothstep(0.58, 0.05, uv.x) * smoothstep(0.12, 0.36, uv.y) * smoothstep(0.86, 0.46, uv.y);
   float bridgeZone = smoothstep(0.38, 0.62, uv.x) * smoothstep(0.25, 0.56, uv.y) * smoothstep(0.80, 0.58, uv.y);
   float formQuiet = smoothstep(0.50, 0.74, uv.x) * smoothstep(0.10, 0.36, uv.y) * smoothstep(0.92, 0.66, uv.y);
-  float particleMask = (0.34 + leftGlow * 0.62 + titleZone * 0.68 + cardZone * 0.9 + bridgeZone * 0.28) * (1.0 - formQuiet * 0.66);
+  float particleMask = (0.18 + leftGlow * 0.5 + titleZone * 0.82 + cardZone * 1.08 + bridgeZone * 0.18) * (1.0 - formQuiet * 0.82);
   particleMask *= 1.0 - u_mobile * 0.48;
   float cornerTl = smoothstep(0.62, 0.0, length(uv - vec2(0.02, 0.98)));
   float cornerBl = smoothstep(0.70, 0.0, length(uv - vec2(0.02, 0.04)));
@@ -135,23 +135,23 @@ void main() {
 
   vec3 color = base;
   color += purple * (0.08 + leftGlow * 0.018 * breath);
-  color += magenta * ribbon * (0.28 + leftGlow * 0.24);
-  color += pink * ripple * 0.026 * breath;
-  color += magenta * bridge * 0.035;
-  color += vec3(1.0, 0.17, 0.56) * beams * 0.2 * breath;
-  color += vec3(0.45, 0.18, 0.88) * beams * 0.12;
-  color += vec3(1.0, 0.18, 0.54) * (flowA * 0.36 + flowD * 0.26);
-  color += vec3(0.9, 0.16, 0.78) * (flowB * 0.28 + flowGlow * 0.08);
-  color += vec3(0.55, 0.22, 1.0) * flowC * 0.24;
-  color += vec3(1.0, 0.12, 0.46) * floorReflection * 0.05;
+  color += magenta * ribbon * (0.26 + leftGlow * 0.2);
+  color += pink * ripple * 0.03 * breath;
+  color += magenta * bridge * 0.045;
+  color += vec3(1.0, 0.17, 0.56) * beams * 0.24 * breath;
+  color += vec3(0.45, 0.18, 0.88) * beams * 0.14;
+  color += vec3(1.0, 0.18, 0.54) * (flowA * 0.48 + flowD * 0.34);
+  color += vec3(0.9, 0.16, 0.78) * (flowB * 0.38 + flowGlow * 0.12);
+  color += vec3(0.55, 0.22, 1.0) * flowC * 0.3;
+  color += vec3(1.0, 0.12, 0.46) * floorReflection * 0.07;
   color += magenta * cornerTl * 0.04 * cornerBreath;
   color += vec3(0.45, 0.12, 0.78) * cornerBl * 0.07 * cornerBreath;
   color += vec3(0.36, 0.12, 0.58) * cornerTr * 0.04 * cornerBreath;
   color += vec3(0.28, 0.06, 0.24) * cornerBr * 0.04 * cornerBreath;
-  color += vec3(0.62, 0.48, 0.92) * farParticles * particleMask * 0.28;
-  color += vec3(1.0, 0.23, 0.58) * midParticles * particleMask * 0.46;
-  color += vec3(0.93, 0.87, 1.0) * midParticles * particleMask * 0.13;
-  color += vec3(1.0, 0.78, 0.94) * nearParticles * particleMask * 0.28;
+  color += vec3(0.62, 0.48, 0.92) * farParticles * particleMask * 0.24;
+  color += vec3(1.0, 0.23, 0.58) * midParticles * particleMask * 0.42;
+  color += vec3(0.93, 0.87, 1.0) * midParticles * particleMask * 0.11;
+  color += vec3(1.0, 0.78, 0.94) * nearParticles * particleMask * 0.22;
   color *= 1.0 - smoothstep(0.5, 1.18, length(p)) * 0.44;
 
   gl_FragColor = vec4(color, 1.0);

@@ -1260,7 +1260,10 @@
     position: relative;
     min-height: 100svh;
     overflow-x: hidden;
-    background: #050507;
+    background:
+      radial-gradient(circle at 76% 22%, rgba(42, 18, 62, 0.28), transparent 34%),
+      radial-gradient(circle at 100% 82%, rgba(85, 20, 58, 0.18), transparent 30%),
+      linear-gradient(135deg, #050508 0%, #090611 46%, #160719 74%, #050508 100%);
     color: #f8f8fb;
   }
 
@@ -1275,25 +1278,27 @@
 
   .auth-page::before {
     background:
-      radial-gradient(ellipse at 31% 54%, transparent 36.5%, rgba(255, 58, 147, 0.94) 36.9%, rgba(255, 58, 147, 0.66) 37.3%, rgba(166, 92, 255, 0.24) 38.4%, transparent 40.4%),
-      radial-gradient(ellipse at 31% 54%, transparent 31%, rgba(166, 92, 255, 0.18) 32%, transparent 34.6%),
-      linear-gradient(118deg, transparent 0 14%, rgba(255, 58, 147, 0.18) 20%, rgba(166, 92, 255, 0.08) 26%, transparent 33%),
-      linear-gradient(126deg, transparent 0 38%, rgba(255, 20, 120, 0.13) 45%, rgba(139, 92, 246, 0.06) 51%, transparent 60%),
-      linear-gradient(151deg, transparent 0 58%, rgba(188, 98, 255, 0.08) 65%, rgba(255, 58, 147, 0.055) 70%, transparent 79%),
-      radial-gradient(circle at 100% 4%, rgba(188, 98, 255, 0.24), transparent 38%),
-      radial-gradient(circle at 100% 96%, rgba(255, 58, 147, 0.16), transparent 36%);
-    background-size: auto, auto, 152% 100%, 145% 100%, 140% 100%, auto, auto;
-    animation: auth-aura-breathe 18s ease-in-out infinite;
+      radial-gradient(ellipse 940px 640px at 34% 55%, transparent 58%, rgba(255, 60, 155, 0.42) 58.65%, rgba(255, 43, 138, 0.34) 59.25%, rgba(164, 82, 255, 0.18) 60.25%, transparent 62.2%),
+      radial-gradient(ellipse 1060px 740px at 34% 55%, transparent 48%, rgba(255, 43, 138, 0.1) 54%, rgba(164, 82, 255, 0.12) 60%, transparent 68%),
+      radial-gradient(ellipse 720px 460px at 27% 44%, rgba(122, 31, 168, 0.28), rgba(255, 43, 138, 0.12) 42%, transparent 74%),
+      linear-gradient(114deg, transparent 0 18%, rgba(255, 43, 138, 0.15) 24%, rgba(164, 82, 255, 0.07) 31%, transparent 41%),
+      linear-gradient(139deg, transparent 0 46%, rgba(255, 43, 138, 0.12) 54%, rgba(164, 82, 255, 0.065) 61%, transparent 72%),
+      radial-gradient(circle at 100% 6%, rgba(188, 98, 255, 0.16), transparent 38%),
+      radial-gradient(circle at 95% 92%, rgba(255, 58, 147, 0.12), transparent 36%);
+    background-size: auto, auto, auto, 150% 100%, 142% 100%, auto, auto;
+    animation: auth-aura-breathe 20s ease-in-out infinite;
   }
 
   .auth-page::after {
     background:
-      linear-gradient(164deg, transparent 0 33%, rgba(255, 58, 147, 0.17) 39%, rgba(255, 58, 147, 0.045) 46%, transparent 55%),
-      linear-gradient(153deg, transparent 0 40%, rgba(188, 98, 255, 0.1) 48%, rgba(255, 58, 147, 0.05) 57%, transparent 66%),
-      linear-gradient(172deg, transparent 54%, rgba(255, 20, 120, 0.105) 70%, rgba(139, 92, 246, 0.065) 80%, transparent 98%),
-      radial-gradient(ellipse at 36% 98%, rgba(255, 58, 147, 0.18), transparent 45%);
-    background-size: 150% 100%, 140% 100%, 150% 100%, auto;
-    animation: auth-ribbon-drift 20s ease-in-out infinite;
+      radial-gradient(ellipse 980px 220px at 26% 102%, transparent 48%, rgba(255, 43, 138, 0.36) 49.4%, rgba(255, 43, 138, 0.24) 50.6%, transparent 53%),
+      radial-gradient(ellipse 1080px 260px at 31% 104%, transparent 50%, rgba(229, 42, 171, 0.26) 51.2%, rgba(164, 82, 255, 0.16) 52.7%, transparent 55.5%),
+      radial-gradient(ellipse 920px 200px at 17% 98%, transparent 54%, rgba(255, 43, 138, 0.28) 55.2%, rgba(164, 82, 255, 0.12) 56.6%, transparent 59%),
+      radial-gradient(ellipse 860px 170px at 48% 106%, transparent 54%, rgba(164, 82, 255, 0.18) 55.4%, rgba(255, 43, 138, 0.12) 56.6%, transparent 59%),
+      linear-gradient(172deg, transparent 50%, rgba(255, 43, 138, 0.12) 69%, rgba(164, 82, 255, 0.075) 82%, transparent 98%),
+      radial-gradient(ellipse at 34% 99%, rgba(255, 43, 138, 0.22), rgba(164, 82, 255, 0.08) 38%, transparent 58%);
+    background-size: 132% 100%, 140% 100%, 126% 100%, 136% 100%, 150% 100%, auto;
+    animation: auth-ribbon-drift 18s ease-in-out infinite;
   }
 
   .auth-shader,
@@ -1324,10 +1329,10 @@
   .auth-shader__fallback {
     opacity: 0;
     background:
-      radial-gradient(ellipse at 31% 54%, transparent 36.5%, rgba(255, 58, 147, 0.82) 36.9%, rgba(166, 92, 255, 0.22) 38.5%, transparent 40.5%),
+      radial-gradient(ellipse 920px 620px at 34% 55%, transparent 58%, rgba(255, 58, 147, 0.34) 59%, rgba(166, 92, 255, 0.18) 60.4%, transparent 62.5%),
+      radial-gradient(ellipse 960px 230px at 27% 102%, transparent 48%, rgba(255, 43, 138, 0.28) 50%, transparent 54%),
       linear-gradient(154deg, transparent 20%, rgba(255, 58, 147, 0.12) 42%, transparent 62%),
-      linear-gradient(172deg, transparent 50%, rgba(255, 20, 120, 0.11) 70%, rgba(139, 92, 246, 0.07) 82%, transparent 98%),
-      linear-gradient(135deg, #050507 0%, #170719 48%, #08070d 100%);
+      linear-gradient(135deg, #050508 0%, #170719 48%, #08070d 100%);
     transition: opacity var(--motion-base);
   }
 
@@ -1338,12 +1343,12 @@
   .auth-page__shade {
     z-index: 2;
     background:
-      radial-gradient(circle at 100% 0%, rgba(188, 98, 255, 0.18), transparent 34%),
-      radial-gradient(circle at 100% 100%, rgba(255, 58, 147, 0.13), transparent 32%),
-      radial-gradient(circle at 75% 50%, rgba(166, 92, 255, 0.17), rgba(255, 58, 147, 0.08) 34%, transparent 58%),
-      radial-gradient(circle at 78% 52%, rgba(5, 5, 9, 0.5) 0%, rgba(5, 5, 9, 0.26) 36%, transparent 62%),
-      linear-gradient(118deg, transparent 0 18%, rgba(3, 3, 7, 0.44) 24%, transparent 31%, transparent 39%, rgba(3, 3, 7, 0.34) 47%, transparent 56%, transparent 64%, rgba(3, 3, 7, 0.26) 70%, transparent 78%),
-      linear-gradient(90deg, rgba(0, 0, 0, 0.035) 0%, rgba(0, 0, 0, 0.075) 52%, rgba(0, 0, 0, 0.3) 100%),
+      radial-gradient(circle at 100% 0%, rgba(188, 98, 255, 0.16), transparent 34%),
+      radial-gradient(circle at 100% 100%, rgba(255, 58, 147, 0.11), transparent 34%),
+      radial-gradient(circle at 74% 50%, rgba(78, 29, 116, 0.2), rgba(255, 58, 147, 0.055) 34%, transparent 58%),
+      radial-gradient(circle at 79% 52%, rgba(5, 5, 9, 0.74) 0%, rgba(5, 5, 9, 0.48) 36%, rgba(5, 5, 9, 0.16) 62%, transparent 76%),
+      linear-gradient(118deg, transparent 0 18%, rgba(3, 3, 7, 0.28) 24%, transparent 31%, transparent 39%, rgba(3, 3, 7, 0.26) 47%, transparent 56%, transparent 64%, rgba(3, 3, 7, 0.2) 70%, transparent 78%),
+      linear-gradient(90deg, rgba(0, 0, 0, 0.02) 0%, rgba(0, 0, 0, 0.06) 50%, rgba(0, 0, 0, 0.36) 100%),
       radial-gradient(circle at center, transparent 48%, rgba(0, 0, 0, 0.14) 100%);
   }
 
@@ -1361,13 +1366,13 @@
     position: relative;
     z-index: 10;
     display: grid;
-    grid-template-columns: minmax(0, 1.08fr) minmax(420px, 0.72fr);
+    grid-template-columns: minmax(0, 58fr) minmax(440px, 42fr);
     align-items: center;
-    width: min(1480px, calc(100vw - 96px));
+    width: min(1416px, calc(100vw - 128px));
     min-height: 100svh;
     margin: 0 auto;
-    gap: clamp(64px, 8vw, 128px);
-    padding: 48px 0;
+    gap: clamp(48px, 4.5vw, 72px);
+    padding: clamp(64px, 7vh, 80px) 0;
   }
 
   .auth-brand,
@@ -1432,14 +1437,15 @@
   }
 
   .auth-brand__copy {
-    max-width: 720px;
-    margin-top: 46px;
+    width: min(640px, 75%);
+    max-width: 640px;
+    margin-top: 38px;
   }
 
   .auth-brand__copy h1 {
-    max-width: 720px;
+    max-width: 640px;
     color: #fff;
-    font-size: 72px;
+    font-size: clamp(64px, 3.75vw, 72px);
     font-weight: 850;
     line-height: 0.98;
     letter-spacing: 0;
@@ -1463,7 +1469,7 @@
     flex-wrap: wrap;
     align-items: center;
     gap: 22px;
-    margin-top: 28px;
+    margin-top: 26px;
     color: rgba(244, 242, 248, 0.72);
     font-size: 17px;
     line-height: 1.3;
@@ -1489,9 +1495,9 @@
 
   .auth-showcase {
     position: relative;
-    width: 720px;
+    width: min(780px, 100%);
     max-width: 100%;
-    height: 395px;
+    height: 432px;
     margin-top: 42px;
   }
 
@@ -1526,17 +1532,15 @@
   .auth-showcase-card {
     position: absolute;
     top: 0;
-    width: 262px;
-    height: 330px;
+    width: 268px;
+    height: 338px;
     overflow: hidden;
-    border: 1px solid rgba(255, 232, 249, 0.6);
+    border: 1px solid rgba(210, 110, 230, 0.42);
     border-radius: 18px;
     background: #0b0910;
     box-shadow:
-      0 26px 62px rgba(0, 0, 0, 0.48),
-      0 0 0 1px rgba(255, 58, 147, 0.1),
-      0 0 22px rgba(255, 58, 147, 0.22),
-      0 0 34px rgba(166, 92, 255, 0.1);
+      0 0 18px rgba(202, 53, 190, 0.13),
+      0 22px 54px rgba(0, 0, 0, 0.42);
     transform-origin: center bottom;
     transition:
       border-color 180ms ease,
@@ -1557,12 +1561,12 @@
     position: absolute;
     inset: auto 0 0;
     z-index: 2;
-    padding: 82px 18px 18px;
+    padding: 96px 18px 18px;
     background:
       linear-gradient(
         transparent,
-        rgba(7, 6, 11, 0.86) 34%,
-        rgba(7, 6, 11, 0.95) 58%,
+        rgba(7, 6, 11, 0.88) 30%,
+        rgba(7, 6, 11, 0.96) 58%,
         rgba(7, 6, 11, 0.99)
       );
   }
@@ -1595,7 +1599,7 @@
 
   .auth-showcase-card__footer strong {
     color: #fff;
-    font-size: 18px;
+    font-size: 19px;
     line-height: 1.2;
   }
 
@@ -1610,36 +1614,34 @@
   }
 
   .auth-showcase-card--left {
-    left: 18px;
-    top: 70px;
+    left: 24px;
+    top: 40px;
     z-index: 1;
-    transform: rotate(-10deg);
+    transform: rotate(-12deg);
     animation-duration: 6.8s;
   }
 
   .auth-showcase-card--main {
-    left: 240px;
-    top: 0;
+    left: 236px;
+    top: -6px;
     z-index: 3;
-    width: 292px;
-    height: 368px;
-    border-color: rgba(255, 235, 250, 0.9);
+    width: 320px;
+    height: 402px;
+    border-color: rgba(255, 92, 181, 0.72);
     box-shadow:
-      0 30px 76px rgba(0, 0, 0, 0.56),
-      inset 0 0 0 1px rgba(255, 58, 147, 0.2),
-      0 0 0 1px rgba(255, 58, 147, 0.26),
-      0 0 36px rgba(255, 58, 147, 0.4),
-      0 0 54px rgba(166, 92, 255, 0.18);
+      0 0 0 1px rgba(255, 255, 255, 0.05),
+      0 0 28px rgba(255, 42, 145, 0.22),
+      0 28px 64px rgba(0, 0, 0, 0.48);
     transform: rotate(0deg);
     animation-delay: 160ms;
     animation-duration: 7.6s;
   }
 
   .auth-showcase-card--right {
-    left: 456px;
-    top: 74px;
+    left: 486px;
+    top: 42px;
     z-index: 2;
-    transform: rotate(10deg);
+    transform: rotate(12deg);
     animation-delay: 320ms;
     animation-duration: 8.3s;
   }
@@ -1656,7 +1658,7 @@
   }
 
   .auth-showcase:hover .auth-showcase-card--left {
-    transform: translateX(-8px) rotate(-10deg);
+    transform: translateX(-8px) rotate(-12deg);
   }
 
   .auth-showcase:hover .auth-showcase-card--main {
@@ -1664,14 +1666,15 @@
   }
 
   .auth-showcase:hover .auth-showcase-card--right {
-    transform: translateX(8px) rotate(10deg);
+    transform: translateX(8px) rotate(12deg);
   }
 
   .auth-form-shell {
     position: relative;
     display: grid;
     isolation: isolate;
-    place-items: center;
+    align-items: center;
+    justify-items: start;
   }
 
   .auth-form-shell::before {
@@ -1680,10 +1683,11 @@
     z-index: -1;
     pointer-events: none;
     background:
-      radial-gradient(circle at 54% 44%, rgba(166, 92, 255, 0.16), transparent 40%),
-      radial-gradient(circle at 74% 62%, rgba(255, 58, 147, 0.12), transparent 44%),
-      linear-gradient(142deg, transparent 32%, rgba(255, 58, 147, 0.05) 48%, transparent 64%);
+      radial-gradient(ellipse at 48% 46%, rgba(166, 92, 255, 0.11), transparent 58%),
+      radial-gradient(ellipse at 70% 62%, rgba(255, 58, 147, 0.065), transparent 60%);
     content: "";
+    filter: blur(2px);
+    mask-image: radial-gradient(ellipse at center, #000 0 56%, transparent 78%);
   }
 
   .auth-mobile-logo {
@@ -1695,22 +1699,20 @@
     --spotlight-y: 24%;
     position: relative;
     display: grid;
-    width: min(470px, 100%);
+    width: min(480px, 100%);
     gap: 16px;
     overflow: hidden;
-    border: 1px solid rgba(229, 214, 255, 0.42);
-    border-radius: 22px;
+    border: 1px solid rgba(255, 255, 255, 0.14);
+    border-radius: 20px;
     background:
-      radial-gradient(circle at 100% 0%, rgba(255, 20, 120, 0.115), transparent 45%),
-      radial-gradient(circle at 0% 100%, rgba(166, 92, 255, 0.07), transparent 48%),
-      rgba(8, 8, 14, 0.94);
+      radial-gradient(circle at 100% 0%, rgba(255, 20, 120, 0.08), transparent 43%),
+      radial-gradient(circle at 0% 100%, rgba(166, 92, 255, 0.045), transparent 48%),
+      rgba(8, 8, 14, 0.88);
     padding: 38px 40px 34px;
     box-shadow:
-      0 24px 80px rgba(0, 0, 0, 0.56),
+      0 28px 80px rgba(0, 0, 0, 0.48),
       inset 0 1px 0 rgba(255, 255, 255, 0.045),
-      0 0 0 1px rgba(255, 58, 147, 0.055),
-      0 0 42px rgba(166, 92, 255, 0.11),
-      0 0 30px rgba(255, 10, 108, 0.075);
+      0 0 30px rgba(197, 61, 255, 0.07);
     backdrop-filter: blur(18px);
     animation: auth-form-enter 420ms 80ms ease-out both;
   }
@@ -1794,9 +1796,9 @@
     align-items: center;
     gap: 12px;
     overflow: hidden;
-    border: 1px solid rgba(232, 218, 255, 0.28);
+    border: 1px solid rgba(232, 218, 255, 0.36);
     border-radius: 11px;
-    background: rgba(255, 255, 255, 0.058);
+    background: rgba(255, 255, 255, 0.068);
     color: rgba(255, 255, 255, 0.72);
     padding: 0 14px;
     transition:
@@ -1816,16 +1818,16 @@
   }
 
   .auth-input:hover {
-    border-color: rgba(211, 181, 255, 0.54);
-    background: rgba(255, 255, 255, 0.078);
+    border-color: rgba(211, 181, 255, 0.62);
+    background: rgba(255, 255, 255, 0.098);
   }
 
   .auth-input:focus-within {
-    border-color: rgba(255, 58, 147, 0.9);
-    background: rgba(255, 255, 255, 0.08);
+    border-color: rgba(255, 58, 147, 0.92);
+    background: rgba(255, 255, 255, 0.096);
     box-shadow:
-      0 0 0 3px rgba(255, 58, 147, 0.15),
-      0 0 18px rgba(255, 58, 147, 0.11),
+      0 0 0 3px rgba(255, 58, 147, 0.18),
+      0 0 20px rgba(255, 58, 147, 0.13),
       0 12px 32px rgba(0, 0, 0, 0.24);
   }
 
@@ -1841,11 +1843,18 @@
     position: relative;
     z-index: 1;
     flex: 0 0 auto;
-    transition: color 160ms ease;
+    transition:
+      color 160ms ease,
+      filter 160ms ease;
+  }
+
+  .auth-input:hover svg {
+    color: rgba(235, 223, 255, 0.92);
   }
 
   .auth-input:focus-within svg {
     color: #ff3a93;
+    filter: drop-shadow(0 0 8px rgba(255, 58, 147, 0.2));
   }
 
   .auth-input input {
@@ -1862,7 +1871,7 @@
   }
 
   .auth-input input::placeholder {
-    color: rgba(255, 255, 255, 0.56);
+    color: rgba(255, 255, 255, 0.62);
   }
 
   .auth-password {
@@ -2136,11 +2145,11 @@
 @keyframes auth-ribbon-drift {
   0%,
   100% {
-    background-position: 0% 50%, 6% 50%, 12% 50%, 0% 100%;
+    background-position: 0% 50%, 6% 50%, 12% 50%, 18% 50%, 12% 50%, 0% 100%;
     opacity: 0.66;
   }
   50% {
-    background-position: 68% 50%, 52% 50%, 42% 50%, 48% 100%;
+    background-position: 60% 50%, 48% 50%, 42% 50%, 54% 50%, 44% 50%, 42% 100%;
     opacity: 0.9;
   }
 }
@@ -2186,6 +2195,44 @@
   }
   to {
     transform: translateX(120%);
+  }
+}
+
+@media (max-width: 1500px) and (min-width: 1200px) {
+  .auth-layout {
+    width: min(1280px, calc(100vw - 160px));
+    gap: 56px;
+  }
+
+  .auth-brand__copy {
+    width: min(610px, 78%);
+  }
+
+  .auth-showcase {
+    width: 700px;
+    height: 405px;
+  }
+
+  .auth-showcase-card {
+    width: 250px;
+    height: 315px;
+  }
+
+  .auth-showcase-card--left {
+    left: 30px;
+    top: 46px;
+  }
+
+  .auth-showcase-card--main {
+    left: 226px;
+    top: 0;
+    width: 300px;
+    height: 378px;
+  }
+
+  .auth-showcase-card--right {
+    left: 452px;
+    top: 48px;
   }
 }
 
@@ -2282,6 +2329,7 @@
   .auth-layout {
     display: grid;
     grid-template-columns: minmax(0, 1fr);
+    width: 100%;
     min-height: 100dvh;
     padding: max(22px, env(safe-area-inset-top)) 16px max(22px, env(safe-area-inset-bottom));
   }
