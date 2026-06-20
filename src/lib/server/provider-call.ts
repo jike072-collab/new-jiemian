@@ -7,7 +7,7 @@ import {
 
 import { addJob, addLibraryItem, storeBytes, storeDataUrl, storeRemoteUrl, updateJob, updateLibraryItem } from "./library";
 import { getTaskBillingService } from "./quota";
-import { providerById } from "./providers";
+import { jimengVideoOptionsForModel, providerById } from "./providers";
 import { type JobRecord, type LibraryItem, type ProviderConfig } from "./types";
 
 type UploadedMedia = {
@@ -42,6 +42,7 @@ class BillingDispatchRejectedError extends Error {
 const grokVideoDurations = new Set([4, 6, 8, 10, 12, 15]);
 const grokVideo10Ratios = new Set(["1:1", "16:9", "9:16", "4:3", "3:4", "3:2", "2:3"]);
 const grokVideo15Ratios = new Set(["16:9", "9:16"]);
+const defaultVideoRatios = new Set(["1:1", "16:9", "9:16", "4:3", "3:4", "3:2", "2:3"]);
 
 function asRecord(value: unknown): Record<string, unknown> {
   return value && typeof value === "object" && !Array.isArray(value)
@@ -106,6 +107,12 @@ function ratioToSize(ratio: string) {
   if (ratio === "4:3") return "1344x1024";
   if (ratio === "3:4") return "1024x1344";
   return "1024x1024";
+}
+
+function ratioTo720pSize(ratio: string) {
+  if (ratio === "16:9") return "1280x720";
+  if (ratio === "9:16") return "720x1280";
+  return "720x720";
 }
 
 function normalizeStatus(value: string) {
@@ -185,6 +192,37 @@ function validateGrokVideoInput(provider: ProviderConfig, input: {
   }
   if (provider.model === "grok-video-1.0" && input.files.length > 7) {
     throw new Error("grok-video-1.0 最多支持 7 张参考图。");
+  }
+}
+
+function videoOptionsForProvider(provider: ProviderConfig) {
+  return jimengVideoOptionsForModel(provider.model) || provider.videoOptions;
+}
+
+function validateVideoInput(provider: ProviderConfig, input: {
+  mode: "text-to-video" | "image-to-video";
+  ratio: string;
+  duration: number;
+  files: UploadedMedia[];
+}) {
+  if (isGrokVideoProvider(provider)) {
+    validateGrokVideoInput(provider, input);
+    return;
+  }
+  const options = videoOptionsForProvider(provider);
+  const allowedDurations = options?.durations?.length ? new Set(options.durations) : new Set([5, 8, 10, 15]);
+  const allowedRatios = options?.ratios?.length ? new Set(options.ratios) : defaultVideoRatios;
+  if (!allowedDurations.has(input.duration)) {
+    throw new Error(`当前视频模型不支持 ${input.duration} 秒。`);
+  }
+  if (!allowedRatios.has(input.ratio)) {
+    throw new Error(`当前视频模型不支持 ${input.ratio} 比例。`);
+  }
+  if (input.mode === "image-to-video") {
+    const maxReferenceImages = options?.maxReferenceImages ?? 1;
+    if (input.files.length > maxReferenceImages) {
+      throw new Error(`当前视频模型最多支持 ${maxReferenceImages} 张参考图。`);
+    }
   }
 }
 
@@ -649,6 +687,7 @@ export async function submitVideo(input: {
     if (!provider || provider.kind !== "video" || !provider.enabled || !provider.apiKey) {
       throw new Error("视频供应商未配置或未启用。");
     }
+    validateVideoInput(provider, input);
     await claimGenerationBillingDispatch({
       localUserId: input.billingLocalUserId,
       taskId: input.billingTaskId,
@@ -666,11 +705,16 @@ export async function submitVideo(input: {
     if (isGrokVideoProvider(provider)) {
       output = await callGrokVideoProvider(provider, input);
     } else {
+      const providerVideoOptions = videoOptionsForProvider(provider);
+      const resolution = providerVideoOptions?.resolution || "720p";
       const providerPayload: Record<string, string | number | string[]> = {
         model: provider.model,
         prompt: input.prompt,
         duration: input.duration,
+        seconds: input.duration,
         aspect_ratio: input.ratio,
+        size: resolution === "720p" ? ratioTo720pSize(input.ratio) : ratioToSize(input.ratio),
+        resolution,
         response_format: "url",
       };
       if (input.mode === "image-to-video") {

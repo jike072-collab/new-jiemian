@@ -183,6 +183,7 @@ const defaultVideoDurations = [5, 8, 10, 15];
 const grokVideoDurations = [4, 6, 8, 10, 12, 15];
 const grokVideo10Ratios = ["1:1", "16:9", "9:16", "4:3", "3:4", "3:2", "2:3"];
 const grokVideo15Ratios = ["16:9", "9:16"];
+const jimengVideoRatios = ["16:9", "9:16", "1:1"];
 const upscaleUnavailableMessage = "高清处理暂时不可用，请稍后重试";
 const promptOptimizationTargetPlatform = "TikTok Shop";
 
@@ -380,11 +381,25 @@ function isGrokVideoProvider(provider: PublicProvider | null | undefined) {
   return provider?.endpointType === "grok-videos" || Boolean(provider?.model.startsWith("grok-video-"));
 }
 
+function jimengVideoOptions(provider: PublicProvider | null | undefined) {
+  const model = provider?.model.trim().toLowerCase() || "";
+  if (!model.includes("seedance2.0")) return null;
+  if (model.includes("15s")) return { durations: [15], ratios: jimengVideoRatios };
+  if (model.includes("10s-nyp")) return { durations: [5, 10], ratios: jimengVideoRatios };
+  return { durations: [5, 10, 15], ratios: jimengVideoRatios };
+}
+
 function videoDurationOptions(provider: PublicProvider | null | undefined) {
+  if (provider?.videoOptions?.durations?.length) return provider.videoOptions.durations;
+  const jimengOptions = jimengVideoOptions(provider);
+  if (jimengOptions) return jimengOptions.durations;
   return isGrokVideoProvider(provider) ? grokVideoDurations : defaultVideoDurations;
 }
 
 function videoRatioOptions(provider: PublicProvider | null | undefined) {
+  if (provider?.videoOptions?.ratios?.length) return provider.videoOptions.ratios;
+  const jimengOptions = jimengVideoOptions(provider);
+  if (jimengOptions) return jimengOptions.ratios;
   if (!isGrokVideoProvider(provider)) return ratios;
   return provider?.model === "grok-video-1.5" ? grokVideo15Ratios : grokVideo10Ratios;
 }

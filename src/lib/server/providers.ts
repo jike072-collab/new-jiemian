@@ -38,6 +38,73 @@ function normalizeModelDisplayNames(value: unknown) {
   return entries.length ? Object.fromEntries(entries) : undefined;
 }
 
+function normalizeVideoOptions(value: unknown): ProviderConfig["videoOptions"] {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return undefined;
+  const input = value as Record<string, unknown>;
+  const durations = Array.isArray(input.durations)
+    ? Array.from(new Set(input.durations.map((item) => Number(item)).filter((item) => Number.isFinite(item) && item > 0)))
+    : undefined;
+  const ratios = Array.isArray(input.ratios)
+    ? Array.from(new Set(input.ratios.map((item) => String(item || "").trim()).filter(Boolean)))
+    : undefined;
+  const resolution = String(input.resolution || "").trim();
+  const maxReferenceImages = Number(input.maxReferenceImages);
+  const supportsVideoReference = typeof input.supportsVideoReference === "boolean" ? input.supportsVideoReference : undefined;
+  const supportsAudioReference = typeof input.supportsAudioReference === "boolean" ? input.supportsAudioReference : undefined;
+  const normalized: NonNullable<ProviderConfig["videoOptions"]> = {};
+  if (durations?.length) normalized.durations = durations;
+  if (ratios?.length) normalized.ratios = ratios;
+  if (resolution) normalized.resolution = resolution;
+  if (Number.isFinite(maxReferenceImages) && maxReferenceImages >= 0) normalized.maxReferenceImages = Math.floor(maxReferenceImages);
+  if (supportsVideoReference !== undefined) normalized.supportsVideoReference = supportsVideoReference;
+  if (supportsAudioReference !== undefined) normalized.supportsAudioReference = supportsAudioReference;
+  return Object.keys(normalized).length ? normalized : undefined;
+}
+
+export function jimengVideoOptionsForModel(model: string): ProviderConfig["videoOptions"] {
+  const normalized = model.trim().toLowerCase();
+  if (!normalized.includes("seedance2.0")) return undefined;
+  const fixed15s = normalized.includes("15s");
+  const fixed5Or10s = normalized.includes("10s-nyp");
+  const srModel = normalized.endsWith("-sr");
+  return {
+    durations: fixed15s ? [15] : fixed5Or10s ? [5, 10] : [5, 10, 15],
+    ratios: ["16:9", "9:16", "1:1"],
+    resolution: "720p",
+    maxReferenceImages: fixed15s ? 4 : 9,
+    supportsVideoReference: !srModel,
+    supportsAudioReference: !fixed5Or10s,
+  };
+}
+
+function providerVideoOptions(provider: ProviderConfig) {
+  return jimengVideoOptionsForModel(provider.model) || normalizeVideoOptions(provider.videoOptions);
+}
+
+const jimengVideoModels = [
+  "seedance2.0-pro 720p-15s",
+  "gu-seedance2.0-fast 720p-15s",
+  "op-seedance2.0 720p-pro-特价-15s",
+  "gu-seedance2.0-pro 720p-10s-nyp",
+  "seedance2.0 720p-fast",
+  "seedance2.0 720p-pro",
+  "seedance2.0 720p-fast-sr",
+  "seedance2.0 720p-mini-sr",
+  "seedance2.0 720p-pro-sr",
+];
+
+const jimengVideoDisplayNames: Record<string, string> = {
+  "seedance2.0-pro 720p-15s": "即梦 720P Pro 15 秒",
+  "gu-seedance2.0-fast 720p-15s": "即梦 720P Fast 15 秒",
+  "op-seedance2.0 720p-pro-特价-15s": "即梦 720P Pro 15 秒特价",
+  "gu-seedance2.0-pro 720p-10s-nyp": "即梦 720P Pro 5/10 秒",
+  "seedance2.0 720p-fast": "即梦 720P Fast",
+  "seedance2.0 720p-pro": "即梦 720P Pro",
+  "seedance2.0 720p-fast-sr": "即梦 720P Fast 超分",
+  "seedance2.0 720p-mini-sr": "即梦 720P Mini 超分",
+  "seedance2.0 720p-pro-sr": "即梦 720P Pro 超分",
+};
+
 export function isLocalProvider(endpointType: EndpointType) {
   return endpointType === "upscayl-cli" || endpointType === "video2x-cli";
 }
@@ -68,6 +135,9 @@ export function defaultProviders(): ProviderConfig[] {
       role: "文生视频与图生视频",
       apiUrl: env("VIDEO_API_URL", "https://clmm-mall.top/v1/videos/generations"),
       model: env("VIDEO_MODEL", "seedance2.0 720p-fast-sr"),
+      models: jimengVideoModels,
+      modelDisplayNames: jimengVideoDisplayNames,
+      enabledModels: jimengVideoModels,
       apiKey: env("VIDEO_MODEL_API_KEY"),
       enabled: hasKey(env("VIDEO_MODEL_API_KEY")),
       endpointType: (env("VIDEO_ENDPOINT_TYPE", "videos-generations") as EndpointType),
@@ -133,6 +203,7 @@ function normalizeProvider(provider: ProviderConfig): ProviderConfig {
     enabledModels: enabledModels.length ? enabledModels.filter((model) => models.includes(model)) : undefined,
     modelDisplayNames,
     displayName: String(provider.displayName || "").trim() || undefined,
+    videoOptions: normalizeVideoOptions(provider.videoOptions),
     apiKey: String(provider.apiKey || "").trim(),
     enabled: Boolean(provider.enabled),
     custom: Boolean(provider.custom),
@@ -153,6 +224,7 @@ export function sanitizeProvider(provider: ProviderConfig): PublicProvider {
     modelDisplayNames: normalized.modelDisplayNames,
     enabledModels: normalized.enabledModels,
     displayName: normalized.displayName || normalized.model,
+    videoOptions: providerVideoOptions(normalized),
     enabled: normalized.enabled,
     endpointType: normalized.endpointType,
     custom: normalized.custom,
@@ -211,6 +283,7 @@ function expandProviderModels(provider: ProviderConfig) {
     id: virtualProviderId(provider.id, model),
     model,
     displayName: publicDisplayName(provider, model, visibleModels.length > 1),
+    videoOptions: providerVideoOptions({ ...provider, model }),
   }));
 }
 
@@ -279,6 +352,7 @@ export async function readFrontendProviders(kind?: ProviderKind): Promise<Fronte
       displayName: provider.displayName || provider.model,
       capabilities: capabilitiesFor(provider),
       enabled: provider.enabled,
+      videoOptions: provider.videoOptions,
     }));
 }
 
@@ -297,6 +371,7 @@ export async function providerById(id: string) {
     id,
     model: virtual.model,
     displayName: publicDisplayName(provider, virtual.model, knownModels.length > 1),
+    videoOptions: providerVideoOptions({ ...provider, model: virtual.model }),
   };
 }
 
@@ -364,6 +439,7 @@ export async function updateProviders(updates: ProviderUpdate[]) {
       modelDisplayNames: {},
       enabledModels: [],
       displayName: "",
+      videoOptions: undefined,
       apiKey: "",
       enabled: false,
       endpointType: update.endpointType || "videos-generations",
@@ -385,6 +461,9 @@ export async function updateProviders(updates: ProviderUpdate[]) {
         ? baseProvider.enabledModels
         : normalizeModels(update.enabledModels),
       displayName: update.displayName === undefined ? baseProvider.displayName : update.displayName,
+      videoOptions: update.videoOptions === undefined
+        ? baseProvider.videoOptions
+        : normalizeVideoOptions(update.videoOptions),
       enabled: update.enabled === undefined ? baseProvider.enabled : update.enabled,
       endpointType: update.endpointType === undefined ? baseProvider.endpointType : update.endpointType,
       custom: baseProvider.custom || Boolean(update.custom),
