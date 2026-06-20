@@ -1718,7 +1718,8 @@
 
   .auth-password {
     position: relative;
-    display: block;
+    display: flex;
+    align-items: center;
   }
 
   .auth-password input {
@@ -2061,7 +2062,7 @@
     justify-items: center;
     gap: 18px;
     min-height: calc(100dvh - 44px);
-    padding-top: 8dvh;
+    padding-top: clamp(12px, 3dvh, 28px);
   }
 
   .auth-mobile-logo {
