@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="340" height="300" viewBox="0 0 340 300">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#16141d"/><stop offset="1" stop-color="#08070d"/></linearGradient>
+    <linearGradient id="product" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#ffffff"/><stop offset=".52" stop-color="#fb7185"/><stop offset="1" stop-color="#8b5cf6"/></linearGradient>
+    <linearGradient id="scene" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#312e81"/><stop offset=".48" stop-color="#fb7185"/><stop offset="1" stop-color="#14b8a6"/></linearGradient>
+    <filter id="shadow" x="-30%" y="-30%" width="160%" height="160%"><feDropShadow dx="0" dy="18" stdDeviation="18" flood-color="#000" flood-opacity=".38"/></filter>
+  </defs>
+  <rect width="340" height="300" rx="30" fill="url(#bg)"/>
+  <g filter="url(#shadow)"><ellipse cx="170" cy="220" rx="92" ry="22" fill="#05040a" opacity=".28"/><rect x="110" y="76" width="120" height="132" rx="30" fill="url(#product)"/><rect x="128" y="40" width="84" height="52" rx="18" fill="#f8fafc" opacity=".94"/><circle cx="170" cy="116" r="54" fill="#fb7185" opacity=".18"/><path d="M120 198c34 28 72 28 106 0" stroke="#fff" stroke-width="8" stroke-linecap="round" opacity=".7"/></g>
+  <rect x="22" y="22" width="296" height="256" rx="24" fill="none" stroke="#ffffff" stroke-opacity=".09"/>
+  <text x="28" y="46" fill="#ffffff" font-size="24" font-weight="700" font-family="Arial,'Microsoft YaHei',sans-serif">海报版本</text>
+  <text x="28" y="78" fill="#c7c3d8" font-size="16" font-family="Arial,'Microsoft YaHei',sans-serif">促销视觉</text>
+</svg>

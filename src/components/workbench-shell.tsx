@@ -40,8 +40,8 @@ type WorkbenchShellProps = {
   parameterSlot: ReactNode;
   previewSlot: ReactNode;
   mobileActionSlot?: ReactNode;
+  mobilePreviewSignal?: number;
   toolTitle?: string;
-  toolDescription?: string;
 };
 
 export function WorkbenchShell({
@@ -54,8 +54,8 @@ export function WorkbenchShell({
   parameterSlot,
   previewSlot,
   mobileActionSlot,
+  mobilePreviewSignal,
   toolTitle,
-  toolDescription,
 }: WorkbenchShellProps) {
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [pane, setPane] = useState<ShellPane>("parameters");
@@ -67,11 +67,25 @@ export function WorkbenchShell({
 
   const activeTool = workspaceToolById(state.activeToolId) || workspaceToolEntries[0];
   const drawerId = "workspace-mobile-drawer";
+  const singlePaneMobile = activeTool.id === "templates" || activeTool.id === "library";
 
   useEffect(() => {
+    const frame = window.requestAnimationFrame(() => {
+      setPane(singlePaneMobile ? "preview" : "parameters");
+    });
     rootRef.current?.querySelector<HTMLElement>("[data-shell-scroll='parameters']")?.scrollTo({ top: 0 });
     rootRef.current?.querySelector<HTMLElement>("[data-shell-scroll='preview']")?.scrollTo({ top: 0 });
-  }, [state.activeToolId]);
+    return () => window.cancelAnimationFrame(frame);
+  }, [singlePaneMobile, state.activeToolId]);
+
+  useEffect(() => {
+    if (!mobilePreviewSignal) return;
+    const frame = window.requestAnimationFrame(() => {
+      setPane("preview");
+      rootRef.current?.querySelector<HTMLElement>("[data-shell-scroll='preview']")?.scrollTo({ top: 0 });
+    });
+    return () => window.cancelAnimationFrame(frame);
+  }, [mobilePreviewSignal]);
 
   useEffect(() => {
     if (!drawerOpen) return;
@@ -129,6 +143,7 @@ export function WorkbenchShell({
         activeTool={activeTool}
         drawerOpen={drawerOpen}
         pane={pane}
+        singlePane={singlePaneMobile}
         onClose={() => setDrawerOpen(false)}
         onSelect={(action, tool) => {
           onToolAction(action, tool);
@@ -149,13 +164,13 @@ export function WorkbenchShell({
             activeToolId={state.activeToolId}
             onSelect={(action, tool) => onToolAction(action, tool)}
             groups={workspaceToolGroups}
+            isAuthenticated={isAuthenticated}
           />
 
-          <section className="shell-panel shell-panel--controls">
+          <section className={cn("shell-panel shell-panel--controls", singlePaneMobile && "shell-panel--mobile-single-hidden")}>
             <div className="shell-panel__header shell-panel__header--tool">
               <div>
                 <h2 className="shell-title">{toolTitle || activeTool.label}</h2>
-                <p className="shell-description">{toolDescription || activeTool.description}</p>
               </div>
             </div>
             <div id="shell-parameters-panel" data-shell-scroll="parameters" className="shell-panel__body">
@@ -163,7 +178,7 @@ export function WorkbenchShell({
             </div>
           </section>
 
-          <section className="shell-panel shell-panel--preview">
+          <section className={cn("shell-panel shell-panel--preview", singlePaneMobile && "shell-panel--mobile-single")}>
             <div id="shell-preview-panel" data-shell-scroll="preview" className="shell-panel__body shell-panel__body--preview">
               {previewSlot}
             </div>
@@ -254,25 +269,26 @@ function DesktopNavigation({
   activeToolId,
   onSelect,
   groups,
+  isAuthenticated,
 }: {
   activeToolId: WorkspaceToolId;
   onSelect: (action: WorkspaceAction, tool: WorkspaceToolId) => void;
   groups: Array<{ title: WorkspaceToolGroup; items: WorkspaceToolId[] }>;
+  isAuthenticated: boolean;
 }) {
   return (
     <aside className="shell-nav">
-      <div className="shell-nav__head">
-        <p className="shell-eyebrow">工具导航</p>
-      </div>
       <div className="shell-nav__groups">
-        {groups.map((group) => (
-          <section key={group.title} className="shell-nav__group">
-            <h3 className="shell-nav__group-title">{group.title}</h3>
-            <div className="shell-nav__items">
-              {group.items.map((id) => {
-                const item = workspaceToolById(id);
-                if (!item || !item.visible) return null;
-                return (
+        {groups.map((group) => {
+          const visibleItems = group.items
+            .map((id) => workspaceToolById(id))
+            .filter((item): item is WorkspaceToolEntry => Boolean(item?.visible && (!item.requiresAuth || isAuthenticated)));
+          if (!visibleItems.length) return null;
+          return (
+            <section key={group.title} className="shell-nav__group">
+              <h3 className="shell-nav__group-title">{group.title}</h3>
+              <div className="shell-nav__items">
+                {visibleItems.map((item) => (
                   <ToolButton
                     key={item.id}
                     item={item}
@@ -280,11 +296,11 @@ function DesktopNavigation({
                     showDescription={false}
                     onClick={() => onSelect(item.action, item.id)}
                   />
-                );
-              })}
-            </div>
-          </section>
-        ))}
+                ))}
+              </div>
+            </section>
+          );
+        })}
       </div>
     </aside>
   );
@@ -294,6 +310,7 @@ function MobileOverlay({
   activeTool,
   drawerOpen,
   pane,
+  singlePane,
   onClose,
   onSelect,
   onChangePane,
@@ -307,6 +324,7 @@ function MobileOverlay({
   activeTool: WorkspaceToolEntry;
   drawerOpen: boolean;
   pane: ShellPane;
+  singlePane: boolean;
   onClose: () => void;
   onSelect: (action: WorkspaceAction, tool: WorkspaceToolId) => void;
   onChangePane: (value: ShellPane) => void;
@@ -317,14 +335,16 @@ function MobileOverlay({
   drawerRef: RefObject<HTMLDivElement | null>;
   drawerId: string;
 }) {
+  const parametersTabLabel = activeTool.id === "templates" || activeTool.id === "library" ? "选项" : "参数";
+
   return (
     <>
-      <div className="shell-mobile-tabs">
+      <div className={cn("shell-mobile-tabs", singlePane && "is-single-pane")}>
         <div className="shell-mobile-tabs__left">
           <span className="shell-eyebrow">当前工具</span>
           <strong className="shell-mobile-tabs__title">{activeTool.label}</strong>
         </div>
-        <div className="shell-mobile-tabs__switch" role="tablist" aria-label="参数和预览视图">
+        {!singlePane ? <div className="shell-mobile-tabs__switch" role="tablist" aria-label="参数和预览视图">
           <button
             type="button"
             id="shell-parameters-tab"
@@ -335,7 +355,7 @@ function MobileOverlay({
             onClick={() => onChangePane("parameters")}
           >
             <PanelLeft className="size-4" aria-hidden="true" />
-            参数
+            {parametersTabLabel}
           </button>
           <button
             type="button"
@@ -349,7 +369,7 @@ function MobileOverlay({
             <PanelRight className="size-4" aria-hidden="true" />
             预览
           </button>
-        </div>
+        </div> : null}
       </div>
 
       <div className="shell-mobile-action-slot">{mobileActionSlot}</div>
@@ -361,7 +381,7 @@ function MobileOverlay({
         className={cn("shell-drawer", drawerOpen && "is-open")}
         role="dialog"
         aria-modal="true"
-        aria-label="工具导航"
+        aria-label="导航"
         aria-hidden={!drawerOpen}
       >
         <div className="shell-drawer__head">
@@ -369,7 +389,6 @@ function MobileOverlay({
             <BrandLogo className="shell-brand__logo" />
             <div>
               <strong className="shell-brand__text">奥皇 AI</strong>
-              <p className="shell-drawer__sub">选择创作工具</p>
             </div>
           </div>
           <button type="button" className="shell-icon-button" onClick={onClose} aria-label="关闭导航">
@@ -378,29 +397,31 @@ function MobileOverlay({
         </div>
 
         <nav className="shell-drawer__nav">
-          {workspaceToolGroups.map((group) => (
-            <section key={group.title} className="shell-nav__group">
-              <h3 className="shell-nav__group-title">{group.title}</h3>
-              <div className="shell-nav__items">
-                {group.items.map((id) => {
-                  const item = workspaceToolById(id);
-                  if (!item || !item.visible) return null;
-                  return (
+          {workspaceToolGroups.map((group) => {
+            const visibleItems = group.items
+              .map((id) => workspaceToolById(id))
+              .filter((item): item is WorkspaceToolEntry => Boolean(item?.visible && (!item.requiresAuth || isAuthenticated)));
+            if (!visibleItems.length) return null;
+            return (
+              <section key={group.title} className="shell-nav__group">
+                <h3 className="shell-nav__group-title">{group.title}</h3>
+                <div className="shell-nav__items">
+                  {visibleItems.map((item) => (
                     <ToolButton
                       key={item.id}
                       item={item}
                       active={activeTool.id === item.id}
-                      showDescription
+                      showDescription={false}
                       onClick={() => {
                         onSelect(item.action, item.id);
                         onClose();
                       }}
                     />
-                  );
-                })}
-              </div>
-            </section>
-          ))}
+                  ))}
+                </div>
+              </section>
+            );
+          })}
 
           {!isAuthenticated ? (
             <Link href="/login" className="shell-drawer__link" onClick={onClose}>
@@ -443,6 +464,7 @@ function ToolButton({
   onClick: () => void;
 }) {
   const Icon = item.icon;
+  const SecondaryIcon = item.secondaryIcon;
   return (
     <button
       type="button"
@@ -450,7 +472,10 @@ function ToolButton({
       className={cn("shell-nav-item", active && "is-active", compact && "is-compact")}
       aria-current={active ? "page" : undefined}
     >
-      <Icon className="shell-nav-item__icon" aria-hidden="true" />
+      <span className="shell-nav-item__icon-wrap" aria-hidden="true">
+        <Icon className="shell-nav-item__icon" />
+        {SecondaryIcon ? <SecondaryIcon className="shell-nav-item__icon-secondary" /> : null}
+      </span>
       <span className={cn("shell-nav-item__text", compact && "sr-only")}>
         <span className="shell-nav-item__label">{item.label}</span>
         {showDescription ? <span className="shell-nav-item__desc">{item.description}</span> : null}

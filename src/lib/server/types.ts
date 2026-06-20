@@ -1,9 +1,11 @@
-export type ProviderKind = "image" | "video" | "image-upscale" | "video-upscale";
+export type ProviderKind = "image" | "video" | "prompt" | "image-upscale" | "video-upscale";
 
 export type EndpointType =
   | "images-generations"
   | "images-edits"
+  | "chat-completions"
   | "videos-generations"
+  | "grok-videos"
   | "upscayl-cli"
   | "video2x-cli"
   | "upscale-placeholder";
@@ -15,10 +17,14 @@ export type ProviderConfig = {
   role: string;
   apiUrl: string;
   model: string;
-  displayName: string;
+  models?: string[];
+  modelDisplayNames?: Record<string, string>;
+  enabledModels?: string[];
+  displayName?: string;
   apiKey: string;
   enabled: boolean;
   endpointType: EndpointType;
+  custom?: boolean;
 };
 
 export type PublicProvider = Omit<ProviderConfig, "apiKey"> & {
@@ -35,9 +41,14 @@ export type FrontendProvider = {
 };
 
 export type ProviderUpdate = Partial<
-  Pick<ProviderConfig, "apiUrl" | "model" | "displayName" | "enabled" | "endpointType">
+  Pick<ProviderConfig, "apiUrl" | "model" | "models" | "modelDisplayNames" | "enabledModels" | "displayName" | "enabled" | "endpointType">
 > & {
   id: string;
+  kind?: ProviderKind;
+  title?: string;
+  role?: string;
+  custom?: boolean;
+  delete?: boolean;
   apiKey?: string;
   clearApiKey?: boolean;
 };
