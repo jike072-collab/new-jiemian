@@ -280,6 +280,12 @@ export function CustomerLogin({ initialMode = "login" }: CustomerLoginProps) {
               {loading ? (isLogin ? "正在登录" : "正在注册") : success ? "已完成" : isLogin ? "登录" : "注册"}
             </button>
 
+            {isLogin ? (
+              <Link href="/?preview=1" className="auth-guest-link">
+                免登录查看界面
+              </Link>
+            ) : null}
+
             <p className="auth-switch">
               {isLogin ? "还没有账号？" : "已有账号？"}
               <Link

@@ -1613,6 +1613,7 @@
 
   .auth-password__toggle:focus-visible,
   .auth-submit:focus-visible,
+  .auth-guest-link:focus-visible,
   .auth-switch a:focus-visible {
     outline: 2px solid rgba(255, 10, 108, 0.86);
     outline-offset: 2px;
@@ -1677,6 +1678,34 @@
     cursor: not-allowed;
     filter: brightness(0.82);
     opacity: 0.72;
+  }
+
+  .auth-guest-link {
+    position: relative;
+    z-index: 1;
+    display: inline-flex;
+    height: 44px;
+    align-items: center;
+    justify-content: center;
+    border: 1px solid rgba(255, 255, 255, 0.14);
+    border-radius: 999px;
+    background: rgba(255, 255, 255, 0.045);
+    color: rgba(255, 255, 255, 0.74);
+    font-size: 14px;
+    font-weight: 650;
+    text-decoration: none;
+    transition:
+      border-color var(--motion-fast),
+      background var(--motion-fast),
+      color var(--motion-fast),
+      transform var(--motion-instant);
+  }
+
+  .auth-guest-link:hover {
+    transform: translateY(-1px);
+    border-color: rgba(255, 10, 108, 0.42);
+    background: rgba(255, 10, 108, 0.1);
+    color: #fff;
   }
 
   .auth-switch {
