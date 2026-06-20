@@ -22,6 +22,7 @@ type ModelOption = {
   value: string;
   label: string;
   displayName: string;
+  videoOptions?: PublicProvider["videoOptions"];
 };
 
 const endpointOptions: Array<{ value: EndpointType; label: string }> = [
@@ -37,6 +38,65 @@ const endpointOptions: Array<{ value: EndpointType; label: string }> = [
 const grokVideoModelOptions: ModelOption[] = [
   { value: "grok-video-1.0", label: "grok-video-1.0（文生视频 / 可选参考图）", displayName: "Grok 视频 1.0" },
   { value: "grok-video-1.5", label: "grok-video-1.5（必须 1 张参考图）", displayName: "Grok 视频 1.5" },
+];
+
+const jimengRatios = ["16:9", "9:16", "1:1"];
+
+const jimengVideoModelOptions: ModelOption[] = [
+  {
+    value: "seedance2.0-pro 720p-15s",
+    label: "seedance2.0-pro 720p-15s（720P / 固定 15 秒）",
+    displayName: "即梦 720P Pro 15 秒",
+    videoOptions: { durations: [15], ratios: jimengRatios, resolution: "720p", maxReferenceImages: 4, supportsVideoReference: true, supportsAudioReference: true },
+  },
+  {
+    value: "gu-seedance2.0-fast 720p-15s",
+    label: "gu-seedance2.0-fast 720p-15s（720P / 固定 15 秒）",
+    displayName: "即梦 720P Fast 15 秒",
+    videoOptions: { durations: [15], ratios: jimengRatios, resolution: "720p", maxReferenceImages: 4, supportsVideoReference: true, supportsAudioReference: true },
+  },
+  {
+    value: "op-seedance2.0 720p-pro-特价-15s",
+    label: "op-seedance2.0 720p-pro-特价-15s（720P / 固定 15 秒）",
+    displayName: "即梦 720P Pro 15 秒特价",
+    videoOptions: { durations: [15], ratios: jimengRatios, resolution: "720p", maxReferenceImages: 4, supportsVideoReference: true, supportsAudioReference: true },
+  },
+  {
+    value: "gu-seedance2.0-pro 720p-10s-nyp",
+    label: "gu-seedance2.0-pro 720p-10s-nyp（720P / 固定 5 或 10 秒）",
+    displayName: "即梦 720P Pro 5/10 秒",
+    videoOptions: { durations: [5, 10], ratios: jimengRatios, resolution: "720p", maxReferenceImages: 9, supportsVideoReference: true, supportsAudioReference: false },
+  },
+  {
+    value: "seedance2.0 720p-fast",
+    label: "seedance2.0 720p-fast（720P / 可选时长）",
+    displayName: "即梦 720P Fast",
+    videoOptions: { durations: [5, 10, 15], ratios: jimengRatios, resolution: "720p", maxReferenceImages: 9, supportsVideoReference: true, supportsAudioReference: true },
+  },
+  {
+    value: "seedance2.0 720p-pro",
+    label: "seedance2.0 720p-pro（720P / 可选时长）",
+    displayName: "即梦 720P Pro",
+    videoOptions: { durations: [5, 10, 15], ratios: jimengRatios, resolution: "720p", maxReferenceImages: 9, supportsVideoReference: true, supportsAudioReference: true },
+  },
+  {
+    value: "seedance2.0 720p-fast-sr",
+    label: "seedance2.0 720p-fast-sr（超分 720P / 可选时长）",
+    displayName: "即梦 720P Fast 超分",
+    videoOptions: { durations: [5, 10, 15], ratios: jimengRatios, resolution: "720p", maxReferenceImages: 9, supportsVideoReference: false, supportsAudioReference: true },
+  },
+  {
+    value: "seedance2.0 720p-mini-sr",
+    label: "seedance2.0 720p-mini-sr（超分 720P / 可选时长）",
+    displayName: "即梦 720P Mini 超分",
+    videoOptions: { durations: [5, 10, 15], ratios: jimengRatios, resolution: "720p", maxReferenceImages: 9, supportsVideoReference: false, supportsAudioReference: true },
+  },
+  {
+    value: "seedance2.0 720p-pro-sr",
+    label: "seedance2.0 720p-pro-sr（超分 720P / 可选时长）",
+    displayName: "即梦 720P Pro 超分",
+    videoOptions: { durations: [5, 10, 15], ratios: jimengRatios, resolution: "720p", maxReferenceImages: 9, supportsVideoReference: false, supportsAudioReference: true },
+  },
 ];
 
 const promptOptimizerModelOptions: ModelOption[] = [
@@ -96,7 +156,8 @@ function endpointOptionsFor(provider: EditableProvider) {
 function modelOptionsFor(provider: EditableProvider, fetched: ModelOption[] = []) {
   const defaults = provider.endpointType === "grok-videos"
     ? grokVideoModelOptions
-    : provider.kind === "prompt" ? promptOptimizerModelOptions : [];
+    : provider.kind === "video" ? jimengVideoModelOptions
+      : provider.kind === "prompt" ? promptOptimizerModelOptions : [];
   const stored = (provider.models || []).map((model) => {
     const displayName = provider.modelDisplayNames?.[model] || model;
     return {
@@ -214,6 +275,7 @@ export function AdminProvidersClient() {
             modelDisplayNames: provider.modelDisplayNames,
             enabledModels: provider.enabledModels,
             displayName: provider.displayName,
+            videoOptions: provider.videoOptions,
             endpointType: provider.endpointType,
             enabled: provider.enabled,
             custom: provider.custom,

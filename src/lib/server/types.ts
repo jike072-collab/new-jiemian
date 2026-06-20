@@ -21,6 +21,14 @@ export type ProviderConfig = {
   modelDisplayNames?: Record<string, string>;
   enabledModels?: string[];
   displayName?: string;
+  videoOptions?: {
+    durations?: number[];
+    ratios?: string[];
+    resolution?: string;
+    maxReferenceImages?: number;
+    supportsVideoReference?: boolean;
+    supportsAudioReference?: boolean;
+  };
   apiKey: string;
   enabled: boolean;
   endpointType: EndpointType;
@@ -33,7 +41,7 @@ export type PublicProvider = Omit<ProviderConfig, "apiKey"> & {
 };
 
 export type ProviderUpdate = Partial<
-  Pick<ProviderConfig, "apiUrl" | "model" | "models" | "modelDisplayNames" | "enabledModels" | "displayName" | "enabled" | "endpointType">
+  Pick<ProviderConfig, "apiUrl" | "model" | "models" | "modelDisplayNames" | "enabledModels" | "displayName" | "videoOptions" | "enabled" | "endpointType">
 > & {
   id: string;
   kind?: ProviderKind;
