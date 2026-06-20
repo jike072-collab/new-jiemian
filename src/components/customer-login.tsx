@@ -1,10 +1,11 @@
 "use client";
 
 import dynamic from "next/dynamic";
+import Image from "next/image";
 import Link from "next/link";
 import { type FormEvent, type PointerEvent, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { ArrowRight, Check, Eye, EyeOff, Loader2 } from "lucide-react";
+import { ArrowRight, Check, Eye, EyeOff, ImageIcon, Loader2, LockKeyhole, Mail, Sparkles, Video, Wand2 } from "lucide-react";
 
 import { BrandLogo } from "@/components/brand-logo";
 import { ApiError, fetchJson, fetchJsonWithCsrf } from "@/lib/client/api";
@@ -29,19 +30,28 @@ type CustomerLoginProps = {
 const showcaseCards = [
   {
     title: "商品主图",
-    subtitle: "清晰主体",
+    subtitle: "一键生成精美主图",
+    image: "/auth-showcase/product-main.webp",
     className: "auth-showcase-card--left",
   },
   {
     title: "商品场景图",
-    subtitle: "电商氛围",
+    subtitle: "生成高质量场景图",
+    image: "/auth-showcase/product-scene.webp",
     className: "auth-showcase-card--main",
   },
   {
-    title: "视频封面",
-    subtitle: "短视频素材",
+    title: "视频生成",
+    subtitle: "快速生成商品视频",
+    image: "/auth-showcase/video-cover.webp",
     className: "auth-showcase-card--right",
   },
+];
+
+const authFeatures = [
+  { label: "图片生成", icon: ImageIcon },
+  { label: "视频生成", icon: Video },
+  { label: "高清处理", icon: Sparkles },
 ];
 
 function friendlyAuthError(error: unknown) {
@@ -167,14 +177,37 @@ export function CustomerLogin({ initialMode = "login" }: CustomerLoginProps) {
             <span>奥皇 AI</span>
           </div>
           <div className="auth-brand__copy">
-            <h1>让商品图片与视频创作更简单</h1>
-            <p>图片生成 · 视频生成 · 高清处理</p>
+            <h1>
+              <span>让商品图片与视频</span>
+              <span>
+                创作<b>更简单</b>
+              </span>
+            </h1>
+            <div className="auth-feature-list" aria-label="核心能力">
+              {authFeatures.map((feature, index) => {
+                const Icon = feature.icon;
+                return (
+                  <span key={feature.label} className="auth-feature-list__item">
+                    {index > 0 ? <i aria-hidden="true" /> : null}
+                    <Icon className="size-5" aria-hidden="true" />
+                    {feature.label}
+                  </span>
+                );
+              })}
+            </div>
           </div>
           <div className="auth-showcase" aria-hidden="true">
             {showcaseCards.map((card) => (
               <div key={card.title} className={cn("auth-showcase-card", card.className)}>
-                <div className="auth-showcase-card__image" />
-                <div>
+                <Image
+                  src={card.image}
+                  alt=""
+                  fill
+                  sizes="280px"
+                  priority
+                  className="auth-showcase-card__image"
+                />
+                <div className="auth-showcase-card__footer">
                   <strong>{card.title}</strong>
                   <span>{card.subtitle}</span>
                 </div>
@@ -201,28 +234,31 @@ export function CustomerLogin({ initialMode = "login" }: CustomerLoginProps) {
           >
             <div className="auth-card__spotlight" aria-hidden="true" />
             <div className="auth-card__head">
-              <BrandLogo className="auth-card__logo" />
-              <div>
-                <h2>{isLogin ? "欢迎回来" : "创建账号"}</h2>
-                <p>{isLogin ? "登录后继续你的创作" : "开始你的创作"}</p>
-              </div>
+              <h2>{isLogin ? "欢迎回来" : "创建账号"}</h2>
+              <p>{isLogin ? "登录后继续你的创作之旅" : "开始你的创作之旅"}</p>
+              <span aria-hidden="true" />
             </div>
 
             <label className="auth-field">
               <span>邮箱或账号</span>
-              <input
-                type={isLogin ? "text" : "email"}
-                value={identifier}
-                onChange={(event) => setIdentifier(event.target.value)}
-                autoComplete={isLogin ? "username" : "email"}
-                disabled={disabled}
-                aria-invalid={Boolean(message && !identifier.trim())}
-              />
+              <span className="auth-input">
+                <Mail className="size-5" aria-hidden="true" />
+                <input
+                  type={isLogin ? "text" : "email"}
+                  value={identifier}
+                  onChange={(event) => setIdentifier(event.target.value)}
+                  autoComplete={isLogin ? "username" : "email"}
+                  disabled={disabled}
+                  aria-invalid={Boolean(message && !identifier.trim())}
+                  placeholder={isLogin ? "请输入邮箱或账号" : "请输入邮箱"}
+                />
+              </span>
             </label>
 
             <label className="auth-field">
               <span>密码</span>
-              <span className="auth-password">
+              <span className="auth-input auth-password">
+                <LockKeyhole className="size-5" aria-hidden="true" />
                 <input
                   type={showPassword ? "text" : "password"}
                   value={password}
@@ -230,6 +266,7 @@ export function CustomerLogin({ initialMode = "login" }: CustomerLoginProps) {
                   autoComplete={isLogin ? "current-password" : "new-password"}
                   disabled={disabled}
                   aria-invalid={Boolean(message && !password)}
+                  placeholder="请输入密码"
                 />
                 <button
                   type="button"
@@ -246,7 +283,8 @@ export function CustomerLogin({ initialMode = "login" }: CustomerLoginProps) {
             {!isLogin ? (
               <label className="auth-field">
                 <span>确认密码</span>
-                <span className="auth-password">
+                <span className="auth-input auth-password">
+                  <LockKeyhole className="size-5" aria-hidden="true" />
                   <input
                     type={showConfirmPassword ? "text" : "password"}
                     value={confirmPassword}
@@ -254,6 +292,7 @@ export function CustomerLogin({ initialMode = "login" }: CustomerLoginProps) {
                     autoComplete="new-password"
                     disabled={disabled}
                     aria-invalid={Boolean(message && password !== confirmPassword)}
+                    placeholder="请再次输入密码"
                   />
                   <button
                     type="button"
@@ -276,7 +315,7 @@ export function CustomerLogin({ initialMode = "login" }: CustomerLoginProps) {
 
             <button type="submit" className="auth-submit" disabled={disabled}>
               <span className="auth-submit__shine" aria-hidden="true" />
-              {loading ? <Loader2 className="size-4 animate-spin" /> : success ? <Check className="size-4" /> : <ArrowRight className="size-4" />}
+              {loading ? <Loader2 className="size-4 animate-spin" /> : success ? <Check className="size-4" /> : isLogin ? <ArrowRight className="size-4" /> : <Wand2 className="size-4" />}
               {loading ? (isLogin ? "正在登录" : "正在注册") : success ? "已完成" : isLogin ? "登录" : "注册"}
             </button>
 
