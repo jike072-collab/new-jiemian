@@ -2853,6 +2853,101 @@ function ImageEditorTutorial() {
   );
 }
 
+const videoTutorialPromptText = "雨天城市街头，女生撑透明雨伞缓慢向前行走，并自然回头看向镜头。";
+
+type VideoTutorialImagePhase = "hidden" | "dragging" | "landed";
+
+function VideoTutorialInputDemo() {
+  const demoRef = useRef<HTMLDivElement | null>(null);
+  const [imagePhase, setImagePhase] = useState<VideoTutorialImagePhase>("hidden");
+  const [uploadTargetActive, setUploadTargetActive] = useState(false);
+  const [bubbleVisible, setBubbleVisible] = useState(false);
+  const [isInView, setIsInView] = useState(true);
+  const [reducedMotion, setReducedMotion] = useState(false);
+  const sourceImageLanded = reducedMotion || imagePhase === "landed";
+  const promptBubbleVisible = reducedMotion || bubbleVisible;
+
+  useEffect(() => {
+    const mediaQuery = window.matchMedia("(prefers-reduced-motion: reduce)");
+    const updateMotionPreference = () => setReducedMotion(mediaQuery.matches);
+
+    updateMotionPreference();
+    mediaQuery.addEventListener("change", updateMotionPreference);
+    return () => mediaQuery.removeEventListener("change", updateMotionPreference);
+  }, []);
+
+  useEffect(() => {
+    const node = demoRef.current;
+    if (!node || reducedMotion || typeof IntersectionObserver === "undefined") return undefined;
+
+    const observer = new IntersectionObserver(([entry]) => {
+      setIsInView(entry.isIntersecting);
+    }, { threshold: 0.2 });
+
+    observer.observe(node);
+    return () => observer.disconnect();
+  }, [reducedMotion]);
+
+  useEffect(() => {
+    if (reducedMotion || !isInView) return undefined;
+
+    let stopped = false;
+    const timers: Array<ReturnType<typeof setTimeout>> = [];
+
+    const startLoop = () => {
+      if (stopped) return;
+
+      setImagePhase("hidden");
+      setUploadTargetActive(false);
+      setBubbleVisible(false);
+
+      timers.push(
+        setTimeout(() => setImagePhase("dragging"), 650),
+        setTimeout(() => setUploadTargetActive(true), 1250),
+        setTimeout(() => setImagePhase("landed"), 3150),
+        setTimeout(() => setBubbleVisible(true), 3350),
+        setTimeout(() => {
+          setImagePhase("hidden");
+          setUploadTargetActive(false);
+          setBubbleVisible(false);
+        }, 6800),
+        setTimeout(startLoop, 7600),
+      );
+    };
+
+    startLoop();
+
+    return () => {
+      stopped = true;
+      timers.forEach(clearTimeout);
+    };
+  }, [isInView, reducedMotion]);
+
+  return (
+    <div ref={demoRef} className="video-tutorial-input-demo">
+      <div className="tutorial-upload-placeholder">
+        <UploadCloud aria-hidden="true" />
+        <span>上传图片</span>
+      </div>
+      <span className={cn("tutorial-upload-target-ring", uploadTargetActive && "is-active")} aria-hidden="true" />
+
+      <img
+        src="/tutorials/video-generator/input-person.png"
+        alt=""
+        className={cn(
+          "tutorial-source-image",
+          imagePhase === "dragging" && "is-dragging",
+          sourceImageLanded && "is-visible",
+        )}
+      />
+
+      <div className={cn("tutorial-prompt-bubble", promptBubbleVisible && "is-visible")}>
+        {videoTutorialPromptText}
+      </div>
+    </div>
+  );
+}
+
 function ToolTutorial({ kind }: { kind: ToolTutorialKind }) {
   if (kind === "image") {
     return <ImageGenerationTutorial />;
@@ -2870,27 +2965,31 @@ function ToolTutorial({ kind }: { kind: ToolTutorialKind }) {
         {tutorial.sections.map((section, index) => (
           <article key={section.title} className={cn("studio-walkthrough__section", section.mediaSide === "right" && "is-media-right")}>
             <div className={cn("studio-walkthrough__visual", section.visualClassName)}>
-              <div className="studio-walkthrough__canvas" aria-hidden="true">
-                {section.layers.map((layer) => (
-                  layer.type === "video" ? (
-                    <div key={layer.src} className={cn("studio-walkthrough__layer", layer.className)}>
-                      <video src={layer.src} poster={layer.poster} autoPlay muted loop playsInline preload="metadata" />
-                      {layer.poster ? <img className="studio-walkthrough__video-poster" src={layer.poster} alt="" /> : null}
-                    </div>
-                  ) : (
-                    <img key={layer.src} src={layer.src} alt={layer.alt} className={cn("studio-walkthrough__layer", layer.className)} />
-                  )
-                ))}
-                {section.bubbles?.map((bubble) => (
-                  <span key={bubble.text} className={cn("studio-walkthrough__bubble", bubble.className)}>{bubble.text}</span>
-                ))}
-                {section.tags?.map((tag) => (
-                  <span key={tag.text} className={cn("studio-walkthrough__tag", tag.className)}>{tag.text}</span>
-                ))}
-                {(section.bubbles?.length || section.visualClassName?.includes("flow")) ? (
-                  <span className="studio-walkthrough__arrow" />
-                ) : null}
-              </div>
+              {kind === "video" && index === 0 ? (
+                <VideoTutorialInputDemo />
+              ) : (
+                <div className="studio-walkthrough__canvas" aria-hidden="true">
+                  {section.layers.map((layer) => (
+                    layer.type === "video" ? (
+                      <div key={layer.src} className={cn("studio-walkthrough__layer", layer.className)}>
+                        <video src={layer.src} poster={layer.poster} autoPlay muted loop playsInline preload="metadata" />
+                        {layer.poster ? <img className="studio-walkthrough__video-poster" src={layer.poster} alt="" /> : null}
+                      </div>
+                    ) : (
+                      <img key={layer.src} src={layer.src} alt={layer.alt} className={cn("studio-walkthrough__layer", layer.className)} />
+                    )
+                  ))}
+                  {section.bubbles?.map((bubble) => (
+                    <span key={bubble.text} className={cn("studio-walkthrough__bubble", bubble.className)}>{bubble.text}</span>
+                  ))}
+                  {section.tags?.map((tag) => (
+                    <span key={tag.text} className={cn("studio-walkthrough__tag", tag.className)}>{tag.text}</span>
+                  ))}
+                  {(section.bubbles?.length || section.visualClassName?.includes("flow")) ? (
+                    <span className="studio-walkthrough__arrow" />
+                  ) : null}
+                </div>
+              )}
             </div>
             <div className="studio-walkthrough__copy">
               <span>{String(index + 1).padStart(2, "0")}</span>
