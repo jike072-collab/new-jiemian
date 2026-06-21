@@ -40,6 +40,8 @@ test("provider display names are saved, re-read, and exposed safely to the front
       id: "image-main",
       apiUrl: "https://example.test/v1/images/generations",
       model: "image-model-raw",
+      models: ["image-model-raw"],
+      enabledModels: ["image-model-raw"],
       displayName: "极速图片模型",
       endpointType: "images-generations",
       enabled: true,
@@ -49,6 +51,8 @@ test("provider display names are saved, re-read, and exposed safely to the front
       id: "video-main",
       apiUrl: "https://example.test/v1/videos/generations",
       model: "seedance-raw-model",
+      models: ["seedance-raw-model"],
+      enabledModels: ["seedance-raw-model"],
       displayName: "Seedance 视频模型",
       endpointType: "videos-generations",
       enabled: true,
@@ -67,17 +71,15 @@ test("provider display names are saved, re-read, and exposed safely to the front
 
   const enabled = await providersModule.readFrontendProviders("image");
   assert.equal(enabled.length, 1);
-  assert.deepEqual(Object.keys(enabled[0]).sort(), [
-    "capabilities",
-    "displayName",
-    "enabled",
-    "id",
-    "model",
-  ]);
+  assert.equal("apiKey" in enabled[0], false);
+  assert.equal("apiUrl" in enabled[0], false);
+  assert.equal("keyPreview" in enabled[0], false);
   assert.equal(enabled[0].model, "image-model-raw");
   assert.equal(enabled[0].displayName, "极速图片模型");
   assert.deepEqual(enabled[0].capabilities, ["image"]);
   assert.equal(enabled[0].enabled, true);
+  assert.equal(enabled[0].endpointType, "images-generations");
+  assert.equal(enabled[0].videoOptions, undefined);
 
   const serialized = JSON.stringify(enabled);
   for (const forbidden of ["apiKey", "provider-test-key", "keyPreview", "apiUrl", root, "ADMIN_PASSWORD"]) {
@@ -125,6 +127,41 @@ test("blank display name falls back to the raw model id", async () => {
   const enabled = await providersModule.readFrontendProviders("image");
   assert.equal(enabled[0]?.model, "fallback-image-model");
   assert.equal(enabled[0]?.displayName, "fallback-image-model");
+});
+
+test("stored non-default video providers are preserved and expanded for frontend models", async () => {
+  await writeProviders([
+    ...providersModule.defaultProviders(),
+    {
+      id: "stored-video-extra",
+      kind: "video",
+      title: "Stored Video",
+      role: "Stored video provider",
+      apiUrl: "https://example.test/v1/videos/generations",
+      model: "extra-model-1",
+      models: ["extra-model-1", "extra-model-2"],
+      modelDisplayNames: {
+        "extra-model-2": "Extra Video Two",
+      },
+      enabledModels: ["extra-model-2"],
+      displayName: "Stored Video",
+      apiKey: "extra-provider-key",
+      enabled: true,
+      endpointType: "videos-generations",
+      custom: false,
+    },
+  ]);
+
+  const enabled = await providersModule.readFrontendProviders("video");
+  const extra = enabled.find((provider) => provider.id.includes("stored-video-extra"));
+  assert.equal(extra?.id, "stored-video-extra::model::extra-model-2");
+  assert.equal(extra?.model, "extra-model-2");
+  assert.equal(extra?.displayName, "Extra Video Two");
+  assert.equal(extra?.endpointType, "videos-generations");
+  assert.deepEqual(extra?.capabilities, ["video"]);
+
+  const serialized = JSON.stringify(enabled);
+  assert.equal(serialized.includes("extra-provider-key"), false);
 });
 
 test.after(async () => {

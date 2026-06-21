@@ -38,13 +38,9 @@
   --z-drawer: 50;
   --z-modal: 60;
   --safe-area-bottom: env(safe-area-inset-bottom);
-  --motion-instant: 80ms;
-  --motion-fast: 140ms;
-  --motion-base: 200ms;
-  --motion-slow: 320ms;
-  --motion-distance-tiny: 2px;
-  --motion-distance-small: 4px;
-  --motion-distance-medium: 8px;
+  --motion-fast: 120ms;
+  --motion-base: 180ms;
+  --motion-slow: 240ms;
 }
 
 html {

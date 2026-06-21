@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="260" height="420" viewBox="0 0 260 420">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#16141d"/><stop offset="1" stop-color="#08070d"/></linearGradient>
+    <linearGradient id="product" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#ffffff"/><stop offset=".52" stop-color="#f472b6"/><stop offset="1" stop-color="#8b5cf6"/></linearGradient>
+    <linearGradient id="scene" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#312e81"/><stop offset=".48" stop-color="#f472b6"/><stop offset="1" stop-color="#14b8a6"/></linearGradient>
+    <filter id="shadow" x="-30%" y="-30%" width="160%" height="160%"><feDropShadow dx="0" dy="18" stdDeviation="18" flood-color="#000" flood-opacity=".38"/></filter>
+  </defs>
+  <rect width="260" height="420" rx="30" fill="url(#bg)"/>
+  <g filter="url(#shadow)"><rect x="24" y="138" width="212" height="126" rx="22" fill="#242130"/><rect x="44" y="158" width="172" height="86" rx="18" fill="url(#scene)"/><path d="M118 185l48 28-48 28z" fill="#fff" opacity=".92"/><rect x="30" y="280" width="200" height="8" rx="4" fill="#39364a"/><rect x="30" y="280" width="92" height="8" rx="4" fill="#f472b6"/></g>
+  <rect x="22" y="22" width="216" height="376" rx="24" fill="none" stroke="#ffffff" stroke-opacity=".09"/>
+  <text x="28" y="46" fill="#ffffff" font-size="24" font-weight="700" font-family="Arial,'Microsoft YaHei',sans-serif">高清播放</text>
+  <text x="28" y="78" fill="#c7c3d8" font-size="16" font-family="Arial,'Microsoft YaHei',sans-serif">下载视频</text>
+</svg>

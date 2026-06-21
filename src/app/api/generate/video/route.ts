@@ -17,7 +17,7 @@ export async function POST(request: NextRequest) {
     if (mode === "text-to-video" && files.length) {
       throw new Error("文生视频模式不接收首帧图片。");
     }
-    if (mode === "image-to-video" && files.length !== 1) {
+    if (mode === "image-to-video" && !files.length) {
       throw new Error(files.length ? "图生视频模式只能上传 1 张首帧图片。" : "图生视频模式需要上传 1 张首帧图片。");
     }
     const result = await submitVideo({
