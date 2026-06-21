@@ -2337,25 +2337,46 @@
   }
 
   .video-tutorial-guide {
+    position: relative;
     display: grid;
-    gap: 18px;
+    gap: 8px;
     min-width: 0;
-    padding-bottom: var(--space-stack);
+    overflow: hidden;
+    border: 1px solid color-mix(in srgb, var(--border-subtle) 78%, transparent);
+    border-radius: var(--radius-card);
+    background:
+      radial-gradient(circle at 14% 12%, color-mix(in srgb, var(--primary) 10%, transparent), transparent 28%),
+      radial-gradient(circle at 84% 52%, rgba(255, 43, 136, 0.06), transparent 30%),
+      color-mix(in srgb, var(--panel-2) 68%, transparent);
+    padding: 18px 18px 22px;
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.035);
   }
 
-  .video-tutorial-guide__card {
+  .video-tutorial-guide__section {
+    position: relative;
     display: grid;
     grid-template-columns: minmax(460px, 1fr) minmax(170px, 0.56fr);
     align-items: center;
-    gap: 18px;
-    overflow: hidden;
+    gap: 24px;
     min-height: 340px;
-    border: 1px solid color-mix(in srgb, var(--border-subtle) 82%, transparent);
-    border-radius: var(--radius-card);
-    background:
-      radial-gradient(circle at 14% 12%, color-mix(in srgb, var(--primary) 10%, transparent), transparent 32%),
-      color-mix(in srgb, var(--panel-2) 72%, transparent);
-    padding: 18px;
+    padding: 10px 6px;
+  }
+
+  .video-tutorial-guide__section + .video-tutorial-guide__section {
+    border-top: 1px solid rgba(255, 255, 255, 0.055);
+    padding-top: 22px;
+  }
+
+  .video-tutorial-guide__section.is-visual-right {
+    grid-template-columns: minmax(170px, 0.56fr) minmax(460px, 1fr);
+  }
+
+  .video-tutorial-guide__section.is-visual-right .video-tutorial-guide__visual {
+    order: 2;
+  }
+
+  .video-tutorial-guide__section.is-visual-right .video-tutorial-guide__copy {
+    order: 1;
   }
 
   .video-tutorial-guide__visual {
@@ -2394,6 +2415,24 @@
     color: var(--muted);
     font-size: 14px;
     line-height: 1.58;
+  }
+
+  .video-tutorial-guide__arrow {
+    position: absolute;
+    right: 29%;
+    bottom: -42px;
+    z-index: 6;
+    width: 118px;
+    height: auto;
+    opacity: 0.72;
+    pointer-events: none;
+    transform: rotate(8deg);
+  }
+
+  .video-tutorial-guide__section.is-visual-right .video-tutorial-guide__arrow {
+    right: auto;
+    left: 30%;
+    transform: scaleX(-1) rotate(8deg);
   }
 
   .video-tutorial-input-demo {
@@ -2552,10 +2591,10 @@
 
   .video-tutorial-parameter-demo__preview {
     position: absolute;
-    top: 46px;
-    left: 26px;
+    top: 26px;
+    left: 30px;
     overflow: hidden;
-    width: 188px;
+    width: 250px;
     height: 188px;
     border: 1px solid rgba(255, 255, 255, 0.14);
     border-radius: 16px;
@@ -2570,12 +2609,12 @@
     object-fit: cover;
   }
 
-  .video-tutorial-parameter-demo__panel {
+  .video-tutorial-parameter-demo__prompt {
     position: absolute;
-    top: 70px;
-    left: 178px;
+    top: 52px;
+    right: 26px;
     z-index: 3;
-    width: 250px;
+    width: 218px;
     padding: 15px 17px;
     border: 1px solid rgba(255, 255, 255, 0.26);
     border-radius: 15px;
@@ -2584,7 +2623,7 @@
     backdrop-filter: blur(10px);
   }
 
-  .video-tutorial-parameter-demo__panel span {
+  .video-tutorial-parameter-demo__prompt span {
     display: block;
     margin-bottom: 7px;
     color: rgba(255, 255, 255, 0.54);
@@ -2592,21 +2631,30 @@
     font-weight: 700;
   }
 
-  .video-tutorial-parameter-demo__panel p {
+  .video-tutorial-parameter-demo__prompt p {
     color: rgba(255, 255, 255, 0.9);
     font-size: 14px;
     line-height: 1.56;
   }
 
-  .video-tutorial-parameter-demo__meta {
+  .video-tutorial-parameter-demo__assets {
     position: absolute;
-    right: 24px;
-    bottom: 34px;
+    right: 22px;
+    bottom: 24px;
     display: flex;
-    gap: 8px;
+    align-items: center;
+    gap: 9px;
   }
 
-  .video-tutorial-parameter-demo__meta span,
+  .video-tutorial-parameter-demo__assets img {
+    display: block;
+    width: 82px;
+    height: 46px;
+    border-radius: 12px;
+    object-fit: cover;
+    filter: drop-shadow(0 12px 18px rgba(0, 0, 0, 0.24));
+  }
+
   .video-tutorial-result-slot__caption {
     border: 1px solid rgba(255, 43, 136, 0.2);
     border-radius: 999px;
@@ -2614,10 +2662,6 @@
     color: #ff6fac;
     font-size: 12px;
     font-weight: 700;
-  }
-
-  .video-tutorial-parameter-demo__meta span {
-    padding: 7px 10px;
   }
 
   .video-tutorial-result-slot {
@@ -2664,6 +2708,34 @@
       linear-gradient(90deg, rgba(2, 2, 3, 0.24), transparent 18%, transparent 80%, rgba(2, 2, 3, 0.2)),
       radial-gradient(ellipse at center, transparent 70%, rgba(2, 2, 3, 0.34) 100%);
     content: "";
+  }
+
+  .video-tutorial-result-slot__play {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    z-index: 3;
+    width: 46px;
+    height: 46px;
+    border: 1px solid rgba(255, 255, 255, 0.34);
+    border-radius: 999px;
+    background: rgba(0, 0, 0, 0.38);
+    box-shadow: 0 14px 34px rgba(0, 0, 0, 0.38);
+    transform: translate(-50%, -50%);
+    backdrop-filter: blur(8px);
+  }
+
+  .video-tutorial-result-slot__play::after {
+    position: absolute;
+    top: 50%;
+    left: 53%;
+    width: 0;
+    height: 0;
+    border-top: 9px solid transparent;
+    border-bottom: 9px solid transparent;
+    border-left: 14px solid #fff;
+    content: "";
+    transform: translate(-50%, -50%);
   }
 
   .video-tutorial-result-slot__caption {
@@ -4182,15 +4254,25 @@
     grid-template-columns: 1fr;
   }
 
-  .video-tutorial-guide__card {
+  .video-tutorial-guide__section,
+  .video-tutorial-guide__section.is-visual-right {
     grid-template-columns: 1fr;
     min-height: auto;
     gap: var(--space-stack);
     padding: 14px;
   }
 
+  .video-tutorial-guide__section.is-visual-right .video-tutorial-guide__visual,
+  .video-tutorial-guide__section.is-visual-right .video-tutorial-guide__copy {
+    order: initial;
+  }
+
   .video-tutorial-guide__copy p {
     max-width: none;
+  }
+
+  .video-tutorial-guide__arrow {
+    display: none;
   }
 
   .studio-walkthrough__section.is-media-right .studio-walkthrough__visual,
@@ -4215,6 +4297,24 @@
 
   .video-tutorial-result-slot__media {
     width: min(392px, calc(100% - 36px));
+  }
+
+  .video-tutorial-parameter-demo__preview {
+    width: min(250px, calc(100% - 60px));
+  }
+
+  .video-tutorial-parameter-demo__prompt {
+    right: 18px;
+    width: min(218px, calc(100% - 44px));
+  }
+
+  .video-tutorial-parameter-demo__assets {
+    right: 18px;
+    max-width: calc(100% - 36px);
+  }
+
+  .video-tutorial-parameter-demo__assets img {
+    width: clamp(68px, 24vw, 82px);
   }
 
   .studio-walkthrough__layer.is-tilt-left,

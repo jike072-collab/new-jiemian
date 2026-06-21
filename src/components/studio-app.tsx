@@ -2863,10 +2863,12 @@ function VideoTutorialInputDemo() {
   const [imagePhase, setImagePhase] = useState<VideoTutorialImagePhase>("hidden");
   const [uploadTargetActive, setUploadTargetActive] = useState(false);
   const [bubbleVisible, setBubbleVisible] = useState(false);
+  const [typedText, setTypedText] = useState("");
   const [isInView, setIsInView] = useState(true);
   const [reducedMotion, setReducedMotion] = useState(false);
   const sourceImageLanded = reducedMotion || imagePhase === "landed";
   const promptBubbleVisible = reducedMotion || bubbleVisible;
+  const promptText = reducedMotion ? videoTutorialPromptText : typedText;
 
   useEffect(() => {
     const mediaQuery = window.matchMedia("(prefers-reduced-motion: reduce)");
@@ -2894,23 +2896,40 @@ function VideoTutorialInputDemo() {
 
     let stopped = false;
     const timers: Array<ReturnType<typeof setTimeout>> = [];
+    let typingTimer: ReturnType<typeof setInterval> | undefined;
 
     const startLoop = () => {
       if (stopped) return;
 
+      if (typingTimer) clearInterval(typingTimer);
       setImagePhase("hidden");
       setUploadTargetActive(false);
       setBubbleVisible(false);
+      setTypedText("");
 
       timers.push(
         setTimeout(() => setImagePhase("dragging"), 650),
         setTimeout(() => setUploadTargetActive(true), 1250),
         setTimeout(() => setImagePhase("landed"), 3150),
-        setTimeout(() => setBubbleVisible(true), 3350),
+        setTimeout(() => {
+          setBubbleVisible(true);
+
+          let index = 0;
+          typingTimer = setInterval(() => {
+            index += 1;
+            setTypedText(videoTutorialPromptText.slice(0, index));
+
+            if (index >= videoTutorialPromptText.length && typingTimer) {
+              clearInterval(typingTimer);
+              typingTimer = undefined;
+            }
+          }, 58);
+        }, 3350),
         setTimeout(() => {
           setImagePhase("hidden");
           setUploadTargetActive(false);
           setBubbleVisible(false);
+          setTypedText("");
         }, 6800),
         setTimeout(startLoop, 7600),
       );
@@ -2921,6 +2940,7 @@ function VideoTutorialInputDemo() {
     return () => {
       stopped = true;
       timers.forEach(clearTimeout);
+      if (typingTimer) clearInterval(typingTimer);
     };
   }, [isInView, reducedMotion]);
 
@@ -2943,7 +2963,8 @@ function VideoTutorialInputDemo() {
       />
 
       <div className={cn("tutorial-prompt-bubble", promptBubbleVisible && "is-visible")}>
-        {videoTutorialPromptText}
+        {promptText}
+        {promptBubbleVisible && !reducedMotion && typedText.length < videoTutorialPromptText.length ? <span className="typing-caret" /> : null}
       </div>
     </div>
   );
@@ -2953,14 +2974,15 @@ function VideoTutorialResultSlot() {
   return (
     <div className="video-tutorial-result-slot">
       <div className="video-tutorial-result-slot__backdrop" aria-hidden="true">
-        <img src="/tutorials/video-generator/input-person.png" alt="" />
+        <img src="/tutorials/video-generator/rain-umbrella.png" alt="" />
       </div>
       <div className="video-tutorial-result-slot__media">
         {videoTutorialResultVideoSrc ? (
-          <video src={videoTutorialResultVideoSrc} poster="/tutorials/video-generator/input-person.png" autoPlay muted loop playsInline preload="metadata" />
+          <video src={videoTutorialResultVideoSrc} poster="/tutorials/video-generator/rain-umbrella.png" autoPlay muted loop playsInline preload="metadata" />
         ) : (
-          <img src="/tutorials/video-generator/input-person.png" alt="视频结果预留位" />
+          <img src="/tutorials/video-generator/rain-umbrella.png" alt="视频结果预留位" />
         )}
+        <span className="video-tutorial-result-slot__play" aria-hidden="true" />
       </div>
       <div className="video-tutorial-result-slot__caption">
         <span>视频预览位</span>
@@ -2974,15 +2996,16 @@ function VideoTutorialParameterDemo() {
   return (
     <div className="video-tutorial-parameter-demo">
       <div className="video-tutorial-parameter-demo__preview">
-        <img src="/tutorials/video-generator/input-person.png" alt="" />
+        <img src="/tutorials/video-generator/rain-umbrella.png" alt="" />
       </div>
-      <div className="video-tutorial-parameter-demo__panel">
+      <div className="video-tutorial-parameter-demo__prompt">
         <span>提示词</span>
-        <p>{videoTutorialPromptText}</p>
+        <p>女生撑透明雨伞在雨天街头缓慢前行，自然回头看向镜头。</p>
       </div>
-      <div className="video-tutorial-parameter-demo__meta" aria-label="示例参数">
-        <span>16:9</span>
-        <span>6 秒</span>
+      <div className="video-tutorial-parameter-demo__assets" aria-label="示例参数">
+        <img src="/tutorials/video-generator/duration-5s.png" alt="5 秒" />
+        <img src="/tutorials/video-generator/resolution-720p.png" alt="720P" />
+        <img src="/tutorials/video-generator/ratio-4x3.png" alt="4:3" />
       </div>
     </div>
   );
@@ -2995,18 +3018,21 @@ function VideoGenerationTutorial() {
       title: "上传参考图",
       description: "先放入一张清晰的起始画面，视频会围绕这张图继续生成。",
       visual: <VideoTutorialInputDemo />,
+      visualSide: "left",
     },
     {
       id: "prompt",
-      title: "填写提示词和比例",
-      description: "描述画面动作和镜头方向，比例固定按结果位展示，方便后续替换真实视频。",
+      title: "填写提示词和参数",
+      description: "描述画面动作和镜头方向，再确认时长、清晰度和比例。",
       visual: <VideoTutorialParameterDemo />,
+      visualSide: "right",
     },
     {
       id: "result",
       title: "生成视频结果",
-      description: "这里已经固定好最终视频槽位。后面提供视频后，只需要替换同一个位置的素材。",
+      description: "这里保留最终视频槽位。后面提供视频后，只需要替换同一个位置的素材。",
       visual: <VideoTutorialResultSlot />,
+      visualSide: "left",
     },
   ];
 
@@ -3014,7 +3040,7 @@ function VideoGenerationTutorial() {
     <PreviewState eyebrow="快速教程" title="视频生成快速教程" description="上传参考图，输入提示词，确认比例后生成视频。">
       <div className="video-tutorial-guide">
         {steps.map((step, index) => (
-          <article key={step.id} className="video-tutorial-guide__card">
+          <article key={step.id} className={cn("video-tutorial-guide__section", step.visualSide === "right" && "is-visual-right")}>
             <div className="video-tutorial-guide__visual">
               {step.visual}
             </div>
@@ -3023,6 +3049,7 @@ function VideoGenerationTutorial() {
               <h4>{step.title}</h4>
               <p>{step.description}</p>
             </div>
+            {index < steps.length - 1 ? <img className="video-tutorial-guide__arrow" src="/tutorials/video-generator/guide-arrow.png" alt="" aria-hidden="true" /> : null}
           </article>
         ))}
       </div>
