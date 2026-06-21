@@ -1891,6 +1891,7 @@ export function StudioApp() {
         onToolAction={handleToolAction}
         isAuthenticated={Boolean(sessionUser)}
         accountName={sessionUser?.display_name || sessionUser?.username || null}
+        accountQuotaLabel={quotaSnapshot ? String(quotaSnapshot.available_quota_units) : null}
         headerRightSlot={accountHeaderSlot}
         accountSlot={(
           <WorkspaceAccountPanel

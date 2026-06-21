@@ -3,9 +3,11 @@
 import Link from "next/link";
 import {
   ChevronDown,
+  LogIn,
   Menu,
   PanelLeft,
   PanelRight,
+  Settings,
   UserRound,
   X,
 } from "lucide-react";
@@ -35,6 +37,7 @@ type WorkbenchShellProps = {
   onToolAction: (action: WorkspaceAction, tool: WorkspaceToolId) => void;
   isAuthenticated: boolean;
   accountName?: string | null;
+  accountQuotaLabel?: string | null;
   headerRightSlot?: ReactNode;
   accountSlot?: ReactNode;
   parameterSlot: ReactNode;
@@ -49,6 +52,7 @@ export function WorkbenchShell({
   onToolAction,
   isAuthenticated,
   accountName,
+  accountQuotaLabel,
   headerRightSlot,
   accountSlot,
   parameterSlot,
@@ -139,6 +143,18 @@ export function WorkbenchShell({
         drawerOpen={drawerOpen}
       />
 
+      {isAuthenticated && accountOpen ? (
+        <div className="shell-account-popover">
+          {accountSlot ? (
+            accountSlot
+          ) : (
+            <div className="rounded-[1.5rem] border border-white/10 bg-[#0f0f13] p-4 text-sm text-white/68 shadow-[0_20px_60px_rgba(0,0,0,0.28)]">
+              <p className="text-white/92">账户功能暂未加载。</p>
+            </div>
+          )}
+        </div>
+      ) : null}
+
       <MobileOverlay
         activeTool={activeTool}
         drawerOpen={drawerOpen}
@@ -165,6 +181,10 @@ export function WorkbenchShell({
             onSelect={(action, tool) => onToolAction(action, tool)}
             groups={workspaceToolGroups}
             isAuthenticated={isAuthenticated}
+            accountName={accountName}
+            accountQuotaLabel={accountQuotaLabel}
+            accountOpen={accountOpen}
+            onToggleAccount={() => setAccountOpen((value) => !value)}
           />
 
           <section className={cn("shell-panel shell-panel--controls", singlePaneMobile && "shell-panel--mobile-single-hidden")}>
@@ -261,6 +281,7 @@ function Header({
           )}
         </div>
       ) : null}
+
     </header>
   );
 }
@@ -270,37 +291,96 @@ function DesktopNavigation({
   onSelect,
   groups,
   isAuthenticated,
+  accountName,
+  accountQuotaLabel,
+  accountOpen,
+  onToggleAccount,
 }: {
   activeToolId: WorkspaceToolId;
   onSelect: (action: WorkspaceAction, tool: WorkspaceToolId) => void;
   groups: Array<{ title: WorkspaceToolGroup; items: WorkspaceToolId[] }>;
   isAuthenticated: boolean;
+  accountName?: string | null;
+  accountQuotaLabel?: string | null;
+  accountOpen: boolean;
+  onToggleAccount: () => void;
 }) {
+  const displayName = accountName || "账户";
+  const avatarText = displayName.slice(0, 2).toUpperCase();
+
   return (
-    <aside className="shell-nav">
-      <div className="shell-nav__groups">
-        {groups.map((group) => {
-          const visibleItems = group.items
-            .map((id) => workspaceToolById(id))
-            .filter((item): item is WorkspaceToolEntry => Boolean(item?.visible && (!item.requiresAuth || isAuthenticated)));
-          if (!visibleItems.length) return null;
-          return (
-            <section key={group.title} className="shell-nav__group">
-              <h3 className="shell-nav__group-title">{group.title}</h3>
-              <div className="shell-nav__items">
-                {visibleItems.map((item) => (
-                  <ToolButton
-                    key={item.id}
-                    item={item}
-                    active={activeToolId === item.id}
-                    showDescription={false}
-                    onClick={() => onSelect(item.action, item.id)}
-                  />
-                ))}
-              </div>
-            </section>
-          );
-        })}
+    <aside className="shell-nav" aria-label="工作台导航">
+      <Link href="/?preview=1" className="shell-nav__brand" aria-label="奥皇 AI 工作台">
+        <BrandLogo className="shell-nav__brand-logo" />
+        <span className="shell-nav__brand-copy">
+          <strong>奥皇 AI</strong>
+          <small>AI VISUAL STUDIO</small>
+        </span>
+      </Link>
+
+      <nav className="shell-nav__scroll" aria-label="功能导航">
+        <div className="shell-nav__groups">
+          {groups.map((group) => {
+            const visibleItems = group.items
+              .map((id) => workspaceToolById(id))
+              .filter((item): item is WorkspaceToolEntry => Boolean(item?.visible && (!item.requiresAuth || isAuthenticated)));
+            if (!visibleItems.length) return null;
+            return (
+              <section key={group.title} className="shell-nav__group">
+                <h3 className="shell-nav__group-title">{group.title}</h3>
+                <div className="shell-nav__items">
+                  {visibleItems.map((item) => (
+                    <ToolButton
+                      key={item.id}
+                      item={item}
+                      active={activeToolId === item.id}
+                      showDescription={false}
+                      onClick={() => onSelect(item.action, item.id)}
+                    />
+                  ))}
+                </div>
+              </section>
+            );
+          })}
+        </div>
+      </nav>
+
+      <div className="shell-nav__account" aria-label="账户状态">
+        {isAuthenticated ? (
+          <>
+            <div className="shell-nav-account__main">
+              <span className="shell-nav-account__avatar">{avatarText}</span>
+              <span className="shell-nav-account__copy">
+                <strong>{displayName}</strong>
+                <span>剩余额度 {accountQuotaLabel || "读取中"}</span>
+              </span>
+            </div>
+            <button
+              type="button"
+              className={cn("shell-nav-account__button", accountOpen && "is-active")}
+              onClick={onToggleAccount}
+            >
+              <Settings className="size-4" aria-hidden="true" />
+              设置入口
+            </button>
+          </>
+        ) : (
+          <>
+            <div className="shell-nav-account__main">
+              <span className="shell-nav-account__avatar">
+                <UserRound className="size-4" aria-hidden="true" />
+              </span>
+              <span className="shell-nav-account__copy">
+                <strong>未登录</strong>
+                <span>登录后查看额度与作品</span>
+              </span>
+            </div>
+            <Link href="/login" className="shell-nav-account__button">
+              <LogIn className="size-4" aria-hidden="true" />
+              登录
+            </Link>
+          </>
+        )}
       </div>
     </aside>
   );

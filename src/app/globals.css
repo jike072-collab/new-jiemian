@@ -303,6 +303,14 @@
     overflow: hidden;
   }
 
+  .shell-account-popover {
+    position: fixed;
+    right: var(--space-panel);
+    bottom: calc(var(--space-panel) + 8px);
+    z-index: var(--z-header);
+    width: min(92vw, 420px);
+  }
+
   .shell-grid {
     display: grid;
     width: 100%;
@@ -325,20 +333,52 @@
     display: flex;
     flex-direction: column;
     overflow: hidden;
-    min-width: 0;
+    width: var(--sidebar-width);
+    min-width: var(--sidebar-width);
+    max-width: var(--sidebar-width);
     min-height: 0;
-    border: 1px solid color-mix(in srgb, var(--border-subtle) 54%, transparent);
+    border: 1px solid rgba(255, 255, 255, 0.08);
     border-radius: var(--radius-card);
-    background: var(--background);
-    padding: 10px 6px;
+    background:
+      linear-gradient(180deg, rgba(13, 13, 18, 0.98), rgba(7, 7, 10, 0.98));
+    box-shadow: inset -1px 0 0 rgba(255, 255, 255, 0.025);
   }
 
-  .shell-nav__head {
+  .shell-nav__brand {
     display: flex;
     align-items: center;
-    justify-content: space-between;
-    gap: var(--space-stack);
-    padding: 0 8px 10px;
+    gap: 11px;
+    min-height: 76px;
+    padding: 0 15px;
+    color: var(--foreground);
+  }
+
+  .shell-nav__brand-logo {
+    width: 38px;
+    height: 38px;
+    color: var(--primary);
+  }
+
+  .shell-nav__brand-copy {
+    display: grid;
+    min-width: 0;
+    gap: 3px;
+    line-height: 1;
+  }
+
+  .shell-nav__brand-copy strong {
+    color: rgba(255, 255, 255, 0.94);
+    font-size: 18px;
+    font-weight: 720;
+    letter-spacing: 0;
+  }
+
+  .shell-nav__brand-copy small {
+    color: rgba(255, 255, 255, 0.48);
+    font-size: 8.5px;
+    font-weight: 650;
+    letter-spacing: 0.18em;
+    white-space: nowrap;
   }
 
   .shell-login,
@@ -405,7 +445,6 @@
     font-weight: 600;
   }
 
-  .shell-nav__groups,
   .shell-drawer__nav {
     display: grid;
     align-content: start;
@@ -416,27 +455,42 @@
     scrollbar-width: thin;
   }
 
-  .shell-nav__groups::-webkit-scrollbar,
+  .shell-nav__scroll {
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow-y: auto;
+    padding: 0 8px 12px;
+    scrollbar-color: color-mix(in srgb, var(--muted) 28%, transparent) transparent;
+    scrollbar-width: thin;
+  }
+
+  .shell-nav__groups {
+    display: grid;
+    align-content: start;
+    gap: 20px;
+  }
+
+  .shell-nav__scroll::-webkit-scrollbar,
   .shell-drawer__nav::-webkit-scrollbar,
   .shell-panel__body::-webkit-scrollbar {
     width: 6px;
     height: 6px;
   }
 
-  .shell-nav__groups::-webkit-scrollbar-track,
+  .shell-nav__scroll::-webkit-scrollbar-track,
   .shell-drawer__nav::-webkit-scrollbar-track,
   .shell-panel__body::-webkit-scrollbar-track {
     background: transparent;
   }
 
-  .shell-nav__groups::-webkit-scrollbar-thumb,
+  .shell-nav__scroll::-webkit-scrollbar-thumb,
   .shell-drawer__nav::-webkit-scrollbar-thumb,
   .shell-panel__body::-webkit-scrollbar-thumb {
     border-radius: var(--radius-chip);
     background: color-mix(in srgb, var(--muted) 24%, transparent);
   }
 
-  .shell-nav__groups:hover::-webkit-scrollbar-thumb,
+  .shell-nav__scroll:hover::-webkit-scrollbar-thumb,
   .shell-drawer__nav:hover::-webkit-scrollbar-thumb,
   .shell-panel__body:hover::-webkit-scrollbar-thumb {
     background: color-mix(in srgb, var(--muted) 38%, transparent);
@@ -455,6 +509,15 @@
     font-weight: 620;
     letter-spacing: 0.08em;
     line-height: 1.2;
+  }
+
+  .shell-nav__group-title {
+    color: rgba(255, 255, 255, 0.46);
+    font-size: 11.5px;
+    font-weight: 500;
+    letter-spacing: 0.04em;
+    padding: 0 8px;
+    margin-bottom: 2px;
   }
 
   .shell-nav-item {
@@ -548,6 +611,134 @@
     color: color-mix(in srgb, currentColor 62%, transparent);
     font-size: 12px;
     line-height: 1.2;
+  }
+
+  .shell-nav .shell-nav-item {
+    min-height: 42px;
+    height: 42px;
+    gap: 11px;
+    border: 1px solid transparent;
+    border-radius: 9px;
+    padding: 0 14px;
+    transition: border-color 150ms ease, color 150ms ease, background 150ms ease, box-shadow 150ms ease;
+  }
+
+  .shell-nav .shell-nav-item::before {
+    left: 0;
+    width: 3px;
+  }
+
+  .shell-nav .shell-nav-item:hover {
+    background: rgba(255, 255, 255, 0.055);
+  }
+
+  .shell-nav .shell-nav-item.is-active {
+    border-color: rgba(255, 45, 135, 0.18);
+    background: linear-gradient(90deg, rgba(255, 32, 122, 0.2), rgba(255, 32, 122, 0.07));
+    color: #ff3b91;
+    box-shadow: inset 0 1px 10px rgba(255, 32, 122, 0.08);
+  }
+
+  .shell-nav .shell-nav-item.is-active::before {
+    background: #ff3b91;
+    box-shadow: 0 0 8px rgba(255, 59, 145, 0.22);
+  }
+
+  .shell-nav .shell-nav-item__icon-wrap {
+    width: 18px;
+    height: 18px;
+    color: rgba(255, 255, 255, 0.62);
+    transition: color 150ms ease;
+  }
+
+  .shell-nav .shell-nav-item:hover .shell-nav-item__icon-wrap {
+    color: rgba(255, 255, 255, 0.88);
+  }
+
+  .shell-nav .shell-nav-item.is-active .shell-nav-item__icon-wrap {
+    color: #ff3b91;
+  }
+
+  .shell-nav .shell-nav-item__label {
+    font-size: 14.5px;
+    font-weight: 560;
+  }
+
+  .shell-nav__account {
+    display: grid;
+    gap: 6px;
+    margin: 0 8px 8px;
+    border: 1px solid rgba(255, 255, 255, 0.09);
+    border-radius: 12px;
+    background: rgba(255, 255, 255, 0.035);
+    padding: 7px;
+  }
+
+  .shell-nav-account__main {
+    display: grid;
+    grid-template-columns: 27px minmax(0, 1fr);
+    align-items: center;
+    gap: 7px;
+  }
+
+  .shell-nav-account__avatar {
+    display: grid;
+    width: 27px;
+    height: 27px;
+    place-items: center;
+    border: 1px solid rgba(255, 255, 255, 0.09);
+    border-radius: 999px;
+    background: rgba(255, 255, 255, 0.055);
+    color: rgba(255, 255, 255, 0.86);
+    font-size: 11px;
+    font-weight: 700;
+  }
+
+  .shell-nav-account__copy {
+    display: grid;
+    min-width: 0;
+    gap: 2px;
+  }
+
+  .shell-nav-account__copy strong,
+  .shell-nav-account__copy span {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .shell-nav-account__copy strong {
+    color: rgba(255, 255, 255, 0.9);
+    font-size: 12.5px;
+    font-weight: 640;
+  }
+
+  .shell-nav-account__copy span {
+    color: rgba(255, 255, 255, 0.46);
+    font-size: 11.5px;
+    line-height: 1.2;
+  }
+
+  .shell-nav-account__button {
+    display: inline-flex;
+    min-height: 25px;
+    align-items: center;
+    justify-content: center;
+    gap: 7px;
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 9px;
+    background: rgba(255, 255, 255, 0.04);
+    color: rgba(255, 255, 255, 0.76);
+    font-size: 11.5px;
+    font-weight: 600;
+    transition: border-color 150ms ease, background 150ms ease, color 150ms ease;
+  }
+
+  .shell-nav-account__button:hover,
+  .shell-nav-account__button.is-active {
+    border-color: rgba(255, 59, 145, 0.26);
+    background: rgba(255, 32, 122, 0.1);
+    color: #fff;
   }
 
   .shell-panel {
@@ -2686,6 +2877,86 @@
   }
 }
 
+@media (min-width: 1200px) {
+  .shell-header {
+    display: none;
+  }
+
+  .shell-grid {
+    height: 100dvh;
+  }
+
+  .shell-root > .shell-main .shell-grid > .shell-nav .shell-nav__scroll {
+    padding: 0 8px 12px;
+  }
+
+  .shell-root > .shell-main .shell-grid > .shell-nav .shell-nav-item {
+    width: 100%;
+    height: 42px;
+    min-height: 42px;
+    gap: 11px;
+    border-color: transparent;
+    border-radius: 9px;
+    padding: 0 14px;
+    color: rgba(255, 255, 255, 0.92);
+  }
+
+  .shell-root > .shell-main .shell-grid > .shell-nav .shell-nav-item:hover {
+    background: rgba(255, 255, 255, 0.055);
+    color: rgba(255, 255, 255, 0.98);
+  }
+
+  .shell-root > .shell-main .shell-grid > .shell-nav .shell-nav-item.is-active {
+    border-color: rgba(255, 45, 135, 0.18);
+    background: linear-gradient(90deg, rgba(255, 32, 122, 0.20), rgba(255, 32, 122, 0.07));
+    color: #ff3b91;
+    box-shadow: inset 0 1px 10px rgba(255, 32, 122, 0.08);
+  }
+
+  .shell-root > .shell-main .shell-grid > .shell-nav .shell-nav-item:hover .shell-nav-item__icon-wrap {
+    color: rgba(255, 255, 255, 0.88);
+  }
+
+  .shell-root > .shell-main .shell-grid > .shell-nav .shell-nav-item.is-active .shell-nav-item__icon-wrap,
+  .shell-root > .shell-main .shell-grid > .shell-nav .shell-nav-item.is-active .shell-nav-item__label {
+    color: #ff3b91;
+  }
+
+  .shell-root > .shell-main .shell-grid > .shell-nav .shell-nav__account {
+    gap: 6px;
+    padding: 7px;
+  }
+
+  .shell-root > .shell-main .shell-grid > .shell-nav .shell-nav-account__main {
+    grid-template-columns: 27px minmax(0, 1fr);
+    gap: 7px;
+  }
+
+  .shell-root > .shell-main .shell-grid > .shell-nav .shell-nav-account__avatar {
+    width: 27px;
+    height: 27px;
+  }
+
+  .shell-root > .shell-main .shell-grid > .shell-nav .shell-nav-account__copy {
+    gap: 2px;
+  }
+
+  .shell-root > .shell-main .shell-grid > .shell-nav .shell-nav-account__copy strong {
+    font-size: 12.5px;
+  }
+
+  .shell-root > .shell-main .shell-grid > .shell-nav .shell-nav-account__button {
+    min-height: 25px;
+    font-size: 11.5px;
+  }
+}
+
+@media (max-width: 1199px) {
+  .shell-account-popover {
+    display: none;
+  }
+}
+
 @media (max-width: 1199px) and (min-width: 768px) {
   .shell-grid {
     grid-template-columns: 72px minmax(340px, 372px) minmax(0, 1fr);
@@ -2694,11 +2965,15 @@
   }
 
   .shell-nav {
+    width: 72px;
+    min-width: 72px;
+    max-width: 72px;
     padding: 10px 8px;
   }
 
-  .shell-nav__head,
+  .shell-nav__brand,
   .shell-nav__group-title,
+  .shell-nav__account,
   .shell-nav-item__text {
     display: none;
   }
@@ -2715,6 +2990,7 @@
 
 @media (max-width: 767px) {
   .shell-header {
+    display: grid;
     height: 56px;
     grid-template-columns: minmax(0, 1fr) auto;
     padding: 0 var(--space-page-mobile);
