@@ -2,9 +2,13 @@
 import { spawnSync } from "node:child_process";
 import { existsSync, rmSync } from "node:fs";
 import { join } from "node:path";
+import nextEnv from "@next/env";
 
 const root = process.cwd();
 const outDir = join(root, "dist", "release-preflight");
+const { loadEnvConfig } = nextEnv;
+
+loadEnvConfig(root, process.env.NODE_ENV !== "production");
 
 function fail(message) {
   console.error(message);
