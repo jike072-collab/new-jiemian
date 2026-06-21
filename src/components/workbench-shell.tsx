@@ -131,7 +131,13 @@ export function WorkbenchShell({
   }, [drawerOpen]);
 
   return (
-    <div ref={rootRef} className="shell-root min-h-[100dvh] overflow-hidden bg-[var(--background)] text-[var(--foreground)]">
+    <div
+      ref={rootRef}
+      className={cn(
+        "shell-root min-h-[100dvh] overflow-hidden bg-[var(--background)] text-[var(--foreground)]",
+        `shell-root--tool-${state.activeToolId}`,
+      )}
+    >
       <Header
         isAuthenticated={isAuthenticated}
         accountName={accountName}
