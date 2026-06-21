@@ -25,7 +25,7 @@ import type { PublicAuthUser } from "@/lib/server/auth";
 import type { BillingOrder, PublicPaymentChannelConfig } from "@/lib/server/billing";
 import type { QuotaSnapshot, UsagePage } from "@/lib/server/quota";
 import { cn } from "@/lib/utils";
-import type { JobRecord, LibraryItem, PublicProvider } from "@/lib/server/types";
+import type { FrontendProvider, JobRecord, LibraryItem } from "@/lib/server/types";
 import {
   type WorkspaceAction,
   type WorkspaceImageMode,
@@ -43,8 +43,8 @@ type UpscaleAvailability = { ready: boolean; detail: string };
 type UpscaleStatusResponse = Record<UpscaleKind, UpscaleAvailability>;
 
 type EnabledProviders = {
-  image: PublicProvider[];
-  video: PublicProvider[];
+  image: FrontendProvider[];
+  video: FrontendProvider[];
 };
 
 type WorkspaceVideoOptions = {
@@ -52,8 +52,7 @@ type WorkspaceVideoOptions = {
   ratios?: string[];
 };
 
-type WorkspacePublicProvider = Omit<PublicProvider, "endpointType"> & {
-  endpointType: PublicProvider["endpointType"] | "grok-videos";
+type WorkspacePublicProvider = FrontendProvider & {
   videoOptions?: WorkspaceVideoOptions;
 };
 
@@ -2015,10 +2014,10 @@ function ImageGenerator({
 }: {
   mode: WorkspaceImageMode;
   showTemplates: boolean;
-  providers: PublicProvider[];
+  providers: FrontendProvider[];
   providersLoading: boolean;
   providersError: string;
-  selectedProvider: PublicProvider | null;
+  selectedProvider: FrontendProvider | null;
   state: ImageWorkspaceState;
   canSubmit: boolean;
   onProviderChange: (value: string) => void;
@@ -2195,7 +2194,7 @@ function VideoGenerator({
   registerMobileAction,
 }: {
   mode: WorkspaceVideoMode;
-  providers: PublicProvider[];
+  providers: FrontendProvider[];
   providersLoading: boolean;
   providersError: string;
   selectedProvider: WorkspacePublicProvider | null;
@@ -4016,7 +4015,7 @@ function ProviderSelect({
   onReload,
   label = "模型",
 }: {
-  providers: PublicProvider[];
+  providers: FrontendProvider[];
   value: string;
   loading?: boolean;
   error?: string;
