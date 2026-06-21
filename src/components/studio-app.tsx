@@ -2809,9 +2809,55 @@ function ImageGenerationTutorial() {
   );
 }
 
+function ImageEditorTutorial() {
+  return (
+    <PreviewState eyebrow="图片编辑示例" title="图片编辑示例" description="上传图片并描述修改要求，快速完成内容编辑与素材融合。">
+      <div className="image-editor-tutorial">
+        <div className="image-editor-tutorial__canvas" aria-label="图片编辑器示例图片">
+          <img className="image-editor-tutorial__path" src="/tutorials/image-editor/flight-path-line.svg" alt="" aria-hidden="true" />
+          <svg className="image-editor-plane" viewBox="0 0 64 64" aria-hidden="true">
+            <path d="M9 30 56 9 42 56 32 39 9 48 25 33 9 30Z" fill="none" stroke="currentColor" strokeWidth="4" strokeLinecap="round" strokeLinejoin="round" />
+          </svg>
+
+          <figure className="image-editor-photo image-editor-photo--input image-editor-photo--single-source">
+            <img src="/tutorials/image-editor/single-source.png" alt="方形粉色香水瓶白底素材" />
+          </figure>
+          <img className="image-editor-arrow image-editor-arrow--single" src="/tutorials/image-editor/pink-arrow.png" alt="" aria-hidden="true" />
+          <span className="image-editor-prompt image-editor-prompt--single">
+            <span>+</span>
+            <span>提示词</span>
+          </span>
+          <figure className="image-editor-photo image-editor-photo--result image-editor-photo--single-result">
+            <img src="/tutorials/image-editor/single-result.png" alt="女性手持同款香水瓶的编辑结果" />
+          </figure>
+
+          <figure className="image-editor-photo image-editor-photo--input image-editor-photo--merge-product">
+            <img src="/tutorials/image-editor/merge-product.png" alt="椭圆形粉色香水瓶白底素材" />
+          </figure>
+          <figure className="image-editor-photo image-editor-photo--input image-editor-photo--merge-scene">
+            <img src="/tutorials/image-editor/merge-scene.png" alt="新中式牡丹场景素材" />
+          </figure>
+          <img className="image-editor-arrow image-editor-arrow--merge" src="/tutorials/image-editor/pink-arrow.png" alt="" aria-hidden="true" />
+          <span className="image-editor-prompt image-editor-prompt--merge">
+            <span>+</span>
+            <span>提示词</span>
+          </span>
+          <figure className="image-editor-photo image-editor-photo--result image-editor-photo--merge-result">
+            <img src="/tutorials/image-editor/merge-result.png" alt="香水瓶放入新中式牡丹场景后的融合结果" />
+          </figure>
+        </div>
+      </div>
+    </PreviewState>
+  );
+}
+
 function ToolTutorial({ kind }: { kind: ToolTutorialKind }) {
   if (kind === "image") {
     return <ImageGenerationTutorial />;
+  }
+
+  if (kind === "image-editor") {
+    return <ImageEditorTutorial />;
   }
 
   const tutorial = toolTutorials[kind];
