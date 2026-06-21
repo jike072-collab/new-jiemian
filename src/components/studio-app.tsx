@@ -328,6 +328,7 @@ async function jsonFetch<T>(url: string, options?: RequestInit): Promise<T> {
 
 export function StudioApp() {
   const router = useRouter();
+  const [previewMode, setPreviewMode] = useState(false);
   const [activeWorkspaceToolId, setActiveWorkspaceToolId] = useState<WorkspaceToolId>("image");
   const [providers, setProviders] = useState<EnabledProviders>({ image: [], video: [] });
   const [providersLoading, setProvidersLoading] = useState(true);
@@ -552,6 +553,10 @@ export function StudioApp() {
   const refreshAccountSnapshot = useCallback(async () => {
     await refreshSession();
   }, [refreshSession]);
+
+  useEffect(() => {
+    setPreviewMode(new URLSearchParams(window.location.search).get("preview") === "1");
+  }, []);
 
   const refreshLibrary = useCallback(async () => {
     setLibraryLoading(true);
@@ -1166,10 +1171,10 @@ export function StudioApp() {
   }, [checkVideoUpscaleAvailability]);
 
   useEffect(() => {
-    if (!sessionLoading && !sessionUser && !sessionError) {
+    if (!previewMode && !sessionLoading && !sessionUser && !sessionError) {
       router.replace("/login");
     }
-  }, [router, sessionError, sessionLoading, sessionUser]);
+  }, [previewMode, router, sessionError, sessionLoading, sessionUser]);
 
   const replaceVideoUpscaleFile = useCallback((files: File[]) => {
     const previous = videoUpscaleFileRef.current;
