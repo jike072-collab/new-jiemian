@@ -2814,9 +2814,11 @@ function ImageEditorTutorial() {
     <PreviewState eyebrow="图片编辑示例" title="图片编辑示例" description="上传图片并描述修改要求，快速完成内容编辑与素材融合。">
       <div className="image-editor-tutorial">
         <div className="image-editor-tutorial__canvas" aria-label="图片编辑器示例图片">
-          <img className="image-editor-tutorial__path" src="/tutorials/image-editor/flight-path-line.svg" alt="" aria-hidden="true" />
-          <svg className="image-editor-plane" viewBox="0 0 64 64" aria-hidden="true">
-            <path d="M9 30 56 9 42 56 32 39 9 48 25 33 9 30Z" fill="none" stroke="currentColor" strokeWidth="4" strokeLinecap="round" strokeLinejoin="round" />
+          <svg className="image-editor-tutorial__path" viewBox="0 0 980 520" aria-hidden="true">
+            <path className="image-editor-tutorial__dash" d="M18 425C98 190 238 330 365 265C487 202 575 262 690 170C750 122 810 82 862 52" />
+            <g className="image-editor-plane-mark" transform="translate(862 52) rotate(8) scale(0.68) translate(-9 -39)">
+              <path d="M9 30 56 9 42 56 32 39 9 48 25 33 9 30Z" fill="none" stroke="currentColor" strokeWidth="4.6" strokeLinecap="round" strokeLinejoin="round" />
+            </g>
           </svg>
 
           <figure className="image-editor-photo image-editor-photo--input image-editor-photo--single-source">
