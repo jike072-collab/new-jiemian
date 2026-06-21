@@ -2782,7 +2782,38 @@ const toolTutorials: Record<ToolTutorialKind, {
   },
 };
 
+function ImageGenerationTutorial() {
+  return (
+    <PreviewState eyebrow="快速教程" title="快速教程" description="输入描述，选择比例，即可生成图片。">
+      <div className="image-tutorial-simple">
+        <div className="image-tutorial-simple__stage">
+          <div className="image-tutorial-simple__image-shell">
+            <img
+              className="image-tutorial-simple__image"
+              src="/tutorials/image-generator/perfume-result.png"
+              alt="新中式香水产品图，粉色牡丹花、香水瓶、大理石台面和中式窗棂背景"
+            />
+          </div>
+          <div className="image-tutorial-simple__overlay image-tutorial-simple__overlay--prompt">
+            <span>提示词</span>
+            <p>新中式香水产品摄影，粉色牡丹花簇拥，香水瓶置于大理石台面，背景带有中式窗棂元素，光影柔和，画面干净高级，细节丰富，商业产品图风格。</p>
+          </div>
+          <div className="image-tutorial-simple__overlay image-tutorial-simple__overlay--ratio">
+            <span>比例</span>
+            <i aria-hidden="true" />
+            <strong>16:9</strong>
+          </div>
+        </div>
+      </div>
+    </PreviewState>
+  );
+}
+
 function ToolTutorial({ kind }: { kind: ToolTutorialKind }) {
+  if (kind === "image") {
+    return <ImageGenerationTutorial />;
+  }
+
   const tutorial = toolTutorials[kind];
 
   return (
