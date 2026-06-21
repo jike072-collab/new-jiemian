@@ -2854,6 +2854,7 @@ function ImageEditorTutorial() {
 }
 
 const videoTutorialPromptText = "雨天城市街头，女生撑透明雨伞缓慢向前行走，并自然回头看向镜头。";
+const videoTutorialResultVideoSrc = "";
 
 type VideoTutorialImagePhase = "hidden" | "dragging" | "landed";
 
@@ -2948,6 +2949,87 @@ function VideoTutorialInputDemo() {
   );
 }
 
+function VideoTutorialResultSlot() {
+  return (
+    <div className="video-tutorial-result-slot">
+      <div className="video-tutorial-result-slot__backdrop" aria-hidden="true">
+        <img src="/tutorials/video-generator/input-person.png" alt="" />
+      </div>
+      <div className="video-tutorial-result-slot__media">
+        {videoTutorialResultVideoSrc ? (
+          <video src={videoTutorialResultVideoSrc} poster="/tutorials/video-generator/input-person.png" autoPlay muted loop playsInline preload="metadata" />
+        ) : (
+          <img src="/tutorials/video-generator/input-person.png" alt="视频结果预留位" />
+        )}
+      </div>
+      <div className="video-tutorial-result-slot__caption">
+        <span>视频预览位</span>
+        <strong>16:9</strong>
+      </div>
+    </div>
+  );
+}
+
+function VideoTutorialParameterDemo() {
+  return (
+    <div className="video-tutorial-parameter-demo">
+      <div className="video-tutorial-parameter-demo__preview">
+        <img src="/tutorials/video-generator/input-person.png" alt="" />
+      </div>
+      <div className="video-tutorial-parameter-demo__panel">
+        <span>提示词</span>
+        <p>{videoTutorialPromptText}</p>
+      </div>
+      <div className="video-tutorial-parameter-demo__meta" aria-label="示例参数">
+        <span>16:9</span>
+        <span>6 秒</span>
+      </div>
+    </div>
+  );
+}
+
+function VideoGenerationTutorial() {
+  const steps = [
+    {
+      id: "upload",
+      title: "上传参考图",
+      description: "先放入一张清晰的起始画面，视频会围绕这张图继续生成。",
+      visual: <VideoTutorialInputDemo />,
+    },
+    {
+      id: "prompt",
+      title: "填写提示词和比例",
+      description: "描述画面动作和镜头方向，比例固定按结果位展示，方便后续替换真实视频。",
+      visual: <VideoTutorialParameterDemo />,
+    },
+    {
+      id: "result",
+      title: "生成视频结果",
+      description: "这里已经固定好最终视频槽位。后面提供视频后，只需要替换同一个位置的素材。",
+      visual: <VideoTutorialResultSlot />,
+    },
+  ];
+
+  return (
+    <PreviewState eyebrow="快速教程" title="视频生成快速教程" description="上传参考图，输入提示词，确认比例后生成视频。">
+      <div className="video-tutorial-guide">
+        {steps.map((step, index) => (
+          <article key={step.id} className="video-tutorial-guide__card">
+            <div className="video-tutorial-guide__visual">
+              {step.visual}
+            </div>
+            <div className="video-tutorial-guide__copy">
+              <span>{String(index + 1).padStart(2, "0")}</span>
+              <h4>{step.title}</h4>
+              <p>{step.description}</p>
+            </div>
+          </article>
+        ))}
+      </div>
+    </PreviewState>
+  );
+}
+
 function ToolTutorial({ kind }: { kind: ToolTutorialKind }) {
   if (kind === "image") {
     return <ImageGenerationTutorial />;
@@ -2955,6 +3037,10 @@ function ToolTutorial({ kind }: { kind: ToolTutorialKind }) {
 
   if (kind === "image-editor") {
     return <ImageEditorTutorial />;
+  }
+
+  if (kind === "video") {
+    return <VideoGenerationTutorial />;
   }
 
   const tutorial = toolTutorials[kind];
@@ -2965,31 +3051,27 @@ function ToolTutorial({ kind }: { kind: ToolTutorialKind }) {
         {tutorial.sections.map((section, index) => (
           <article key={section.title} className={cn("studio-walkthrough__section", section.mediaSide === "right" && "is-media-right")}>
             <div className={cn("studio-walkthrough__visual", section.visualClassName)}>
-              {kind === "video" && index === 0 ? (
-                <VideoTutorialInputDemo />
-              ) : (
-                <div className="studio-walkthrough__canvas" aria-hidden="true">
-                  {section.layers.map((layer) => (
-                    layer.type === "video" ? (
-                      <div key={layer.src} className={cn("studio-walkthrough__layer", layer.className)}>
-                        <video src={layer.src} poster={layer.poster} autoPlay muted loop playsInline preload="metadata" />
-                        {layer.poster ? <img className="studio-walkthrough__video-poster" src={layer.poster} alt="" /> : null}
-                      </div>
-                    ) : (
-                      <img key={layer.src} src={layer.src} alt={layer.alt} className={cn("studio-walkthrough__layer", layer.className)} />
-                    )
-                  ))}
-                  {section.bubbles?.map((bubble) => (
-                    <span key={bubble.text} className={cn("studio-walkthrough__bubble", bubble.className)}>{bubble.text}</span>
-                  ))}
-                  {section.tags?.map((tag) => (
-                    <span key={tag.text} className={cn("studio-walkthrough__tag", tag.className)}>{tag.text}</span>
-                  ))}
-                  {(section.bubbles?.length || section.visualClassName?.includes("flow")) ? (
-                    <span className="studio-walkthrough__arrow" />
-                  ) : null}
-                </div>
-              )}
+              <div className="studio-walkthrough__canvas" aria-hidden="true">
+                {section.layers.map((layer) => (
+                  layer.type === "video" ? (
+                    <div key={layer.src} className={cn("studio-walkthrough__layer", layer.className)}>
+                      <video src={layer.src} poster={layer.poster} autoPlay muted loop playsInline preload="metadata" />
+                      {layer.poster ? <img className="studio-walkthrough__video-poster" src={layer.poster} alt="" /> : null}
+                    </div>
+                  ) : (
+                    <img key={layer.src} src={layer.src} alt={layer.alt} className={cn("studio-walkthrough__layer", layer.className)} />
+                  )
+                ))}
+                {section.bubbles?.map((bubble) => (
+                  <span key={bubble.text} className={cn("studio-walkthrough__bubble", bubble.className)}>{bubble.text}</span>
+                ))}
+                {section.tags?.map((tag) => (
+                  <span key={tag.text} className={cn("studio-walkthrough__tag", tag.className)}>{tag.text}</span>
+                ))}
+                {(section.bubbles?.length || section.visualClassName?.includes("flow")) ? (
+                  <span className="studio-walkthrough__arrow" />
+                ) : null}
+              </div>
             </div>
             <div className="studio-walkthrough__copy">
               <span>{String(index + 1).padStart(2, "0")}</span>
