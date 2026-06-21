@@ -719,12 +719,23 @@
     line-height: 1.2;
   }
 
+  .shell-nav-account__actions {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 6px;
+  }
+
+  .shell-nav-account__actions.is-split {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
   .shell-nav-account__button {
     display: inline-flex;
     min-height: 25px;
     align-items: center;
     justify-content: center;
     gap: 7px;
+    min-width: 0;
     border: 1px solid rgba(255, 255, 255, 0.1);
     border-radius: 9px;
     background: rgba(255, 255, 255, 0.04);
@@ -739,6 +750,11 @@
     border-color: rgba(255, 59, 145, 0.26);
     background: rgba(255, 32, 122, 0.1);
     color: #fff;
+  }
+
+  .shell-nav-account__button--admin {
+    border-color: rgba(255, 59, 145, 0.18);
+    color: rgba(255, 160, 202, 0.92);
   }
 
   .shell-panel {

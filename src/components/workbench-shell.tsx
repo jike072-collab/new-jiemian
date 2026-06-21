@@ -36,6 +36,7 @@ type WorkbenchShellProps = {
   state: WorkspaceShellState;
   onToolAction: (action: WorkspaceAction, tool: WorkspaceToolId) => void;
   isAuthenticated: boolean;
+  canAccessAdmin?: boolean;
   accountName?: string | null;
   accountQuotaLabel?: string | null;
   headerRightSlot?: ReactNode;
@@ -51,6 +52,7 @@ export function WorkbenchShell({
   state,
   onToolAction,
   isAuthenticated,
+  canAccessAdmin = false,
   accountName,
   accountQuotaLabel,
   headerRightSlot,
@@ -167,6 +169,7 @@ export function WorkbenchShell({
         }}
         onChangePane={setPane}
         isAuthenticated={isAuthenticated}
+        canAccessAdmin={canAccessAdmin}
         accountSlot={accountSlot}
         accountOpen={accountOpen}
         mobileActionSlot={mobileActionSlot}
@@ -181,6 +184,7 @@ export function WorkbenchShell({
             onSelect={(action, tool) => onToolAction(action, tool)}
             groups={workspaceToolGroups}
             isAuthenticated={isAuthenticated}
+            canAccessAdmin={canAccessAdmin}
             accountName={accountName}
             accountQuotaLabel={accountQuotaLabel}
             accountOpen={accountOpen}
@@ -291,6 +295,7 @@ function DesktopNavigation({
   onSelect,
   groups,
   isAuthenticated,
+  canAccessAdmin,
   accountName,
   accountQuotaLabel,
   accountOpen,
@@ -300,6 +305,7 @@ function DesktopNavigation({
   onSelect: (action: WorkspaceAction, tool: WorkspaceToolId) => void;
   groups: Array<{ title: WorkspaceToolGroup; items: WorkspaceToolId[] }>;
   isAuthenticated: boolean;
+  canAccessAdmin: boolean;
   accountName?: string | null;
   accountQuotaLabel?: string | null;
   accountOpen: boolean;
@@ -323,7 +329,7 @@ function DesktopNavigation({
           {groups.map((group) => {
             const visibleItems = group.items
               .map((id) => workspaceToolById(id))
-              .filter((item): item is WorkspaceToolEntry => Boolean(item?.visible && (!item.requiresAuth || isAuthenticated)));
+              .filter((item): item is WorkspaceToolEntry => canShowWorkspaceTool(item, { isAuthenticated, canAccessAdmin }));
             if (!visibleItems.length) return null;
             return (
               <section key={group.title} className="shell-nav__group">
@@ -355,14 +361,22 @@ function DesktopNavigation({
                 <span>剩余额度 {accountQuotaLabel || "读取中"}</span>
               </span>
             </div>
-            <button
-              type="button"
-              className={cn("shell-nav-account__button", accountOpen && "is-active")}
-              onClick={onToggleAccount}
-            >
-              <Settings className="size-4" aria-hidden="true" />
-              设置入口
-            </button>
+            <div className={cn("shell-nav-account__actions", canAccessAdmin && "is-split")}>
+              <button
+                type="button"
+                className={cn("shell-nav-account__button", accountOpen && "is-active")}
+                onClick={onToggleAccount}
+              >
+                <UserRound className="size-4" aria-hidden="true" />
+                账户中心
+              </button>
+              {canAccessAdmin ? (
+                <Link href="/admin/providers" className="shell-nav-account__button shell-nav-account__button--admin">
+                  <Settings className="size-4" aria-hidden="true" />
+                  后台管理
+                </Link>
+              ) : null}
+            </div>
           </>
         ) : (
           <>
@@ -395,6 +409,7 @@ function MobileOverlay({
   onSelect,
   onChangePane,
   isAuthenticated,
+  canAccessAdmin,
   accountSlot,
   accountOpen,
   mobileActionSlot,
@@ -409,6 +424,7 @@ function MobileOverlay({
   onSelect: (action: WorkspaceAction, tool: WorkspaceToolId) => void;
   onChangePane: (value: ShellPane) => void;
   isAuthenticated: boolean;
+  canAccessAdmin: boolean;
   accountSlot?: ReactNode;
   accountOpen: boolean;
   mobileActionSlot?: ReactNode;
@@ -480,7 +496,7 @@ function MobileOverlay({
           {workspaceToolGroups.map((group) => {
             const visibleItems = group.items
               .map((id) => workspaceToolById(id))
-              .filter((item): item is WorkspaceToolEntry => Boolean(item?.visible && (!item.requiresAuth || isAuthenticated)));
+              .filter((item): item is WorkspaceToolEntry => canShowWorkspaceTool(item, { isAuthenticated, canAccessAdmin }));
             if (!visibleItems.length) return null;
             return (
               <section key={group.title} className="shell-nav__group">
@@ -528,6 +544,16 @@ function MobileOverlay({
       </aside>
     </>
   );
+}
+
+function canShowWorkspaceTool(
+  item: WorkspaceToolEntry | null | undefined,
+  auth: { isAuthenticated: boolean; canAccessAdmin: boolean },
+): item is WorkspaceToolEntry {
+  if (!item) return false;
+  if (item.requiresAuth && !auth.isAuthenticated) return false;
+  if (item.id === "admin-settings") return auth.canAccessAdmin;
+  return item.visible;
 }
 
 function ToolButton({

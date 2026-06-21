@@ -1890,6 +1890,7 @@ export function StudioApp() {
         state={{ activeToolId: activeWorkspaceToolId }}
         onToolAction={handleToolAction}
         isAuthenticated={Boolean(sessionUser)}
+        canAccessAdmin={sessionUser?.role === "admin"}
         accountName={sessionUser?.display_name || sessionUser?.username || null}
         accountQuotaLabel={quotaSnapshot ? String(quotaSnapshot.available_quota_units) : null}
         headerRightSlot={accountHeaderSlot}
