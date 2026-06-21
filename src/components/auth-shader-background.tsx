@@ -97,8 +97,8 @@ void main() {
   float ribbonA = smoothstep(0.70, 0.96, wave(p, 0.10, 4.2 - u_mobile * 0.6, 0.4));
   float ribbonB = smoothstep(0.72, 0.97, wave(vec2(p.x * 0.82, p.y + 0.18), -0.08, 5.1 - u_mobile * 0.5, 1.8));
   float ribbonC = smoothstep(0.74, 0.98, wave(vec2(p.x * 0.68, p.y - 0.2), 0.07, 6.2 - u_mobile * 0.7, 4.2));
-  float ribbon = max(max(ribbonA * 0.62, ribbonB * 0.5), ribbonC * 0.42);
-  float ripple = smoothstep(0.54, 0.16, length(p - vec2(-0.62, 0.05)));
+  float ribbon = max(max(ribbonA * 0.32, ribbonB * 0.26), ribbonC * 0.2);
+  float ripple = smoothstep(0.54, 0.16, length(p - vec2(-0.62, 0.05))) * 0.28;
   float bridge = exp(-abs(p.y - (0.08 * sin(p.x * 2.0 + u_time * 0.12))) * 10.0) * smoothstep(-0.2, 0.58, p.x) * smoothstep(1.05, 0.2, p.x);
   float titleZone = smoothstep(0.45, 0.08, uv.x) * smoothstep(0.44, 0.70, uv.y) * smoothstep(0.98, 0.78, uv.y);
   float cardZone = smoothstep(0.58, 0.05, uv.x) * smoothstep(0.12, 0.36, uv.y) * smoothstep(0.86, 0.46, uv.y);
@@ -122,6 +122,7 @@ void main() {
   float flowC = flowBand(uv, 0.13, 0.2, 0.03, 7.6, 4.2, 0.006);
   float flowD = flowBand(uv, 0.02, 0.4, 0.026, 10.8, 1.5, 0.004);
   float flowGlow = flowBand(uv, 0.075, 0.3, 0.052, 7.2, 0.8, 0.035);
+  float formFlowCalm = 1.0 - smoothstep(0.58, 0.78, uv.x) * smoothstep(0.0, 0.3, uv.y) * 0.48;
   float floorReflection = smoothstep(0.35, 0.02, uv.y) * smoothstep(0.0, 0.5, uv.x) * (1.0 - smoothstep(0.62, 1.0, uv.x));
 
   float farParticles = particleLayer(uv + pointerDelta * 0.006, 52.0 - u_mobile * 18.0, 0.016, 0.064, 0.78, 2.1, 0.42, 0.11);
@@ -134,15 +135,15 @@ void main() {
   vec3 pink = vec3(1.0, 0.28, 0.68);
 
   vec3 color = base;
-  color += purple * (0.08 + leftGlow * 0.018 * breath);
-  color += magenta * ribbon * (0.26 + leftGlow * 0.2);
-  color += pink * ripple * 0.03 * breath;
+  color += purple * (0.07 + leftGlow * 0.012 * breath);
+  color += magenta * ribbon * (0.12 + leftGlow * 0.08);
+  color += pink * ripple * 0.012 * breath;
   color += magenta * bridge * 0.045;
   color += vec3(1.0, 0.17, 0.56) * beams * 0.24 * breath;
   color += vec3(0.45, 0.18, 0.88) * beams * 0.14;
-  color += vec3(1.0, 0.18, 0.54) * (flowA * 0.48 + flowD * 0.34);
-  color += vec3(0.9, 0.16, 0.78) * (flowB * 0.38 + flowGlow * 0.12);
-  color += vec3(0.55, 0.22, 1.0) * flowC * 0.3;
+  color += vec3(1.0, 0.18, 0.54) * (flowA * 0.56 + flowD * 0.38) * formFlowCalm;
+  color += vec3(0.9, 0.16, 0.78) * (flowB * 0.42 + flowGlow * 0.13) * formFlowCalm;
+  color += vec3(0.55, 0.22, 1.0) * flowC * 0.32 * formFlowCalm;
   color += vec3(1.0, 0.12, 0.46) * floorReflection * 0.07;
   color += magenta * cornerTl * 0.04 * cornerBreath;
   color += vec3(0.45, 0.12, 0.78) * cornerBl * 0.07 * cornerBreath;
