@@ -3,7 +3,7 @@
 /* eslint-disable @next/next/no-img-element */
 
 import { useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
-import { AlertTriangle, ArrowDownUp, Check, ChevronDown, Download, ExternalLink, ImageUp, Loader2, Play, RefreshCw, Search, Trash2, UploadCloud, Wand2, X } from "lucide-react";
+import { AlertTriangle, ArrowDownUp, Check, ChevronDown, CreditCard, Download, ExternalLink, HelpCircle, History, ImageUp, Loader2, Play, RefreshCw, Search, Sparkles, Trash2, UploadCloud, WalletCards, Wand2, X } from "lucide-react";
 import { useRouter, useSearchParams } from "next/navigation";
 
 import { BeforeAfterImageCompare } from "@/components/before-after-image-compare";
@@ -24,7 +24,7 @@ import {
 } from "@/lib/template-catalog";
 import type { PublicAuthUser } from "@/lib/server/auth";
 import type { BillingOrder, PublicPaymentChannelConfig } from "@/lib/server/billing";
-import type { QuotaSnapshot, UsagePage } from "@/lib/server/quota";
+import type { UsageLogEntry, QuotaSnapshot, UsagePage } from "@/lib/server/quota";
 import { cn } from "@/lib/utils";
 import type { FrontendProvider, JobRecord, LibraryItem } from "@/lib/server/types";
 import {
@@ -465,6 +465,8 @@ export function StudioApp() {
   const [selectedBillingOrderId, setSelectedBillingOrderId] = useState<string | null>(null);
   const [accountLoading, setAccountLoading] = useState(true);
   const [billingSubmitting, setBillingSubmitting] = useState(false);
+  const [accountCenterOpen, setAccountCenterOpen] = useState(false);
+  const [accountCloseSignal, setAccountCloseSignal] = useState(0);
   const billingRequestKeyRef = useRef(new Map<string, string>());
   const [message, setMessage] = useState("");
   const [outputs, setOutputs] = useState<Partial<Record<BusinessToolId, OutputState>>>({});
@@ -781,6 +783,7 @@ export function StudioApp() {
   }, [providers.video]);
 
   const handleToolAction = useCallback((action: WorkspaceAction, tool: WorkspaceToolId) => {
+    setAccountCenterOpen(false);
     if (action.kind === "route") {
       router.push(action.href);
       return;
@@ -888,6 +891,10 @@ export function StudioApp() {
     () => billingOrders.find((order) => order.order_id === selectedBillingOrderId) || billingOrders[0] || null,
     [billingOrders, selectedBillingOrderId],
   );
+  const handleOpenAccountCenter = useCallback(() => {
+    setAccountCenterOpen(true);
+    setAccountCloseSignal((value) => value + 1);
+  }, []);
 
   useEffect(() => {
     void refreshBillingOrderDetail(selectedBillingOrderId);
@@ -1916,7 +1923,9 @@ export function StudioApp() {
         canAccessAdmin={sessionUser?.role === "admin"}
         accountName={sessionUser?.display_name || sessionUser?.username || null}
         accountQuotaLabel={quotaSnapshot ? String(quotaSnapshot.available_quota_units) : null}
+        accountPointsLabel={quotaSnapshot ? String(quotaSnapshot.quota_units) : null}
         headerRightSlot={accountHeaderSlot}
+        accountCloseSignal={accountCloseSignal}
         accountSlot={(
           <WorkspaceAccountPanel
             user={sessionUser}
@@ -1934,13 +1943,26 @@ export function StudioApp() {
             onCreateOrder={(channel, amount) => void handleCreateSandboxOrder(channel, amount)}
             onRefresh={() => void refreshAccountSnapshot()}
             onLogout={() => void handleLogout()}
+            onOpenCenter={handleOpenAccountCenter}
           />
         )}
-        toolTitle={activeWorkspaceTool.label}
+        contentMode={accountCenterOpen ? "account" : "default"}
+        toolTitle={accountCenterOpen ? "用户中心" : activeWorkspaceTool.label}
         parameterSlot={parameterSlot}
         mobilePreviewSignal={mobilePreviewSignal}
         previewSlot={
-          activeBusinessTool === "library" ? (
+          accountCenterOpen ? (
+            <UserCenterWorkspace
+              user={sessionUser}
+              quota={quotaSnapshot}
+              usage={usagePage}
+              loading={sessionLoading || accountLoading}
+              submitting={billingSubmitting}
+              billingChannels={billingChannels}
+              onRefresh={() => void refreshAccountSnapshot()}
+              onTopUp={(channel, amount) => void handleCreateSandboxOrder(channel, amount)}
+            />
+          ) : activeBusinessTool === "library" ? (
             <LibraryWorkspace
               items={currentLibraryItems}
               totalCount={library.length}
@@ -2022,6 +2044,194 @@ export function StudioApp() {
       {message ? <Toast message={message} onClose={() => setMessage("")} /> : null}
     </>
   );
+}
+
+function UserCenterWorkspace({
+  user,
+  quota,
+  usage,
+  loading,
+  submitting,
+  billingChannels,
+  onRefresh,
+  onTopUp,
+}: {
+  user: PublicAuthUser | null;
+  quota: QuotaSnapshot | null;
+  usage: UsagePage | null;
+  loading: boolean;
+  submitting: boolean;
+  billingChannels: PublicPaymentChannelConfig[];
+  onRefresh: () => void;
+  onTopUp: (channel: PublicPaymentChannelConfig, amount: number) => void;
+}) {
+  const preferredChannel = billingChannels[0] || null;
+  const preferredAmount = preferredChannel ? preferredChannel.fixed_amounts[0] || preferredChannel.min_amount : 0;
+  const canTopUp = Boolean(user && preferredChannel && !submitting);
+  const usageEntries = usage?.entries?.slice(0, 6) || [];
+  const stats = [
+    {
+      label: "可用额度",
+      value: `${formatQuotaUnits(quota?.available_quota_units)} 点`,
+      icon: WalletCards,
+      featured: true,
+    },
+    {
+      label: "积分",
+      value: `${formatQuotaUnits(quota?.quota_units)} 分`,
+      icon: Sparkles,
+      featured: false,
+    },
+    {
+      label: "本月已用",
+      value: `${formatQuotaUnits(quota?.used_quota_units)} 点`,
+      icon: History,
+      featured: false,
+    },
+  ];
+
+  return (
+    <section className="user-center-page" aria-label="用户中心">
+      <header className="user-center-page__header">
+        <div>
+          <h2>用户中心</h2>
+          <p>查看账户与额度信息</p>
+        </div>
+        <button type="button" className="user-center-refresh" onClick={onRefresh} disabled={loading}>
+          {loading ? <Loader2 className="size-4 animate-spin" /> : <RefreshCw className="size-4" />}
+          刷新
+        </button>
+      </header>
+
+      <div className="user-center-page__grid">
+        <div className="user-center-page__main">
+          <div className="user-center-stats">
+            {stats.map((item) => {
+              const Icon = item.icon;
+              return (
+                <article key={item.label} className={cn("user-center-stat", item.featured && "is-featured")}>
+                  <span className="user-center-stat__icon">
+                    <Icon className="size-4" aria-hidden="true" />
+                  </span>
+                  <span>{item.label}</span>
+                  <strong>{item.value}</strong>
+                </article>
+              );
+            })}
+          </div>
+
+          <section className="user-center-usage">
+            <div className="user-center-section-head">
+              <div>
+                <h3>最近使用记录</h3>
+                <p>只展示最近的真实额度消耗。</p>
+              </div>
+            </div>
+
+            {usageEntries.length ? (
+              <div className="user-center-usage__list">
+                <div className="user-center-usage__row user-center-usage__row--head" aria-hidden="true">
+                  <span>时间</span>
+                  <span>功能</span>
+                  <span>消耗额度</span>
+                  <span>描述</span>
+                </div>
+                {usageEntries.map((entry) => (
+                  <div key={entry.id} className="user-center-usage__row">
+                    <span>{formatUsageDate(entry.created_at)}</span>
+                    <strong>{usageOperationLabel(entry.operation)}</strong>
+                    <em>-{formatQuotaUnits(entry.actual_quota_units ?? entry.estimated_quota_units)}</em>
+                    <span>{usageDescription(entry)}</span>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div className="user-center-usage__empty">
+                <History className="size-5" aria-hidden="true" />
+                <strong>暂无使用记录</strong>
+                <span>开始生成图片或视频后，记录会自动出现在这里。</span>
+              </div>
+            )}
+          </section>
+        </div>
+
+        <aside className="user-center-aside" aria-label="账户说明">
+          <div className="user-center-profile">
+            <span>{(user?.display_name || user?.username || "账户").slice(0, 2).toUpperCase()}</span>
+            <strong>{user?.display_name || user?.username || "账户"}</strong>
+            <small>{user?.email || "未登录"}</small>
+          </div>
+          <button
+            type="button"
+            className="user-center-topup"
+            onClick={() => {
+              if (preferredChannel) onTopUp(preferredChannel, preferredAmount);
+            }}
+            disabled={!canTopUp}
+          >
+            {submitting ? <Loader2 className="size-4 animate-spin" /> : <CreditCard className="size-4" aria-hidden="true" />}
+            立即充值
+          </button>
+          <div className="user-center-aside__notes">
+            <div>
+              <strong>额度说明</strong>
+              <span>生成、编辑和高清处理会按当前工具规则消耗额度。</span>
+            </div>
+            <div>
+              <strong>积分说明</strong>
+              <span>积分展示来自当前账户额度数据，用于快速查看账户余额。</span>
+            </div>
+            <div>
+              <strong>本月已用</strong>
+              <span>用于帮助你了解近期工具使用情况。</span>
+            </div>
+            <span className="user-center-help-link">
+              <HelpCircle className="size-4" aria-hidden="true" />
+              帮助中心
+            </span>
+          </div>
+        </aside>
+      </div>
+    </section>
+  );
+}
+
+function formatQuotaUnits(value: number | null | undefined) {
+  if (value === null || value === undefined) return "—";
+  return new Intl.NumberFormat("zh-CN").format(value);
+}
+
+function formatUsageDate(value: string) {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "时间未知";
+  return new Intl.DateTimeFormat("zh-CN", {
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+  }).format(date);
+}
+
+function usageOperationLabel(operation: UsageLogEntry["operation"]) {
+  const labels: Record<UsageLogEntry["operation"], string> = {
+    cloud_image_generation: "AI 图像生成器",
+    cloud_video_generation: "AI 视频生成器",
+    cloud_image_upscale: "图片高清",
+    cloud_video_upscale: "视频高清",
+  };
+  return labels[operation] || "AI 工具";
+}
+
+function usageDescription(entry: UsageLogEntry) {
+  const descriptions: Record<UsageLogEntry["operation"], string> = {
+    cloud_image_generation: "生成图片",
+    cloud_video_generation: "生成视频",
+    cloud_image_upscale: "图片高清处理",
+    cloud_video_upscale: "视频高清处理",
+  };
+  if (entry.status === "failed") return `${descriptions[entry.operation] || "工具处理"}失败`;
+  if (entry.status === "refunded") return `${descriptions[entry.operation] || "工具处理"}已退回额度`;
+  return descriptions[entry.operation] || "工具处理";
 }
 
 function ImageGenerator({

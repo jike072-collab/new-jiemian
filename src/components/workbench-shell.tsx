@@ -39,13 +39,16 @@ type WorkbenchShellProps = {
   canAccessAdmin?: boolean;
   accountName?: string | null;
   accountQuotaLabel?: string | null;
+  accountPointsLabel?: string | null;
   headerRightSlot?: ReactNode;
   accountSlot?: ReactNode;
+  accountCloseSignal?: number;
   parameterSlot: ReactNode;
   previewSlot: ReactNode;
   mobileActionSlot?: ReactNode;
   mobilePreviewSignal?: number;
   toolTitle?: string;
+  contentMode?: "default" | "account";
 };
 
 export function WorkbenchShell({
@@ -55,13 +58,16 @@ export function WorkbenchShell({
   canAccessAdmin = false,
   accountName,
   accountQuotaLabel,
+  accountPointsLabel,
   headerRightSlot,
   accountSlot,
+  accountCloseSignal,
   parameterSlot,
   previewSlot,
   mobileActionSlot,
   mobilePreviewSignal,
   toolTitle,
+  contentMode = "default",
 }: WorkbenchShellProps) {
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [pane, setPane] = useState<ShellPane>("parameters");
@@ -73,7 +79,8 @@ export function WorkbenchShell({
 
   const activeTool = workspaceToolById(state.activeToolId) || workspaceToolEntries[0];
   const drawerId = "workspace-mobile-drawer";
-  const singlePaneMobile = activeTool.id === "templates" || activeTool.id === "library";
+  const contentOnly = contentMode === "account";
+  const singlePaneMobile = contentOnly || activeTool.id === "templates" || activeTool.id === "library";
 
   useEffect(() => {
     const frame = window.requestAnimationFrame(() => {
@@ -92,6 +99,14 @@ export function WorkbenchShell({
     });
     return () => window.cancelAnimationFrame(frame);
   }, [mobilePreviewSignal]);
+
+  useEffect(() => {
+    if (!accountCloseSignal) return;
+    const frame = window.requestAnimationFrame(() => {
+      setAccountOpen(false);
+    });
+    return () => window.cancelAnimationFrame(frame);
+  }, [accountCloseSignal]);
 
   useEffect(() => {
     if (!drawerOpen) return;
@@ -136,6 +151,7 @@ export function WorkbenchShell({
       className={cn(
         "shell-root min-h-[100dvh] overflow-hidden bg-[var(--background)] text-[var(--foreground)]",
         `shell-root--tool-${state.activeToolId}`,
+        contentOnly && "shell-root--account-center",
       )}
     >
       <Header
@@ -193,6 +209,7 @@ export function WorkbenchShell({
             canAccessAdmin={canAccessAdmin}
             accountName={accountName}
             accountQuotaLabel={accountQuotaLabel}
+            accountPointsLabel={accountPointsLabel}
             accountOpen={accountOpen}
             onToggleAccount={() => setAccountOpen((value) => !value)}
           />
@@ -304,6 +321,7 @@ function DesktopNavigation({
   canAccessAdmin,
   accountName,
   accountQuotaLabel,
+  accountPointsLabel,
   accountOpen,
   onToggleAccount,
 }: {
@@ -314,6 +332,7 @@ function DesktopNavigation({
   canAccessAdmin: boolean;
   accountName?: string | null;
   accountQuotaLabel?: string | null;
+  accountPointsLabel?: string | null;
   accountOpen: boolean;
   onToggleAccount: () => void;
 }) {
@@ -357,14 +376,14 @@ function DesktopNavigation({
         </div>
       </nav>
 
-      <div className="shell-nav__account" aria-label="账户状态">
+      <div className={cn("shell-nav__account", isAuthenticated && accountOpen && "is-open")} aria-label="账户状态">
         {isAuthenticated ? (
           <>
             <div className="shell-nav-account__main">
               <span className="shell-nav-account__avatar">{avatarText}</span>
               <span className="shell-nav-account__copy">
                 <strong>{displayName}</strong>
-                <span>剩余额度 {accountQuotaLabel || "读取中"}</span>
+                <span>剩余额度 {accountQuotaLabel || "—"} · 积分 {accountPointsLabel || "—"}</span>
               </span>
             </div>
             <div className={cn("shell-nav-account__actions", canAccessAdmin && "is-split")}>
