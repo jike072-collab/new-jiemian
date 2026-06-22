@@ -1,6 +1,6 @@
 "use client";
 
-import { ArrowRight, Loader2, LogOut, RefreshCw, UserRound, WalletCards } from "lucide-react";
+import { ArrowRight, CalendarCheck, Crown, Loader2, LogOut, RefreshCw, Sparkles, UserRound } from "lucide-react";
 
 import type { PublicAuthUser } from "@/lib/server/auth";
 import type { BillingOrder, PublicPaymentChannelConfig } from "@/lib/server/billing";
@@ -23,10 +23,11 @@ type WorkspaceAccountPanelProps = {
   onRefresh: () => void;
   onLogout: () => void;
   onOpenCenter?: () => void;
+  isAccountCenter?: boolean;
 };
 
 function formatQuota(value: number | null | undefined) {
-  if (value === null || value === undefined) return "—";
+  if (value === null || value === undefined) return "0";
   return new Intl.NumberFormat("zh-CN").format(value);
 }
 
@@ -41,14 +42,14 @@ export function WorkspaceAccountPanel({
   onRefresh,
   onLogout,
   onOpenCenter,
+  isAccountCenter = false,
 }: WorkspaceAccountPanelProps) {
   const displayName = user?.display_name || user?.username || "账户";
   const avatarText = displayName.slice(0, 2).toUpperCase();
   const preferredChannel = billingChannels[0] || null;
   const preferredAmount = preferredChannel ? preferredChannel.fixed_amounts[0] || preferredChannel.min_amount : 0;
   const canTopUp = Boolean(user && preferredChannel && !submitting);
-  const usedThisMonth = quota?.used_quota_units;
-  const latestUsage = usage?.entries?.[0];
+  const latestUsageCount = usage?.total ?? usage?.entries?.length ?? 0;
 
   return (
     <div className="account-popover-card" role="dialog" aria-label="快捷账户卡片">
@@ -69,33 +70,33 @@ export function WorkspaceAccountPanel({
         </button>
       </div>
 
-      <div className="account-popover-card__badge">
-        <WalletCards className="size-3.5" aria-hidden="true" />
-        <span>{user?.role === "admin" ? "管理员" : "普通用户"}</span>
+      <div className="account-popover-card__rows">
+        <div>
+          <span>
+            <Sparkles className="size-3.5" aria-hidden="true" />
+            积分
+          </span>
+          <strong>{loading ? "加载中" : `${formatQuota(quota?.quota_units)} 分`}</strong>
+        </div>
+        <div>
+          <span>
+            <Crown className="size-3.5" aria-hidden="true" />
+            当前套餐
+          </span>
+          <strong>暂无套餐</strong>
+        </div>
+        <div>
+          <span>
+            <CalendarCheck className="size-3.5" aria-hidden="true" />
+            签到
+          </span>
+          <strong>连续签到 0 天</strong>
+        </div>
       </div>
 
-      <div className="account-popover-card__stats">
-        <div>
-          <span>可用额度</span>
-          <strong>{formatQuota(quota?.available_quota_units)}</strong>
-        </div>
-        <div>
-          <span>积分</span>
-          <strong>{formatQuota(quota?.quota_units)}</strong>
-        </div>
-        <div>
-          <span>本月已用</span>
-          <strong>{formatQuota(usedThisMonth)}</strong>
-        </div>
-      </div>
-
-      {latestUsage ? (
-        <p className="account-popover-card__hint">
-          最近使用：{formatQuota(latestUsage.actual_quota_units ?? latestUsage.estimated_quota_units)} 点额度
-        </p>
-      ) : (
-        <p className="account-popover-card__hint">额度和积分会在使用工具后自动更新。</p>
-      )}
+      <p className="account-popover-card__hint">
+        {latestUsageCount ? `最近已有 ${formatQuota(latestUsageCount)} 条真实使用记录。` : "开始创作后，使用记录会自动出现在用户中心。"}
+      </p>
 
       <div className="account-popover-card__actions">
         <button
@@ -107,12 +108,18 @@ export function WorkspaceAccountPanel({
           disabled={!canTopUp}
         >
           {submitting ? <Loader2 className="size-4 animate-spin" /> : null}
-          立即充值
+          {preferredChannel ? "立即充值" : "充值暂未开放"}
         </button>
-        <button type="button" className="account-popover-card__secondary" onClick={onOpenCenter}>
-          进入用户中心
-          <ArrowRight className="size-4" aria-hidden="true" />
-        </button>
+        {isAccountCenter ? (
+          <button type="button" className="account-popover-card__secondary" disabled>
+            当前位于用户中心
+          </button>
+        ) : (
+          <button type="button" className="account-popover-card__secondary" onClick={onOpenCenter}>
+            进入用户中心
+            <ArrowRight className="size-4" aria-hidden="true" />
+          </button>
+        )}
         <button type="button" className="account-popover-card__logout" onClick={onLogout} disabled={!user || loading || submitting}>
           <LogOut className="size-4" aria-hidden="true" />
           退出登录

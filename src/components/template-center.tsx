@@ -29,7 +29,7 @@ type AuthSessionResponse =
 
 type QuotaResponse = {
   ok: true;
-  quota: { available_quota_units: number };
+  quota: { quota_units: number; available_quota_units: number };
 };
 
 type TemplateRailProps = {
@@ -213,7 +213,7 @@ export function TemplateCenterView() {
           setSessionUser(session.user);
           try {
             const quotaData = await fetchJson<QuotaResponse>("/api/quota");
-            if (!cancelled) setQuotaLabel(String(quotaData.quota.available_quota_units));
+            if (!cancelled) setQuotaLabel(String(quotaData.quota.quota_units ?? quotaData.quota.available_quota_units));
           } catch {
             if (!cancelled) setQuotaLabel(null);
           }
@@ -241,7 +241,7 @@ export function TemplateCenterView() {
       isAuthenticated={Boolean(sessionUser)}
       canAccessAdmin={sessionUser?.role === "admin"}
       accountName={sessionUser?.display_name || sessionUser?.username || null}
-      accountQuotaLabel={quotaLabel}
+      accountPointsLabel={quotaLabel}
       toolTitle="模板中心"
       parameterSlot={null}
       previewSlot={

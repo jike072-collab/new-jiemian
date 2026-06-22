@@ -3,7 +3,7 @@
 /* eslint-disable @next/next/no-img-element */
 
 import { useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
-import { AlertTriangle, ArrowDownUp, Check, ChevronDown, CreditCard, Download, ExternalLink, HelpCircle, History, ImageUp, Loader2, Play, RefreshCw, Search, Sparkles, Trash2, UploadCloud, WalletCards, Wand2, X } from "lucide-react";
+import { AlertTriangle, ArrowDownUp, CalendarCheck, Check, ChevronDown, Crown, Download, ExternalLink, History, ImageUp, Loader2, Play, RefreshCw, Search, Sparkles, Trash2, UploadCloud, Wand2, X } from "lucide-react";
 import { useRouter, useSearchParams } from "next/navigation";
 
 import { BeforeAfterImageCompare } from "@/components/before-after-image-compare";
@@ -1922,7 +1922,6 @@ export function StudioApp() {
         isAuthenticated={Boolean(sessionUser)}
         canAccessAdmin={sessionUser?.role === "admin"}
         accountName={sessionUser?.display_name || sessionUser?.username || null}
-        accountQuotaLabel={quotaSnapshot ? String(quotaSnapshot.available_quota_units) : null}
         accountPointsLabel={quotaSnapshot ? String(quotaSnapshot.quota_units) : null}
         headerRightSlot={accountHeaderSlot}
         accountCloseSignal={accountCloseSignal}
@@ -1944,6 +1943,7 @@ export function StudioApp() {
             onRefresh={() => void refreshAccountSnapshot()}
             onLogout={() => void handleLogout()}
             onOpenCenter={handleOpenAccountCenter}
+            isAccountCenter={accountCenterOpen}
           />
         )}
         contentMode={accountCenterOpen ? "account" : "default"}
@@ -2071,22 +2071,27 @@ function UserCenterWorkspace({
   const usageEntries = usage?.entries?.slice(0, 6) || [];
   const stats = [
     {
-      label: "可用额度",
-      value: `${formatQuotaUnits(quota?.available_quota_units)} 点`,
-      icon: WalletCards,
-      featured: true,
-    },
-    {
       label: "积分",
-      value: `${formatQuotaUnits(quota?.quota_units)} 分`,
+      value: loading ? "加载中" : `${formatQuotaUnits(quota?.quota_units)} 分`,
+      note: "参与活动可获取更多积分",
       icon: Sparkles,
+      featured: true,
+      action: "立即充值",
+    },
+    {
+      label: "当前套餐",
+      value: "暂无套餐",
+      note: "暂未开通有效套餐",
+      icon: Crown,
       featured: false,
     },
     {
-      label: "本月已用",
-      value: `${formatQuotaUnits(quota?.used_quota_units)} 点`,
-      icon: History,
+      label: "签到",
+      value: "今日未签到",
+      note: "连续签到 0 天",
+      icon: CalendarCheck,
       featured: false,
+      disabledAction: "暂无签到入口",
     },
   ];
 
@@ -2095,11 +2100,11 @@ function UserCenterWorkspace({
       <header className="user-center-page__header">
         <div>
           <h2>用户中心</h2>
-          <p>查看账户与额度信息</p>
+          <p>查看积分、套餐与签到信息</p>
         </div>
         <button type="button" className="user-center-refresh" onClick={onRefresh} disabled={loading}>
           {loading ? <Loader2 className="size-4 animate-spin" /> : <RefreshCw className="size-4" />}
-          刷新
+          刷新数据
         </button>
       </header>
 
@@ -2113,8 +2118,27 @@ function UserCenterWorkspace({
                   <span className="user-center-stat__icon">
                     <Icon className="size-4" aria-hidden="true" />
                   </span>
-                  <span>{item.label}</span>
+                  <span className="user-center-stat__label">{item.label}</span>
                   <strong>{item.value}</strong>
+                  <small>{item.note}</small>
+                  {item.action ? (
+                    <button
+                      type="button"
+                      className="user-center-stat__button"
+                      onClick={() => {
+                        if (preferredChannel) onTopUp(preferredChannel, preferredAmount);
+                      }}
+                      disabled={!canTopUp}
+                    >
+                      {submitting ? <Loader2 className="size-4 animate-spin" /> : null}
+                      {preferredChannel ? item.action : "充值暂未开放"}
+                    </button>
+                  ) : null}
+                  {item.disabledAction ? (
+                    <button type="button" className="user-center-stat__button user-center-stat__button--muted" disabled>
+                      {item.disabledAction}
+                    </button>
+                  ) : null}
                 </article>
               );
             })}
@@ -2124,23 +2148,40 @@ function UserCenterWorkspace({
             <div className="user-center-section-head">
               <div>
                 <h3>最近使用记录</h3>
-                <p>只展示最近的真实额度消耗。</p>
+                <p>仅展示最近的真实使用记录。</p>
               </div>
             </div>
 
-            {usageEntries.length ? (
+            {loading && !usageEntries.length ? (
               <div className="user-center-usage__list">
                 <div className="user-center-usage__row user-center-usage__row--head" aria-hidden="true">
                   <span>时间</span>
                   <span>功能</span>
-                  <span>消耗额度</span>
+                  <span>积分变动</span>
+                  <span>描述</span>
+                </div>
+                {Array.from({ length: 5 }).map((_, index) => (
+                  <div key={index} className="user-center-usage__row user-center-usage__row--skeleton" aria-hidden="true">
+                    <span />
+                    <span />
+                    <span />
+                    <span />
+                  </div>
+                ))}
+              </div>
+            ) : usageEntries.length ? (
+              <div className="user-center-usage__list">
+                <div className="user-center-usage__row user-center-usage__row--head" aria-hidden="true">
+                  <span>时间</span>
+                  <span>功能</span>
+                  <span>积分变动</span>
                   <span>描述</span>
                 </div>
                 {usageEntries.map((entry) => (
                   <div key={entry.id} className="user-center-usage__row">
                     <span>{formatUsageDate(entry.created_at)}</span>
                     <strong>{usageOperationLabel(entry.operation)}</strong>
-                    <em>-{formatQuotaUnits(entry.actual_quota_units ?? entry.estimated_quota_units)}</em>
+                    <em>-{formatQuotaUnits(entry.actual_quota_units ?? entry.estimated_quota_units)} 分</em>
                     <span>{usageDescription(entry)}</span>
                   </div>
                 ))}
@@ -2154,50 +2195,13 @@ function UserCenterWorkspace({
             )}
           </section>
         </div>
-
-        <aside className="user-center-aside" aria-label="账户说明">
-          <div className="user-center-profile">
-            <span>{(user?.display_name || user?.username || "账户").slice(0, 2).toUpperCase()}</span>
-            <strong>{user?.display_name || user?.username || "账户"}</strong>
-            <small>{user?.email || "未登录"}</small>
-          </div>
-          <button
-            type="button"
-            className="user-center-topup"
-            onClick={() => {
-              if (preferredChannel) onTopUp(preferredChannel, preferredAmount);
-            }}
-            disabled={!canTopUp}
-          >
-            {submitting ? <Loader2 className="size-4 animate-spin" /> : <CreditCard className="size-4" aria-hidden="true" />}
-            立即充值
-          </button>
-          <div className="user-center-aside__notes">
-            <div>
-              <strong>额度说明</strong>
-              <span>生成、编辑和高清处理会按当前工具规则消耗额度。</span>
-            </div>
-            <div>
-              <strong>积分说明</strong>
-              <span>积分展示来自当前账户额度数据，用于快速查看账户余额。</span>
-            </div>
-            <div>
-              <strong>本月已用</strong>
-              <span>用于帮助你了解近期工具使用情况。</span>
-            </div>
-            <span className="user-center-help-link">
-              <HelpCircle className="size-4" aria-hidden="true" />
-              帮助中心
-            </span>
-          </div>
-        </aside>
       </div>
     </section>
   );
 }
 
 function formatQuotaUnits(value: number | null | undefined) {
-  if (value === null || value === undefined) return "—";
+  if (value === null || value === undefined) return "0";
   return new Intl.NumberFormat("zh-CN").format(value);
 }
 

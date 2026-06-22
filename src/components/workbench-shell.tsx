@@ -7,7 +7,6 @@ import {
   Menu,
   PanelLeft,
   PanelRight,
-  Settings,
   UserRound,
   X,
 } from "lucide-react";
@@ -38,7 +37,6 @@ type WorkbenchShellProps = {
   isAuthenticated: boolean;
   canAccessAdmin?: boolean;
   accountName?: string | null;
-  accountQuotaLabel?: string | null;
   accountPointsLabel?: string | null;
   headerRightSlot?: ReactNode;
   accountSlot?: ReactNode;
@@ -57,7 +55,6 @@ export function WorkbenchShell({
   isAuthenticated,
   canAccessAdmin = false,
   accountName,
-  accountQuotaLabel,
   accountPointsLabel,
   headerRightSlot,
   accountSlot,
@@ -75,6 +72,7 @@ export function WorkbenchShell({
   const drawerRef = useRef<HTMLDivElement>(null);
   const drawerButtonRef = useRef<HTMLButtonElement>(null);
   const rootRef = useRef<HTMLDivElement>(null);
+  const desktopAccountRef = useRef<HTMLDivElement>(null);
   const previousOverflowRef = useRef("");
 
   const activeTool = workspaceToolById(state.activeToolId) || workspaceToolEntries[0];
@@ -107,6 +105,34 @@ export function WorkbenchShell({
     });
     return () => window.cancelAnimationFrame(frame);
   }, [accountCloseSignal]);
+
+  useEffect(() => {
+    const frame = window.requestAnimationFrame(() => {
+      setAccountOpen(false);
+    });
+    return () => window.cancelAnimationFrame(frame);
+  }, [state.activeToolId, contentMode]);
+
+  useEffect(() => {
+    if (!accountOpen) return;
+    const onPointerDown = (event: PointerEvent) => {
+      const target = event.target;
+      if (!(target instanceof Node)) return;
+      if (target instanceof Element && target.closest(".account-popover-card, .shell-account")) return;
+      if (desktopAccountRef.current?.contains(target)) return;
+      if (rootRef.current?.querySelector(".shell-header__actions")?.contains(target)) return;
+      setAccountOpen(false);
+    };
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setAccountOpen(false);
+    };
+    window.addEventListener("pointerdown", onPointerDown);
+    window.addEventListener("keydown", onKeyDown);
+    return () => {
+      window.removeEventListener("pointerdown", onPointerDown);
+      window.removeEventListener("keydown", onKeyDown);
+    };
+  }, [accountOpen]);
 
   useEffect(() => {
     if (!drawerOpen) return;
@@ -167,23 +193,12 @@ export function WorkbenchShell({
         drawerOpen={drawerOpen}
       />
 
-      {isAuthenticated && accountOpen ? (
-        <div className="shell-account-popover">
-          {accountSlot ? (
-            accountSlot
-          ) : (
-            <div className="rounded-[1.5rem] border border-white/10 bg-[#0f0f13] p-4 text-sm text-white/68 shadow-[0_20px_60px_rgba(0,0,0,0.28)]">
-              <p className="text-white/92">账户功能暂未加载。</p>
-            </div>
-          )}
-        </div>
-      ) : null}
-
       <MobileOverlay
         activeTool={activeTool}
         drawerOpen={drawerOpen}
         pane={pane}
         singlePane={singlePaneMobile}
+        accountCenterActive={contentOnly}
         onClose={() => setDrawerOpen(false)}
         onSelect={(action, tool) => {
           onToolAction(action, tool);
@@ -208,9 +223,11 @@ export function WorkbenchShell({
             isAuthenticated={isAuthenticated}
             canAccessAdmin={canAccessAdmin}
             accountName={accountName}
-            accountQuotaLabel={accountQuotaLabel}
             accountPointsLabel={accountPointsLabel}
             accountOpen={accountOpen}
+            accountCenterActive={contentOnly}
+            accountSlot={accountSlot}
+            accountContainerRef={desktopAccountRef}
             onToggleAccount={() => setAccountOpen((value) => !value)}
           />
 
@@ -320,9 +337,11 @@ function DesktopNavigation({
   isAuthenticated,
   canAccessAdmin,
   accountName,
-  accountQuotaLabel,
   accountPointsLabel,
   accountOpen,
+  accountCenterActive,
+  accountSlot,
+  accountContainerRef,
   onToggleAccount,
 }: {
   activeToolId: WorkspaceToolId;
@@ -331,9 +350,11 @@ function DesktopNavigation({
   isAuthenticated: boolean;
   canAccessAdmin: boolean;
   accountName?: string | null;
-  accountQuotaLabel?: string | null;
   accountPointsLabel?: string | null;
   accountOpen: boolean;
+  accountCenterActive: boolean;
+  accountSlot?: ReactNode;
+  accountContainerRef: RefObject<HTMLDivElement | null>;
   onToggleAccount: () => void;
 }) {
   const displayName = accountName || "账户";
@@ -364,7 +385,7 @@ function DesktopNavigation({
                     <ToolButton
                       key={item.id}
                       item={item}
-                      active={activeToolId === item.id}
+                      active={!accountCenterActive && activeToolId === item.id}
                       showDescription={false}
                       onClick={() => onSelect(item.action, item.id)}
                     />
@@ -376,32 +397,44 @@ function DesktopNavigation({
         </div>
       </nav>
 
-      <div className={cn("shell-nav__account", isAuthenticated && accountOpen && "is-open")} aria-label="账户状态">
+      <div
+        ref={accountContainerRef}
+        className={cn("shell-nav__account", isAuthenticated && accountOpen && "is-open", accountCenterActive && "is-active")}
+        aria-label="账户状态"
+      >
         {isAuthenticated ? (
           <>
             <div className="shell-nav-account__main">
               <span className="shell-nav-account__avatar">{avatarText}</span>
               <span className="shell-nav-account__copy">
                 <strong>{displayName}</strong>
-                <span>剩余额度 {accountQuotaLabel || "—"} · 积分 {accountPointsLabel || "—"}</span>
+                <span>剩余积分 {accountPointsLabel || "0"}</span>
               </span>
             </div>
-            <div className={cn("shell-nav-account__actions", canAccessAdmin && "is-split")}>
+            <div className="shell-nav-account__actions is-split">
               <button
                 type="button"
-                className={cn("shell-nav-account__button", accountOpen && "is-active")}
+                className={cn("shell-nav-account__button", accountCenterActive && "is-active")}
                 onClick={onToggleAccount}
               >
                 <UserRound className="size-4" aria-hidden="true" />
                 账户中心
               </button>
-              {canAccessAdmin ? (
-                <Link href="/admin/providers" className="shell-nav-account__button shell-nav-account__button--admin">
-                  <Settings className="size-4" aria-hidden="true" />
-                  后台管理
-                </Link>
-              ) : null}
+              <button type="button" className="shell-nav-account__button shell-nav-account__button--secondary" onClick={onToggleAccount}>
+                充值
+              </button>
             </div>
+            {accountOpen ? (
+              <div className="shell-nav-account__popover">
+                {accountSlot ? (
+                  accountSlot
+                ) : (
+                  <div className="rounded-[1.5rem] border border-white/10 bg-[#0f0f13] p-4 text-sm text-white/68 shadow-[0_20px_60px_rgba(0,0,0,0.28)]">
+                    <p className="text-white/92">账户功能暂未加载。</p>
+                  </div>
+                )}
+              </div>
+            ) : null}
           </>
         ) : (
           <>
@@ -430,6 +463,7 @@ function MobileOverlay({
   drawerOpen,
   pane,
   singlePane,
+  accountCenterActive,
   onClose,
   onSelect,
   onChangePane,
@@ -445,6 +479,7 @@ function MobileOverlay({
   drawerOpen: boolean;
   pane: ShellPane;
   singlePane: boolean;
+  accountCenterActive: boolean;
   onClose: () => void;
   onSelect: (action: WorkspaceAction, tool: WorkspaceToolId) => void;
   onChangePane: (value: ShellPane) => void;
@@ -531,7 +566,7 @@ function MobileOverlay({
                     <ToolButton
                       key={item.id}
                       item={item}
-                      active={activeTool.id === item.id}
+                      active={!accountCenterActive && activeTool.id === item.id}
                       showDescription={false}
                       onClick={() => {
                         onSelect(item.action, item.id);
