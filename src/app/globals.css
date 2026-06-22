@@ -4987,6 +4987,8 @@
     border-radius: 18px;
     background: rgba(10, 10, 14, 0.48);
     box-shadow: 0 16px 36px rgba(0, 0, 0, 0.24);
+    opacity: 1;
+    transform: translateZ(0);
   }
 
   .image-tutorial-simple__image-shell::after {
@@ -5017,6 +5019,8 @@
       linear-gradient(90deg, transparent 0%, rgba(0, 0, 0, 0.48) 5%, #000 16%, #000 96%, rgba(0, 0, 0, 0.72) 100%),
       radial-gradient(ellipse at center, #000 78%, rgba(0, 0, 0, 0.94) 90%, rgba(0, 0, 0, 0.58) 98%, transparent 100%);
     mask-composite: intersect;
+    transform: scale(1);
+    transform-origin: center;
   }
 
   .image-tutorial-simple__overlay {
@@ -5035,6 +5039,14 @@
       12px 16px 34px rgba(0, 0, 0, 0.3),
       inset 0 1px 0 rgba(255, 255, 255, 0.09),
       inset 0 -1px 0 rgba(255, 255, 255, 0.035);
+    opacity: 1;
+    transform: translate3d(0, 0, 0);
+    transition:
+      opacity var(--motion-layout) var(--ease-enter),
+      transform var(--motion-layout) var(--ease-enter),
+      border-color var(--motion-fast) var(--ease-enter),
+      background var(--motion-fast) var(--ease-enter),
+      filter var(--motion-fast) var(--ease-enter);
   }
 
   .image-tutorial-simple__overlay::before {
@@ -5095,6 +5107,14 @@
     text-align: center;
   }
 
+  .image-tutorial-simple__overlay:hover {
+    border-color: rgba(255, 255, 255, 0.16);
+    background:
+      linear-gradient(90deg, rgba(24, 23, 28, 0.18), rgba(24, 23, 28, 0.64) 20%, rgba(24, 23, 28, 0.88) 100%),
+      linear-gradient(135deg, rgba(255, 255, 255, 0.15), rgba(255, 255, 255, 0.035) 46%, transparent 72%);
+    filter: brightness(1.08);
+  }
+
   .image-tutorial-simple__overlay--ratio i {
     display: block;
     width: 46px;
@@ -5104,6 +5124,11 @@
     border-radius: 4px;
     background: color-mix(in srgb, var(--primary) 84%, transparent);
     box-shadow: 0 0 0 1px color-mix(in srgb, var(--primary) 28%, transparent);
+  }
+
+  .studio-result-reveal {
+    display: grid;
+    gap: 14px;
   }
 
   .studio-preview:has(.image-editor-tutorial) {
@@ -5358,8 +5383,12 @@
   }
 
   @media (prefers-reduced-motion: reduce) {
+    .image-tutorial-simple__image-shell,
+    .image-tutorial-simple__image,
+    .image-tutorial-simple__overlay,
     .tutorial-source-image,
     .tutorial-prompt-bubble {
+      animation: none !important;
       transition: none;
     }
 
@@ -5378,6 +5407,22 @@
   }
 
   @media (prefers-reduced-motion: no-preference) {
+    .image-tutorial-simple__image-shell {
+      animation: image-tutorial-main-in var(--motion-entrance) var(--ease-enter) both;
+    }
+
+    .image-tutorial-simple__image {
+      animation: image-tutorial-image-in 760ms var(--ease-enter) both;
+    }
+
+    .image-tutorial-simple__overlay--prompt {
+      animation: image-tutorial-overlay-in 520ms var(--ease-enter) 180ms both;
+    }
+
+    .image-tutorial-simple__overlay--ratio {
+      animation: image-tutorial-overlay-in 520ms var(--ease-enter) 360ms both;
+    }
+
     .image-editor-tutorial__canvas {
       animation: studio-tutorial-in 220ms ease-out both;
     }
@@ -5576,6 +5621,42 @@
     to {
       opacity: 1;
       transform: translateY(0);
+    }
+  }
+
+  @keyframes image-tutorial-main-in {
+    from {
+      opacity: 0;
+      transform: translateY(10px) scale(0.985);
+    }
+
+    to {
+      opacity: 1;
+      transform: translateY(0) scale(1);
+    }
+  }
+
+  @keyframes image-tutorial-image-in {
+    from {
+      opacity: 0;
+      transform: scale(1.025);
+    }
+
+    to {
+      opacity: 1;
+      transform: scale(1);
+    }
+  }
+
+  @keyframes image-tutorial-overlay-in {
+    from {
+      opacity: 0;
+      transform: translate3d(0, 10px, 0) scale(0.985);
+    }
+
+    to {
+      opacity: 1;
+      transform: translate3d(0, 0, 0) scale(1);
     }
   }
 

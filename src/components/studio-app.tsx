@@ -7,6 +7,7 @@ import { AlertTriangle, ArrowDownUp, CalendarCheck, Check, ChevronDown, Crown, D
 import { useRouter, useSearchParams } from "next/navigation";
 
 import { BeforeAfterImageCompare } from "@/components/before-after-image-compare";
+import { ResultReveal } from "@/components/motion";
 import { WorkbenchShell } from "@/components/workbench-shell";
 import { TemplateRail } from "@/components/template-center";
 import { WorkspaceAccountPanel } from "@/components/workspace-account-panel";
@@ -4120,8 +4121,8 @@ function ImagePreviewPanel({
   }
 
   if (output) {
-    return (
-      <PreviewState eyebrow="结果" title="结果" badge={libraryStatusBadgeLabel(output.item.status)} role="status" live>
+    const resultContent = (
+      <>
         <MediaCard item={output.item} large compact />
         <div className="studio-actions studio-actions--result">
           {output.item.output?.url ? (
@@ -4141,6 +4142,12 @@ function ImagePreviewPanel({
             放大
           </button>
         </div>
+      </>
+    );
+
+    return (
+      <PreviewState eyebrow="结果" title="结果" badge={libraryStatusBadgeLabel(output.item.status)} role="status" live>
+        {isEditor ? resultContent : <ResultReveal className="studio-result-reveal">{resultContent}</ResultReveal>}
       </PreviewState>
     );
   }
