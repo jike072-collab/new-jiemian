@@ -3081,7 +3081,7 @@ function ImageEditorTutorial() {
         <div className="image-editor-tutorial__canvas" aria-label="图片编辑器示例图片">
           <svg className="image-editor-tutorial__path" viewBox="0 0 980 520" aria-hidden="true">
             <path className="image-editor-tutorial__dash" d="M18 425C98 190 238 330 365 265C487 202 575 262 690 170C750 122 810 82 862 52" />
-            <g className="image-editor-plane-mark" transform="translate(862 52) rotate(8) scale(0.68) translate(-9 -39)">
+            <g className="image-editor-plane-mark">
               <path d="M9 30 56 9 42 56 32 39 9 48 25 33 9 30Z" fill="none" stroke="currentColor" strokeWidth="4.6" strokeLinecap="round" strokeLinejoin="round" />
             </g>
           </svg>
@@ -3089,7 +3089,10 @@ function ImageEditorTutorial() {
           <figure className="image-editor-photo image-editor-photo--input image-editor-photo--single-source">
             <img src="/tutorials/image-editor/single-source.png" alt="方形粉色香水瓶白底素材" />
           </figure>
-          <img className="image-editor-arrow image-editor-arrow--single" src="/tutorials/image-editor/pink-arrow.png" alt="" aria-hidden="true" />
+          <svg className="image-editor-arrow image-editor-arrow--single" viewBox="0 0 128 74" aria-hidden="true" focusable="false">
+            <path className="image-editor-arrow__path" d="M7 50C34 12 83 10 113 36" />
+            <path className="image-editor-arrow__head" d="M99 33L116 38L104 51" />
+          </svg>
           <span className="image-editor-prompt image-editor-prompt--single">
             <span>+</span>
             <span>提示词</span>
@@ -3104,7 +3107,10 @@ function ImageEditorTutorial() {
           <figure className="image-editor-photo image-editor-photo--input image-editor-photo--merge-scene">
             <img src="/tutorials/image-editor/merge-scene.png" alt="新中式牡丹场景素材" />
           </figure>
-          <img className="image-editor-arrow image-editor-arrow--merge" src="/tutorials/image-editor/pink-arrow.png" alt="" aria-hidden="true" />
+          <svg className="image-editor-arrow image-editor-arrow--merge" viewBox="0 0 128 74" aria-hidden="true" focusable="false">
+            <path className="image-editor-arrow__path" d="M7 50C34 12 83 10 113 36" />
+            <path className="image-editor-arrow__head" d="M99 33L116 38L104 51" />
+          </svg>
           <span className="image-editor-prompt image-editor-prompt--merge">
             <span>+</span>
             <span>提示词</span>
