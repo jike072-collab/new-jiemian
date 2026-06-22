@@ -2351,7 +2351,7 @@
     position: relative;
     display: grid;
     container-type: inline-size;
-    --video-guide-visual-width: clamp(294px, 40cqw, 376px);
+    --video-guide-visual-width: clamp(294px, 42cqw, 392px);
     --video-guide-visual-height: calc(var(--video-guide-visual-width) * 0.652);
     --video-guide-column-gap: 22px;
     --video-guide-pair-width: calc(var(--video-guide-visual-width) + var(--video-guide-column-gap) + var(--video-guide-visual-width));
