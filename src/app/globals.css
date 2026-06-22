@@ -4174,34 +4174,6 @@
     content: "";
   }
 
-  .video-tutorial-result-slot__play {
-    position: absolute;
-    top: 50%;
-    left: 50%;
-    z-index: 3;
-    width: 46px;
-    height: 46px;
-    border: 1px solid rgba(255, 255, 255, 0.34);
-    border-radius: 999px;
-    background: rgba(0, 0, 0, 0.38);
-    box-shadow: 0 14px 34px rgba(0, 0, 0, 0.38);
-    transform: translate(-50%, -50%);
-    backdrop-filter: blur(8px);
-  }
-
-  .video-tutorial-result-slot__play::after {
-    position: absolute;
-    top: 50%;
-    left: 53%;
-    width: 0;
-    height: 0;
-    border-top: 9px solid transparent;
-    border-bottom: 9px solid transparent;
-    border-left: 14px solid #fff;
-    content: "";
-    transform: translate(-50%, -50%);
-  }
-
   .studio-walkthrough__layer {
     position: absolute;
     display: block;

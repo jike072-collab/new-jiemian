@@ -3104,7 +3104,7 @@ function ImageEditorTutorial() {
 }
 
 const videoTutorialPromptText = "雨天城市街头，女生撑透明雨伞缓慢向前行走，并自然回头看向镜头。";
-const videoTutorialResultVideoSrc = "";
+const videoTutorialResultVideoSrc = "/tutorials/video-generator/demo-result.mp4";
 
 type VideoTutorialImagePhase = "hidden" | "dragging" | "landed";
 
@@ -3114,6 +3114,7 @@ function VideoTutorialInputDemo() {
   const [uploadTargetActive, setUploadTargetActive] = useState(false);
   const [bubbleVisible, setBubbleVisible] = useState(false);
   const [typedText, setTypedText] = useState("");
+  const [animationCycle, setAnimationCycle] = useState(0);
   const [isInView, setIsInView] = useState(true);
   const [reducedMotion, setReducedMotion] = useState(false);
   const sourceImageLanded = reducedMotion || imagePhase === "landed";
@@ -3156,6 +3157,7 @@ function VideoTutorialInputDemo() {
       setUploadTargetActive(false);
       setBubbleVisible(false);
       setTypedText("");
+      setAnimationCycle((value) => value + 1);
 
       timers.push(
         setTimeout(() => setImagePhase("dragging"), 650),
@@ -3204,6 +3206,7 @@ function VideoTutorialInputDemo() {
       <span className={cn("tutorial-upload-target-ring", uploadTargetActive && "is-active")} aria-hidden="true" />
 
       <img
+        key={animationCycle}
         src="/tutorials/video-generator/input-person.png"
         alt=""
         className={cn(
@@ -3229,11 +3232,10 @@ function VideoTutorialResultSlot() {
       </div>
       <div className="video-tutorial-result-slot__media">
         {videoTutorialResultVideoSrc ? (
-          <video src={videoTutorialResultVideoSrc} poster="/tutorials/video-generator/input-person.png" autoPlay muted loop playsInline preload="metadata" />
+          <video src={videoTutorialResultVideoSrc} poster="/tutorials/video-generator/input-person.png" autoPlay muted loop playsInline preload="auto" />
         ) : (
           <video poster="/tutorials/video-generator/input-person.png" muted playsInline preload="metadata" aria-label="视频结果预留位" />
         )}
-        <span className="video-tutorial-result-slot__play" aria-hidden="true" />
       </div>
     </div>
   );
