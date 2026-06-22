@@ -217,20 +217,30 @@ export default function AuthShaderBackground() {
       lastWidth = width;
       lastHeight = height;
 
-      const baseCount = window.innerWidth < 768 ? 42 : window.innerWidth < 1280 ? 72 : 112;
+      const baseCount = window.innerWidth < 768 ? 46 : window.innerWidth < 1280 ? 78 : 124;
       stars = Array.from({ length: baseCount }, () => {
-        const isRightSide = Math.random() > 0.72;
-        const x = isRightSide ? 0.58 + Math.random() * 0.4 : Math.random() * 0.66;
+        const seed = Math.random();
+        const isArcSide = seed < 0.24;
+        const isRightSide = !isArcSide && seed > 0.72;
+        const arcProgress = Math.random();
+        const x = isArcSide
+          ? 0.02 + arcProgress * 0.55 + (Math.random() - 0.5) * 0.05
+          : isRightSide
+            ? 0.62 + Math.random() * 0.34
+            : Math.random() * 0.66;
+        const y = isArcSide
+          ? 0.76 - Math.sin(arcProgress * Math.PI * 0.78) * 0.32 + (Math.random() - 0.5) * 0.06
+          : Math.random();
         return {
           driftX: (Math.random() - 0.5) * 0.0045,
           driftY: (Math.random() - 0.5) * 0.0038,
           hue: Math.random() > 0.58 ? 286 : 330,
-          opacity: (isRightSide ? 0.18 : 0.3) + Math.random() * (isRightSide ? 0.22 : 0.32),
-          radius: (isRightSide ? 0.54 : 0.62) + Math.random() * 1.05,
+          opacity: (isRightSide ? 0.16 : isArcSide ? 0.26 : 0.3) + Math.random() * (isRightSide ? 0.18 : 0.28),
+          radius: (isRightSide ? 0.5 : isArcSide ? 0.54 : 0.62) + Math.random() * 0.96,
           twinkleOffset: Math.random() * Math.PI * 2,
           twinkleSpeed: 0.18 + Math.random() * 0.36,
-          x,
-          y: Math.random(),
+          x: Math.min(0.98, Math.max(0.02, x)),
+          y: Math.min(0.96, Math.max(0.04, y)),
         };
       });
     }
