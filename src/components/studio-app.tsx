@@ -4388,6 +4388,8 @@ function CompactDropzone({
   onDraggingChange?: (dragging: boolean) => void;
 }) {
   const helpId = `${inputId}-help`;
+  const hasFiles = files.length > 0;
+  const currentTitle = dragging ? "松开以上传" : hasFiles ? filledTitle : emptyTitle;
 
   const applyFiles = useCallback((fileList: FileList | File[]) => {
     const nextFiles = Array.from(fileList);
@@ -4398,7 +4400,7 @@ function CompactDropzone({
   return (
     <div className="studio-upload-group">
       <div
-        className={cn("studio-upload", dragging && "is-dragging", error && "is-error")}
+        className={cn("studio-upload", dragging && "is-dragging", hasFiles && "is-filled", error && "is-error")}
         role="button"
         tabIndex={0}
         aria-controls={inputId}
@@ -4425,7 +4427,7 @@ function CompactDropzone({
           ref={inputRef}
           id={inputId}
           type="file"
-          aria-label={files.length ? filledTitle : emptyTitle}
+          aria-label={currentTitle}
           aria-describedby={helpId}
           accept={accept}
           multiple={multiple}
@@ -4439,13 +4441,14 @@ function CompactDropzone({
           <UploadCloud className="size-5" />
         </div>
         <div className="studio-upload__content">
-          <strong>{files.length ? filledTitle : emptyTitle}</strong>
+          <strong>{currentTitle}</strong>
           <p id={helpId}>{helpText}</p>
-          {files.length ? <span>点击区域可替换文件</span> : null}
+          {dragging ? <span className="studio-upload__drop-hint">释放后自动读取文件</span> : null}
+          {hasFiles && !dragging ? <span>点击区域可替换文件</span> : null}
         </div>
       </div>
 
-      {files.length ? (
+      {hasFiles ? (
         <div className="studio-upload-list">
           {files.map((file, index) => (
             <div key={`${file.name}-${file.size}-${index}`} className="studio-upload-item">

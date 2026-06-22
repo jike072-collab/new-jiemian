@@ -1322,6 +1322,7 @@
 
   .studio-mode__options {
     display: inline-grid;
+    position: relative;
     width: 100%;
     gap: 4px;
     grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -1352,13 +1353,32 @@
   }
 
   .studio-mode__button {
+    position: relative;
     min-height: 36px;
+    isolation: isolate;
+    overflow: hidden;
     border-color: transparent;
     background: transparent;
     padding: 0 12px;
     color: var(--muted-strong);
     font-size: 14px;
     font-weight: 500;
+  }
+
+  .studio-mode__button::before {
+    content: "";
+    position: absolute;
+    inset: 1px;
+    z-index: -1;
+    border-radius: calc(var(--radius-control) - 2px);
+    background:
+      linear-gradient(135deg, color-mix(in srgb, var(--primary) 22%, transparent), color-mix(in srgb, #a452ff 16%, transparent)),
+      color-mix(in srgb, var(--surface-hover) 70%, transparent);
+    opacity: 0;
+    transform: scale(0.96);
+    transition:
+      opacity var(--motion-fast) var(--ease-enter),
+      transform var(--motion-fast) var(--ease-enter);
   }
 
   .studio-mode__button:hover,
@@ -1381,8 +1401,12 @@
   }
 
   .studio-mode__button:hover:not(.is-active) {
-    background: color-mix(in srgb, var(--surface-hover) 76%, transparent);
     color: var(--foreground);
+  }
+
+  .studio-mode__button:hover:not(.is-active)::before {
+    opacity: 0.42;
+    transform: scale(1);
   }
 
   .studio-mode__button:active,
@@ -1396,8 +1420,15 @@
   }
 
   .studio-mode__button.is-active {
-    background: color-mix(in srgb, var(--primary-soft) 84%, var(--surface));
+    border-color: color-mix(in srgb, var(--primary) 38%, transparent);
+    background: transparent;
     color: var(--primary);
+    box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--primary) 14%, transparent);
+  }
+
+  .studio-mode__button.is-active::before {
+    opacity: 1;
+    transform: scale(1);
   }
 
   .studio-template-scroll {
@@ -1968,12 +1999,15 @@
   }
 
   .studio-custom-select__option {
+    position: relative;
     display: flex;
     min-height: 38px;
     width: 100%;
     align-items: center;
     justify-content: space-between;
     gap: 8px;
+    isolation: isolate;
+    overflow: hidden;
     border: 0;
     border-radius: 6px;
     background: transparent;
@@ -1986,16 +2020,42 @@
       color var(--motion-fast) var(--ease-enter);
   }
 
+  .studio-custom-select__option::before {
+    content: "";
+    position: absolute;
+    inset: 1px;
+    z-index: -1;
+    border-radius: 5px;
+    background: color-mix(in srgb, var(--primary) 16%, var(--surface));
+    opacity: 0;
+    transform: scaleX(0.96);
+    transform-origin: center;
+    transition:
+      opacity var(--motion-fast) var(--ease-enter),
+      transform var(--motion-fast) var(--ease-enter);
+  }
+
   .studio-custom-select__option:hover,
   .studio-custom-select__option.is-active {
-    background: color-mix(in srgb, var(--surface) 76%, transparent);
+    background: color-mix(in srgb, var(--surface-hover) 58%, transparent);
     color: var(--foreground);
   }
 
+  .studio-custom-select__option.is-active::before,
+  .studio-custom-select__option:hover::before {
+    opacity: 0.42;
+    transform: scaleX(1);
+  }
+
   .studio-custom-select__option.is-selected {
-    background: color-mix(in srgb, var(--primary) 24%, var(--surface));
+    background: color-mix(in srgb, var(--primary) 18%, var(--surface));
     color: var(--primary);
     font-weight: 650;
+  }
+
+  .studio-custom-select__option.is-selected::before {
+    opacity: 1;
+    transform: scaleX(1);
   }
 
   .studio-custom-select__option:active:not(:disabled) {
@@ -2060,18 +2120,72 @@
     background: color-mix(in srgb, var(--surface) 88%, var(--panel-2));
     padding: 18px;
     cursor: pointer;
-    transition: border-color var(--motion-base), background var(--motion-base);
+    overflow: hidden;
+    transition:
+      transform var(--motion-fast) var(--ease-enter),
+      border-color var(--motion-fast) var(--ease-enter),
+      background var(--motion-fast) var(--ease-enter),
+      box-shadow var(--motion-fast) var(--ease-enter);
+  }
+
+  .studio-upload::before {
+    content: "";
+    position: absolute;
+    inset: 1px;
+    z-index: 0;
+    border-radius: calc(var(--radius-control) - 2px);
+    border: 1px dashed transparent;
+    background:
+      radial-gradient(circle at 50% 0%, color-mix(in srgb, var(--primary) 14%, transparent), transparent 58%),
+      linear-gradient(135deg, color-mix(in srgb, var(--primary) 9%, transparent), color-mix(in srgb, #a452ff 7%, transparent));
+    opacity: 0;
+    transform: scale(0.985);
+    transition:
+      opacity var(--motion-fast) var(--ease-enter),
+      transform var(--motion-fast) var(--ease-enter),
+      border-color var(--motion-fast) var(--ease-enter);
+  }
+
+  .studio-upload > :not(.studio-file-input) {
+    position: relative;
+    z-index: 1;
   }
 
   .studio-upload:hover,
-  .studio-upload.is-dragging,
   .studio-upload:focus-within {
+    border-color: color-mix(in srgb, var(--primary) 50%, transparent);
+    background: color-mix(in srgb, var(--primary-soft) 34%, var(--surface));
+  }
+
+  .studio-upload:hover::before,
+  .studio-upload:focus-within::before,
+  .studio-upload.is-filled::before {
+    opacity: 0.55;
+    transform: scale(1);
+  }
+
+  .studio-upload.is-dragging {
     border-color: var(--primary);
-    background: color-mix(in srgb, var(--primary-soft) 46%, var(--surface));
+    background: color-mix(in srgb, var(--primary-soft) 58%, var(--surface));
+    box-shadow:
+      inset 0 0 0 1px color-mix(in srgb, var(--primary) 22%, transparent),
+      0 16px 36px color-mix(in srgb, var(--primary) 10%, transparent);
+  }
+
+  .studio-upload.is-dragging::before {
+    border-color: color-mix(in srgb, var(--primary) 54%, transparent);
+    opacity: 1;
+    transform: scale(1);
+  }
+
+  .studio-upload.is-filled {
+    border-color: color-mix(in srgb, var(--primary) 28%, var(--border-subtle));
+    background: color-mix(in srgb, var(--surface-hover) 48%, var(--surface));
   }
 
   .studio-upload.is-error {
-    border-color: color-mix(in srgb, var(--primary) 72%, transparent);
+    border-color: color-mix(in srgb, #ff4d8d 72%, transparent);
+    background: color-mix(in srgb, #ff2b88 10%, var(--surface));
   }
 
   .studio-upload:focus-visible {
@@ -2085,8 +2199,21 @@
     height: 38px;
     place-items: center;
     border-radius: var(--radius-control);
-    background: color-mix(in srgb, var(--panel-2) 78%, transparent);
     color: var(--muted-strong);
+    transition:
+      transform var(--motion-fast) var(--ease-enter),
+      color var(--motion-fast) var(--ease-enter);
+  }
+
+  .studio-upload:hover .studio-upload__icon,
+  .studio-upload:focus-within .studio-upload__icon,
+  .studio-upload.is-filled .studio-upload__icon {
+    color: var(--primary);
+  }
+
+  .studio-upload.is-dragging .studio-upload__icon {
+    transform: translateY(-2px);
+    color: var(--foreground);
   }
 
   .studio-upload__content {
@@ -2095,6 +2222,11 @@
     gap: 5px;
     justify-items: center;
     text-align: center;
+    transition: transform var(--motion-fast) var(--ease-enter);
+  }
+
+  .studio-upload.is-dragging .studio-upload__content {
+    transform: translateY(-2px);
   }
 
   .studio-upload__content strong,
@@ -2110,6 +2242,19 @@
     color: var(--muted);
     font-size: 13px;
     line-height: 1.45;
+  }
+
+  .studio-upload__drop-hint {
+    display: inline-flex;
+    min-height: 24px;
+    align-items: center;
+    justify-content: center;
+    border: 1px solid color-mix(in srgb, var(--primary) 32%, transparent);
+    border-radius: 999px;
+    background: color-mix(in srgb, var(--primary-soft) 64%, transparent);
+    color: var(--primary) !important;
+    padding: 0 10px;
+    font-weight: 650;
   }
 
   .studio-upload-list {
@@ -2132,6 +2277,14 @@
     border-radius: var(--radius-control);
     background: color-mix(in srgb, var(--surface) 62%, transparent);
     padding: 8px;
+    transition:
+      border-color var(--motion-fast) var(--ease-enter),
+      background var(--motion-fast) var(--ease-enter);
+  }
+
+  .studio-upload-item:hover {
+    border-color: color-mix(in srgb, var(--primary) 24%, var(--border-subtle));
+    background: color-mix(in srgb, var(--surface-hover) 54%, transparent);
   }
 
   .studio-upload-clear {
@@ -2145,6 +2298,7 @@
     border-radius: var(--radius-control);
     object-fit: cover;
     background: var(--background);
+    animation: studio-upload-thumb-in var(--motion-layout) var(--ease-enter) both;
   }
 
   .studio-upload-item__placeholder {
@@ -2198,21 +2352,42 @@
   }
 
   .studio-ratio__item {
+    position: relative;
     display: grid;
     width: 100%;
     min-width: 0;
     min-height: 82px;
     justify-items: center;
     gap: 4px;
+    isolation: isolate;
+    overflow: hidden;
     border: 1px solid transparent;
     border-radius: 7px;
     background: transparent;
     color: var(--foreground);
     padding: 7px 6px;
     transition:
+      transform var(--motion-fast) var(--ease-enter),
       border-color var(--motion-base),
       background var(--motion-base),
-      color var(--motion-base);
+      color var(--motion-base),
+      box-shadow var(--motion-base);
+  }
+
+  .studio-ratio__item::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    z-index: -1;
+    border-radius: inherit;
+    background:
+      linear-gradient(135deg, color-mix(in srgb, var(--primary) 16%, transparent), color-mix(in srgb, #a452ff 10%, transparent)),
+      color-mix(in srgb, var(--surface-hover) 40%, transparent);
+    opacity: 0;
+    transform: scale(0.96);
+    transition:
+      opacity var(--motion-fast) var(--ease-enter),
+      transform var(--motion-fast) var(--ease-enter);
   }
 
   .studio-ratio__graphic {
@@ -2234,18 +2409,33 @@
   }
 
   .studio-ratio__item:hover {
-    background: color-mix(in srgb, var(--surface) 34%, transparent);
+    background: transparent;
+  }
+
+  .studio-ratio__item:hover::before {
+    opacity: 0.46;
+    transform: scale(1);
   }
 
   .studio-ratio__item:focus-visible {
-    outline: 2px solid var(--primary);
-    outline-offset: 2px;
+    outline: none;
+    box-shadow: 0 0 0 3px color-mix(in srgb, var(--primary) 16%, transparent);
+  }
+
+  .studio-ratio__item:active {
+    transform: translateY(1px);
   }
 
   .studio-ratio__item.is-active {
-    border-color: transparent;
+    border-color: color-mix(in srgb, var(--primary) 32%, transparent);
     background: transparent;
     color: var(--primary);
+    box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--primary) 12%, transparent);
+  }
+
+  .studio-ratio__item.is-active::before {
+    opacity: 1;
+    transform: scale(1);
   }
 
   .studio-ratio__item.is-active .studio-ratio__shape {
@@ -5262,6 +5452,18 @@
     }
   }
 
+  @keyframes studio-upload-thumb-in {
+    from {
+      opacity: 0;
+      transform: translateY(4px) scale(0.98);
+    }
+
+    to {
+      opacity: 1;
+      transform: translateY(0) scale(1);
+    }
+  }
+
   .motion-page-reveal,
   .motion-result-reveal {
     opacity: 1;
@@ -5314,12 +5516,23 @@
     .shell-nav-account__popover,
     .account-popover-card,
     .studio-custom-select__menu,
+    .studio-custom-select__option,
     .studio-library-confirm,
     .studio-library-confirm__backdrop,
     .studio-library-confirm__card,
     .studio-library-modal,
     .studio-library-modal__backdrop,
     .studio-library-modal .studio-library-detail,
+    .studio-mode__button,
+    .studio-ratio__item,
+    .studio-ratio__shape,
+    .studio-upload,
+    .studio-upload::before,
+    .studio-upload__content,
+    .studio-upload__icon,
+    .studio-upload-item,
+    .studio-upload-item img,
+    .studio-upload-item video,
     .studio-toast,
     .shell-drawer,
     .shell-drawer-backdrop {
@@ -5329,7 +5542,12 @@
 
     .shell-nav-item:hover,
     .studio-primary-action:hover:not(:disabled),
+    .studio-mode__button:hover,
+    .studio-ratio__item:hover,
     .studio-secondary-button:hover,
+    .studio-upload:hover,
+    .studio-upload.is-dragging .studio-upload__content,
+    .studio-upload.is-dragging .studio-upload__icon,
     .account-popover-card__primary:hover:not(:disabled),
     .account-popover-card__secondary:hover:not(:disabled),
     .user-center-stat__button:hover:not(:disabled) {
