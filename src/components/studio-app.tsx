@@ -6,6 +6,7 @@ import { useCallback, useEffect, useId, useMemo, useRef, useState } from "react"
 import { AlertTriangle, ArrowDownUp, Check, ChevronDown, Download, ExternalLink, ImageUp, ListFilter, Loader2, RefreshCw, Search, Trash2, UploadCloud, Wand2, X } from "lucide-react";
 import { useRouter, useSearchParams } from "next/navigation";
 
+import { BeforeAfterImageCompare } from "@/components/before-after-image-compare";
 import { WorkbenchShell } from "@/components/workbench-shell";
 import { TemplateRail } from "@/components/template-center";
 import { WorkspaceAccountPanel } from "@/components/workspace-account-panel";
@@ -3166,6 +3167,21 @@ function UpscaleUnavailablePreview() {
   );
 }
 
+function ImageUpscaleCompareTutorial() {
+  return (
+    <PreviewState eyebrow="图片细节对比" title="图片细节对比" description="拖动分割线，查看增强前后的清晰度和细节变化。">
+      <BeforeAfterImageCompare
+        beforeSrc="/tutorial/image-upscaler/image-before.jpg"
+        afterSrc="/tutorial/image-upscaler/image-after.png"
+        beforeLabel="增强前"
+        afterLabel="增强后"
+        beforeAlt="增强前示例图"
+        afterAlt="增强后示例图"
+      />
+    </PreviewState>
+  );
+}
+
 function ImageUpscalePreviewPanel({
   state,
   output,
@@ -3188,7 +3204,7 @@ function ImageUpscalePreviewPanel({
   }
 
   if (!state.checked || state.statusLoading || (!state.availability?.ready && !state.statusError)) {
-    return state.statusLoading ? <ProcessingPreview label="正在处理" /> : <ToolTutorial kind="image-upscale" />;
+    return state.statusLoading ? <ProcessingPreview label="正在处理" /> : <ImageUpscaleCompareTutorial />;
   }
 
   if (!state.availability?.ready) {
@@ -3206,18 +3222,21 @@ function ImageUpscalePreviewPanel({
     const resultScale = typeof params.scale === "number" ? `${params.scale}x` : `${state.scale}x`;
     return (
       <PreviewState eyebrow="结果" title="高清结果" description={`${state.scale}x 高清处理完成。`} badge={libraryStatusBadgeLabel(output.item.status)} role="status" live>
-        <div className="studio-upscale-preview">
-          {source ? (
-            <figure className="studio-upscale-preview__figure">
-              <span className="studio-upscale-preview__label">原图</span>
-              <img src={source.previewUrl} alt={source.file.name} />
-            </figure>
-          ) : null}
+        {source ? (
+          <BeforeAfterImageCompare
+            beforeSrc={source.previewUrl}
+            afterSrc={output.item.output.url}
+            beforeLabel="增强前"
+            afterLabel="增强后"
+            beforeAlt={source.file.name}
+            afterAlt={output.item.title}
+          />
+        ) : (
           <figure className="studio-upscale-preview__figure">
             <span className="studio-upscale-preview__label">高清结果</span>
             <img src={output.item.output.url} alt={output.item.title} />
           </figure>
-        </div>
+        )}
         <dl className="studio-upscale-stats" aria-label="图片高清结果信息">
           <div>
             <dt>原图尺寸</dt>
@@ -3244,7 +3263,7 @@ function ImageUpscalePreviewPanel({
     );
   }
 
-  return <ToolTutorial kind="image-upscale" />;
+  return <ImageUpscaleCompareTutorial />;
 }
 
 function VideoUpscalePreviewPanel({
