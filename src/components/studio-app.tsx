@@ -85,6 +85,11 @@ function createTaskId(prefix: string) {
   return `${prefix}-${suffix}`;
 }
 
+function withPreviewParam(href: string, previewMode: boolean) {
+  if (!previewMode || href.includes("preview=1")) return href;
+  return `${href}${href.includes("?") ? "&" : "?"}preview=1`;
+}
+
 type OutputState = {
   item: LibraryItem;
   job?: JobRecord | null;
@@ -469,6 +474,7 @@ export function StudioApp() {
   const [librarySort, setLibrarySort] = useState<LibrarySort>("recent");
   const [librarySearch, setLibrarySearch] = useState("");
   const [selectedLibraryItemId, setSelectedLibraryItemId] = useState<string | null>(null);
+  const [libraryDeleteConfirmItemId, setLibraryDeleteConfirmItemId] = useState<string | null>(null);
   const [deletingLibraryItemId, setDeletingLibraryItemId] = useState<string | null>(null);
   const [missingLibraryMediaIds, setMissingLibraryMediaIds] = useState<Set<string>>(() => new Set());
   const [imageWorkspace, setImageWorkspace] = useState<ImageWorkspaceState>({
@@ -804,6 +810,14 @@ export function StudioApp() {
   const templateParam = searchParams.get("template") || "";
   const activeImageTemplate = useMemo(() => templateById(imageWorkspace.templateId), [imageWorkspace.templateId]);
   const activeVideoTemplate = useMemo(() => templateById(videoWorkspace.templateId), [videoWorkspace.templateId]);
+  const imageTemplateCenterHref = useMemo(
+    () => withPreviewParam(templateTabHref("image"), previewMode),
+    [previewMode],
+  );
+  const videoTemplateCenterHref = useMemo(
+    () => withPreviewParam(templateTabHref("video"), previewMode),
+    [previewMode],
+  );
 
   const applyTemplatePreset = useCallback((templateId: string) => {
     const template = templateById(templateId);
@@ -886,11 +900,19 @@ export function StudioApp() {
       return next;
     });
   }, []);
-  const handleDeleteLibraryItem = useCallback(async (id: string) => {
+  const handleRequestDeleteLibraryItem = useCallback(async (id: string) => {
     if (deletingLibraryItemId) return;
-    const item = library.find((entry) => entry.id === id);
-    const confirmed = window.confirm(`确认删除作品「${item?.title || "未命名作品"}」？删除后会同步移除可删除的本地结果文件。`);
-    if (!confirmed) return;
+    setLibraryDeleteConfirmItemId(id);
+  }, [deletingLibraryItemId]);
+
+  const handleCancelDeleteLibraryItem = useCallback(() => {
+    if (deletingLibraryItemId) return;
+    setLibraryDeleteConfirmItemId(null);
+  }, [deletingLibraryItemId]);
+
+  const handleConfirmDeleteLibraryItem = useCallback(async () => {
+    if (!libraryDeleteConfirmItemId || deletingLibraryItemId) return;
+    const id = libraryDeleteConfirmItemId;
 
     setDeletingLibraryItemId(id);
     setLibraryError("");
@@ -902,6 +924,7 @@ export function StudioApp() {
       });
       await refreshLibrary();
       setSelectedLibraryItemId((current) => (current === id ? null : current));
+      setLibraryDeleteConfirmItemId(null);
     } catch (error) {
       const text = error instanceof Error ? error.message : "删除失败。";
       setLibraryError(text);
@@ -909,13 +932,17 @@ export function StudioApp() {
     } finally {
       setDeletingLibraryItemId(null);
     }
-  }, [deletingLibraryItemId, library, refreshLibrary]);
+  }, [deletingLibraryItemId, libraryDeleteConfirmItemId, refreshLibrary]);
 
   const libraryCounts = useMemo(() => ({
     all: library.length,
     image: library.filter((item) => item.type === "image").length,
     video: library.filter((item) => item.type === "video").length,
   }), [library]);
+  const libraryDeleteConfirmItem = useMemo(
+    () => library.find((item) => item.id === libraryDeleteConfirmItemId) || null,
+    [library, libraryDeleteConfirmItemId],
+  );
 
   const accountHeaderSlot = (
     <div className="hidden items-center gap-2 rounded-full border border-white/10 bg-white/[0.03] px-3 py-2 text-xs text-white/68 md:flex">
@@ -1804,10 +1831,11 @@ export function StudioApp() {
           mode={activeImageMode}
           showTemplates={activeWorkspaceToolId !== "image-editor"}
           providers={providers.image}
-          providersLoading={providersLoading}
-          providersError={providersError}
-          selectedProvider={selectedImageProvider}
-          state={imageWorkspace}
+              providersLoading={providersLoading}
+              providersError={providersError}
+              selectedProvider={selectedImageProvider}
+              templateCenterHref={imageTemplateCenterHref}
+              state={imageWorkspace}
           canSubmit={imageWorkspaceCanSubmit}
           onProviderChange={(value) => updateImageWorkspace({ providerId: value })}
           onRatioChange={(value) => updateImageWorkspace({ ratio: value })}
@@ -1828,10 +1856,11 @@ export function StudioApp() {
         <VideoGenerator
           mode={activeVideoMode}
           providers={providers.video}
-          providersLoading={providersLoading}
-          providersError={providersError}
-          selectedProvider={selectedVideoProvider}
-          state={videoWorkspace}
+              providersLoading={providersLoading}
+              providersError={providersError}
+              selectedProvider={selectedVideoProvider}
+              templateCenterHref={videoTemplateCenterHref}
+              state={videoWorkspace}
           canSubmit={videoWorkspaceCanSubmit}
           onProviderChange={(value) => updateVideoWorkspace({ providerId: value, submitError: "" })}
           onRatioChange={(value) => updateVideoWorkspace({ ratio: value })}
@@ -1929,7 +1958,7 @@ export function StudioApp() {
               onSortChange={setLibrarySort}
               onSearchChange={setLibrarySearch}
               onSelectItem={setSelectedLibraryItemId}
-              onDelete={handleDeleteLibraryItem}
+              onDelete={handleRequestDeleteLibraryItem}
               onRefresh={refreshLibrary}
               onMediaMissing={markLibraryMediaMissing}
               onLogin={() => router.push("/login")}
@@ -1984,6 +2013,12 @@ export function StudioApp() {
         }
         mobileActionSlot={mobileAction ? <MobileActionBar {...mobileAction} /> : null}
       />
+      <LibraryDeleteConfirmDialog
+        item={libraryDeleteConfirmItem}
+        deleting={Boolean(libraryDeleteConfirmItem && deletingLibraryItemId === libraryDeleteConfirmItem.id)}
+        onCancel={handleCancelDeleteLibraryItem}
+        onConfirm={() => void handleConfirmDeleteLibraryItem()}
+      />
       {message ? <Toast message={message} onClose={() => setMessage("")} /> : null}
     </>
   );
@@ -1996,6 +2031,7 @@ function ImageGenerator({
   providersLoading,
   providersError,
   selectedProvider,
+  templateCenterHref,
   state,
   canSubmit,
   onProviderChange,
@@ -2018,6 +2054,7 @@ function ImageGenerator({
   providersLoading: boolean;
   providersError: string;
   selectedProvider: FrontendProvider | null;
+  templateCenterHref: string;
   state: ImageWorkspaceState;
   canSubmit: boolean;
   onProviderChange: (value: string) => void;
@@ -2059,7 +2096,7 @@ function ImageGenerator({
       {showTemplates ? (
         <TemplateRail
           title="模板"
-          viewAllHref={templateTabHref("image")}
+          viewAllHref={templateCenterHref}
           templates={featuredImagePromptTemplates}
           activeTemplateId={state.templateId}
           onSelect={(template) => onTemplateChange(template.id)}
@@ -2174,6 +2211,7 @@ function VideoGenerator({
   providersLoading,
   providersError,
   selectedProvider,
+  templateCenterHref,
   state,
   canSubmit,
   onProviderChange,
@@ -2198,6 +2236,7 @@ function VideoGenerator({
   providersLoading: boolean;
   providersError: string;
   selectedProvider: WorkspacePublicProvider | null;
+  templateCenterHref: string;
   state: VideoWorkspaceState;
   canSubmit: boolean;
   onProviderChange: (value: string) => void;
@@ -2241,7 +2280,7 @@ function VideoGenerator({
       />
       <TemplateRail
         title="模板"
-        viewAllHref={templateTabHref("video")}
+        viewAllHref={templateCenterHref}
         templates={featuredVideoPromptTemplates}
         activeTemplateId={state.templateId}
         onSelect={(template) => onTemplateChange(template.id)}
@@ -3638,6 +3677,62 @@ function LibraryWorkspace({
           </div>
         </div>
       ) : null}
+    </div>
+  );
+}
+
+function LibraryDeleteConfirmDialog({
+  item,
+  deleting,
+  onCancel,
+  onConfirm,
+}: {
+  item: LibraryItem | null;
+  deleting: boolean;
+  onCancel: () => void;
+  onConfirm: () => void;
+}) {
+  if (!item) return null;
+
+  return (
+    <div className="studio-library-confirm" role="dialog" aria-modal="true" aria-labelledby="library-delete-confirm-title">
+      <button
+        type="button"
+        className="studio-library-confirm__backdrop"
+        aria-label="取消删除"
+        onClick={onCancel}
+        disabled={deleting}
+      />
+      <section className="studio-library-confirm__card">
+        <span className="studio-library-confirm__icon" aria-hidden="true">
+          <Trash2 className="size-5" />
+        </span>
+        <div className="studio-library-confirm__copy">
+          <p className="shell-eyebrow">删除作品</p>
+          <h3 id="library-delete-confirm-title">确认删除这个作品？</h3>
+          <p>
+            作品「{item.title || "未命名作品"}」删除后会同步移除可删除的本地结果文件，操作完成后不能在作品库中恢复。
+          </p>
+        </div>
+        <div className="studio-library-confirm__actions">
+          <button type="button" className="studio-secondary-button" onClick={onCancel} disabled={deleting}>
+            取消
+          </button>
+          <button type="button" className="studio-danger-button" onClick={onConfirm} disabled={deleting}>
+            {deleting ? (
+              <>
+                <Loader2 className="size-4 animate-spin" aria-hidden="true" />
+                删除中
+              </>
+            ) : (
+              <>
+                <Trash2 className="size-4" aria-hidden="true" />
+                确认删除
+              </>
+            )}
+          </button>
+        </div>
+      </section>
     </div>
   );
 }

@@ -4,15 +4,16 @@
 
 import Link from "next/link";
 import { ArrowRight, Search } from "lucide-react";
-import { useCallback, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 
 import { WorkbenchShell } from "@/components/workbench-shell";
+import { fetchJson } from "@/lib/client/api";
+import type { PublicAuthUser } from "@/lib/server/auth";
 import { cn } from "@/lib/utils";
 import {
   imagePromptTemplates,
   templateCategories,
-  templateCloneHref,
   templateTabHref,
   type TemplateCategory,
   type TemplatePromptTemplate,
@@ -21,6 +22,15 @@ import {
 import type { WorkspaceAction, WorkspaceToolId } from "@/lib/workspace-registry";
 
 type TemplateScope = "image" | "video";
+
+type AuthSessionResponse =
+  | { ok: true; user: PublicAuthUser; mappingStatus: string | null }
+  | { ok: false; code: string; uiState: string; message: string; retryAfterSeconds?: number };
+
+type QuotaResponse = {
+  ok: true;
+  quota: { available_quota_units: number };
+};
 
 type TemplateRailProps = {
   title?: string;
@@ -152,8 +162,11 @@ export function TemplateCenterView() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const scope: TemplateScope = searchParams.get("tab") === "video" ? "video" : "image";
+  const previewMode = searchParams.get("preview") === "1";
   const [search, setSearch] = useState("");
   const [category, setCategory] = useState<TemplateCategory | "全部">("全部");
+  const [sessionUser, setSessionUser] = useState<PublicAuthUser | null>(null);
+  const [quotaLabel, setQuotaLabel] = useState<string | null>(null);
 
   const templates = scope === "image" ? imagePromptTemplates : videoPromptTemplates;
   const totalTemplateCount = templates.length;
@@ -181,22 +194,60 @@ export function TemplateCenterView() {
 
   const handleToolAction = (action: WorkspaceAction, tool: WorkspaceToolId) => {
     if (action.kind === "route") {
-      router.push(action.href);
+      router.push(withPreviewParam(action.href, previewMode));
       return;
     }
-    router.push(`/?tool=${encodeURIComponent(tool)}`);
+    const params = new URLSearchParams({ tool });
+    if (previewMode) params.set("preview", "1");
+    router.push(`/?${params.toString()}`);
   };
+
+  useEffect(() => {
+    let cancelled = false;
+
+    void (async () => {
+      try {
+        const session = await fetchJson<AuthSessionResponse>("/api/auth/session");
+        if (cancelled) return;
+        if ("ok" in session && session.ok) {
+          setSessionUser(session.user);
+          try {
+            const quotaData = await fetchJson<QuotaResponse>("/api/quota");
+            if (!cancelled) setQuotaLabel(String(quotaData.quota.available_quota_units));
+          } catch {
+            if (!cancelled) setQuotaLabel(null);
+          }
+          return;
+        }
+        setSessionUser(null);
+        setQuotaLabel(null);
+      } catch {
+        if (!cancelled) {
+          setSessionUser(null);
+          setQuotaLabel(null);
+        }
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   return (
     <WorkbenchShell
       state={{ activeToolId: "templates" }}
       onToolAction={handleToolAction}
-      isAuthenticated={false}
+      isAuthenticated={Boolean(sessionUser)}
+      canAccessAdmin={sessionUser?.role === "admin"}
+      accountName={sessionUser?.display_name || sessionUser?.username || null}
+      accountQuotaLabel={quotaLabel}
       toolTitle="模板中心"
       parameterSlot={null}
       previewSlot={
         <TemplateBrowserPanel
           scope={scope}
+          previewMode={previewMode}
           search={search}
           category={category}
           counts={categoryCounts}
@@ -204,7 +255,7 @@ export function TemplateCenterView() {
           totalCount={totalTemplateCount}
           onScopeChange={(nextScope) => {
             setCategory("全部");
-            router.push(templateTabHref(nextScope), { scroll: false });
+            router.push(`${templateTabHref(nextScope)}${previewMode ? "&preview=1" : ""}`, { scroll: false });
           }}
           onSearchChange={setSearch}
           onCategoryChange={setCategory}
@@ -212,6 +263,11 @@ export function TemplateCenterView() {
       }
     />
   );
+}
+
+function withPreviewParam(href: string, previewMode: boolean) {
+  if (!previewMode || href.includes("preview=1")) return href;
+  return `${href}${href.includes("?") ? "&" : "?"}preview=1`;
 }
 
 const templateCategoryMeta: Record<TemplateCategory | "全部", { title: string; description: string }> = {
@@ -285,6 +341,7 @@ function TemplateCategoryPanel({
 
 function TemplateBrowserPanel({
   scope,
+  previewMode,
   search,
   category,
   counts,
@@ -295,6 +352,7 @@ function TemplateBrowserPanel({
   onCategoryChange,
 }: {
   scope: TemplateScope;
+  previewMode: boolean;
   search: string;
   category: TemplateCategory | "全部";
   counts: Record<TemplateCategory | "全部", number>;
@@ -304,6 +362,19 @@ function TemplateBrowserPanel({
   onSearchChange: (value: string) => void;
   onCategoryChange: (value: TemplateCategory | "全部") => void;
 }) {
+  const gridRef = useRef<HTMLDivElement | null>(null);
+
+  const handleCategoryChange = (value: TemplateCategory | "全部") => {
+    onCategoryChange(value);
+    gridRef.current?.scrollIntoView({ block: "nearest" });
+  };
+
+  const cloneHref = (id: string) => {
+    const params = new URLSearchParams({ template: id });
+    if (previewMode) params.set("preview", "1");
+    return `/?${params.toString()}`;
+  };
+
   return (
     <div className="template-center-browser">
       <div className="template-center-browser__head">
@@ -348,11 +419,11 @@ function TemplateBrowserPanel({
         <TemplateCategoryPanel
           category={category}
           counts={counts}
-          onCategoryChange={onCategoryChange}
+          onCategoryChange={handleCategoryChange}
         />
       </div>
 
-      <div className="template-center-grid" aria-label="模板列表">
+      <div ref={gridRef} className="template-center-grid" aria-label="模板列表">
         {templates.length ? templates.map((template) => (
           <article
             key={template.id}
@@ -371,7 +442,7 @@ function TemplateBrowserPanel({
                 <span>{template.requiresImage ? "需图像" : "无须图像"}</span>
               </span>
             </span>
-            <Link href={templateCloneHref(template.id)} className="studio-primary-action template-center-card__clone">
+            <Link href={cloneHref(template.id)} className="studio-primary-action template-center-card__clone">
               克隆
               <ArrowRight className="size-4" aria-hidden="true" />
             </Link>
