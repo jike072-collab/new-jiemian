@@ -917,6 +917,20 @@ export function StudioApp() {
     setLibraryDeleteConfirmItemId(null);
   }, [deletingLibraryItemId]);
 
+  useEffect(() => {
+    if (!selectedLibraryItemId && !libraryDeleteConfirmItemId) return undefined;
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key !== "Escape" || deletingLibraryItemId) return;
+      if (libraryDeleteConfirmItemId) {
+        setLibraryDeleteConfirmItemId(null);
+        return;
+      }
+      setSelectedLibraryItemId(null);
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [deletingLibraryItemId, libraryDeleteConfirmItemId, selectedLibraryItemId]);
+
   const handleConfirmDeleteLibraryItem = useCallback(async () => {
     if (!libraryDeleteConfirmItemId || deletingLibraryItemId) return;
     const id = libraryDeleteConfirmItemId;
@@ -4654,45 +4668,45 @@ function CustomSelect({
         <span className="studio-custom-select__value">{selectedOption?.label || placeholder}</span>
         <ChevronDown className={cn("size-4 transition", open && "rotate-180")} aria-hidden="true" />
       </button>
-      {open ? (
-        <div
-          ref={listRef}
-          id={listId}
-          className={cn("studio-custom-select__menu", openAbove && "is-above")}
-          role="listbox"
-          aria-label={label}
-        >
-          {options.map((option, index) => {
-            const selected = option.value === value;
-            const active = index === activeIndex;
-            return (
-              <button
-                key={option.value}
-                type="button"
-                role="option"
-                aria-selected={selected}
-                disabled={option.disabled}
-                className={cn("studio-custom-select__option", selected && "is-selected", active && "is-active")}
-                onMouseEnter={() => setActiveIndex(index)}
-                onPointerDown={(event) => {
-                  event.preventDefault();
-                  event.stopPropagation();
-                  chooseOption(option);
-                }}
-                onMouseDown={(event) => {
-                  event.preventDefault();
-                  event.stopPropagation();
-                  chooseOption(option);
-                }}
-                onClick={() => chooseOption(option)}
-              >
-                <span>{option.label}</span>
-                {selected ? <Check className="size-4" aria-hidden="true" /> : null}
-              </button>
-            );
-          })}
-        </div>
-      ) : null}
+      <div
+        ref={listRef}
+        id={listId}
+        className={cn("studio-custom-select__menu", openAbove && "is-above")}
+        role="listbox"
+        aria-label={label}
+        aria-hidden={!open}
+      >
+        {options.map((option, index) => {
+          const selected = option.value === value;
+          const active = index === activeIndex;
+          return (
+            <button
+              key={option.value}
+              type="button"
+              role="option"
+              aria-selected={selected}
+              disabled={option.disabled}
+              tabIndex={open ? 0 : -1}
+              className={cn("studio-custom-select__option", selected && "is-selected", active && "is-active")}
+              onMouseEnter={() => setActiveIndex(index)}
+              onPointerDown={(event) => {
+                event.preventDefault();
+                event.stopPropagation();
+                chooseOption(option);
+              }}
+              onMouseDown={(event) => {
+                event.preventDefault();
+                event.stopPropagation();
+                chooseOption(option);
+              }}
+              onClick={() => chooseOption(option)}
+            >
+              <span>{option.label}</span>
+              {selected ? <Check className="size-4" aria-hidden="true" /> : null}
+            </button>
+          );
+        })}
+      </div>
     </div>
   );
 }

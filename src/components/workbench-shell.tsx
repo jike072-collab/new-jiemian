@@ -638,6 +638,7 @@ function ToolButton({
       className={cn("shell-nav-item", active && "is-active", compact && "is-compact")}
       aria-current={active ? "page" : undefined}
     >
+      <span className="shell-nav-item__indicator" aria-hidden="true" />
       <span className="shell-nav-item__icon-wrap" aria-hidden="true">
         <Icon className="shell-nav-item__icon" />
         {SecondaryIcon ? <SecondaryIcon className="shell-nav-item__icon-secondary" /> : null}
