@@ -2340,10 +2340,10 @@
     position: relative;
     display: grid;
     container-type: inline-size;
-    --video-guide-visual-width: clamp(294px, 40cqw, 440px);
+    --video-guide-visual-width: clamp(294px, 40cqw, 376px);
     --video-guide-visual-height: calc(var(--video-guide-visual-width) * 0.652);
     gap: 0;
-    width: min(100%, 1060px);
+    width: min(100%, 940px);
     min-width: 0;
     overflow: visible;
     border: 0;
@@ -2393,9 +2393,9 @@
     display: grid;
     gap: 8px;
     align-content: start;
-    width: min(300px, calc(100% - var(--video-guide-visual-width) - 22px));
+    width: var(--video-guide-visual-width);
     min-width: 0;
-    max-width: 360px;
+    max-width: none;
   }
 
   .video-tutorial-guide__section.is-visual-right .video-tutorial-guide__copy {
@@ -2408,24 +2408,24 @@
     border-radius: 999px;
     background: rgba(255, 43, 136, 0.12);
     color: #ff4f9d;
-    font-size: 12px;
+    font-size: clamp(12px, 0.86cqw, 14px);
     font-weight: 700;
     line-height: 1;
-    padding: 7px 10px;
+    padding: 7px 11px;
   }
 
   .video-tutorial-guide__copy h4 {
     color: var(--text);
-    font-size: clamp(17px, 1.5vw, 22px);
-    font-weight: 700;
+    font-size: clamp(19px, 2.85cqw, 26px);
+    font-weight: 750;
     line-height: 1.18;
   }
 
   .video-tutorial-guide__copy p {
-    max-width: 320px;
+    max-width: 100%;
     color: var(--muted);
-    font-size: 13px;
-    line-height: 1.55;
+    font-size: clamp(13px, 1.78cqw, 16px);
+    line-height: 1.62;
   }
 
   .video-tutorial-guide__arrow {
