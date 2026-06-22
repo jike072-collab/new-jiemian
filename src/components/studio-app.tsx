@@ -3,7 +3,7 @@
 /* eslint-disable @next/next/no-img-element */
 
 import { useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
-import { AlertTriangle, ArrowDownUp, Check, ChevronDown, Download, ExternalLink, ImageUp, ListFilter, Loader2, RefreshCw, Search, Trash2, UploadCloud, Wand2, X } from "lucide-react";
+import { AlertTriangle, ArrowDownUp, Check, ChevronDown, Download, ExternalLink, ImageUp, Loader2, Play, RefreshCw, Search, Trash2, UploadCloud, Wand2, X } from "lucide-react";
 import { useRouter, useSearchParams } from "next/navigation";
 
 import { BeforeAfterImageCompare } from "@/components/before-after-image-compare";
@@ -1875,13 +1875,6 @@ export function StudioApp() {
           registerMobileAction={setMobileAction}
         />
       ) : null}
-      {activeBusinessTool === "library" ? (
-        <LibrarySidebar
-          count={libraryCounts}
-          filter={libraryFilter}
-          onFilterChange={setLibraryFilter}
-        />
-      ) : null}
     </>
   );
 
@@ -1922,9 +1915,11 @@ export function StudioApp() {
             <LibraryWorkspace
               items={currentLibraryItems}
               totalCount={library.length}
+              count={libraryCounts}
               selectedItem={selectedLibraryItem}
               loading={libraryLoading}
               error={libraryError}
+              isAuthenticated={Boolean(sessionUser)}
               filter={libraryFilter}
               sort={librarySort}
               search={librarySearch}
@@ -1937,6 +1932,8 @@ export function StudioApp() {
               onDelete={handleDeleteLibraryItem}
               onRefresh={refreshLibrary}
               onMediaMissing={markLibraryMediaMissing}
+              onLogin={() => router.push("/login")}
+              onStartCreate={() => setActiveWorkspaceToolId("image")}
             />
           ) : (
             activeBusinessTool === "image" ? (
@@ -3455,44 +3452,14 @@ function VideoUpscaleForm({
   );
 }
 
-function LibrarySidebar({
-  count,
-  filter,
-  onFilterChange,
-}: {
-  count: { all: number; image: number; video: number };
-  filter: LibraryFilter;
-  onFilterChange: (value: LibraryFilter) => void;
-}) {
-  return (
-    <div className="studio-library-sidebar">
-      <div className="studio-library-kind" role="group" aria-label="作品类型">
-        {([
-          ["image", "图片", count.image],
-          ["video", "视频", count.video],
-        ] as const).map(([id, label, value]) => (
-          <button
-            key={id}
-            type="button"
-            aria-pressed={filter === id}
-            className={cn("studio-library-kind__button", filter === id && "is-active")}
-            onClick={() => onFilterChange(id)}
-          >
-            <span>{label}</span>
-            <strong>{value}</strong>
-          </button>
-        ))}
-      </div>
-    </div>
-  );
-}
-
 function LibraryWorkspace({
   items,
   totalCount,
+  count,
   selectedItem,
   loading,
   error,
+  isAuthenticated,
   filter,
   sort,
   search,
@@ -3505,12 +3472,16 @@ function LibraryWorkspace({
   onDelete,
   onRefresh,
   onMediaMissing,
+  onLogin,
+  onStartCreate,
 }: {
   items: LibraryItem[];
   totalCount: number;
+  count: { all: number; image: number; video: number };
   selectedItem: LibraryItem | null;
   loading: boolean;
   error: string;
+  isAuthenticated: boolean;
   filter: LibraryFilter;
   sort: LibrarySort;
   search: string;
@@ -3523,93 +3494,115 @@ function LibraryWorkspace({
   onDelete: (id: string) => Promise<void>;
   onRefresh: () => Promise<void>;
   onMediaMissing: (id: string) => void;
+  onLogin: () => void;
+  onStartCreate: () => void;
 }) {
-  if (loading) {
-    return (
-      <PreviewState eyebrow="加载中" title="作品库" description="正在读取本地作品记录。" badge="请稍候" role="status" live>
-        <div className="studio-preview__empty">
-          <Loader2 className="size-5 animate-spin" aria-hidden="true" />
-          <p>正在加载真实作品。</p>
-        </div>
-      </PreviewState>
-    );
-  }
-
-  if (error) {
-    return (
-      <PreviewState eyebrow="加载失败" title="作品库" description={error} badge="可重试" role="alert">
-        <div className="studio-preview__empty">
-          <p>作品记录没有被替换成示例数据，你可以重新读取本地记录。</p>
-          <button type="button" className="studio-secondary-button" onClick={() => void onRefresh()}>
-            重新加载
-          </button>
-        </div>
-      </PreviewState>
-    );
-  }
-
-  if (!items.length) {
-    const hasFilter = totalCount > 0 || Boolean(search.trim());
-    return (
-      <PreviewState
-        eyebrow="空作品库"
-        title="作品库"
-        description={hasFilter ? "当前条件下没有作品。" : "生成或高清处理成功后，真实结果会自动出现在这里。"}
-        badge={`${totalCount} 条作品`}
-      >
-        <LibraryToolbar
-          filter={filter}
-          sort={sort}
-          search={search}
-          onFilterChange={onFilterChange}
-          onSortChange={onSortChange}
-          onSearchChange={onSearchChange}
-        />
-        <div className="studio-preview__empty">
-          <p>{hasFilter ? "可以更换类型或搜索关键词。" : "这里不会展示静态示例作品。"}</p>
-          <button type="button" className="studio-secondary-button" onClick={() => void onRefresh()}>
-            刷新作品库
-          </button>
-        </div>
-      </PreviewState>
-    );
-  }
+  const searchActive = Boolean(search.trim());
+  const filteredEmpty = !items.length && (totalCount > 0 || searchActive);
 
   return (
-    <PreviewState eyebrow="作品库" title="作品库" description="真实作品按条件展示，可预览、下载和删除。" badge={`${items.length} 条作品`}>
-      <div className="studio-library-workspace">
+    <div className="studio-library-page">
+      <header className="studio-library-page__header">
+        <div>
+          <h2>作品库</h2>
+          <p>管理和查看你生成的全部图片与视频</p>
+        </div>
+        <span className="studio-library-page__count">共 {totalCount} 件作品</span>
+      </header>
+
+      <div className="studio-library-page__controls">
+        <LibraryKindTabs count={count} filter={filter} onFilterChange={onFilterChange} />
         <LibraryToolbar
-          filter={filter}
           sort={sort}
           search={search}
-          onFilterChange={onFilterChange}
           onSortChange={onSortChange}
           onSearchChange={onSearchChange}
         />
-        <div className="studio-library-grid">
-          {items.map((item) => (
-            <button
-              key={item.id}
-              type="button"
-              className={cn("studio-library-tile", selectedItem?.id === item.id && "is-active")}
-              onClick={() => onSelectItem(item.id)}
-            >
-              <MediaCard
-                item={item}
-                mediaMissing={missingMediaIds.has(item.id) || item.fileAvailable === false}
-                onMediaMissing={() => onMediaMissing(item.id)}
-              />
-            </button>
+      </div>
+
+      {loading ? (
+        <div className="studio-library-skeleton-grid" role="status" aria-label="正在加载作品">
+          {Array.from({ length: 8 }, (_, index) => (
+            <div key={index} className="studio-library-skeleton-card">
+              <span />
+              <strong />
+              <small />
+            </div>
           ))}
         </div>
-
-        {selectedItem ? (
-          <div className="studio-library-modal" role="dialog" aria-modal="true" aria-label={selectedItem.title}>
-            <div className="studio-library-modal__backdrop" onClick={() => onSelectItem(null)} />
-            <div className="studio-library-detail">
-              <button type="button" className="studio-icon-button studio-library-detail__close" aria-label="关闭预览" onClick={() => onSelectItem(null)}>
-                <X className="size-4" aria-hidden="true" />
+      ) : error ? (
+        <LibraryEmptyState
+          tone="error"
+          title="作品加载失败"
+          description="请检查网络后重试"
+          actionLabel="重新加载"
+          onAction={() => void onRefresh()}
+        />
+      ) : !items.length ? (
+        !isAuthenticated ? (
+          <LibraryEmptyState
+            title="登录后查看你的作品"
+            description="你生成的图片和视频会自动保存在这里，方便随时预览、下载和继续创作。"
+            actionLabel="登录查看作品"
+            onAction={onLogin}
+          />
+        ) : filteredEmpty ? (
+          <LibraryEmptyState
+            title="没有匹配的作品"
+            description={`当前${filter === "image" ? "图片" : "视频"}分类下没有找到符合条件的作品。`}
+            actionLabel={searchActive ? "清空搜索" : undefined}
+            onAction={searchActive ? () => onSearchChange("") : undefined}
+            secondaryLabel="刷新作品库"
+            onSecondary={() => void onRefresh()}
+          />
+        ) : (
+          <LibraryEmptyState
+            title="还没有生成作品"
+            description="完成第一次图片或视频生成后，作品会自动出现在这里。"
+            actionLabel="开始创作"
+            onAction={onStartCreate}
+            secondaryLabel="刷新作品库"
+            onSecondary={() => void onRefresh()}
+          />
+        )
+      ) : (
+        <div className="studio-library-grid">
+          {items.map((item) => (
+            <div
+              key={item.id}
+              className={cn("studio-library-tile", selectedItem?.id === item.id && "is-active")}
+            >
+              <button
+                type="button"
+                className="studio-library-tile__preview"
+                onClick={() => onSelectItem(item.id)}
+                aria-label={`预览作品 ${item.title}`}
+              >
+                <MediaCard
+                  item={item}
+                  mediaMissing={missingMediaIds.has(item.id) || item.fileAvailable === false}
+                  onMediaMissing={() => onMediaMissing(item.id)}
+                />
               </button>
+              <LibraryCardActions
+                item={item}
+                mediaMissing={missingMediaIds.has(item.id) || item.fileAvailable === false}
+                deleting={deletingItemId === item.id}
+                onPreview={() => onSelectItem(item.id)}
+                onDelete={() => void onDelete(item.id)}
+              />
+            </div>
+          ))}
+        </div>
+      )}
+
+      {selectedItem ? (
+        <div className="studio-library-modal" role="dialog" aria-modal="true" aria-label={selectedItem.title}>
+          <div className="studio-library-modal__backdrop" onClick={() => onSelectItem(null)} />
+          <div className="studio-library-detail">
+            <button type="button" className="studio-icon-button studio-library-detail__close" aria-label="关闭预览" onClick={() => onSelectItem(null)}>
+              <X className="size-4" aria-hidden="true" />
+            </button>
             <MediaCard
               item={selectedItem}
               large
@@ -3641,25 +3634,50 @@ function LibraryWorkspace({
               </button>
             </div>
           </div>
-          </div>
-        ) : null}
-      </div>
-    </PreviewState>
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+function LibraryKindTabs({
+  count,
+  filter,
+  onFilterChange,
+}: {
+  count: { all: number; image: number; video: number };
+  filter: LibraryFilter;
+  onFilterChange: (value: LibraryFilter) => void;
+}) {
+  return (
+    <div className="studio-library-kind-tabs" role="group" aria-label="作品类型">
+      {([
+        ["image", "图片", count.image],
+        ["video", "视频", count.video],
+      ] as const).map(([id, label, value]) => (
+        <button
+          key={id}
+          type="button"
+          aria-pressed={filter === id}
+          className={cn("studio-library-kind-tab", filter === id && "is-active")}
+          onClick={() => onFilterChange(id)}
+        >
+          <span>{label}</span>
+          <strong>{value}</strong>
+        </button>
+      ))}
+    </div>
   );
 }
 
 function LibraryToolbar({
-  filter,
   sort,
   search,
-  onFilterChange,
   onSortChange,
   onSearchChange,
 }: {
-  filter: LibraryFilter;
   sort: LibrarySort;
   search: string;
-  onFilterChange: (value: LibraryFilter) => void;
   onSortChange: (value: LibrarySort) => void;
   onSearchChange: (value: string) => void;
 }) {
@@ -3672,20 +3690,10 @@ function LibraryToolbar({
           id="library-search"
           value={search}
           onChange={(event) => onSearchChange(event.target.value)}
-          placeholder="按标题查找"
+          placeholder="搜索作品"
           className="studio-input"
         />
       </div>
-      <CustomSelect
-        label="作品类型"
-        value={filter}
-        icon={<ListFilter className="size-4" />}
-        options={[
-          { value: "image", label: "图片" },
-          { value: "video", label: "视频" },
-        ]}
-        onChange={(value) => onFilterChange(value as LibraryFilter)}
-      />
       <CustomSelect
         label="排序"
         value={sort}
@@ -3696,6 +3704,50 @@ function LibraryToolbar({
         ]}
         onChange={(value) => onSortChange(value as LibrarySort)}
       />
+    </div>
+  );
+}
+
+function LibraryEmptyState({
+  title,
+  description,
+  actionLabel,
+  secondaryLabel,
+  tone,
+  onAction,
+  onSecondary,
+}: {
+  title: string;
+  description: string;
+  actionLabel?: string;
+  secondaryLabel?: string;
+  tone?: "error";
+  onAction?: () => void;
+  onSecondary?: () => void;
+}) {
+  return (
+    <div className={cn("studio-library-empty-state", tone === "error" && "is-error")}>
+      <div className="studio-library-empty-state__icon" aria-hidden="true">
+        <ImageUp className="size-7" />
+      </div>
+      <div>
+        <h3>{title}</h3>
+        <p>{description}</p>
+      </div>
+      {(actionLabel && onAction) || (secondaryLabel && onSecondary) ? (
+        <div className="studio-library-empty-state__actions">
+          {actionLabel && onAction ? (
+            <button type="button" className="studio-primary-action studio-library-empty-state__primary" onClick={onAction}>
+              {actionLabel}
+            </button>
+          ) : null}
+          {secondaryLabel && onSecondary ? (
+            <button type="button" className="studio-secondary-button" onClick={onSecondary}>
+              {secondaryLabel}
+            </button>
+          ) : null}
+        </div>
+      ) : null}
     </div>
   );
 }
@@ -4488,6 +4540,38 @@ function SubmitButton({
   );
 }
 
+function LibraryCardActions({
+  item,
+  mediaMissing,
+  deleting,
+  onPreview,
+  onDelete,
+}: {
+  item: LibraryItem;
+  mediaMissing: boolean;
+  deleting: boolean;
+  onPreview: () => void;
+  onDelete: () => void;
+}) {
+  const canDownloadStoredFile = Boolean(item.output?.url && item.output.storedName && !mediaMissing);
+
+  return (
+    <div className="studio-library-tile__actions" aria-label="作品操作">
+      <button type="button" onClick={onPreview}>
+        预览
+      </button>
+      {canDownloadStoredFile ? (
+        <a href={item.output?.url} download>
+          下载
+        </a>
+      ) : null}
+      <button type="button" onClick={onDelete} disabled={deleting}>
+        {deleting ? "删除中" : "删除"}
+      </button>
+    </div>
+  );
+}
+
 function MediaCard({
   item,
   large = false,
@@ -4510,13 +4594,12 @@ function MediaCard({
     ? `${item.params.scale}x`
     : "";
   const fileSizeText = typeof media?.size === "number" ? formatBytes(media.size) : "";
+  const durationText = libraryDuration(item);
   const canDownloadStoredFile = Boolean(media?.storedName);
   const showActions = large && !compact;
   const showMediaControls = large;
-  const showOverlay = !large && !compact;
-  const showBody = !compact && !showOverlay;
+  const showBody = !compact;
   const statusBadge = mediaMissing ? "文件失效" : libraryStatusBadgeLabel(item.status);
-  const overlayMeta = [typeLabel, createdAt, scaleText, dimensionText, fileSizeText].filter(Boolean);
   return (
     <article className={cn("studio-media-card", compact && "is-compact")}>
       <div className={cn("studio-media-card__frame", large && "is-large")}>
@@ -4532,16 +4615,13 @@ function MediaCard({
             <span>{mediaMissing ? "文件失效" : libraryStatusLabel(item.status)}</span>
           </div>
         ) : null}
-        {showOverlay ? (
-          <div className="studio-media-card__overlay">
-            <div className="studio-media-card__overlay-head">
-              <strong>{item.title}</strong>
-              {statusBadge ? <span>{statusBadge}</span> : null}
-            </div>
-            <div className="studio-media-card__overlay-meta" aria-label="作品信息">
-              {overlayMeta.map((text) => <span key={text}>{text}</span>)}
-            </div>
-          </div>
+        {!large && item.type === "video" && hasMediaUrl ? (
+          <>
+            <span className="studio-media-card__play" aria-hidden="true">
+              <Play className="size-5" fill="currentColor" />
+            </span>
+            {durationText ? <span className="studio-media-card__duration">{durationText}</span> : null}
+          </>
         ) : null}
       </div>
       {showBody ? <div className="studio-media-card__body">
@@ -4552,6 +4632,7 @@ function MediaCard({
         <div className="studio-media-card__meta" aria-label="作品信息">
           <span>{typeLabel}</span>
           <span>{createdAt}</span>
+          {durationText ? <span>{durationText}</span> : null}
           {scaleText ? <span>{scaleText}</span> : null}
           {dimensionText ? <span>{dimensionText}</span> : null}
           {fileSizeText ? <span>{fileSizeText}</span> : null}
@@ -4621,6 +4702,17 @@ function libraryDimensions(item: LibraryItem) {
   const height = Number(item.params.outputHeight || item.params.sourceHeight || 0);
   if (!Number.isFinite(width) || !Number.isFinite(height) || width <= 0 || height <= 0) return "";
   return `${Math.round(width)}×${Math.round(height)}`;
+}
+
+function libraryDuration(item: LibraryItem) {
+  const raw = item.params.durationSeconds || item.params.duration || item.params.videoDuration;
+  const seconds = Number(raw);
+  if (!Number.isFinite(seconds) || seconds <= 0) return "";
+  const rounded = Math.round(seconds);
+  const minutes = Math.floor(rounded / 60);
+  const rest = rounded % 60;
+  if (!minutes) return `0:${String(rest).padStart(2, "0")}`;
+  return `${minutes}:${String(rest).padStart(2, "0")}`;
 }
 
 function Toast({ message, onClose }: { message: string; onClose: () => void }) {
