@@ -3017,22 +3017,22 @@ function VideoGenerationTutorial() {
   const steps = [
     {
       id: "upload",
-      title: "上传参考图",
-      description: "先放入一张清晰的起始画面，视频会围绕这张图继续生成。",
+      title: "输入内容并确认视频场景",
+      description: "上传参考图后输入提示词，让视频围绕起始画面和动作描述生成。",
       visual: <VideoTutorialInputDemo />,
       visualSide: "left",
     },
     {
       id: "prompt",
-      title: "填写提示词和参数",
-      description: "描述画面动作和镜头方向，再确认时长、清晰度和比例。",
+      title: "调整视频参数",
+      description: "根据需要确认时长、清晰度和比例，让结果更贴近当前创意。",
       visual: <VideoTutorialParameterDemo />,
       visualSide: "right",
     },
     {
       id: "result",
-      title: "生成视频结果",
-      description: "这里保留最终视频槽位。后面提供视频后，只需要替换同一个位置的素材。",
+      title: "生成视频并查看结果",
+      description: "生成完成后在这里预览视频结果，需要时可以下载或重新生成。",
       visual: <VideoTutorialResultSlot />,
       visualSide: "left",
     },
