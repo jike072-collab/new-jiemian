@@ -13,6 +13,7 @@ type BeforeAfterImageCompareProps = {
   initialPosition?: number;
   beforeAlt?: string;
   afterAlt?: string;
+  mediaType?: "image" | "video";
 };
 
 const clampComparePosition = (value: number) => Math.min(97, Math.max(3, value));
@@ -25,6 +26,7 @@ export function BeforeAfterImageCompare({
   initialPosition = 50,
   beforeAlt = "",
   afterAlt = "",
+  mediaType = "image",
 }: BeforeAfterImageCompareProps) {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const [position, setPosition] = useState(() => clampComparePosition(initialPosition));
@@ -78,7 +80,7 @@ export function BeforeAfterImageCompare({
       style={{ "--compare-position": `${position}%` } as CSSProperties}
       role="slider"
       tabIndex={0}
-      aria-label="图片增强前后对比"
+      aria-label={mediaType === "video" ? "视频放大前后对比" : "图片增强前后对比"}
       aria-valuemin={3}
       aria-valuemax={97}
       aria-valuenow={Math.round(position)}
@@ -88,8 +90,17 @@ export function BeforeAfterImageCompare({
       onPointerCancel={handlePointerEnd}
       onKeyDown={handleKeyDown}
     >
-      <img className="compare-before" src={beforeSrc} alt={beforeAlt} draggable={false} />
-      <img className="compare-after" src={afterSrc} alt={afterAlt} draggable={false} />
+      {mediaType === "video" ? (
+        <>
+          <video className="compare-before" src={beforeSrc} aria-label={beforeAlt} autoPlay muted loop playsInline preload="metadata" />
+          <video className="compare-after" src={afterSrc} aria-label={afterAlt} autoPlay muted loop playsInline preload="metadata" />
+        </>
+      ) : (
+        <>
+          <img className="compare-before" src={beforeSrc} alt={beforeAlt} draggable={false} />
+          <img className="compare-after" src={afterSrc} alt={afterAlt} draggable={false} />
+        </>
+      )}
       <span className="compare-label compare-label--after">{afterLabel}</span>
       <span className="compare-label compare-label--before">{beforeLabel}</span>
       <span className="compare-divider" aria-hidden="true" />

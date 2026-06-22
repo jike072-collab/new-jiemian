@@ -3182,6 +3182,22 @@ function ImageUpscaleCompareTutorial() {
   );
 }
 
+function VideoUpscaleCompareTutorial() {
+  return (
+    <PreviewState eyebrow="视频细节对比" title="视频细节对比" description="拖动分割线，查看放大前后的视频清晰度和细节变化。">
+      <BeforeAfterImageCompare
+        beforeSrc="/tutorial/video-upscaler/video-before.mp4"
+        afterSrc="/tutorial/video-upscaler/video-after.mp4"
+        beforeLabel="放大前"
+        afterLabel="放大后"
+        beforeAlt="放大前示例视频"
+        afterAlt="放大后示例视频"
+        mediaType="video"
+      />
+    </PreviewState>
+  );
+}
+
 function ImageUpscalePreviewPanel({
   state,
   output,
@@ -3288,7 +3304,7 @@ function VideoUpscalePreviewPanel({
   }
 
   if (!state.checked || state.statusLoading || (!state.availability?.ready && !state.statusError)) {
-    return state.statusLoading ? <ProcessingPreview label="正在处理" /> : <ToolTutorial kind="video-upscale" />;
+    return state.statusLoading ? <ProcessingPreview label="正在处理" /> : <VideoUpscaleCompareTutorial />;
   }
 
   if (!state.availability?.ready) {
@@ -3306,18 +3322,22 @@ function VideoUpscalePreviewPanel({
     const resultScale = typeof params.scale === "number" ? `${params.scale}x` : `${state.scale}x`;
     return (
       <PreviewState eyebrow="结果" title="高清结果" description={`${state.scale}x 高清处理完成。`} badge={libraryStatusBadgeLabel(output.item.status)} role="status" live>
-        <div className="studio-upscale-preview">
-          {source ? (
-            <figure className="studio-upscale-preview__figure">
-              <span className="studio-upscale-preview__label">原视频</span>
-              <video src={source.previewUrl} controls />
-            </figure>
-          ) : null}
+        {source ? (
+          <BeforeAfterImageCompare
+            beforeSrc={source.previewUrl}
+            afterSrc={output.item.output.url}
+            beforeLabel="放大前"
+            afterLabel="放大后"
+            beforeAlt={source.file.name}
+            afterAlt={output.item.title}
+            mediaType="video"
+          />
+        ) : (
           <figure className="studio-upscale-preview__figure">
             <span className="studio-upscale-preview__label">高清结果</span>
             <video src={output.item.output.url} controls />
           </figure>
-        </div>
+        )}
         <dl className="studio-upscale-stats" aria-label="视频高清结果信息">
           <div>
             <dt>原视频分辨率</dt>
@@ -3344,7 +3364,7 @@ function VideoUpscalePreviewPanel({
     );
   }
 
-  return <ToolTutorial kind="video-upscale" />;
+  return <VideoUpscaleCompareTutorial />;
 }
 
 function VideoUpscaleForm({
