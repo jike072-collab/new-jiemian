@@ -3,7 +3,7 @@ import { NewApiHttpClient, newApiAdminRequestContext } from "../integrations/new
 import { newApiLogger } from "../integrations/new-api/logger";
 import { redactSecret } from "../integrations/new-api/redaction";
 
-export type PromptOptimizeTool = "image-generator" | "image-editor";
+export type PromptOptimizeTool = "image-generator" | "image-editor" | "video-generator";
 
 export type PromptOptimizeInput = {
   tool: PromptOptimizeTool;
@@ -66,7 +66,7 @@ type ChatCompletionPayload = {
   };
 };
 
-const tools = new Set<PromptOptimizeTool>(["image-generator", "image-editor"]);
+const tools = new Set<PromptOptimizeTool>(["image-generator", "image-editor", "video-generator"]);
 const DEFAULT_MAX_INPUT_CHARS = 2000;
 const DEFAULT_TIMEOUT_MS = 15000;
 const DEFAULT_MODEL = "gpt-4o-mini";
@@ -154,10 +154,17 @@ function composeUserPrompt(input: PromptOptimizeInput) {
   const targetPlatform = input.targetPlatform || "TikTok Shop";
   const scenario = input.tool === "image-editor"
     ? "图片编辑：基于参考图进行局部修改，必须保留参考图中商品真实外观、颜色、材质、结构、品牌和数量。"
-    : "图片生成：生成可用于商品展示的电商视觉，不能改变用户描述的商品事实。";
+    : input.tool === "video-generator"
+      ? "视频生成：将用户的简短要求整理成可直接提交给视频模型的镜头、动作、节奏和画面描述，不能改变用户描述的主体事实。"
+      : "图片生成：生成可用于商品展示的电商视觉，不能改变用户描述的商品事实。";
   const imageInstruction = input.hasImage
-    ? "参考图：存在。输出中要写清保留项与修改项。"
+    ? input.tool === "video-generator"
+      ? "参考图：存在。输出中要说明首帧主体、镜头运动、人物或商品动作，并保持参考图主体一致。"
+      : "参考图：存在。输出中要写清保留项与修改项。"
     : "参考图：不存在。不要声称看到了图片。";
+  const optimizeFocus = input.tool === "video-generator"
+    ? "优化重点：主体清晰、动作自然、镜头运动明确、节奏适合短视频、画面连续稳定、光线和场景细节具体。"
+    : "优化重点：主体清晰、构图适合电商点击、背景干净可信、光线突出材质和细节。";
 
   return [
     scenario,
@@ -166,7 +173,7 @@ function composeUserPrompt(input: PromptOptimizeInput) {
     input.templateId ? `模板：${input.templateId}` : "",
     input.aspectRatio ? `画幅：${input.aspectRatio}` : "",
     input.quality ? `质量：${input.quality}` : "",
-    "优化重点：主体清晰、构图适合电商点击、背景干净可信、光线突出材质和细节。",
+    optimizeFocus,
     "用户原始要求：",
     input.prompt,
   ].filter(Boolean).join("\n");

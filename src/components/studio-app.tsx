@@ -2319,7 +2319,6 @@ function VideoGenerator({
         label={meta.promptLabel}
         value={state.prompt}
         onChange={onPromptChange}
-        enableOptimization={false}
         optimizing={state.promptOptimizing}
         optimizeError={state.promptOptimizeError}
         canUndoOptimize={Boolean(state.promptOptimizeUndo)}
