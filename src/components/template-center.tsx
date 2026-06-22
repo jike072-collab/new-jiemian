@@ -156,7 +156,7 @@ export function TemplateCenterView() {
   const [category, setCategory] = useState<TemplateCategory | "全部">("全部");
 
   const templates = scope === "image" ? imagePromptTemplates : videoPromptTemplates;
-  const totalTemplateCount = imagePromptTemplates.length + videoPromptTemplates.length;
+  const totalTemplateCount = templates.length;
 
   const filteredTemplates = useMemo(() => {
     const keyword = search.trim().toLowerCase();
@@ -171,20 +171,13 @@ export function TemplateCenterView() {
   }, [category, search, templates]);
 
   const categoryCounts = useMemo(() => {
-    const allTemplates = [...imagePromptTemplates, ...videoPromptTemplates];
     return templateCategories.reduce<Record<TemplateCategory | "全部", number>>((result, item) => {
       result[item] = item === "全部"
-        ? allTemplates.length
-        : allTemplates.filter((template) => template.category === item).length;
+        ? templates.length
+        : templates.filter((template) => template.category === item).length;
       return result;
-    }, {
-      "全部": 0,
-      "商品": 0,
-      "背景": 0,
-      "广告": 0,
-      "创意": 0,
-    });
-  }, []);
+    }, Object.fromEntries(templateCategories.map((item) => [item, 0])) as Record<TemplateCategory | "全部", number>);
+  }, [templates]);
 
   const handleToolAction = (action: WorkspaceAction, tool: WorkspaceToolId) => {
     if (action.kind === "route") {
@@ -209,7 +202,10 @@ export function TemplateCenterView() {
           counts={categoryCounts}
           templates={filteredTemplates}
           totalCount={totalTemplateCount}
-          onScopeChange={(nextScope) => router.push(templateTabHref(nextScope), { scroll: false })}
+          onScopeChange={(nextScope) => {
+            setCategory("全部");
+            router.push(templateTabHref(nextScope), { scroll: false });
+          }}
           onSearchChange={setSearch}
           onCategoryChange={setCategory}
         />
@@ -220,24 +216,36 @@ export function TemplateCenterView() {
 
 const templateCategoryMeta: Record<TemplateCategory | "全部", { title: string; description: string }> = {
   "全部": {
-    title: "全部模板",
+    title: "全部",
     description: "查看图片和视频的全部模板分类。",
   },
-  "商品": {
-    title: "电商模板",
-    description: "商品主图、细节、展示和使用场景。",
+  "商品美食": {
+    title: "商品美食",
+    description: "商品图、美食、服装和商业展示。",
   },
-  "背景": {
-    title: "背景模板",
-    description: "纯白背景、场景背景和基础视觉整理。",
+  "海报品牌": {
+    title: "海报品牌",
+    description: "促销海报、活动主视觉和品牌系统。",
   },
-  "广告": {
-    title: "广告模板",
-    description: "促销海报、短视频广告和转化素材。",
+  "摄影人像": {
+    title: "摄影人像",
+    description: "人像、街拍、空间和旅行纪实。",
   },
-  "创意": {
-    title: "创意模板",
-    description: "抠图、翻译、对比和更多创意玩法。",
+  "插画风格": {
+    title: "插画风格",
+    description: "动漫、水彩、国风和像素风格。",
+  },
+  "图文科普": {
+    title: "图文科普",
+    description: "信息图、论文图、数据图表和图鉴。",
+  },
+  "界面设计": {
+    title: "界面设计",
+    description: "手机界面、工作台、落地页和图标。",
+  },
+  "图片编辑": {
+    title: "图片编辑",
+    description: "翻译、抠图、换背景和清理画面。",
   },
 };
 
@@ -253,9 +261,8 @@ function TemplateCategoryPanel({
   return (
     <div className="template-center-panel">
       <div className="template-center-categories" role="group" aria-label="模板分类">
-        {templateCategories.map((item) => {
+        {templateCategories.filter((item) => item === "全部" || counts[item] > 0).map((item) => {
           const meta = templateCategoryMeta[item];
-          const title = meta.title.replace("模板", "");
           return (
             <button
               key={item}
@@ -265,7 +272,7 @@ function TemplateCategoryPanel({
               aria-pressed={category === item}
             >
               <span>
-                <strong>{title}</strong>
+                <strong>{meta.title}</strong>
               </span>
               <em>{counts[item]}</em>
             </button>
@@ -302,7 +309,7 @@ function TemplateBrowserPanel({
       <div className="template-center-browser__head">
         <div>
           <h3>模板中心</h3>
-          <p>发现适合商品、广告和创意内容的优质模板</p>
+          <p>发现适合商品、海报、摄影、插画、图文和界面的常用模板</p>
         </div>
         <span className="shell-chip">共 {totalCount} 个模板</span>
       </div>
