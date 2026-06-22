@@ -1,17 +1,19 @@
 :root {
-  --background: #050507;
+  --background: #09090b;
   --foreground: #f7f7f8;
-  --panel: #101012;
-  --panel-2: #141416;
-  --surface: #151517;
-  --border-subtle: rgba(255, 255, 255, 0.1);
+  --panel: #101014;
+  --panel-2: #141418;
+  --surface: #141418;
+  --surface-hover: #18181e;
+  --border-subtle: rgba(255, 255, 255, 0.08);
   --border-strong: rgba(255, 255, 255, 0.18);
   --muted: rgba(255, 255, 255, 0.58);
   --muted-strong: rgba(255, 255, 255, 0.74);
-  --primary: #ff0a6c;
-  --primary-hover: #ff2a80;
-  --primary-active: #e90061;
-  --primary-soft: rgba(255, 10, 108, 0.14);
+  --primary: #ff2b88;
+  --primary-hover: #ff4b9b;
+  --primary-active: #e81f77;
+  --primary-soft: rgba(255, 43, 136, 0.14);
+  --accent-purple: #a452ff;
   --success: #34d399;
   --warning: #fbbf24;
   --radius-card: 12px;
@@ -38,9 +40,15 @@
   --z-drawer: 50;
   --z-modal: 60;
   --safe-area-bottom: env(safe-area-inset-bottom);
-  --motion-fast: 120ms;
-  --motion-base: 180ms;
-  --motion-slow: 240ms;
+  --motion-instant: 120ms;
+  --motion-fast: 180ms;
+  --motion-base: 240ms;
+  --motion-layout: 360ms;
+  --motion-entrance: 560ms;
+  --motion-slow: var(--motion-layout);
+  --ease-enter: cubic-bezier(0.16, 1, 0.3, 1);
+  --ease-exit: cubic-bezier(0.7, 0, 0.84, 0);
+  --ease-toggle: cubic-bezier(0.65, 0, 0.35, 1);
 }
 
 html {
