@@ -3,9 +3,11 @@
 import Link from "next/link";
 import {
   ChevronDown,
+  LogIn,
   Menu,
   PanelLeft,
   PanelRight,
+  Settings,
   UserRound,
   X,
 } from "lucide-react";
@@ -34,7 +36,9 @@ type WorkbenchShellProps = {
   state: WorkspaceShellState;
   onToolAction: (action: WorkspaceAction, tool: WorkspaceToolId) => void;
   isAuthenticated: boolean;
+  canAccessAdmin?: boolean;
   accountName?: string | null;
+  accountQuotaLabel?: string | null;
   headerRightSlot?: ReactNode;
   accountSlot?: ReactNode;
   parameterSlot: ReactNode;
@@ -48,7 +52,9 @@ export function WorkbenchShell({
   state,
   onToolAction,
   isAuthenticated,
+  canAccessAdmin = false,
   accountName,
+  accountQuotaLabel,
   headerRightSlot,
   accountSlot,
   parameterSlot,
@@ -125,7 +131,13 @@ export function WorkbenchShell({
   }, [drawerOpen]);
 
   return (
-    <div ref={rootRef} className="shell-root min-h-[100dvh] overflow-hidden bg-[var(--background)] text-[var(--foreground)]">
+    <div
+      ref={rootRef}
+      className={cn(
+        "shell-root min-h-[100dvh] overflow-hidden bg-[var(--background)] text-[var(--foreground)]",
+        `shell-root--tool-${state.activeToolId}`,
+      )}
+    >
       <Header
         isAuthenticated={isAuthenticated}
         accountName={accountName}
@@ -139,6 +151,18 @@ export function WorkbenchShell({
         drawerOpen={drawerOpen}
       />
 
+      {isAuthenticated && accountOpen ? (
+        <div className="shell-account-popover">
+          {accountSlot ? (
+            accountSlot
+          ) : (
+            <div className="rounded-[1.5rem] border border-white/10 bg-[#0f0f13] p-4 text-sm text-white/68 shadow-[0_20px_60px_rgba(0,0,0,0.28)]">
+              <p className="text-white/92">账户功能暂未加载。</p>
+            </div>
+          )}
+        </div>
+      ) : null}
+
       <MobileOverlay
         activeTool={activeTool}
         drawerOpen={drawerOpen}
@@ -151,6 +175,7 @@ export function WorkbenchShell({
         }}
         onChangePane={setPane}
         isAuthenticated={isAuthenticated}
+        canAccessAdmin={canAccessAdmin}
         accountSlot={accountSlot}
         accountOpen={accountOpen}
         mobileActionSlot={mobileActionSlot}
@@ -165,6 +190,11 @@ export function WorkbenchShell({
             onSelect={(action, tool) => onToolAction(action, tool)}
             groups={workspaceToolGroups}
             isAuthenticated={isAuthenticated}
+            canAccessAdmin={canAccessAdmin}
+            accountName={accountName}
+            accountQuotaLabel={accountQuotaLabel}
+            accountOpen={accountOpen}
+            onToggleAccount={() => setAccountOpen((value) => !value)}
           />
 
           <section className={cn("shell-panel shell-panel--controls", singlePaneMobile && "shell-panel--mobile-single-hidden")}>
@@ -261,6 +291,7 @@ function Header({
           )}
         </div>
       ) : null}
+
     </header>
   );
 }
@@ -270,37 +301,106 @@ function DesktopNavigation({
   onSelect,
   groups,
   isAuthenticated,
+  canAccessAdmin,
+  accountName,
+  accountQuotaLabel,
+  accountOpen,
+  onToggleAccount,
 }: {
   activeToolId: WorkspaceToolId;
   onSelect: (action: WorkspaceAction, tool: WorkspaceToolId) => void;
   groups: Array<{ title: WorkspaceToolGroup; items: WorkspaceToolId[] }>;
   isAuthenticated: boolean;
+  canAccessAdmin: boolean;
+  accountName?: string | null;
+  accountQuotaLabel?: string | null;
+  accountOpen: boolean;
+  onToggleAccount: () => void;
 }) {
+  const displayName = accountName || "账户";
+  const avatarText = displayName.slice(0, 2).toUpperCase();
+
   return (
-    <aside className="shell-nav">
-      <div className="shell-nav__groups">
-        {groups.map((group) => {
-          const visibleItems = group.items
-            .map((id) => workspaceToolById(id))
-            .filter((item): item is WorkspaceToolEntry => Boolean(item?.visible && (!item.requiresAuth || isAuthenticated)));
-          if (!visibleItems.length) return null;
-          return (
-            <section key={group.title} className="shell-nav__group">
-              <h3 className="shell-nav__group-title">{group.title}</h3>
-              <div className="shell-nav__items">
-                {visibleItems.map((item) => (
-                  <ToolButton
-                    key={item.id}
-                    item={item}
-                    active={activeToolId === item.id}
-                    showDescription={false}
-                    onClick={() => onSelect(item.action, item.id)}
-                  />
-                ))}
-              </div>
-            </section>
-          );
-        })}
+    <aside className="shell-nav" aria-label="工作台导航">
+      <Link href="/?preview=1" className="shell-nav__brand" aria-label="奥皇 AI 工作台">
+        <BrandLogo className="shell-nav__brand-logo" />
+        <span className="shell-nav__brand-copy">
+          <strong>奥皇 AI</strong>
+          <small>AI VISUAL STUDIO</small>
+        </span>
+      </Link>
+
+      <nav className="shell-nav__scroll" aria-label="功能导航">
+        <div className="shell-nav__groups">
+          {groups.map((group) => {
+            const visibleItems = group.items
+              .map((id) => workspaceToolById(id))
+              .filter((item): item is WorkspaceToolEntry => canShowWorkspaceTool(item, { isAuthenticated, canAccessAdmin }));
+            if (!visibleItems.length) return null;
+            return (
+              <section key={group.title} className="shell-nav__group">
+                <h3 className="shell-nav__group-title">{group.title}</h3>
+                <div className="shell-nav__items">
+                  {visibleItems.map((item) => (
+                    <ToolButton
+                      key={item.id}
+                      item={item}
+                      active={activeToolId === item.id}
+                      showDescription={false}
+                      onClick={() => onSelect(item.action, item.id)}
+                    />
+                  ))}
+                </div>
+              </section>
+            );
+          })}
+        </div>
+      </nav>
+
+      <div className="shell-nav__account" aria-label="账户状态">
+        {isAuthenticated ? (
+          <>
+            <div className="shell-nav-account__main">
+              <span className="shell-nav-account__avatar">{avatarText}</span>
+              <span className="shell-nav-account__copy">
+                <strong>{displayName}</strong>
+                <span>剩余额度 {accountQuotaLabel || "读取中"}</span>
+              </span>
+            </div>
+            <div className={cn("shell-nav-account__actions", canAccessAdmin && "is-split")}>
+              <button
+                type="button"
+                className={cn("shell-nav-account__button", accountOpen && "is-active")}
+                onClick={onToggleAccount}
+              >
+                <UserRound className="size-4" aria-hidden="true" />
+                账户中心
+              </button>
+              {canAccessAdmin ? (
+                <Link href="/admin/providers" className="shell-nav-account__button shell-nav-account__button--admin">
+                  <Settings className="size-4" aria-hidden="true" />
+                  后台管理
+                </Link>
+              ) : null}
+            </div>
+          </>
+        ) : (
+          <>
+            <div className="shell-nav-account__main">
+              <span className="shell-nav-account__avatar">
+                <UserRound className="size-4" aria-hidden="true" />
+              </span>
+              <span className="shell-nav-account__copy">
+                <strong>未登录</strong>
+                <span>登录后查看额度与作品</span>
+              </span>
+            </div>
+            <Link href="/login" className="shell-nav-account__button">
+              <LogIn className="size-4" aria-hidden="true" />
+              登录
+            </Link>
+          </>
+        )}
       </div>
     </aside>
   );
@@ -315,6 +415,7 @@ function MobileOverlay({
   onSelect,
   onChangePane,
   isAuthenticated,
+  canAccessAdmin,
   accountSlot,
   accountOpen,
   mobileActionSlot,
@@ -329,6 +430,7 @@ function MobileOverlay({
   onSelect: (action: WorkspaceAction, tool: WorkspaceToolId) => void;
   onChangePane: (value: ShellPane) => void;
   isAuthenticated: boolean;
+  canAccessAdmin: boolean;
   accountSlot?: ReactNode;
   accountOpen: boolean;
   mobileActionSlot?: ReactNode;
@@ -400,7 +502,7 @@ function MobileOverlay({
           {workspaceToolGroups.map((group) => {
             const visibleItems = group.items
               .map((id) => workspaceToolById(id))
-              .filter((item): item is WorkspaceToolEntry => Boolean(item?.visible && (!item.requiresAuth || isAuthenticated)));
+              .filter((item): item is WorkspaceToolEntry => canShowWorkspaceTool(item, { isAuthenticated, canAccessAdmin }));
             if (!visibleItems.length) return null;
             return (
               <section key={group.title} className="shell-nav__group">
@@ -448,6 +550,16 @@ function MobileOverlay({
       </aside>
     </>
   );
+}
+
+function canShowWorkspaceTool(
+  item: WorkspaceToolEntry | null | undefined,
+  auth: { isAuthenticated: boolean; canAccessAdmin: boolean },
+): item is WorkspaceToolEntry {
+  if (!item) return false;
+  if (item.requiresAuth && !auth.isAuthenticated) return false;
+  if (item.id === "admin-settings") return auth.canAccessAdmin;
+  return item.visible;
 }
 
 function ToolButton({

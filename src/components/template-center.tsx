@@ -156,6 +156,7 @@ export function TemplateCenterView() {
   const [category, setCategory] = useState<TemplateCategory | "全部">("全部");
 
   const templates = scope === "image" ? imagePromptTemplates : videoPromptTemplates;
+  const totalTemplateCount = templates.length;
 
   const filteredTemplates = useMemo(() => {
     const keyword = search.trim().toLowerCase();
@@ -170,20 +171,13 @@ export function TemplateCenterView() {
   }, [category, search, templates]);
 
   const categoryCounts = useMemo(() => {
-    const allTemplates = [...imagePromptTemplates, ...videoPromptTemplates];
     return templateCategories.reduce<Record<TemplateCategory | "全部", number>>((result, item) => {
       result[item] = item === "全部"
-        ? allTemplates.length
-        : allTemplates.filter((template) => template.category === item).length;
+        ? templates.length
+        : templates.filter((template) => template.category === item).length;
       return result;
-    }, {
-      "全部": 0,
-      "商品": 0,
-      "背景": 0,
-      "广告": 0,
-      "创意": 0,
-    });
-  }, []);
+    }, Object.fromEntries(templateCategories.map((item) => [item, 0])) as Record<TemplateCategory | "全部", number>);
+  }, [templates]);
 
   const handleToolAction = (action: WorkspaceAction, tool: WorkspaceToolId) => {
     if (action.kind === "route") {
@@ -199,21 +193,21 @@ export function TemplateCenterView() {
       onToolAction={handleToolAction}
       isAuthenticated={false}
       toolTitle="模板中心"
-      parameterSlot={
-        <TemplateCategoryPanel
-          category={category}
-          counts={categoryCounts}
-          onCategoryChange={setCategory}
-        />
-      }
+      parameterSlot={null}
       previewSlot={
         <TemplateBrowserPanel
           scope={scope}
           search={search}
+          category={category}
+          counts={categoryCounts}
           templates={filteredTemplates}
-          totalCount={templates.length}
-          onScopeChange={(nextScope) => router.push(templateTabHref(nextScope), { scroll: false })}
+          totalCount={totalTemplateCount}
+          onScopeChange={(nextScope) => {
+            setCategory("全部");
+            router.push(templateTabHref(nextScope), { scroll: false });
+          }}
           onSearchChange={setSearch}
+          onCategoryChange={setCategory}
         />
       }
     />
@@ -222,24 +216,36 @@ export function TemplateCenterView() {
 
 const templateCategoryMeta: Record<TemplateCategory | "全部", { title: string; description: string }> = {
   "全部": {
-    title: "全部模板",
+    title: "全部",
     description: "查看图片和视频的全部模板分类。",
   },
-  "商品": {
-    title: "电商模板",
-    description: "商品主图、细节、展示和使用场景。",
+  "商品美食": {
+    title: "商品美食",
+    description: "商品图、美食、服装和商业展示。",
   },
-  "背景": {
-    title: "背景模板",
-    description: "纯白背景、场景背景和基础视觉整理。",
+  "海报品牌": {
+    title: "海报品牌",
+    description: "促销海报、活动主视觉和品牌系统。",
   },
-  "广告": {
-    title: "广告模板",
-    description: "促销海报、短视频广告和转化素材。",
+  "摄影人像": {
+    title: "摄影人像",
+    description: "人像、街拍、空间和旅行纪实。",
   },
-  "创意": {
-    title: "创意模板",
-    description: "抠图、翻译、对比和更多创意玩法。",
+  "插画风格": {
+    title: "插画风格",
+    description: "动漫、水彩、国风和像素风格。",
+  },
+  "图文科普": {
+    title: "图文科普",
+    description: "信息图、论文图、数据图表和图鉴。",
+  },
+  "界面设计": {
+    title: "界面设计",
+    description: "手机界面、工作台、落地页和图标。",
+  },
+  "图片编辑": {
+    title: "图片编辑",
+    description: "翻译、抠图、换背景和清理画面。",
   },
 };
 
@@ -255,7 +261,7 @@ function TemplateCategoryPanel({
   return (
     <div className="template-center-panel">
       <div className="template-center-categories" role="group" aria-label="模板分类">
-        {templateCategories.map((item) => {
+        {templateCategories.filter((item) => item === "全部" || counts[item] > 0).map((item) => {
           const meta = templateCategoryMeta[item];
           return (
             <button
@@ -267,7 +273,6 @@ function TemplateCategoryPanel({
             >
               <span>
                 <strong>{meta.title}</strong>
-                <small>{meta.description}</small>
               </span>
               <em>{counts[item]}</em>
             </button>
@@ -281,57 +286,71 @@ function TemplateCategoryPanel({
 function TemplateBrowserPanel({
   scope,
   search,
+  category,
+  counts,
   templates,
   totalCount,
   onScopeChange,
   onSearchChange,
+  onCategoryChange,
 }: {
   scope: TemplateScope;
   search: string;
+  category: TemplateCategory | "全部";
+  counts: Record<TemplateCategory | "全部", number>;
   templates: TemplatePromptTemplate[];
   totalCount: number;
   onScopeChange: (scope: TemplateScope) => void;
   onSearchChange: (value: string) => void;
+  onCategoryChange: (value: TemplateCategory | "全部") => void;
 }) {
   return (
     <div className="template-center-browser">
       <div className="template-center-browser__head">
         <div>
-          <p className="shell-eyebrow">模板中心</p>
-          <h3>{scope === "image" ? "AI 图片模板" : "AI 视频模板"}</h3>
+          <h3>模板中心</h3>
+          <p>发现适合商品、海报、摄影、插画、图文和界面的常用模板</p>
         </div>
-        <span className="shell-chip">{totalCount} 个模板</span>
+        <span className="shell-chip">共 {totalCount} 个模板</span>
       </div>
 
-      <div className="template-center-tabs" role="tablist" aria-label="模板类型">
-        <button
-          type="button"
-          className={cn("template-center-tab", scope === "image" && "is-active")}
-          aria-pressed={scope === "image"}
-          onClick={() => onScopeChange("image")}
-        >
-          图片模板
-        </button>
-        <button
-          type="button"
-          className={cn("template-center-tab", scope === "video" && "is-active")}
-          aria-pressed={scope === "video"}
-          onClick={() => onScopeChange("video")}
-        >
-          视频模板
-        </button>
-      </div>
+      <div className="template-center-toolbar">
+        <div className="template-center-tabs" role="tablist" aria-label="模板类型">
+          <button
+            type="button"
+            className={cn("template-center-tab", scope === "image" && "is-active")}
+            aria-pressed={scope === "image"}
+            onClick={() => onScopeChange("image")}
+          >
+            图片模板
+          </button>
+          <button
+            type="button"
+            className={cn("template-center-tab", scope === "video" && "is-active")}
+            aria-pressed={scope === "video"}
+            onClick={() => onScopeChange("video")}
+          >
+            视频模板
+          </button>
+        </div>
 
-      <label className="template-center-search">
-        <Search className="size-4" aria-hidden="true" />
-        <input
-          className="studio-input"
-          type="search"
-          value={search}
-          onChange={(event) => onSearchChange(event.target.value)}
-          placeholder="搜索模板"
+        <label className="template-center-search">
+          <Search className="size-4" aria-hidden="true" />
+          <input
+            className="studio-input"
+            type="search"
+            value={search}
+            onChange={(event) => onSearchChange(event.target.value)}
+            placeholder="搜索模板"
+          />
+        </label>
+
+        <TemplateCategoryPanel
+          category={category}
+          counts={counts}
+          onCategoryChange={onCategoryChange}
         />
-      </label>
+      </div>
 
       <div className="template-center-grid" aria-label="模板列表">
         {templates.length ? templates.map((template) => (

@@ -3,9 +3,10 @@
 /* eslint-disable @next/next/no-img-element */
 
 import { useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
-import { AlertTriangle, ArrowDownUp, Check, ChevronDown, Download, ExternalLink, ImageUp, ListFilter, Loader2, RefreshCw, Search, Trash2, UploadCloud, Wand2, X } from "lucide-react";
+import { AlertTriangle, ArrowDownUp, Check, ChevronDown, Download, ExternalLink, ImageUp, Loader2, Play, RefreshCw, Search, Trash2, UploadCloud, Wand2, X } from "lucide-react";
 import { useRouter, useSearchParams } from "next/navigation";
 
+import { BeforeAfterImageCompare } from "@/components/before-after-image-compare";
 import { WorkbenchShell } from "@/components/workbench-shell";
 import { TemplateRail } from "@/components/template-center";
 import { WorkspaceAccountPanel } from "@/components/workspace-account-panel";
@@ -1874,13 +1875,6 @@ export function StudioApp() {
           registerMobileAction={setMobileAction}
         />
       ) : null}
-      {activeBusinessTool === "library" ? (
-        <LibrarySidebar
-          count={libraryCounts}
-          filter={libraryFilter}
-          onFilterChange={setLibraryFilter}
-        />
-      ) : null}
     </>
   );
 
@@ -1890,7 +1884,9 @@ export function StudioApp() {
         state={{ activeToolId: activeWorkspaceToolId }}
         onToolAction={handleToolAction}
         isAuthenticated={Boolean(sessionUser)}
+        canAccessAdmin={sessionUser?.role === "admin"}
         accountName={sessionUser?.display_name || sessionUser?.username || null}
+        accountQuotaLabel={quotaSnapshot ? String(quotaSnapshot.available_quota_units) : null}
         headerRightSlot={accountHeaderSlot}
         accountSlot={(
           <WorkspaceAccountPanel
@@ -1919,9 +1915,11 @@ export function StudioApp() {
             <LibraryWorkspace
               items={currentLibraryItems}
               totalCount={library.length}
+              count={libraryCounts}
               selectedItem={selectedLibraryItem}
               loading={libraryLoading}
               error={libraryError}
+              isAuthenticated={Boolean(sessionUser)}
               filter={libraryFilter}
               sort={librarySort}
               search={librarySearch}
@@ -1934,6 +1932,8 @@ export function StudioApp() {
               onDelete={handleDeleteLibraryItem}
               onRefresh={refreshLibrary}
               onMediaMissing={markLibraryMediaMissing}
+              onLogin={() => router.push("/login")}
+              onStartCreate={() => setActiveWorkspaceToolId("image")}
             />
           ) : (
             activeBusinessTool === "image" ? (
@@ -2780,7 +2780,296 @@ const toolTutorials: Record<ToolTutorialKind, {
   },
 };
 
+function ImageGenerationTutorial() {
+  return (
+    <PreviewState eyebrow="快速教程" title="快速教程" description="输入描述，选择比例，即可生成图片。">
+      <div className="image-tutorial-simple">
+        <div className="image-tutorial-simple__stage">
+          <div className="image-tutorial-simple__image-shell">
+            <img
+              className="image-tutorial-simple__image"
+              src="/tutorials/image-generator/perfume-result.png"
+              alt="新中式香水产品图，粉色牡丹花、香水瓶、大理石台面和中式窗棂背景"
+            />
+          </div>
+          <div className="image-tutorial-simple__overlay image-tutorial-simple__overlay--prompt">
+            <span>提示词</span>
+            <p>新中式香水产品摄影，粉色牡丹花簇拥，香水瓶置于大理石台面，背景带有中式窗棂元素，光影柔和，画面干净高级，细节丰富，商业产品图风格。</p>
+          </div>
+          <div className="image-tutorial-simple__overlay image-tutorial-simple__overlay--ratio">
+            <span>比例</span>
+            <i aria-hidden="true" />
+            <strong>16:9</strong>
+          </div>
+        </div>
+      </div>
+    </PreviewState>
+  );
+}
+
+function ImageEditorTutorial() {
+  return (
+    <PreviewState eyebrow="图片编辑示例" title="图片编辑示例" description="上传图片并描述修改要求，快速完成内容编辑与素材融合。">
+      <div className="image-editor-tutorial">
+        <div className="image-editor-tutorial__canvas" aria-label="图片编辑器示例图片">
+          <svg className="image-editor-tutorial__path" viewBox="0 0 980 520" aria-hidden="true">
+            <path className="image-editor-tutorial__dash" d="M18 425C98 190 238 330 365 265C487 202 575 262 690 170C750 122 810 82 862 52" />
+            <g className="image-editor-plane-mark" transform="translate(862 52) rotate(8) scale(0.68) translate(-9 -39)">
+              <path d="M9 30 56 9 42 56 32 39 9 48 25 33 9 30Z" fill="none" stroke="currentColor" strokeWidth="4.6" strokeLinecap="round" strokeLinejoin="round" />
+            </g>
+          </svg>
+
+          <figure className="image-editor-photo image-editor-photo--input image-editor-photo--single-source">
+            <img src="/tutorials/image-editor/single-source.png" alt="方形粉色香水瓶白底素材" />
+          </figure>
+          <img className="image-editor-arrow image-editor-arrow--single" src="/tutorials/image-editor/pink-arrow.png" alt="" aria-hidden="true" />
+          <span className="image-editor-prompt image-editor-prompt--single">
+            <span>+</span>
+            <span>提示词</span>
+          </span>
+          <figure className="image-editor-photo image-editor-photo--result image-editor-photo--single-result">
+            <img src="/tutorials/image-editor/single-result.png" alt="女性手持同款香水瓶的编辑结果" />
+          </figure>
+
+          <figure className="image-editor-photo image-editor-photo--input image-editor-photo--merge-product">
+            <img src="/tutorials/image-editor/merge-product.png" alt="椭圆形粉色香水瓶白底素材" />
+          </figure>
+          <figure className="image-editor-photo image-editor-photo--input image-editor-photo--merge-scene">
+            <img src="/tutorials/image-editor/merge-scene.png" alt="新中式牡丹场景素材" />
+          </figure>
+          <img className="image-editor-arrow image-editor-arrow--merge" src="/tutorials/image-editor/pink-arrow.png" alt="" aria-hidden="true" />
+          <span className="image-editor-prompt image-editor-prompt--merge">
+            <span>+</span>
+            <span>提示词</span>
+          </span>
+          <figure className="image-editor-photo image-editor-photo--result image-editor-photo--merge-result">
+            <img src="/tutorials/image-editor/merge-result.png" alt="香水瓶放入新中式牡丹场景后的融合结果" />
+          </figure>
+        </div>
+      </div>
+    </PreviewState>
+  );
+}
+
+const videoTutorialPromptText = "雨天城市街头，女生撑透明雨伞缓慢向前行走，并自然回头看向镜头。";
+const videoTutorialResultVideoSrc = "";
+
+type VideoTutorialImagePhase = "hidden" | "dragging" | "landed";
+
+function VideoTutorialInputDemo() {
+  const demoRef = useRef<HTMLDivElement | null>(null);
+  const [imagePhase, setImagePhase] = useState<VideoTutorialImagePhase>("hidden");
+  const [uploadTargetActive, setUploadTargetActive] = useState(false);
+  const [bubbleVisible, setBubbleVisible] = useState(false);
+  const [typedText, setTypedText] = useState("");
+  const [isInView, setIsInView] = useState(true);
+  const [reducedMotion, setReducedMotion] = useState(false);
+  const sourceImageLanded = reducedMotion || imagePhase === "landed";
+  const promptBubbleVisible = reducedMotion || bubbleVisible;
+  const promptText = reducedMotion ? videoTutorialPromptText : typedText;
+
+  useEffect(() => {
+    const mediaQuery = window.matchMedia("(prefers-reduced-motion: reduce)");
+    const updateMotionPreference = () => setReducedMotion(mediaQuery.matches);
+
+    updateMotionPreference();
+    mediaQuery.addEventListener("change", updateMotionPreference);
+    return () => mediaQuery.removeEventListener("change", updateMotionPreference);
+  }, []);
+
+  useEffect(() => {
+    const node = demoRef.current;
+    if (!node || reducedMotion || typeof IntersectionObserver === "undefined") return undefined;
+
+    const observer = new IntersectionObserver(([entry]) => {
+      setIsInView(entry.isIntersecting);
+    }, { threshold: 0.2 });
+
+    observer.observe(node);
+    return () => observer.disconnect();
+  }, [reducedMotion]);
+
+  useEffect(() => {
+    if (reducedMotion || !isInView) return undefined;
+
+    let stopped = false;
+    const timers: Array<ReturnType<typeof setTimeout>> = [];
+    let typingTimer: ReturnType<typeof setInterval> | undefined;
+
+    const startLoop = () => {
+      if (stopped) return;
+
+      if (typingTimer) clearInterval(typingTimer);
+      setImagePhase("hidden");
+      setUploadTargetActive(false);
+      setBubbleVisible(false);
+      setTypedText("");
+
+      timers.push(
+        setTimeout(() => setImagePhase("dragging"), 650),
+        setTimeout(() => setUploadTargetActive(true), 1250),
+        setTimeout(() => setImagePhase("landed"), 3150),
+        setTimeout(() => {
+          setBubbleVisible(true);
+          setTypedText(videoTutorialPromptText.slice(0, 1));
+
+          let index = 1;
+          typingTimer = setInterval(() => {
+            index += 1;
+            setTypedText(videoTutorialPromptText.slice(0, index));
+
+            if (index >= videoTutorialPromptText.length && typingTimer) {
+              clearInterval(typingTimer);
+              typingTimer = undefined;
+            }
+          }, 58);
+        }, 3150),
+        setTimeout(() => {
+          setImagePhase("hidden");
+          setUploadTargetActive(false);
+          setBubbleVisible(false);
+          setTypedText("");
+        }, 6800),
+        setTimeout(startLoop, 7600),
+      );
+    };
+
+    startLoop();
+
+    return () => {
+      stopped = true;
+      timers.forEach(clearTimeout);
+      if (typingTimer) clearInterval(typingTimer);
+    };
+  }, [isInView, reducedMotion]);
+
+  return (
+    <div ref={demoRef} className="video-tutorial-input-demo">
+      <div className="tutorial-upload-placeholder">
+        <UploadCloud aria-hidden="true" />
+        <span>上传图片</span>
+      </div>
+      <span className={cn("tutorial-upload-target-ring", uploadTargetActive && "is-active")} aria-hidden="true" />
+
+      <img
+        src="/tutorials/video-generator/input-person.png"
+        alt=""
+        className={cn(
+          "tutorial-source-image",
+          imagePhase === "dragging" && "is-dragging",
+          sourceImageLanded && "is-visible",
+        )}
+      />
+
+      <div className={cn("tutorial-prompt-bubble", promptBubbleVisible && "is-visible")}>
+        {promptText}
+        {promptBubbleVisible && !reducedMotion && typedText.length < videoTutorialPromptText.length ? <span className="typing-caret" /> : null}
+      </div>
+    </div>
+  );
+}
+
+function VideoTutorialResultSlot() {
+  return (
+    <div className="video-tutorial-result-slot">
+      <div className="video-tutorial-result-slot__backdrop" aria-hidden="true">
+        <img src="/tutorials/video-generator/input-person.png" alt="" />
+      </div>
+      <div className="video-tutorial-result-slot__media">
+        {videoTutorialResultVideoSrc ? (
+          <video src={videoTutorialResultVideoSrc} poster="/tutorials/video-generator/input-person.png" autoPlay muted loop playsInline preload="metadata" />
+        ) : (
+          <video poster="/tutorials/video-generator/input-person.png" muted playsInline preload="metadata" aria-label="视频结果预留位" />
+        )}
+        <span className="video-tutorial-result-slot__play" aria-hidden="true" />
+      </div>
+    </div>
+  );
+}
+
+function VideoTutorialParameterDemo() {
+  return (
+    <div className="video-tutorial-parameter-demo">
+      <div className="video-tutorial-parameter-demo__preview">
+        <img src="/tutorials/video-generator/rain-umbrella.png" alt="" />
+      </div>
+      <div className="video-tutorial-parameter-demo__assets" aria-label="示例参数">
+        <span className="video-tutorial-parameter-demo__asset" aria-label="5 秒">
+          <span className="video-tutorial-parameter-demo__asset-icon is-duration" aria-hidden="true" />
+          <strong>5s</strong>
+        </span>
+        <span className="video-tutorial-parameter-demo__asset" aria-label="720P">
+          <span className="video-tutorial-parameter-demo__asset-icon is-resolution" aria-hidden="true" />
+          <strong>720P</strong>
+        </span>
+        <span className="video-tutorial-parameter-demo__asset" aria-label="4:3">
+          <span className="video-tutorial-parameter-demo__asset-icon is-ratio" aria-hidden="true" />
+          <strong>4:3</strong>
+        </span>
+      </div>
+    </div>
+  );
+}
+
+function VideoGenerationTutorial() {
+  const steps = [
+    {
+      id: "upload",
+      title: "输入内容并确认视频场景",
+      description: "上传参考图后输入提示词，让视频围绕起始画面和动作描述生成。",
+      visual: <VideoTutorialInputDemo />,
+      visualSide: "left",
+    },
+    {
+      id: "prompt",
+      title: "调整视频参数",
+      description: "根据需要确认时长、清晰度和比例，让结果更贴近当前创意。",
+      visual: <VideoTutorialParameterDemo />,
+      visualSide: "right",
+    },
+    {
+      id: "result",
+      title: "生成视频并查看结果",
+      description: "生成完成后在这里预览视频结果，需要时可以下载或重新生成。",
+      visual: <VideoTutorialResultSlot />,
+      visualSide: "left",
+    },
+  ];
+
+  return (
+    <PreviewState eyebrow="快速教程" title="视频生成快速教程" description="上传参考图，输入提示词，确认比例后生成视频。">
+      <div className="video-tutorial-guide">
+        {steps.map((step, index) => (
+          <article key={step.id} className={cn("video-tutorial-guide__section", step.visualSide === "right" && "is-visual-right")}>
+            <div className="video-tutorial-guide__visual">
+              {step.visual}
+            </div>
+            <div className="video-tutorial-guide__copy">
+              <span>{String(index + 1).padStart(2, "0")}</span>
+              <h4>{step.title}</h4>
+              <p>{step.description}</p>
+            </div>
+            {index < steps.length - 1 ? <span className="video-tutorial-guide__arrow" aria-hidden="true" /> : null}
+          </article>
+        ))}
+      </div>
+    </PreviewState>
+  );
+}
+
 function ToolTutorial({ kind }: { kind: ToolTutorialKind }) {
+  if (kind === "image") {
+    return <ImageGenerationTutorial />;
+  }
+
+  if (kind === "image-editor") {
+    return <ImageEditorTutorial />;
+  }
+
+  if (kind === "video") {
+    return <VideoGenerationTutorial />;
+  }
+
   const tutorial = toolTutorials[kind];
 
   return (
@@ -2875,6 +3164,40 @@ function UpscaleUnavailablePreview() {
   );
 }
 
+function ImageUpscaleCompareTutorial() {
+  return (
+    <PreviewState eyebrow="图片细节对比" title="图片细节对比" description="拖动分割线，查看增强前后的清晰度和细节变化。">
+      <BeforeAfterImageCompare
+        beforeSrc="/tutorial/image-upscaler/image-before.jpg"
+        afterSrc="/tutorial/image-upscaler/image-after.png"
+        beforeLabel="增强前"
+        afterLabel="增强后"
+        beforeAlt="增强前示例图"
+        afterAlt="增强后示例图"
+      />
+    </PreviewState>
+  );
+}
+
+function VideoUpscaleCompareTutorial() {
+  return (
+    <PreviewState eyebrow="视频细节对比" title="视频细节对比" description="拖动分割线，查看放大前后的视频清晰度和细节变化。">
+      <BeforeAfterImageCompare
+        beforeSrc="/tutorial/video-upscaler/video-after.mp4"
+        afterSrc="/tutorial/video-upscaler/video-after.mp4"
+        beforeLabel="放大前"
+        afterLabel="放大后"
+        beforeAlt="放大前示例视频"
+        afterAlt="放大后示例视频"
+        mediaType="video"
+        beforeEffect="blur"
+        beforePoster="/tutorials/video-upscale/result-poster.svg"
+        afterPoster="/tutorials/video-upscale/result-poster.svg"
+      />
+    </PreviewState>
+  );
+}
+
 function ImageUpscalePreviewPanel({
   state,
   output,
@@ -2897,7 +3220,7 @@ function ImageUpscalePreviewPanel({
   }
 
   if (!state.checked || state.statusLoading || (!state.availability?.ready && !state.statusError)) {
-    return state.statusLoading ? <ProcessingPreview label="正在处理" /> : <ToolTutorial kind="image-upscale" />;
+    return state.statusLoading ? <ProcessingPreview label="正在处理" /> : <ImageUpscaleCompareTutorial />;
   }
 
   if (!state.availability?.ready) {
@@ -2915,18 +3238,21 @@ function ImageUpscalePreviewPanel({
     const resultScale = typeof params.scale === "number" ? `${params.scale}x` : `${state.scale}x`;
     return (
       <PreviewState eyebrow="结果" title="高清结果" description={`${state.scale}x 高清处理完成。`} badge={libraryStatusBadgeLabel(output.item.status)} role="status" live>
-        <div className="studio-upscale-preview">
-          {source ? (
-            <figure className="studio-upscale-preview__figure">
-              <span className="studio-upscale-preview__label">原图</span>
-              <img src={source.previewUrl} alt={source.file.name} />
-            </figure>
-          ) : null}
+        {source ? (
+          <BeforeAfterImageCompare
+            beforeSrc={source.previewUrl}
+            afterSrc={output.item.output.url}
+            beforeLabel="增强前"
+            afterLabel="增强后"
+            beforeAlt={source.file.name}
+            afterAlt={output.item.title}
+          />
+        ) : (
           <figure className="studio-upscale-preview__figure">
             <span className="studio-upscale-preview__label">高清结果</span>
             <img src={output.item.output.url} alt={output.item.title} />
           </figure>
-        </div>
+        )}
         <dl className="studio-upscale-stats" aria-label="图片高清结果信息">
           <div>
             <dt>原图尺寸</dt>
@@ -2953,7 +3279,7 @@ function ImageUpscalePreviewPanel({
     );
   }
 
-  return <ToolTutorial kind="image-upscale" />;
+  return <ImageUpscaleCompareTutorial />;
 }
 
 function VideoUpscalePreviewPanel({
@@ -2978,7 +3304,7 @@ function VideoUpscalePreviewPanel({
   }
 
   if (!state.checked || state.statusLoading || (!state.availability?.ready && !state.statusError)) {
-    return state.statusLoading ? <ProcessingPreview label="正在处理" /> : <ToolTutorial kind="video-upscale" />;
+    return state.statusLoading ? <ProcessingPreview label="正在处理" /> : <VideoUpscaleCompareTutorial />;
   }
 
   if (!state.availability?.ready) {
@@ -2996,18 +3322,22 @@ function VideoUpscalePreviewPanel({
     const resultScale = typeof params.scale === "number" ? `${params.scale}x` : `${state.scale}x`;
     return (
       <PreviewState eyebrow="结果" title="高清结果" description={`${state.scale}x 高清处理完成。`} badge={libraryStatusBadgeLabel(output.item.status)} role="status" live>
-        <div className="studio-upscale-preview">
-          {source ? (
-            <figure className="studio-upscale-preview__figure">
-              <span className="studio-upscale-preview__label">原视频</span>
-              <video src={source.previewUrl} controls />
-            </figure>
-          ) : null}
+        {source ? (
+          <BeforeAfterImageCompare
+            beforeSrc={source.previewUrl}
+            afterSrc={output.item.output.url}
+            beforeLabel="放大前"
+            afterLabel="放大后"
+            beforeAlt={source.file.name}
+            afterAlt={output.item.title}
+            mediaType="video"
+          />
+        ) : (
           <figure className="studio-upscale-preview__figure">
             <span className="studio-upscale-preview__label">高清结果</span>
             <video src={output.item.output.url} controls />
           </figure>
-        </div>
+        )}
         <dl className="studio-upscale-stats" aria-label="视频高清结果信息">
           <div>
             <dt>原视频分辨率</dt>
@@ -3034,7 +3364,7 @@ function VideoUpscalePreviewPanel({
     );
   }
 
-  return <ToolTutorial kind="video-upscale" />;
+  return <VideoUpscaleCompareTutorial />;
 }
 
 function VideoUpscaleForm({
@@ -3124,44 +3454,14 @@ function VideoUpscaleForm({
   );
 }
 
-function LibrarySidebar({
-  count,
-  filter,
-  onFilterChange,
-}: {
-  count: { all: number; image: number; video: number };
-  filter: LibraryFilter;
-  onFilterChange: (value: LibraryFilter) => void;
-}) {
-  return (
-    <div className="studio-library-sidebar">
-      <div className="studio-library-kind" role="group" aria-label="作品类型">
-        {([
-          ["image", "图片", count.image],
-          ["video", "视频", count.video],
-        ] as const).map(([id, label, value]) => (
-          <button
-            key={id}
-            type="button"
-            aria-pressed={filter === id}
-            className={cn("studio-library-kind__button", filter === id && "is-active")}
-            onClick={() => onFilterChange(id)}
-          >
-            <span>{label}</span>
-            <strong>{value}</strong>
-          </button>
-        ))}
-      </div>
-    </div>
-  );
-}
-
 function LibraryWorkspace({
   items,
   totalCount,
+  count,
   selectedItem,
   loading,
   error,
+  isAuthenticated,
   filter,
   sort,
   search,
@@ -3174,12 +3474,16 @@ function LibraryWorkspace({
   onDelete,
   onRefresh,
   onMediaMissing,
+  onLogin,
+  onStartCreate,
 }: {
   items: LibraryItem[];
   totalCount: number;
+  count: { all: number; image: number; video: number };
   selectedItem: LibraryItem | null;
   loading: boolean;
   error: string;
+  isAuthenticated: boolean;
   filter: LibraryFilter;
   sort: LibrarySort;
   search: string;
@@ -3192,93 +3496,115 @@ function LibraryWorkspace({
   onDelete: (id: string) => Promise<void>;
   onRefresh: () => Promise<void>;
   onMediaMissing: (id: string) => void;
+  onLogin: () => void;
+  onStartCreate: () => void;
 }) {
-  if (loading) {
-    return (
-      <PreviewState eyebrow="加载中" title="作品库" description="正在读取本地作品记录。" badge="请稍候" role="status" live>
-        <div className="studio-preview__empty">
-          <Loader2 className="size-5 animate-spin" aria-hidden="true" />
-          <p>正在加载真实作品。</p>
-        </div>
-      </PreviewState>
-    );
-  }
-
-  if (error) {
-    return (
-      <PreviewState eyebrow="加载失败" title="作品库" description={error} badge="可重试" role="alert">
-        <div className="studio-preview__empty">
-          <p>作品记录没有被替换成示例数据，你可以重新读取本地记录。</p>
-          <button type="button" className="studio-secondary-button" onClick={() => void onRefresh()}>
-            重新加载
-          </button>
-        </div>
-      </PreviewState>
-    );
-  }
-
-  if (!items.length) {
-    const hasFilter = totalCount > 0 || Boolean(search.trim());
-    return (
-      <PreviewState
-        eyebrow="空作品库"
-        title="作品库"
-        description={hasFilter ? "当前条件下没有作品。" : "生成或高清处理成功后，真实结果会自动出现在这里。"}
-        badge={`${totalCount} 条作品`}
-      >
-        <LibraryToolbar
-          filter={filter}
-          sort={sort}
-          search={search}
-          onFilterChange={onFilterChange}
-          onSortChange={onSortChange}
-          onSearchChange={onSearchChange}
-        />
-        <div className="studio-preview__empty">
-          <p>{hasFilter ? "可以更换类型或搜索关键词。" : "这里不会展示静态示例作品。"}</p>
-          <button type="button" className="studio-secondary-button" onClick={() => void onRefresh()}>
-            刷新作品库
-          </button>
-        </div>
-      </PreviewState>
-    );
-  }
+  const searchActive = Boolean(search.trim());
+  const filteredEmpty = !items.length && (totalCount > 0 || searchActive);
 
   return (
-    <PreviewState eyebrow="作品库" title="作品库" description="真实作品按条件展示，可预览、下载和删除。" badge={`${items.length} 条作品`}>
-      <div className="studio-library-workspace">
+    <div className="studio-library-page">
+      <header className="studio-library-page__header">
+        <div>
+          <h2>作品库</h2>
+          <p>管理和查看你生成的全部图片与视频</p>
+        </div>
+        <span className="studio-library-page__count">共 {totalCount} 件作品</span>
+      </header>
+
+      <div className="studio-library-page__controls">
+        <LibraryKindTabs count={count} filter={filter} onFilterChange={onFilterChange} />
         <LibraryToolbar
-          filter={filter}
           sort={sort}
           search={search}
-          onFilterChange={onFilterChange}
           onSortChange={onSortChange}
           onSearchChange={onSearchChange}
         />
-        <div className="studio-library-grid">
-          {items.map((item) => (
-            <button
-              key={item.id}
-              type="button"
-              className={cn("studio-library-tile", selectedItem?.id === item.id && "is-active")}
-              onClick={() => onSelectItem(item.id)}
-            >
-              <MediaCard
-                item={item}
-                mediaMissing={missingMediaIds.has(item.id) || item.fileAvailable === false}
-                onMediaMissing={() => onMediaMissing(item.id)}
-              />
-            </button>
+      </div>
+
+      {loading ? (
+        <div className="studio-library-skeleton-grid" role="status" aria-label="正在加载作品">
+          {Array.from({ length: 8 }, (_, index) => (
+            <div key={index} className="studio-library-skeleton-card">
+              <span />
+              <strong />
+              <small />
+            </div>
           ))}
         </div>
-
-        {selectedItem ? (
-          <div className="studio-library-modal" role="dialog" aria-modal="true" aria-label={selectedItem.title}>
-            <div className="studio-library-modal__backdrop" onClick={() => onSelectItem(null)} />
-            <div className="studio-library-detail">
-              <button type="button" className="studio-icon-button studio-library-detail__close" aria-label="关闭预览" onClick={() => onSelectItem(null)}>
-                <X className="size-4" aria-hidden="true" />
+      ) : error ? (
+        <LibraryEmptyState
+          tone="error"
+          title="作品加载失败"
+          description="请检查网络后重试"
+          actionLabel="重新加载"
+          onAction={() => void onRefresh()}
+        />
+      ) : !items.length ? (
+        !isAuthenticated ? (
+          <LibraryEmptyState
+            title="登录后查看你的作品"
+            description="你生成的图片和视频会自动保存在这里，方便随时预览、下载和继续创作。"
+            actionLabel="登录查看作品"
+            onAction={onLogin}
+          />
+        ) : filteredEmpty ? (
+          <LibraryEmptyState
+            title="没有匹配的作品"
+            description={`当前${filter === "image" ? "图片" : "视频"}分类下没有找到符合条件的作品。`}
+            actionLabel={searchActive ? "清空搜索" : undefined}
+            onAction={searchActive ? () => onSearchChange("") : undefined}
+            secondaryLabel="刷新作品库"
+            onSecondary={() => void onRefresh()}
+          />
+        ) : (
+          <LibraryEmptyState
+            title="还没有生成作品"
+            description="完成第一次图片或视频生成后，作品会自动出现在这里。"
+            actionLabel="开始创作"
+            onAction={onStartCreate}
+            secondaryLabel="刷新作品库"
+            onSecondary={() => void onRefresh()}
+          />
+        )
+      ) : (
+        <div className="studio-library-grid">
+          {items.map((item) => (
+            <div
+              key={item.id}
+              className={cn("studio-library-tile", selectedItem?.id === item.id && "is-active")}
+            >
+              <button
+                type="button"
+                className="studio-library-tile__preview"
+                onClick={() => onSelectItem(item.id)}
+                aria-label={`预览作品 ${item.title}`}
+              >
+                <MediaCard
+                  item={item}
+                  mediaMissing={missingMediaIds.has(item.id) || item.fileAvailable === false}
+                  onMediaMissing={() => onMediaMissing(item.id)}
+                />
               </button>
+              <LibraryCardActions
+                item={item}
+                mediaMissing={missingMediaIds.has(item.id) || item.fileAvailable === false}
+                deleting={deletingItemId === item.id}
+                onPreview={() => onSelectItem(item.id)}
+                onDelete={() => void onDelete(item.id)}
+              />
+            </div>
+          ))}
+        </div>
+      )}
+
+      {selectedItem ? (
+        <div className="studio-library-modal" role="dialog" aria-modal="true" aria-label={selectedItem.title}>
+          <div className="studio-library-modal__backdrop" onClick={() => onSelectItem(null)} />
+          <div className="studio-library-detail">
+            <button type="button" className="studio-icon-button studio-library-detail__close" aria-label="关闭预览" onClick={() => onSelectItem(null)}>
+              <X className="size-4" aria-hidden="true" />
+            </button>
             <MediaCard
               item={selectedItem}
               large
@@ -3310,25 +3636,50 @@ function LibraryWorkspace({
               </button>
             </div>
           </div>
-          </div>
-        ) : null}
-      </div>
-    </PreviewState>
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+function LibraryKindTabs({
+  count,
+  filter,
+  onFilterChange,
+}: {
+  count: { all: number; image: number; video: number };
+  filter: LibraryFilter;
+  onFilterChange: (value: LibraryFilter) => void;
+}) {
+  return (
+    <div className="studio-library-kind-tabs" role="group" aria-label="作品类型">
+      {([
+        ["image", "图片", count.image],
+        ["video", "视频", count.video],
+      ] as const).map(([id, label, value]) => (
+        <button
+          key={id}
+          type="button"
+          aria-pressed={filter === id}
+          className={cn("studio-library-kind-tab", filter === id && "is-active")}
+          onClick={() => onFilterChange(id)}
+        >
+          <span>{label}</span>
+          <strong>{value}</strong>
+        </button>
+      ))}
+    </div>
   );
 }
 
 function LibraryToolbar({
-  filter,
   sort,
   search,
-  onFilterChange,
   onSortChange,
   onSearchChange,
 }: {
-  filter: LibraryFilter;
   sort: LibrarySort;
   search: string;
-  onFilterChange: (value: LibraryFilter) => void;
   onSortChange: (value: LibrarySort) => void;
   onSearchChange: (value: string) => void;
 }) {
@@ -3341,20 +3692,10 @@ function LibraryToolbar({
           id="library-search"
           value={search}
           onChange={(event) => onSearchChange(event.target.value)}
-          placeholder="按标题查找"
+          placeholder="搜索作品"
           className="studio-input"
         />
       </div>
-      <CustomSelect
-        label="作品类型"
-        value={filter}
-        icon={<ListFilter className="size-4" />}
-        options={[
-          { value: "image", label: "图片" },
-          { value: "video", label: "视频" },
-        ]}
-        onChange={(value) => onFilterChange(value as LibraryFilter)}
-      />
       <CustomSelect
         label="排序"
         value={sort}
@@ -3365,6 +3706,50 @@ function LibraryToolbar({
         ]}
         onChange={(value) => onSortChange(value as LibrarySort)}
       />
+    </div>
+  );
+}
+
+function LibraryEmptyState({
+  title,
+  description,
+  actionLabel,
+  secondaryLabel,
+  tone,
+  onAction,
+  onSecondary,
+}: {
+  title: string;
+  description: string;
+  actionLabel?: string;
+  secondaryLabel?: string;
+  tone?: "error";
+  onAction?: () => void;
+  onSecondary?: () => void;
+}) {
+  return (
+    <div className={cn("studio-library-empty-state", tone === "error" && "is-error")}>
+      <div className="studio-library-empty-state__icon" aria-hidden="true">
+        <ImageUp className="size-7" />
+      </div>
+      <div>
+        <h3>{title}</h3>
+        <p>{description}</p>
+      </div>
+      {(actionLabel && onAction) || (secondaryLabel && onSecondary) ? (
+        <div className="studio-library-empty-state__actions">
+          {actionLabel && onAction ? (
+            <button type="button" className="studio-primary-action studio-library-empty-state__primary" onClick={onAction}>
+              {actionLabel}
+            </button>
+          ) : null}
+          {secondaryLabel && onSecondary ? (
+            <button type="button" className="studio-secondary-button" onClick={onSecondary}>
+              {secondaryLabel}
+            </button>
+          ) : null}
+        </div>
+      ) : null}
     </div>
   );
 }
@@ -3781,7 +4166,6 @@ function StickyPrimaryAction({ children, helpText }: { children: React.ReactNode
 }
 
 function PreviewState({
-  eyebrow,
   title,
   description,
   badge,
@@ -3797,13 +4181,10 @@ function PreviewState({
   live?: boolean;
   children: React.ReactNode;
 }) {
-  const showEyebrow = eyebrow !== title;
-
   return (
     <div className="studio-preview" role={role} aria-live={live ? "polite" : undefined}>
       <div className="studio-preview__top">
         <div>
-          {showEyebrow ? <p className="shell-eyebrow">{eyebrow}</p> : null}
           <h3>{title}</h3>
           {description ? <p>{description}</p> : null}
         </div>
@@ -4161,6 +4542,38 @@ function SubmitButton({
   );
 }
 
+function LibraryCardActions({
+  item,
+  mediaMissing,
+  deleting,
+  onPreview,
+  onDelete,
+}: {
+  item: LibraryItem;
+  mediaMissing: boolean;
+  deleting: boolean;
+  onPreview: () => void;
+  onDelete: () => void;
+}) {
+  const canDownloadStoredFile = Boolean(item.output?.url && item.output.storedName && !mediaMissing);
+
+  return (
+    <div className="studio-library-tile__actions" aria-label="作品操作">
+      <button type="button" onClick={onPreview}>
+        预览
+      </button>
+      {canDownloadStoredFile ? (
+        <a href={item.output?.url} download>
+          下载
+        </a>
+      ) : null}
+      <button type="button" onClick={onDelete} disabled={deleting}>
+        {deleting ? "删除中" : "删除"}
+      </button>
+    </div>
+  );
+}
+
 function MediaCard({
   item,
   large = false,
@@ -4183,13 +4596,12 @@ function MediaCard({
     ? `${item.params.scale}x`
     : "";
   const fileSizeText = typeof media?.size === "number" ? formatBytes(media.size) : "";
+  const durationText = libraryDuration(item);
   const canDownloadStoredFile = Boolean(media?.storedName);
   const showActions = large && !compact;
   const showMediaControls = large;
-  const showOverlay = !large && !compact;
-  const showBody = !compact && !showOverlay;
+  const showBody = !compact;
   const statusBadge = mediaMissing ? "文件失效" : libraryStatusBadgeLabel(item.status);
-  const overlayMeta = [typeLabel, createdAt, scaleText, dimensionText, fileSizeText].filter(Boolean);
   return (
     <article className={cn("studio-media-card", compact && "is-compact")}>
       <div className={cn("studio-media-card__frame", large && "is-large")}>
@@ -4205,16 +4617,13 @@ function MediaCard({
             <span>{mediaMissing ? "文件失效" : libraryStatusLabel(item.status)}</span>
           </div>
         ) : null}
-        {showOverlay ? (
-          <div className="studio-media-card__overlay">
-            <div className="studio-media-card__overlay-head">
-              <strong>{item.title}</strong>
-              {statusBadge ? <span>{statusBadge}</span> : null}
-            </div>
-            <div className="studio-media-card__overlay-meta" aria-label="作品信息">
-              {overlayMeta.map((text) => <span key={text}>{text}</span>)}
-            </div>
-          </div>
+        {!large && item.type === "video" && hasMediaUrl ? (
+          <>
+            <span className="studio-media-card__play" aria-hidden="true">
+              <Play className="size-5" fill="currentColor" />
+            </span>
+            {durationText ? <span className="studio-media-card__duration">{durationText}</span> : null}
+          </>
         ) : null}
       </div>
       {showBody ? <div className="studio-media-card__body">
@@ -4225,6 +4634,7 @@ function MediaCard({
         <div className="studio-media-card__meta" aria-label="作品信息">
           <span>{typeLabel}</span>
           <span>{createdAt}</span>
+          {durationText ? <span>{durationText}</span> : null}
           {scaleText ? <span>{scaleText}</span> : null}
           {dimensionText ? <span>{dimensionText}</span> : null}
           {fileSizeText ? <span>{fileSizeText}</span> : null}
@@ -4294,6 +4704,17 @@ function libraryDimensions(item: LibraryItem) {
   const height = Number(item.params.outputHeight || item.params.sourceHeight || 0);
   if (!Number.isFinite(width) || !Number.isFinite(height) || width <= 0 || height <= 0) return "";
   return `${Math.round(width)}×${Math.round(height)}`;
+}
+
+function libraryDuration(item: LibraryItem) {
+  const raw = item.params.durationSeconds || item.params.duration || item.params.videoDuration;
+  const seconds = Number(raw);
+  if (!Number.isFinite(seconds) || seconds <= 0) return "";
+  const rounded = Math.round(seconds);
+  const minutes = Math.floor(rounded / 60);
+  const rest = rounded % 60;
+  if (!minutes) return `0:${String(rest).padStart(2, "0")}`;
+  return `${minutes}:${String(rest).padStart(2, "0")}`;
 }
 
 function Toast({ message, onClose }: { message: string; onClose: () => void }) {
