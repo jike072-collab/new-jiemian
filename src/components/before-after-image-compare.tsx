@@ -14,6 +14,7 @@ type BeforeAfterImageCompareProps = {
   beforeAlt?: string;
   afterAlt?: string;
   mediaType?: "image" | "video";
+  beforeEffect?: "none" | "blur";
 };
 
 const clampComparePosition = (value: number) => Math.min(97, Math.max(3, value));
@@ -27,6 +28,7 @@ export function BeforeAfterImageCompare({
   beforeAlt = "",
   afterAlt = "",
   mediaType = "image",
+  beforeEffect = "none",
 }: BeforeAfterImageCompareProps) {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const [position, setPosition] = useState(() => clampComparePosition(initialPosition));
@@ -76,7 +78,7 @@ export function BeforeAfterImageCompare({
   return (
     <div
       ref={containerRef}
-      className="image-upscale-compare"
+      className={beforeEffect === "blur" ? "image-upscale-compare has-blurred-before" : "image-upscale-compare"}
       style={{ "--compare-position": `${position}%` } as CSSProperties}
       role="slider"
       tabIndex={0}

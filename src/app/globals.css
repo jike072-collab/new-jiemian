@@ -3707,6 +3707,11 @@
     z-index: 1;
   }
 
+  .image-upscale-compare.has-blurred-before .compare-before {
+    filter: blur(7px) saturate(0.78) contrast(0.86);
+    transform: scale(1.018);
+  }
+
   .compare-after {
     z-index: 2;
     clip-path: inset(0 calc(100% - var(--compare-position)) 0 0);

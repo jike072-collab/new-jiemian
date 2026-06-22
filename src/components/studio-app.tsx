@@ -3186,13 +3186,14 @@ function VideoUpscaleCompareTutorial() {
   return (
     <PreviewState eyebrow="视频细节对比" title="视频细节对比" description="拖动分割线，查看放大前后的视频清晰度和细节变化。">
       <BeforeAfterImageCompare
-        beforeSrc="/tutorial/video-upscaler/video-before.mp4"
+        beforeSrc="/tutorial/video-upscaler/video-after.mp4"
         afterSrc="/tutorial/video-upscaler/video-after.mp4"
         beforeLabel="放大前"
         afterLabel="放大后"
         beforeAlt="放大前示例视频"
         afterAlt="放大后示例视频"
         mediaType="video"
+        beforeEffect="blur"
       />
     </PreviewState>
   );
