@@ -2913,8 +2913,9 @@ function VideoTutorialInputDemo() {
         setTimeout(() => setImagePhase("landed"), 3150),
         setTimeout(() => {
           setBubbleVisible(true);
+          setTypedText(videoTutorialPromptText.slice(0, 1));
 
-          let index = 0;
+          let index = 1;
           typingTimer = setInterval(() => {
             index += 1;
             setTypedText(videoTutorialPromptText.slice(0, index));
@@ -2924,7 +2925,7 @@ function VideoTutorialInputDemo() {
               typingTimer = undefined;
             }
           }, 58);
-        }, 3350),
+        }, 3150),
         setTimeout(() => {
           setImagePhase("hidden");
           setUploadTargetActive(false);
@@ -2974,19 +2975,15 @@ function VideoTutorialResultSlot() {
   return (
     <div className="video-tutorial-result-slot">
       <div className="video-tutorial-result-slot__backdrop" aria-hidden="true">
-        <img src="/tutorials/video-generator/rain-umbrella.png" alt="" />
+        <img src="/tutorials/video-generator/input-person.png" alt="" />
       </div>
       <div className="video-tutorial-result-slot__media">
         {videoTutorialResultVideoSrc ? (
-          <video src={videoTutorialResultVideoSrc} poster="/tutorials/video-generator/rain-umbrella.png" autoPlay muted loop playsInline preload="metadata" />
+          <video src={videoTutorialResultVideoSrc} poster="/tutorials/video-generator/input-person.png" autoPlay muted loop playsInline preload="metadata" />
         ) : (
-          <img src="/tutorials/video-generator/rain-umbrella.png" alt="视频结果预留位" />
+          <video poster="/tutorials/video-generator/input-person.png" muted playsInline preload="metadata" aria-label="视频结果预留位" />
         )}
         <span className="video-tutorial-result-slot__play" aria-hidden="true" />
-      </div>
-      <div className="video-tutorial-result-slot__caption">
-        <span>视频预览位</span>
-        <strong>16:9</strong>
       </div>
     </div>
   );
@@ -2998,14 +2995,19 @@ function VideoTutorialParameterDemo() {
       <div className="video-tutorial-parameter-demo__preview">
         <img src="/tutorials/video-generator/rain-umbrella.png" alt="" />
       </div>
-      <div className="video-tutorial-parameter-demo__prompt">
-        <span>提示词</span>
-        <p>女生撑透明雨伞在雨天街头缓慢前行，自然回头看向镜头。</p>
-      </div>
       <div className="video-tutorial-parameter-demo__assets" aria-label="示例参数">
-        <img src="/tutorials/video-generator/duration-5s.png" alt="5 秒" />
-        <img src="/tutorials/video-generator/resolution-720p.png" alt="720P" />
-        <img src="/tutorials/video-generator/ratio-4x3.png" alt="4:3" />
+        <span className="video-tutorial-parameter-demo__asset" aria-label="5 秒">
+          <span className="video-tutorial-parameter-demo__asset-icon is-duration" aria-hidden="true" />
+          <strong>5s</strong>
+        </span>
+        <span className="video-tutorial-parameter-demo__asset" aria-label="720P">
+          <span className="video-tutorial-parameter-demo__asset-icon is-resolution" aria-hidden="true" />
+          <strong>720P</strong>
+        </span>
+        <span className="video-tutorial-parameter-demo__asset" aria-label="4:3">
+          <span className="video-tutorial-parameter-demo__asset-icon is-ratio" aria-hidden="true" />
+          <strong>4:3</strong>
+        </span>
       </div>
     </div>
   );
@@ -3049,7 +3051,7 @@ function VideoGenerationTutorial() {
               <h4>{step.title}</h4>
               <p>{step.description}</p>
             </div>
-            {index < steps.length - 1 ? <img className="video-tutorial-guide__arrow" src="/tutorials/video-generator/guide-arrow.png" alt="" aria-hidden="true" /> : null}
+            {index < steps.length - 1 ? <span className="video-tutorial-guide__arrow" aria-hidden="true" /> : null}
           </article>
         ))}
       </div>

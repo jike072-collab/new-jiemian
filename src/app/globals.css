@@ -2339,36 +2339,39 @@
   .video-tutorial-guide {
     position: relative;
     display: grid;
-    gap: 8px;
+    container-type: inline-size;
+    --video-guide-visual-width: clamp(294px, 47cqw, 410px);
+    --video-guide-visual-height: calc(var(--video-guide-visual-width) * 0.652);
+    gap: 0;
     min-width: 0;
     overflow: hidden;
-    border: 1px solid color-mix(in srgb, var(--border-subtle) 78%, transparent);
+    border: 1px solid rgba(255, 255, 255, 0.18);
     border-radius: var(--radius-card);
     background:
       radial-gradient(circle at 14% 12%, color-mix(in srgb, var(--primary) 10%, transparent), transparent 28%),
       radial-gradient(circle at 84% 52%, rgba(255, 43, 136, 0.06), transparent 30%),
       color-mix(in srgb, var(--panel-2) 68%, transparent);
-    padding: 18px 18px 22px;
-    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.035);
+    padding: 18px 24px 22px;
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.045), 0 16px 48px rgba(0, 0, 0, 0.24);
   }
 
   .video-tutorial-guide__section {
     position: relative;
     display: grid;
-    grid-template-columns: minmax(460px, 1fr) minmax(170px, 0.56fr);
+    grid-template-columns: minmax(0, 1fr);
     align-items: center;
-    gap: 24px;
-    min-height: 340px;
-    padding: 10px 6px;
+    justify-items: start;
+    gap: 18px;
+    min-height: calc(var(--video-guide-visual-height) + 34px);
+    padding: 12px 0;
   }
 
   .video-tutorial-guide__section + .video-tutorial-guide__section {
     border-top: 1px solid rgba(255, 255, 255, 0.055);
-    padding-top: 22px;
   }
 
   .video-tutorial-guide__section.is-visual-right {
-    grid-template-columns: minmax(170px, 0.56fr) minmax(460px, 1fr);
+    justify-items: end;
   }
 
   .video-tutorial-guide__section.is-visual-right .video-tutorial-guide__visual {
@@ -2381,15 +2384,26 @@
 
   .video-tutorial-guide__visual {
     display: grid;
+    width: var(--video-guide-visual-width);
     min-width: 0;
-    justify-content: center;
+    justify-content: start;
   }
 
   .video-tutorial-guide__copy {
+    position: absolute;
+    top: 22px;
+    left: calc(var(--video-guide-visual-width) + 22px);
     display: grid;
-    gap: 10px;
-    align-content: center;
+    gap: 8px;
+    align-content: start;
+    width: min(300px, calc(100% - var(--video-guide-visual-width) - 22px));
     min-width: 0;
+    max-width: 360px;
+  }
+
+  .video-tutorial-guide__section.is-visual-right .video-tutorial-guide__copy {
+    right: calc(var(--video-guide-visual-width) + 22px);
+    left: auto;
   }
 
   .video-tutorial-guide__copy span {
@@ -2405,40 +2419,55 @@
 
   .video-tutorial-guide__copy h4 {
     color: var(--text);
-    font-size: clamp(18px, 1.8vw, 23px);
+    font-size: clamp(17px, 1.5vw, 22px);
     font-weight: 700;
     line-height: 1.18;
   }
 
   .video-tutorial-guide__copy p {
-    max-width: 260px;
+    max-width: 320px;
     color: var(--muted);
-    font-size: 14px;
-    line-height: 1.58;
+    font-size: 13px;
+    line-height: 1.55;
   }
 
   .video-tutorial-guide__arrow {
     position: absolute;
-    right: 29%;
-    bottom: -42px;
+    right: calc(var(--video-guide-visual-width) + 10px);
+    bottom: -20px;
     z-index: 6;
-    width: 118px;
-    height: auto;
-    opacity: 0.72;
+    width: 48px;
+    height: 36px;
+    border-right: 3px solid #ff2b88;
+    border-bottom: 3px solid #ff2b88;
+    border-radius: 0 0 26px 0;
+    opacity: 0.86;
     pointer-events: none;
-    transform: rotate(8deg);
+    transform: rotate(22deg);
+  }
+
+  .video-tutorial-guide__arrow::after {
+    position: absolute;
+    right: -7px;
+    bottom: -4px;
+    width: 13px;
+    height: 13px;
+    border-right: 3px solid #ff2b88;
+    border-bottom: 3px solid #ff2b88;
+    content: "";
+    transform: rotate(-18deg);
   }
 
   .video-tutorial-guide__section.is-visual-right .video-tutorial-guide__arrow {
     right: auto;
-    left: 30%;
-    transform: scaleX(-1) rotate(8deg);
+    left: calc(var(--video-guide-visual-width) + 10px);
+    transform: scaleX(-1) rotate(22deg);
   }
 
   .video-tutorial-input-demo {
     position: relative;
-    width: 460px;
-    height: 300px;
+    width: var(--video-guide-visual-width);
+    height: var(--video-guide-visual-height);
     overflow: hidden;
     border-radius: 22px;
     background: #020203;
@@ -2447,12 +2476,12 @@
 
   .tutorial-upload-placeholder {
     position: absolute;
-    top: 42px;
-    left: 22px;
+    top: 14%;
+    left: 4.8%;
     z-index: 2;
     display: flex;
-    width: 205px;
-    height: 205px;
+    width: 44.6%;
+    height: 68.3%;
     align-items: center;
     justify-content: center;
     flex-direction: column;
@@ -2474,11 +2503,11 @@
 
   .tutorial-upload-target-ring {
     position: absolute;
-    top: 42px;
-    left: 22px;
+    top: 14%;
+    left: 4.8%;
     z-index: 2;
-    width: 205px;
-    height: 205px;
+    width: 44.6%;
+    height: 68.3%;
     border: 1px dashed rgba(255, 43, 136, 0);
     border-radius: 14px;
     pointer-events: none;
@@ -2498,11 +2527,11 @@
 
   .tutorial-source-image {
     position: absolute;
-    top: 42px;
-    left: 22px;
+    top: 14%;
+    left: 4.8%;
     z-index: 3;
-    width: 205px;
-    height: 205px;
+    width: 44.6%;
+    height: 68.3%;
     border: 2px solid rgba(255, 43, 136, 0);
     border-radius: 14px;
     object-fit: cover;
@@ -2534,10 +2563,10 @@
 
   .tutorial-prompt-bubble {
     position: absolute;
-    top: 96px;
-    left: 190px;
+    top: 32%;
+    left: 41.3%;
     z-index: 4;
-    width: 255px;
+    width: 55.4%;
     min-height: 76px;
     padding: 15px 17px;
     border: 1px solid rgba(255, 255, 255, 0.32);
@@ -2551,8 +2580,8 @@
     transform: translateX(-10px) scale(0.98);
     backdrop-filter: blur(10px);
     transition:
-      opacity 280ms ease,
-      transform 280ms cubic-bezier(0.22, 1, 0.36, 1);
+      opacity 160ms ease,
+      transform 160ms cubic-bezier(0.22, 1, 0.36, 1);
   }
 
   .tutorial-prompt-bubble.is-visible {
@@ -2579,27 +2608,25 @@
   .video-tutorial-parameter-demo,
   .video-tutorial-result-slot {
     position: relative;
-    overflow: hidden;
-    width: 460px;
-    height: 300px;
+    width: var(--video-guide-visual-width);
+    height: var(--video-guide-visual-height);
+    overflow: visible;
     border-radius: 22px;
-    background:
-      radial-gradient(circle at 78% 22%, rgba(255, 43, 136, 0.14), transparent 34%),
-      #020203;
-    box-shadow: 0 18px 46px rgba(0, 0, 0, 0.38);
+    background: transparent;
+    box-shadow: none;
   }
 
   .video-tutorial-parameter-demo__preview {
     position: absolute;
-    top: 26px;
-    left: 30px;
+    top: 7.3%;
+    left: 0;
     overflow: hidden;
-    width: 250px;
-    height: 188px;
-    border: 1px solid rgba(255, 255, 255, 0.14);
-    border-radius: 16px;
+    width: 100%;
+    height: 72%;
+    border: 1px solid rgba(255, 255, 255, 0.16);
+    border-radius: 18px;
     background: rgba(255, 255, 255, 0.04);
-    box-shadow: 0 18px 34px rgba(0, 0, 0, 0.34);
+    box-shadow: 0 18px 38px rgba(0, 0, 0, 0.32);
   }
 
   .video-tutorial-parameter-demo__preview img {
@@ -2609,74 +2636,103 @@
     object-fit: cover;
   }
 
-  .video-tutorial-parameter-demo__prompt {
-    position: absolute;
-    top: 52px;
-    right: 26px;
-    z-index: 3;
-    width: 218px;
-    padding: 15px 17px;
-    border: 1px solid rgba(255, 255, 255, 0.26);
-    border-radius: 15px;
-    background: rgba(34, 34, 37, 0.94);
-    box-shadow: 0 16px 32px rgba(0, 0, 0, 0.42);
-    backdrop-filter: blur(10px);
-  }
-
-  .video-tutorial-parameter-demo__prompt span {
-    display: block;
-    margin-bottom: 7px;
-    color: rgba(255, 255, 255, 0.54);
-    font-size: 12px;
-    font-weight: 700;
-  }
-
-  .video-tutorial-parameter-demo__prompt p {
-    color: rgba(255, 255, 255, 0.9);
-    font-size: 14px;
-    line-height: 1.56;
-  }
-
   .video-tutorial-parameter-demo__assets {
     position: absolute;
-    right: 22px;
-    bottom: 24px;
+    left: 0;
+    bottom: 0;
     display: flex;
     align-items: center;
-    gap: 9px;
+    width: 100%;
+    gap: 10px;
   }
 
-  .video-tutorial-parameter-demo__assets img {
+  .video-tutorial-parameter-demo__asset {
+    display: flex;
+    flex: 1 1 0;
+    min-width: 0;
+    height: clamp(36px, calc(var(--video-guide-visual-height) * 0.16), 46px);
+    align-items: center;
+    justify-content: center;
+    gap: 7px;
+    border: 1px solid rgba(255, 43, 136, 0.22);
+    border-radius: 13px;
+    background: rgba(255, 43, 136, 0.1);
+    box-shadow: 0 12px 18px rgba(0, 0, 0, 0.2);
+    color: #ff5aa4;
+  }
+
+  .video-tutorial-parameter-demo__asset strong {
+    color: rgba(255, 238, 247, 0.94);
+    font-size: 13px;
+    font-weight: 800;
+    line-height: 1;
+    letter-spacing: 0;
+  }
+
+  .video-tutorial-parameter-demo__asset-icon {
+    position: relative;
     display: block;
-    width: 82px;
-    height: 46px;
-    border-radius: 12px;
-    object-fit: cover;
-    filter: drop-shadow(0 12px 18px rgba(0, 0, 0, 0.24));
+    flex: 0 0 auto;
+    width: 18px;
+    height: 18px;
+    color: #ff2b88;
   }
 
-  .video-tutorial-result-slot__caption {
-    border: 1px solid rgba(255, 43, 136, 0.2);
+  .video-tutorial-parameter-demo__asset-icon.is-duration {
+    border: 2px solid currentColor;
     border-radius: 999px;
-    background: rgba(255, 43, 136, 0.12);
-    color: #ff6fac;
-    font-size: 12px;
-    font-weight: 700;
+  }
+
+  .video-tutorial-parameter-demo__asset-icon.is-duration::before,
+  .video-tutorial-parameter-demo__asset-icon.is-duration::after {
+    position: absolute;
+    left: 50%;
+    top: 50%;
+    width: 2px;
+    border-radius: 999px;
+    background: currentColor;
+    content: "";
+    transform-origin: center top;
+  }
+
+  .video-tutorial-parameter-demo__asset-icon.is-duration::before {
+    height: 6px;
+    transform: translate(-50%, -1px);
+  }
+
+  .video-tutorial-parameter-demo__asset-icon.is-duration::after {
+    height: 5px;
+    transform: translate(-50%, -1px) rotate(120deg);
+  }
+
+  .video-tutorial-parameter-demo__asset-icon.is-resolution,
+  .video-tutorial-parameter-demo__asset-icon.is-ratio {
+    border: 2px solid currentColor;
+    border-radius: 5px;
+  }
+
+  .video-tutorial-parameter-demo__asset-icon.is-resolution::after {
+    position: absolute;
+    inset: 4px 3px auto;
+    height: 2px;
+    border-radius: 999px;
+    background: currentColor;
+    content: "";
+  }
+
+  .video-tutorial-parameter-demo__asset-icon.is-ratio {
+    width: 20px;
+    height: 15px;
   }
 
   .video-tutorial-result-slot {
     display: grid;
-    place-items: center;
+    place-items: start;
     isolation: isolate;
   }
 
   .video-tutorial-result-slot__backdrop {
-    position: absolute;
-    inset: -22px;
-    z-index: 0;
-    opacity: 0.38;
-    filter: blur(22px) saturate(1.08);
-    transform: scale(1.08);
+    display: none;
   }
 
   .video-tutorial-result-slot__backdrop img,
@@ -2692,8 +2748,8 @@
     position: relative;
     z-index: 2;
     overflow: hidden;
-    width: 392px;
-    aspect-ratio: 16 / 9;
+    width: 100%;
+    height: 100%;
     border: 1px solid rgba(255, 255, 255, 0.18);
     border-radius: 18px;
     background: #08080b;
@@ -2736,22 +2792,6 @@
     border-left: 14px solid #fff;
     content: "";
     transform: translate(-50%, -50%);
-  }
-
-  .video-tutorial-result-slot__caption {
-    position: absolute;
-    right: 38px;
-    bottom: 30px;
-    z-index: 3;
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    padding: 8px 11px;
-  }
-
-  .video-tutorial-result-slot__caption strong {
-    color: #fff;
-    font-size: 12px;
   }
 
   .studio-walkthrough__layer {
@@ -4296,25 +4336,21 @@
   }
 
   .video-tutorial-result-slot__media {
-    width: min(392px, calc(100% - 36px));
+    width: 100%;
+    height: auto;
+    aspect-ratio: 46 / 30;
   }
 
   .video-tutorial-parameter-demo__preview {
-    width: min(250px, calc(100% - 60px));
-  }
-
-  .video-tutorial-parameter-demo__prompt {
-    right: 18px;
-    width: min(218px, calc(100% - 44px));
+    width: 100%;
   }
 
   .video-tutorial-parameter-demo__assets {
-    right: 18px;
-    max-width: calc(100% - 36px);
+    width: 100%;
   }
 
-  .video-tutorial-parameter-demo__assets img {
-    width: clamp(68px, 24vw, 82px);
+  .video-tutorial-parameter-demo__asset {
+    height: 36px;
   }
 
   .studio-walkthrough__layer.is-tilt-left,
