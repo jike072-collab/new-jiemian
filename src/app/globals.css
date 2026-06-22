@@ -1946,6 +1946,311 @@
     font-weight: 600;
   }
 
+  @media (min-width: 768px) {
+    .shell-root--tool-templates .shell-grid {
+      grid-template-columns: var(--sidebar-width) minmax(0, 1fr);
+      gap: 14px;
+    }
+
+    .shell-root--tool-templates .shell-panel--controls {
+      display: none;
+    }
+  }
+
+  @media (max-width: 1199px) and (min-width: 768px) {
+    .shell-root--tool-templates .shell-grid {
+      grid-template-columns: 72px minmax(0, 1fr);
+    }
+  }
+
+  .shell-root--tool-templates .shell-panel--preview {
+    border-color: rgba(255, 255, 255, 0.08);
+    background:
+      radial-gradient(circle at 16% 0%, rgba(255, 43, 136, 0.08), transparent 30%),
+      #09090b;
+  }
+
+  .shell-root--tool-templates .shell-panel__body--preview {
+    padding: 20px 24px 28px;
+  }
+
+  .shell-root--tool-templates .template-center-browser {
+    gap: 0;
+    min-height: 100%;
+  }
+
+  .shell-root--tool-templates .template-center-browser__head {
+    align-items: flex-start;
+    gap: 18px;
+    margin-bottom: 18px;
+  }
+
+  .shell-root--tool-templates .template-center-browser__head > div {
+    min-width: 0;
+  }
+
+  .shell-root--tool-templates .template-center-browser__head h3 {
+    font-size: clamp(26px, 1.7vw, 30px);
+    font-weight: 720;
+    letter-spacing: 0;
+    line-height: 1.16;
+  }
+
+  .shell-root--tool-templates .template-center-browser__head p {
+    margin-top: 7px;
+    color: rgba(255, 255, 255, 0.58);
+    font-size: 14px;
+    line-height: 1.45;
+  }
+
+  .shell-root--tool-templates .template-center-browser__head .shell-chip {
+    margin-right: 20px;
+    margin-top: 4px;
+    border: 0;
+    background: transparent;
+    color: rgba(255, 255, 255, 0.64);
+    font-size: 13.5px;
+    padding: 0;
+  }
+
+  .shell-root--tool-templates .template-center-toolbar {
+    display: grid;
+    gap: 0;
+    margin-bottom: 14px;
+  }
+
+  .shell-root--tool-templates .template-center-tabs {
+    width: auto;
+    grid-template-columns: repeat(2, 118px);
+    gap: 0;
+    justify-content: start;
+    border: 0;
+    border-radius: 0;
+    background: transparent;
+    padding: 0;
+  }
+
+  .shell-root--tool-templates .template-center-tab {
+    position: relative;
+    min-height: 40px;
+    border: 1px solid transparent;
+    border-radius: 8px 8px 0 0;
+    background: #111115;
+    color: rgba(255, 255, 255, 0.62);
+    font-size: 14px;
+    font-weight: 600;
+  }
+
+  .shell-root--tool-templates .template-center-tab::after {
+    position: absolute;
+    right: 0;
+    bottom: 0;
+    left: 0;
+    height: 2px;
+    border-radius: 999px;
+    background: transparent;
+    content: "";
+  }
+
+  .shell-root--tool-templates .template-center-tab + .template-center-tab {
+    margin-left: 4px;
+  }
+
+  .shell-root--tool-templates .template-center-tab.is-active {
+    border-color: rgba(255, 43, 136, 0.18);
+    background: rgba(255, 43, 136, 0.18);
+    color: #ff3b91;
+  }
+
+  .shell-root--tool-templates .template-center-tab.is-active::after {
+    background: #ff2b88;
+  }
+
+  .shell-root--tool-templates .template-center-search {
+    margin-top: 10px;
+  }
+
+  .shell-root--tool-templates .template-center-search svg {
+    left: 14px;
+    color: rgba(255, 255, 255, 0.42);
+  }
+
+  .shell-root--tool-templates .template-center-search .studio-input {
+    height: 48px;
+    min-height: 48px;
+    border-color: rgba(255, 255, 255, 0.08);
+    border-radius: 10px;
+    background: #111115;
+    padding-left: 42px;
+  }
+
+  .shell-root--tool-templates .template-center-search .studio-input:focus {
+    border-color: rgba(255, 43, 136, 0.48);
+    box-shadow: 0 0 0 3px rgba(255, 43, 136, 0.1);
+  }
+
+  .shell-root--tool-templates .template-center-panel {
+    margin-top: 16px;
+    overflow-x: auto;
+    scrollbar-width: none;
+  }
+
+  .shell-root--tool-templates .template-center-panel::-webkit-scrollbar {
+    display: none;
+  }
+
+  .shell-root--tool-templates .template-center-categories {
+    display: flex;
+    gap: 10px;
+    width: max-content;
+    min-width: 100%;
+  }
+
+  .shell-root--tool-templates .template-center-category {
+    display: inline-flex;
+    min-height: 36px;
+    align-items: center;
+    gap: 7px;
+    border-color: transparent;
+    border-radius: 999px;
+    background: #141418;
+    color: rgba(255, 255, 255, 0.66);
+    padding: 0 16px;
+    white-space: nowrap;
+  }
+
+  .shell-root--tool-templates .template-center-category span {
+    display: inline;
+  }
+
+  .shell-root--tool-templates .template-center-category strong,
+  .shell-root--tool-templates .template-center-category em {
+    color: inherit;
+    font-size: 14px;
+    line-height: 1;
+  }
+
+  .shell-root--tool-templates .template-center-category em {
+    display: inline;
+    width: auto;
+    height: auto;
+    border-radius: 0;
+    background: transparent;
+    font-style: normal;
+    font-weight: 700;
+  }
+
+  .shell-root--tool-templates .template-center-category:hover,
+  .shell-root--tool-templates .template-center-category.is-active {
+    border-color: rgba(255, 43, 136, 0.58);
+    background: rgba(255, 43, 136, 0.11);
+    color: #ff3b91;
+  }
+
+  .shell-root--tool-templates .template-center-grid {
+    grid-template-columns: repeat(auto-fill, minmax(min(100%, 260px), 1fr));
+    gap: 18px;
+    padding-bottom: 24px;
+  }
+
+  .shell-root--tool-templates .template-center-card {
+    grid-template-rows: auto minmax(98px, auto) 40px;
+    gap: 10px;
+    overflow: hidden;
+    border-color: rgba(255, 255, 255, 0.08);
+    border-radius: 13px;
+    background: #141418;
+    padding: 10px;
+    transition: transform 180ms ease, border-color 180ms ease, background 180ms ease;
+  }
+
+  .shell-root--tool-templates .template-center-card:hover {
+    transform: translateY(-2px);
+    border-color: rgba(255, 43, 136, 0.34);
+    background: #18181e;
+  }
+
+  .shell-root--tool-templates .template-center-card__thumb {
+    aspect-ratio: 4 / 3;
+    border-radius: 8px;
+    background: #101014;
+  }
+
+  .shell-root--tool-templates .template-center-card__ratio {
+    top: 8px;
+    right: 8px;
+    bottom: auto;
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: 7px;
+    background: rgba(8, 8, 12, 0.68);
+    color: rgba(255, 255, 255, 0.88);
+    font-size: 12px;
+    font-weight: 650;
+  }
+
+  .shell-root--tool-templates .template-center-card__body {
+    grid-template-rows: 22px 38px 24px;
+    gap: 7px;
+  }
+
+  .shell-root--tool-templates .template-center-card__body strong {
+    font-size: 16px;
+    font-weight: 650;
+  }
+
+  .shell-root--tool-templates .template-center-card__body small {
+    color: rgba(255, 255, 255, 0.58);
+    font-size: 13px;
+    line-height: 1.45;
+  }
+
+  .shell-root--tool-templates .template-center-card__meta {
+    flex-wrap: nowrap;
+    gap: 6px;
+    overflow: hidden;
+  }
+
+  .shell-root--tool-templates .template-center-card__meta span {
+    overflow: hidden;
+    height: 24px;
+    flex: 0 1 auto;
+    border-color: rgba(255, 255, 255, 0.07);
+    border-radius: 6px;
+    background: rgba(255, 255, 255, 0.045);
+    color: rgba(255, 255, 255, 0.62);
+    font-size: 11.5px;
+    line-height: 1;
+    padding: 6px 8px;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .shell-root--tool-templates .template-center-card__clone,
+  .shell-root--tool-templates .studio-primary-action.template-center-card__clone {
+    height: 40px;
+    min-height: 40px;
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 7px;
+    background: #18181d;
+    color: rgba(255, 255, 255, 0.88);
+    font-size: 14px;
+    transition: border-color 180ms ease, background 180ms ease, color 180ms ease;
+  }
+
+  .shell-root--tool-templates .template-center-card__clone svg {
+    transition: transform 180ms ease;
+  }
+
+  .shell-root--tool-templates .template-center-card__clone:hover {
+    border-color: rgba(255, 43, 136, 0.46);
+    background: linear-gradient(90deg, #ff2b88, #a452ff);
+    color: #fff;
+  }
+
+  .shell-root--tool-templates .template-center-card__clone:hover svg {
+    transform: translateX(2px);
+  }
+
   .studio-help-text {
     color: var(--muted);
     font-size: 13px;
