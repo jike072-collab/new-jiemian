@@ -3653,20 +3653,20 @@
 
   .studio-preview:has(.image-upscale-compare) {
     min-height: 100%;
-    align-content: center;
-    justify-items: center;
-    grid-template-rows: auto auto;
-    gap: 18px;
+    align-content: stretch;
+    justify-items: stretch;
+    grid-template-rows: auto minmax(0, 1fr);
   }
 
   .studio-preview:has(.image-upscale-compare) .studio-preview__top {
-    width: min(100%, 1040px);
+    width: 100%;
   }
 
   .studio-preview:has(.image-upscale-compare) .studio-preview__content {
     display: grid;
     width: 100%;
     min-height: 0;
+    align-items: center;
     justify-items: center;
   }
 
