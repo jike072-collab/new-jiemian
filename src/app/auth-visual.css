@@ -315,7 +315,7 @@
       scale var(--motion-layout) var(--ease-enter);
     animation:
       auth-showcase-card-enter var(--motion-entrance) var(--ease-enter) var(--auth-card-enter-delay, 0ms) both,
-      auth-showcase-card-breathe 7.2s ease-in-out var(--auth-card-breathe-delay, 780ms) infinite;
+      auth-float var(--auth-card-float-duration, 7.2s) ease-in-out var(--auth-card-float-delay, 0ms) infinite;
   }
 
   .auth-showcase-card__image {
@@ -388,7 +388,7 @@
     z-index: 1;
     transform: rotate(-10deg);
     --auth-card-enter-delay: 120ms;
-    --auth-card-breathe-delay: 980ms;
+    --auth-card-float-duration: 6.8s;
   }
 
   .auth-showcase-card--main {
@@ -404,7 +404,8 @@
       0 30px 70px rgba(0, 0, 0, 0.5);
     transform: rotate(0deg);
     --auth-card-enter-delay: 220ms;
-    --auth-card-breathe-delay: 1120ms;
+    --auth-card-float-delay: 160ms;
+    --auth-card-float-duration: 7.6s;
   }
 
   .auth-showcase-card--right {
@@ -413,7 +414,8 @@
     z-index: 2;
     transform: rotate(10deg);
     --auth-card-enter-delay: 320ms;
-    --auth-card-breathe-delay: 1260ms;
+    --auth-card-float-delay: 320ms;
+    --auth-card-float-duration: 8.3s;
   }
 
   .auth-showcase:hover .auth-showcase-card {
@@ -991,13 +993,13 @@
   }
 }
 
-@keyframes auth-showcase-card-breathe {
+@keyframes auth-float {
   0%,
   100% {
     translate: 0 0;
   }
   50% {
-    translate: 0 -4px;
+    translate: 0 -5px;
   }
 }
 
