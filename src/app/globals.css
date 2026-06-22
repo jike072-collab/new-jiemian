@@ -3109,9 +3109,9 @@
   }
 
   .studio-preview:has(.image-tutorial-simple) .studio-preview__top {
-    width: min(100%, 1080px);
-    margin: 0 auto;
-    padding: 0 clamp(8px, 2.2vw, 28px);
+    width: 100%;
+    margin: 0;
+    padding: 0;
   }
 
   .image-tutorial-simple {
@@ -3263,14 +3263,14 @@
   .studio-preview:has(.image-editor-tutorial) {
     gap: 18px;
     min-height: 100%;
-    align-content: center;
-    grid-template-rows: auto auto;
+    align-content: start;
+    grid-template-rows: auto minmax(0, 1fr);
     justify-items: center;
   }
 
   .studio-preview:has(.image-editor-tutorial) .studio-preview__top {
-    width: min(100%, 980px);
-    margin: 0 auto;
+    width: 100%;
+    margin: 0;
   }
 
   .studio-preview:has(.image-editor-tutorial) .studio-preview__content {
