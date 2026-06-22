@@ -159,6 +159,18 @@ void main() {
 }
 `;
 
+type AuthStar = {
+  driftX: number;
+  driftY: number;
+  hue: number;
+  opacity: number;
+  radius: number;
+  twinkleOffset: number;
+  twinkleSpeed: number;
+  x: number;
+  y: number;
+};
+
 function createShader(gl: WebGLRenderingContext, type: number, source: string) {
   const shader = gl.createShader(type);
   if (!shader) return null;
@@ -173,7 +185,144 @@ function createShader(gl: WebGLRenderingContext, type: number, source: string) {
 
 export default function AuthShaderBackground() {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
+  const starCanvasRef = useRef<HTMLCanvasElement | null>(null);
   const fallbackRef = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    const canvas = starCanvasRef.current;
+    if (!canvas) return;
+
+    const context = canvas.getContext("2d", { alpha: true });
+    if (!context) return;
+    const targetCanvas = canvas;
+    const targetContext = context;
+
+    const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)");
+    let stars: AuthStar[] = [];
+    let animationFrame: number | null = null;
+    let lastWidth = 0;
+    let lastHeight = 0;
+
+    function resize() {
+      const dpr = Math.min(window.devicePixelRatio || 1, window.innerWidth < 768 ? 1 : 1.35);
+      const width = Math.max(1, Math.floor(targetCanvas.clientWidth * dpr));
+      const height = Math.max(1, Math.floor(targetCanvas.clientHeight * dpr));
+
+      if (targetCanvas.width === width && targetCanvas.height === height && lastWidth === width && lastHeight === height) {
+        return;
+      }
+
+      targetCanvas.width = width;
+      targetCanvas.height = height;
+      lastWidth = width;
+      lastHeight = height;
+
+      const baseCount = window.innerWidth < 768 ? 42 : window.innerWidth < 1280 ? 72 : 112;
+      stars = Array.from({ length: baseCount }, () => {
+        const isRightSide = Math.random() > 0.72;
+        const x = isRightSide ? 0.58 + Math.random() * 0.4 : Math.random() * 0.66;
+        return {
+          driftX: (Math.random() - 0.5) * 0.0045,
+          driftY: (Math.random() - 0.5) * 0.0038,
+          hue: Math.random() > 0.58 ? 286 : 330,
+          opacity: (isRightSide ? 0.18 : 0.3) + Math.random() * (isRightSide ? 0.22 : 0.32),
+          radius: (isRightSide ? 0.54 : 0.62) + Math.random() * 1.05,
+          twinkleOffset: Math.random() * Math.PI * 2,
+          twinkleSpeed: 0.18 + Math.random() * 0.36,
+          x,
+          y: Math.random(),
+        };
+      });
+    }
+
+    function formQuietMask(x: number, y: number) {
+      if (x < 0.6 || y < 0.1 || y > 0.92) return 1;
+      const centerFalloff = 1 - Math.min(1, Math.abs(y - 0.52) / 0.42);
+      const rightFalloff = Math.min(1, (x - 0.6) / 0.34);
+      return 1 - centerFalloff * rightFalloff * 0.72;
+    }
+
+    function draw(now = 0) {
+      resize();
+      targetContext.clearRect(0, 0, targetCanvas.width, targetCanvas.height);
+      const time = now / 1000;
+      const motionScale = reducedMotion.matches ? 0 : 1;
+
+      for (const star of stars) {
+        const x = ((star.x + star.driftX * time * motionScale) % 1 + 1) % 1;
+        const y = ((star.y + star.driftY * time * motionScale) % 1 + 1) % 1;
+        const twinkle = reducedMotion.matches ? 0.78 : 0.74 + Math.sin(time * star.twinkleSpeed + star.twinkleOffset) * 0.2;
+        const rightSoftness = x > 0.58 ? 0.66 : 1;
+        const alpha = star.opacity * twinkle * rightSoftness * formQuietMask(x, y);
+        const px = x * targetCanvas.width;
+        const py = y * targetCanvas.height;
+        const radius = star.radius * (window.devicePixelRatio || 1);
+
+        targetContext.globalAlpha = alpha * 0.54;
+        targetContext.fillStyle = `hsl(${star.hue} 92% 82%)`;
+        targetContext.beginPath();
+        targetContext.arc(px, py, radius * 2.2, 0, Math.PI * 2);
+        targetContext.fill();
+
+        targetContext.globalAlpha = alpha;
+        targetContext.fillStyle = "rgba(255, 245, 255, 0.92)";
+        targetContext.beginPath();
+        targetContext.arc(px, py, radius, 0, Math.PI * 2);
+        targetContext.fill();
+      }
+
+      targetContext.globalAlpha = 1;
+    }
+
+    function start() {
+      if (reducedMotion.matches || document.hidden || animationFrame !== null) return;
+      const render = (now: number) => {
+        draw(now);
+        animationFrame = window.requestAnimationFrame(render);
+      };
+      animationFrame = window.requestAnimationFrame(render);
+    }
+
+    function stop() {
+      if (animationFrame === null) return;
+      window.cancelAnimationFrame(animationFrame);
+      animationFrame = null;
+    }
+
+    function handleVisibility() {
+      if (document.hidden) {
+        stop();
+      } else if (reducedMotion.matches) {
+        draw();
+      } else {
+        start();
+      }
+    }
+
+    function handleMotionPreference() {
+      stop();
+      draw();
+      start();
+    }
+
+    function handleResize() {
+      draw();
+    }
+
+    resize();
+    draw();
+    start();
+    document.addEventListener("visibilitychange", handleVisibility);
+    window.addEventListener("resize", handleResize);
+    reducedMotion.addEventListener("change", handleMotionPreference);
+
+    return () => {
+      stop();
+      document.removeEventListener("visibilitychange", handleVisibility);
+      window.removeEventListener("resize", handleResize);
+      reducedMotion.removeEventListener("change", handleMotionPreference);
+    };
+  }, []);
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -327,6 +476,7 @@ export default function AuthShaderBackground() {
     <div className="auth-shader" aria-hidden="true">
       <div ref={fallbackRef} className="auth-shader__fallback" data-active="false" />
       <canvas ref={canvasRef} className="auth-shader__canvas" />
+      <canvas ref={starCanvasRef} className="auth-starfield__canvas" />
     </div>
   );
 }

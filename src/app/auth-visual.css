@@ -51,6 +51,7 @@
 
   .auth-shader,
   .auth-shader__canvas,
+  .auth-starfield__canvas,
   .auth-shader__fallback,
   .auth-page__shade,
   .auth-page__noise {
@@ -64,6 +65,7 @@
   }
 
   .auth-shader__canvas,
+  .auth-starfield__canvas,
   .auth-shader__fallback {
     width: 100%;
     height: 100%;
@@ -72,6 +74,12 @@
   .auth-shader__canvas {
     display: block;
     opacity: 0.76;
+  }
+
+  .auth-starfield__canvas {
+    display: block;
+    opacity: 0.88;
+    mix-blend-mode: screen;
   }
 
   .auth-shader__fallback {
@@ -136,7 +144,7 @@
     justify-content: center;
     font-size: 16px;
     transform: translateX(18px);
-    animation: auth-fade-up 320ms ease-out both;
+    animation: auth-fade-up var(--motion-entrance) var(--ease-enter) both;
   }
 
   .auth-brand-lockup {
@@ -206,6 +214,11 @@
   .auth-brand__copy h1 > span {
     display: block;
     white-space: nowrap;
+    animation: auth-title-line-enter 640ms var(--ease-enter) both;
+  }
+
+  .auth-brand__copy h1 > span:nth-child(2) {
+    animation-delay: 90ms;
   }
 
   .auth-brand__copy h1 b {
@@ -225,6 +238,7 @@
     color: rgba(244, 242, 248, 0.72);
     font-size: 17px;
     line-height: 1.3;
+    animation: auth-soft-enter 520ms 210ms var(--ease-enter) both;
   }
 
   .auth-feature-list__item {
@@ -295,10 +309,11 @@
       0 24px 58px rgba(0, 0, 0, 0.44);
     transform-origin: center bottom;
     transition:
-      border-color 180ms ease,
-      box-shadow 180ms ease,
-      transform 280ms ease;
-    animation: auth-float 7.2s ease-in-out infinite;
+      border-color var(--motion-fast) var(--ease-enter),
+      box-shadow var(--motion-fast) var(--ease-enter),
+      transform var(--motion-layout) var(--ease-enter),
+      scale var(--motion-layout) var(--ease-enter);
+    animation: auth-showcase-card-enter var(--motion-entrance) var(--ease-enter) both;
   }
 
   .auth-showcase-card__image {
@@ -370,7 +385,7 @@
     top: 30px;
     z-index: 1;
     transform: rotate(-10deg);
-    animation-duration: 6.8s;
+    animation-delay: 120ms;
   }
 
   .auth-showcase-card--main {
@@ -385,8 +400,7 @@
       0 0 30px rgba(255, 42, 145, 0.24),
       0 30px 70px rgba(0, 0, 0, 0.5);
     transform: rotate(0deg);
-    animation-delay: 160ms;
-    animation-duration: 7.6s;
+    animation-delay: 220ms;
   }
 
   .auth-showcase-card--right {
@@ -395,7 +409,6 @@
     z-index: 2;
     transform: rotate(10deg);
     animation-delay: 320ms;
-    animation-duration: 8.3s;
   }
 
   .auth-showcase:hover .auth-showcase-card {
@@ -428,6 +441,7 @@
     align-items: center;
     justify-items: end;
     transform: translateX(80px);
+    animation: auth-shell-enter 520ms 100ms var(--ease-enter) both;
   }
 
   .auth-form-shell::before {
@@ -467,7 +481,7 @@
       inset 0 1px 0 rgba(255, 255, 255, 0.045),
       0 0 26px rgba(190, 65, 255, 0.07);
     backdrop-filter: blur(18px);
-    animation: auth-form-enter 420ms 80ms ease-out both;
+    animation: auth-form-enter var(--motion-entrance) 120ms var(--ease-enter) both;
   }
 
   .auth-card__spotlight {
@@ -489,7 +503,7 @@
     display: grid;
     width: 100%;
     gap: 19px;
-    animation: auth-form-content-enter 200ms ease-out both;
+    animation: auth-form-content-enter 280ms var(--ease-enter) both;
   }
 
   .auth-card__head {
@@ -555,9 +569,10 @@
     color: rgba(255, 255, 255, 0.72);
     padding: 0 14px;
     transition:
-      border-color 160ms ease,
-      background var(--motion-fast),
-      box-shadow 160ms ease;
+      border-color var(--motion-fast) var(--ease-enter),
+      background var(--motion-fast) var(--ease-enter),
+      box-shadow var(--motion-fast) var(--ease-enter),
+      transform var(--motion-fast) var(--ease-enter);
   }
 
   .auth-input::after {
@@ -571,11 +586,13 @@
   }
 
   .auth-input:hover {
+    transform: translateY(-1px);
     border-color: rgba(210, 145, 255, 0.5);
     background: rgba(255, 255, 255, 0.065);
   }
 
   .auth-input:focus-within {
+    transform: translateY(-1px);
     border-color: rgba(255, 45, 145, 0.92);
     background: rgba(255, 255, 255, 0.07);
     box-shadow:
@@ -705,9 +722,9 @@
     font-weight: 700;
     box-shadow: 0 10px 24px rgba(255, 20, 120, 0.13);
     transition:
-      background-position 180ms ease,
-      filter 160ms ease,
-      transform 160ms ease,
+      background-position var(--motion-fast) var(--ease-enter),
+      filter var(--motion-fast) var(--ease-enter),
+      transform var(--motion-fast) var(--ease-enter),
       opacity var(--motion-fast);
   }
 
@@ -817,11 +834,11 @@
 @keyframes auth-fade-up {
   from {
     opacity: 0;
-    transform: translateY(var(--motion-distance-medium));
+    translate: 0 var(--motion-distance-medium);
   }
   to {
     opacity: 1;
-    transform: translateY(0);
+    translate: 0 0;
   }
 }
 
@@ -878,6 +895,44 @@
   }
 }
 
+@keyframes auth-soft-enter {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes auth-shell-enter {
+  from {
+    opacity: 0;
+    translate: 0 8px;
+  }
+  to {
+    opacity: 1;
+    translate: 0 0;
+  }
+}
+
+@keyframes auth-title-line-enter {
+  from {
+    opacity: 0;
+    transform: translateY(18px);
+    filter: blur(3px);
+  }
+  58% {
+    filter: blur(0);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+    filter: blur(0);
+  }
+}
+
 @keyframes auth-aura-breathe {
   0%,
   100% {
@@ -920,13 +975,16 @@
   }
 }
 
-@keyframes auth-float {
-  0%,
-  100% {
-    translate: 0 0;
+@keyframes auth-showcase-card-enter {
+  from {
+    opacity: 0;
+    scale: 0.985;
+    translate: 0 18px;
   }
-  50% {
-    translate: 0 -5px;
+  to {
+    opacity: 1;
+    scale: 1;
+    translate: 0 0;
   }
 }
 
@@ -1151,6 +1209,12 @@
 
   .auth-page::before,
     .auth-page::after,
+    .auth-brand,
+    .auth-brand__copy h1 > span,
+    .auth-feature-list,
+    .auth-form-shell,
+    .auth-card,
+    .auth-form-content,
     .auth-showcase-card {
       animation: none !important;
     }
@@ -1161,6 +1225,9 @@
     .auth-brand-lockup,
     .auth-brand-lockup__icon,
     .auth-brand-lockup__text,
+    .auth-input,
+    .auth-input::after,
+    .auth-password__toggle,
     .auth-submit,
     .auth-submit__shine,
     .auth-guest-link {
