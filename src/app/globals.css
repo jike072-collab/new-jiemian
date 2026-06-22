@@ -5123,7 +5123,8 @@
   }
 
   .shell-panel--mobile-single .studio-preview__top,
-  .shell-panel--mobile-single .template-center-browser__head {
+  .shell-panel--mobile-single .template-center-browser__head,
+  .shell-panel--mobile-single .studio-library-page__header {
     display: none;
   }
 
