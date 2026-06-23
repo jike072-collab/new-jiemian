@@ -122,6 +122,7 @@ const CREDIT_TOP_UP_BASE_RATE = 10;
 const CUSTOM_RECHARGE_MIN_AMOUNT = 1;
 const PLAN_PERIOD_LABEL = "按月";
 const PLAN_PERIOD_UNIT_LABEL = "月";
+const PAYMENT_FLOW_AVAILABLE: boolean = false;
 
 function accountViewTitle(view: AccountView) {
   if (view === "recharge") return "充值中心";
@@ -2413,15 +2414,33 @@ function RechargeCenterWorkspace({
     ? createCustomCreditSummaryLines(customAmount, customAmountValid, customCredits)
     : createFixedCreditSummaryLines(selectedCredit);
   const creditSummaryReady = customRechargeActive ? customAmountValid : Boolean(selectedCredit);
+  const creditPayableAmount = customRechargeActive && customAmountValid
+    ? customAmount
+    : selectedCredit?.amount ?? "";
   const planSummaryLines = createPlanSummaryLines(selectedPlan);
   const planSummaryReady = Boolean(selectedPlan);
+  const planConfirmState = createRechargeConfirmState({
+    mode: "plans",
+    user,
+    ready: planSummaryReady,
+    selectedPlan,
+  });
+  const creditConfirmState = createRechargeConfirmState({
+    mode: "credits",
+    user,
+    ready: creditSummaryReady,
+    customRechargeActive,
+    customAmountValid,
+    amount: creditPayableAmount,
+  });
+  const paymentUnavailableNote = "当前仅可核对订单信息，支付功能暂未开放。";
 
   return (
     <section className="user-center-page account-subpage account-subpage--recharge" aria-label="充值中心">
       <AccountSubpageHeader
         breadcrumb="用户中心 / 充值中心"
         title="充值中心"
-        subtitle="选择适合当前创作节奏的套餐或积分充值方式，确认后再进入支付流程。"
+        subtitle="选择适合当前创作节奏的套餐或积分充值方式，先核对订单信息，支付开放后再继续。"
         onBack={() => onViewChange("center")}
         meta={(
           <div className="recharge-account-meta" aria-label="账户概览">
@@ -2499,7 +2518,6 @@ function RechargeCenterWorkspace({
                   <div className="recharge-plan-grid">
                     {planOptions.map((plan) => {
                       const selected = selectedPlan?.id === plan.id;
-                      const recommendationReason = getPlanRecommendationReason(plan);
                       return (
                         <button
                           key={plan.id}
@@ -2526,7 +2544,6 @@ function RechargeCenterWorkspace({
                               </span>
                             ))}
                           </span>
-                          {recommendationReason ? <span className="recharge-plan-card__reason">{recommendationReason}</span> : null}
                           <span className="recharge-plan-card__action">{selected ? "已选择" : "选择套餐"}</span>
                         </button>
                       );
@@ -2615,9 +2632,9 @@ function RechargeCenterWorkspace({
                 icon={<Crown className="size-4" aria-hidden="true" />}
                 title="订单确认"
                 lines={planSummaryLines}
-                note="确认后将进入支付流程，支付完成后以服务端真实到账结果为准。"
-                buttonLabel={selectedPlan ? `立即购买 ¥${formatRechargeAmount(selectedPlan.price)}` : "请选择套餐"}
-                disabled={!user || !planSummaryReady}
+                note={paymentUnavailableNote}
+                buttonLabel={planConfirmState.label}
+                disabled={planConfirmState.disabled}
                 onConfirm={onPaymentUnavailable}
               />
             ) : (
@@ -2625,9 +2642,9 @@ function RechargeCenterWorkspace({
                 icon={<CreditCard className="size-4" aria-hidden="true" />}
                 title="订单确认"
                 lines={creditSummaryLines}
-                note="确认后将进入支付流程，充值到账以服务端真实结果为准。"
-                buttonLabel={customRechargeActive ? "确认自定义充值" : "确认充值"}
-                disabled={!user || !creditSummaryReady}
+                note={paymentUnavailableNote}
+                buttonLabel={creditConfirmState.label}
+                disabled={creditConfirmState.disabled}
                 onConfirm={onPaymentUnavailable}
               />
             )}
@@ -2875,12 +2892,7 @@ function createPlanFactItems(plan: PlanOption) {
   return [
     `${PLAN_PERIOD_LABEL}购买`,
     `每月获得 ${formatQuotaUnits(plan.monthlyCredits)} 积分`,
-    `适合：${plan.description}`,
   ];
-}
-
-function getPlanRecommendationReason(plan: PlanOption) {
-  return plan.recommended ? "产品配置推荐套餐" : "";
 }
 
 function createPlanSummaryLines(plan: PlanOption | null): Array<[string, string]> {
@@ -2897,7 +2909,7 @@ function createPlanSummaryLines(plan: PlanOption | null): Array<[string, string]
     ["当前选择", plan.name],
     ["套餐周期", PLAN_PERIOD_LABEL],
     ["每月积分", `${formatQuotaUnits(plan.monthlyCredits)} 积分`],
-    ["生效方式", "支付完成后生效"],
+    ["套餐金额", `¥${formatRechargeAmount(plan.price)}`],
     ["应付金额", `¥${formatRechargeAmount(plan.price)}`],
   ];
 }
@@ -2913,16 +2925,18 @@ function createFixedCreditSummaryLines(option: CreditTopUpOption | null): Array<
   }
 
   const giftCredits = getCreditTopUpGift(option);
+  const baseCredits = option.amount * CREDIT_TOP_UP_BASE_RATE;
   const lines: Array<[string, string]> = [
     ["当前选择", `¥${formatRechargeAmount(option.amount)} 积分档位`],
     ["充值金额", `¥${formatRechargeAmount(option.amount)}`],
-    ["预计到账", `${formatQuotaUnits(option.credits)} 积分`],
+    ["基础积分", `${formatQuotaUnits(baseCredits)} 积分`],
   ];
 
   if (giftCredits > 0) {
     lines.push(["赠送积分", `${formatQuotaUnits(giftCredits)} 积分`]);
   }
 
+  lines.push(["预计到账", `${formatQuotaUnits(option.credits)} 积分`]);
   lines.push(["应付金额", `¥${formatRechargeAmount(option.amount)}`]);
   return lines;
 }
@@ -2932,9 +2946,40 @@ function createCustomCreditSummaryLines(amountText: string, valid: boolean, cred
   return [
     ["当前选择", "自定义充值"],
     ["充值金额", valid ? `¥${formatRechargeAmount(amount)}` : "未完成"],
+    ["基础积分", valid ? `${formatQuotaUnits(credits)} 积分` : "—"],
     ["预计到账", valid ? `${formatQuotaUnits(credits)} 积分` : `请输入不低于 ¥${CUSTOM_RECHARGE_MIN_AMOUNT} 的金额`],
     ["应付金额", valid ? `¥${formatRechargeAmount(amount)}` : "—"],
   ];
+}
+
+function createRechargeConfirmState(input: {
+  mode: RechargeTab;
+  user: PublicAuthUser | null;
+  ready: boolean;
+  selectedPlan?: PlanOption | null;
+  customRechargeActive?: boolean;
+  customAmountValid?: boolean;
+  amount?: number | string;
+}) {
+  if (!input.ready) {
+    if (input.mode === "credits" && input.customRechargeActive && !input.customAmountValid) {
+      return { disabled: true, label: "请检查充值金额" };
+    }
+    return { disabled: true, label: input.mode === "plans" ? "请选择套餐" : "请选择充值金额" };
+  }
+
+  if (!input.user) return { disabled: true, label: "登录后继续" };
+  if (!PAYMENT_FLOW_AVAILABLE) return { disabled: true, label: "支付功能暂未开放" };
+
+  if (input.mode === "plans" && input.selectedPlan) {
+    return { disabled: false, label: `立即购买 ¥${formatRechargeAmount(input.selectedPlan.price)}` };
+  }
+
+  if (input.mode === "credits" && input.amount !== undefined && input.amount !== "") {
+    return { disabled: false, label: `立即充值 ¥${formatRechargeAmount(input.amount)}` };
+  }
+
+  return { disabled: true, label: input.mode === "plans" ? "请选择套餐" : "请选择充值金额" };
 }
 
 function formatSignedQuota(value: number) {

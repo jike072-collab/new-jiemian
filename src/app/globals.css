@@ -5198,8 +5198,11 @@
 
   .recharge-confirm-button:disabled {
     cursor: not-allowed;
-    filter: saturate(0.6);
-    opacity: 0.48;
+    border-color: rgba(255, 255, 255, 0.09);
+    background: rgba(255, 255, 255, 0.055);
+    color: rgba(255, 255, 255, 0.44);
+    filter: none;
+    opacity: 1;
     transform: none;
   }
 
