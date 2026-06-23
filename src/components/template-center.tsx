@@ -33,6 +33,7 @@ type QuotaResponse = {
 };
 
 const templateRailDragThreshold = 12;
+const templateRailLongPressDelay = 180;
 
 type TemplateRailProps = {
   title?: string;
@@ -56,7 +57,9 @@ export function TemplateRail({
     pointerId: -1,
     startX: 0,
     startScrollLeft: 0,
+    dragReady: false,
     dragging: false,
+    longPressTimer: null as number | null,
     suppressClick: false,
   });
 
@@ -69,7 +72,12 @@ export function TemplateRail({
     if (state.dragging) {
       scroll?.classList.remove("is-dragging");
     }
+    if (state.longPressTimer) {
+      window.clearTimeout(state.longPressTimer);
+      state.longPressTimer = null;
+    }
     state.pointerId = -1;
+    state.dragReady = false;
     state.dragging = false;
   }, []);
 
@@ -81,9 +89,17 @@ export function TemplateRail({
     state.pointerId = event.pointerId;
     state.startX = event.clientX;
     state.startScrollLeft = scroll.scrollLeft;
+    state.dragReady = false;
     state.dragging = false;
     state.suppressClick = false;
-    scroll.setPointerCapture(event.pointerId);
+    if (state.longPressTimer) {
+      window.clearTimeout(state.longPressTimer);
+    }
+    state.longPressTimer = window.setTimeout(() => {
+      if (dragStateRef.current.pointerId === event.pointerId) {
+        dragStateRef.current.dragReady = true;
+      }
+    }, templateRailLongPressDelay);
   }, []);
 
   const handlePointerMove = useCallback((event: ReactPointerEvent<HTMLDivElement>) => {
@@ -91,9 +107,12 @@ export function TemplateRail({
     const state = dragStateRef.current;
     if (!scroll || state.pointerId !== event.pointerId) return;
     const delta = event.clientX - state.startX;
-    if (!state.dragging && Math.abs(delta) > templateRailDragThreshold) {
+    if (!state.dragging && state.dragReady && Math.abs(delta) > templateRailDragThreshold) {
       state.dragging = true;
       scroll.classList.add("is-dragging");
+      if (!scroll.hasPointerCapture(event.pointerId)) {
+        scroll.setPointerCapture(event.pointerId);
+      }
     }
     if (state.dragging) {
       event.preventDefault();
@@ -106,7 +125,7 @@ export function TemplateRail({
     if (state.pointerId !== event.pointerId) return;
     const scroll = scrollRef.current;
     const didScroll = Boolean(scroll && Math.abs(scroll.scrollLeft - state.startScrollLeft) > 1);
-    state.suppressClick = state.dragging && didScroll;
+    state.suppressClick = state.dragging || didScroll;
     releaseDrag(event.pointerId);
   }, [releaseDrag]);
 
