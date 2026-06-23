@@ -4608,13 +4608,15 @@
   .recharge-account-error {
     display: flex;
     align-items: center;
-    gap: 9px;
-    border: 1px solid rgba(255, 205, 96, 0.24);
-    border-radius: 12px;
-    background: rgba(255, 205, 96, 0.08);
-    padding: 11px 13px;
-    color: rgba(255, 236, 190, 0.88);
-    font-size: 13px;
+    width: fit-content;
+    max-width: min(100%, 560px);
+    gap: 8px;
+    border: 1px solid rgba(255, 255, 255, 0.085);
+    border-radius: 999px;
+    background: rgba(255, 255, 255, 0.035);
+    padding: 7px 9px 7px 10px;
+    color: rgba(255, 255, 255, 0.62);
+    font-size: 12.5px;
   }
 
   .recharge-account-error span {
@@ -4624,9 +4626,11 @@
 
   .recharge-account-error button {
     border: 0;
-    background: transparent;
+    border-radius: 999px;
+    background: rgba(255, 43, 136, 0.1);
+    padding: 4px 8px;
     color: #ff8ac4;
-    font-size: 13px;
+    font-size: 12px;
     font-weight: 700;
   }
 
@@ -4826,30 +4830,41 @@
   }
 
   .credit-topup-card {
-    min-height: 112px;
-    align-content: center;
-    gap: 8px;
+    min-height: 144px;
+    align-content: start;
+    gap: 7px;
     padding: 17px;
   }
 
-  .credit-topup-card strong {
+  .credit-topup-card__amount {
     color: rgba(255, 255, 255, 0.94);
     font-size: 24px;
     font-weight: 760;
     line-height: 1.05;
   }
 
-  .credit-topup-card span:not(.recharge-card-check, .recharge-card-badge) {
+  .credit-topup-card__credits,
+  .credit-topup-card__gift {
     color: rgba(255, 255, 255, 0.58);
     font-size: 13px;
+    line-height: 1.35;
+  }
+
+  .credit-topup-card__credits {
+    color: rgba(255, 255, 255, 0.72);
+    font-weight: 650;
+  }
+
+  .credit-topup-card__gift {
+    color: rgba(255, 114, 181, 0.88);
   }
 
   .custom-recharge-card {
     display: grid;
-    grid-template-columns: minmax(180px, 1.2fr) minmax(180px, 0.9fr) minmax(130px, 0.7fr);
-    align-items: end;
-    gap: 14px;
-    padding: 16px;
+    grid-template-columns: minmax(220px, 1fr) minmax(240px, 1fr) minmax(140px, 0.55fr);
+    align-items: stretch;
+    gap: 16px;
+    padding: 18px;
   }
 
   .custom-recharge-card h3 {
@@ -4865,6 +4880,10 @@
     line-height: 1.45;
   }
 
+  .custom-recharge-card__intro {
+    align-self: center;
+  }
+
   .custom-recharge-field,
   .custom-recharge-preview {
     display: grid;
@@ -4878,35 +4897,79 @@
     font-weight: 620;
   }
 
-  .custom-recharge-field input {
-    min-height: 40px;
+  .custom-recharge-input {
+    display: flex;
+    min-height: 44px;
+    align-items: center;
+    gap: 8px;
     border: 1px solid rgba(255, 255, 255, 0.09);
     border-radius: 10px;
     background: rgba(9, 9, 11, 0.72);
     padding: 0 12px;
-    color: rgba(255, 255, 255, 0.92);
-    font-size: 14px;
-    outline: none;
     transition:
       border-color var(--motion-fast) var(--ease-enter),
       background var(--motion-fast) var(--ease-enter),
       box-shadow var(--motion-fast) var(--ease-enter);
   }
 
-  .custom-recharge-field input:hover,
-  .custom-recharge-field input:focus {
+  .custom-recharge-input em {
+    color: rgba(255, 255, 255, 0.72);
+    font-size: 14px;
+    font-style: normal;
+    font-weight: 720;
+  }
+
+  .custom-recharge-field input {
+    width: 100%;
+    min-width: 0;
+    border: 0;
+    background: transparent;
+    padding: 0;
+    color: rgba(255, 255, 255, 0.92);
+    font-size: 14px;
+    outline: none;
+  }
+
+  .custom-recharge-input:hover,
+  .custom-recharge-input:focus-within {
     border-color: rgba(255, 43, 136, 0.34);
     background: rgba(24, 24, 30, 0.92);
   }
 
-  .custom-recharge-field input:focus {
+  .custom-recharge-input:focus-within {
     box-shadow: 0 0 0 3px rgba(255, 43, 136, 0.12);
+  }
+
+  .custom-recharge-input.is-invalid {
+    border-color: rgba(255, 92, 122, 0.5);
+    background: rgba(255, 92, 122, 0.06);
+  }
+
+  .custom-recharge-field small {
+    color: rgba(255, 125, 151, 0.9);
+    font-size: 12px;
+    line-height: 1.35;
+  }
+
+  .custom-recharge-preview {
+    min-height: 74px;
+    align-content: center;
+    border: 1px solid rgba(255, 255, 255, 0.075);
+    border-radius: 12px;
+    background: rgba(255, 255, 255, 0.035);
+    padding: 12px;
   }
 
   .custom-recharge-preview strong {
     color: #ff72b5;
     font-size: 18px;
     font-weight: 740;
+  }
+
+  .custom-recharge-preview em {
+    color: rgba(255, 255, 255, 0.42);
+    font-size: 12px;
+    font-style: normal;
   }
 
   .recharge-confirm-panel {
@@ -6981,6 +7044,7 @@
     .recharge-plan-card,
     .credit-topup-card,
     .custom-recharge-card,
+    .custom-recharge-input,
     .custom-recharge-field input,
     .recharge-confirm-panel,
     .recharge-confirm-button,
@@ -8312,7 +8376,11 @@
   }
 
   .custom-recharge-card {
-    grid-template-columns: minmax(220px, 1fr) minmax(160px, 0.9fr) minmax(120px, 0.7fr);
+    grid-template-columns: minmax(220px, 1fr) minmax(160px, 1fr);
+  }
+
+  .custom-recharge-preview {
+    grid-column: 1 / -1;
   }
 
 }

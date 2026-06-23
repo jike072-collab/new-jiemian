@@ -16,7 +16,7 @@ type WorkspaceAccountPanelProps = {
 };
 
 function formatQuota(value: number | null | undefined) {
-  if (value === null || value === undefined) return "0";
+  if (value === null || value === undefined) return "—";
   return new Intl.NumberFormat("zh-CN").format(value);
 }
 
@@ -66,7 +66,7 @@ export function WorkspaceAccountPanel({
             <Crown className="size-3.5" aria-hidden="true" />
             当前套餐
           </span>
-          <strong>暂无套餐</strong>
+          <strong>{loading ? "加载中" : quota ? "暂无套餐" : "—"}</strong>
         </div>
         <div data-account-row="checkin">
           <span>

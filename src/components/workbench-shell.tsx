@@ -222,7 +222,7 @@ export function WorkbenchShell({
       ref={rootRef}
       className={cn(
         "shell-root min-h-[100dvh] overflow-hidden bg-[var(--background)] text-[var(--foreground)]",
-        `shell-root--tool-${state.activeToolId}`,
+        !contentOnly && `shell-root--tool-${state.activeToolId}`,
         contentOnly && "shell-root--account-center",
       )}
     >
@@ -465,7 +465,7 @@ function DesktopNavigation({
             <button type="button" className="shell-nav-account__main shell-nav-account__main--button" onClick={onToggleAccount} aria-expanded={accountOpen}>
               <span className="shell-nav-account__avatar">{avatarText}</span>
               <span className="shell-nav-account__copy">
-                <span>剩余积分 {accountPointsLabel || "0"}</span>
+                <span>剩余积分 {accountPointsLabel || "—"}</span>
               </span>
             </button>
             <div className="shell-nav-account__actions is-split">

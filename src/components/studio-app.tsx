@@ -118,6 +118,9 @@ const creditTopUpOptions: CreditTopUpOption[] = [
   { amount: 200, credits: 2400, label: "超值" },
 ];
 
+const CREDIT_TOP_UP_BASE_RATE = 10;
+const CUSTOM_RECHARGE_MIN_AMOUNT = 1;
+
 function accountViewTitle(view: AccountView) {
   if (view === "recharge") return "充值中心";
   if (view === "usage") return "消费记录";
@@ -635,7 +638,6 @@ export function StudioApp() {
           console.debug("[account] Failed to load account data", failures);
         }
         setAccountDataError(formatAccountDataError(failures[0]));
-        setMessage(formatAccountDataError(failures[0]));
       } else {
         setAccountDataError("");
       }
@@ -2011,7 +2013,7 @@ export function StudioApp() {
         isAuthenticated={Boolean(sessionUser)}
         canAccessAdmin={sessionUser?.role === "admin"}
         accountName={sessionUser?.display_name || sessionUser?.username || null}
-        accountPointsLabel={quotaSnapshot ? String(quotaSnapshot.quota_units) : null}
+        accountPointsLabel={sessionLoading || accountLoading ? "加载中" : quotaSnapshot ? String(quotaSnapshot.quota_units) : "—"}
         headerRightSlot={accountHeaderSlot}
         accountCloseSignal={accountCloseSignal}
         accountSlot={(
@@ -2210,6 +2212,9 @@ function UserCenterOverview({
 }) {
   const usageEntries = usage?.entries?.slice(0, 6) || [];
   const quotaUnits = quota?.quota_units ?? null;
+  const quotaValue = loading ? "加载中" : quota ? `${formatQuotaUnits(quota.quota_units)} 分` : "—";
+  const planValue = loading ? "加载中" : quota ? "暂无套餐" : "—";
+  const planNote = quota ? "暂未开通有效套餐" : "账户信息暂时无法加载";
   const previousQuotaUnitsRef = useRef<number | null>(quotaUnits);
   const [quotaChanged, setQuotaChanged] = useState(false);
 
@@ -2236,7 +2241,7 @@ function UserCenterOverview({
   const stats = [
     {
       label: "积分",
-      value: loading ? "加载中" : `${formatQuotaUnits(quota?.quota_units)} 分`,
+      value: quotaValue,
       note: "参与活动可获取更多积分",
       icon: Sparkles,
       featured: true,
@@ -2245,8 +2250,8 @@ function UserCenterOverview({
     },
     {
       label: "当前套餐",
-      value: "暂无套餐",
-      note: "暂未开通有效套餐",
+      value: planValue,
+      note: planNote,
       icon: Crown,
       featured: false,
       action: "购买套餐",
@@ -2382,32 +2387,29 @@ function RechargeCenterWorkspace({
 }) {
   const [activeTab, setActiveTab] = useState<RechargeTab>("plans");
   const [selectedPlanId, setSelectedPlanId] = useState("standard");
-  const [selectedCreditAmount, setSelectedCreditAmount] = useState(50);
+  const [selectedCreditAmount, setSelectedCreditAmount] = useState<number | null>(50);
   const [customAmount, setCustomAmount] = useState("");
 
   const selectedPlan = planOptions.find((plan) => plan.id === selectedPlanId) || planOptions[1];
-  const selectedCredit = creditTopUpOptions.find((option) => option.amount === selectedCreditAmount) || creditTopUpOptions[5];
+  const selectedCredit = selectedCreditAmount === null
+    ? null
+    : creditTopUpOptions.find((option) => option.amount === selectedCreditAmount) || null;
   const customAmountValue = Number(customAmount);
-  const customAmountValid = customAmount.trim() !== "" && Number.isFinite(customAmountValue) && customAmountValue >= 1;
-  const customCredits = customAmountValid ? Math.floor(customAmountValue * 10) : 0;
+  const customAmountEntered = customAmount.trim() !== "";
+  const customAmountValid = customAmountEntered && Number.isFinite(customAmountValue) && customAmountValue >= CUSTOM_RECHARGE_MIN_AMOUNT;
+  const customCredits = customAmountValid ? calculateCustomRechargeCredits(customAmountValue) : 0;
   const customRechargeActive = activeTab === "credits" && customAmount.trim() !== "";
-  const accountInfoUnavailable = !loading && accountError && !quota;
-  const pointsStatusLabel = quota ? `${formatQuotaUnits(quota.quota_units)} 分` : accountInfoUnavailable ? "暂时无法加载" : "—";
-  const planStatusLabel = accountInfoUnavailable ? "暂时无法加载" : "暂未开通";
-  const creditSummaryLines: Array<[string, string]> = customRechargeActive
-    ? [
-      ["当前选择", "自定义充值"],
-      ["充值金额", customAmount.trim() ? `¥${customAmount}` : "—"],
-      ["预计到账", customAmountValid ? `${formatQuotaUnits(customCredits)} 积分` : "最低 ¥1 起充"],
-      ["赠送积分", "暂无"],
-      ["应付金额", customAmountValid ? `¥${customAmount}` : "—"],
-    ]
-    : [
-      ["当前选择", `¥${selectedCredit.amount} 积分档位`],
-      ["预计到账", `${formatQuotaUnits(selectedCredit.credits)} 积分`],
-      ["赠送积分", "暂无"],
-      ["应付金额", `¥${selectedCredit.amount}`],
-    ];
+  const customAmountError = customAmountEntered && !customAmountValid
+    ? `最低充值金额 ¥${CUSTOM_RECHARGE_MIN_AMOUNT}`
+    : "";
+  const customAmountHelpId = "custom-recharge-help";
+  const customAmountErrorId = "custom-recharge-error";
+  const pointsStatusLabel = quota ? `${formatQuotaUnits(quota.quota_units)} 分` : "—";
+  const planStatusLabel = quota ? "暂未开通" : "—";
+  const creditSummaryLines = customRechargeActive
+    ? createCustomCreditSummaryLines(customAmount, customAmountValid, customCredits)
+    : createFixedCreditSummaryLines(selectedCredit);
+  const creditSummaryReady = customRechargeActive ? customAmountValid : Boolean(selectedCredit);
 
   return (
     <section className="user-center-page account-subpage account-subpage--recharge" aria-label="充值中心">
@@ -2520,7 +2522,9 @@ function RechargeCenterWorkspace({
                 </div>
                 <div className="credit-topup-grid">
                   {creditTopUpOptions.map((option) => {
-                    const selected = !customRechargeActive && selectedCredit.amount === option.amount;
+                    const selected = !customRechargeActive && selectedCredit?.amount === option.amount;
+                    const giftCredits = getCreditTopUpGift(option);
+                    const badge = getCreditTopUpBadge(option, creditTopUpOptions);
                     return (
                       <button
                         key={option.amount}
@@ -2535,32 +2539,44 @@ function RechargeCenterWorkspace({
                         <span className="recharge-card-check" aria-hidden="true">
                           <Check className="size-3.5" />
                         </span>
-                        {option.label ? <span className="recharge-card-badge">{option.label}</span> : null}
-                        <strong>¥{option.amount}</strong>
-                        <span>{formatQuotaUnits(option.credits)} 积分</span>
+                        {badge ? <span className="recharge-card-badge">{badge}</span> : null}
+                        <strong className="credit-topup-card__amount">¥{formatRechargeAmount(option.amount)}</strong>
+                        <span className="credit-topup-card__credits">到账 {formatQuotaUnits(option.credits)} 积分</span>
+                        {giftCredits > 0 ? (
+                          <span className="credit-topup-card__gift">含赠送 {formatQuotaUnits(giftCredits)} 积分</span>
+                        ) : null}
                       </button>
                     );
                   })}
                 </div>
 
                 <div className={cn("custom-recharge-card", customRechargeActive && "is-active")}>
-                  <div>
+                  <div className="custom-recharge-card__intro">
                     <h3>自定义充值</h3>
-                    <p>最低金额 ¥1，换算比例 1 元 = 10 积分。</p>
+                    <p>最低金额 ¥{CUSTOM_RECHARGE_MIN_AMOUNT}，换算比例 1 元 = {CREDIT_TOP_UP_BASE_RATE} 积分。</p>
                   </div>
                   <label className="custom-recharge-field">
                     <span>充值金额</span>
-                    <input
-                      value={customAmount}
-                      inputMode="decimal"
-                      placeholder="输入金额"
-                      onChange={(event) => setCustomAmount(sanitizeRechargeAmount(event.target.value))}
-                      aria-describedby="custom-recharge-help"
-                    />
+                    <span className={cn("custom-recharge-input", customAmountError && "is-invalid")}>
+                      <em aria-hidden="true">¥</em>
+                      <input
+                        value={customAmount}
+                        inputMode="decimal"
+                        placeholder="输入金额"
+                        onChange={(event) => {
+                          setCustomAmount(sanitizeRechargeAmount(event.target.value));
+                          setSelectedCreditAmount(null);
+                        }}
+                        aria-describedby={customAmountError ? `${customAmountHelpId} ${customAmountErrorId}` : customAmountHelpId}
+                        aria-invalid={customAmountError ? "true" : "false"}
+                      />
+                    </span>
+                    {customAmountError ? <small id={customAmountErrorId}>{customAmountError}</small> : null}
                   </label>
                   <div id="custom-recharge-help" className="custom-recharge-preview">
-                    <span>预计到账积分</span>
+                    <span>预计到账</span>
                     <strong>{customAmountValid ? formatQuotaUnits(customCredits) : "—"}</strong>
+                    <em>积分</em>
                   </div>
                 </div>
               </div>
@@ -2590,7 +2606,7 @@ function RechargeCenterWorkspace({
                 lines={creditSummaryLines}
                 note="确认后将进入支付流程，充值到账以服务端真实结果为准。"
                 buttonLabel={customRechargeActive ? "确认自定义充值" : "确认充值"}
-                disabled={!user || (customRechargeActive && !customAmountValid)}
+                disabled={!user || !creditSummaryReady}
                 onConfirm={onPaymentUnavailable}
               />
             )}
@@ -2800,6 +2816,73 @@ function formatQuotaUnits(value: number | null | undefined) {
 function formatAccountDataError(error: unknown) {
   void error;
   return "部分账户信息暂时无法加载，请稍后重试。";
+}
+
+function getCreditTopUpGift(option: CreditTopUpOption) {
+  return Math.max(0, option.credits - option.amount * CREDIT_TOP_UP_BASE_RATE);
+}
+
+function getCreditTopUpRate(option: CreditTopUpOption) {
+  if (option.amount <= 0) return 0;
+  return option.credits / option.amount;
+}
+
+function getCreditTopUpBadge(option: CreditTopUpOption, options: CreditTopUpOption[]) {
+  if (option.label === "体验充值") return "体验充值";
+  if (option.label === "推荐") return "推荐";
+
+  const bestRate = Math.max(...options.map(getCreditTopUpRate));
+  if (getCreditTopUpGift(option) > 0 && getCreditTopUpRate(option) === bestRate) return "最划算";
+
+  return "";
+}
+
+function calculateCustomRechargeCredits(amount: number) {
+  return Math.floor(amount * CREDIT_TOP_UP_BASE_RATE);
+}
+
+function formatRechargeAmount(amount: number | string) {
+  const value = typeof amount === "number" ? amount : Number(amount);
+  if (!Number.isFinite(value)) return String(amount);
+  return new Intl.NumberFormat("zh-CN", {
+    minimumFractionDigits: Number.isInteger(value) ? 0 : 2,
+    maximumFractionDigits: 2,
+  }).format(value);
+}
+
+function createFixedCreditSummaryLines(option: CreditTopUpOption | null): Array<[string, string]> {
+  if (!option) {
+    return [
+      ["当前选择", "未选择"],
+      ["充值金额", "—"],
+      ["预计到账", "请选择充值档位或输入自定义金额"],
+      ["应付金额", "—"],
+    ];
+  }
+
+  const giftCredits = getCreditTopUpGift(option);
+  const lines: Array<[string, string]> = [
+    ["当前选择", `¥${formatRechargeAmount(option.amount)} 积分档位`],
+    ["充值金额", `¥${formatRechargeAmount(option.amount)}`],
+    ["预计到账", `${formatQuotaUnits(option.credits)} 积分`],
+  ];
+
+  if (giftCredits > 0) {
+    lines.push(["赠送积分", `${formatQuotaUnits(giftCredits)} 积分`]);
+  }
+
+  lines.push(["应付金额", `¥${formatRechargeAmount(option.amount)}`]);
+  return lines;
+}
+
+function createCustomCreditSummaryLines(amountText: string, valid: boolean, credits: number): Array<[string, string]> {
+  const amount = amountText.trim();
+  return [
+    ["当前选择", "自定义充值"],
+    ["充值金额", valid ? `¥${formatRechargeAmount(amount)}` : "未完成"],
+    ["预计到账", valid ? `${formatQuotaUnits(credits)} 积分` : `请输入不低于 ¥${CUSTOM_RECHARGE_MIN_AMOUNT} 的金额`],
+    ["应付金额", valid ? `¥${formatRechargeAmount(amount)}` : "—"],
+  ];
 }
 
 function formatSignedQuota(value: number) {
