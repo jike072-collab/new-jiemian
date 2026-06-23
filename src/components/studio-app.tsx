@@ -120,6 +120,8 @@ const creditTopUpOptions: CreditTopUpOption[] = [
 
 const CREDIT_TOP_UP_BASE_RATE = 10;
 const CUSTOM_RECHARGE_MIN_AMOUNT = 1;
+const PLAN_PERIOD_LABEL = "按月";
+const PLAN_PERIOD_UNIT_LABEL = "月";
 
 function accountViewTitle(view: AccountView) {
   if (view === "recharge") return "充值中心";
@@ -2390,7 +2392,8 @@ function RechargeCenterWorkspace({
   const [selectedCreditAmount, setSelectedCreditAmount] = useState<number | null>(50);
   const [customAmount, setCustomAmount] = useState("");
 
-  const selectedPlan = planOptions.find((plan) => plan.id === selectedPlanId) || planOptions[1];
+  const defaultPlan = planOptions.find((plan) => plan.recommended) || planOptions[0] || null;
+  const selectedPlan = planOptions.find((plan) => plan.id === selectedPlanId) || defaultPlan;
   const selectedCredit = selectedCreditAmount === null
     ? null
     : creditTopUpOptions.find((option) => option.amount === selectedCreditAmount) || null;
@@ -2410,6 +2413,8 @@ function RechargeCenterWorkspace({
     ? createCustomCreditSummaryLines(customAmount, customAmountValid, customCredits)
     : createFixedCreditSummaryLines(selectedCredit);
   const creditSummaryReady = customRechargeActive ? customAmountValid : Boolean(selectedCredit);
+  const planSummaryLines = createPlanSummaryLines(selectedPlan);
+  const planSummaryReady = Boolean(selectedPlan);
 
   return (
     <section className="user-center-page account-subpage account-subpage--recharge" aria-label="充值中心">
@@ -2490,29 +2495,50 @@ function RechargeCenterWorkspace({
                   <h3>选择适合你的套餐</h3>
                   <p>套餐按月展示，每档仅包含当前支持的月度积分额度。</p>
                 </div>
-                <div className="recharge-plan-grid">
-                  {planOptions.map((plan) => {
-                    const selected = selectedPlan.id === plan.id;
-                    return (
-                      <button
-                        key={plan.id}
-                        type="button"
-                        className={cn("recharge-plan-card", plan.recommended && "is-recommended", selected && "is-selected")}
-                        onClick={() => setSelectedPlanId(plan.id)}
-                        aria-pressed={selected}
-                      >
-                        <span className="recharge-card-check" aria-hidden="true">
-                          <Check className="size-3.5" />
-                        </span>
-                        {plan.recommended ? <span className="recharge-card-badge">推荐</span> : null}
-                        <span className="recharge-plan-card__name">{plan.name}</span>
-                        <strong>¥{plan.price} <small>/ 月</small></strong>
-                        <span className="recharge-plan-card__credits">每月 {formatQuotaUnits(plan.monthlyCredits)} 积分</span>
-                        <span className="recharge-plan-card__desc">{plan.description}</span>
-                      </button>
-                    );
-                  })}
-                </div>
+                {planOptions.length > 0 ? (
+                  <div className="recharge-plan-grid">
+                    {planOptions.map((plan) => {
+                      const selected = selectedPlan?.id === plan.id;
+                      const recommendationReason = getPlanRecommendationReason(plan);
+                      return (
+                        <button
+                          key={plan.id}
+                          type="button"
+                          className={cn("recharge-plan-card", plan.recommended && "is-recommended", selected && "is-selected")}
+                          onClick={() => setSelectedPlanId(plan.id)}
+                          aria-pressed={selected}
+                        >
+                          <span className="recharge-card-check" aria-hidden="true">
+                            <Check className="size-3.5" />
+                          </span>
+                          <span className="recharge-plan-card__top">
+                            <span className="recharge-plan-card__scene">{plan.description}</span>
+                            {plan.recommended ? <span className="recharge-card-badge">推荐</span> : null}
+                          </span>
+                          <span className="recharge-plan-card__name">{plan.name}</span>
+                          <span className="recharge-plan-card__price">¥{plan.price} <small>/ {PLAN_PERIOD_UNIT_LABEL}</small></span>
+                          <span className="recharge-plan-card__credits">每月 {formatQuotaUnits(plan.monthlyCredits)} 积分</span>
+                          <span className="recharge-plan-card__facts" role="list" aria-label={`${plan.name}套餐信息`}>
+                            {createPlanFactItems(plan).map((item) => (
+                              <span key={item} role="listitem">
+                                <Check className="size-3.5" aria-hidden="true" />
+                                <span>{item}</span>
+                              </span>
+                            ))}
+                          </span>
+                          {recommendationReason ? <span className="recharge-plan-card__reason">{recommendationReason}</span> : null}
+                          <span className="recharge-plan-card__action">{selected ? "已选择" : "选择套餐"}</span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                ) : (
+                  <div className="recharge-plan-empty" role="status">
+                    <Crown className="size-5" aria-hidden="true" />
+                    <strong>暂无可购买套餐</strong>
+                    <span>当前暂未返回可购买的套餐配置。</span>
+                  </div>
+                )}
               </div>
             ) : (
               <div className="recharge-center-panel" role="tabpanel">
@@ -2588,15 +2614,10 @@ function RechargeCenterWorkspace({
               <RechargeConfirmPanel
                 icon={<Crown className="size-4" aria-hidden="true" />}
                 title="订单确认"
-                lines={[
-                  ["当前选择", selectedPlan.name],
-                  ["套餐周期", "按月"],
-                  ["每月积分", `${formatQuotaUnits(selectedPlan.monthlyCredits)} 积分`],
-                  ["应付金额", `¥${selectedPlan.price}`],
-                ]}
+                lines={planSummaryLines}
                 note="确认后将进入支付流程，支付完成后以服务端真实到账结果为准。"
-                buttonLabel="确认购买"
-                disabled={!user}
+                buttonLabel={selectedPlan ? `立即购买 ¥${formatRechargeAmount(selectedPlan.price)}` : "请选择套餐"}
+                disabled={!user || !planSummaryReady}
                 onConfirm={onPaymentUnavailable}
               />
             ) : (
@@ -2848,6 +2869,37 @@ function formatRechargeAmount(amount: number | string) {
     minimumFractionDigits: Number.isInteger(value) ? 0 : 2,
     maximumFractionDigits: 2,
   }).format(value);
+}
+
+function createPlanFactItems(plan: PlanOption) {
+  return [
+    `${PLAN_PERIOD_LABEL}购买`,
+    `每月获得 ${formatQuotaUnits(plan.monthlyCredits)} 积分`,
+    `适合：${plan.description}`,
+  ];
+}
+
+function getPlanRecommendationReason(plan: PlanOption) {
+  return plan.recommended ? "产品配置推荐套餐" : "";
+}
+
+function createPlanSummaryLines(plan: PlanOption | null): Array<[string, string]> {
+  if (!plan) {
+    return [
+      ["当前选择", "未选择"],
+      ["套餐周期", "—"],
+      ["每月积分", "请选择套餐"],
+      ["应付金额", "—"],
+    ];
+  }
+
+  return [
+    ["当前选择", plan.name],
+    ["套餐周期", PLAN_PERIOD_LABEL],
+    ["每月积分", `${formatQuotaUnits(plan.monthlyCredits)} 积分`],
+    ["生效方式", "支付完成后生效"],
+    ["应付金额", `¥${formatRechargeAmount(plan.price)}`],
+  ];
 }
 
 function createFixedCreditSummaryLines(option: CreditTopUpOption | null): Array<[string, string]> {
