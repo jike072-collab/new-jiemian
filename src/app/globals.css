@@ -4324,35 +4324,52 @@
 
   .video-tutorial-guide__arrow {
     position: absolute;
-    right: calc(var(--video-guide-visual-width) + 10px);
+    right: calc(var(--video-guide-visual-width) + 2px);
     bottom: -20px;
     z-index: 6;
-    width: 48px;
-    height: 36px;
-    border-right: 3px solid #ff2b88;
-    border-bottom: 3px solid #ff2b88;
-    border-radius: 0 0 26px 0;
+    width: 64px;
+    height: 44px;
+    overflow: visible;
     opacity: 0.86;
     pointer-events: none;
     transform: rotate(22deg);
   }
 
-  .video-tutorial-guide__arrow::after {
-    position: absolute;
-    right: -7px;
-    bottom: -4px;
-    width: 13px;
-    height: 13px;
-    border-right: 3px solid #ff2b88;
-    border-bottom: 3px solid #ff2b88;
-    content: "";
-    transform: rotate(-18deg);
+  .video-tutorial-guide__arrow-path,
+  .video-tutorial-guide__arrow-head {
+    fill: none;
+    stroke: #ff2b88;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+    stroke-width: 3;
+    stroke-dasharray: 86;
+    stroke-dashoffset: 86;
+    filter: drop-shadow(0 0 8px rgba(255, 43, 136, 0.28));
+    transition: stroke-dashoffset 760ms var(--ease-enter);
+  }
+
+  .video-tutorial-guide__arrow-head {
+    stroke-dasharray: 28;
+    stroke-dashoffset: 28;
+    transition-duration: 360ms;
+    transition-delay: 520ms;
   }
 
   .video-tutorial-guide__section.is-visual-right .video-tutorial-guide__arrow {
     right: auto;
-    left: calc(var(--video-guide-visual-width) + 10px);
+    left: calc(var(--video-guide-visual-width) + 2px);
     transform: scaleX(-1) rotate(22deg);
+  }
+
+  .video-tutorial-guide.is-drawing-first-arrow .video-tutorial-guide__section:first-child .video-tutorial-guide__arrow-path,
+  .video-tutorial-guide.is-first-arrow-drawn .video-tutorial-guide__section:first-child .video-tutorial-guide__arrow-path,
+  .video-tutorial-guide.is-drawing-second-arrow .video-tutorial-guide__section:nth-child(2) .video-tutorial-guide__arrow-path,
+  .video-tutorial-guide.is-second-arrow-drawn .video-tutorial-guide__section:nth-child(2) .video-tutorial-guide__arrow-path,
+  .video-tutorial-guide.is-drawing-first-arrow .video-tutorial-guide__section:first-child .video-tutorial-guide__arrow-head,
+  .video-tutorial-guide.is-first-arrow-drawn .video-tutorial-guide__section:first-child .video-tutorial-guide__arrow-head,
+  .video-tutorial-guide.is-drawing-second-arrow .video-tutorial-guide__section:nth-child(2) .video-tutorial-guide__arrow-head,
+  .video-tutorial-guide.is-second-arrow-drawn .video-tutorial-guide__section:nth-child(2) .video-tutorial-guide__arrow-head {
+    stroke-dashoffset: 0;
   }
 
   .video-tutorial-input-demo {
@@ -4383,6 +4400,10 @@
     color: rgba(255, 255, 255, 0.7);
     font-size: 14px;
     font-weight: 600;
+    transition:
+      border-color 220ms var(--ease-enter),
+      background 220ms var(--ease-enter),
+      color 220ms var(--ease-enter);
   }
 
   .tutorial-upload-placeholder svg {
@@ -4410,10 +4431,17 @@
       box-shadow 220ms ease;
   }
 
-  .tutorial-upload-target-ring.is-active {
+  .tutorial-upload-target-ring.is-touching {
     border-color: rgba(255, 43, 136, 0.9);
     opacity: 1;
-    box-shadow: inset 0 0 18px rgba(255, 43, 136, 0.16), 0 0 22px rgba(255, 43, 136, 0.1);
+    box-shadow: inset 0 0 18px rgba(255, 43, 136, 0.12), 0 0 18px rgba(255, 43, 136, 0.08);
+  }
+
+  .tutorial-upload-target-ring.is-covered {
+    border-style: solid;
+    border-color: rgba(255, 43, 136, 0.96);
+    opacity: 1;
+    box-shadow: inset 0 0 0 1px rgba(255, 43, 136, 0.34), 0 0 22px rgba(255, 43, 136, 0.1);
   }
 
   .tutorial-source-image {
@@ -4550,18 +4578,32 @@
     background: rgba(255, 43, 136, 0.1);
     box-shadow: 0 12px 18px rgba(0, 0, 0, 0.2);
     color: #fff;
+    opacity: 0;
+    transform: translateY(8px) scale(0.98);
+    transition:
+      opacity var(--motion-layout) var(--ease-enter),
+      transform var(--motion-layout) var(--ease-enter),
+      box-shadow var(--motion-layout) var(--ease-enter);
+  }
+
+  .video-tutorial-parameter-demo.is-active .video-tutorial-parameter-demo__asset {
+    opacity: 1;
+    transform: translateY(0) scale(1);
   }
 
   .video-tutorial-parameter-demo__asset:nth-child(1) {
     background: linear-gradient(180deg, rgba(92, 204, 116, 0.92), rgba(63, 173, 93, 0.92));
+    transition-delay: 0ms;
   }
 
   .video-tutorial-parameter-demo__asset:nth-child(2) {
     background: linear-gradient(180deg, rgba(213, 132, 221, 0.92), rgba(182, 91, 196, 0.92));
+    transition-delay: 110ms;
   }
 
   .video-tutorial-parameter-demo__asset:nth-child(3) {
     background: linear-gradient(180deg, rgba(92, 183, 234, 0.94), rgba(60, 150, 214, 0.94));
+    transition-delay: 220ms;
   }
 
   .video-tutorial-parameter-demo__asset strong {
@@ -4657,6 +4699,56 @@
     border-radius: 18px;
     background: #08080b;
     box-shadow: 0 22px 52px rgba(0, 0, 0, 0.42);
+    opacity: 0;
+    transform: translateY(10px) scale(0.985);
+    transition:
+      opacity var(--motion-layout) var(--ease-enter),
+      transform var(--motion-layout) var(--ease-enter),
+      border-color var(--motion-layout) var(--ease-enter);
+  }
+
+  .video-tutorial-result-slot__media::before {
+    position: absolute;
+    inset: 0;
+    z-index: 2;
+    border: 1px solid rgba(255, 43, 136, 0);
+    border-radius: inherit;
+    pointer-events: none;
+    content: "";
+  }
+
+  .video-tutorial-result-slot__media.is-visible {
+    border-color: rgba(255, 43, 136, 0.2);
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+
+  .video-tutorial-result-slot__media.is-playing {
+    border-color: rgba(255, 43, 136, 0.28);
+  }
+
+  .video-tutorial-result-slot__media.is-complete {
+    border-color: rgba(255, 43, 136, 0.46);
+    transform: translateY(0) scale(1.01);
+  }
+
+  .video-tutorial-result-slot__media.is-complete::before {
+    border-color: rgba(255, 43, 136, 0.72);
+    animation: video-tutorial-complete-ring 960ms var(--ease-enter) both;
+  }
+
+  .video-tutorial-guide[data-playback-state="fading-out"] .tutorial-source-image,
+  .video-tutorial-guide[data-playback-state="fading-out"] .tutorial-prompt-bubble,
+  .video-tutorial-guide[data-playback-state="fading-out"] .video-tutorial-guide__arrow {
+    opacity: 0;
+    transition:
+      opacity 520ms var(--ease-exit),
+      transform 520ms var(--ease-exit);
+  }
+
+  .video-tutorial-guide[data-playback-state="fading-out"] .tutorial-source-image,
+  .video-tutorial-guide[data-playback-state="fading-out"] .tutorial-prompt-bubble {
+    transform: translateY(4px) scale(0.99);
   }
 
   .video-tutorial-result-slot__media::after {
@@ -4667,6 +4759,25 @@
       linear-gradient(90deg, rgba(2, 2, 3, 0.24), transparent 18%, transparent 80%, rgba(2, 2, 3, 0.2)),
       radial-gradient(ellipse at center, transparent 70%, rgba(2, 2, 3, 0.34) 100%);
     content: "";
+  }
+
+  @keyframes video-tutorial-complete-ring {
+    0% {
+      opacity: 0;
+      transform: scale(0.985);
+    }
+
+    34% {
+      opacity: 1;
+      box-shadow: inset 0 0 0 1px rgba(255, 43, 136, 0.24), 0 0 28px rgba(255, 43, 136, 0.18);
+      transform: scale(1);
+    }
+
+    100% {
+      opacity: 0;
+      box-shadow: inset 0 0 0 1px rgba(255, 43, 136, 0), 0 0 0 rgba(255, 43, 136, 0);
+      transform: scale(1.018);
+    }
   }
 
   .studio-walkthrough__layer {
@@ -5440,7 +5551,15 @@
     .image-editor-arrow__tip,
     .image-editor-prompt,
     .tutorial-source-image,
-    .tutorial-prompt-bubble {
+    .tutorial-prompt-bubble,
+    .video-tutorial-guide,
+    .video-tutorial-guide__arrow-path,
+    .video-tutorial-guide__arrow-head,
+    .tutorial-upload-placeholder,
+    .tutorial-upload-target-ring,
+    .video-tutorial-parameter-demo__asset,
+    .video-tutorial-result-slot__media,
+    .video-tutorial-result-slot__media::before {
       animation: none !important;
       transition: none;
     }
@@ -5474,6 +5593,28 @@
     .image-editor-plane-mark {
       opacity: 0.72;
       transform: translate(856px, 25px) rotate(-15deg) scale(0.62);
+    }
+
+    .video-tutorial-guide {
+      opacity: 1;
+      transform: none;
+    }
+
+    .video-tutorial-guide__arrow-path,
+    .video-tutorial-guide__arrow-head {
+      stroke-dashoffset: 0;
+    }
+
+    .tutorial-upload-target-ring {
+      border-style: solid;
+      border-color: rgba(255, 43, 136, 0.96);
+      opacity: 1;
+    }
+
+    .video-tutorial-parameter-demo__asset,
+    .video-tutorial-result-slot__media {
+      opacity: 1;
+      transform: none;
     }
   }
 

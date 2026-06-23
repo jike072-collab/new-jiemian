@@ -27,6 +27,7 @@ import type { PublicAuthUser } from "@/lib/server/auth";
 import type { BillingOrder, PublicPaymentChannelConfig } from "@/lib/server/billing";
 import type { UsageLogEntry, QuotaSnapshot, UsagePage } from "@/lib/server/quota";
 import { cn } from "@/lib/utils";
+import { useReducedMotion } from "@/lib/use-reduced-motion";
 import type { FrontendProvider, JobRecord, LibraryItem } from "@/lib/server/types";
 import {
   type WorkspaceAction,
@@ -3140,95 +3141,73 @@ const videoTutorialPromptText = "雨天城市街头，女生撑透明雨伞缓�
 const videoTutorialResultVideoSrc = "/tutorials/video-generator/demo-result.mp4";
 
 type VideoTutorialImagePhase = "hidden" | "dragging" | "landed";
+type VideoTutorialPlaybackState =
+  | "final"
+  | "idle"
+  | "image-entering"
+  | "image-touching"
+  | "image-covered"
+  | "typing"
+  | "arrow-to-parameters"
+  | "parameters"
+  | "arrow-to-result"
+  | "result-preparing"
+  | "result-entering"
+  | "result-playing"
+  | "complete"
+  | "fading-out";
 
-function VideoTutorialInputDemo() {
+function createTutorialTimeline() {
+  const timers: number[] = [];
+
+  return {
+    wait(callback: () => void, delay: number) {
+      const timer = window.setTimeout(callback, delay);
+      timers.push(timer);
+      return timer;
+    },
+    clear() {
+      timers.forEach((timer) => window.clearTimeout(timer));
+      timers.length = 0;
+    },
+  };
+}
+
+function isVideoTutorialImageLandedState(playbackState: VideoTutorialPlaybackState) {
+  return !["idle", "image-entering", "image-touching"].includes(playbackState);
+}
+
+function isVideoTutorialPromptVisibleState(playbackState: VideoTutorialPlaybackState) {
+  return !["idle", "image-entering", "image-touching", "image-covered"].includes(playbackState);
+}
+
+function isVideoTutorialParameterVisibleState(playbackState: VideoTutorialPlaybackState) {
+  return ["final", "parameters", "arrow-to-result", "result-preparing", "result-entering", "result-playing", "complete", "fading-out"].includes(playbackState);
+}
+
+function isVideoTutorialResultVisibleState(playbackState: VideoTutorialPlaybackState) {
+  return Boolean(playbackState);
+}
+
+function isVideoTutorialResultPlayingState(playbackState: VideoTutorialPlaybackState) {
+  return ["result-preparing", "result-entering", "result-playing"].includes(playbackState);
+}
+
+function VideoTutorialInputDemo({
+  playbackState,
+  promptText,
+}: {
+  playbackState: VideoTutorialPlaybackState;
+  promptText: string;
+}) {
   const demoRef = useRef<HTMLDivElement | null>(null);
-  const [imagePhase, setImagePhase] = useState<VideoTutorialImagePhase>("hidden");
-  const [uploadTargetActive, setUploadTargetActive] = useState(false);
-  const [bubbleVisible, setBubbleVisible] = useState(false);
-  const [typedText, setTypedText] = useState("");
-  const [animationCycle, setAnimationCycle] = useState(0);
-  const [isInView, setIsInView] = useState(true);
-  const [reducedMotion, setReducedMotion] = useState(false);
-  const sourceImageLanded = reducedMotion || imagePhase === "landed";
-  const promptBubbleVisible = reducedMotion || bubbleVisible;
-  const promptText = reducedMotion ? videoTutorialPromptText : typedText;
-
-  useEffect(() => {
-    const mediaQuery = window.matchMedia("(prefers-reduced-motion: reduce)");
-    const updateMotionPreference = () => setReducedMotion(mediaQuery.matches);
-
-    updateMotionPreference();
-    mediaQuery.addEventListener("change", updateMotionPreference);
-    return () => mediaQuery.removeEventListener("change", updateMotionPreference);
-  }, []);
-
-  useEffect(() => {
-    const node = demoRef.current;
-    if (!node || reducedMotion || typeof IntersectionObserver === "undefined") return undefined;
-
-    const observer = new IntersectionObserver(([entry]) => {
-      setIsInView(entry.isIntersecting);
-    }, { threshold: 0.2 });
-
-    observer.observe(node);
-    return () => observer.disconnect();
-  }, [reducedMotion]);
-
-  useEffect(() => {
-    if (reducedMotion || !isInView) return undefined;
-
-    let stopped = false;
-    const timers: Array<ReturnType<typeof setTimeout>> = [];
-    let typingTimer: ReturnType<typeof setInterval> | undefined;
-
-    const startLoop = () => {
-      if (stopped) return;
-
-      if (typingTimer) clearInterval(typingTimer);
-      setImagePhase("hidden");
-      setUploadTargetActive(false);
-      setBubbleVisible(false);
-      setTypedText("");
-      setAnimationCycle((value) => value + 1);
-
-      timers.push(
-        setTimeout(() => setImagePhase("dragging"), 650),
-        setTimeout(() => setUploadTargetActive(true), 1250),
-        setTimeout(() => setImagePhase("landed"), 3150),
-        setTimeout(() => {
-          setBubbleVisible(true);
-          setTypedText(videoTutorialPromptText.slice(0, 1));
-
-          let index = 1;
-          typingTimer = setInterval(() => {
-            index += 1;
-            setTypedText(videoTutorialPromptText.slice(0, index));
-
-            if (index >= videoTutorialPromptText.length && typingTimer) {
-              clearInterval(typingTimer);
-              typingTimer = undefined;
-            }
-          }, 58);
-        }, 3150),
-        setTimeout(() => {
-          setImagePhase("hidden");
-          setUploadTargetActive(false);
-          setBubbleVisible(false);
-          setTypedText("");
-        }, 6800),
-        setTimeout(startLoop, 7600),
-      );
-    };
-
-    startLoop();
-
-    return () => {
-      stopped = true;
-      timers.forEach(clearTimeout);
-      if (typingTimer) clearInterval(typingTimer);
-    };
-  }, [isInView, reducedMotion]);
+  const imagePhase: VideoTutorialImagePhase = isVideoTutorialImageLandedState(playbackState)
+    ? "landed"
+    : playbackState === "image-entering" || playbackState === "image-touching"
+      ? "dragging"
+      : "hidden";
+  const targetState = playbackState === "image-touching" ? "touching" : imagePhase === "landed" ? "covered" : "idle";
+  const promptBubbleVisible = isVideoTutorialPromptVisibleState(playbackState);
 
   return (
     <div ref={demoRef} className="video-tutorial-input-demo">
@@ -3236,36 +3215,106 @@ function VideoTutorialInputDemo() {
         <UploadCloud aria-hidden="true" />
         <span>上传图片</span>
       </div>
-      <span className={cn("tutorial-upload-target-ring", uploadTargetActive && "is-active")} aria-hidden="true" />
+      <span
+        className={cn(
+          "tutorial-upload-target-ring",
+          targetState === "touching" && "is-touching",
+          targetState === "covered" && "is-covered",
+        )}
+        aria-hidden="true"
+      />
 
       <img
-        key={animationCycle}
         src="/tutorials/video-generator/input-person.png"
         alt=""
         className={cn(
           "tutorial-source-image",
           imagePhase === "dragging" && "is-dragging",
-          sourceImageLanded && "is-visible",
+          imagePhase === "landed" && "is-visible",
         )}
       />
 
       <div className={cn("tutorial-prompt-bubble", promptBubbleVisible && "is-visible")}>
         {promptText}
-        {promptBubbleVisible && !reducedMotion && typedText.length < videoTutorialPromptText.length ? <span className="typing-caret" /> : null}
+        {promptBubbleVisible && playbackState === "typing" && promptText.length < videoTutorialPromptText.length ? <span className="typing-caret" /> : null}
       </div>
     </div>
   );
 }
 
-function VideoTutorialResultSlot() {
+function VideoTutorialResultSlot({
+  playbackState,
+  paused,
+  onPlaybackEnd,
+}: {
+  playbackState: VideoTutorialPlaybackState;
+  paused: boolean;
+  onPlaybackEnd: () => void;
+}) {
+  const mediaRef = useRef<HTMLDivElement | null>(null);
+  const videoRef = useRef<HTMLVideoElement | null>(null);
+  const wasPlayingRef = useRef(false);
+  const [isInView, setIsInView] = useState(typeof IntersectionObserver === "undefined");
+  const shouldPlay = Boolean(videoTutorialResultVideoSrc && !paused && isVideoTutorialResultPlayingState(playbackState) && isInView);
+
+  useEffect(() => {
+    const node = mediaRef.current;
+    if (!node || typeof IntersectionObserver === "undefined") return undefined;
+
+    const observer = new IntersectionObserver(([entry]) => {
+      setIsInView(entry.isIntersecting);
+    }, { threshold: 0.36 });
+
+    observer.observe(node);
+    return () => observer.disconnect();
+  }, []);
+
+  useEffect(() => {
+    const video = videoRef.current;
+    if (!video) return;
+
+    if (shouldPlay) {
+      if (!wasPlayingRef.current) {
+        try {
+          video.currentTime = Math.min(0.1, Number.isFinite(video.duration) && video.duration > 0 ? video.duration : 0.1);
+        } catch {
+          // Metadata may still be settling on first load; playback can still begin muted.
+        }
+        wasPlayingRef.current = true;
+      }
+      void video.play().catch(() => undefined);
+      return;
+    }
+
+    wasPlayingRef.current = false;
+    video.pause();
+  }, [shouldPlay]);
+
   return (
     <div className="video-tutorial-result-slot">
       <div className="video-tutorial-result-slot__backdrop" aria-hidden="true">
         <img src="/tutorials/video-generator/input-person.png" alt="" />
       </div>
-      <div className="video-tutorial-result-slot__media">
+      <div
+        ref={mediaRef}
+        className={cn(
+          "video-tutorial-result-slot__media",
+          isVideoTutorialResultVisibleState(playbackState) && "is-visible",
+          isVideoTutorialResultPlayingState(playbackState) && "is-playing",
+          playbackState === "complete" && "is-complete",
+        )}
+      >
         {videoTutorialResultVideoSrc ? (
-          <video src={videoTutorialResultVideoSrc} poster="/tutorials/video-generator/input-person.png" autoPlay muted loop playsInline preload="auto" />
+          <video
+            ref={videoRef}
+            src={videoTutorialResultVideoSrc}
+            poster="/tutorials/video-generator/rain-umbrella.png"
+            muted
+            playsInline
+            preload="auto"
+            onEnded={onPlaybackEnd}
+            onError={onPlaybackEnd}
+          />
         ) : (
           <video poster="/tutorials/video-generator/input-person.png" muted playsInline preload="metadata" aria-label="视频结果预留位" />
         )}
@@ -3274,9 +3323,15 @@ function VideoTutorialResultSlot() {
   );
 }
 
-function VideoTutorialParameterDemo() {
+function VideoTutorialParameterDemo({
+  playbackState,
+}: {
+  playbackState: VideoTutorialPlaybackState;
+}) {
+  const showParameters = isVideoTutorialParameterVisibleState(playbackState);
+
   return (
-    <div className="video-tutorial-parameter-demo">
+    <div className={cn("video-tutorial-parameter-demo", showParameters && "is-active")}>
       <div className="video-tutorial-parameter-demo__preview">
         <img src="/tutorials/video-generator/rain-umbrella.png" alt="" />
       </div>
@@ -3298,34 +3353,175 @@ function VideoTutorialParameterDemo() {
   );
 }
 
-function VideoGenerationTutorial() {
+function VideoGenerationTutorial({ paused = false }: { paused?: boolean }) {
+  const guideRef = useRef<HTMLDivElement | null>(null);
+  const replayTimerRef = useRef<number | undefined>(undefined);
+  const reducedMotion = useReducedMotion();
+  const [playbackStateState, setPlaybackState] = useState<VideoTutorialPlaybackState>("idle");
+  const [typedTextState, setTypedText] = useState("");
+  const [isInView, setIsInView] = useState(true);
+  const [pageVisible, setPageVisible] = useState(true);
+  const [cycle, setCycle] = useState(0);
+  const shouldPause = paused || reducedMotion || !isInView || !pageVisible;
+  const playbackState = reducedMotion ? "final" : playbackStateState;
+  const typedText = reducedMotion ? videoTutorialPromptText : typedTextState;
+  const promptText = reducedMotion ? videoTutorialPromptText : typedText;
+
+  const clearReplayTimer = useCallback(() => {
+    if (replayTimerRef.current) {
+      window.clearTimeout(replayTimerRef.current);
+      replayTimerRef.current = undefined;
+    }
+  }, []);
+
+  const finishTutorialCycle = useCallback(() => {
+    if (shouldPause || reducedMotion || playbackStateState !== "result-playing") return;
+
+    clearReplayTimer();
+    setPlaybackState("complete");
+    setTypedText(videoTutorialPromptText);
+    replayTimerRef.current = window.setTimeout(() => {
+      setPlaybackState("fading-out");
+      replayTimerRef.current = window.setTimeout(() => {
+        replayTimerRef.current = undefined;
+        setPlaybackState("idle");
+        setTypedText("");
+        setCycle((value) => value + 1);
+      }, 620);
+    }, 900);
+  }, [clearReplayTimer, playbackStateState, reducedMotion, shouldPause]);
+
+  useEffect(() => {
+    const node = guideRef.current;
+    if (!node || typeof IntersectionObserver === "undefined") return undefined;
+
+    const observer = new IntersectionObserver(([entry]) => {
+      setIsInView(entry.isIntersecting);
+    }, { threshold: 0.18 });
+
+    observer.observe(node);
+    return () => observer.disconnect();
+  }, []);
+
+  useEffect(() => {
+    const syncPageVisibility = () => setPageVisible(document.visibilityState === "visible");
+
+    syncPageVisibility();
+    document.addEventListener("visibilitychange", syncPageVisibility);
+    return () => document.removeEventListener("visibilitychange", syncPageVisibility);
+  }, []);
+
+  useEffect(() => {
+    if (shouldPause) {
+      clearReplayTimer();
+      return undefined;
+    }
+
+    let stopped = false;
+    let typingTimer: number | undefined;
+    const timeline = createTutorialTimeline();
+
+    const stopTyping = () => {
+      if (typingTimer) {
+        window.clearInterval(typingTimer);
+        typingTimer = undefined;
+      }
+    };
+
+    const wait = (callback: () => void, delay: number) => {
+      timeline.wait(() => {
+        if (!stopped) callback();
+      }, delay);
+    };
+
+    const play = () => {
+      if (stopped) return;
+
+      stopTyping();
+      clearReplayTimer();
+      setPlaybackState("idle");
+      setTypedText("");
+
+      wait(() => setPlaybackState("image-entering"), 360);
+      wait(() => setPlaybackState("image-touching"), 1350);
+      wait(() => setPlaybackState("image-covered"), 2700);
+      wait(() => {
+        setPlaybackState("typing");
+        setTypedText(videoTutorialPromptText.slice(0, 1));
+
+        let index = 1;
+        typingTimer = window.setInterval(() => {
+          index += 1;
+          setTypedText(videoTutorialPromptText.slice(0, index));
+
+          if (index >= videoTutorialPromptText.length) {
+            stopTyping();
+            setTypedText(videoTutorialPromptText);
+            wait(() => setPlaybackState("arrow-to-parameters"), 260);
+            wait(() => setPlaybackState("parameters"), 1160);
+            wait(() => setPlaybackState("arrow-to-result"), 2140);
+            wait(() => setPlaybackState("result-preparing"), 2960);
+            wait(() => setPlaybackState("result-entering"), 3060);
+            wait(() => setPlaybackState("result-playing"), 3240);
+          }
+        }, 54);
+      }, 2880);
+    };
+
+    play();
+
+    return () => {
+      stopped = true;
+      timeline.clear();
+      clearReplayTimer();
+      stopTyping();
+    };
+  }, [clearReplayTimer, cycle, shouldPause]);
+
+  useEffect(() => () => clearReplayTimer(), [clearReplayTimer]);
+
   const steps = [
     {
       id: "upload",
       title: "输入内容并确认视频场景",
       description: "上传参考图后输入提示词，让视频围绕起始画面和动作描述生成。",
-      visual: <VideoTutorialInputDemo />,
+      visual: <VideoTutorialInputDemo key={`input-${cycle}`} playbackState={playbackState} promptText={promptText} />,
       visualSide: "left",
     },
     {
       id: "prompt",
       title: "调整视频参数",
       description: "根据需要确认时长、清晰度和比例，让结果更贴近当前创意。",
-      visual: <VideoTutorialParameterDemo />,
+      visual: <VideoTutorialParameterDemo playbackState={playbackState} />,
       visualSide: "right",
     },
     {
       id: "result",
       title: "生成视频并查看结果",
       description: "生成完成后在这里预览视频结果，需要时可以下载或重新生成。",
-      visual: <VideoTutorialResultSlot />,
+      visual: <VideoTutorialResultSlot playbackState={playbackState} paused={shouldPause} onPlaybackEnd={finishTutorialCycle} />,
       visualSide: "left",
     },
   ];
+  const firstArrowDrawing = playbackState === "arrow-to-parameters";
+  const firstArrowDrawn = ["parameters", "arrow-to-result", "result-preparing", "result-entering", "result-playing", "complete", "fading-out", "final"].includes(playbackState);
+  const secondArrowDrawing = playbackState === "arrow-to-result";
+  const secondArrowDrawn = ["result-preparing", "result-entering", "result-playing", "complete", "fading-out", "final"].includes(playbackState);
 
   return (
     <PreviewState eyebrow="快速教程" title="视频生成快速教程" description="上传参考图，输入提示词，确认比例后生成视频。">
-      <div className="video-tutorial-guide">
+      <div
+        ref={guideRef}
+        className={cn(
+          "video-tutorial-guide",
+          reducedMotion && "is-reduced-motion",
+          firstArrowDrawing && "is-drawing-first-arrow",
+          firstArrowDrawn && "is-first-arrow-drawn",
+          secondArrowDrawing && "is-drawing-second-arrow",
+          secondArrowDrawn && "is-second-arrow-drawn",
+        )}
+        data-playback-state={playbackState}
+      >
         {steps.map((step, index) => (
           <article key={step.id} className={cn("video-tutorial-guide__section", step.visualSide === "right" && "is-visual-right")}>
             <div className="video-tutorial-guide__visual">
@@ -3336,7 +3532,12 @@ function VideoGenerationTutorial() {
               <h4>{step.title}</h4>
               <p>{step.description}</p>
             </div>
-            {index < steps.length - 1 ? <span className="video-tutorial-guide__arrow" aria-hidden="true" /> : null}
+            {index < steps.length - 1 ? (
+              <svg className="video-tutorial-guide__arrow" viewBox="0 0 64 44" aria-hidden="true" focusable="false">
+                <path className="video-tutorial-guide__arrow-path" d="M7 7C22 31 41 36 55 25" />
+                <path className="video-tutorial-guide__arrow-head" d="M45 23L56 25L50 35" />
+              </svg>
+            ) : null}
           </article>
         ))}
       </div>
@@ -3344,7 +3545,7 @@ function VideoGenerationTutorial() {
   );
 }
 
-function ToolTutorial({ kind }: { kind: ToolTutorialKind }) {
+function ToolTutorial({ kind, paused = false }: { kind: ToolTutorialKind; paused?: boolean }) {
   if (kind === "image") {
     return <ImageGenerationTutorial />;
   }
@@ -3354,7 +3555,7 @@ function ToolTutorial({ kind }: { kind: ToolTutorialKind }) {
   }
 
   if (kind === "video") {
-    return <VideoGenerationTutorial />;
+    return <VideoGenerationTutorial paused={paused} />;
   }
 
   const tutorial = toolTutorials[kind];
@@ -4233,7 +4434,7 @@ function VideoPreviewPanel({
     );
   }
 
-  return <ToolTutorial kind="video" />;
+  return <ToolTutorial kind="video" paused={loading} />;
 }
 
 function OutputPanel({
