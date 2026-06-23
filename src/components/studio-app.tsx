@@ -128,6 +128,7 @@ type ImageWorkspaceState = {
   providerId: string;
   ratio: string;
   quality: string;
+  count: number;
   templateId: string;
   prompt: string;
   promptOptimizing: boolean;
@@ -159,6 +160,15 @@ type VideoWorkspaceState = {
   loading: boolean;
   job: JobRecord | null;
 };
+
+type ImageGenerationProgressState = {
+  status: "running" | "done" | "failed";
+  current: number;
+  total: number;
+  startedAt: number;
+  completedAt?: number;
+  message?: string;
+} | null;
 
 type ImageUpscaleWorkspaceFile = {
   file: File;
@@ -472,6 +482,8 @@ export function StudioApp() {
   const [accountCloseSignal, setAccountCloseSignal] = useState(0);
   const billingRequestKeyRef = useRef(new Map<string, string>());
   const [message, setMessage] = useState("");
+  const [imageGenerationProgress, setImageGenerationProgress] = useState<ImageGenerationProgressState>(null);
+  const [generationProgressTick, setGenerationProgressTick] = useState(() => Date.now());
   const [outputs, setOutputs] = useState<Partial<Record<BusinessToolId, OutputState>>>({});
   const [mobileAction, setMobileAction] = useState<MobileActionState>(null);
   const [mobilePreviewSignal, setMobilePreviewSignal] = useState(0);
@@ -487,7 +499,8 @@ export function StudioApp() {
     providerId: "",
     ratio: "1:1",
     quality: "1k",
-    templateId: featuredImagePromptTemplates[0]?.id || "",
+    count: 1,
+    templateId: "",
     prompt: "",
     promptOptimizing: false,
     promptOptimizeError: "",
@@ -501,7 +514,7 @@ export function StudioApp() {
     providerId: "",
     ratio: "16:9",
     duration: 5,
-    templateId: featuredVideoPromptTemplates[0]?.id || "",
+    templateId: "",
     prompt: "",
     promptOptimizing: false,
     promptOptimizeError: "",
@@ -840,6 +853,7 @@ export function StudioApp() {
         prompt: template.prompt,
         ratio: template.aspectRatio,
         quality: template.quality,
+        count: 1,
         fileError: template.requiresImage && !prev.files.length ? "请先上传图像。" : "",
         promptOptimizeError: "",
         promptOptimizeUndo: "",
@@ -987,6 +1001,13 @@ export function StudioApp() {
     setOutputs((prev) => ({ ...prev, image: { item, title: "图片结果", tool: "image" } }));
   }, []);
 
+  useEffect(() => {
+    if (!imageGenerationProgress || imageGenerationProgress.status !== "running") return undefined;
+
+    const timer = window.setInterval(() => setGenerationProgressTick(Date.now()), 1000);
+    return () => window.clearInterval(timer);
+  }, [imageGenerationProgress]);
+
   const selectedImageProvider = useMemo(() => {
     if (!providers.image.length) return null;
     return providers.image.find((provider) => provider.id === imageWorkspace.providerId) || providers.image[0];
@@ -996,6 +1017,7 @@ export function StudioApp() {
   const imageWorkspaceHasFiles = imageWorkspaceFiles.length > 0;
   const imageWorkspacePrompt = imageWorkspace.prompt.trim();
   const imageWorkspaceRequiresFile = activeImageTemplate?.scope === "image" && activeImageTemplate.requiresImage;
+  const imageGenerationCount = Math.min(Math.max(Math.round(Number(imageWorkspace.count) || 1), 1), 4);
   const imageWorkspaceCanSubmit = Boolean(selectedImageProvider)
     && !providersLoading
     && !imageWorkspace.loading
@@ -1157,40 +1179,12 @@ export function StudioApp() {
       return;
     }
 
-    const taskId = createTaskId("image");
-    const estimatedQuotaUnits = estimateImageGenerationQuota({
+    const totalCount = imageGenerationCount;
+    const estimatedQuotaUnitsPerImage = estimateImageGenerationQuota({
       mode: activeImageMode,
       quality: imageWorkspace.quality,
       referenceImages: imageWorkspace.files.length,
     });
-    const requestFingerprint = generationBillingFingerprint({
-      kind: "image",
-      providerId: selectedImageProvider.id,
-      mode: activeImageMode,
-      ratio: imageWorkspace.ratio,
-      quality: imageWorkspace.quality,
-      referenceImages: imageWorkspace.files.length,
-      taskId,
-      estimatedQuotaUnits,
-    });
-
-    try {
-      await fetchJsonWithCsrf("/api/quota/precheck", {
-        method: "POST",
-        body: JSON.stringify({
-          operation: "cloud_image_generation",
-          taskId,
-          idempotencyKey: taskId,
-          estimatedQuotaUnits,
-          requestFingerprint,
-        }),
-      });
-    } catch (error) {
-      const text = error instanceof Error ? error.message : "额度预检失败。";
-      setImageWorkspace((prev) => ({ ...prev, submitError: text }));
-      setMessage(text);
-      return;
-    }
 
     setImageWorkspace((prev) => ({
       ...prev,
@@ -1200,30 +1194,96 @@ export function StudioApp() {
     }));
     setMobilePreviewSignal((value) => value + 1);
     setMessage("");
+    const startedAt = Date.now();
+    setGenerationProgressTick(startedAt);
+    setImageGenerationProgress({
+      status: "running",
+      current: 0,
+      total: totalCount,
+      startedAt,
+      message: totalCount > 1 ? `正在生成第 1 / ${totalCount} 张` : "正在生成图片",
+    });
     try {
-      const form = new FormData();
-      form.set("providerId", selectedImageProvider.id);
-      form.set("mode", activeImageMode);
-      form.set("ratio", imageWorkspace.ratio);
-      form.set("quality", imageWorkspace.quality);
-      form.set("prompt", imageWorkspace.prompt);
-      form.set("taskId", taskId);
-      form.set("idempotencyKey", taskId);
-      form.set("estimatedQuotaUnits", String(estimatedQuotaUnits));
-      imageWorkspace.files.forEach((attachment) => form.append("files", attachment.file));
-      const data = await fetchJsonWithCsrf<{ item: LibraryItem }>("/api/generate/image", {
-        method: "POST",
-        body: form,
-      });
-      handleImageResult(data.item);
+      for (let index = 0; index < totalCount; index += 1) {
+        const taskId = createTaskId(`image-${index + 1}`);
+        const requestFingerprint = generationBillingFingerprint({
+          kind: "image",
+          providerId: selectedImageProvider.id,
+          mode: activeImageMode,
+          ratio: imageWorkspace.ratio,
+          quality: imageWorkspace.quality,
+          referenceImages: imageWorkspace.files.length,
+          taskId,
+          estimatedQuotaUnits: estimatedQuotaUnitsPerImage,
+        });
+
+        setImageGenerationProgress((current) => current ? {
+          ...current,
+          status: "running",
+          current: index,
+          message: totalCount > 1 ? `正在生成第 ${index + 1} / ${totalCount} 张` : "正在生成图片",
+        } : current);
+
+        try {
+          await fetchJsonWithCsrf("/api/quota/precheck", {
+            method: "POST",
+            body: JSON.stringify({
+              operation: "cloud_image_generation",
+              taskId,
+              idempotencyKey: taskId,
+              estimatedQuotaUnits: estimatedQuotaUnitsPerImage,
+              requestFingerprint,
+            }),
+          });
+        } catch (error) {
+          const text = error instanceof Error ? error.message : "额度预检失败。";
+          setImageWorkspace((prev) => ({ ...prev, submitError: text }));
+          throw new Error(text);
+        }
+
+        const form = new FormData();
+        form.set("providerId", selectedImageProvider.id);
+        form.set("mode", activeImageMode);
+        form.set("ratio", imageWorkspace.ratio);
+        form.set("quality", imageWorkspace.quality);
+        form.set("prompt", imageWorkspace.prompt);
+        form.set("taskId", taskId);
+        form.set("idempotencyKey", taskId);
+        form.set("estimatedQuotaUnits", String(estimatedQuotaUnitsPerImage));
+        imageWorkspace.files.forEach((attachment) => form.append("files", attachment.file));
+        const data = await fetchJsonWithCsrf<{ item: LibraryItem }>("/api/generate/image", {
+          method: "POST",
+          body: form,
+        });
+        handleImageResult(data.item);
+        setImageGenerationProgress((current) => current ? {
+          ...current,
+          current: index + 1,
+          message: totalCount > 1 ? `已完成 ${index + 1} / ${totalCount} 张` : "图片已生成",
+        } : current);
+      }
+
       await refreshLibrary();
       await refreshAccountData(sessionUser?.local_user_id || null);
+      setImageGenerationProgress((current) => current ? {
+        ...current,
+        status: "done",
+        current: totalCount,
+        completedAt: Date.now(),
+        message: totalCount > 1 ? `${totalCount} 张图片已生成` : "图片已生成",
+      } : current);
     } catch (error) {
       const text = error instanceof Error ? error.message : "图片生成失败。";
       setImageWorkspace((prev) => ({
         ...prev,
         submitError: text,
       }));
+      setImageGenerationProgress((current) => current ? {
+        ...current,
+        status: "failed",
+        completedAt: Date.now(),
+        message: text,
+      } : current);
       setMessage(text);
     } finally {
       setImageWorkspace((prev) => ({
@@ -1239,6 +1299,7 @@ export function StudioApp() {
     imageWorkspace.quality,
     imageWorkspace.ratio,
     imageWorkspace.prompt,
+    imageGenerationCount,
     imageWorkspacePrompt,
     refreshAccountData,
     imageWorkspaceHasFiles,
@@ -1870,6 +1931,7 @@ export function StudioApp() {
           onProviderChange={(value) => updateImageWorkspace({ providerId: value })}
           onRatioChange={(value) => updateImageWorkspace({ ratio: value })}
           onQualityChange={(value) => updateImageWorkspace({ quality: value })}
+          onCountChange={(value) => updateImageWorkspace({ count: value })}
           onTemplateChange={applyImagePromptTemplate}
           onPromptChange={(value) => updateImageWorkspace({ prompt: value, promptOptimizeError: "", submitError: "" })}
           onPromptOptimize={optimizeImagePrompt}
@@ -2065,6 +2127,14 @@ export function StudioApp() {
         onCancel={handleCancelDeleteLibraryItem}
         onConfirm={() => void handleConfirmDeleteLibraryItem()}
       />
+      {imageGenerationProgress ? (
+        <ImageGenerationProgressToast
+          progress={imageGenerationProgress}
+          tick={generationProgressTick}
+          stacked={Boolean(message)}
+          onClose={() => setImageGenerationProgress(null)}
+        />
+      ) : null}
       {message ? <Toast message={message} onClose={() => setMessage("")} /> : null}
     </>
   );
@@ -2299,6 +2369,7 @@ function ImageGenerator({
   onProviderChange,
   onRatioChange,
   onQualityChange,
+  onCountChange,
   onTemplateChange,
   onPromptChange,
   onPromptOptimize,
@@ -2322,6 +2393,7 @@ function ImageGenerator({
   onProviderChange: (value: string) => void;
   onRatioChange: (value: string) => void;
   onQualityChange: (value: string) => void;
+  onCountChange: (value: number) => void;
   onTemplateChange: (value: string) => void;
   onPromptChange: (value: string) => void;
   onPromptOptimize: () => void;
@@ -2375,19 +2447,32 @@ function ImageGenerator({
       <StackedControl label="比例" required>
         <AspectRatioSelector label="比例" value={state.ratio} onChange={onRatioChange} />
       </StackedControl>
-      <StackedControl label="清晰度" required>
-        <ModeSegmentedControl
-          label="清晰度"
-          labelHidden
-          groupId="image-quality"
-          value={state.quality}
-          options={[
-            ["1k", "1K"],
-            ["2k", "2K"],
-          ]}
-          onChange={onQualityChange}
-        />
-      </StackedControl>
+      <div className="studio-dual-fields">
+        <StackedControl label="清晰度" required>
+          <CustomSelect
+            label="清晰度"
+            value={state.quality}
+            options={[
+              { value: "1k", label: "1K（默认）" },
+              { value: "2k", label: "2K（细节更多）" },
+            ]}
+            onChange={onQualityChange}
+          />
+        </StackedControl>
+        <StackedControl label="数量" required>
+          <CustomSelect
+            label="数量"
+            value={String(state.count)}
+            options={[
+              { value: "1", label: "1张" },
+              { value: "2", label: "2张" },
+              { value: "3", label: "3张" },
+              { value: "4", label: "4张" },
+            ]}
+            onChange={(value) => onCountChange(Number(value))}
+          />
+        </StackedControl>
+      </div>
       <PromptBox
         value={state.prompt}
         onChange={onPromptChange}
@@ -5335,6 +5420,83 @@ function libraryDuration(item: LibraryItem) {
   const rest = rounded % 60;
   if (!minutes) return `0:${String(rest).padStart(2, "0")}`;
   return `${minutes}:${String(rest).padStart(2, "0")}`;
+}
+
+function formatElapsedClock(milliseconds: number) {
+  const totalSeconds = Math.max(0, Math.floor(milliseconds / 1000));
+  const minutes = Math.floor(totalSeconds / 60);
+  const seconds = totalSeconds % 60;
+  return `${String(minutes).padStart(2, "0")}:${String(seconds).padStart(2, "0")}`;
+}
+
+function ImageGenerationProgressToast({
+  progress,
+  tick,
+  stacked,
+  onClose,
+}: {
+  progress: NonNullable<ImageGenerationProgressState>;
+  tick: number;
+  stacked?: boolean;
+  onClose: () => void;
+}) {
+  useEffect(() => {
+    if (progress.status === "running") return undefined;
+    const timer = window.setTimeout(onClose, 5200);
+    return () => window.clearTimeout(timer);
+  }, [onClose, progress.status]);
+
+  const total = Math.max(progress.total, 1);
+  const completed = Math.min(Math.max(progress.current, 0), total);
+  const activeIndex = progress.status === "running" ? Math.min(completed + 1, total) : completed;
+  const elapsedMs = (progress.completedAt ?? tick) - progress.startedAt;
+  const progressRatio = progress.status === "done"
+    ? 1
+    : Math.min(Math.max(completed / total, 0), 1);
+  const title = progress.status === "done"
+    ? "生成已完成"
+    : progress.status === "failed"
+      ? "生成失败"
+      : "图片生成中";
+  const statusText = progress.status === "running"
+    ? `第 ${activeIndex} / ${total} 张`
+    : progress.status === "done"
+      ? `已完成 ${total} 张`
+      : `已完成 ${completed} / ${total} 张`;
+
+  return (
+    <div
+      className={cn(
+        "image-generation-progress",
+        `is-${progress.status}`,
+        stacked && "is-stacked",
+      )}
+      role="status"
+      aria-live="polite"
+    >
+      <span className="image-generation-progress__icon" aria-hidden="true">
+        {progress.status === "done" ? <Check className="size-4" /> : null}
+        {progress.status === "failed" ? <AlertTriangle className="size-4" /> : null}
+        {progress.status === "running" ? <Loader2 className="size-4" /> : null}
+      </span>
+      <span className="image-generation-progress__body">
+        <span className="image-generation-progress__head">
+          <strong>{title}</strong>
+          <button type="button" aria-label="关闭生成进度" onClick={onClose}>
+            <X className="size-3.5" aria-hidden="true" />
+          </button>
+        </span>
+        <small>{progress.message || statusText}</small>
+        <span className="image-generation-progress__meta">
+          <span>{statusText}</span>
+          <span>用时 {formatElapsedClock(elapsedMs)}</span>
+        </span>
+        <span className="image-generation-progress__track" aria-hidden="true">
+          <span style={{ width: `${Math.round(progressRatio * 100)}%` }} />
+        </span>
+      </span>
+    </div>
+  );
 }
 
 function Toast({ message, onClose }: { message: string; onClose: () => void }) {
