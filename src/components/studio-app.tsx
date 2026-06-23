@@ -3,7 +3,7 @@
 /* eslint-disable @next/next/no-img-element */
 
 import { useCallback, useEffect, useId, useMemo, useRef, useState, type CSSProperties } from "react";
-import { AlertTriangle, ArrowDownUp, CalendarCheck, Check, ChevronDown, Crown, Download, ExternalLink, Eye, History, ImageUp, Loader2, Play, RefreshCw, Search, Sparkles, Trash2, UploadCloud, Wand2, X } from "lucide-react";
+import { AlertTriangle, ArrowDownUp, ArrowLeft, CalendarCheck, Check, ChevronDown, Crown, CreditCard, Download, ExternalLink, Eye, History, ImageUp, Loader2, Play, ReceiptText, RefreshCw, Search, Sparkles, Trash2, UploadCloud, WalletCards, Wand2, X } from "lucide-react";
 import { useRouter, useSearchParams } from "next/navigation";
 
 import { BeforeAfterImageCompare } from "@/components/before-after-image-compare";
@@ -24,7 +24,7 @@ import {
   templateTabHref,
 } from "@/lib/template-catalog";
 import type { PublicAuthUser } from "@/lib/server/auth";
-import type { BillingOrder, PublicPaymentChannelConfig } from "@/lib/server/billing";
+import type { BillingOrder } from "@/lib/server/billing";
 import type { UsageLogEntry, QuotaSnapshot, UsagePage } from "@/lib/server/quota";
 import { cn } from "@/lib/utils";
 import { useReducedMotion } from "@/lib/use-reduced-motion";
@@ -59,11 +59,6 @@ type WorkspacePublicProvider = FrontendProvider & {
   videoOptions?: WorkspaceVideoOptions;
 };
 
-type BillingConfigResponse = {
-  ok: true;
-  channels: PublicPaymentChannelConfig[];
-};
-
 type AuthSessionResponse =
   | { ok: true; user: PublicAuthUser; mappingStatus: string | null }
   | { ok: false; code: string; uiState: string; message: string; retryAfterSeconds?: number };
@@ -77,10 +72,57 @@ type BillingOrdersResponse = {
   has_more: boolean;
 };
 
-type BillingOrderDetailResponse = {
-  ok: true;
-  order: BillingOrder;
+type AccountView = "center" | "recharge" | "usage";
+type RechargeTab = "plans" | "credits";
+type AccountRecordKind = "spend" | "recharge" | "checkin";
+type AccountUsageFilter = "all" | AccountRecordKind;
+
+type PlanOption = {
+  id: string;
+  name: string;
+  price: number;
+  monthlyCredits: number;
+  description: string;
+  recommended?: boolean;
 };
+
+type CreditTopUpOption = {
+  amount: number;
+  credits: number;
+  label?: string;
+};
+
+type AccountRecord = {
+  id: string;
+  createdAt: string;
+  kind: AccountRecordKind;
+  typeLabel: string;
+  quotaDelta: number;
+  description: string;
+};
+
+const planOptions: PlanOption[] = [
+  { id: "basic", name: "基础套餐", price: 19, monthlyCredits: 220, description: "适合偶尔创作" },
+  { id: "standard", name: "标准套餐", price: 49, monthlyCredits: 600, description: "适合日常商品创作", recommended: true },
+  { id: "pro", name: "专业套餐", price: 99, monthlyCredits: 1300, description: "适合高频创作" },
+];
+
+const creditTopUpOptions: CreditTopUpOption[] = [
+  { amount: 1, credits: 10, label: "体验充值" },
+  { amount: 5, credits: 50 },
+  { amount: 10, credits: 100 },
+  { amount: 20, credits: 210 },
+  { amount: 30, credits: 320 },
+  { amount: 50, credits: 550, label: "推荐" },
+  { amount: 100, credits: 1150, label: "最划算" },
+  { amount: 200, credits: 2400, label: "超值" },
+];
+
+function accountViewTitle(view: AccountView) {
+  if (view === "recharge") return "充值中心";
+  if (view === "usage") return "消费记录";
+  return "用户中心";
+}
 
 function createTaskId(prefix: string) {
   const suffix = globalThis.crypto?.randomUUID?.() || `${Date.now()}-${Math.random().toString(36).slice(2)}`;
@@ -468,19 +510,15 @@ export function StudioApp() {
   const [libraryLoading, setLibraryLoading] = useState(true);
   const [libraryError, setLibraryError] = useState("");
   const [sessionUser, setSessionUser] = useState<PublicAuthUser | null>(null);
-  const [mappingStatus, setMappingStatus] = useState<string | null>(null);
   const [sessionLoading, setSessionLoading] = useState(true);
   const [sessionError, setSessionError] = useState("");
   const [quotaSnapshot, setQuotaSnapshot] = useState<QuotaSnapshot | null>(null);
   const [usagePage, setUsagePage] = useState<UsagePage | null>(null);
-  const [billingChannels, setBillingChannels] = useState<PublicPaymentChannelConfig[]>([]);
   const [billingOrders, setBillingOrders] = useState<BillingOrder[]>([]);
-  const [selectedBillingOrderId, setSelectedBillingOrderId] = useState<string | null>(null);
   const [accountLoading, setAccountLoading] = useState(true);
-  const [billingSubmitting, setBillingSubmitting] = useState(false);
   const [accountCenterOpen, setAccountCenterOpen] = useState(false);
+  const [accountView, setAccountView] = useState<AccountView>("center");
   const [accountCloseSignal, setAccountCloseSignal] = useState(0);
-  const billingRequestKeyRef = useRef(new Map<string, string>());
   const [message, setMessage] = useState("");
   const [imageGenerationProgress, setImageGenerationProgress] = useState<ImageGenerationProgressState>(null);
   const [generationProgressTick, setGenerationProgressTick] = useState(() => Date.now());
@@ -559,7 +597,6 @@ export function StudioApp() {
       setQuotaSnapshot(null);
       setUsagePage(null);
       setBillingOrders([]);
-      setSelectedBillingOrderId(null);
       setAccountLoading(false);
       return;
     }
@@ -567,21 +604,14 @@ export function StudioApp() {
     setAccountLoading(true);
     setSessionError("");
     try {
-      const [quotaData, usageData, billingConfigData, ordersData] = await Promise.all([
+      const [quotaData, usageData, ordersData] = await Promise.all([
         fetchJson<{ ok: true; quota: QuotaSnapshot }>("/api/quota"),
         fetchJson<{ ok: true; usage: UsagePage }>("/api/usage?page=1&pageSize=10"),
-        fetchJson<BillingConfigResponse>("/api/billing/config"),
         fetchJson<BillingOrdersResponse>("/api/billing/orders?page=1&pageSize=8"),
       ]);
       setQuotaSnapshot(quotaData.quota);
       setUsagePage(usageData.usage);
-      setBillingChannels(billingConfigData.channels);
       setBillingOrders(ordersData.orders);
-      setSelectedBillingOrderId((current) => (
-        current && ordersData.orders.some((order) => order.order_id === current)
-          ? current
-          : ordersData.orders[0]?.order_id || null
-      ));
     } catch (error) {
       const text = error instanceof Error ? error.message : "账户信息加载失败。";
       setSessionError(text);
@@ -591,57 +621,6 @@ export function StudioApp() {
     }
   }, []);
 
-  const refreshBillingOrderDetail = useCallback(async (orderId: string | null) => {
-    if (!orderId) return;
-    try {
-      const data = await fetchJson<BillingOrderDetailResponse>(`/api/billing/orders/${orderId}`);
-      setBillingOrders((current) => {
-        const next = current.filter((order) => order.order_id !== data.order.order_id);
-        next.unshift(data.order);
-        return next;
-      });
-      setSelectedBillingOrderId(data.order.order_id);
-    } catch (error) {
-      const text = error instanceof Error ? error.message : "订单详情加载失败。";
-      setMessage(text);
-    }
-  }, []);
-
-  const handleCreateSandboxOrder = useCallback(async (channel: PublicPaymentChannelConfig, amount: number) => {
-    if (!sessionUser) {
-      setMessage("请先登录后再创建充值订单。");
-      router.push("/login");
-      return;
-    }
-    if (billingSubmitting) return;
-    const requestKey = `${channel.channel}:${channel.currency}:${amount}`;
-    const idempotencyKey = billingRequestKeyRef.current.get(requestKey)
-      || createTaskId(`billing-${channel.channel}-${amount}`);
-    billingRequestKeyRef.current.set(requestKey, idempotencyKey);
-    setBillingSubmitting(true);
-    setMessage("");
-    try {
-      const response = await fetchJsonWithCsrf<{ ok: true; order: BillingOrder }>("/api/billing/orders", {
-        method: "POST",
-        body: JSON.stringify({
-          channel: channel.channel,
-          currency: channel.currency,
-          requestedAmount: amount,
-          idempotencyKey,
-        }),
-      });
-      setBillingOrders((current) => [response.order, ...current.filter((order) => order.order_id !== response.order.order_id)]);
-      setSelectedBillingOrderId(response.order.order_id);
-      setMessage(`已创建 ${channel.name} 充值订单。`);
-      billingRequestKeyRef.current.delete(requestKey);
-    } catch (error) {
-      const text = error instanceof ApiError ? error.message : error instanceof Error ? error.message : "创建订单失败。";
-      setMessage(text);
-    } finally {
-      setBillingSubmitting(false);
-    }
-  }, [billingSubmitting, router, sessionUser]);
-
   const handleLogout = useCallback(async () => {
     if (!sessionUser) return;
     try {
@@ -650,12 +629,9 @@ export function StudioApp() {
       setMessage(error instanceof Error ? error.message : "退出失败。");
     } finally {
       setSessionUser(null);
-      setMappingStatus(null);
       setQuotaSnapshot(null);
       setUsagePage(null);
-      setBillingChannels([]);
       setBillingOrders([]);
-      setSelectedBillingOrderId(null);
       router.replace("/login");
     }
   }, [router, sessionUser]);
@@ -667,26 +643,19 @@ export function StudioApp() {
       const result = await fetchJson<AuthSessionResponse>("/api/auth/session");
       if ("ok" in result && result.ok) {
         setSessionUser(result.user);
-        setMappingStatus(result.mappingStatus || null);
         await refreshAccountData(result.user.local_user_id);
         return;
       }
       setSessionUser(null);
-      setMappingStatus(null);
       setQuotaSnapshot(null);
       setUsagePage(null);
-      setBillingChannels([]);
       setBillingOrders([]);
-      setSelectedBillingOrderId(null);
     } catch (error) {
       if (error instanceof ApiError && error.status === 401) {
         setSessionUser(null);
-        setMappingStatus(null);
         setQuotaSnapshot(null);
         setUsagePage(null);
-        setBillingChannels([]);
         setBillingOrders([]);
-        setSelectedBillingOrderId(null);
       } else {
         const text = error instanceof Error ? error.message : "会话加载失败。";
         setSessionError(text);
@@ -905,18 +874,16 @@ export function StudioApp() {
     () => currentLibraryItems.find((item) => item.id === selectedLibraryItemId) || null,
     [currentLibraryItems, selectedLibraryItemId],
   );
-  const selectedBillingOrder = useMemo(
-    () => billingOrders.find((order) => order.order_id === selectedBillingOrderId) || billingOrders[0] || null,
-    [billingOrders, selectedBillingOrderId],
-  );
   const handleOpenAccountCenter = useCallback(() => {
     setAccountCenterOpen(true);
+    setAccountView("center");
     setAccountCloseSignal((value) => value + 1);
   }, []);
 
-  useEffect(() => {
-    void refreshBillingOrderDetail(selectedBillingOrderId);
-  }, [refreshBillingOrderDetail, selectedBillingOrderId]);
+  const handlePaymentUnavailable = useCallback(() => {
+    setMessage("充值功能暂未开放");
+  }, []);
+
   const markLibraryMediaMissing = useCallback((id: string) => {
     setMissingLibraryMediaIds((prev) => {
       if (prev.has(id)) return prev;
@@ -2025,26 +1992,16 @@ export function StudioApp() {
         accountSlot={(
           <WorkspaceAccountPanel
             user={sessionUser}
-            mappingStatus={mappingStatus}
             quota={quotaSnapshot}
             usage={usagePage}
-            billingChannels={billingChannels}
-            billingOrders={billingOrders}
-            selectedOrderId={selectedBillingOrderId}
-            selectedOrder={selectedBillingOrder}
             loading={sessionLoading || accountLoading}
-            loadingOrders={accountLoading}
-            submitting={billingSubmitting}
-            onSelectOrder={setSelectedBillingOrderId}
-            onCreateOrder={(channel, amount) => void handleCreateSandboxOrder(channel, amount)}
             onRefresh={() => void refreshAccountSnapshot()}
             onLogout={() => void handleLogout()}
             onOpenCenter={handleOpenAccountCenter}
-            isAccountCenter={accountCenterOpen}
           />
         )}
         contentMode={accountCenterOpen ? "account" : "default"}
-        toolTitle={accountCenterOpen ? "用户中心" : activeWorkspaceTool.label}
+        toolTitle={accountCenterOpen ? accountViewTitle(accountView) : activeWorkspaceTool.label}
         parameterSlot={parameterSlot}
         mobilePreviewSignal={mobilePreviewSignal}
         previewSlot={
@@ -2054,10 +2011,10 @@ export function StudioApp() {
               quota={quotaSnapshot}
               usage={usagePage}
               loading={sessionLoading || accountLoading}
-              submitting={billingSubmitting}
-              billingChannels={billingChannels}
-              onRefresh={() => void refreshAccountSnapshot()}
-              onTopUp={(channel, amount) => void handleCreateSandboxOrder(channel, amount)}
+              billingOrders={billingOrders}
+              accountView={accountView}
+              onViewChange={setAccountView}
+              onPaymentUnavailable={handlePaymentUnavailable}
             />
           ) : activeBusinessTool === "library" ? (
             <LibraryWorkspace
@@ -2157,23 +2114,66 @@ function UserCenterWorkspace({
   quota,
   usage,
   loading,
-  submitting,
-  billingChannels,
-  onRefresh,
-  onTopUp,
+  billingOrders,
+  accountView,
+  onViewChange,
+  onPaymentUnavailable,
 }: {
   user: PublicAuthUser | null;
   quota: QuotaSnapshot | null;
   usage: UsagePage | null;
   loading: boolean;
-  submitting: boolean;
-  billingChannels: PublicPaymentChannelConfig[];
-  onRefresh: () => void;
-  onTopUp: (channel: PublicPaymentChannelConfig, amount: number) => void;
+  billingOrders: BillingOrder[];
+  accountView: AccountView;
+  onViewChange: (view: AccountView) => void;
+  onPaymentUnavailable: () => void;
 }) {
-  const preferredChannel = billingChannels[0] || null;
-  const preferredAmount = preferredChannel ? preferredChannel.fixed_amounts[0] || preferredChannel.min_amount : 0;
-  const canTopUp = Boolean(user && preferredChannel && !submitting);
+  if (accountView === "recharge") {
+    return (
+      <RechargeCenterWorkspace
+        user={user}
+        quota={quota}
+        onViewChange={onViewChange}
+        onPaymentUnavailable={onPaymentUnavailable}
+      />
+    );
+  }
+
+  if (accountView === "usage") {
+    return (
+      <UsageRecordsWorkspace
+        usage={usage}
+        billingOrders={billingOrders}
+        loading={loading}
+        onViewChange={onViewChange}
+      />
+    );
+  }
+
+  return (
+    <UserCenterOverview
+      user={user}
+      quota={quota}
+      usage={usage}
+      loading={loading}
+      onViewChange={onViewChange}
+    />
+  );
+}
+
+function UserCenterOverview({
+  user,
+  quota,
+  usage,
+  loading,
+  onViewChange,
+}: {
+  user: PublicAuthUser | null;
+  quota: QuotaSnapshot | null;
+  usage: UsagePage | null;
+  loading: boolean;
+  onViewChange: (view: AccountView) => void;
+}) {
   const usageEntries = usage?.entries?.slice(0, 6) || [];
   const quotaUnits = quota?.quota_units ?? null;
   const previousQuotaUnitsRef = useRef<number | null>(quotaUnits);
@@ -2207,6 +2207,7 @@ function UserCenterWorkspace({
       icon: Sparkles,
       featured: true,
       action: "立即充值",
+      onAction: () => onViewChange("recharge"),
     },
     {
       label: "当前套餐",
@@ -2214,6 +2215,8 @@ function UserCenterWorkspace({
       note: "暂未开通有效套餐",
       icon: Crown,
       featured: false,
+      action: "购买套餐",
+      onAction: () => onViewChange("recharge"),
     },
     {
       label: "签到",
@@ -2221,7 +2224,8 @@ function UserCenterWorkspace({
       note: "签到能力待接入真实接口",
       icon: CalendarCheck,
       featured: false,
-      disabledAction: "暂无签到入口",
+      action: "签到暂未开放",
+      mutedAction: true,
     },
   ];
 
@@ -2232,9 +2236,9 @@ function UserCenterWorkspace({
           <h2>用户中心</h2>
           <p>查看积分、套餐与签到信息</p>
         </div>
-        <button type="button" className="user-center-refresh" onClick={onRefresh} disabled={loading}>
-          {loading ? <Loader2 className="size-4 animate-spin" /> : <CalendarCheck className="size-4" />}
-          签到
+        <button type="button" className="user-center-refresh" onClick={() => onViewChange("recharge")} disabled={!user}>
+          <WalletCards className="size-4" aria-hidden="true" />
+          充值
         </button>
       </header>
 
@@ -2254,19 +2258,11 @@ function UserCenterWorkspace({
                   {item.action ? (
                     <button
                       type="button"
-                      className="user-center-stat__button"
-                      onClick={() => {
-                        if (preferredChannel) onTopUp(preferredChannel, preferredAmount);
-                      }}
-                      disabled={!canTopUp}
+                      className={cn("user-center-stat__button", item.mutedAction && "user-center-stat__button--muted")}
+                      onClick={item.onAction}
+                      disabled={!user || item.mutedAction}
                     >
-                      {submitting ? <Loader2 className="size-4 animate-spin" /> : null}
-                      {preferredChannel ? item.action : "充值暂未开放"}
-                    </button>
-                  ) : null}
-                  {item.disabledAction ? (
-                    <button type="button" className="user-center-stat__button user-center-stat__button--muted" disabled>
-                      {item.disabledAction}
+                      {item.action}
                     </button>
                   ) : null}
                 </article>
@@ -2280,6 +2276,9 @@ function UserCenterWorkspace({
                 <h3>最近使用记录</h3>
                 <p>仅展示最近的真实使用记录。</p>
               </div>
+              <button type="button" className="user-center-link-button" onClick={() => onViewChange("usage")}>
+                查看全部记录
+              </button>
             </div>
 
             {loading && !usageEntries.length ? (
@@ -2330,9 +2329,393 @@ function UserCenterWorkspace({
   );
 }
 
+function RechargeCenterWorkspace({
+  user,
+  quota,
+  onViewChange,
+  onPaymentUnavailable,
+}: {
+  user: PublicAuthUser | null;
+  quota: QuotaSnapshot | null;
+  onViewChange: (view: AccountView) => void;
+  onPaymentUnavailable: () => void;
+}) {
+  const [activeTab, setActiveTab] = useState<RechargeTab>("plans");
+  const [selectedPlanId, setSelectedPlanId] = useState("standard");
+  const [selectedCreditAmount, setSelectedCreditAmount] = useState(50);
+  const [customAmount, setCustomAmount] = useState("");
+
+  const selectedPlan = planOptions.find((plan) => plan.id === selectedPlanId) || planOptions[1];
+  const selectedCredit = creditTopUpOptions.find((option) => option.amount === selectedCreditAmount) || creditTopUpOptions[5];
+  const customAmountValue = Number(customAmount);
+  const customAmountValid = customAmount.trim() !== "" && Number.isFinite(customAmountValue) && customAmountValue >= 1;
+  const customCredits = customAmountValid ? Math.floor(customAmountValue * 10) : 0;
+
+  return (
+    <section className="user-center-page account-subpage" aria-label="充值中心">
+      <AccountSubpageHeader
+        breadcrumb="用户中心 / 充值中心"
+        title="充值中心"
+        subtitle="选择套餐或充值积分"
+        onBack={() => onViewChange("center")}
+        actions={(
+          <>
+            <div className="account-subpage-summary">
+              <span>当前积分</span>
+              <strong>{formatQuotaUnits(quota?.quota_units)}</strong>
+            </div>
+            <div className="account-subpage-summary">
+              <span>当前套餐</span>
+              <strong>暂无套餐</strong>
+            </div>
+          </>
+        )}
+      />
+
+      <div className="recharge-center-tabs" role="tablist" aria-label="充值类型">
+        <button
+          type="button"
+          role="tab"
+          aria-selected={activeTab === "plans"}
+          className={cn("recharge-center-tab", activeTab === "plans" && "is-active")}
+          onClick={() => setActiveTab("plans")}
+        >
+          套餐购买
+        </button>
+        <button
+          type="button"
+          role="tab"
+          aria-selected={activeTab === "credits"}
+          className={cn("recharge-center-tab", activeTab === "credits" && "is-active")}
+          onClick={() => setActiveTab("credits")}
+        >
+          积分充值
+        </button>
+      </div>
+
+      {activeTab === "plans" ? (
+        <div className="recharge-center-panel" role="tabpanel">
+          <div className="recharge-plan-grid">
+            {planOptions.map((plan) => {
+              const selected = selectedPlan.id === plan.id;
+              return (
+                <button
+                  key={plan.id}
+                  type="button"
+                  className={cn("recharge-plan-card", plan.recommended && "is-recommended", selected && "is-selected")}
+                  onClick={() => setSelectedPlanId(plan.id)}
+                  aria-pressed={selected}
+                >
+                  <span className="recharge-card-check" aria-hidden="true">
+                    <Check className="size-3.5" />
+                  </span>
+                  {plan.recommended ? <span className="recharge-card-badge">推荐</span> : null}
+                  <span className="recharge-plan-card__name">{plan.name}</span>
+                  <strong>¥{plan.price} <small>/ 月</small></strong>
+                  <span className="recharge-plan-card__credits">每月 {formatQuotaUnits(plan.monthlyCredits)} 积分</span>
+                  <span className="recharge-plan-card__desc">{plan.description}</span>
+                </button>
+              );
+            })}
+          </div>
+
+          <RechargeConfirmPanel
+            icon={<Crown className="size-4" aria-hidden="true" />}
+            title="确认套餐"
+            lines={[
+              ["套餐", selectedPlan.name],
+              ["金额", `¥${selectedPlan.price} / 月`],
+              ["每月积分", `${formatQuotaUnits(selectedPlan.monthlyCredits)} 积分`],
+            ]}
+            buttonLabel="确认购买"
+            disabled={!user}
+            onConfirm={onPaymentUnavailable}
+          />
+        </div>
+      ) : (
+        <div className="recharge-center-panel" role="tabpanel">
+          <div className="credit-topup-grid">
+            {creditTopUpOptions.map((option) => {
+              const selected = selectedCredit.amount === option.amount;
+              return (
+                <button
+                  key={option.amount}
+                  type="button"
+                  className={cn("credit-topup-card", selected && "is-selected")}
+                  onClick={() => setSelectedCreditAmount(option.amount)}
+                  aria-pressed={selected}
+                >
+                  <span className="recharge-card-check" aria-hidden="true">
+                    <Check className="size-3.5" />
+                  </span>
+                  {option.label ? <span className="recharge-card-badge">{option.label}</span> : null}
+                  <strong>¥{option.amount}</strong>
+                  <span>{formatQuotaUnits(option.credits)} 积分</span>
+                </button>
+              );
+            })}
+          </div>
+
+          <div className="custom-recharge-card">
+            <div>
+              <h3>自定义充值</h3>
+              <p>最低金额 ¥1，换算比例 1 元 = 10 积分。</p>
+            </div>
+            <label className="custom-recharge-field">
+              <span>充值金额</span>
+              <input
+                value={customAmount}
+                inputMode="decimal"
+                placeholder="输入金额"
+                onChange={(event) => setCustomAmount(sanitizeRechargeAmount(event.target.value))}
+                aria-describedby="custom-recharge-help"
+              />
+            </label>
+            <div id="custom-recharge-help" className="custom-recharge-preview">
+              <span>预计到账积分</span>
+              <strong>{customAmountValid ? formatQuotaUnits(customCredits) : "—"}</strong>
+            </div>
+            <button
+              type="button"
+              className="recharge-confirm-button"
+              disabled={!user || !customAmountValid}
+              onClick={onPaymentUnavailable}
+            >
+              确认自定义充值
+            </button>
+          </div>
+
+          <RechargeConfirmPanel
+            icon={<CreditCard className="size-4" aria-hidden="true" />}
+            title="确认充值"
+            lines={[
+              ["充值金额", `¥${selectedCredit.amount}`],
+              ["预计到账", `${formatQuotaUnits(selectedCredit.credits)} 积分`],
+            ]}
+            buttonLabel="确认充值"
+            disabled={!user}
+            onConfirm={onPaymentUnavailable}
+          />
+        </div>
+      )}
+
+      <button type="button" className="account-subpage-link" onClick={() => onViewChange("usage")}>
+        <ReceiptText className="size-4" aria-hidden="true" />
+        查看消费记录
+      </button>
+    </section>
+  );
+}
+
+function UsageRecordsWorkspace({
+  usage,
+  billingOrders,
+  loading,
+  onViewChange,
+}: {
+  usage: UsagePage | null;
+  billingOrders: BillingOrder[];
+  loading: boolean;
+  onViewChange: (view: AccountView) => void;
+}) {
+  const [filter, setFilter] = useState<AccountUsageFilter>("all");
+  const records = useMemo(() => createAccountRecords(usage?.entries || [], billingOrders), [billingOrders, usage?.entries]);
+  const filteredRecords = filter === "all" ? records : records.filter((record) => record.kind === filter);
+
+  return (
+    <section className="user-center-page account-subpage" aria-label="消费记录">
+      <AccountSubpageHeader
+        breadcrumb="用户中心 / 消费记录"
+        title="消费记录"
+        subtitle="只展示真实产生的积分支出、充值和签到记录"
+        onBack={() => onViewChange("center")}
+      />
+
+      <div className="usage-record-filters" role="tablist" aria-label="记录筛选">
+        {[
+          ["all", "全部"],
+          ["spend", "支出"],
+          ["recharge", "充值"],
+          ["checkin", "签到"],
+        ].map(([value, label]) => (
+          <button
+            key={value}
+            type="button"
+            className={cn("usage-record-filter", filter === value && "is-active")}
+            onClick={() => setFilter(value as AccountUsageFilter)}
+            aria-pressed={filter === value}
+          >
+            {label}
+          </button>
+        ))}
+      </div>
+
+      <section className="user-center-usage account-records">
+        {loading && !records.length ? (
+          <div className="user-center-usage__list">
+            <div className="user-center-usage__row user-center-usage__row--head" aria-hidden="true">
+              <span>时间</span>
+              <span>类型</span>
+              <span>积分变动</span>
+              <span>描述</span>
+            </div>
+            {Array.from({ length: 5 }).map((_, index) => (
+              <div key={index} className="user-center-usage__row user-center-usage__row--skeleton" aria-hidden="true">
+                <span className="motion-skeleton-shimmer" />
+                <span className="motion-skeleton-shimmer" />
+                <span className="motion-skeleton-shimmer" />
+                <span className="motion-skeleton-shimmer" />
+              </div>
+            ))}
+          </div>
+        ) : filteredRecords.length ? (
+          <div className="user-center-usage__list">
+            <div className="user-center-usage__row user-center-usage__row--head" aria-hidden="true">
+              <span>时间</span>
+              <span>类型</span>
+              <span>积分变动</span>
+              <span>描述</span>
+            </div>
+            {filteredRecords.map((record, index) => (
+              <div
+                key={record.id}
+                className={cn("user-center-usage__row", "account-record-row", `is-${record.kind}`)}
+                style={{ "--usage-row-delay": `${index < 6 ? index * 24 : 0}ms` } as CSSProperties}
+              >
+                <span>{formatUsageDate(record.createdAt)}</span>
+                <strong>{record.typeLabel}</strong>
+                <em>{formatSignedQuota(record.quotaDelta)} 分</em>
+                <span>{record.description}</span>
+              </div>
+            ))}
+          </div>
+        ) : (
+          <div className="user-center-usage__empty">
+            <History className="size-5" aria-hidden="true" />
+            <strong>暂无消费记录</strong>
+            <span>充值、签到或使用创作工具后，相关记录会显示在这里。</span>
+          </div>
+        )}
+      </section>
+    </section>
+  );
+}
+
+function AccountSubpageHeader({
+  breadcrumb,
+  title,
+  subtitle,
+  actions,
+  onBack,
+}: {
+  breadcrumb: string;
+  title: string;
+  subtitle: string;
+  actions?: React.ReactNode;
+  onBack: () => void;
+}) {
+  return (
+    <header className="account-subpage-header">
+      <button type="button" className="account-subpage-back" onClick={onBack}>
+        <ArrowLeft className="size-4" aria-hidden="true" />
+        返回用户中心
+      </button>
+      <div className="account-subpage-header__main">
+        <div>
+          <span className="account-subpage-breadcrumb">{breadcrumb}</span>
+          <h2>{title}</h2>
+          <p>{subtitle}</p>
+        </div>
+        {actions ? <div className="account-subpage-header__actions">{actions}</div> : null}
+      </div>
+    </header>
+  );
+}
+
+function RechargeConfirmPanel({
+  icon,
+  title,
+  lines,
+  buttonLabel,
+  disabled,
+  onConfirm,
+}: {
+  icon: React.ReactNode;
+  title: string;
+  lines: Array<[string, string]>;
+  buttonLabel: string;
+  disabled: boolean;
+  onConfirm: () => void;
+}) {
+  return (
+    <section className="recharge-confirm-panel" aria-label={title}>
+      <div className="recharge-confirm-panel__head">
+        <span>{icon}</span>
+        <strong>{title}</strong>
+      </div>
+      <div className="recharge-confirm-panel__lines">
+        {lines.map(([label, value]) => (
+          <div key={label}>
+            <span>{label}</span>
+            <strong>{value}</strong>
+          </div>
+        ))}
+      </div>
+      <button type="button" className="recharge-confirm-button" onClick={onConfirm} disabled={disabled}>
+        {buttonLabel}
+      </button>
+    </section>
+  );
+}
+
+function createAccountRecords(usageEntries: UsageLogEntry[], billingOrders: BillingOrder[]) {
+  const usageRecords: AccountRecord[] = usageEntries.map((entry) => ({
+    id: `usage-${entry.id}`,
+    createdAt: entry.created_at,
+    kind: "spend",
+    typeLabel: "支出",
+    quotaDelta: -Math.abs(entry.actual_quota_units ?? entry.estimated_quota_units),
+    description: `${usageOperationLabel(entry.operation)}：${usageDescription(entry)}`,
+  }));
+
+  const paidOrders: AccountRecord[] = billingOrders
+    .filter((order) => order.status === "paid" && order.credited_quota > 0)
+    .map((order) => ({
+      id: `order-${order.order_id}`,
+      createdAt: order.paid_at || order.updated_at || order.created_at,
+      kind: "recharge",
+      typeLabel: "充值",
+      quotaDelta: order.credited_quota,
+      description: `充值订单已到账，金额 ${formatMinorCurrency(order.paid_amount || order.requested_amount)}`,
+    }));
+
+  return [...usageRecords, ...paidOrders].sort((a, b) => Number(new Date(b.createdAt)) - Number(new Date(a.createdAt)));
+}
+
 function formatQuotaUnits(value: number | null | undefined) {
   if (value === null || value === undefined) return "0";
   return new Intl.NumberFormat("zh-CN").format(value);
+}
+
+function formatSignedQuota(value: number) {
+  const prefix = value > 0 ? "+" : "";
+  return `${prefix}${formatQuotaUnits(value)}`;
+}
+
+function formatMinorCurrency(value: number) {
+  return new Intl.NumberFormat("zh-CN", {
+    style: "currency",
+    currency: "CNY",
+    minimumFractionDigits: 2,
+  }).format(value / 100);
+}
+
+function sanitizeRechargeAmount(value: string) {
+  const normalized = value.replace(/[^\d.]/g, "");
+  const [integer, ...decimals] = normalized.split(".");
+  const decimal = decimals.join("").slice(0, 2);
+  if (!decimals.length) return integer.replace(/^0+(?=\d)/, "");
+  return `${integer.replace(/^0+(?=\d)/, "") || "0"}.${decimal}`;
 }
 
 function formatUsageDate(value: string) {

@@ -4270,6 +4270,37 @@
     line-height: 1.45;
   }
 
+  .user-center-link-button,
+  .account-subpage-link,
+  .account-subpage-back {
+    display: inline-flex;
+    min-height: 34px;
+    align-items: center;
+    justify-content: center;
+    gap: 7px;
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: 9px;
+    background: rgba(255, 255, 255, 0.04);
+    padding: 0 11px;
+    color: rgba(255, 255, 255, 0.68);
+    font-size: 12.5px;
+    font-weight: 630;
+    transition:
+      transform var(--motion-fast) var(--ease-enter),
+      border-color var(--motion-fast) var(--ease-enter),
+      background var(--motion-fast) var(--ease-enter),
+      color var(--motion-fast) var(--ease-enter);
+  }
+
+  .user-center-link-button:hover,
+  .account-subpage-link:hover,
+  .account-subpage-back:hover {
+    border-color: rgba(255, 43, 136, 0.32);
+    background: rgba(255, 43, 136, 0.08);
+    color: #fff;
+    transform: translateY(-1px);
+  }
+
   .user-center-usage {
     border: 1px solid rgba(255, 255, 255, 0.08);
     border-radius: 14px;
@@ -4371,6 +4402,447 @@
     max-width: 280px;
     font-size: 13px;
     line-height: 1.5;
+  }
+
+  .account-subpage {
+    gap: 18px;
+  }
+
+  .account-subpage-header {
+    display: grid;
+    gap: 12px;
+  }
+
+  .account-subpage-back {
+    width: fit-content;
+  }
+
+  .account-subpage-header__main {
+    display: flex;
+    align-items: flex-end;
+    justify-content: space-between;
+    gap: 18px;
+  }
+
+  .account-subpage-breadcrumb {
+    display: inline-flex;
+    margin-bottom: 7px;
+    color: rgba(255, 255, 255, 0.42);
+    font-size: 12.5px;
+    line-height: 1.2;
+  }
+
+  .account-subpage-header h2 {
+    color: rgba(255, 255, 255, 0.94);
+    font-size: clamp(26px, 1.7vw, 30px);
+    font-weight: 720;
+    letter-spacing: 0;
+    line-height: 1.16;
+  }
+
+  .account-subpage-header p {
+    margin-top: 7px;
+    color: rgba(255, 255, 255, 0.58);
+    font-size: 14px;
+    line-height: 1.45;
+  }
+
+  .account-subpage-header__actions {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+    gap: 10px;
+  }
+
+  .account-subpage-summary {
+    display: grid;
+    min-width: 128px;
+    gap: 5px;
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: 12px;
+    background: #101014;
+    padding: 11px 13px;
+  }
+
+  .account-subpage-summary span {
+    color: rgba(255, 255, 255, 0.46);
+    font-size: 12px;
+  }
+
+  .account-subpage-summary strong {
+    color: rgba(255, 255, 255, 0.9);
+    font-size: 16px;
+    font-weight: 720;
+  }
+
+  .recharge-center-tabs,
+  .usage-record-filters {
+    display: inline-flex;
+    width: fit-content;
+    align-items: center;
+    gap: 4px;
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: 12px;
+    background: #101014;
+    padding: 4px;
+  }
+
+  .recharge-center-tab,
+  .usage-record-filter {
+    min-height: 34px;
+    border: 0;
+    border-radius: 8px;
+    background: transparent;
+    padding: 0 14px;
+    color: rgba(255, 255, 255, 0.58);
+    font-size: 13px;
+    font-weight: 650;
+    transition:
+      transform var(--motion-fast) var(--ease-enter),
+      background var(--motion-fast) var(--ease-enter),
+      color var(--motion-fast) var(--ease-enter),
+      box-shadow var(--motion-fast) var(--ease-enter);
+  }
+
+  .recharge-center-tab:hover,
+  .usage-record-filter:hover {
+    color: rgba(255, 255, 255, 0.88);
+  }
+
+  .recharge-center-tab.is-active,
+  .usage-record-filter.is-active {
+    background: linear-gradient(90deg, rgba(255, 43, 136, 0.2), rgba(164, 82, 255, 0.18));
+    color: #fff;
+    box-shadow: inset 0 0 0 1px rgba(255, 43, 136, 0.18);
+  }
+
+  .recharge-center-panel {
+    display: grid;
+    gap: 16px;
+    min-width: 0;
+    animation: user-center-row-in var(--motion-layout) var(--ease-enter) both;
+  }
+
+  .recharge-plan-grid {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 14px;
+  }
+
+  .recharge-plan-card,
+  .credit-topup-card,
+  .custom-recharge-card,
+  .recharge-confirm-panel {
+    position: relative;
+    overflow: hidden;
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: 14px;
+    background: #141418;
+    transition:
+      transform var(--motion-fast) var(--ease-enter),
+      border-color var(--motion-fast) var(--ease-enter),
+      background var(--motion-fast) var(--ease-enter),
+      box-shadow var(--motion-fast) var(--ease-enter);
+  }
+
+  .recharge-plan-card,
+  .credit-topup-card {
+    display: grid;
+    min-width: 0;
+    text-align: left;
+  }
+
+  .recharge-plan-card {
+    min-height: 190px;
+    align-content: start;
+    gap: 12px;
+    padding: 20px;
+  }
+
+  .recharge-plan-card:hover,
+  .credit-topup-card:hover,
+  .custom-recharge-card:hover,
+  .recharge-confirm-panel:hover {
+    border-color: rgba(255, 43, 136, 0.2);
+    background: #18181e;
+    box-shadow: 0 14px 34px rgba(0, 0, 0, 0.22);
+    transform: translateY(-2px);
+  }
+
+  .recharge-plan-card.is-selected,
+  .credit-topup-card.is-selected {
+    border-color: rgba(255, 43, 136, 0.58);
+    background:
+      radial-gradient(circle at 18% 0%, rgba(255, 43, 136, 0.16), transparent 40%),
+      #141418;
+  }
+
+  .recharge-plan-card.is-recommended {
+    border-color: rgba(164, 82, 255, 0.32);
+  }
+
+  .recharge-card-check {
+    position: absolute;
+    top: 12px;
+    right: 12px;
+    display: grid;
+    width: 24px;
+    height: 24px;
+    place-items: center;
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 999px;
+    background: rgba(255, 255, 255, 0.05);
+    color: rgba(255, 255, 255, 0.34);
+    opacity: 0;
+    transform: scale(0.86);
+    transition:
+      opacity var(--motion-fast) var(--ease-enter),
+      transform var(--motion-fast) var(--ease-enter),
+      color var(--motion-fast) var(--ease-enter),
+      background var(--motion-fast) var(--ease-enter);
+  }
+
+  .recharge-plan-card.is-selected .recharge-card-check,
+  .credit-topup-card.is-selected .recharge-card-check {
+    background: linear-gradient(135deg, #ff2b88, #a452ff);
+    color: #fff;
+    opacity: 1;
+    transform: scale(1);
+  }
+
+  .recharge-card-badge {
+    display: inline-flex;
+    width: fit-content;
+    min-height: 24px;
+    align-items: center;
+    border: 1px solid rgba(255, 43, 136, 0.28);
+    border-radius: 999px;
+    background: rgba(255, 43, 136, 0.1);
+    padding: 0 9px;
+    color: #ff8ac4;
+    font-size: 12px;
+    font-weight: 680;
+  }
+
+  .recharge-plan-card__name {
+    color: rgba(255, 255, 255, 0.74);
+    font-size: 14px;
+    font-weight: 680;
+  }
+
+  .recharge-plan-card strong {
+    color: rgba(255, 255, 255, 0.96);
+    font-size: clamp(28px, 2.2vw, 36px);
+    font-weight: 760;
+    line-height: 1.05;
+  }
+
+  .recharge-plan-card strong small {
+    color: rgba(255, 255, 255, 0.5);
+    font-size: 14px;
+    font-weight: 620;
+  }
+
+  .recharge-plan-card__credits {
+    color: #ff72b5;
+    font-size: 13px;
+    font-weight: 680;
+  }
+
+  .recharge-plan-card__desc {
+    color: rgba(255, 255, 255, 0.48);
+    font-size: 13px;
+    line-height: 1.45;
+  }
+
+  .credit-topup-grid {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 12px;
+  }
+
+  .credit-topup-card {
+    min-height: 112px;
+    align-content: center;
+    gap: 8px;
+    padding: 17px;
+  }
+
+  .credit-topup-card strong {
+    color: rgba(255, 255, 255, 0.94);
+    font-size: 24px;
+    font-weight: 760;
+    line-height: 1.05;
+  }
+
+  .credit-topup-card span:not(.recharge-card-check, .recharge-card-badge) {
+    color: rgba(255, 255, 255, 0.58);
+    font-size: 13px;
+  }
+
+  .custom-recharge-card {
+    display: grid;
+    grid-template-columns: minmax(180px, 1.2fr) minmax(180px, 0.9fr) minmax(130px, 0.7fr) auto;
+    align-items: end;
+    gap: 14px;
+    padding: 16px;
+  }
+
+  .custom-recharge-card h3 {
+    color: rgba(255, 255, 255, 0.9);
+    font-size: 16px;
+    font-weight: 700;
+  }
+
+  .custom-recharge-card p {
+    margin-top: 5px;
+    color: rgba(255, 255, 255, 0.48);
+    font-size: 13px;
+    line-height: 1.45;
+  }
+
+  .custom-recharge-field,
+  .custom-recharge-preview {
+    display: grid;
+    gap: 7px;
+  }
+
+  .custom-recharge-field span,
+  .custom-recharge-preview span {
+    color: rgba(255, 255, 255, 0.5);
+    font-size: 12.5px;
+    font-weight: 620;
+  }
+
+  .custom-recharge-field input {
+    min-height: 40px;
+    border: 1px solid rgba(255, 255, 255, 0.09);
+    border-radius: 10px;
+    background: rgba(9, 9, 11, 0.72);
+    padding: 0 12px;
+    color: rgba(255, 255, 255, 0.92);
+    font-size: 14px;
+    outline: none;
+    transition:
+      border-color var(--motion-fast) var(--ease-enter),
+      background var(--motion-fast) var(--ease-enter),
+      box-shadow var(--motion-fast) var(--ease-enter);
+  }
+
+  .custom-recharge-field input:hover,
+  .custom-recharge-field input:focus {
+    border-color: rgba(255, 43, 136, 0.34);
+    background: rgba(24, 24, 30, 0.92);
+  }
+
+  .custom-recharge-field input:focus {
+    box-shadow: 0 0 0 3px rgba(255, 43, 136, 0.12);
+  }
+
+  .custom-recharge-preview strong {
+    color: #ff72b5;
+    font-size: 18px;
+    font-weight: 740;
+  }
+
+  .recharge-confirm-panel {
+    display: grid;
+    gap: 14px;
+    padding: 16px;
+  }
+
+  .recharge-confirm-panel__head {
+    display: flex;
+    align-items: center;
+    gap: 9px;
+  }
+
+  .recharge-confirm-panel__head span {
+    display: grid;
+    width: 30px;
+    height: 30px;
+    place-items: center;
+    border-radius: 9px;
+    background: rgba(255, 43, 136, 0.1);
+    color: #ff72b5;
+  }
+
+  .recharge-confirm-panel__head strong {
+    color: rgba(255, 255, 255, 0.9);
+    font-size: 15px;
+  }
+
+  .recharge-confirm-panel__lines {
+    display: grid;
+    gap: 8px;
+  }
+
+  .recharge-confirm-panel__lines div {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    color: rgba(255, 255, 255, 0.5);
+    font-size: 13px;
+  }
+
+  .recharge-confirm-panel__lines strong {
+    color: rgba(255, 255, 255, 0.9);
+    font-weight: 720;
+  }
+
+  .recharge-confirm-button {
+    display: inline-flex;
+    min-height: 40px;
+    align-items: center;
+    justify-content: center;
+    border: 1px solid rgba(255, 43, 136, 0.3);
+    border-radius: 10px;
+    background: linear-gradient(90deg, rgba(255, 43, 136, 0.92), rgba(164, 82, 255, 0.86));
+    padding: 0 16px;
+    color: #fff;
+    font-size: 13px;
+    font-weight: 700;
+    transition:
+      transform var(--motion-fast) var(--ease-enter),
+      filter var(--motion-fast) var(--ease-enter),
+      opacity var(--motion-fast) var(--ease-enter);
+  }
+
+  .recharge-confirm-button:hover:not(:disabled) {
+    filter: brightness(1.08);
+    transform: translateY(-1px);
+  }
+
+  .recharge-confirm-button:active:not(:disabled) {
+    transform: translateY(1px);
+  }
+
+  .recharge-confirm-button:disabled {
+    cursor: not-allowed;
+    filter: saturate(0.6);
+    opacity: 0.48;
+    transform: none;
+  }
+
+  .account-subpage-link {
+    width: fit-content;
+  }
+
+  .account-records {
+    min-height: 440px;
+  }
+
+  .account-record-row.is-spend em {
+    color: #ff77b6;
+  }
+
+  .account-record-row.is-recharge em {
+    color: #b98aff;
+  }
+
+  .account-record-row.is-checkin em {
+    color: #74e3a2;
   }
 
   .studio-library-toolbar {
@@ -6306,6 +6778,18 @@
     .user-center-stat,
     .user-center-stat::after,
     .user-center-stat__value,
+    .user-center-link-button,
+    .account-subpage-back,
+    .account-subpage-link,
+    .recharge-center-panel,
+    .recharge-center-tab,
+    .usage-record-filter,
+    .recharge-plan-card,
+    .credit-topup-card,
+    .custom-recharge-card,
+    .custom-recharge-field input,
+    .recharge-confirm-panel,
+    .recharge-confirm-button,
     .user-center-usage__row,
     .user-center-usage__empty,
     .user-center-usage__row--skeleton span,
@@ -6348,6 +6832,14 @@
     .studio-library-tile:hover .studio-media-card__play,
     .user-center-refresh:hover:not(:disabled),
     .user-center-stat:hover,
+    .user-center-link-button:hover,
+    .account-subpage-back:hover,
+    .account-subpage-link:hover,
+    .recharge-plan-card:hover,
+    .credit-topup-card:hover,
+    .custom-recharge-card:hover,
+    .recharge-confirm-panel:hover,
+    .recharge-confirm-button:hover:not(:disabled),
     .user-center-stat.is-updated .user-center-stat__value,
     .account-popover-card__primary:hover:not(:disabled),
     .account-popover-card__secondary:hover:not(:disabled),
@@ -7607,6 +8099,23 @@
     grid-template-columns: minmax(0, 1fr);
   }
 
+  .recharge-plan-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .credit-topup-grid {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+
+  .custom-recharge-card {
+    grid-template-columns: minmax(220px, 1fr) minmax(160px, 0.9fr) minmax(120px, 0.7fr);
+  }
+
+  .custom-recharge-card .recharge-confirm-button {
+    grid-column: 1 / -1;
+    width: fit-content;
+  }
+
 }
 
 @media (max-width: 767px) {
@@ -7810,6 +8319,40 @@
   .shell-panel--mobile-single .user-center-usage__row span:first-child,
   .shell-panel--mobile-single .user-center-usage__row span:last-child {
     grid-column: 1 / -1;
+  }
+
+  .shell-panel--mobile-single .account-subpage-header__main {
+    display: grid;
+    gap: 12px;
+  }
+
+  .shell-panel--mobile-single .account-subpage-header__actions {
+    justify-content: stretch;
+  }
+
+  .shell-panel--mobile-single .account-subpage-summary {
+    min-width: 0;
+  }
+
+  .shell-panel--mobile-single .recharge-center-tabs,
+  .shell-panel--mobile-single .usage-record-filters {
+    width: 100%;
+  }
+
+  .shell-panel--mobile-single .recharge-center-tab,
+  .shell-panel--mobile-single .usage-record-filter {
+    flex: 1;
+    padding: 0 10px;
+  }
+
+  .shell-panel--mobile-single .recharge-plan-grid,
+  .shell-panel--mobile-single .credit-topup-grid,
+  .shell-panel--mobile-single .custom-recharge-card {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .shell-panel--mobile-single .recharge-plan-card {
+    min-height: 160px;
   }
 
   .shell-panel--mobile-single .studio-preview__content {

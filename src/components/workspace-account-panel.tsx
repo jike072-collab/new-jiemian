@@ -3,27 +3,16 @@
 import { CalendarCheck, Crown, Loader2, LogOut, Sparkles, UserRound } from "lucide-react";
 
 import type { PublicAuthUser } from "@/lib/server/auth";
-import type { BillingOrder, PublicPaymentChannelConfig } from "@/lib/server/billing";
 import type { QuotaSnapshot, UsagePage } from "@/lib/server/quota";
 
 type WorkspaceAccountPanelProps = {
   user: PublicAuthUser | null;
-  mappingStatus: string | null;
   quota: QuotaSnapshot | null;
   usage: UsagePage | null;
-  billingChannels: PublicPaymentChannelConfig[];
-  billingOrders: BillingOrder[];
-  selectedOrderId: string | null;
-  selectedOrder: BillingOrder | null;
   loading: boolean;
-  loadingOrders: boolean;
-  submitting: boolean;
-  onSelectOrder: (orderId: string) => void;
-  onCreateOrder: (channel: PublicPaymentChannelConfig, amount: number) => void;
   onRefresh: () => void;
   onLogout: () => void;
   onOpenCenter?: () => void;
-  isAccountCenter?: boolean;
 };
 
 function formatQuota(value: number | null | undefined) {
@@ -35,20 +24,13 @@ export function WorkspaceAccountPanel({
   user,
   quota,
   usage,
-  billingChannels,
   loading,
-  submitting,
-  onCreateOrder,
   onRefresh,
   onLogout,
   onOpenCenter,
-  isAccountCenter = false,
 }: WorkspaceAccountPanelProps) {
   const displayName = user?.display_name || user?.username || "账户";
   const avatarText = displayName.slice(0, 2).toUpperCase();
-  const preferredChannel = billingChannels[0] || null;
-  const preferredAmount = preferredChannel ? preferredChannel.fixed_amounts[0] || preferredChannel.min_amount : 0;
-  const canTopUp = Boolean(user && preferredChannel && !submitting);
   const latestUsageCount = usage?.total ?? usage?.entries?.length ?? 0;
 
   return (
@@ -103,18 +85,15 @@ export function WorkspaceAccountPanel({
         <button
           type="button"
           className="account-popover-card__primary"
-          onClick={() => {
-            if (preferredChannel) onCreateOrder(preferredChannel, preferredAmount);
-          }}
-          disabled={!canTopUp}
+          onClick={onOpenCenter}
+          disabled={!user}
         >
-          {submitting ? <Loader2 className="size-4 animate-spin" /> : null}
-          {preferredChannel ? "立即充值" : "充值暂未开放"}
+          用户中心
         </button>
-        <button type="button" className="account-popover-card__secondary" onClick={onOpenCenter} disabled={isAccountCenter}>
-          {isAccountCenter ? "当前位于用户中心" : "查看使用记录"}
+        <button type="button" className="account-popover-card__secondary" onClick={onRefresh} disabled={!user || loading}>
+          {loading ? "刷新中" : "刷新账户"}
         </button>
-        <button type="button" className="account-popover-card__logout" onClick={onLogout} disabled={!user || loading || submitting}>
+        <button type="button" className="account-popover-card__logout" onClick={onLogout} disabled={!user || loading}>
           <LogOut className="size-4" aria-hidden="true" />
           退出登录
         </button>
