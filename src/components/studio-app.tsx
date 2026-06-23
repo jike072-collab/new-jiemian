@@ -1018,6 +1018,11 @@ export function StudioApp() {
   const imageWorkspacePrompt = imageWorkspace.prompt.trim();
   const imageWorkspaceRequiresFile = activeImageTemplate?.scope === "image" && activeImageTemplate.requiresImage;
   const imageGenerationCount = Math.min(Math.max(Math.round(Number(imageWorkspace.count) || 1), 1), 4);
+  const imageEstimatedQuotaUnits = estimateImageGenerationQuota({
+    mode: activeImageMode,
+    quality: imageWorkspace.quality,
+    referenceImages: imageWorkspace.files.length,
+  }) * imageGenerationCount;
   const imageWorkspaceCanSubmit = Boolean(selectedImageProvider)
     && !providersLoading
     && !imageWorkspace.loading
@@ -1327,6 +1332,11 @@ export function StudioApp() {
   const videoWorkspaceNeedsFile = activeVideoMode === "image-to-video";
   const videoWorkspaceRequiresFile = activeVideoTemplate?.scope === "video" && activeVideoTemplate.requiresImage;
   const selectedVideoModelRequiresFile = videoProviderRequiresReferenceImage(selectedVideoProvider);
+  const videoEstimatedQuotaUnits = estimateVideoGenerationQuota({
+    mode: activeVideoMode,
+    durationSeconds: videoWorkspace.duration,
+    referenceImages: videoWorkspace.files.length,
+  });
   const videoWorkspaceCanSubmit = Boolean(selectedVideoProvider)
     && !providersLoading
     && !videoWorkspace.loading
@@ -1925,9 +1935,10 @@ export function StudioApp() {
               providersLoading={providersLoading}
               providersError={providersError}
               selectedProvider={selectedImageProvider}
-              templateCenterHref={imageTemplateCenterHref}
-              state={imageWorkspace}
+          templateCenterHref={imageTemplateCenterHref}
+          state={imageWorkspace}
           canSubmit={imageWorkspaceCanSubmit}
+          estimatedQuotaUnits={imageEstimatedQuotaUnits}
           onProviderChange={(value) => updateImageWorkspace({ providerId: value })}
           onRatioChange={(value) => updateImageWorkspace({ ratio: value })}
           onQualityChange={(value) => updateImageWorkspace({ quality: value })}
@@ -1951,9 +1962,10 @@ export function StudioApp() {
               providersLoading={providersLoading}
               providersError={providersError}
               selectedProvider={selectedVideoProvider}
-              templateCenterHref={videoTemplateCenterHref}
-              state={videoWorkspace}
+          templateCenterHref={videoTemplateCenterHref}
+          state={videoWorkspace}
           canSubmit={videoWorkspaceCanSubmit}
+          estimatedQuotaUnits={videoEstimatedQuotaUnits}
           onProviderChange={(value) => updateVideoWorkspace({ providerId: value, submitError: "" })}
           onRatioChange={(value) => updateVideoWorkspace({ ratio: value })}
           onDurationChange={(value) => updateVideoWorkspace({ duration: value })}
@@ -2366,6 +2378,7 @@ function ImageGenerator({
   templateCenterHref,
   state,
   canSubmit,
+  estimatedQuotaUnits,
   onProviderChange,
   onRatioChange,
   onQualityChange,
@@ -2390,6 +2403,7 @@ function ImageGenerator({
   templateCenterHref: string;
   state: ImageWorkspaceState;
   canSubmit: boolean;
+  estimatedQuotaUnits: number;
   onProviderChange: (value: string) => void;
   onRatioChange: (value: string) => void;
   onQualityChange: (value: string) => void;
@@ -2487,7 +2501,13 @@ function ImageGenerator({
       {state.submitError ? <p className="studio-error-text" role="alert">{state.submitError}</p> : null}
 
       <StickyPrimaryAction>
-        <SubmitButton disabled={!canSubmit} loading={state.loading} loadingLabel={meta.loadingLabel} onClick={onSubmit}>
+        <SubmitButton
+          disabled={!canSubmit}
+          loading={state.loading}
+          loadingLabel={meta.loadingLabel}
+          costLabel={`花费 ${formatQuotaUnits(estimatedQuotaUnits)} 积分`}
+          onClick={onSubmit}
+        >
           {meta.submitLabel}
         </SubmitButton>
       </StickyPrimaryAction>
@@ -2561,6 +2581,7 @@ function VideoGenerator({
   templateCenterHref,
   state,
   canSubmit,
+  estimatedQuotaUnits,
   onProviderChange,
   onRatioChange,
   onDurationChange,
@@ -2586,6 +2607,7 @@ function VideoGenerator({
   templateCenterHref: string;
   state: VideoWorkspaceState;
   canSubmit: boolean;
+  estimatedQuotaUnits: number;
   onProviderChange: (value: string) => void;
   onRatioChange: (value: string) => void;
   onDurationChange: (value: number) => void;
@@ -2676,8 +2698,14 @@ function VideoGenerator({
       />
       {state.submitError ? <p className="studio-error-text" role="alert">{state.submitError}</p> : null}
       <StickyPrimaryAction>
-        <SubmitButton disabled={!canSubmit} loading={state.loading} onClick={onSubmit}>
-          {state.loading ? meta.loadingLabel : meta.submitLabel}
+        <SubmitButton
+          disabled={!canSubmit}
+          loading={state.loading}
+          loadingLabel={meta.loadingLabel}
+          costLabel={`花费 ${formatQuotaUnits(estimatedQuotaUnits)} 积分`}
+          onClick={onSubmit}
+        >
+          {meta.submitLabel}
         </SubmitButton>
       </StickyPrimaryAction>
     </FormPanel>
@@ -5227,19 +5255,26 @@ function SubmitButton({
   disabled,
   loading,
   loadingLabel,
+  costLabel,
   children,
   onClick,
 }: {
   disabled: boolean;
   loading: boolean;
   loadingLabel?: string;
+  costLabel?: string;
   children: React.ReactNode;
   onClick: () => void;
 }) {
+  const label = loading ? loadingLabel || children : children;
+
   return (
     <button type="button" data-testid="primary-submit" disabled={disabled} onClick={onClick} className="studio-primary-action" aria-busy={loading}>
       {loading ? <Loader2 className="size-4 animate-spin" aria-hidden="true" /> : <Wand2 className="size-4" aria-hidden="true" />}
-      <span>{loading ? loadingLabel || children : children}</span>
+      <span className="studio-primary-action__copy">
+        <span>{label}</span>
+        {!loading && costLabel ? <small>（{costLabel}）</small> : null}
+      </span>
     </button>
   );
 }

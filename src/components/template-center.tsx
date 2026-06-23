@@ -447,7 +447,7 @@ function TemplateBrowserPanel({
               </span>
             </span>
             <Link href={cloneHref(template.id)} className="studio-primary-action template-center-card__clone">
-              克隆
+              使用模板
               <ArrowRight className="size-4" aria-hidden="true" />
             </Link>
           </article>

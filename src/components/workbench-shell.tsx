@@ -4,6 +4,7 @@ import Link from "next/link";
 import {
   CalendarCheck,
   ChevronDown,
+  CreditCard,
   LogIn,
   Menu,
   PanelLeft,
@@ -464,20 +465,20 @@ function DesktopNavigation({
             <button type="button" className="shell-nav-account__main shell-nav-account__main--button" onClick={onToggleAccount} aria-expanded={accountOpen}>
               <span className="shell-nav-account__avatar">{avatarText}</span>
               <span className="shell-nav-account__copy">
-                <strong>{displayName}</strong>
                 <span>剩余积分 {accountPointsLabel || "0"}</span>
               </span>
             </button>
             <div className="shell-nav-account__actions is-split">
               <button
                 type="button"
-                className={cn("shell-nav-account__button", accountCenterActive && "is-active")}
+                className={cn("shell-nav-account__button shell-nav-account__button--checkin", accountCenterActive && "is-active")}
                 onClick={onToggleAccount}
               >
                 <CalendarCheck className="size-4" aria-hidden="true" />
                 签到
               </button>
               <button type="button" className="shell-nav-account__button shell-nav-account__button--secondary" onClick={onToggleAccount}>
+                <CreditCard className="size-4" aria-hidden="true" />
                 充值
               </button>
             </div>
