@@ -516,6 +516,7 @@ export function StudioApp() {
   const [usagePage, setUsagePage] = useState<UsagePage | null>(null);
   const [billingOrders, setBillingOrders] = useState<BillingOrder[]>([]);
   const [accountLoading, setAccountLoading] = useState(true);
+  const [accountDataError, setAccountDataError] = useState("");
   const [accountCenterOpen, setAccountCenterOpen] = useState(false);
   const [accountView, setAccountView] = useState<AccountView>("center");
   const [accountCloseSignal, setAccountCloseSignal] = useState(0);
@@ -597,25 +598,47 @@ export function StudioApp() {
       setQuotaSnapshot(null);
       setUsagePage(null);
       setBillingOrders([]);
+      setAccountDataError("");
       setAccountLoading(false);
       return;
     }
 
     setAccountLoading(true);
-    setSessionError("");
     try {
-      const [quotaData, usageData, ordersData] = await Promise.all([
+      const [quotaResult, usageResult, ordersResult] = await Promise.allSettled([
         fetchJson<{ ok: true; quota: QuotaSnapshot }>("/api/quota"),
         fetchJson<{ ok: true; usage: UsagePage }>("/api/usage?page=1&pageSize=10"),
         fetchJson<BillingOrdersResponse>("/api/billing/orders?page=1&pageSize=8"),
       ]);
-      setQuotaSnapshot(quotaData.quota);
-      setUsagePage(usageData.usage);
-      setBillingOrders(ordersData.orders);
-    } catch (error) {
-      const text = error instanceof Error ? error.message : "账户信息加载失败。";
-      setSessionError(text);
-      setMessage(text);
+
+      if (quotaResult.status === "fulfilled") {
+        setQuotaSnapshot(quotaResult.value.quota);
+      } else {
+        setQuotaSnapshot(null);
+      }
+
+      if (usageResult.status === "fulfilled") {
+        setUsagePage(usageResult.value.usage);
+      } else {
+        setUsagePage(null);
+      }
+
+      if (ordersResult.status === "fulfilled") {
+        setBillingOrders(ordersResult.value.orders);
+      } else {
+        setBillingOrders([]);
+      }
+
+      const failures = [quotaResult, usageResult, ordersResult].filter((result) => result.status === "rejected");
+      if (failures.length) {
+        if (process.env.NODE_ENV !== "production") {
+          console.debug("[account] Failed to load account data", failures);
+        }
+        setAccountDataError(formatAccountDataError(failures[0]));
+        setMessage(formatAccountDataError(failures[0]));
+      } else {
+        setAccountDataError("");
+      }
     } finally {
       setAccountLoading(false);
     }
@@ -650,12 +673,14 @@ export function StudioApp() {
       setQuotaSnapshot(null);
       setUsagePage(null);
       setBillingOrders([]);
+      setAccountDataError("");
     } catch (error) {
       if (error instanceof ApiError && error.status === 401) {
         setSessionUser(null);
         setQuotaSnapshot(null);
         setUsagePage(null);
         setBillingOrders([]);
+        setAccountDataError("");
       } else {
         const text = error instanceof Error ? error.message : "会话加载失败。";
         setSessionError(text);
@@ -2012,7 +2037,7 @@ export function StudioApp() {
               usage={usagePage}
               loading={sessionLoading || accountLoading}
               billingOrders={billingOrders}
-              accountError={sessionError}
+              accountError={accountDataError}
               accountView={accountView}
               onViewChange={setAccountView}
               onRefreshAccount={() => void refreshAccountSnapshot()}
@@ -2366,6 +2391,9 @@ function RechargeCenterWorkspace({
   const customAmountValid = customAmount.trim() !== "" && Number.isFinite(customAmountValue) && customAmountValue >= 1;
   const customCredits = customAmountValid ? Math.floor(customAmountValue * 10) : 0;
   const customRechargeActive = activeTab === "credits" && customAmount.trim() !== "";
+  const accountInfoUnavailable = !loading && accountError && !quota;
+  const pointsStatusLabel = quota ? `${formatQuotaUnits(quota.quota_units)} 分` : accountInfoUnavailable ? "暂时无法加载" : "—";
+  const planStatusLabel = accountInfoUnavailable ? "暂时无法加载" : "暂未开通";
   const creditSummaryLines: Array<[string, string]> = customRechargeActive
     ? [
       ["当前选择", "自定义充值"],
@@ -2395,7 +2423,7 @@ function RechargeCenterWorkspace({
               {loading && !quota ? (
                 <i className="recharge-account-meta__skeleton motion-skeleton-shimmer" aria-label="积分加载中" />
               ) : (
-                <strong>{quota ? `${formatQuotaUnits(quota.quota_units)} 分` : "—"}</strong>
+                <strong>{pointsStatusLabel}</strong>
               )}
             </span>
             <span className="recharge-account-meta__item">
@@ -2403,7 +2431,7 @@ function RechargeCenterWorkspace({
               {loading && !quota ? (
                 <i className="recharge-account-meta__skeleton motion-skeleton-shimmer" aria-label="套餐加载中" />
               ) : (
-                <strong>暂无套餐</strong>
+                <strong>{planStatusLabel}</strong>
               )}
             </span>
           </div>
@@ -2456,6 +2484,10 @@ function RechargeCenterWorkspace({
           <div className="recharge-layout__selection">
             {activeTab === "plans" ? (
               <div className="recharge-center-panel" role="tabpanel">
+                <div className="recharge-selection-head">
+                  <h3>选择适合你的套餐</h3>
+                  <p>套餐按月展示，每档仅包含当前支持的月度积分额度。</p>
+                </div>
                 <div className="recharge-plan-grid">
                   {planOptions.map((plan) => {
                     const selected = selectedPlan.id === plan.id;
@@ -2482,6 +2514,10 @@ function RechargeCenterWorkspace({
               </div>
             ) : (
               <div className="recharge-center-panel" role="tabpanel">
+                <div className="recharge-selection-head">
+                  <h3>选择充值金额</h3>
+                  <p>充值成功后，积分将发放至当前账户。</p>
+                </div>
                 <div className="credit-topup-grid">
                   {creditTopUpOptions.map((option) => {
                     const selected = !customRechargeActive && selectedCredit.amount === option.amount;
@@ -2759,6 +2795,11 @@ function createAccountRecords(usageEntries: UsageLogEntry[], billingOrders: Bill
 function formatQuotaUnits(value: number | null | undefined) {
   if (value === null || value === undefined) return "0";
   return new Intl.NumberFormat("zh-CN").format(value);
+}
+
+function formatAccountDataError(error: unknown) {
+  void error;
+  return "部分账户信息暂时无法加载，请稍后重试。";
 }
 
 function formatSignedQuota(value: number) {

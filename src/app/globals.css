@@ -4499,17 +4499,17 @@
     min-height: 34px;
     align-items: center;
     gap: 8px;
-    border: 1px solid rgba(255, 255, 255, 0.08);
+    border: 1px solid rgba(255, 255, 255, 0.1);
     border-radius: 999px;
-    background: rgba(16, 16, 20, 0.72);
+    background: rgba(16, 16, 20, 0.86);
     padding: 0 12px;
-    color: rgba(255, 255, 255, 0.52);
+    color: rgba(255, 255, 255, 0.62);
     font-size: 12.5px;
     line-height: 1;
   }
 
   .recharge-account-meta__item strong {
-    color: rgba(255, 255, 255, 0.9);
+    color: rgba(255, 255, 255, 0.94);
     font-size: 13px;
     font-weight: 720;
   }
@@ -4656,9 +4656,29 @@
 
   .recharge-center-panel {
     display: grid;
-    gap: 16px;
+    gap: 14px;
     min-width: 0;
     animation: user-center-row-in var(--motion-layout) var(--ease-enter) both;
+  }
+
+  .recharge-selection-head {
+    display: grid;
+    gap: 5px;
+    min-width: 0;
+  }
+
+  .recharge-selection-head h3 {
+    color: rgba(255, 255, 255, 0.92);
+    font-size: 16px;
+    font-weight: 720;
+    line-height: 1.25;
+  }
+
+  .recharge-selection-head p {
+    max-width: 560px;
+    color: rgba(255, 255, 255, 0.54);
+    font-size: 13px;
+    line-height: 1.45;
   }
 
   .recharge-plan-grid {
@@ -4691,10 +4711,10 @@
   }
 
   .recharge-plan-card {
-    min-height: 190px;
+    min-height: 188px;
     align-content: start;
-    gap: 12px;
-    padding: 20px;
+    gap: 11px;
+    padding: 19px;
   }
 
   .recharge-plan-card:hover,
