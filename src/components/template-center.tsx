@@ -32,6 +32,8 @@ type QuotaResponse = {
   quota: { quota_units: number; available_quota_units: number };
 };
 
+const templateRailDragThreshold = 12;
+
 type TemplateRailProps = {
   title?: string;
   viewAllHref?: string;
@@ -89,7 +91,7 @@ export function TemplateRail({
     const state = dragStateRef.current;
     if (!scroll || state.pointerId !== event.pointerId) return;
     const delta = event.clientX - state.startX;
-    if (!state.dragging && Math.abs(delta) > 6) {
+    if (!state.dragging && Math.abs(delta) > templateRailDragThreshold) {
       state.dragging = true;
       scroll.classList.add("is-dragging");
     }
@@ -102,7 +104,9 @@ export function TemplateRail({
   const handlePointerUp = useCallback((event: ReactPointerEvent<HTMLDivElement>) => {
     const state = dragStateRef.current;
     if (state.pointerId !== event.pointerId) return;
-    state.suppressClick = state.dragging;
+    const scroll = scrollRef.current;
+    const didScroll = Boolean(scroll && Math.abs(scroll.scrollLeft - state.startScrollLeft) > 1);
+    state.suppressClick = state.dragging && didScroll;
     releaseDrag(event.pointerId);
   }, [releaseDrag]);
 
