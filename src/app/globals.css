@@ -2819,6 +2819,9 @@
   .shell-root--tool-templates .template-center-grid {
     grid-template-columns: repeat(auto-fill, minmax(min(100%, 260px), 1fr));
     gap: 18px;
+    align-content: start;
+    align-items: start;
+    grid-auto-rows: auto;
     min-height: min(720px, calc(100vh - 270px));
     padding-bottom: 24px;
     animation: template-grid-reveal var(--motion-layout) var(--ease-enter) both;
@@ -2827,6 +2830,8 @@
   .shell-root--tool-templates .template-center-card {
     grid-template-rows: auto minmax(98px, auto) 40px;
     gap: 10px;
+    align-self: start;
+    height: auto;
     overflow: hidden;
     border-color: rgba(255, 255, 255, 0.08);
     border-radius: 13px;
