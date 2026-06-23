@@ -3679,8 +3679,6 @@ function VideoUpscaleCompareTutorial() {
         afterAlt="放大后示例视频"
         mediaType="video"
         beforeEffect="blur"
-        beforePoster="/tutorials/video-upscale/result-poster.svg"
-        afterPoster="/tutorials/video-upscale/result-poster.svg"
       />
     </PreviewState>
   );
