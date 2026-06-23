@@ -2,8 +2,8 @@
 
 /* eslint-disable @next/next/no-img-element */
 
-import { useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
-import { AlertTriangle, ArrowDownUp, CalendarCheck, Check, ChevronDown, Crown, Download, ExternalLink, History, ImageUp, Loader2, Play, RefreshCw, Search, Sparkles, Trash2, UploadCloud, Wand2, X } from "lucide-react";
+import { useCallback, useEffect, useId, useMemo, useRef, useState, type CSSProperties } from "react";
+import { AlertTriangle, ArrowDownUp, CalendarCheck, Check, ChevronDown, Crown, Download, ExternalLink, Eye, History, ImageUp, Loader2, Play, RefreshCw, Search, Sparkles, Trash2, UploadCloud, Wand2, X } from "lucide-react";
 import { useRouter, useSearchParams } from "next/navigation";
 
 import { BeforeAfterImageCompare } from "@/components/before-after-image-compare";
@@ -440,6 +440,7 @@ const ratioShapeClass: Record<string, string> = {
 export function StudioApp() {
   const router = useRouter();
   const searchParams = useSearchParams();
+  const prefersReducedMotion = useReducedMotion();
   const toolParam = searchParams.get("tool");
   const previewMode = searchParams.get("preview") === "1";
   const initialWorkspaceToolId = useMemo<WorkspaceToolId>(() => {
@@ -480,6 +481,7 @@ export function StudioApp() {
   const [selectedLibraryItemId, setSelectedLibraryItemId] = useState<string | null>(null);
   const [libraryDeleteConfirmItemId, setLibraryDeleteConfirmItemId] = useState<string | null>(null);
   const [deletingLibraryItemId, setDeletingLibraryItemId] = useState<string | null>(null);
+  const [removingLibraryItemId, setRemovingLibraryItemId] = useState<string | null>(null);
   const [missingLibraryMediaIds, setMissingLibraryMediaIds] = useState<Set<string>>(() => new Set());
   const [imageWorkspace, setImageWorkspace] = useState<ImageWorkspaceState>({
     providerId: "",
@@ -945,17 +947,22 @@ export function StudioApp() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ id }),
       });
-      await refreshLibrary();
+      setRemovingLibraryItemId(id);
       setSelectedLibraryItemId((current) => (current === id ? null : current));
       setLibraryDeleteConfirmItemId(null);
+      if (!prefersReducedMotion) {
+        await new Promise((resolve) => window.setTimeout(resolve, 220));
+      }
+      await refreshLibrary();
     } catch (error) {
       const text = error instanceof Error ? error.message : "删除失败。";
       setLibraryError(text);
       setMessage(text);
     } finally {
       setDeletingLibraryItemId(null);
+      setRemovingLibraryItemId(null);
     }
-  }, [deletingLibraryItemId, libraryDeleteConfirmItemId, refreshLibrary]);
+  }, [deletingLibraryItemId, libraryDeleteConfirmItemId, prefersReducedMotion, refreshLibrary]);
 
   const libraryCounts = useMemo(() => ({
     all: library.length,
@@ -1991,6 +1998,7 @@ export function StudioApp() {
               sort={librarySort}
               search={librarySearch}
               deletingItemId={deletingLibraryItemId}
+              removingItemId={removingLibraryItemId}
               missingMediaIds={missingLibraryMediaIds}
               onFilterChange={setLibraryFilter}
               onSortChange={setLibrarySort}
@@ -3952,6 +3960,7 @@ function LibraryWorkspace({
   sort,
   search,
   deletingItemId,
+  removingItemId,
   missingMediaIds,
   onFilterChange,
   onSortChange,
@@ -3974,6 +3983,7 @@ function LibraryWorkspace({
   sort: LibrarySort;
   search: string;
   deletingItemId: string | null;
+  removingItemId: string | null;
   missingMediaIds: Set<string>;
   onFilterChange: (value: LibraryFilter) => void;
   onSortChange: (value: LibrarySort) => void;
@@ -4011,10 +4021,14 @@ function LibraryWorkspace({
       {loading ? (
         <div className="studio-library-skeleton-grid" role="status" aria-label="正在加载作品">
           {Array.from({ length: 8 }, (_, index) => (
-            <div key={index} className="studio-library-skeleton-card">
-              <span />
-              <strong />
-              <small />
+            <div
+              key={index}
+              className="studio-library-skeleton-card"
+              style={{ "--library-card-delay": `${index < 6 ? index * 28 : 0}ms` } as CSSProperties}
+            >
+              <span className="motion-skeleton-shimmer" />
+              <strong className="motion-skeleton-shimmer" />
+              <small className="motion-skeleton-shimmer" />
             </div>
           ))}
         </div>
@@ -4055,10 +4069,16 @@ function LibraryWorkspace({
         )
       ) : (
         <div className="studio-library-grid">
-          {items.map((item) => (
+          {items.map((item, index) => (
             <div
               key={item.id}
-              className={cn("studio-library-tile", selectedItem?.id === item.id && "is-active")}
+              className={cn(
+                "studio-library-tile",
+                selectedItem?.id === item.id && "is-active",
+                deletingItemId === item.id && "is-deleting",
+                removingItemId === item.id && "is-removing",
+              )}
+              style={{ "--library-card-delay": `${index < 6 ? index * 28 : 0}ms` } as CSSProperties}
             >
               <button
                 type="button"
@@ -5111,14 +5131,17 @@ function LibraryCardActions({
   return (
     <div className="studio-library-tile__actions" aria-label="作品操作">
       <button type="button" onClick={onPreview}>
+        <Eye className="size-4" aria-hidden="true" />
         预览
       </button>
       {canDownloadStoredFile ? (
         <a href={item.output?.url} download>
+          <Download className="size-4" aria-hidden="true" />
           下载
         </a>
       ) : null}
       <button type="button" onClick={onDelete} disabled={deleting}>
+        {deleting ? <Loader2 className="size-4 animate-spin" aria-hidden="true" /> : <Trash2 className="size-4" aria-hidden="true" />}
         {deleting ? "删除中" : "删除"}
       </button>
     </div>
