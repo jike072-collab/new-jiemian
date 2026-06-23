@@ -3187,6 +3187,7 @@ type VideoTutorialPlaybackState =
   | "result-entering"
   | "result-playing"
   | "complete"
+  | "resetting"
   | "fading-out";
 
 function createTutorialTimeline() {
@@ -3214,7 +3215,7 @@ function isVideoTutorialPromptVisibleState(playbackState: VideoTutorialPlaybackS
 }
 
 function isVideoTutorialParameterVisibleState(playbackState: VideoTutorialPlaybackState) {
-  return ["final", "parameters", "arrow-to-result", "result-preparing", "result-entering", "result-playing", "complete", "fading-out"].includes(playbackState);
+  return ["final", "parameters", "arrow-to-result", "result-preparing", "result-entering", "result-playing", "complete", "resetting", "fading-out"].includes(playbackState);
 }
 
 function isVideoTutorialResultVisibleState(playbackState: VideoTutorialPlaybackState) {
@@ -3334,6 +3335,7 @@ function VideoTutorialResultSlot({
           isVideoTutorialResultVisibleState(playbackState) && "is-visible",
           isVideoTutorialResultPlayingState(playbackState) && "is-playing",
           playbackState === "complete" && "is-complete",
+          playbackState === "resetting" && "is-resetting",
         )}
       >
         {videoTutorialResultVideoSrc ? (
@@ -3413,15 +3415,35 @@ function VideoGenerationTutorial({ paused = false }: { paused?: boolean }) {
     setPlaybackState("complete");
     setTypedText(videoTutorialPromptText);
     replayTimerRef.current = window.setTimeout(() => {
-      setPlaybackState("fading-out");
+      setPlaybackState("resetting");
       replayTimerRef.current = window.setTimeout(() => {
-        replayTimerRef.current = undefined;
-        setPlaybackState("idle");
-        setTypedText("");
-        setCycle((value) => value + 1);
-      }, 620);
+        setPlaybackState("fading-out");
+        replayTimerRef.current = window.setTimeout(() => {
+          replayTimerRef.current = undefined;
+          setPlaybackState("idle");
+          setTypedText("");
+          setCycle((value) => value + 1);
+        }, 520);
+      }, 760);
     }, 900);
   }, [clearReplayTimer, playbackStateState, reducedMotion, shouldPause]);
+
+  useEffect(() => {
+    if (playbackStateState !== "resetting") return undefined;
+
+    const timer = window.setTimeout(() => {
+      const video = guideRef.current?.querySelector<HTMLVideoElement>(".video-tutorial-result-slot__media video");
+      if (!video) return;
+      try {
+        video.pause();
+        video.currentTime = 0.1;
+      } catch {
+        // The video may already be unloading between tutorial loops.
+      }
+    }, 260);
+
+    return () => window.clearTimeout(timer);
+  }, [playbackStateState]);
 
   useEffect(() => {
     const node = guideRef.current;
@@ -3536,9 +3558,9 @@ function VideoGenerationTutorial({ paused = false }: { paused?: boolean }) {
     },
   ];
   const firstArrowDrawing = playbackState === "arrow-to-parameters";
-  const firstArrowDrawn = ["parameters", "arrow-to-result", "result-preparing", "result-entering", "result-playing", "complete", "fading-out", "final"].includes(playbackState);
+  const firstArrowDrawn = ["parameters", "arrow-to-result", "result-preparing", "result-entering", "result-playing", "complete", "resetting", "fading-out", "final"].includes(playbackState);
   const secondArrowDrawing = playbackState === "arrow-to-result";
-  const secondArrowDrawn = ["result-preparing", "result-entering", "result-playing", "complete", "fading-out", "final"].includes(playbackState);
+  const secondArrowDrawn = ["result-preparing", "result-entering", "result-playing", "complete", "resetting", "fading-out", "final"].includes(playbackState);
 
   return (
     <PreviewState eyebrow="快速教程" title="视频生成快速教程" description="上传参考图，输入提示词，确认比例后生成视频。">
@@ -5322,8 +5344,14 @@ function Toast({ message, onClose }: { message: string; onClose: () => void }) {
   }, [onClose]);
 
   return (
-    <div className="studio-toast">
-      {message}
+    <div className="studio-toast" role="status" aria-live="polite">
+      <span className="studio-toast__icon" aria-hidden="true">
+        <AlertTriangle className="size-4" />
+      </span>
+      <span className="studio-toast__body">
+        <strong>{message}</strong>
+        <small>请根据提示处理当前操作，必要时稍后再试。</small>
+      </span>
     </div>
   );
 }
