@@ -4,7 +4,7 @@
 
 import Link from "next/link";
 import { ArrowRight, Search } from "lucide-react";
-import { useCallback, useEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type PointerEvent as ReactPointerEvent } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 
 import { WorkbenchShell } from "@/components/workbench-shell";
@@ -363,6 +363,7 @@ function TemplateBrowserPanel({
   onCategoryChange: (value: TemplateCategory | "全部") => void;
 }) {
   const gridRef = useRef<HTMLDivElement | null>(null);
+  const gridMotionKey = `${scope}:${category}:${search.trim().toLowerCase()}`;
 
   const handleCategoryChange = (value: TemplateCategory | "全部") => {
     onCategoryChange(value);
@@ -423,11 +424,12 @@ function TemplateBrowserPanel({
         />
       </div>
 
-      <div ref={gridRef} className="template-center-grid" aria-label="模板列表">
-        {templates.length ? templates.map((template) => (
+      <div key={gridMotionKey} ref={gridRef} className="template-center-grid" aria-label="模板列表">
+        {templates.length ? templates.map((template, index) => (
           <article
             key={template.id}
             className="template-center-card"
+            style={{ "--template-card-delay": `${Math.min(index * 20, 220)}ms` } as CSSProperties}
           >
             <span className="template-center-card__thumb">
               <img src={template.thumbnail} alt={template.label} loading="lazy" />

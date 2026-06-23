@@ -2682,6 +2682,11 @@
     color: rgba(255, 255, 255, 0.62);
     font-size: 14px;
     font-weight: 600;
+    overflow: hidden;
+    transition:
+      border-color var(--motion-fast) var(--ease-enter),
+      background var(--motion-fast) var(--ease-enter),
+      color var(--motion-fast) var(--ease-enter);
   }
 
   .shell-root--tool-templates .template-center-tab::after {
@@ -2693,6 +2698,12 @@
     border-radius: 999px;
     background: transparent;
     content: "";
+    opacity: 0;
+    transform: scaleX(0.36);
+    transition:
+      opacity var(--motion-fast) var(--ease-enter),
+      transform var(--motion-fast) var(--ease-enter),
+      background var(--motion-fast) var(--ease-enter);
   }
 
   .shell-root--tool-templates .template-center-tab + .template-center-tab {
@@ -2707,6 +2718,8 @@
 
   .shell-root--tool-templates .template-center-tab.is-active::after {
     background: #ff2b88;
+    opacity: 1;
+    transform: scaleX(1);
   }
 
   .shell-root--tool-templates .template-center-search {
@@ -2760,6 +2773,11 @@
     color: rgba(255, 255, 255, 0.66);
     padding: 0 16px;
     white-space: nowrap;
+    transition:
+      transform var(--motion-fast) var(--ease-enter),
+      border-color var(--motion-fast) var(--ease-enter),
+      background var(--motion-fast) var(--ease-enter),
+      color var(--motion-fast) var(--ease-enter);
   }
 
   .shell-root--tool-templates .template-center-category span {
@@ -2790,11 +2808,20 @@
     color: #ff3b91;
   }
 
+  .shell-root--tool-templates .template-center-category:hover {
+    transform: translateY(-1px);
+  }
+
+  .shell-root--tool-templates .template-center-category.is-active {
+    box-shadow: inset 0 0 0 1px rgba(255, 43, 136, 0.08);
+  }
+
   .shell-root--tool-templates .template-center-grid {
     grid-template-columns: repeat(auto-fill, minmax(min(100%, 260px), 1fr));
     gap: 18px;
     min-height: min(720px, calc(100vh - 270px));
     padding-bottom: 24px;
+    animation: template-grid-reveal var(--motion-layout) var(--ease-enter) both;
   }
 
   .shell-root--tool-templates .template-center-card {
@@ -2805,19 +2832,37 @@
     border-radius: 13px;
     background: #141418;
     padding: 10px;
-    transition: transform 180ms ease, border-color 180ms ease, background 180ms ease;
+    animation: template-card-reveal var(--motion-entrance) var(--ease-enter) both;
+    animation-delay: var(--template-card-delay, 0ms);
+    transition:
+      transform var(--motion-fast) var(--ease-enter),
+      border-color var(--motion-fast) var(--ease-enter),
+      background var(--motion-fast) var(--ease-enter),
+      box-shadow var(--motion-fast) var(--ease-enter);
   }
 
   .shell-root--tool-templates .template-center-card:hover {
     transform: translateY(-2px);
-    border-color: rgba(255, 43, 136, 0.34);
+    border-color: rgba(255, 43, 136, 0.32);
     background: #18181e;
+    box-shadow: 0 14px 32px rgba(0, 0, 0, 0.26);
   }
 
   .shell-root--tool-templates .template-center-card__thumb {
     aspect-ratio: 4 / 3;
     border-radius: 8px;
     background: #101014;
+  }
+
+  .shell-root--tool-templates .template-center-card__thumb img {
+    transition:
+      transform var(--motion-layout) var(--ease-enter),
+      filter var(--motion-fast) var(--ease-enter);
+  }
+
+  .shell-root--tool-templates .template-center-card:hover .template-center-card__thumb img {
+    filter: brightness(1.04);
+    transform: scale(1.02);
   }
 
   .shell-root--tool-templates .template-center-card__ratio {
@@ -2878,11 +2923,15 @@
     background: #18181d;
     color: rgba(255, 255, 255, 0.88);
     font-size: 14px;
-    transition: border-color 180ms ease, background 180ms ease, color 180ms ease;
+    transition:
+      transform var(--motion-fast) var(--ease-enter),
+      border-color var(--motion-fast) var(--ease-enter),
+      background var(--motion-fast) var(--ease-enter),
+      color var(--motion-fast) var(--ease-enter);
   }
 
   .shell-root--tool-templates .template-center-card__clone svg {
-    transition: transform 180ms ease;
+    transition: transform var(--motion-fast) var(--ease-enter);
   }
 
   .shell-root--tool-templates .template-center-card__clone:hover {
@@ -2895,11 +2944,65 @@
     transform: translateX(2px);
   }
 
+  .shell-root--tool-templates .template-center-card__clone:active {
+    transform: translateY(1px);
+  }
+
   .shell-root--tool-templates .template-center-empty {
     min-height: 220px;
     align-content: center;
     justify-items: center;
     text-align: center;
+    animation: template-grid-reveal var(--motion-layout) var(--ease-enter) both;
+  }
+
+  @keyframes template-grid-reveal {
+    from {
+      opacity: 0;
+      transform: translateY(6px);
+    }
+
+    to {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  }
+
+  @keyframes template-card-reveal {
+    from {
+      opacity: 0;
+      transform: translateY(8px);
+    }
+
+    to {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .shell-root--tool-templates .template-center-grid,
+    .shell-root--tool-templates .template-center-card,
+    .shell-root--tool-templates .template-center-empty {
+      animation: none;
+    }
+
+    .shell-root--tool-templates .template-center-tab,
+    .shell-root--tool-templates .template-center-tab::after,
+    .shell-root--tool-templates .template-center-category,
+    .shell-root--tool-templates .template-center-card,
+    .shell-root--tool-templates .template-center-card__thumb img,
+    .shell-root--tool-templates .template-center-card__clone,
+    .shell-root--tool-templates .template-center-card__clone svg {
+      transition: none;
+    }
+
+    .shell-root--tool-templates .template-center-category:hover,
+    .shell-root--tool-templates .template-center-card:hover,
+    .shell-root--tool-templates .template-center-card:hover .template-center-card__thumb img,
+    .shell-root--tool-templates .template-center-card__clone:hover svg {
+      transform: none;
+    }
   }
 
   @media (min-width: 768px) {
