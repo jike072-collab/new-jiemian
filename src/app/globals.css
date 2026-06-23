@@ -4408,6 +4408,11 @@
     gap: 18px;
   }
 
+  .account-subpage--recharge {
+    width: min(100%, 1180px);
+    margin-inline: auto;
+  }
+
   .account-subpage-header {
     display: grid;
     gap: 12px;
@@ -4422,6 +4427,10 @@
     align-items: flex-end;
     justify-content: space-between;
     gap: 18px;
+  }
+
+  .account-subpage-header__main > div {
+    min-width: 0;
   }
 
   .account-subpage-breadcrumb {
@@ -4445,6 +4454,10 @@
     color: rgba(255, 255, 255, 0.58);
     font-size: 14px;
     line-height: 1.45;
+  }
+
+  .account-subpage-header__meta {
+    margin-top: 14px;
   }
 
   .account-subpage-header__actions {
@@ -4473,6 +4486,82 @@
     color: rgba(255, 255, 255, 0.9);
     font-size: 16px;
     font-weight: 720;
+  }
+
+  .recharge-account-meta {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+  }
+
+  .recharge-account-meta__item {
+    display: inline-flex;
+    min-height: 34px;
+    align-items: center;
+    gap: 8px;
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: 999px;
+    background: rgba(16, 16, 20, 0.72);
+    padding: 0 12px;
+    color: rgba(255, 255, 255, 0.52);
+    font-size: 12.5px;
+    line-height: 1;
+  }
+
+  .recharge-account-meta__item strong {
+    color: rgba(255, 255, 255, 0.9);
+    font-size: 13px;
+    font-weight: 720;
+  }
+
+  .recharge-account-meta__skeleton {
+    width: 68px;
+    height: 12px;
+    border-radius: 999px;
+    background:
+      linear-gradient(90deg, rgba(255, 255, 255, 0.05), rgba(255, 255, 255, 0.1), rgba(255, 255, 255, 0.05)),
+      rgba(255, 255, 255, 0.035);
+    background-size: 220% 100%;
+  }
+
+  .recharge-header-actions {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+    gap: 8px;
+  }
+
+  .recharge-header-action {
+    display: inline-flex;
+    min-height: 36px;
+    align-items: center;
+    justify-content: center;
+    gap: 7px;
+    border: 1px solid rgba(255, 255, 255, 0.09);
+    border-radius: 10px;
+    background: rgba(255, 255, 255, 0.04);
+    padding: 0 12px;
+    color: rgba(255, 255, 255, 0.68);
+    font-size: 13px;
+    font-weight: 640;
+    transition:
+      transform var(--motion-fast) var(--ease-enter),
+      border-color var(--motion-fast) var(--ease-enter),
+      background var(--motion-fast) var(--ease-enter),
+      color var(--motion-fast) var(--ease-enter);
+  }
+
+  .recharge-header-action:hover {
+    border-color: rgba(255, 43, 136, 0.24);
+    background: rgba(255, 255, 255, 0.065);
+    color: rgba(255, 255, 255, 0.9);
+    transform: translateY(-1px);
+  }
+
+  .recharge-center-shell {
+    display: grid;
+    gap: 18px;
+    min-width: 0;
   }
 
   .recharge-center-tabs,
@@ -4511,9 +4600,58 @@
 
   .recharge-center-tab.is-active,
   .usage-record-filter.is-active {
-    background: linear-gradient(90deg, rgba(255, 43, 136, 0.2), rgba(164, 82, 255, 0.18));
+    background: linear-gradient(90deg, rgba(255, 43, 136, 0.16), rgba(164, 82, 255, 0.14));
     color: #fff;
-    box-shadow: inset 0 0 0 1px rgba(255, 43, 136, 0.18);
+    box-shadow: inset 0 0 0 1px rgba(255, 43, 136, 0.15);
+  }
+
+  .recharge-account-error {
+    display: flex;
+    align-items: center;
+    gap: 9px;
+    border: 1px solid rgba(255, 205, 96, 0.24);
+    border-radius: 12px;
+    background: rgba(255, 205, 96, 0.08);
+    padding: 11px 13px;
+    color: rgba(255, 236, 190, 0.88);
+    font-size: 13px;
+  }
+
+  .recharge-account-error span {
+    flex: 1;
+    min-width: 0;
+  }
+
+  .recharge-account-error button {
+    border: 0;
+    background: transparent;
+    color: #ff8ac4;
+    font-size: 13px;
+    font-weight: 700;
+  }
+
+  .recharge-layout {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: start;
+    gap: 22px;
+    min-width: 0;
+  }
+
+  .recharge-layout__selection {
+    flex: 1 1 720px;
+    min-width: 0;
+  }
+
+  .recharge-layout__summary {
+    flex: 0 1 360px;
+    min-width: 0;
+    width: min(100%, 360px);
+  }
+
+  .recharge-layout__summary {
+    position: sticky;
+    top: 18px;
   }
 
   .recharge-center-panel {
@@ -4537,7 +4675,7 @@
     overflow: hidden;
     border: 1px solid rgba(255, 255, 255, 0.08);
     border-radius: 14px;
-    background: #141418;
+    background: rgba(20, 20, 24, 0.96);
     transition:
       transform var(--motion-fast) var(--ease-enter),
       border-color var(--motion-fast) var(--ease-enter),
@@ -4561,11 +4699,10 @@
 
   .recharge-plan-card:hover,
   .credit-topup-card:hover,
-  .custom-recharge-card:hover,
-  .recharge-confirm-panel:hover {
+  .custom-recharge-card:hover {
     border-color: rgba(255, 43, 136, 0.2);
     background: #18181e;
-    box-shadow: 0 14px 34px rgba(0, 0, 0, 0.22);
+    box-shadow: 0 14px 30px rgba(0, 0, 0, 0.2);
     transform: translateY(-2px);
   }
 
@@ -4579,6 +4716,13 @@
 
   .recharge-plan-card.is-recommended {
     border-color: rgba(164, 82, 255, 0.32);
+  }
+
+  .custom-recharge-card.is-active {
+    border-color: rgba(255, 43, 136, 0.42);
+    background:
+      radial-gradient(circle at 16% 0%, rgba(255, 43, 136, 0.12), transparent 42%),
+      #141418;
   }
 
   .recharge-card-check {
@@ -4682,7 +4826,7 @@
 
   .custom-recharge-card {
     display: grid;
-    grid-template-columns: minmax(180px, 1.2fr) minmax(180px, 0.9fr) minmax(130px, 0.7fr) auto;
+    grid-template-columns: minmax(180px, 1.2fr) minmax(180px, 0.9fr) minmax(130px, 0.7fr);
     align-items: end;
     gap: 14px;
     padding: 16px;
@@ -4747,8 +4891,13 @@
 
   .recharge-confirm-panel {
     display: grid;
-    gap: 14px;
-    padding: 16px;
+    gap: 16px;
+    border-color: rgba(255, 255, 255, 0.1);
+    background:
+      radial-gradient(circle at 18% 0%, rgba(164, 82, 255, 0.12), transparent 42%),
+      rgba(16, 16, 20, 0.98);
+    padding: 18px;
+    box-shadow: 0 18px 42px rgba(0, 0, 0, 0.22);
   }
 
   .recharge-confirm-panel__head {
@@ -4782,13 +4931,36 @@
     align-items: center;
     justify-content: space-between;
     gap: 12px;
+    min-height: 28px;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.055);
     color: rgba(255, 255, 255, 0.5);
     font-size: 13px;
+  }
+
+  .recharge-confirm-panel__lines div:last-child {
+    min-height: 38px;
+    border-bottom: 0;
   }
 
   .recharge-confirm-panel__lines strong {
     color: rgba(255, 255, 255, 0.9);
     font-weight: 720;
+    text-align: right;
+  }
+
+  .recharge-confirm-panel__lines div:last-child strong {
+    color: #ff72b5;
+    font-size: 20px;
+  }
+
+  .recharge-confirm-panel__note {
+    border: 1px solid rgba(255, 255, 255, 0.07);
+    border-radius: 10px;
+    background: rgba(255, 255, 255, 0.035);
+    padding: 10px 11px;
+    color: rgba(255, 255, 255, 0.5);
+    font-size: 12.5px;
+    line-height: 1.5;
   }
 
   .recharge-confirm-button {
@@ -4796,6 +4968,7 @@
     min-height: 40px;
     align-items: center;
     justify-content: center;
+    width: 100%;
     border: 1px solid rgba(255, 43, 136, 0.3);
     border-radius: 10px;
     background: linear-gradient(90deg, rgba(255, 43, 136, 0.92), rgba(164, 82, 255, 0.86));
@@ -6781,6 +6954,7 @@
     .user-center-link-button,
     .account-subpage-back,
     .account-subpage-link,
+    .recharge-header-action,
     .recharge-center-panel,
     .recharge-center-tab,
     .usage-record-filter,
@@ -6790,6 +6964,7 @@
     .custom-recharge-field input,
     .recharge-confirm-panel,
     .recharge-confirm-button,
+    .recharge-account-meta__skeleton,
     .user-center-usage__row,
     .user-center-usage__empty,
     .user-center-usage__row--skeleton span,
@@ -6835,10 +7010,10 @@
     .user-center-link-button:hover,
     .account-subpage-back:hover,
     .account-subpage-link:hover,
+    .recharge-header-action:hover,
     .recharge-plan-card:hover,
     .credit-topup-card:hover,
     .custom-recharge-card:hover,
-    .recharge-confirm-panel:hover,
     .recharge-confirm-button:hover:not(:disabled),
     .user-center-stat.is-updated .user-center-stat__value,
     .account-popover-card__primary:hover:not(:disabled),
@@ -8099,6 +8274,15 @@
     grid-template-columns: minmax(0, 1fr);
   }
 
+  .account-subpage--recharge {
+    width: 100%;
+  }
+
+  .recharge-layout__summary {
+    width: 100%;
+    position: static;
+  }
+
   .recharge-plan-grid {
     grid-template-columns: repeat(3, minmax(0, 1fr));
   }
@@ -8109,11 +8293,6 @@
 
   .custom-recharge-card {
     grid-template-columns: minmax(220px, 1fr) minmax(160px, 0.9fr) minmax(120px, 0.7fr);
-  }
-
-  .custom-recharge-card .recharge-confirm-button {
-    grid-column: 1 / -1;
-    width: fit-content;
   }
 
 }
@@ -8330,8 +8509,34 @@
     justify-content: stretch;
   }
 
+  .shell-panel--mobile-single .account-subpage-header__meta {
+    margin-top: 12px;
+  }
+
+  .shell-panel--mobile-single .recharge-header-actions,
+  .shell-panel--mobile-single .recharge-account-meta {
+    width: 100%;
+  }
+
+  .shell-panel--mobile-single .recharge-header-action,
+  .shell-panel--mobile-single .recharge-account-meta__item {
+    flex: 1;
+    min-width: 0;
+  }
+
   .shell-panel--mobile-single .account-subpage-summary {
     min-width: 0;
+  }
+
+  .shell-panel--mobile-single .recharge-layout {
+    gap: 14px;
+  }
+
+  .shell-panel--mobile-single .recharge-layout__selection,
+  .shell-panel--mobile-single .recharge-layout__summary {
+    flex-basis: 100%;
+    width: 100%;
+    position: static;
   }
 
   .shell-panel--mobile-single .recharge-center-tabs,
