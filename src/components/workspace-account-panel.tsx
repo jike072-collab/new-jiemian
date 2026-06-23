@@ -1,18 +1,23 @@
 "use client";
 
-import { CalendarCheck, Crown, Loader2, LogOut, Sparkles, UserRound } from "lucide-react";
+import { CalendarCheck, ChevronRight, Crown, Loader2, LogOut, RefreshCw, Sparkles, UserRound } from "lucide-react";
 
 import type { PublicAuthUser } from "@/lib/server/auth";
-import type { QuotaSnapshot, UsagePage } from "@/lib/server/quota";
+import type { QuotaSnapshot } from "@/lib/server/quota";
+import { cn } from "@/lib/utils";
+
+type AccountView = "center" | "recharge" | "usage";
 
 type WorkspaceAccountPanelProps = {
   user: PublicAuthUser | null;
   quota: QuotaSnapshot | null;
-  usage: UsagePage | null;
   loading: boolean;
+  accountError?: string;
+  accountView?: AccountView;
   onRefresh: () => void;
   onLogout: () => void;
   onOpenCenter?: () => void;
+  onOpenRecharge?: () => void;
 };
 
 function formatQuota(value: number | null | undefined) {
@@ -23,81 +28,94 @@ function formatQuota(value: number | null | undefined) {
 export function WorkspaceAccountPanel({
   user,
   quota,
-  usage,
   loading,
+  accountError = "",
+  accountView,
   onRefresh,
   onLogout,
   onOpenCenter,
+  onOpenRecharge,
 }: WorkspaceAccountPanelProps) {
   const displayName = user?.display_name || user?.username || "账户";
   const avatarText = displayName.slice(0, 2).toUpperCase();
-  const latestUsageCount = usage?.total ?? usage?.entries?.length ?? 0;
+  const pointsLabel = loading ? "加载中" : quota ? `${formatQuota(quota.quota_units)} 分` : "—";
+  const planLabel = loading ? "加载中" : quota ? "暂未开通" : "—";
+  const checkInLabel = loading ? "加载中" : "暂未开放";
+  const currentCenter = accountView === "center";
 
   return (
-    <div className="account-popover-card" role="dialog" aria-label="快捷账户卡片">
+    <div className="account-popover-card" role="dialog" aria-label="快捷账户面板">
       <div className="account-popover-card__head">
-        <div className="account-popover-card__avatar">{user ? avatarText : <UserRound className="size-5" />}</div>
+        <div className="account-popover-card__avatar">{user ? avatarText : <UserRound className="size-5" aria-hidden="true" />}</div>
         <div className="account-popover-card__identity">
           <strong>{displayName}</strong>
           <span>{user?.email || "登录后查看账户信息"}</span>
         </div>
-        <button
-          type="button"
-          className="account-popover-card__checkin"
-          onClick={onRefresh}
-          disabled
-          aria-label="签到暂未开放"
-        >
-          {loading ? <Loader2 className="size-4 animate-spin" /> : <CalendarCheck className="size-4" />}
-          签到
-        </button>
       </div>
 
+      {accountError && !loading ? (
+        <div className="account-popover-card__error" role="status">
+          <span>账户信息加载失败</span>
+          <button type="button" onClick={onRefresh} disabled={!user}>
+            <RefreshCw className="size-3.5" aria-hidden="true" />
+            重试
+          </button>
+        </div>
+      ) : null}
+
       <div className="account-popover-card__rows">
-        <div data-account-row="quota">
+        <div className="account-popover-row">
           <span>
             <Sparkles className="size-3.5" aria-hidden="true" />
-            积分
+            可用积分
           </span>
-          <strong>{loading ? "加载中" : `${formatQuota(quota?.quota_units)} 分`}</strong>
+          <strong>{pointsLabel}</strong>
+          <button type="button" onClick={onOpenRecharge} disabled={!user}>
+            充值
+          </button>
         </div>
-        <div data-account-row="plan">
+        <div className="account-popover-row">
           <span>
             <Crown className="size-3.5" aria-hidden="true" />
             当前套餐
           </span>
-          <strong>{loading ? "加载中" : quota ? "暂无套餐" : "—"}</strong>
+          <strong>{planLabel}</strong>
+          <button type="button" onClick={onOpenRecharge} disabled={!user}>
+            查看
+          </button>
         </div>
-        <div data-account-row="checkin">
+        <div className="account-popover-row">
           <span>
             <CalendarCheck className="size-3.5" aria-hidden="true" />
-            签到
+            每日签到
           </span>
-          <strong>今日未签到</strong>
+          <strong>{checkInLabel}</strong>
+          <button type="button" disabled>
+            签到
+          </button>
         </div>
       </div>
 
-      <p className="account-popover-card__hint">
-        {latestUsageCount ? `最近已有 ${formatQuota(latestUsageCount)} 条真实使用记录。` : "开始创作后，使用记录会自动出现在用户中心。"}
-      </p>
-
-      <div className="account-popover-card__actions">
+      <div className="account-popover-card__nav">
         <button
           type="button"
-          className="account-popover-card__primary"
+          className={cn("account-popover-nav-row", currentCenter && "is-current")}
           onClick={onOpenCenter}
-          disabled={!user}
+          disabled={!user || currentCenter}
+          aria-current={currentCenter ? "page" : undefined}
         >
-          用户中心
-        </button>
-        <button type="button" className="account-popover-card__secondary" onClick={onRefresh} disabled={!user || loading}>
-          {loading ? "刷新中" : "刷新账户"}
-        </button>
-        <button type="button" className="account-popover-card__logout" onClick={onLogout} disabled={!user || loading}>
-          <LogOut className="size-4" aria-hidden="true" />
-          退出登录
+          <span>
+            <UserRound className="size-4" aria-hidden="true" />
+            用户中心
+          </span>
+          <em>{currentCenter ? "当前位于用户中心" : <ChevronRight className="size-4" aria-hidden="true" />}</em>
         </button>
       </div>
+
+      <button type="button" className="account-popover-card__logout" onClick={onLogout} disabled={!user || loading}>
+        {loading ? <Loader2 className="size-4 animate-spin" aria-hidden="true" /> : <LogOut className="size-4" aria-hidden="true" />}
+        退出登录
+      </button>
     </div>
   );
 }

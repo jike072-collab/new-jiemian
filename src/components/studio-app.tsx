@@ -500,6 +500,7 @@ export function StudioApp() {
   const searchParams = useSearchParams();
   const prefersReducedMotion = useReducedMotion();
   const toolParam = searchParams.get("tool");
+  const accountParam = searchParams.get("account");
   const previewMode = searchParams.get("preview") === "1";
   const initialWorkspaceToolId = useMemo<WorkspaceToolId>(() => {
     if (toolParam) {
@@ -883,6 +884,13 @@ export function StudioApp() {
     applyTemplatePreset(templateParam);
   }, [applyTemplatePreset, templateParam]);
 
+  useEffect(() => {
+    if (accountParam !== "center" && accountParam !== "recharge" && accountParam !== "usage") return;
+    setAccountCenterOpen(true);
+    setAccountView(accountParam);
+    setAccountCloseSignal((value) => value + 1);
+  }, [accountParam]);
+
   const currentLibraryItems = useMemo(() => {
     const search = librarySearch.trim().toLowerCase();
     const filtered = library.filter((item) => (
@@ -907,6 +915,12 @@ export function StudioApp() {
   const handleOpenAccountCenter = useCallback(() => {
     setAccountCenterOpen(true);
     setAccountView("center");
+    setAccountCloseSignal((value) => value + 1);
+  }, []);
+
+  const handleOpenRechargeCenter = useCallback(() => {
+    setAccountCenterOpen(true);
+    setAccountView("recharge");
     setAccountCloseSignal((value) => value + 1);
   }, []);
 
@@ -987,8 +1001,8 @@ export function StudioApp() {
 
   const accountHeaderSlot = (
     <div className="hidden items-center gap-2 rounded-full border border-white/10 bg-white/[0.03] px-3 py-2 text-xs text-white/68 md:flex">
-      <span>额度</span>
-      <strong className="text-white">{quotaSnapshot ? `${quotaSnapshot.available_quota_units}` : "—"}</strong>
+      <span>积分</span>
+      <strong className="text-white">{sessionLoading || accountLoading ? "加载中" : quotaSnapshot ? `${formatQuotaUnits(quotaSnapshot.quota_units)} 分` : "—"}</strong>
       <span className="text-white/38">/</span>
       <span>{sessionUser ? sessionUser.display_name : "未登录"}</span>
     </div>
@@ -2016,18 +2030,22 @@ export function StudioApp() {
         isAuthenticated={Boolean(sessionUser)}
         canAccessAdmin={sessionUser?.role === "admin"}
         accountName={sessionUser?.display_name || sessionUser?.username || null}
-        accountPointsLabel={sessionLoading || accountLoading ? "加载中" : quotaSnapshot ? String(quotaSnapshot.quota_units) : "—"}
+        accountPointsLabel={sessionLoading || accountLoading ? "加载中" : quotaSnapshot ? `${formatQuotaUnits(quotaSnapshot.quota_units)} 分` : "—"}
         headerRightSlot={accountHeaderSlot}
         accountCloseSignal={accountCloseSignal}
+        onOpenAccountCenter={handleOpenAccountCenter}
+        onOpenAccountRecharge={handleOpenRechargeCenter}
         accountSlot={(
           <WorkspaceAccountPanel
             user={sessionUser}
             quota={quotaSnapshot}
-            usage={usagePage}
             loading={sessionLoading || accountLoading}
+            accountError={accountDataError}
+            accountView={accountCenterOpen ? accountView : undefined}
             onRefresh={() => void refreshAccountSnapshot()}
             onLogout={() => void handleLogout()}
             onOpenCenter={handleOpenAccountCenter}
+            onOpenRecharge={handleOpenRechargeCenter}
           />
         )}
         contentMode={accountCenterOpen ? "account" : "default"}
@@ -2195,6 +2213,8 @@ function UserCenterWorkspace({
       quota={quota}
       usage={usage}
       loading={loading}
+      accountError={accountError}
+      onRefreshAccount={onRefreshAccount}
       onViewChange={onViewChange}
     />
   );
@@ -2205,19 +2225,34 @@ function UserCenterOverview({
   quota,
   usage,
   loading,
+  accountError,
+  onRefreshAccount,
   onViewChange,
 }: {
   user: PublicAuthUser | null;
   quota: QuotaSnapshot | null;
   usage: UsagePage | null;
   loading: boolean;
+  accountError: string;
+  onRefreshAccount: () => void;
   onViewChange: (view: AccountView) => void;
 }) {
   const usageEntries = usage?.entries?.slice(0, 6) || [];
   const quotaUnits = quota?.quota_units ?? null;
   const quotaValue = loading ? "加载中" : quota ? `${formatQuotaUnits(quota.quota_units)} 分` : "—";
-  const planValue = loading ? "加载中" : quota ? "暂无套餐" : "—";
-  const planNote = quota ? "暂未开通有效套餐" : "账户信息暂时无法加载";
+  const quotaNote = loading
+    ? "正在同步真实账户积分。"
+    : quota
+      ? "积分用于图片和视频创作。"
+      : "账户信息暂时无法加载。";
+  const planValue = loading ? "加载中" : quota ? "当前未开通套餐" : "—";
+  const planNote = loading
+    ? "正在同步套餐状态。"
+    : quota
+      ? "当前使用按次积分模式。"
+      : "账户信息暂时无法加载。";
+  const checkInValue = loading ? "加载中" : "签到暂未开放";
+  const checkInNote = loading ? "正在确认签到状态。" : "开放后会在这里显示每日签到状态。";
   const previousQuotaUnitsRef = useRef<number | null>(quotaUnits);
   const [quotaChanged, setQuotaChanged] = useState(false);
 
@@ -2241,36 +2276,6 @@ function UserCenterOverview({
     };
   }, [quotaUnits]);
 
-  const stats = [
-    {
-      label: "积分",
-      value: quotaValue,
-      note: "参与活动可获取更多积分",
-      icon: Sparkles,
-      featured: true,
-      action: "立即充值",
-      onAction: () => onViewChange("recharge"),
-    },
-    {
-      label: "当前套餐",
-      value: planValue,
-      note: planNote,
-      icon: Crown,
-      featured: false,
-      action: "购买套餐",
-      onAction: () => onViewChange("recharge"),
-    },
-    {
-      label: "签到",
-      value: "今日未签到",
-      note: "签到能力待接入真实接口",
-      icon: CalendarCheck,
-      featured: false,
-      action: "签到暂未开放",
-      mutedAction: true,
-    },
-  ];
-
   return (
     <section className="user-center-page" aria-label="用户中心">
       <header className="user-center-page__header">
@@ -2278,38 +2283,69 @@ function UserCenterOverview({
           <h2>用户中心</h2>
           <p>查看积分、套餐与签到信息</p>
         </div>
-        <button type="button" className="user-center-refresh" onClick={() => onViewChange("recharge")} disabled={!user}>
-          <WalletCards className="size-4" aria-hidden="true" />
-          充值
-        </button>
       </header>
 
       <div className="user-center-page__grid">
         <div className="user-center-page__main">
-          <div className="user-center-stats">
-            {stats.map((item) => {
-              const Icon = item.icon;
-              return (
-                <article key={item.label} className={cn("user-center-stat", item.featured && "is-featured", item.featured && quotaChanged && "is-updated")}>
-                  <span className="user-center-stat__icon">
-                    <Icon className="size-4" aria-hidden="true" />
-                  </span>
-                  <span className="user-center-stat__label">{item.label}</span>
-                  <strong className={item.featured ? "user-center-stat__value" : undefined}>{item.value}</strong>
-                  <small>{item.note}</small>
-                  {item.action ? (
-                    <button
-                      type="button"
-                      className={cn("user-center-stat__button", item.mutedAction && "user-center-stat__button--muted")}
-                      onClick={item.onAction}
-                      disabled={!user || item.mutedAction}
-                    >
-                      {item.action}
-                    </button>
-                  ) : null}
-                </article>
-              );
-            })}
+          {accountError && !loading ? (
+            <div className="user-center-account-alert" role="status">
+              <AlertTriangle className="size-4" aria-hidden="true" />
+              <span>{accountError}</span>
+              <button type="button" onClick={onRefreshAccount} disabled={!user}>重试</button>
+            </div>
+          ) : null}
+
+          <div className="user-center-account-summary">
+            <article className={cn("user-center-points-card", quotaChanged && "is-updated")}>
+              <span className="user-center-card-icon user-center-card-icon--primary">
+                <Sparkles className="size-5" aria-hidden="true" />
+              </span>
+              <div className="user-center-points-card__copy">
+                <span>当前可用积分</span>
+                <strong className="user-center-points-card__value">{quotaValue}</strong>
+                <p>{quotaNote}</p>
+              </div>
+              <div className="user-center-points-card__actions">
+                <button type="button" className="user-center-action user-center-action--primary" onClick={() => onViewChange("recharge")} disabled={!user}>
+                  <WalletCards className="size-4" aria-hidden="true" />
+                  立即充值
+                </button>
+                <button type="button" className="user-center-action" onClick={() => onViewChange("usage")} disabled={!user}>
+                  <History className="size-4" aria-hidden="true" />
+                  查看记录
+                </button>
+              </div>
+            </article>
+
+            <div className="user-center-side-cards">
+              <article className="user-center-mini-card">
+                <span className="user-center-card-icon">
+                  <Crown className="size-4" aria-hidden="true" />
+                </span>
+                <div>
+                  <span>当前套餐</span>
+                  <strong>{planValue}</strong>
+                  <p>{planNote}</p>
+                </div>
+                <button type="button" className="user-center-mini-card__action" onClick={() => onViewChange("recharge")} disabled={!user}>
+                  查看套餐
+                </button>
+              </article>
+
+              <article className="user-center-mini-card">
+                <span className="user-center-card-icon">
+                  <CalendarCheck className="size-4" aria-hidden="true" />
+                </span>
+                <div>
+                  <span>每日签到</span>
+                  <strong>{checkInValue}</strong>
+                  <p>{checkInNote}</p>
+                </div>
+                <button type="button" className="user-center-mini-card__action" disabled>
+                  暂未开放
+                </button>
+              </article>
+            </div>
           </div>
 
           <section className="user-center-usage">

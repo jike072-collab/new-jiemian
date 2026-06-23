@@ -2,7 +2,6 @@
 
 import Link from "next/link";
 import {
-  CalendarCheck,
   ChevronDown,
   CreditCard,
   LogIn,
@@ -43,6 +42,8 @@ type WorkbenchShellProps = {
   headerRightSlot?: ReactNode;
   accountSlot?: ReactNode;
   accountCloseSignal?: number;
+  onOpenAccountCenter?: () => void;
+  onOpenAccountRecharge?: () => void;
   parameterSlot: ReactNode;
   previewSlot: ReactNode;
   mobileActionSlot?: ReactNode;
@@ -61,6 +62,8 @@ export function WorkbenchShell({
   headerRightSlot,
   accountSlot,
   accountCloseSignal,
+  onOpenAccountCenter,
+  onOpenAccountRecharge,
   parameterSlot,
   previewSlot,
   mobileActionSlot,
@@ -77,6 +80,7 @@ export function WorkbenchShell({
   const drawerButtonRef = useRef<HTMLButtonElement>(null);
   const rootRef = useRef<HTMLDivElement>(null);
   const desktopAccountRef = useRef<HTMLDivElement>(null);
+  const lastAccountTriggerRef = useRef<HTMLElement | null>(null);
   const accountCloseTimerRef = useRef<number | null>(null);
   const previousOverflowRef = useRef("");
 
@@ -85,7 +89,8 @@ export function WorkbenchShell({
   const contentOnly = contentMode === "account";
   const singlePaneMobile = contentOnly || activeTool.id === "templates" || activeTool.id === "library";
 
-  const openAccountPopover = useCallback(() => {
+  const openAccountPopover = useCallback((trigger?: HTMLElement | null) => {
+    if (trigger) lastAccountTriggerRef.current = trigger;
     if (accountCloseTimerRef.current) {
       window.clearTimeout(accountCloseTimerRef.current);
       accountCloseTimerRef.current = null;
@@ -95,7 +100,7 @@ export function WorkbenchShell({
     setAccountOpen(true);
   }, []);
 
-  const closeAccountPopover = useCallback(() => {
+  const closeAccountPopover = useCallback((options?: { restoreFocus?: boolean }) => {
     if (accountCloseTimerRef.current) {
       window.clearTimeout(accountCloseTimerRef.current);
       accountCloseTimerRef.current = null;
@@ -106,15 +111,16 @@ export function WorkbenchShell({
       setAccountPopoverVisible(false);
       setAccountPopoverClosing(false);
       accountCloseTimerRef.current = null;
+      if (options?.restoreFocus !== false) lastAccountTriggerRef.current?.focus();
     }, 140);
   }, []);
 
-  const toggleAccountPopover = useCallback(() => {
+  const toggleAccountPopover = useCallback((trigger?: HTMLElement | null) => {
     if (accountOpen) {
       closeAccountPopover();
       return;
     }
-    openAccountPopover();
+    openAccountPopover(trigger);
   }, [accountOpen, closeAccountPopover, openAccountPopover]);
 
   useEffect(() => {
@@ -138,14 +144,14 @@ export function WorkbenchShell({
   useEffect(() => {
     if (!accountCloseSignal) return;
     const frame = window.requestAnimationFrame(() => {
-      closeAccountPopover();
+      closeAccountPopover({ restoreFocus: false });
     });
     return () => window.cancelAnimationFrame(frame);
   }, [accountCloseSignal, closeAccountPopover]);
 
   useEffect(() => {
     const frame = window.requestAnimationFrame(() => {
-      closeAccountPopover();
+      closeAccountPopover({ restoreFocus: false });
     });
     return () => window.cancelAnimationFrame(frame);
   }, [closeAccountPopover, state.activeToolId, contentMode]);
@@ -279,6 +285,8 @@ export function WorkbenchShell({
             accountSlot={accountSlot}
             accountContainerRef={desktopAccountRef}
             onToggleAccount={toggleAccountPopover}
+            onOpenAccountCenter={onOpenAccountCenter}
+            onOpenAccountRecharge={onOpenAccountRecharge}
           />
 
           <section className={cn("shell-panel shell-panel--controls", singlePaneMobile && "shell-panel--mobile-single-hidden")}>
@@ -322,7 +330,7 @@ function Header({
   isAuthenticated: boolean;
   accountName?: string | null;
   onToggleDrawer: () => void;
-  onToggleAccount: () => void;
+  onToggleAccount: (trigger?: HTMLElement | null) => void;
   accountOpen: boolean;
   accountPopoverVisible: boolean;
   accountPopoverClosing: boolean;
@@ -355,7 +363,7 @@ function Header({
       <div className="shell-header__actions">
         {headerRightSlot}
         {isAuthenticated ? (
-          <button type="button" className="shell-account" onClick={onToggleAccount} title={accountName || "账户"}>
+          <button type="button" className="shell-account" onClick={(event) => onToggleAccount(event.currentTarget)} title={accountName || "账户"}>
             <span className="shell-account__avatar">{(accountName || "账户").slice(0, 2).toUpperCase()}</span>
             <span className="shell-account__name">{accountName || "账户"}</span>
             <ChevronDown className={cn("size-4 transition", accountOpen && "rotate-180")} />
@@ -399,6 +407,8 @@ function DesktopNavigation({
   accountSlot,
   accountContainerRef,
   onToggleAccount,
+  onOpenAccountCenter,
+  onOpenAccountRecharge,
 }: {
   activeToolId: WorkspaceToolId;
   onSelect: (action: WorkspaceAction, tool: WorkspaceToolId) => void;
@@ -413,7 +423,9 @@ function DesktopNavigation({
   accountCenterActive: boolean;
   accountSlot?: ReactNode;
   accountContainerRef: RefObject<HTMLDivElement | null>;
-  onToggleAccount: () => void;
+  onToggleAccount: (trigger?: HTMLElement | null) => void;
+  onOpenAccountCenter?: () => void;
+  onOpenAccountRecharge?: () => void;
 }) {
   const displayName = accountName || "账户";
   const avatarText = displayName.slice(0, 2).toUpperCase();
@@ -462,22 +474,24 @@ function DesktopNavigation({
       >
         {isAuthenticated ? (
           <>
-            <button type="button" className="shell-nav-account__main shell-nav-account__main--button" onClick={onToggleAccount} aria-expanded={accountOpen}>
+            <button type="button" className="shell-nav-account__main shell-nav-account__main--button" onClick={(event) => onToggleAccount(event.currentTarget)} aria-expanded={accountOpen}>
               <span className="shell-nav-account__avatar">{avatarText}</span>
               <span className="shell-nav-account__copy">
+                <strong>{displayName}</strong>
                 <span>剩余积分 {accountPointsLabel || "—"}</span>
               </span>
+              <ChevronDown className={cn("shell-nav-account__chevron size-4", accountOpen && "is-open")} aria-hidden="true" />
             </button>
             <div className="shell-nav-account__actions is-split">
               <button
                 type="button"
-                className={cn("shell-nav-account__button shell-nav-account__button--checkin", accountCenterActive && "is-active")}
-                onClick={onToggleAccount}
+                className={cn("shell-nav-account__button", accountCenterActive && "is-active")}
+                onClick={onOpenAccountCenter || ((event) => onToggleAccount(event.currentTarget))}
               >
-                <CalendarCheck className="size-4" aria-hidden="true" />
-                签到
+                <UserRound className="size-4" aria-hidden="true" />
+                用户中心
               </button>
-              <button type="button" className="shell-nav-account__button shell-nav-account__button--secondary" onClick={onToggleAccount}>
+              <button type="button" className="shell-nav-account__button shell-nav-account__button--primary" onClick={onOpenAccountRecharge || ((event) => onToggleAccount(event.currentTarget))}>
                 <CreditCard className="size-4" aria-hidden="true" />
                 充值
               </button>
