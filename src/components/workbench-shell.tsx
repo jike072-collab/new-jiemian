@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import {
+  CalendarCheck,
   ChevronDown,
   LogIn,
   Menu,
@@ -460,21 +461,21 @@ function DesktopNavigation({
       >
         {isAuthenticated ? (
           <>
-            <div className="shell-nav-account__main">
+            <button type="button" className="shell-nav-account__main shell-nav-account__main--button" onClick={onToggleAccount} aria-expanded={accountOpen}>
               <span className="shell-nav-account__avatar">{avatarText}</span>
               <span className="shell-nav-account__copy">
                 <strong>{displayName}</strong>
                 <span>剩余积分 {accountPointsLabel || "0"}</span>
               </span>
-            </div>
+            </button>
             <div className="shell-nav-account__actions is-split">
               <button
                 type="button"
                 className={cn("shell-nav-account__button", accountCenterActive && "is-active")}
                 onClick={onToggleAccount}
               >
-                <UserRound className="size-4" aria-hidden="true" />
-                账户中心
+                <CalendarCheck className="size-4" aria-hidden="true" />
+                签到
               </button>
               <button type="button" className="shell-nav-account__button shell-nav-account__button--secondary" onClick={onToggleAccount}>
                 充值

@@ -166,26 +166,51 @@
 
   .auth-password {
     display: grid;
-    grid-template-columns: minmax(0, 1fr) 42px;
+    grid-template-columns: 32px minmax(0, 1fr) 42px;
     align-items: center;
     border: 1px solid var(--border-subtle);
     border-radius: var(--radius-control);
     background: var(--surface);
   }
 
+  .auth-password > svg {
+    justify-self: center;
+    color: var(--muted-strong);
+  }
+
   .auth-password input {
+    width: 100%;
+    min-width: 0;
+    padding-left: 0;
     border: 0;
     background: transparent;
   }
 
   .auth-password button {
+    position: relative;
+    z-index: 1;
     display: grid;
     width: 42px;
     height: 42px;
     place-items: center;
     border: 0;
+    border-radius: 10px;
     background: transparent;
     color: var(--muted-strong);
+    cursor: pointer;
+    transition:
+      transform var(--motion-fast) var(--ease-enter),
+      background var(--motion-fast) var(--ease-enter),
+      color var(--motion-fast) var(--ease-enter);
+  }
+
+  .auth-password button:hover:not(:disabled) {
+    background: transparent;
+    color: var(--foreground);
+  }
+
+  .auth-password button:active:not(:disabled) {
+    transform: scale(0.94);
   }
 
   .auth-submit {
@@ -322,6 +347,8 @@
   }
 
   .shell-nav {
+    position: relative;
+    z-index: 30;
     display: flex;
     flex-direction: column;
     overflow: visible;
@@ -792,6 +819,22 @@
     gap: 7px;
   }
 
+  .shell-nav-account__main--button {
+    width: 100%;
+    border: 0;
+    background: transparent;
+    padding: 0;
+    color: inherit;
+    cursor: pointer;
+    text-align: left;
+  }
+
+  .shell-nav-account__main--button:focus-visible {
+    border-radius: 10px;
+    box-shadow: 0 0 0 3px rgba(255, 43, 136, 0.14);
+    outline: none;
+  }
+
   .shell-nav-account__avatar {
     display: grid;
     width: 27px;
@@ -896,8 +939,8 @@
     position: absolute;
     left: 0;
     bottom: calc(100% + 10px);
-    z-index: 95;
-    width: min(310px, calc(100vw - 28px));
+    z-index: 120;
+    width: min(370px, calc(100vw - 28px));
     animation: account-popover-open 260ms var(--ease-enter) both;
     transform-origin: bottom left;
   }
@@ -930,7 +973,7 @@
 
   .account-popover-card__head {
     display: grid;
-    grid-template-columns: 40px minmax(0, 1fr) 30px;
+    grid-template-columns: 40px minmax(0, 1fr) auto;
     align-items: center;
     gap: 10px;
   }
@@ -972,15 +1015,21 @@
     font-size: 12px;
   }
 
-  .account-popover-card__refresh {
-    display: grid;
-    width: 32px;
+  .account-popover-card__checkin {
+    display: inline-flex;
+    width: auto;
+    min-width: 68px;
     height: 32px;
-    place-items: center;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
     border: 1px solid rgba(255, 255, 255, 0.08);
     border-radius: 10px;
     background: rgba(255, 255, 255, 0.04);
+    padding: 0 9px;
     color: rgba(255, 255, 255, 0.7);
+    font-size: 12px;
+    font-weight: 650;
     transition:
       transform var(--motion-fast) var(--ease-enter),
       border-color var(--motion-fast) var(--ease-enter),
@@ -989,17 +1038,17 @@
       opacity var(--motion-fast) var(--ease-enter);
   }
 
-  .account-popover-card__refresh:hover:not(:disabled) {
+  .account-popover-card__checkin:hover:not(:disabled) {
     border-color: rgba(255, 43, 136, 0.3);
     background: rgba(255, 43, 136, 0.08);
     color: #fff;
   }
 
-  .account-popover-card__refresh:active:not(:disabled) {
+  .account-popover-card__checkin:active:not(:disabled) {
     transform: translateY(1px);
   }
 
-  .account-popover-card__refresh:disabled {
+  .account-popover-card__checkin:disabled {
     cursor: not-allowed;
     opacity: 0.52;
   }
@@ -1161,6 +1210,8 @@
   }
 
   .shell-panel {
+    position: relative;
+    z-index: 1;
     display: flex;
     flex-direction: column;
     overflow: hidden;
@@ -2459,18 +2510,31 @@
     border-radius: 4px;
     background: color-mix(in srgb, var(--surface) 22%, transparent);
     transition:
+      transform var(--motion-fast) var(--ease-enter),
       border-color var(--motion-base),
       background var(--motion-base),
       box-shadow var(--motion-base);
   }
 
   .studio-ratio__item:hover {
+    border-color: color-mix(in srgb, var(--primary) 18%, transparent);
     background: transparent;
+    transform: translateY(-1px);
   }
 
   .studio-ratio__item:hover::before {
-    opacity: 0.46;
+    opacity: 0.62;
     transform: scale(1);
+  }
+
+  .studio-ratio__item:hover .studio-ratio__shape {
+    border-color: color-mix(in srgb, var(--primary) 64%, transparent);
+    background: color-mix(in srgb, var(--primary) 18%, transparent);
+    transform: scale(1.045);
+  }
+
+  .studio-ratio__item:hover .studio-ratio__label {
+    color: color-mix(in srgb, var(--primary) 86%, #fff 14%);
   }
 
   .studio-ratio__item:focus-visible {
@@ -6134,11 +6198,14 @@
     .shell-nav-account__avatar,
     .shell-nav-account__popover,
     .shell-nav-account__popover.is-closing,
+    .shell-nav-account__main--button,
     .shell-header-account__popover,
     .shell-header-account__popover.is-closing,
     .account-popover-card,
+    .account-popover-card__checkin,
     .account-popover-card__rows div,
     .account-popover-card__rows div::after,
+    .auth-password button,
     .studio-custom-select__menu,
     .studio-custom-select__option,
     .studio-library-confirm,
@@ -6166,6 +6233,7 @@
     .studio-mode__button,
     .studio-ratio__item,
     .studio-ratio__shape,
+    .studio-ratio__label,
     .studio-upload,
     .studio-upload::before,
     .studio-upload__content,
@@ -6186,6 +6254,8 @@
     .studio-primary-action:hover:not(:disabled),
     .studio-mode__button:hover,
     .studio-ratio__item:hover,
+    .studio-ratio__item:hover .studio-ratio__shape,
+    .auth-password button:active:not(:disabled),
     .studio-secondary-button:hover,
     .studio-upload:hover,
     .studio-upload.is-dragging .studio-upload__content,

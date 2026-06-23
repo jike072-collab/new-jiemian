@@ -1,6 +1,6 @@
 "use client";
 
-import { ArrowRight, CalendarCheck, Crown, Loader2, LogOut, RefreshCw, Sparkles, UserRound } from "lucide-react";
+import { CalendarCheck, Crown, Loader2, LogOut, Sparkles, UserRound } from "lucide-react";
 
 import type { PublicAuthUser } from "@/lib/server/auth";
 import type { BillingOrder, PublicPaymentChannelConfig } from "@/lib/server/billing";
@@ -61,12 +61,13 @@ export function WorkspaceAccountPanel({
         </div>
         <button
           type="button"
-          className="account-popover-card__refresh"
+          className="account-popover-card__checkin"
           onClick={onRefresh}
-          disabled={loading}
-          aria-label="刷新账户信息"
+          disabled
+          aria-label="签到暂未开放"
         >
-          {loading ? <Loader2 className="size-4 animate-spin" /> : <RefreshCw className="size-4" />}
+          {loading ? <Loader2 className="size-4 animate-spin" /> : <CalendarCheck className="size-4" />}
+          签到
         </button>
       </div>
 
@@ -90,7 +91,7 @@ export function WorkspaceAccountPanel({
             <CalendarCheck className="size-3.5" aria-hidden="true" />
             签到
           </span>
-          <strong>连续签到 0 天</strong>
+          <strong>今日未签到</strong>
         </div>
       </div>
 
@@ -110,16 +111,9 @@ export function WorkspaceAccountPanel({
           {submitting ? <Loader2 className="size-4 animate-spin" /> : null}
           {preferredChannel ? "立即充值" : "充值暂未开放"}
         </button>
-        {isAccountCenter ? (
-          <button type="button" className="account-popover-card__secondary" disabled>
-            当前位于用户中心
-          </button>
-        ) : (
-          <button type="button" className="account-popover-card__secondary" onClick={onOpenCenter}>
-            进入用户中心
-            <ArrowRight className="size-4" aria-hidden="true" />
-          </button>
-        )}
+        <button type="button" className="account-popover-card__secondary" onClick={onOpenCenter} disabled={isAccountCenter}>
+          {isAccountCenter ? "当前位于用户中心" : "查看使用记录"}
+        </button>
         <button type="button" className="account-popover-card__logout" onClick={onLogout} disabled={!user || loading || submitting}>
           <LogOut className="size-4" aria-hidden="true" />
           退出登录

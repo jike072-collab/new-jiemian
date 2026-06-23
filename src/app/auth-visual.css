@@ -585,6 +585,7 @@
   .auth-input::after {
     position: absolute;
     inset: 0;
+    z-index: 0;
     pointer-events: none;
     transform: translateX(-120%);
     background: linear-gradient(100deg, transparent 24%, rgba(255, 255, 255, 0.11), transparent 70%);
@@ -657,39 +658,48 @@
   }
 
   .auth-password input {
-    padding-right: 42px;
+    padding-right: 48px;
   }
 
-  .auth-password__toggle {
+  .auth-password button.auth-password__toggle {
     position: absolute;
     top: 50%;
-    right: 8px;
+    right: 10px;
+    z-index: 3;
     display: grid;
-    width: 40px;
-    height: 40px;
+    width: 36px;
+    height: 36px;
     place-items: center;
     transform: translateY(-50%);
     border: 0;
-    border-radius: 10px;
+    border-radius: 999px;
     background: transparent;
+    box-shadow: none;
     color: rgba(255, 255, 255, 0.55);
+    cursor: pointer;
+    line-height: 0;
+    padding: 0;
     transition:
       color var(--motion-fast),
-      background var(--motion-fast),
       transform var(--motion-instant);
   }
 
-  .auth-password__toggle svg {
+  .auth-password button.auth-password__toggle svg {
+    display: block;
+    width: 18px;
+    height: 18px;
     pointer-events: none;
   }
 
-  .auth-password__toggle:hover {
-    background: rgba(255, 255, 255, 0.08);
+  .auth-password button.auth-password__toggle:hover:not(:disabled) {
+    background: transparent;
+    box-shadow: none;
     color: #fff;
   }
 
-  .auth-password__toggle:active {
-    transform: translateY(-50%) scale(0.96);
+  .auth-password button.auth-password__toggle:active:not(:disabled) {
+    transform: translateY(-50%) scale(0.9);
+    color: rgba(255, 151, 204, 0.95);
   }
 
   .auth-password__toggle:focus-visible,

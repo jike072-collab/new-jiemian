@@ -39,8 +39,8 @@ function seekVideoToStartFrame(video: HTMLVideoElement) {
 
 export function BeforeAfterImageCompare({
   afterSrc,
-  beforeLabel = "增强前",
-  afterLabel = "增强后",
+  beforeLabel = "高清前",
+  afterLabel = "高清后",
   initialPosition = 50,
   beforeAlt = "",
   afterAlt = "",
@@ -215,7 +215,7 @@ export function BeforeAfterImageCompare({
       style={{ "--compare-position": `${position}%` } as CSSProperties}
       role="slider"
       tabIndex={0}
-      aria-label={mediaType === "video" ? "视频放大前后对比" : "图片增强前后对比"}
+      aria-label={mediaType === "video" ? "视频高清前后对比" : "图片高清前后对比"}
       aria-valuemin={3}
       aria-valuemax={97}
       aria-valuenow={Math.round(position)}

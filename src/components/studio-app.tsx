@@ -2136,7 +2136,7 @@ function UserCenterWorkspace({
     {
       label: "签到",
       value: "今日未签到",
-      note: "连续签到 0 天",
+      note: "签到能力待接入真实接口",
       icon: CalendarCheck,
       featured: false,
       disabledAction: "暂无签到入口",
@@ -2151,8 +2151,8 @@ function UserCenterWorkspace({
           <p>查看积分、套餐与签到信息</p>
         </div>
         <button type="button" className="user-center-refresh" onClick={onRefresh} disabled={loading}>
-          {loading ? <Loader2 className="size-4 animate-spin" /> : <RefreshCw className="size-4" />}
-          刷新数据
+          {loading ? <Loader2 className="size-4 animate-spin" /> : <CalendarCheck className="size-4" />}
+          签到
         </button>
       </header>
 
@@ -3686,14 +3686,14 @@ function UpscaleUnavailablePreview() {
 
 function ImageUpscaleCompareTutorial() {
   return (
-    <PreviewState eyebrow="图片细节对比" title="图片细节对比" description="拖动分割线，查看增强前后的清晰度和细节变化。">
+    <PreviewState eyebrow="图片细节对比" title="图片细节对比" description="拖动分割线，查看高清前后的清晰度和细节变化。">
       <BeforeAfterImageCompare
         beforeSrc="/tutorial/image-upscaler/image-before.jpg"
         afterSrc="/tutorial/image-upscaler/image-after.png"
-        beforeLabel="增强前"
-        afterLabel="增强后"
-        beforeAlt="增强前示例图"
-        afterAlt="增强后示例图"
+        beforeLabel="高清前"
+        afterLabel="高清后"
+        beforeAlt="高清前示例图"
+        afterAlt="高清后示例图"
       />
     </PreviewState>
   );
@@ -3701,14 +3701,14 @@ function ImageUpscaleCompareTutorial() {
 
 function VideoUpscaleCompareTutorial() {
   return (
-    <PreviewState eyebrow="视频细节对比" title="视频细节对比" description="拖动分割线，查看放大前后的视频清晰度和细节变化。">
+    <PreviewState eyebrow="视频细节对比" title="视频细节对比" description="拖动分割线，查看高清前后的视频清晰度和细节变化。">
       <BeforeAfterImageCompare
         beforeSrc="/tutorial/video-upscaler/video-after.mp4"
         afterSrc="/tutorial/video-upscaler/video-after.mp4"
-        beforeLabel="放大前"
-        afterLabel="放大后"
-        beforeAlt="放大前示例视频"
-        afterAlt="放大后示例视频"
+        beforeLabel="高清前"
+        afterLabel="高清后"
+        beforeAlt="高清前示例视频"
+        afterAlt="高清后示例视频"
         mediaType="video"
         beforeEffect="blur"
       />
@@ -3760,8 +3760,8 @@ function ImageUpscalePreviewPanel({
           <BeforeAfterImageCompare
             beforeSrc={source.previewUrl}
             afterSrc={output.item.output.url}
-            beforeLabel="增强前"
-            afterLabel="增强后"
+            beforeLabel="高清前"
+            afterLabel="高清后"
             beforeAlt={source.file.name}
             afterAlt={output.item.title}
           />
@@ -3844,8 +3844,8 @@ function VideoUpscalePreviewPanel({
           <BeforeAfterImageCompare
             beforeSrc={source.previewUrl}
             afterSrc={output.item.output.url}
-            beforeLabel="放大前"
-            afterLabel="放大后"
+            beforeLabel="高清前"
+            afterLabel="高清后"
             beforeAlt={source.file.name}
             afterAlt={output.item.title}
             mediaType="video"
