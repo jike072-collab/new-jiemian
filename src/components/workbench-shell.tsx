@@ -10,7 +10,7 @@ import {
   UserRound,
   X,
 } from "lucide-react";
-import { type ReactNode, type RefObject, useEffect, useRef, useState } from "react";
+import { type ReactNode, type RefObject, useCallback, useEffect, useRef, useState } from "react";
 
 import { BrandLogo } from "@/components/brand-logo";
 import { cn } from "@/lib/utils";
@@ -69,16 +69,51 @@ export function WorkbenchShell({
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [pane, setPane] = useState<ShellPane>("parameters");
   const [accountOpen, setAccountOpen] = useState(false);
+  const [accountPopoverVisible, setAccountPopoverVisible] = useState(false);
+  const [accountPopoverClosing, setAccountPopoverClosing] = useState(false);
   const drawerRef = useRef<HTMLDivElement>(null);
   const drawerButtonRef = useRef<HTMLButtonElement>(null);
   const rootRef = useRef<HTMLDivElement>(null);
   const desktopAccountRef = useRef<HTMLDivElement>(null);
+  const accountCloseTimerRef = useRef<number | null>(null);
   const previousOverflowRef = useRef("");
 
   const activeTool = workspaceToolById(state.activeToolId) || workspaceToolEntries[0];
   const drawerId = "workspace-mobile-drawer";
   const contentOnly = contentMode === "account";
   const singlePaneMobile = contentOnly || activeTool.id === "templates" || activeTool.id === "library";
+
+  const openAccountPopover = useCallback(() => {
+    if (accountCloseTimerRef.current) {
+      window.clearTimeout(accountCloseTimerRef.current);
+      accountCloseTimerRef.current = null;
+    }
+    setAccountPopoverVisible(true);
+    setAccountPopoverClosing(false);
+    setAccountOpen(true);
+  }, []);
+
+  const closeAccountPopover = useCallback(() => {
+    if (accountCloseTimerRef.current) {
+      window.clearTimeout(accountCloseTimerRef.current);
+      accountCloseTimerRef.current = null;
+    }
+    setAccountOpen(false);
+    setAccountPopoverClosing(true);
+    accountCloseTimerRef.current = window.setTimeout(() => {
+      setAccountPopoverVisible(false);
+      setAccountPopoverClosing(false);
+      accountCloseTimerRef.current = null;
+    }, 140);
+  }, []);
+
+  const toggleAccountPopover = useCallback(() => {
+    if (accountOpen) {
+      closeAccountPopover();
+      return;
+    }
+    openAccountPopover();
+  }, [accountOpen, closeAccountPopover, openAccountPopover]);
 
   useEffect(() => {
     const frame = window.requestAnimationFrame(() => {
@@ -101,17 +136,17 @@ export function WorkbenchShell({
   useEffect(() => {
     if (!accountCloseSignal) return;
     const frame = window.requestAnimationFrame(() => {
-      setAccountOpen(false);
+      closeAccountPopover();
     });
     return () => window.cancelAnimationFrame(frame);
-  }, [accountCloseSignal]);
+  }, [accountCloseSignal, closeAccountPopover]);
 
   useEffect(() => {
     const frame = window.requestAnimationFrame(() => {
-      setAccountOpen(false);
+      closeAccountPopover();
     });
     return () => window.cancelAnimationFrame(frame);
-  }, [state.activeToolId, contentMode]);
+  }, [closeAccountPopover, state.activeToolId, contentMode]);
 
   useEffect(() => {
     if (!accountOpen) return;
@@ -121,10 +156,10 @@ export function WorkbenchShell({
       if (target instanceof Element && target.closest(".account-popover-card, .shell-account")) return;
       if (desktopAccountRef.current?.contains(target)) return;
       if (rootRef.current?.querySelector(".shell-header__actions")?.contains(target)) return;
-      setAccountOpen(false);
+      closeAccountPopover();
     };
     const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape") setAccountOpen(false);
+      if (event.key === "Escape") closeAccountPopover();
     };
     window.addEventListener("pointerdown", onPointerDown);
     window.addEventListener("keydown", onKeyDown);
@@ -132,7 +167,16 @@ export function WorkbenchShell({
       window.removeEventListener("pointerdown", onPointerDown);
       window.removeEventListener("keydown", onKeyDown);
     };
-  }, [accountOpen]);
+  }, [accountOpen, closeAccountPopover]);
+
+  useEffect(() => {
+    return () => {
+      if (accountCloseTimerRef.current) {
+        window.clearTimeout(accountCloseTimerRef.current);
+        accountCloseTimerRef.current = null;
+      }
+    };
+  }, []);
 
   useEffect(() => {
     if (!drawerOpen) return;
@@ -184,8 +228,10 @@ export function WorkbenchShell({
         isAuthenticated={isAuthenticated}
         accountName={accountName}
         onToggleDrawer={() => setDrawerOpen((value) => !value)}
-        onToggleAccount={() => setAccountOpen((value) => !value)}
+        onToggleAccount={toggleAccountPopover}
         accountOpen={accountOpen}
+        accountPopoverVisible={accountPopoverVisible}
+        accountPopoverClosing={accountPopoverClosing}
         headerRightSlot={headerRightSlot}
         accountSlot={accountSlot}
         drawerButtonRef={drawerButtonRef}
@@ -225,10 +271,12 @@ export function WorkbenchShell({
             accountName={accountName}
             accountPointsLabel={accountPointsLabel}
             accountOpen={accountOpen}
+            accountPopoverVisible={accountPopoverVisible}
+            accountPopoverClosing={accountPopoverClosing}
             accountCenterActive={contentOnly}
             accountSlot={accountSlot}
             accountContainerRef={desktopAccountRef}
-            onToggleAccount={() => setAccountOpen((value) => !value)}
+            onToggleAccount={toggleAccountPopover}
           />
 
           <section className={cn("shell-panel shell-panel--controls", singlePaneMobile && "shell-panel--mobile-single-hidden")}>
@@ -261,6 +309,8 @@ function Header({
   onToggleDrawer,
   onToggleAccount,
   accountOpen,
+  accountPopoverVisible,
+  accountPopoverClosing,
   headerRightSlot,
   accountSlot,
   drawerButtonRef,
@@ -272,6 +322,8 @@ function Header({
   onToggleDrawer: () => void;
   onToggleAccount: () => void;
   accountOpen: boolean;
+  accountPopoverVisible: boolean;
+  accountPopoverClosing: boolean;
   headerRightSlot?: ReactNode;
   accountSlot?: ReactNode;
   drawerButtonRef: RefObject<HTMLButtonElement | null>;
@@ -314,8 +366,8 @@ function Header({
         )}
       </div>
 
-      {isAuthenticated && accountOpen ? (
-        <div className="absolute right-4 top-[calc(100%+12px)] z-[90] w-[min(92vw,420px)]">
+      {isAuthenticated && accountPopoverVisible ? (
+        <div className={cn("shell-header-account__popover absolute right-4 top-[calc(100%+12px)] z-[90] w-[min(92vw,420px)]", accountPopoverClosing && "is-closing")}>
           {accountSlot ? (
             accountSlot
           ) : (
@@ -339,6 +391,8 @@ function DesktopNavigation({
   accountName,
   accountPointsLabel,
   accountOpen,
+  accountPopoverVisible,
+  accountPopoverClosing,
   accountCenterActive,
   accountSlot,
   accountContainerRef,
@@ -352,6 +406,8 @@ function DesktopNavigation({
   accountName?: string | null;
   accountPointsLabel?: string | null;
   accountOpen: boolean;
+  accountPopoverVisible: boolean;
+  accountPopoverClosing: boolean;
   accountCenterActive: boolean;
   accountSlot?: ReactNode;
   accountContainerRef: RefObject<HTMLDivElement | null>;
@@ -424,8 +480,8 @@ function DesktopNavigation({
                 充值
               </button>
             </div>
-            {accountOpen ? (
-              <div className="shell-nav-account__popover">
+            {accountPopoverVisible ? (
+              <div className={cn("shell-nav-account__popover", accountPopoverClosing && "is-closing")}>
                 {accountSlot ? (
                   accountSlot
                 ) : (

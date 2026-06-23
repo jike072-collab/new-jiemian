@@ -71,21 +71,21 @@ export function WorkspaceAccountPanel({
       </div>
 
       <div className="account-popover-card__rows">
-        <div>
+        <div data-account-row="quota">
           <span>
             <Sparkles className="size-3.5" aria-hidden="true" />
             积分
           </span>
           <strong>{loading ? "加载中" : `${formatQuota(quota?.quota_units)} 分`}</strong>
         </div>
-        <div>
+        <div data-account-row="plan">
           <span>
             <Crown className="size-3.5" aria-hidden="true" />
             当前套餐
           </span>
           <strong>暂无套餐</strong>
         </div>
-        <div>
+        <div data-account-row="checkin">
           <span>
             <CalendarCheck className="size-3.5" aria-hidden="true" />
             签到

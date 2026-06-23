@@ -770,10 +770,19 @@
     background:
       radial-gradient(circle at 16% 0%, rgba(255, 43, 136, 0.14), transparent 48%),
       rgba(255, 255, 255, 0.048);
+    box-shadow: 0 10px 24px rgba(255, 43, 136, 0.08);
   }
 
   .shell-nav__account:hover {
     transform: translateY(-1px);
+  }
+
+  .shell-nav__account:hover .shell-nav-account__avatar,
+  .shell-nav__account.is-open .shell-nav-account__avatar,
+  .shell-nav__account.is-active .shell-nav-account__avatar {
+    border-color: rgba(255, 43, 136, 0.22);
+    background: rgba(255, 43, 136, 0.1);
+    color: #fff;
   }
 
   .shell-nav-account__main {
@@ -794,6 +803,10 @@
     color: rgba(255, 255, 255, 0.86);
     font-size: 11px;
     font-weight: 700;
+    transition:
+      border-color var(--motion-fast) var(--ease-enter),
+      background var(--motion-fast) var(--ease-enter),
+      color var(--motion-fast) var(--ease-enter);
   }
 
   .shell-nav-account__copy {
@@ -885,8 +898,19 @@
     bottom: calc(100% + 10px);
     z-index: 95;
     width: min(310px, calc(100vw - 28px));
-    animation: ui-popover-in var(--motion-layout) var(--ease-enter) both;
+    animation: account-popover-open 260ms var(--ease-enter) both;
     transform-origin: bottom left;
+  }
+
+  .shell-nav-account__popover.is-closing,
+  .shell-header-account__popover.is-closing {
+    pointer-events: none;
+    animation: account-popover-close 140ms var(--ease-exit) both;
+  }
+
+  .shell-header-account__popover {
+    animation: account-popover-open 260ms var(--ease-enter) both;
+    transform-origin: top right;
   }
 
   .account-popover-card {
@@ -986,6 +1010,7 @@
   }
 
   .account-popover-card__rows div {
+    position: relative;
     display: flex;
     align-items: center;
     justify-content: space-between;
@@ -995,6 +1020,37 @@
     border-radius: 10px;
     background: rgba(255, 255, 255, 0.04);
     padding: 9px 10px;
+    transition:
+      border-color var(--motion-fast) var(--ease-enter),
+      background var(--motion-fast) var(--ease-enter),
+      transform var(--motion-fast) var(--ease-enter);
+  }
+
+  .account-popover-card__rows div::after {
+    position: absolute;
+    inset: 0;
+    border-radius: inherit;
+    background: radial-gradient(circle at 18% 0%, rgba(255, 43, 136, 0.14), transparent 46%);
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity var(--motion-fast) var(--ease-enter);
+    content: "";
+  }
+
+  .account-popover-card__rows div > * {
+    position: relative;
+    z-index: 1;
+  }
+
+  .account-popover-card__rows div:hover {
+    border-color: rgba(255, 43, 136, 0.18);
+    background: rgba(255, 255, 255, 0.055);
+    transform: translateY(-1px);
+  }
+
+  .account-popover-card__rows div:hover::after,
+  .account-popover-card__rows [data-account-row="quota"]::after {
+    opacity: 1;
   }
 
   .account-popover-card__rows span {
@@ -3851,6 +3907,7 @@
     align-content: start;
     gap: 28px;
     min-height: 100%;
+    animation: user-center-page-in var(--motion-entrance) var(--ease-enter) both;
   }
 
   .user-center-page__header {
@@ -3888,13 +3945,18 @@
     color: rgba(255, 255, 255, 0.72);
     font-size: 13px;
     font-weight: 620;
-    transition: border-color 160ms ease, background 160ms ease, color 160ms ease;
+    transition:
+      transform var(--motion-fast) var(--ease-enter),
+      border-color var(--motion-fast) var(--ease-enter),
+      background var(--motion-fast) var(--ease-enter),
+      color var(--motion-fast) var(--ease-enter);
   }
 
   .user-center-refresh:hover:not(:disabled) {
     border-color: rgba(255, 43, 136, 0.32);
     background: rgba(255, 43, 136, 0.08);
     color: #fff;
+    transform: translateY(-1px);
   }
 
   .user-center-page__grid {
@@ -3929,12 +3991,39 @@
     border-radius: 14px;
     background: #141418;
     padding: 20px;
-    transition: border-color 160ms ease, background 160ms ease, transform 160ms ease;
+    transition:
+      transform var(--motion-fast) var(--ease-enter),
+      border-color var(--motion-fast) var(--ease-enter),
+      background var(--motion-fast) var(--ease-enter),
+      box-shadow var(--motion-fast) var(--ease-enter);
+  }
+
+  .user-center-stat::after {
+    position: absolute;
+    inset: 0;
+    border-radius: inherit;
+    background: radial-gradient(circle at 22% 0%, rgba(255, 43, 136, 0.12), transparent 42%);
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity var(--motion-fast) var(--ease-enter);
+    content: "";
+  }
+
+  .user-center-stat > * {
+    position: relative;
+    z-index: 1;
   }
 
   .user-center-stat:hover {
     border-color: rgba(255, 43, 136, 0.18);
     background: #18181e;
+    box-shadow: 0 14px 32px rgba(0, 0, 0, 0.22);
+    transform: translateY(-1px);
+  }
+
+  .user-center-stat:hover::after,
+  .user-center-stat.is-updated::after {
+    opacity: 1;
   }
 
   .user-center-stat.is-featured {
@@ -3973,6 +4062,19 @@
 
   .user-center-stat.is-featured strong {
     color: #ff62a9;
+  }
+
+  .user-center-stat__value {
+    transition:
+      color var(--motion-fast) var(--ease-enter),
+      text-shadow var(--motion-fast) var(--ease-enter),
+      transform var(--motion-fast) var(--ease-enter);
+  }
+
+  .user-center-stat.is-updated .user-center-stat__value {
+    color: #ff8ac4;
+    text-shadow: 0 0 18px rgba(255, 43, 136, 0.28);
+    transform: translateY(-1px);
   }
 
   .user-center-stat small {
@@ -4088,6 +4190,11 @@
     color: rgba(255, 255, 255, 0.6);
     font-size: 13px;
     line-height: 1.35;
+    animation: user-center-row-in var(--motion-layout) var(--ease-enter) both;
+    animation-delay: var(--usage-row-delay, 0ms);
+    transition:
+      background var(--motion-fast) var(--ease-enter),
+      border-color var(--motion-fast) var(--ease-enter);
   }
 
   .user-center-usage__row:last-child {
@@ -4095,6 +4202,7 @@
   }
 
   .user-center-usage__row--head {
+    animation: none;
     background: rgba(255, 255, 255, 0.04);
     color: rgba(255, 255, 255, 0.42);
     font-size: 12px;
@@ -4124,8 +4232,10 @@
   .user-center-usage__row--skeleton span {
     height: 12px;
     border-radius: 999px;
-    background: linear-gradient(90deg, rgba(255, 255, 255, 0.05), rgba(255, 255, 255, 0.1), rgba(255, 255, 255, 0.05));
-    animation: skeleton-pulse 1.2s ease-in-out infinite;
+    background:
+      linear-gradient(90deg, rgba(255, 255, 255, 0.05), rgba(255, 255, 255, 0.1), rgba(255, 255, 255, 0.05)),
+      rgba(255, 255, 255, 0.035);
+    background-size: 220% 100%;
   }
 
   .user-center-usage__empty {
@@ -4136,6 +4246,7 @@
     gap: 8px;
     color: rgba(255, 255, 255, 0.44);
     text-align: center;
+    animation: user-center-page-in var(--motion-layout) var(--ease-enter) both;
   }
 
   .user-center-usage__empty strong {
@@ -6019,8 +6130,15 @@
     .shell-nav-item,
     .shell-nav-item__indicator,
     .shell-nav-item__icon-wrap,
+    .shell-nav__account,
+    .shell-nav-account__avatar,
     .shell-nav-account__popover,
+    .shell-nav-account__popover.is-closing,
+    .shell-header-account__popover,
+    .shell-header-account__popover.is-closing,
     .account-popover-card,
+    .account-popover-card__rows div,
+    .account-popover-card__rows div::after,
     .studio-custom-select__menu,
     .studio-custom-select__option,
     .studio-library-confirm,
@@ -6037,6 +6155,14 @@
     .studio-library-tile .studio-media-card video,
     .studio-library-skeleton-card .motion-skeleton-shimmer,
     .studio-media-card__play,
+    .user-center-page,
+    .user-center-refresh,
+    .user-center-stat,
+    .user-center-stat::after,
+    .user-center-stat__value,
+    .user-center-usage__row,
+    .user-center-usage__empty,
+    .user-center-usage__row--skeleton span,
     .studio-mode__button,
     .studio-ratio__item,
     .studio-ratio__shape,
@@ -6055,6 +6181,8 @@
     }
 
     .shell-nav-item:hover,
+    .shell-nav__account:hover,
+    .account-popover-card__rows div:hover,
     .studio-primary-action:hover:not(:disabled),
     .studio-mode__button:hover,
     .studio-ratio__item:hover,
@@ -6066,6 +6194,9 @@
     .studio-library-tile:hover .studio-media-card img,
     .studio-library-tile:hover .studio-media-card video,
     .studio-library-tile:hover .studio-media-card__play,
+    .user-center-refresh:hover:not(:disabled),
+    .user-center-stat:hover,
+    .user-center-stat.is-updated .user-center-stat__value,
     .account-popover-card__primary:hover:not(:disabled),
     .account-popover-card__secondary:hover:not(:disabled),
     .user-center-stat__button:hover:not(:disabled) {
@@ -6289,6 +6420,54 @@
     to {
       opacity: 1;
       transform: translateY(0) scale(1);
+    }
+  }
+
+  @keyframes account-popover-open {
+    from {
+      opacity: 0;
+      transform: translateY(8px) scale(0.985);
+    }
+
+    to {
+      opacity: 1;
+      transform: translateY(0) scale(1);
+    }
+  }
+
+  @keyframes account-popover-close {
+    from {
+      opacity: 1;
+      transform: translateY(0) scale(1);
+    }
+
+    to {
+      opacity: 0;
+      transform: translateY(4px) scale(0.99);
+    }
+  }
+
+  @keyframes user-center-page-in {
+    from {
+      opacity: 0;
+      transform: translateY(8px);
+    }
+
+    to {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  }
+
+  @keyframes user-center-row-in {
+    from {
+      opacity: 0;
+      transform: translateY(6px);
+    }
+
+    to {
+      opacity: 1;
+      transform: translateY(0);
     }
   }
 

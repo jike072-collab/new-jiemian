@@ -2093,6 +2093,30 @@ function UserCenterWorkspace({
   const preferredAmount = preferredChannel ? preferredChannel.fixed_amounts[0] || preferredChannel.min_amount : 0;
   const canTopUp = Boolean(user && preferredChannel && !submitting);
   const usageEntries = usage?.entries?.slice(0, 6) || [];
+  const quotaUnits = quota?.quota_units ?? null;
+  const previousQuotaUnitsRef = useRef<number | null>(quotaUnits);
+  const [quotaChanged, setQuotaChanged] = useState(false);
+
+  useEffect(() => {
+    if (quotaUnits === null) return undefined;
+    if (previousQuotaUnitsRef.current === null) {
+      previousQuotaUnitsRef.current = quotaUnits;
+      return undefined;
+    }
+    if (previousQuotaUnitsRef.current === quotaUnits) return undefined;
+
+    previousQuotaUnitsRef.current = quotaUnits;
+    let timer: number | null = null;
+    const frame = window.requestAnimationFrame(() => {
+      setQuotaChanged(true);
+      timer = window.setTimeout(() => setQuotaChanged(false), 720);
+    });
+    return () => {
+      window.cancelAnimationFrame(frame);
+      if (timer) window.clearTimeout(timer);
+    };
+  }, [quotaUnits]);
+
   const stats = [
     {
       label: "积分",
@@ -2138,12 +2162,12 @@ function UserCenterWorkspace({
             {stats.map((item) => {
               const Icon = item.icon;
               return (
-                <article key={item.label} className={cn("user-center-stat", item.featured && "is-featured")}>
+                <article key={item.label} className={cn("user-center-stat", item.featured && "is-featured", item.featured && quotaChanged && "is-updated")}>
                   <span className="user-center-stat__icon">
                     <Icon className="size-4" aria-hidden="true" />
                   </span>
                   <span className="user-center-stat__label">{item.label}</span>
-                  <strong>{item.value}</strong>
+                  <strong className={item.featured ? "user-center-stat__value" : undefined}>{item.value}</strong>
                   <small>{item.note}</small>
                   {item.action ? (
                     <button
@@ -2186,10 +2210,10 @@ function UserCenterWorkspace({
                 </div>
                 {Array.from({ length: 5 }).map((_, index) => (
                   <div key={index} className="user-center-usage__row user-center-usage__row--skeleton" aria-hidden="true">
-                    <span />
-                    <span />
-                    <span />
-                    <span />
+                    <span className="motion-skeleton-shimmer" />
+                    <span className="motion-skeleton-shimmer" />
+                    <span className="motion-skeleton-shimmer" />
+                    <span className="motion-skeleton-shimmer" />
                   </div>
                 ))}
               </div>
@@ -2201,8 +2225,8 @@ function UserCenterWorkspace({
                   <span>积分变动</span>
                   <span>描述</span>
                 </div>
-                {usageEntries.map((entry) => (
-                  <div key={entry.id} className="user-center-usage__row">
+                {usageEntries.map((entry, index) => (
+                  <div key={entry.id} className="user-center-usage__row" style={{ "--usage-row-delay": `${index < 6 ? index * 24 : 0}ms` } as CSSProperties}>
                     <span>{formatUsageDate(entry.created_at)}</span>
                     <strong>{usageOperationLabel(entry.operation)}</strong>
                     <em>-{formatQuotaUnits(entry.actual_quota_units ?? entry.estimated_quota_units)} 分</em>
