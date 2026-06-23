@@ -3090,8 +3090,12 @@ function ImageEditorTutorial() {
             <img src="/tutorials/image-editor/single-source.png" alt="方形粉色香水瓶白底素材" />
           </figure>
           <svg className="image-editor-arrow image-editor-arrow--single" viewBox="0 0 128 74" aria-hidden="true" focusable="false">
-            <path className="image-editor-arrow__path" d="M7 50C34 12 83 10 113 36" />
-            <path className="image-editor-arrow__head" d="M99 33L116 38L104 51" />
+            <defs>
+              <marker id="image-editor-arrow-tip-single" viewBox="0 0 10 10" refX="8.4" refY="5" markerWidth="2.35" markerHeight="2.35" orient="auto">
+                <path className="image-editor-arrow__tip" d="M1 1 9 5 1 9 3.1 5Z" />
+              </marker>
+            </defs>
+            <path className="image-editor-arrow__path" pathLength={1} d="M8 48C39 19 82 18 116 39" markerEnd="url(#image-editor-arrow-tip-single)" />
           </svg>
           <span className="image-editor-prompt image-editor-prompt--single">
             <span>+</span>
@@ -3108,8 +3112,12 @@ function ImageEditorTutorial() {
             <img src="/tutorials/image-editor/merge-scene.png" alt="新中式牡丹场景素材" />
           </figure>
           <svg className="image-editor-arrow image-editor-arrow--merge" viewBox="0 0 128 74" aria-hidden="true" focusable="false">
-            <path className="image-editor-arrow__path" d="M7 50C34 12 83 10 113 36" />
-            <path className="image-editor-arrow__head" d="M99 33L116 38L104 51" />
+            <defs>
+              <marker id="image-editor-arrow-tip-merge" viewBox="0 0 10 10" refX="8.4" refY="5" markerWidth="2.35" markerHeight="2.35" orient="auto">
+                <path className="image-editor-arrow__tip" d="M1 1 9 5 1 9 3.1 5Z" />
+              </marker>
+            </defs>
+            <path className="image-editor-arrow__path" pathLength={1} d="M8 48C39 19 82 18 116 39" markerEnd="url(#image-editor-arrow-tip-merge)" />
           </svg>
           <span className="image-editor-prompt image-editor-prompt--merge">
             <span>+</span>

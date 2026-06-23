@@ -5221,7 +5221,7 @@
     color: rgba(255, 255, 255, 0.84);
     filter: drop-shadow(0 4px 8px rgba(0, 0, 0, 0.38));
     opacity: 1;
-    transform: translate(856px, 26px) rotate(8deg) scale(0.68);
+    transform: translate(856px, 25px) rotate(-15deg) scale(0.68);
   }
 
   .image-editor-photo,
@@ -5316,20 +5316,19 @@
     filter: drop-shadow(0 8px 14px rgba(255, 24, 112, 0.22));
   }
 
-  .image-editor-arrow__path,
-  .image-editor-arrow__head {
-    --editor-arrow-dash: 140;
+  .image-editor-arrow__path {
     fill: none;
     stroke: #ff2b88;
     stroke-linecap: round;
     stroke-linejoin: round;
     stroke-width: 7;
-    stroke-dasharray: var(--editor-arrow-dash);
+    stroke-dasharray: 1;
     stroke-dashoffset: 0;
   }
 
-  .image-editor-arrow__head {
-    --editor-arrow-dash: 40;
+  .image-editor-arrow__tip {
+    fill: #ff2b88;
+    stroke: none;
   }
 
   .image-editor-arrow--single {
@@ -5418,7 +5417,7 @@
     .image-editor-photo,
     .image-editor-arrow,
     .image-editor-arrow__path,
-    .image-editor-arrow__head,
+    .image-editor-arrow__tip,
     .image-editor-prompt,
     .tutorial-source-image,
     .tutorial-prompt-bubble {
@@ -5446,13 +5445,12 @@
       opacity: 1;
     }
 
-    .image-editor-arrow__path,
-    .image-editor-arrow__head {
+    .image-editor-arrow__path {
       stroke-dashoffset: 0;
     }
 
     .image-editor-plane-mark {
-      transform: translate(856px, 26px) rotate(8deg) scale(0.68);
+      transform: translate(856px, 25px) rotate(-15deg) scale(0.68);
     }
   }
 
@@ -5482,7 +5480,7 @@
     }
 
     .image-editor-plane-mark {
-      animation: image-editor-plane-travel 2.2s var(--ease-enter) 2060ms both;
+      animation: image-editor-plane-travel 2.2s linear 2060ms both;
     }
 
     .image-editor-photo--single-source {
@@ -5494,11 +5492,7 @@
     }
 
     .image-editor-arrow--single .image-editor-arrow__path {
-      animation: image-editor-arrow-draw 520ms var(--ease-enter) 560ms both;
-    }
-
-    .image-editor-arrow--single .image-editor-arrow__head {
-      animation: image-editor-arrow-draw 260ms var(--ease-enter) 940ms both;
+      animation: image-editor-arrow-draw 560ms var(--ease-enter) 560ms both;
     }
 
     .image-editor-photo--single-result {
@@ -5518,15 +5512,11 @@
     }
 
     .image-editor-arrow--merge .image-editor-arrow__path {
-      animation: image-editor-arrow-draw 520ms var(--ease-enter) 2060ms both;
-    }
-
-    .image-editor-arrow--merge .image-editor-arrow__head {
-      animation: image-editor-arrow-draw 260ms var(--ease-enter) 2440ms both;
+      animation: image-editor-arrow-draw 560ms var(--ease-enter) 2060ms both;
     }
 
     .image-editor-photo--merge-result {
-      animation: image-editor-result-in 500ms var(--ease-enter) 4300ms both;
+      animation: image-editor-result-in 500ms var(--ease-enter) 3380ms both;
     }
 
     .studio-processing-orbit {
@@ -5789,7 +5779,7 @@
   @keyframes image-editor-arrow-draw {
     from {
       opacity: 0;
-      stroke-dashoffset: var(--editor-arrow-dash, 140);
+      stroke-dashoffset: 1;
     }
 
     to {
@@ -5811,26 +5801,72 @@
   @keyframes image-editor-plane-travel {
     0% {
       opacity: 0;
-      transform: translate(18px, 396px) rotate(-28deg) scale(0.62);
+      transform: translate(12px, 398px) rotate(-56.2deg) scale(0.68);
     }
 
-    38% {
+    8% {
       opacity: 1;
-      transform: translate(350px, 236px) rotate(-12deg) scale(0.66);
+      transform: translate(44px, 327px) rotate(-43.2deg) scale(0.68);
+    }
+
+    16% {
+      opacity: 1;
+      transform: translate(98px, 272px) rotate(-14.6deg) scale(0.68);
+    }
+
+    24% {
+      opacity: 1;
+      transform: translate(173px, 254px) rotate(13.8deg) scale(0.68);
+    }
+
+    32% {
+      opacity: 1;
+      transform: translate(251px, 257px) rotate(16.9deg) scale(0.68);
+    }
+
+    40% {
+      opacity: 1;
+      transform: translate(329px, 250px) rotate(-0.7deg) scale(0.68);
+    }
+
+    48% {
+      opacity: 1;
+      transform: translate(401px, 220px) rotate(-3.2deg) scale(0.68);
+    }
+
+    56% {
+      opacity: 1;
+      transform: translate(477px, 205px) rotate(9.3deg) scale(0.68);
+    }
+
+    64% {
+      opacity: 1;
+      transform: translate(555px, 198px) rotate(7.1deg) scale(0.68);
     }
 
     72% {
       opacity: 1;
-      transform: translate(680px, 142px) rotate(-18deg) scale(0.68);
+      transform: translate(630px, 177px) rotate(-9.8deg) scale(0.68);
+    }
+
+    80% {
+      opacity: 1;
+      transform: translate(695px, 134px) rotate(-23.1deg) scale(0.68);
     }
 
     88% {
       opacity: 1;
+      transform: translate(757px, 88px) rotate(-20deg) scale(0.68);
+    }
+
+    96% {
+      opacity: 0.9;
+      transform: translate(823px, 45px) rotate(-16.8deg) scale(0.68);
     }
 
     100% {
       opacity: 0.9;
-      transform: translate(856px, 26px) rotate(8deg) scale(0.68);
+      transform: translate(856px, 25px) rotate(-15deg) scale(0.68);
     }
   }
 
