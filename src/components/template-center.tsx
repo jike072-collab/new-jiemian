@@ -362,12 +362,10 @@ function TemplateBrowserPanel({
   onSearchChange: (value: string) => void;
   onCategoryChange: (value: TemplateCategory | "全部") => void;
 }) {
-  const gridRef = useRef<HTMLDivElement | null>(null);
   const gridMotionKey = `${scope}:${category}:${search.trim().toLowerCase()}`;
 
   const handleCategoryChange = (value: TemplateCategory | "全部") => {
     onCategoryChange(value);
-    gridRef.current?.scrollIntoView({ block: "nearest" });
   };
 
   const cloneHref = (id: string) => {
@@ -424,7 +422,7 @@ function TemplateBrowserPanel({
         />
       </div>
 
-      <div key={gridMotionKey} ref={gridRef} className="template-center-grid" aria-label="模板列表">
+      <div key={gridMotionKey} className="template-center-grid" aria-label="模板列表">
         {templates.length ? templates.map((template, index) => (
           <article
             key={template.id}
