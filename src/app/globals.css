@@ -5220,8 +5220,8 @@
   .image-editor-plane-mark {
     color: rgba(255, 255, 255, 0.84);
     filter: drop-shadow(0 4px 8px rgba(0, 0, 0, 0.38));
-    opacity: 1;
-    transform: translate(856px, 25px) rotate(-15deg) scale(0.68);
+    opacity: 0.72;
+    transform: translate(856px, 25px) rotate(-15deg) scale(0.62);
   }
 
   .image-editor-photo,
@@ -5309,26 +5309,44 @@
   }
 
   .image-editor-arrow {
-    z-index: 5;
+    z-index: 7;
     height: auto;
     pointer-events: none;
     overflow: visible;
     filter: drop-shadow(0 8px 14px rgba(255, 24, 112, 0.22));
   }
 
-  .image-editor-arrow__path {
+  .image-editor-arrow__halo,
+  .image-editor-arrow__path,
+  .image-editor-arrow__shine {
     fill: none;
-    stroke: #ff2b88;
     stroke-linecap: round;
     stroke-linejoin: round;
-    stroke-width: 7;
     stroke-dasharray: 1;
     stroke-dashoffset: 0;
   }
 
+  .image-editor-arrow__halo {
+    stroke: rgba(255, 43, 136, 0.16);
+    stroke-width: 12;
+  }
+
+  .image-editor-arrow__path {
+    stroke: #ff2b88;
+    stroke-width: 6.8;
+  }
+
+  .image-editor-arrow__shine {
+    stroke: rgba(255, 255, 255, 0.42);
+    stroke-width: 2.1;
+    transform: translateY(-1px);
+  }
+
   .image-editor-arrow__tip {
     fill: #ff2b88;
-    stroke: none;
+    stroke: rgba(255, 236, 247, 0.78);
+    stroke-width: 0.9;
+    filter: drop-shadow(0 2px 7px rgba(255, 43, 136, 0.6));
   }
 
   .image-editor-arrow--single {
@@ -5416,7 +5434,9 @@
     .image-editor-plane-mark,
     .image-editor-photo,
     .image-editor-arrow,
+    .image-editor-arrow__halo,
     .image-editor-arrow__path,
+    .image-editor-arrow__shine,
     .image-editor-arrow__tip,
     .image-editor-prompt,
     .tutorial-source-image,
@@ -5445,12 +5465,15 @@
       opacity: 1;
     }
 
-    .image-editor-arrow__path {
+    .image-editor-arrow__halo,
+    .image-editor-arrow__path,
+    .image-editor-arrow__shine {
       stroke-dashoffset: 0;
     }
 
     .image-editor-plane-mark {
-      transform: translate(856px, 25px) rotate(-15deg) scale(0.68);
+      opacity: 0.72;
+      transform: translate(856px, 25px) rotate(-15deg) scale(0.62);
     }
   }
 
@@ -5479,10 +5502,6 @@
       animation: image-editor-dash-flow 2.2s linear 2060ms both;
     }
 
-    .image-editor-plane-mark {
-      animation: image-editor-plane-travel 2.2s linear 2060ms both;
-    }
-
     .image-editor-photo--single-source {
       animation: image-editor-card-in 420ms var(--ease-enter) 120ms both;
     }
@@ -5491,7 +5510,9 @@
       animation: image-editor-chip-in 360ms var(--ease-enter) 360ms both;
     }
 
-    .image-editor-arrow--single .image-editor-arrow__path {
+    .image-editor-arrow--single .image-editor-arrow__halo,
+    .image-editor-arrow--single .image-editor-arrow__path,
+    .image-editor-arrow--single .image-editor-arrow__shine {
       animation: image-editor-arrow-draw 560ms var(--ease-enter) 560ms both;
     }
 
@@ -5511,12 +5532,14 @@
       animation: image-editor-chip-in 360ms var(--ease-enter) 1840ms both;
     }
 
-    .image-editor-arrow--merge .image-editor-arrow__path {
+    .image-editor-arrow--merge .image-editor-arrow__halo,
+    .image-editor-arrow--merge .image-editor-arrow__path,
+    .image-editor-arrow--merge .image-editor-arrow__shine {
       animation: image-editor-arrow-draw 560ms var(--ease-enter) 2060ms both;
     }
 
     .image-editor-photo--merge-result {
-      animation: image-editor-result-in 500ms var(--ease-enter) 3380ms both;
+      animation: image-editor-result-in 560ms var(--ease-enter) 2280ms both;
     }
 
     .studio-processing-orbit {

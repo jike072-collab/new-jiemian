@@ -3091,11 +3091,13 @@ function ImageEditorTutorial() {
           </figure>
           <svg className="image-editor-arrow image-editor-arrow--single" viewBox="0 0 128 74" aria-hidden="true" focusable="false">
             <defs>
-              <marker id="image-editor-arrow-tip-single" viewBox="0 0 10 10" refX="8.4" refY="5" markerWidth="2.35" markerHeight="2.35" orient="auto">
-                <path className="image-editor-arrow__tip" d="M1 1 9 5 1 9 3.1 5Z" />
+              <marker id="image-editor-arrow-tip-single" viewBox="0 0 22 22" refX="19" refY="11" markerWidth="5.4" markerHeight="5.4" orient="auto">
+                <path className="image-editor-arrow__tip" d="M3 2.6 19 11 3 19.4 7.4 11Z" />
               </marker>
             </defs>
-            <path className="image-editor-arrow__path" pathLength={1} d="M8 48C39 19 82 18 116 39" markerEnd="url(#image-editor-arrow-tip-single)" />
+            <path className="image-editor-arrow__halo" pathLength={1} d="M7 50C37 21 84 18 111 36" />
+            <path className="image-editor-arrow__path" pathLength={1} d="M7 50C37 21 84 18 111 36" markerEnd="url(#image-editor-arrow-tip-single)" />
+            <path className="image-editor-arrow__shine" pathLength={1} d="M7 50C37 21 84 18 111 36" />
           </svg>
           <span className="image-editor-prompt image-editor-prompt--single">
             <span>+</span>
@@ -3113,11 +3115,13 @@ function ImageEditorTutorial() {
           </figure>
           <svg className="image-editor-arrow image-editor-arrow--merge" viewBox="0 0 128 74" aria-hidden="true" focusable="false">
             <defs>
-              <marker id="image-editor-arrow-tip-merge" viewBox="0 0 10 10" refX="8.4" refY="5" markerWidth="2.35" markerHeight="2.35" orient="auto">
-                <path className="image-editor-arrow__tip" d="M1 1 9 5 1 9 3.1 5Z" />
+              <marker id="image-editor-arrow-tip-merge" viewBox="0 0 22 22" refX="19" refY="11" markerWidth="5.4" markerHeight="5.4" orient="auto">
+                <path className="image-editor-arrow__tip" d="M3 2.6 19 11 3 19.4 7.4 11Z" />
               </marker>
             </defs>
-            <path className="image-editor-arrow__path" pathLength={1} d="M8 48C39 19 82 18 116 39" markerEnd="url(#image-editor-arrow-tip-merge)" />
+            <path className="image-editor-arrow__halo" pathLength={1} d="M7 50C37 21 84 18 111 36" />
+            <path className="image-editor-arrow__path" pathLength={1} d="M7 50C37 21 84 18 111 36" markerEnd="url(#image-editor-arrow-tip-merge)" />
+            <path className="image-editor-arrow__shine" pathLength={1} d="M7 50C37 21 84 18 111 36" />
           </svg>
           <span className="image-editor-prompt image-editor-prompt--merge">
             <span>+</span>

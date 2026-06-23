@@ -65,6 +65,7 @@ playwright-report/
 test-results/
 docs/screenshots/
 docs/research/screenshots/
+artifacts/
 
 # Local runtime data
 data/
