@@ -6286,6 +6286,8 @@
 
   .compare-before,
   .compare-after,
+  .compare-image-source,
+  .compare-image-before,
   .compare-video-source,
   .compare-video-before {
     position: absolute;
@@ -6309,6 +6311,17 @@
   .compare-after {
     z-index: 2;
     clip-path: inset(0 0 0 var(--compare-position));
+  }
+
+  .compare-image-source {
+    z-index: 1;
+  }
+
+  .compare-image-before {
+    z-index: 2;
+    clip-path: inset(0 calc(100% - var(--compare-position)) 0 0);
+    background: rgba(255, 255, 255, 0.01);
+    backdrop-filter: blur(6px) saturate(0.78) contrast(0.86);
   }
 
   .compare-video-source {

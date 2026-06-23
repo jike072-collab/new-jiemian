@@ -38,7 +38,6 @@ function seekVideoToStartFrame(video: HTMLVideoElement) {
 }
 
 export function BeforeAfterImageCompare({
-  beforeSrc,
   afterSrc,
   beforeLabel = "增强前",
   afterLabel = "增强后",
@@ -249,8 +248,8 @@ export function BeforeAfterImageCompare({
         </>
       ) : (
         <>
-          <img className="compare-before" src={beforeSrc} alt={beforeAlt} draggable={false} />
-          <img className="compare-after" src={afterSrc} alt={afterAlt} draggable={false} />
+          <img className="compare-image-source" src={afterSrc} alt={afterAlt} draggable={false} />
+          <span className="compare-image-before" aria-label={beforeAlt} />
         </>
       )}
       <span className="compare-label compare-label--after">{afterLabel}</span>
