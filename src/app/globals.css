@@ -3481,7 +3481,9 @@
 
   .studio-library-page__controls {
     display: grid;
-    gap: 10px;
+    grid-template-columns: auto minmax(0, 1fr);
+    align-items: end;
+    gap: 10px 12px;
     margin-bottom: 14px;
   }
 
@@ -3546,6 +3548,8 @@
     grid-template-columns: minmax(0, 1fr) minmax(120px, 150px);
     gap: 10px;
     align-items: end;
+    width: min(100%, 520px);
+    justify-self: end;
   }
 
   .shell-root--tool-library .studio-library-toolbar__search svg {
@@ -9125,8 +9129,30 @@
     font-size: 18px;
   }
 
+  .shell-header__actions {
+    gap: 8px;
+  }
+
+  .shell-account {
+    max-width: 132px;
+    padding: 0 9px;
+    gap: 7px;
+  }
+
+  .shell-account__meta {
+    display: inline-grid;
+    min-width: 0;
+  }
+
   .shell-account__name {
     display: none;
+  }
+
+  .shell-account__points {
+    display: block;
+    max-width: 62px;
+    font-size: 12px;
+    line-height: 1;
   }
 
   .shell-grid {
@@ -9553,10 +9579,36 @@
     display: none;
   }
 
-  .shell-panel--mobile-single .studio-library-toolbar {
-    grid-template-columns: 40px minmax(0, 1fr) auto;
+  .shell-panel--mobile-single .studio-library-page__controls {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: start;
     gap: 8px;
-    align-items: center;
+    position: relative;
+    margin-bottom: 12px;
+  }
+
+  .shell-panel--mobile-single .studio-library-kind-tabs {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    width: 100%;
+    overflow: visible;
+  }
+
+  .shell-panel--mobile-single .studio-library-kind-tab {
+    min-width: 0;
+    min-height: 38px;
+    border-radius: 10px;
+    font-size: 13px;
+  }
+
+  .shell-panel--mobile-single .studio-library-toolbar {
+    grid-template-columns: 40px 42px;
+    gap: 8px;
+    align-items: start;
+    width: auto;
+    justify-self: end;
+    position: static;
   }
 
   .shell-panel--mobile-single .studio-library-search-trigger {
@@ -9576,8 +9628,12 @@
     color: #ff72b5;
   }
 
-  .shell-panel--mobile-single .studio-library-toolbar__search .studio-input {
+  .shell-panel--mobile-single .studio-library-toolbar__search {
     display: none;
+    margin-top: 0;
+  }
+
+  .shell-panel--mobile-single .studio-library-toolbar__search .studio-input {
     height: 38px;
     min-height: 38px;
     padding-left: 34px;
@@ -9588,8 +9644,18 @@
     display: none;
   }
 
-  .shell-panel--mobile-single .studio-library-toolbar.is-search-open .studio-library-toolbar__search .studio-input {
-    display: block;
+  .shell-panel--mobile-single .studio-library-toolbar.is-search-open .studio-library-toolbar__search {
+    display: grid;
+    position: absolute;
+    top: calc(100% + 8px);
+    right: 0;
+    left: 0;
+    z-index: 13;
+    padding: 10px;
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: 14px;
+    background: rgba(12, 12, 16, 0.96);
+    box-shadow: 0 18px 40px rgba(0, 0, 0, 0.42);
   }
 
   .shell-panel--mobile-single .studio-library-toolbar.is-search-open .studio-library-toolbar__search svg {
