@@ -1568,6 +1568,21 @@
       box-shadow var(--motion-fast) var(--ease-enter);
   }
 
+  .studio-prompt-action__copy {
+    display: inline-flex;
+    min-width: 0;
+    align-items: center;
+    gap: 4px;
+    white-space: nowrap;
+  }
+
+  .studio-prompt-action__copy small {
+    color: color-mix(in srgb, currentColor 72%, var(--muted-strong));
+    font-size: 11px;
+    font-weight: 600;
+    line-height: 1;
+  }
+
   .studio-prompt-action:hover:not(:disabled),
   .studio-prompt-action:focus-visible {
     border-color: var(--primary);

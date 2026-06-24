@@ -268,6 +268,7 @@ const grokVideo15Ratios = ["16:9", "9:16"];
 const jimengVideoRatios = ["16:9", "9:16", "1:1"];
 const upscaleUnavailableMessage = "高清处理暂时不可用，请稍后重试";
 const promptOptimizationTargetPlatform = "TikTok Shop";
+const PROMPT_OPTIMIZATION_QUOTA_UNITS = 0;
 
 const imageWorkspaceModeMeta: Record<WorkspaceImageMode, {
   title: string;
@@ -2919,6 +2920,8 @@ function formatQuotaUnits(value: number | null | undefined) {
   return new Intl.NumberFormat("zh-CN").format(value);
 }
 
+const promptOptimizationCostLabel = `花费 ${formatQuotaUnits(PROMPT_OPTIMIZATION_QUOTA_UNITS)} 积分`;
+
 function getCreditTopUpGift(option: CreditTopUpOption) {
   return Math.max(0, option.credits - option.amount * CREDIT_TOP_UP_BASE_RATE);
 }
@@ -3222,6 +3225,7 @@ function ImageGenerator({
       <PromptBox
         value={state.prompt}
         onChange={onPromptChange}
+        optimizeCostLabel={promptOptimizationCostLabel}
         optimizing={state.promptOptimizing}
         optimizeError={state.promptOptimizeError}
         canUndoOptimize={Boolean(state.promptOptimizeUndo)}
@@ -3421,6 +3425,7 @@ function VideoGenerator({
         label={meta.promptLabel}
         value={state.prompt}
         onChange={onPromptChange}
+        optimizeCostLabel={promptOptimizationCostLabel}
         optimizing={state.promptOptimizing}
         optimizeError={state.promptOptimizeError}
         canUndoOptimize={Boolean(state.promptOptimizeUndo)}
@@ -3508,6 +3513,7 @@ function VideoPromptBox({
   placeholder,
   required,
   optimizing,
+  optimizeCostLabel,
   optimizeError,
   canUndoOptimize,
   onOptimize,
@@ -3520,6 +3526,7 @@ function VideoPromptBox({
   placeholder: string;
   required?: boolean;
   optimizing: boolean;
+  optimizeCostLabel?: string;
   optimizeError: string;
   canUndoOptimize: boolean;
   onOptimize: () => void;
@@ -3556,7 +3563,10 @@ function VideoPromptBox({
                 正在优化…
               </>
             ) : (
-              "✨ 优化提示词"
+              <span className="studio-prompt-action__copy">
+                <span>✨ 优化提示词</span>
+                {optimizeCostLabel ? <small>（{optimizeCostLabel}）</small> : null}
+              </span>
             )}
           </button>
           {enableOptimization && canUndoOptimize ? (
@@ -5914,6 +5924,7 @@ function PromptBox({
   placeholder,
   required,
   optimizing,
+  optimizeCostLabel,
   optimizeError,
   canUndoOptimize,
   onOptimize,
@@ -5924,6 +5935,7 @@ function PromptBox({
   placeholder: string;
   required?: boolean;
   optimizing: boolean;
+  optimizeCostLabel?: string;
   optimizeError: string;
   canUndoOptimize: boolean;
   onOptimize: () => void;
@@ -5957,7 +5969,10 @@ function PromptBox({
                 正在优化…
               </>
             ) : (
-              "✨ 优化提示词"
+              <span className="studio-prompt-action__copy">
+                <span>✨ 优化提示词</span>
+                {optimizeCostLabel ? <small>（{optimizeCostLabel}）</small> : null}
+              </span>
             )}
           </button>
           {canUndoOptimize ? (
