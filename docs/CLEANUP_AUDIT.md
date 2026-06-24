@@ -24,6 +24,12 @@ documented by `FINAL_HANDOFF.md`, `FINAL_QA_REPORT.md`,
 `SESSION_FLOW.md`, `SESSION_ARCHITECTURE.md`, `ADR_APPLICATION_DATABASE.md`,
 and `USER_MAPPING_CONTRACT.md`.
 
+Update: cleanup-03 consolidated the old module-by-module UI implementation
+reports into `docs/ui/UI_HISTORY_SUMMARY.md`. The retained guidance covers
+single business-state ownership, no fake login/balance/quota/model/result
+states, A/B backend boundaries, local Upscayl and Video2X processing boundaries,
+real-library behavior, design-token hierarchy, and real-browser evidence rules.
+
 ## Release Baseline
 
 - Release branch: `release/v0.9-small-test`
@@ -80,9 +86,7 @@ and `USER_MAPPING_CONTRACT.md`.
 | `docs/design-references/module-08-video-upscale/` | Video upscale verification screenshots. | No runtime code reference found. | High: documents local dependency verification. |保留| Video-upscale status smoke if any file is removed later. |
 | `public/images/reference/*.png` | Example/reference images shown in the current workbench UI. | Yes, referenced by `src/components/studio-app.tsx`. | High: deleting would break visible UI media. |保留| `npm run build`, desktop/mobile workbench smoke. |
 | `public/brand/logo.svg` | App brand logo. | Yes, referenced by shared brand components. | High: deleting would break header/login/admin branding. |保留| `npm run build`, login/admin/workbench smoke. |
-| `docs/ui/MODULE_03_ROOT_CAUSE.md` | Historical root-cause analysis mentioning fake login and early shell problems. | No runtime code reference found. | Medium: old statements are stale but useful for why later work exists. |待确认| Documentation review only. |
-| `docs/ui/MODULE_04_IMAGE_WORKSPACE.md` through `docs/ui/MODULE_09_LIBRARY.md` | Module delivery reports and acceptance notes. | No runtime code reference found. | Medium: can be archived later, but currently useful for traceability. |待确认| Documentation review only. |
-| `docs/ui/FEATURE_FREEZE.md` | Historical freeze policy for UI modules. | No runtime code reference found. | Medium: may still explain why some UI features are intentionally absent. |待确认| Documentation review only. |
+| `docs/ui/UI_HISTORY_SUMMARY.md` | Consolidated UI implementation history and durable rules from modules 3 through 9. | Referenced by `AGENTS.md`; no runtime code reference. | Medium: keep as current summary unless replaced by a broader UI handbook. |保留| Documentation review only. |
 | `docs/architecture/auth-newapi/FINAL_GATE_AUDIT.md`, `FINAL_VALIDATION_REPORT.md`, `FINAL_QA_REPORT.md`, `FINAL_HANDOFF.md` | Final validation and handoff evidence. | No runtime code reference found. | High: release evidence for `v0.9.0-rc1`. |保留| None. |
 | `docs/architecture/auth-newapi/USER_*`, `QUOTA_*`, `BILLING_*`, `PAYMENT_*`, `TASK_BILLING_BOUNDARY.md`, `RECONCILIATION_RUNBOOK.md` | Active backend API, state-machine, and operations documentation. | No runtime code reference found. | High: still needed for operations and future UI/admin work. |保留| None. |
 | `.github/workflows/admin-api.yml`, `auth-session.yml`, `quota-usage.yml`, `billing-sandbox.yml`, `new-api-bff.yml` | Module-specific CI retained alongside final gates. | Yes, GitHub Actions. | Medium: possibly redundant with `auth-newapi-final-gate.yml`, but useful for targeted reruns. |待确认| Trigger affected workflows and `Auth New API Final Gate`. |
@@ -126,5 +130,5 @@ and `USER_MAPPING_CONTRACT.md`.
 ## Candidate Counts
 
 - Suggested delete: 0 grouped documentation candidates after cleanup-01.
-- Awaiting confirmation: 13 grouped documentation or local-artifact candidates after cleanup-02.
+- Awaiting confirmation: 10 grouped documentation or local-artifact candidates after cleanup-03.
 - Explicitly retained high-risk items: 18 grouped candidates.

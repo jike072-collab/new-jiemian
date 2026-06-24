@@ -35,7 +35,7 @@
 ## Module 3 Recovery Rules
 
 - Do not replace a real application entry with a static shell page.
-- Review `docs/ui/FEATURE_FREEZE.md` before any shell, layout, or responsive work.
+- Review `docs/ui/UI_HISTORY_SUMMARY.md` before any shell, layout, or responsive work.
 - Do not create fake login state, fake balances, or a second tool-state source.
 - Prefer CSS media queries and layout tokens over first-render JavaScript viewport decisions.
 - New or rebuilt surfaces must use Design Tokens; do not hardcode new hex colors in the shell.
