@@ -9469,6 +9469,10 @@
     overflow: hidden;
   }
 
+  .shell-panel--mobile-single .studio-preview:has(.video-tutorial-guide) {
+    padding-bottom: calc(var(--primary-action-height-mobile) + 28px);
+  }
+
   .shell-panel--mobile-single .studio-library-toolbar {
     grid-template-columns: 1fr auto auto;
     gap: 8px;
@@ -9769,32 +9773,84 @@
   }
 
   .video-tutorial-input-demo {
-    width: min(460px, 100%);
-    max-width: 460px;
+    width: var(--video-guide-visual-width);
+    max-width: 100%;
+    height: auto;
+    aspect-ratio: 1.53 / 1;
+    border-radius: 16px;
   }
 
   .video-tutorial-parameter-demo,
   .video-tutorial-result-slot {
-    width: min(460px, 100%);
-    max-width: 460px;
+    width: var(--video-guide-visual-width);
+    max-width: 100%;
+    height: auto;
+    aspect-ratio: 1.53 / 1;
   }
 
   .video-tutorial-result-slot__media {
     width: 100%;
-    height: auto;
-    aspect-ratio: 46 / 30;
+    height: 100%;
+    aspect-ratio: auto;
   }
 
   .video-tutorial-parameter-demo__preview {
     width: 100%;
+    height: 70%;
+    border-radius: 14px;
   }
 
   .video-tutorial-parameter-demo__assets {
     width: 100%;
+    gap: 6px;
   }
 
   .video-tutorial-parameter-demo__asset {
-    height: 36px;
+    height: 32px;
+    gap: 4px;
+    border-radius: 10px;
+  }
+
+  .video-tutorial-parameter-demo__asset strong {
+    font-size: 11px;
+  }
+
+  .video-tutorial-parameter-demo__asset-icon {
+    width: 14px;
+    height: 14px;
+  }
+
+  .video-tutorial-parameter-demo__asset-icon.is-ratio {
+    width: 16px;
+    height: 12px;
+  }
+
+  .tutorial-upload-placeholder {
+    gap: 5px;
+    border-radius: 10px;
+    font-size: 11px;
+  }
+
+  .tutorial-upload-placeholder svg {
+    width: 20px;
+    height: 20px;
+  }
+
+  .tutorial-upload-target-ring,
+  .tutorial-source-image {
+    border-radius: 10px;
+  }
+
+  .tutorial-source-image {
+    transform: translate(156px, 70px) scale(0.88);
+  }
+
+  .tutorial-prompt-bubble {
+    min-height: 48px;
+    border-radius: 10px;
+    padding: 9px 10px;
+    font-size: 11px;
+    line-height: 1.38;
   }
 
   .studio-walkthrough__layer.is-tilt-left,
