@@ -3,7 +3,7 @@
 /* eslint-disable @next/next/no-img-element */
 
 import { useCallback, useEffect, useId, useMemo, useRef, useState, type CSSProperties } from "react";
-import { AlertTriangle, ArrowDownUp, ArrowLeft, CalendarCheck, Check, ChevronDown, Crown, CreditCard, Download, ExternalLink, Eye, History, ImageUp, Loader2, Play, ReceiptText, RefreshCw, Search, Sparkles, Trash2, UploadCloud, WalletCards, Wand2, X } from "lucide-react";
+import { AlertTriangle, ArrowDownUp, ArrowLeft, CalendarCheck, Check, ChevronDown, Crown, CreditCard, Download, ExternalLink, Eye, History, ImageUp, Loader2, Play, RefreshCw, Search, Sparkles, Trash2, UploadCloud, WalletCards, Wand2, X } from "lucide-react";
 import { useRouter, useSearchParams } from "next/navigation";
 
 import { BeforeAfterImageCompare } from "@/components/before-after-image-compare";
@@ -655,7 +655,7 @@ export function StudioApp() {
         if (process.env.NODE_ENV !== "production") {
           console.debug("[account] Failed to load account data", failures);
         }
-        setAccountDataError(formatAccountDataError(failures[0]));
+        setAccountDataError("account-data-unavailable");
       } else {
         setAccountDataError("");
       }
@@ -942,6 +942,10 @@ export function StudioApp() {
     setMessage(text);
   }, []);
 
+  const handleCheckInUnavailable = useCallback(() => {
+    setMessage("每日签到功能暂未开放。");
+  }, []);
+
   const markLibraryMediaMissing = useCallback((id: string) => {
     setMissingLibraryMediaIds((prev) => {
       if (prev.has(id)) return prev;
@@ -1014,11 +1018,10 @@ export function StudioApp() {
   );
 
   const accountHeaderSlot = (
-    <div className="hidden items-center gap-2 rounded-full border border-white/10 bg-white/[0.03] px-3 py-2 text-xs text-white/68 md:flex">
-      <span>积分</span>
-      <strong className="text-white">{sessionLoading || accountLoading ? "加载中" : quotaSnapshot ? `${formatQuotaUnits(quotaSnapshot.quota_units)} 分` : "—"}</strong>
-      <span className="text-white/38">/</span>
+    <div className="workspace-account-chip hidden items-center gap-2 rounded-full border border-white/10 bg-white/[0.03] px-3 py-2 text-xs text-white/68 md:flex">
       <span>{sessionUser ? sessionUser.display_name : "未登录"}</span>
+      <span className="text-white/38">/</span>
+      <strong className="text-white">{sessionLoading || accountLoading ? "加载中" : quotaSnapshot ? `${formatQuotaUnits(quotaSnapshot.quota_units)} ✦` : "—"}</strong>
     </div>
   );
 
@@ -2044,7 +2047,7 @@ export function StudioApp() {
         isAuthenticated={Boolean(sessionUser)}
         canAccessAdmin={sessionUser?.role === "admin"}
         accountName={sessionUser?.display_name || sessionUser?.username || null}
-        accountPointsLabel={sessionLoading || accountLoading ? "加载中" : quotaSnapshot ? `${formatQuotaUnits(quotaSnapshot.quota_units)} 分` : "—"}
+        accountPointsLabel={sessionLoading || accountLoading ? "加载中" : quotaSnapshot ? `${formatQuotaUnits(quotaSnapshot.quota_units)} ✦` : "—"}
         headerRightSlot={accountHeaderSlot}
         accountCloseSignal={accountCloseSignal}
         onOpenAccountCenter={handleOpenAccountCenter}
@@ -2062,6 +2065,7 @@ export function StudioApp() {
             onLogout={() => void handleLogout()}
             onOpenCenter={handleOpenAccountCenter}
             onOpenRecharge={handleOpenRechargeCenter}
+            onCheckInUnavailable={handleCheckInUnavailable}
           />
         )}
         contentMode={accountCenterOpen ? "account" : "default"}
@@ -2076,13 +2080,12 @@ export function StudioApp() {
               usage={usagePage}
               loading={sessionLoading || accountLoading}
               billingOrders={billingOrders}
-              accountError={accountDataError}
               accountView={accountView}
               planStatus={accountPlanStatus}
               checkInStatus={accountCheckInStatus}
               onViewChange={setAccountView}
-              onRefreshAccount={() => void refreshAccountSnapshot()}
               onPaymentUnavailable={handlePaymentUnavailable}
+              onCheckInUnavailable={handleCheckInUnavailable}
             />
           ) : activeBusinessTool === "library" ? (
             <LibraryWorkspace
@@ -2183,26 +2186,24 @@ function UserCenterWorkspace({
   usage,
   loading,
   billingOrders,
-  accountError,
   accountView,
   planStatus,
   checkInStatus,
   onViewChange,
-  onRefreshAccount,
   onPaymentUnavailable,
+  onCheckInUnavailable,
 }: {
   user: PublicAuthUser | null;
   quota: QuotaSnapshot | null;
   usage: UsagePage | null;
   loading: boolean;
   billingOrders: BillingOrder[];
-  accountError: string;
   accountView: AccountView;
   planStatus: PlanStatus;
   checkInStatus: CheckInStatus;
   onViewChange: (view: AccountView) => void;
-  onRefreshAccount: () => void;
   onPaymentUnavailable: (text?: string) => void;
+  onCheckInUnavailable: () => void;
 }) {
   if (accountView === "recharge") {
     return (
@@ -2210,10 +2211,8 @@ function UserCenterWorkspace({
         user={user}
         quota={quota}
         loading={loading}
-        accountError={accountError}
         planStatus={planStatus}
         onViewChange={onViewChange}
-        onRefreshAccount={onRefreshAccount}
         onPaymentUnavailable={onPaymentUnavailable}
       />
     );
@@ -2236,10 +2235,9 @@ function UserCenterWorkspace({
       quota={quota}
       usage={usage}
       loading={loading}
-      accountError={accountError}
       planStatus={planStatus}
       checkInStatus={checkInStatus}
-      onRefreshAccount={onRefreshAccount}
+      onCheckInUnavailable={onCheckInUnavailable}
       onViewChange={onViewChange}
     />
   );
@@ -2250,30 +2248,28 @@ function UserCenterOverview({
   quota,
   usage,
   loading,
-  accountError,
   planStatus,
   checkInStatus,
-  onRefreshAccount,
+  onCheckInUnavailable,
   onViewChange,
 }: {
   user: PublicAuthUser | null;
   quota: QuotaSnapshot | null;
   usage: UsagePage | null;
   loading: boolean;
-  accountError: string;
   planStatus: PlanStatus;
   checkInStatus: CheckInStatus;
-  onRefreshAccount: () => void;
+  onCheckInUnavailable: () => void;
   onViewChange: (view: AccountView) => void;
 }) {
   const usageEntries = usage?.entries?.slice(0, 6) || [];
   const quotaUnits = quota?.quota_units ?? null;
-  const quotaValue = loading ? "加载中" : quota ? `${formatQuotaUnits(quota.quota_units)} 分` : "—";
+  const quotaValue = loading ? "加载中" : quota ? `${formatQuotaUnits(quota.quota_units)} ✦` : "—";
   const quotaNote = loading
     ? "正在同步真实账户积分。"
     : quota
       ? "积分用于图片和视频创作。"
-      : "账户信息暂时无法加载。";
+      : "登录后将显示真实账户积分。";
   const planDisplay = getPlanStatusDisplay(planStatus);
   const checkInDisplay = getCheckInStatusDisplay(checkInStatus);
   const previousQuotaUnitsRef = useRef<number | null>(quotaUnits);
@@ -2310,14 +2306,6 @@ function UserCenterOverview({
 
       <div className="user-center-page__grid">
         <div className="user-center-page__main">
-          {accountError && !loading ? (
-            <div className="user-center-account-alert" role="status">
-              <AlertTriangle className="size-4" aria-hidden="true" />
-              <span>{accountError}</span>
-              <button type="button" onClick={onRefreshAccount} disabled={!user}>重试</button>
-            </div>
-          ) : null}
-
           <div className="user-center-account-summary">
             <article className={cn("user-center-points-card", quotaChanged && "is-updated")}>
               <span className="user-center-card-icon user-center-card-icon--primary">
@@ -2332,10 +2320,6 @@ function UserCenterOverview({
                 <button type="button" className="user-center-action user-center-action--primary" onClick={() => onViewChange("recharge")} disabled={!user}>
                   <WalletCards className="size-4" aria-hidden="true" />
                   立即充值
-                </button>
-                <button type="button" className="user-center-action" onClick={() => onViewChange("usage")} disabled={!user}>
-                  <History className="size-4" aria-hidden="true" />
-                  查看记录
                 </button>
               </div>
             </article>
@@ -2353,7 +2337,7 @@ function UserCenterOverview({
                 <button
                   type="button"
                   className="user-center-mini-card__action"
-                  onClick={planStatus.status === "error" ? onRefreshAccount : () => onViewChange("recharge")}
+                  onClick={() => onViewChange("recharge")}
                   disabled={!user}
                 >
                   {planDisplay.actionLabel}
@@ -2372,8 +2356,8 @@ function UserCenterOverview({
                 <button
                   type="button"
                   className="user-center-mini-card__action"
-                  onClick={checkInStatus === "error" ? onRefreshAccount : undefined}
-                  disabled={checkInDisplay.actionDisabled || !user}
+                  onClick={checkInStatus === "unavailable" ? onCheckInUnavailable : undefined}
+                  disabled={!user || (checkInStatus !== "unavailable" && checkInDisplay.actionDisabled)}
                 >
                   {checkInDisplay.actionLabel}
                 </button>
@@ -2444,19 +2428,15 @@ function RechargeCenterWorkspace({
   user,
   quota,
   loading,
-  accountError,
   planStatus,
   onViewChange,
-  onRefreshAccount,
   onPaymentUnavailable,
 }: {
   user: PublicAuthUser | null;
   quota: QuotaSnapshot | null;
   loading: boolean;
-  accountError: string;
   planStatus: PlanStatus;
   onViewChange: (view: AccountView) => void;
-  onRefreshAccount: () => void;
   onPaymentUnavailable: (text?: string) => void;
 }) {
   const [activeTab, setActiveTab] = useState<RechargeTab>("plans");
@@ -2479,7 +2459,7 @@ function RechargeCenterWorkspace({
     : "";
   const customAmountHelpId = "custom-recharge-help";
   const customAmountErrorId = "custom-recharge-error";
-  const pointsStatusLabel = quota ? `${formatQuotaUnits(quota.quota_units)} 分` : "—";
+  const pointsStatusLabel = quota ? `${formatQuotaUnits(quota.quota_units)} ✦` : "—";
   const planStatusLabel = getPlanStatusDisplay(planStatus).label;
   const creditSummaryLines = customRechargeActive
     ? createCustomCreditSummaryLines(customAmount, customAmountValid, customCredits)
@@ -2535,10 +2515,6 @@ function RechargeCenterWorkspace({
         )}
         actions={(
           <div className="recharge-header-actions">
-            <button type="button" className="recharge-header-action" onClick={() => onViewChange("usage")}>
-              <ReceiptText className="size-4" aria-hidden="true" />
-              充值记录
-            </button>
             <button type="button" className="recharge-header-action" onClick={() => onPaymentUnavailable("帮助入口暂未开放")}>
               <ExternalLink className="size-4" aria-hidden="true" />
               帮助
@@ -2568,14 +2544,6 @@ function RechargeCenterWorkspace({
             积分充值
           </button>
         </div>
-
-        {accountError && !loading ? (
-          <div className="recharge-account-error" role="status">
-            <AlertTriangle className="size-4" aria-hidden="true" />
-            <span>{accountError}</span>
-            <button type="button" onClick={onRefreshAccount}>重试</button>
-          </div>
-        ) : null}
 
         <div className="recharge-layout">
           <div className="recharge-layout__selection">
@@ -2922,11 +2890,6 @@ function createAccountRecords(usageEntries: UsageLogEntry[], billingOrders: Bill
 function formatQuotaUnits(value: number | null | undefined) {
   if (value === null || value === undefined) return "0";
   return new Intl.NumberFormat("zh-CN").format(value);
-}
-
-function formatAccountDataError(error: unknown) {
-  void error;
-  return "部分账户信息暂时无法加载，请稍后重试。";
 }
 
 function getCreditTopUpGift(option: CreditTopUpOption) {
@@ -4903,7 +4866,6 @@ function LibraryWorkspace({
       <header className="studio-library-page__header">
         <div>
           <h2>作品库</h2>
-          <p>管理和查看你生成的全部图片与视频</p>
         </div>
         <span className="studio-library-page__count">共 {totalCount} 件作品</span>
       </header>

@@ -1,6 +1,6 @@
 "use client";
 
-import { CalendarCheck, ChevronRight, Crown, Loader2, LogOut, RefreshCw, Sparkles, UserRound } from "lucide-react";
+import { CalendarCheck, ChevronRight, Crown, Loader2, LogOut, Sparkles, UserRound } from "lucide-react";
 
 import type { PublicAuthUser } from "@/lib/server/auth";
 import type { QuotaSnapshot } from "@/lib/server/quota";
@@ -21,6 +21,7 @@ type WorkspaceAccountPanelProps = {
   onLogout: () => void;
   onOpenCenter?: () => void;
   onOpenRecharge?: () => void;
+  onCheckInUnavailable?: () => void;
 };
 
 function formatQuota(value: number | null | undefined) {
@@ -40,16 +41,17 @@ export function WorkspaceAccountPanel({
   onLogout,
   onOpenCenter,
   onOpenRecharge,
+  onCheckInUnavailable,
 }: WorkspaceAccountPanelProps) {
   const displayName = user?.display_name || user?.username || "账户";
   const avatarText = displayName.slice(0, 2).toUpperCase();
-  const pointsLabel = loading ? "加载中" : quota ? `${formatQuota(quota.quota_units)} 分` : "—";
+  const pointsLabel = loading ? "加载中" : quota ? `${formatQuota(quota.quota_units)} ✦` : "—";
   const planDisplay = getPlanStatusDisplay(planStatus);
   const checkInDisplay = getCheckInStatusDisplay(checkInStatus);
   const currentCenter = accountView === "center";
 
   return (
-    <div className="account-popover-card">
+    <div className="account-popover-card" data-account-error={accountError && !loading ? "true" : undefined}>
       <div className="account-popover-card__head">
         <div className="account-popover-card__avatar">{user ? avatarText : <UserRound className="size-5" aria-hidden="true" />}</div>
         <div className="account-popover-card__identity">
@@ -57,16 +59,6 @@ export function WorkspaceAccountPanel({
           <span>{user?.email || "登录后查看账户信息"}</span>
         </div>
       </div>
-
-      {accountError && !loading ? (
-        <div className="account-popover-card__error" role="status">
-          <span>账户信息加载失败</span>
-          <button type="button" onClick={onRefresh} disabled={!user}>
-            <RefreshCw className="size-3.5" aria-hidden="true" />
-            重试
-          </button>
-        </div>
-      ) : null}
 
       <div className="account-popover-card__rows">
         <div className="account-popover-row">
@@ -95,7 +87,11 @@ export function WorkspaceAccountPanel({
             每日签到
           </span>
           <strong>{checkInDisplay.label}</strong>
-          <button type="button" onClick={checkInStatus === "error" ? onRefresh : undefined} disabled={checkInDisplay.actionDisabled || !user}>
+          <button
+            type="button"
+            onClick={checkInStatus === "error" ? onRefresh : onCheckInUnavailable}
+            disabled={!user || (checkInStatus !== "unavailable" && checkInDisplay.actionDisabled)}
+          >
             {checkInDisplay.actionLabel}
           </button>
         </div>

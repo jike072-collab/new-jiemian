@@ -108,7 +108,7 @@ export function getCheckInStatusDisplay(checkInStatus: CheckInStatus): AccountSt
   return {
     label: "签到功能暂未开放",
     note: "开放后会在这里显示每日签到状态。",
-    actionLabel: "暂未开放",
-    actionDisabled: true,
+    actionLabel: "签到",
+    actionDisabled: false,
   };
 }

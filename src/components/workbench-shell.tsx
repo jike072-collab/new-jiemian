@@ -248,8 +248,10 @@ export function WorkbenchShell({
       <Header
         isAuthenticated={isAuthenticated}
         accountName={accountName}
+        accountPointsLabel={accountPointsLabel}
         onToggleDrawer={() => setDrawerOpen((value) => !value)}
         onToggleAccount={toggleAccountPopover}
+        onOpenAccountCenter={onOpenAccountCenter}
         accountOpen={accountOpen}
         accountPopoverVisible={accountPopoverVisible}
         accountPopoverClosing={accountPopoverClosing}
@@ -331,8 +333,10 @@ export function WorkbenchShell({
 function Header({
   isAuthenticated,
   accountName,
+  accountPointsLabel,
   onToggleDrawer,
   onToggleAccount,
+  onOpenAccountCenter,
   accountOpen,
   accountPopoverVisible,
   accountPopoverClosing,
@@ -345,8 +349,10 @@ function Header({
 }: {
   isAuthenticated: boolean;
   accountName?: string | null;
+  accountPointsLabel?: string | null;
   onToggleDrawer: () => void;
   onToggleAccount: (trigger?: HTMLElement | null) => void;
+  onOpenAccountCenter?: () => void;
   accountOpen: boolean;
   accountPopoverVisible: boolean;
   accountPopoverClosing: boolean;
@@ -383,15 +389,24 @@ function Header({
           <button
             type="button"
             className="shell-account"
-            onClick={(event) => onToggleAccount(event.currentTarget)}
+            onClick={(event) => {
+              if (accountSlot) {
+                onToggleAccount(event.currentTarget);
+                return;
+              }
+              onOpenAccountCenter?.();
+            }}
             title={accountName || "账户"}
-            aria-haspopup="dialog"
-            aria-expanded={accountOpen}
-            aria-controls={accountPopoverVisible ? accountPopoverId : undefined}
+            aria-haspopup={accountSlot ? "dialog" : undefined}
+            aria-expanded={accountSlot ? accountOpen : undefined}
+            aria-controls={accountSlot && accountPopoverVisible ? accountPopoverId : undefined}
           >
             <span className="shell-account__avatar">{(accountName || "账户").slice(0, 2).toUpperCase()}</span>
-            <span className="shell-account__name">{accountName || "账户"}</span>
-            <ChevronDown className={cn("size-4 transition", accountOpen && "rotate-180")} />
+            <span className="shell-account__meta">
+              <span className="shell-account__name">{accountName || "账户"}</span>
+              <span className="shell-account__points">{accountPointsLabel || "—"}</span>
+            </span>
+            {accountSlot ? <ChevronDown className={cn("size-4 transition", accountOpen && "rotate-180")} /> : null}
           </button>
         ) : (
           <Link href="/login" className="shell-login">
@@ -401,7 +416,7 @@ function Header({
         )}
       </div>
 
-      {isAuthenticated && accountPopoverVisible ? (
+      {isAuthenticated && accountSlot && accountPopoverVisible ? (
         <div
           id={accountPopoverId}
           className={cn("shell-header-account__popover", accountPopoverClosing && "is-closing")}
@@ -409,13 +424,7 @@ function Header({
           aria-label="快捷账户面板"
           tabIndex={-1}
         >
-          {accountSlot ? (
-            accountSlot
-          ) : (
-            <div className="rounded-[1.5rem] border border-white/10 bg-[#0f0f13] p-4 text-sm text-white/68 shadow-[0_20px_60px_rgba(0,0,0,0.28)]">
-              <p className="text-white/92">账户功能暂未加载。</p>
-            </div>
-          )}
+          {accountSlot}
         </div>
       ) : null}
 
@@ -510,17 +519,22 @@ function DesktopNavigation({
             <button
               type="button"
               className="shell-nav-account__main shell-nav-account__main--button"
-              onClick={(event) => onToggleAccount(event.currentTarget)}
-              aria-haspopup="dialog"
-              aria-expanded={accountOpen}
-              aria-controls={accountPopoverVisible ? accountPopoverId : undefined}
+              onClick={(event) => {
+                if (accountSlot) {
+                  onToggleAccount(event.currentTarget);
+                  return;
+                }
+                onOpenAccountCenter?.();
+              }}
+              aria-haspopup={accountSlot ? "dialog" : undefined}
+              aria-expanded={accountSlot ? accountOpen : undefined}
+              aria-controls={accountSlot && accountPopoverVisible ? accountPopoverId : undefined}
             >
               <span className="shell-nav-account__avatar">{avatarText}</span>
               <span className="shell-nav-account__copy">
                 <strong>{displayName}</strong>
                 <span>剩余积分 {accountPointsLabel || "—"}</span>
               </span>
-              <ChevronDown className={cn("shell-nav-account__chevron size-4", accountOpen && "is-open")} aria-hidden="true" />
             </button>
             <div className="shell-nav-account__actions is-split">
               <button
@@ -536,7 +550,7 @@ function DesktopNavigation({
                 充值
               </button>
             </div>
-            {accountPopoverVisible ? (
+            {accountSlot && accountPopoverVisible ? (
               <div
                 id={accountPopoverId}
                 className={cn("shell-nav-account__popover", accountPopoverClosing && "is-closing")}
@@ -544,13 +558,7 @@ function DesktopNavigation({
                 aria-label="快捷账户面板"
                 tabIndex={-1}
               >
-                {accountSlot ? (
-                  accountSlot
-                ) : (
-                  <div className="rounded-[1.5rem] border border-white/10 bg-[#0f0f13] p-4 text-sm text-white/68 shadow-[0_20px_60px_rgba(0,0,0,0.28)]">
-                    <p className="text-white/92">账户功能暂未加载。</p>
-                  </div>
-                )}
+                {accountSlot}
               </div>
             ) : null}
           </>

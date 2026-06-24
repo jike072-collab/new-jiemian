@@ -225,6 +225,14 @@ export function TemplateCenterView() {
     router.push(`/?${params.toString()}`);
   };
 
+  const handleOpenAccountCenter = () => {
+    router.push(`/?account=center${previewMode ? "&preview=1" : ""}`);
+  };
+
+  const handleOpenRechargeCenter = () => {
+    router.push(`/?account=recharge${previewMode ? "&preview=1" : ""}`);
+  };
+
   useEffect(() => {
     let cancelled = false;
 
@@ -236,7 +244,7 @@ export function TemplateCenterView() {
           setSessionUser(session.user);
           try {
             const quotaData = await fetchJson<QuotaResponse>("/api/quota");
-            if (!cancelled) setQuotaLabel(String(quotaData.quota.quota_units ?? quotaData.quota.available_quota_units));
+            if (!cancelled) setQuotaLabel(`${new Intl.NumberFormat("zh-CN").format(quotaData.quota.quota_units ?? quotaData.quota.available_quota_units)} ✦`);
           } catch {
             if (!cancelled) setQuotaLabel(null);
           }
@@ -265,6 +273,8 @@ export function TemplateCenterView() {
       canAccessAdmin={sessionUser?.role === "admin"}
       accountName={sessionUser?.display_name || sessionUser?.username || null}
       accountPointsLabel={quotaLabel}
+      onOpenAccountCenter={handleOpenAccountCenter}
+      onOpenAccountRecharge={handleOpenRechargeCenter}
       toolTitle="模板中心"
       parameterSlot={null}
       previewSlot={
@@ -402,11 +412,6 @@ function TemplateBrowserPanel({
       <div className="template-center-browser__head">
         <div>
           <h3>模板中心</h3>
-          <p>
-            发现适合商品、海报、摄影、插画、图文和界面的常用模板。
-            <br />
-            选择一个模板后，会自动带入对应提示词、比例和生成参数。
-          </p>
         </div>
         <span className="shell-chip">共 {totalCount} 个模板</span>
       </div>
