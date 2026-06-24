@@ -105,7 +105,7 @@ function providerVideoOptions(provider: ProviderConfig) {
   return jimengVideoOptionsForModel(provider.model) || normalizeVideoOptions(provider.videoOptions);
 }
 
-export function isLocalProvider(endpointType: EndpointType) {
+function isLegacyLocalEndpoint(endpointType: string) {
   return endpointType === "upscayl-cli" || endpointType === "video2x-cli";
 }
 
@@ -189,26 +189,26 @@ export function defaultProviders(): ProviderConfig[] {
       id: "image-upscale",
       kind: "image-upscale",
       title: "图片高清",
-      role: "使用 Upscayl 在本机进行图片放大",
-      apiUrl: env("UPSCAYL_BIN"),
-      model: env("UPSCAYL_MODEL", "upscayl-standard-4x"),
-      displayName: env("UPSCAYL_DISPLAY_NAME", env("UPSCAYL_MODEL", "upscayl-standard-4x")),
-      apiKey: "",
-      enabled: true,
-      endpointType: "upscayl-cli",
+      role: "使用火山引擎 ImageX 进行图片高清放大",
+      apiUrl: env("VOLCENGINE_IMAGEX_ENDPOINT", "https://imagex.volcengineapi.com"),
+      model: env("VOLCENGINE_IMAGEX_SERVICE_ID"),
+      displayName: env("VOLCENGINE_IMAGEX_DISPLAY_NAME", "火山 ImageX 图片高清"),
+      apiKey: env("VOLCENGINE_ACCESS_KEY_PAIR"),
+      enabled: hasKey(env("VOLCENGINE_ACCESS_KEY_PAIR")) || (hasKey(env("VOLCENGINE_ACCESS_KEY_ID")) && hasKey(env("VOLCENGINE_SECRET_ACCESS_KEY"))),
+      endpointType: "volcengine-imagex-upscale",
       custom: false,
     },
     {
       id: "video-upscale",
       kind: "video-upscale",
       title: "视频高清",
-      role: "使用 Video2X 在本机进行视频放大",
-      apiUrl: env("VIDEO2X_BIN"),
-      model: env("VIDEO2X_MODEL", "realesr-animevideov3"),
-      displayName: env("VIDEO2X_DISPLAY_NAME", env("VIDEO2X_MODEL", "realesr-animevideov3")),
-      apiKey: "",
-      enabled: true,
-      endpointType: "video2x-cli",
+      role: "使用火山引擎 VOD 进行视频高清放大",
+      apiUrl: env("VOLCENGINE_VOD_ENDPOINT", "https://vod.volcengineapi.com"),
+      model: env("VOLCENGINE_VOD_SPACE_NAME"),
+      displayName: env("VOLCENGINE_VOD_DISPLAY_NAME", "火山 VOD 视频高清"),
+      apiKey: env("VOLCENGINE_ACCESS_KEY_PAIR"),
+      enabled: hasKey(env("VOLCENGINE_ACCESS_KEY_PAIR")) || (hasKey(env("VOLCENGINE_ACCESS_KEY_ID")) && hasKey(env("VOLCENGINE_SECRET_ACCESS_KEY"))),
+      endpointType: "volcengine-vod-upscale",
       custom: false,
     },
   ];
@@ -236,7 +236,6 @@ function normalizeProvider(provider: ProviderConfig): ProviderConfig {
 
 export function sanitizeProvider(provider: ProviderConfig): PublicProvider {
   const normalized = normalizeProvider(provider);
-  const localProvider = isLocalProvider(normalized.endpointType);
   return {
     id: normalized.id,
     kind: normalized.kind,
@@ -252,7 +251,7 @@ export function sanitizeProvider(provider: ProviderConfig): PublicProvider {
     enabled: normalized.enabled,
     endpointType: normalized.endpointType,
     custom: normalized.custom,
-    configured: normalized.enabled && (localProvider || hasKey(normalized.apiKey)),
+    configured: normalized.enabled && hasKey(normalized.apiKey),
     keyPreview: maskedKeyPreview(normalized.apiKey),
   };
 }
@@ -261,13 +260,13 @@ function capabilitiesFor(provider: Pick<ProviderConfig, "endpointType">) {
   if (provider.endpointType === "images-edits") return ["image", "image-edit"];
   if (provider.endpointType === "images-generations") return ["image"];
   if (provider.endpointType === "videos-generations" || provider.endpointType === "grok-videos") return ["video"];
-  if (provider.endpointType === "upscayl-cli") return ["image-upscale"];
-  if (provider.endpointType === "video2x-cli") return ["video-upscale"];
+  if (provider.endpointType === "volcengine-imagex-upscale") return ["image-upscale"];
+  if (provider.endpointType === "volcengine-vod-upscale") return ["video-upscale"];
   return [];
 }
 
 function shouldExpandProvider(provider: ProviderConfig) {
-  return (provider.kind === "image" || provider.kind === "video") && !isLocalProvider(provider.endpointType);
+  return provider.kind === "image" || provider.kind === "video";
 }
 
 function virtualProviderId(providerId: string, model: string) {
@@ -315,6 +314,19 @@ function expandProviderModels(provider: ProviderConfig) {
 function mergeStoredProvider(fallback: ProviderConfig, stored: ProviderConfig | undefined) {
   if (!stored) return fallback;
   if (
+    (fallback.endpointType === "volcengine-imagex-upscale" && isLegacyLocalEndpoint(stored.endpointType))
+    || (fallback.endpointType === "volcengine-vod-upscale" && isLegacyLocalEndpoint(stored.endpointType))
+  ) {
+    return {
+      ...stored,
+      apiUrl: fallback.apiUrl,
+      model: fallback.model,
+      displayName: fallback.displayName,
+      apiKey: stored.apiKey || fallback.apiKey,
+      endpointType: fallback.endpointType,
+    };
+  }
+  if (
     fallback.endpointType !== "upscale-placeholder"
     && stored.endpointType === "upscale-placeholder"
   ) {
@@ -361,7 +373,7 @@ export async function readEnabledProviders(kind?: ProviderKind) {
     .filter((provider) => (
       (!kind || provider.kind === kind)
       && provider.enabled
-      && (isLocalProvider(provider.endpointType) || hasKey(provider.apiKey))
+      && hasKey(provider.apiKey)
     ))
     .flatMap(expandProviderModels);
 }
@@ -371,7 +383,7 @@ export async function readFrontendProviders(kind?: ProviderKind): Promise<Fronte
     .filter((provider) => (
       (!kind || provider.kind === kind)
       && provider.enabled
-      && (isLocalProvider(provider.endpointType) || hasKey(provider.apiKey))
+      && hasKey(provider.apiKey)
     ))
     .flatMap(expandProviderModels)
     .map((provider) => ({
@@ -425,10 +437,6 @@ export function modelsEndpointFor(apiUrl: string) {
 }
 
 function validateProviderUpdate(provider: ProviderConfig) {
-  if (provider.enabled && isLocalProvider(provider.endpointType)) {
-    if (!provider.model) throw new Error(`${provider.title} 缺少模型。`);
-    return;
-  }
   if (provider.enabled && provider.endpointType !== "upscale-placeholder") {
     if (!provider.apiUrl) throw new Error(`${provider.title} 缺少接口地址。`);
     if (!provider.model) throw new Error(`${provider.title} 缺少模型。`);

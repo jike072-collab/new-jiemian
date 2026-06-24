@@ -1,13 +1,17 @@
 import { NextResponse } from "next/server";
 
-import { submitVideoUpscale, uploadedUpscaleFile } from "@/lib/server/local-upscale";
+import { submitVideoUpscale, uploadedUpscaleFile } from "@/lib/server/volcengine-upscale";
 
 export const runtime = "nodejs";
 
 export async function POST(request: Request) {
   try {
     const form = await request.formData();
-    const scale = Number(form.get("scale")) === 4 ? 4 : 2;
+    const requestedScale = Number(form.get("scale"));
+    if (requestedScale !== 1 && requestedScale !== 2 && requestedScale !== 4) {
+      throw new Error("视频高清仅支持 1K、2K 或 4K。");
+    }
+    const scale = requestedScale;
     const file = await uploadedUpscaleFile(form, "video");
     return NextResponse.json(await submitVideoUpscale(file, scale));
   } catch (error) {

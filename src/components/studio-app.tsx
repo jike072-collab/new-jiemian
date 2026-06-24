@@ -236,7 +236,7 @@ type VideoUpscaleWorkspaceFile = {
 };
 
 type ImageUpscaleWorkspaceState = {
-  scale: "2" | "4";
+  scale: "1" | "2" | "4";
   file: ImageUpscaleWorkspaceFile | null;
   fileError: string;
   submitError: string;
@@ -248,7 +248,7 @@ type ImageUpscaleWorkspaceState = {
 };
 
 type VideoUpscaleWorkspaceState = {
-  scale: "2" | "4";
+  scale: "1" | "2" | "4";
   file: VideoUpscaleWorkspaceFile | null;
   fileError: string;
   submitError: string;
@@ -260,8 +260,14 @@ type VideoUpscaleWorkspaceState = {
   job: JobRecord | null;
 };
 
+function upscaleTargetLabel(scale: string) {
+  if (scale === "4") return "4K";
+  if (scale === "2") return "2K";
+  return "1K";
+}
+
 function videoUpscaleScaleLabel(scale: string) {
-  return scale === "4" ? "2K" : "1K";
+  return upscaleTargetLabel(scale);
 }
 
 const ratios = ["1:1", "16:9", "9:16", "4:3", "3:4", "3:2", "2:3"];
@@ -596,7 +602,7 @@ export function StudioApp() {
     statusError: "",
   });
   const [videoUpscaleWorkspace, setVideoUpscaleWorkspace] = useState<VideoUpscaleWorkspaceState>({
-    scale: "4",
+    scale: "1",
     file: null,
     fileError: "",
     submitError: "",
@@ -2023,7 +2029,7 @@ export function StudioApp() {
         <ImageUpscaleForm
           state={imageUpscaleWorkspace}
           canSubmit={imageUpscaleCanSubmit}
-          onScaleChange={(value) => updateImageUpscaleWorkspace({ scale: value as "2" | "4", submitError: "" })}
+          onScaleChange={(value) => updateImageUpscaleWorkspace({ scale: value as "1" | "2" | "4", submitError: "" })}
           onFilesChange={replaceImageUpscaleFile}
           onFileRemove={removeImageUpscaleFile}
           onFilesClear={removeImageUpscaleFile}
@@ -2035,7 +2041,7 @@ export function StudioApp() {
         <VideoUpscaleForm
           state={videoUpscaleWorkspace}
           canSubmit={videoUpscaleCanSubmit}
-          onScaleChange={(value) => updateVideoUpscaleWorkspace({ scale: value as "2" | "4", submitError: "" })}
+          onScaleChange={(value) => updateVideoUpscaleWorkspace({ scale: value as "1" | "2" | "4", submitError: "" })}
           onFilesChange={replaceVideoUpscaleFile}
           onFileRemove={removeVideoUpscaleFile}
           onFilesClear={removeVideoUpscaleFile}
@@ -3668,8 +3674,9 @@ function ImageUpscaleForm({
           groupId="image-upscale-scale"
           value={state.scale}
           options={[
-            ["2", "2x"],
-            ["4", "4x"],
+            ["1", "1K"],
+            ["2", "2K"],
+            ["4", "4K"],
           ]}
           onChange={onScaleChange}
         />
@@ -3884,8 +3891,8 @@ const toolTutorials: Record<ToolTutorialKind, {
           { src: "/tutorials/image-upscale/detail-high.svg", alt: "高清细节示意", className: "is-detail-right is-tilt-soft-right" },
         ],
         tags: [
-          { text: "2x", className: "is-bottom-left" },
-          { text: "4x", className: "is-bottom-right" },
+          { text: "2K", className: "is-bottom-left" },
+          { text: "4K", className: "is-bottom-right" },
         ],
       },
       {
@@ -3924,7 +3931,7 @@ const toolTutorials: Record<ToolTutorialKind, {
           { src: "/tutorials/video-upscale/frame-low.svg", alt: "原始视频帧", className: "is-flow-left is-tilt-left" },
           { src: "/tutorials/video-upscale/frame-high.svg", alt: "高清视频帧", className: "is-flow-right is-tilt-right" },
         ],
-        tags: [{ text: "2x / 4x", className: "is-center-tag" }],
+        tags: [{ text: "1K / 2K / 4K", className: "is-center-tag" }],
       },
       {
         title: "播放高清结果",
@@ -4641,9 +4648,9 @@ function ImageUpscalePreviewPanel({
     const outputSize = typeof params.outputWidth === "number" && typeof params.outputHeight === "number"
       ? `${params.outputWidth} x ${params.outputHeight}`
       : "未记录";
-    const resultScale = typeof params.scale === "number" ? `${params.scale}x` : `${state.scale}x`;
+    const resultScale = typeof params.scale === "number" ? upscaleTargetLabel(String(params.scale)) : upscaleTargetLabel(state.scale);
     return (
-      <PreviewState eyebrow="结果" title="高清结果" description={`${state.scale}x 高清处理完成。`} badge={libraryStatusBadgeLabel(output.item.status)} role="status" live>
+      <PreviewState eyebrow="结果" title="高清结果" description={`${upscaleTargetLabel(state.scale)} 高清处理完成。`} badge={libraryStatusBadgeLabel(output.item.status)} role="status" live>
         {source ? (
           <BeforeAfterImageCompare
             beforeSrc={source.previewUrl}
@@ -4840,8 +4847,9 @@ function VideoUpscaleForm({
           groupId="video-upscale-scale"
           value={state.scale}
           options={[
-            ["2", "1K"],
-            ["4", "2K"],
+            ["1", "1K"],
+            ["2", "2K"],
+            ["4", "4K"],
           ]}
           onChange={onScaleChange}
         />
@@ -6357,13 +6365,13 @@ const previewContent: Record<
     title: "图片高清",
     desc: "上传图像后选择倍数，结果会在这里显示。",
     image: "/images/reference/sample-2.png",
-    notes: ["上传图像", "选择 2x 或 4x", "处理后进入作品库"],
+    notes: ["上传图像", "选择 1K / 2K / 4K", "处理后进入作品库"],
   },
   "video-upscale": {
     title: "视频高清",
     desc: "上传视频后选择倍数，结果会在这里播放。",
     image: "/images/reference/sample-3.png",
-    notes: ["上传视频", "选择 2x 或 4x", "处理后刷新作品库"],
+    notes: ["上传视频", "选择 1K / 2K / 4K", "处理后刷新作品库"],
   },
   library: {
     title: "作品库",

@@ -871,7 +871,10 @@ export async function refreshVideoJob(jobId: string, localUserId?: string | null
     await reconcileFinalizedVideoJob(job, localUserId);
     return job;
   }
-  if (job.providerId === "video-upscale") return job;
+  if (job.providerId === "video-upscale") {
+    const { refreshVideoUpscaleJob } = await import("./volcengine-upscale");
+    return refreshVideoUpscaleJob(jobId, localUserId);
+  }
 
   const provider = await providerById(job.providerId);
   if (!provider || !provider.apiKey) throw new Error("视频供应商未配置。");

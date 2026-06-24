@@ -6,8 +6,8 @@ export type EndpointType =
   | "chat-completions"
   | "videos-generations"
   | "grok-videos"
-  | "upscayl-cli"
-  | "video2x-cli"
+  | "volcengine-imagex-upscale"
+  | "volcengine-vod-upscale"
   | "upscale-placeholder";
 
 export type ProviderConfig = {

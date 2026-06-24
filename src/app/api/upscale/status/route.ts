@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 
-import { readUpscaleStatus } from "@/lib/server/local-upscale";
+import { readUpscaleStatus } from "@/lib/server/volcengine-upscale";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
