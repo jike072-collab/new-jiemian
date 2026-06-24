@@ -404,6 +404,7 @@ function TemplateBrowserPanel({
 
   const handleCategoryChange = (value: TemplateCategory | "全部") => {
     onCategoryChange(value);
+    setMobileCategoryOpen(false);
   };
 
   const openMobileSearch = () => {
@@ -495,7 +496,7 @@ function TemplateBrowserPanel({
           category={category}
           counts={counts}
           onCategoryChange={handleCategoryChange}
-          className={cn((mobileCategoryOpen || category !== "全部") && "is-open")}
+          className={cn(mobileCategoryOpen && "is-open is-popover")}
         />
       </div>
 

@@ -9255,6 +9255,25 @@
     display: none;
   }
 
+  .shell-root--account-center .shell-mobile-tabs__left .shell-eyebrow {
+    display: none;
+  }
+
+  .shell-panel--mobile-single .account-subpage-header {
+    gap: 10px;
+  }
+
+  .shell-panel--mobile-single .account-subpage-header__main > div > .account-subpage-breadcrumb,
+  .shell-panel--mobile-single .account-subpage-header p,
+  .shell-panel--mobile-single .account-subpage-header__meta,
+  .shell-panel--mobile-single .account-subpage-header__actions {
+    display: none;
+  }
+
+  .shell-panel--mobile-single .account-subpage--usage .account-subpage-back {
+    display: none;
+  }
+
   .shell-panel--mobile-single .user-center-page {
     gap: 12px;
   }
@@ -9611,6 +9630,15 @@
     align-items: start;
   }
 
+  .shell-panel--mobile-single .template-center-tabs {
+    width: 100%;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .shell-panel--mobile-single .template-center-tab + .template-center-tab {
+    margin-left: 0;
+  }
+
   .shell-panel--mobile-single .template-center-search-trigger,
   .shell-panel--mobile-single .template-center-filter-trigger {
     display: inline-grid;
@@ -9640,6 +9668,16 @@
 
   .shell-panel--mobile-single .template-center-toolbar.is-search-open .template-center-search {
     display: grid;
+    position: absolute;
+    top: calc(100% + 8px);
+    right: 0;
+    left: 0;
+    z-index: 13;
+    padding: 10px;
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: 14px;
+    background: rgba(12, 12, 16, 0.96);
+    box-shadow: 0 18px 40px rgba(0, 0, 0, 0.42);
   }
 
   .shell-panel--mobile-single .template-center-panel {
@@ -9652,6 +9690,21 @@
 
   .shell-panel--mobile-single .template-center-panel.is-open {
     display: block;
+  }
+
+  .shell-panel--mobile-single .template-center-panel.is-popover {
+    position: absolute;
+    top: calc(100% + 8px);
+    right: 0;
+    left: 0;
+    z-index: 12;
+    max-height: min(42dvh, 320px);
+    overflow-y: auto;
+    padding: 10px;
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: 14px;
+    background: rgba(12, 12, 16, 0.96);
+    box-shadow: 0 18px 40px rgba(0, 0, 0, 0.42);
   }
 
   .shell-panel--mobile-single .template-center-categories {
@@ -9671,8 +9724,15 @@
   }
 
   .shell-panel--mobile-single .template-center-category em {
-    width: 28px;
-    height: 28px;
+    display: inline-grid;
+    width: auto;
+    height: 18px;
+    min-width: 18px;
+    padding: 0 4px;
+    align-items: center;
+    justify-items: center;
+    line-height: 1;
+    vertical-align: middle;
     font-size: 12px;
   }
 
@@ -9684,6 +9744,10 @@
 
   .shell-panel--mobile-single .template-center-browser {
     gap: 10px;
+  }
+
+  .shell-panel--mobile-single .template-center-toolbar {
+    position: relative;
   }
 
   .shell-panel--mobile-single .template-center-tab {

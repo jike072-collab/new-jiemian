@@ -2745,7 +2745,7 @@ function UsageRecordsWorkspace({
   const filteredRecords = filter === "all" ? records : records.filter((record) => record.kind === filter);
 
   return (
-    <section className="user-center-page account-subpage" aria-label="消费记录">
+    <section className="user-center-page account-subpage account-subpage--usage" aria-label="消费记录">
       <AccountSubpageHeader
         breadcrumb="用户中心 / 消费记录"
         title="消费记录"

@@ -265,6 +265,7 @@ export function WorkbenchShell({
 
       <MobileOverlay
         activeTool={activeTool}
+        title={toolTitle || activeTool.label}
         drawerOpen={drawerOpen}
         pane={pane}
         singlePane={singlePaneMobile}
@@ -586,6 +587,7 @@ function DesktopNavigation({
 
 function MobileOverlay({
   activeTool,
+  title,
   drawerOpen,
   pane,
   singlePane,
@@ -602,6 +604,7 @@ function MobileOverlay({
   drawerId,
 }: {
   activeTool: WorkspaceToolEntry;
+  title: string;
   drawerOpen: boolean;
   pane: ShellPane;
   singlePane: boolean;
@@ -624,7 +627,7 @@ function MobileOverlay({
       <div className={cn("shell-mobile-tabs", singlePane && "is-single-pane")}>
         <div className="shell-mobile-tabs__left">
           <span className="shell-eyebrow">当前工具</span>
-          <strong className="shell-mobile-tabs__title">{activeTool.label}</strong>
+          <strong className="shell-mobile-tabs__title">{title}</strong>
         </div>
         {!singlePane ? <div className="shell-mobile-tabs__switch" role="tablist" aria-label="参数和预览视图">
           <button
