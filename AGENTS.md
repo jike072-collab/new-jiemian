@@ -67,3 +67,19 @@
 - Use named exports for shared helpers and components.
 - Keep UI text in Chinese for the first version.
 - Preserve the supplied logo shape; color can be controlled through CSS/currentColor.
+
+## Codex Workflow Rules
+
+- 3106 is the formal port. 3107 is the staging/test port.
+- All changes must be tested on 3107 before they are considered for `main` or 3106.
+- Do not directly modify, restart, or overwrite 3106.
+- Do not push directly to `main`.
+- Do not commit `.env.local`, API keys, `data`, `uploads`, generated media, or user uploads.
+- Before coding, check whether the request is needed now, whether existing helpers/components/APIs/data structures already cover it, whether platform or installed dependencies are enough, and whether one small local edit can solve it.
+- Do not add dependencies, abstractions, databases, auth, payments, queues, or broad refactors for speculative needs.
+- Do not reduce security, input validation, error handling, or data protection to make code shorter.
+- Work by stages: Understand, Inspect, Spec, Plan, Implement, Verify, Review, Push, Wait.
+- Before each commit, run `npm run lint`, `npm run typecheck`, and `npm run build`. If any check fails, do not commit; report the failed command and key error, fix it, then rerun.
+- After each completed stage, provide a structured review report with branch, commit hash, changed files, business-code impact, 3106 impact, data/uploads impact, API-key risk, dependency/API/data-structure changes, verification results, risks, manual 3107 test suggestions, and merge recommendation.
+
+Detailed workflow rules live in `docs/CODEX_WORKFLOW.md` and `docs/PORT_RELEASE_WORKFLOW.md`.
