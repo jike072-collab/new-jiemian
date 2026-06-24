@@ -11,6 +11,12 @@ import { ResultReveal } from "@/components/motion";
 import { WorkbenchShell } from "@/components/workbench-shell";
 import { TemplateRail } from "@/components/template-center";
 import { WorkspaceAccountPanel } from "@/components/workspace-account-panel";
+import {
+  getCheckInStatusDisplay,
+  getPlanStatusDisplay,
+  type CheckInStatus,
+  type PlanStatus,
+} from "@/lib/account-status";
 import { ApiError, fetchJson, fetchJsonWithCsrf } from "@/lib/client/api";
 import {
   estimateImageGenerationQuota,
@@ -599,6 +605,14 @@ export function StudioApp() {
   const imageUpscaleFileRef = useRef<ImageUpscaleWorkspaceFile | null>(null);
   const videoUpscaleFileRef = useRef<VideoUpscaleWorkspaceFile | null>(null);
   const appliedTemplateIdRef = useRef<string | null>(null);
+  const accountPlanStatus = useMemo<PlanStatus>(() => {
+    if (sessionLoading) return { status: "loading" };
+    return { status: "unavailable" };
+  }, [sessionLoading]);
+  const accountCheckInStatus = useMemo<CheckInStatus>(() => {
+    if (sessionLoading) return "loading";
+    return "unavailable";
+  }, [sessionLoading]);
 
   const refreshAccountData = useCallback(async (userId?: string | null) => {
     if (!userId) {
@@ -2042,6 +2056,8 @@ export function StudioApp() {
             loading={sessionLoading || accountLoading}
             accountError={accountDataError}
             accountView={accountCenterOpen ? accountView : undefined}
+            planStatus={accountPlanStatus}
+            checkInStatus={accountCheckInStatus}
             onRefresh={() => void refreshAccountSnapshot()}
             onLogout={() => void handleLogout()}
             onOpenCenter={handleOpenAccountCenter}
@@ -2062,6 +2078,8 @@ export function StudioApp() {
               billingOrders={billingOrders}
               accountError={accountDataError}
               accountView={accountView}
+              planStatus={accountPlanStatus}
+              checkInStatus={accountCheckInStatus}
               onViewChange={setAccountView}
               onRefreshAccount={() => void refreshAccountSnapshot()}
               onPaymentUnavailable={handlePaymentUnavailable}
@@ -2167,6 +2185,8 @@ function UserCenterWorkspace({
   billingOrders,
   accountError,
   accountView,
+  planStatus,
+  checkInStatus,
   onViewChange,
   onRefreshAccount,
   onPaymentUnavailable,
@@ -2178,6 +2198,8 @@ function UserCenterWorkspace({
   billingOrders: BillingOrder[];
   accountError: string;
   accountView: AccountView;
+  planStatus: PlanStatus;
+  checkInStatus: CheckInStatus;
   onViewChange: (view: AccountView) => void;
   onRefreshAccount: () => void;
   onPaymentUnavailable: (text?: string) => void;
@@ -2189,6 +2211,7 @@ function UserCenterWorkspace({
         quota={quota}
         loading={loading}
         accountError={accountError}
+        planStatus={planStatus}
         onViewChange={onViewChange}
         onRefreshAccount={onRefreshAccount}
         onPaymentUnavailable={onPaymentUnavailable}
@@ -2214,6 +2237,8 @@ function UserCenterWorkspace({
       usage={usage}
       loading={loading}
       accountError={accountError}
+      planStatus={planStatus}
+      checkInStatus={checkInStatus}
       onRefreshAccount={onRefreshAccount}
       onViewChange={onViewChange}
     />
@@ -2226,6 +2251,8 @@ function UserCenterOverview({
   usage,
   loading,
   accountError,
+  planStatus,
+  checkInStatus,
   onRefreshAccount,
   onViewChange,
 }: {
@@ -2234,6 +2261,8 @@ function UserCenterOverview({
   usage: UsagePage | null;
   loading: boolean;
   accountError: string;
+  planStatus: PlanStatus;
+  checkInStatus: CheckInStatus;
   onRefreshAccount: () => void;
   onViewChange: (view: AccountView) => void;
 }) {
@@ -2245,14 +2274,8 @@ function UserCenterOverview({
     : quota
       ? "积分用于图片和视频创作。"
       : "账户信息暂时无法加载。";
-  const planValue = loading ? "加载中" : quota ? "当前未开通套餐" : "—";
-  const planNote = loading
-    ? "正在同步套餐状态。"
-    : quota
-      ? "当前使用按次积分模式。"
-      : "账户信息暂时无法加载。";
-  const checkInValue = loading ? "加载中" : "签到暂未开放";
-  const checkInNote = loading ? "正在确认签到状态。" : "开放后会在这里显示每日签到状态。";
+  const planDisplay = getPlanStatusDisplay(planStatus);
+  const checkInDisplay = getCheckInStatusDisplay(checkInStatus);
   const previousQuotaUnitsRef = useRef<number | null>(quotaUnits);
   const [quotaChanged, setQuotaChanged] = useState(false);
 
@@ -2324,11 +2347,16 @@ function UserCenterOverview({
                 </span>
                 <div>
                   <span>当前套餐</span>
-                  <strong>{planValue}</strong>
-                  <p>{planNote}</p>
+                  <strong>{planDisplay.label}</strong>
+                  <p>{planDisplay.note}</p>
                 </div>
-                <button type="button" className="user-center-mini-card__action" onClick={() => onViewChange("recharge")} disabled={!user}>
-                  查看套餐
+                <button
+                  type="button"
+                  className="user-center-mini-card__action"
+                  onClick={planStatus.status === "error" ? onRefreshAccount : () => onViewChange("recharge")}
+                  disabled={!user}
+                >
+                  {planDisplay.actionLabel}
                 </button>
               </article>
 
@@ -2338,11 +2366,16 @@ function UserCenterOverview({
                 </span>
                 <div>
                   <span>每日签到</span>
-                  <strong>{checkInValue}</strong>
-                  <p>{checkInNote}</p>
+                  <strong>{checkInDisplay.label}</strong>
+                  <p>{checkInDisplay.note}</p>
                 </div>
-                <button type="button" className="user-center-mini-card__action" disabled>
-                  暂未开放
+                <button
+                  type="button"
+                  className="user-center-mini-card__action"
+                  onClick={checkInStatus === "error" ? onRefreshAccount : undefined}
+                  disabled={checkInDisplay.actionDisabled || !user}
+                >
+                  {checkInDisplay.actionLabel}
                 </button>
               </article>
             </div>
@@ -2412,6 +2445,7 @@ function RechargeCenterWorkspace({
   quota,
   loading,
   accountError,
+  planStatus,
   onViewChange,
   onRefreshAccount,
   onPaymentUnavailable,
@@ -2420,6 +2454,7 @@ function RechargeCenterWorkspace({
   quota: QuotaSnapshot | null;
   loading: boolean;
   accountError: string;
+  planStatus: PlanStatus;
   onViewChange: (view: AccountView) => void;
   onRefreshAccount: () => void;
   onPaymentUnavailable: (text?: string) => void;
@@ -2445,7 +2480,7 @@ function RechargeCenterWorkspace({
   const customAmountHelpId = "custom-recharge-help";
   const customAmountErrorId = "custom-recharge-error";
   const pointsStatusLabel = quota ? `${formatQuotaUnits(quota.quota_units)} 分` : "—";
-  const planStatusLabel = quota ? "暂未开通" : "—";
+  const planStatusLabel = getPlanStatusDisplay(planStatus).label;
   const creditSummaryLines = customRechargeActive
     ? createCustomCreditSummaryLines(customAmount, customAmountValid, customCredits)
     : createFixedCreditSummaryLines(selectedCredit);
@@ -2490,7 +2525,7 @@ function RechargeCenterWorkspace({
             </span>
             <span className="recharge-account-meta__item">
               <span>当前套餐</span>
-              {loading && !quota ? (
+              {planStatus.status === "loading" ? (
                 <i className="recharge-account-meta__skeleton motion-skeleton-shimmer" aria-label="套餐加载中" />
               ) : (
                 <strong>{planStatusLabel}</strong>
@@ -2618,8 +2653,10 @@ function RechargeCenterWorkspace({
                         <span className="recharge-card-check" aria-hidden="true">
                           <Check className="size-3.5" />
                         </span>
-                        {badge ? <span className="recharge-card-badge">{badge}</span> : null}
-                        <strong className="credit-topup-card__amount">¥{formatRechargeAmount(option.amount)}</strong>
+                        <span className="credit-topup-card__headline">
+                          <strong className="credit-topup-card__amount">¥{formatRechargeAmount(option.amount)}</strong>
+                          {badge ? <span className="recharge-card-badge">{badge}</span> : null}
+                        </span>
                         <span className="credit-topup-card__credits">到账 {formatQuotaUnits(option.credits)} 积分</span>
                         {giftCredits > 0 ? (
                           <span className="credit-topup-card__gift">含赠送 {formatQuotaUnits(giftCredits)} 积分</span>

@@ -11,7 +11,7 @@ import {
   UserRound,
   X,
 } from "lucide-react";
-import { type ReactNode, type RefObject, useCallback, useEffect, useRef, useState } from "react";
+import { type ReactNode, type RefObject, useCallback, useEffect, useId, useRef, useState } from "react";
 
 import { BrandLogo } from "@/components/brand-logo";
 import { cn } from "@/lib/utils";
@@ -86,6 +86,9 @@ export function WorkbenchShell({
 
   const activeTool = workspaceToolById(state.activeToolId) || workspaceToolEntries[0];
   const drawerId = "workspace-mobile-drawer";
+  const accountPopoverBaseId = useId();
+  const desktopAccountPopoverId = `${accountPopoverBaseId}-desktop-account`;
+  const headerAccountPopoverId = `${accountPopoverBaseId}-header-account`;
   const contentOnly = contentMode === "account";
   const singlePaneMobile = contentOnly || activeTool.id === "templates" || activeTool.id === "library";
 
@@ -158,12 +161,21 @@ export function WorkbenchShell({
 
   useEffect(() => {
     if (!accountOpen) return;
+    const frame = window.requestAnimationFrame(() => {
+      const targetPopoverId = lastAccountTriggerRef.current?.closest(".shell-header")
+        ? headerAccountPopoverId
+        : desktopAccountPopoverId;
+      const panel = rootRef.current?.querySelector<HTMLElement>(`#${CSS.escape(targetPopoverId)}`);
+      const firstAction = panel?.querySelector<HTMLElement>(
+        'button:not([disabled]), a[href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])',
+      );
+      (firstAction || panel)?.focus();
+    });
     const onPointerDown = (event: PointerEvent) => {
       const target = event.target;
       if (!(target instanceof Node)) return;
       if (target instanceof Element && target.closest(".account-popover-card, .shell-account")) return;
       if (desktopAccountRef.current?.contains(target)) return;
-      if (rootRef.current?.querySelector(".shell-header__actions")?.contains(target)) return;
       closeAccountPopover();
     };
     const onKeyDown = (event: KeyboardEvent) => {
@@ -172,10 +184,11 @@ export function WorkbenchShell({
     window.addEventListener("pointerdown", onPointerDown);
     window.addEventListener("keydown", onKeyDown);
     return () => {
+      window.cancelAnimationFrame(frame);
       window.removeEventListener("pointerdown", onPointerDown);
       window.removeEventListener("keydown", onKeyDown);
     };
-  }, [accountOpen, closeAccountPopover]);
+  }, [accountOpen, desktopAccountPopoverId, headerAccountPopoverId, closeAccountPopover]);
 
   useEffect(() => {
     return () => {
@@ -242,6 +255,7 @@ export function WorkbenchShell({
         accountPopoverClosing={accountPopoverClosing}
         headerRightSlot={headerRightSlot}
         accountSlot={accountSlot}
+        accountPopoverId={headerAccountPopoverId}
         drawerButtonRef={drawerButtonRef}
         drawerId={drawerId}
         drawerOpen={drawerOpen}
@@ -283,6 +297,7 @@ export function WorkbenchShell({
             accountPopoverClosing={accountPopoverClosing}
             accountCenterActive={contentOnly}
             accountSlot={accountSlot}
+            accountPopoverId={desktopAccountPopoverId}
             accountContainerRef={desktopAccountRef}
             onToggleAccount={toggleAccountPopover}
             onOpenAccountCenter={onOpenAccountCenter}
@@ -323,6 +338,7 @@ function Header({
   accountPopoverClosing,
   headerRightSlot,
   accountSlot,
+  accountPopoverId,
   drawerButtonRef,
   drawerId,
   drawerOpen,
@@ -336,6 +352,7 @@ function Header({
   accountPopoverClosing: boolean;
   headerRightSlot?: ReactNode;
   accountSlot?: ReactNode;
+  accountPopoverId: string;
   drawerButtonRef: RefObject<HTMLButtonElement | null>;
   drawerId: string;
   drawerOpen: boolean;
@@ -363,7 +380,15 @@ function Header({
       <div className="shell-header__actions">
         {headerRightSlot}
         {isAuthenticated ? (
-          <button type="button" className="shell-account" onClick={(event) => onToggleAccount(event.currentTarget)} title={accountName || "账户"}>
+          <button
+            type="button"
+            className="shell-account"
+            onClick={(event) => onToggleAccount(event.currentTarget)}
+            title={accountName || "账户"}
+            aria-haspopup="dialog"
+            aria-expanded={accountOpen}
+            aria-controls={accountPopoverVisible ? accountPopoverId : undefined}
+          >
             <span className="shell-account__avatar">{(accountName || "账户").slice(0, 2).toUpperCase()}</span>
             <span className="shell-account__name">{accountName || "账户"}</span>
             <ChevronDown className={cn("size-4 transition", accountOpen && "rotate-180")} />
@@ -377,7 +402,13 @@ function Header({
       </div>
 
       {isAuthenticated && accountPopoverVisible ? (
-        <div className={cn("shell-header-account__popover absolute right-4 top-[calc(100%+12px)] z-[90] w-[min(92vw,420px)]", accountPopoverClosing && "is-closing")}>
+        <div
+          id={accountPopoverId}
+          className={cn("shell-header-account__popover", accountPopoverClosing && "is-closing")}
+          role="dialog"
+          aria-label="快捷账户面板"
+          tabIndex={-1}
+        >
           {accountSlot ? (
             accountSlot
           ) : (
@@ -405,6 +436,7 @@ function DesktopNavigation({
   accountPopoverClosing,
   accountCenterActive,
   accountSlot,
+  accountPopoverId,
   accountContainerRef,
   onToggleAccount,
   onOpenAccountCenter,
@@ -422,6 +454,7 @@ function DesktopNavigation({
   accountPopoverClosing: boolean;
   accountCenterActive: boolean;
   accountSlot?: ReactNode;
+  accountPopoverId: string;
   accountContainerRef: RefObject<HTMLDivElement | null>;
   onToggleAccount: (trigger?: HTMLElement | null) => void;
   onOpenAccountCenter?: () => void;
@@ -474,7 +507,14 @@ function DesktopNavigation({
       >
         {isAuthenticated ? (
           <>
-            <button type="button" className="shell-nav-account__main shell-nav-account__main--button" onClick={(event) => onToggleAccount(event.currentTarget)} aria-expanded={accountOpen}>
+            <button
+              type="button"
+              className="shell-nav-account__main shell-nav-account__main--button"
+              onClick={(event) => onToggleAccount(event.currentTarget)}
+              aria-haspopup="dialog"
+              aria-expanded={accountOpen}
+              aria-controls={accountPopoverVisible ? accountPopoverId : undefined}
+            >
               <span className="shell-nav-account__avatar">{avatarText}</span>
               <span className="shell-nav-account__copy">
                 <strong>{displayName}</strong>
@@ -497,7 +537,13 @@ function DesktopNavigation({
               </button>
             </div>
             {accountPopoverVisible ? (
-              <div className={cn("shell-nav-account__popover", accountPopoverClosing && "is-closing")}>
+              <div
+                id={accountPopoverId}
+                className={cn("shell-nav-account__popover", accountPopoverClosing && "is-closing")}
+                role="dialog"
+                aria-label="快捷账户面板"
+                tabIndex={-1}
+              >
                 {accountSlot ? (
                   accountSlot
                 ) : (

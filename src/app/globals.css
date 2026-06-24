@@ -992,8 +992,22 @@
   }
 
   .shell-header-account__popover {
+    position: absolute;
+    top: calc(100% + 12px);
+    right: 16px;
+    z-index: 90;
+    width: min(350px, calc(100vw - 24px));
     animation: account-popover-open 260ms var(--ease-enter) both;
     transform-origin: top right;
+  }
+
+  .shell-header-account__popover .account-popover-card {
+    max-height: min(620px, calc(100dvh - var(--header-height) - 28px));
+  }
+
+  .shell-nav-account__popover:focus-visible,
+  .shell-header-account__popover:focus-visible {
+    outline: none;
   }
 
   .account-popover-card {
@@ -5338,6 +5352,18 @@
     align-content: start;
     gap: 7px;
     padding: 17px;
+  }
+
+  .credit-topup-card__headline {
+    display: flex;
+    min-width: 0;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+  }
+
+  .credit-topup-card__headline .recharge-card-badge {
+    transform: translateY(1px);
   }
 
   .credit-topup-card__amount {

@@ -4,6 +4,7 @@ import { CalendarCheck, ChevronRight, Crown, Loader2, LogOut, RefreshCw, Sparkle
 
 import type { PublicAuthUser } from "@/lib/server/auth";
 import type { QuotaSnapshot } from "@/lib/server/quota";
+import { getCheckInStatusDisplay, getPlanStatusDisplay, type CheckInStatus, type PlanStatus } from "@/lib/account-status";
 import { cn } from "@/lib/utils";
 
 type AccountView = "center" | "recharge" | "usage";
@@ -14,6 +15,8 @@ type WorkspaceAccountPanelProps = {
   loading: boolean;
   accountError?: string;
   accountView?: AccountView;
+  planStatus: PlanStatus;
+  checkInStatus: CheckInStatus;
   onRefresh: () => void;
   onLogout: () => void;
   onOpenCenter?: () => void;
@@ -31,6 +34,8 @@ export function WorkspaceAccountPanel({
   loading,
   accountError = "",
   accountView,
+  planStatus,
+  checkInStatus,
   onRefresh,
   onLogout,
   onOpenCenter,
@@ -39,12 +44,12 @@ export function WorkspaceAccountPanel({
   const displayName = user?.display_name || user?.username || "账户";
   const avatarText = displayName.slice(0, 2).toUpperCase();
   const pointsLabel = loading ? "加载中" : quota ? `${formatQuota(quota.quota_units)} 分` : "—";
-  const planLabel = loading ? "加载中" : quota ? "暂未开通" : "—";
-  const checkInLabel = loading ? "加载中" : "暂未开放";
+  const planDisplay = getPlanStatusDisplay(planStatus);
+  const checkInDisplay = getCheckInStatusDisplay(checkInStatus);
   const currentCenter = accountView === "center";
 
   return (
-    <div className="account-popover-card" role="dialog" aria-label="快捷账户面板">
+    <div className="account-popover-card">
       <div className="account-popover-card__head">
         <div className="account-popover-card__avatar">{user ? avatarText : <UserRound className="size-5" aria-hidden="true" />}</div>
         <div className="account-popover-card__identity">
@@ -79,9 +84,9 @@ export function WorkspaceAccountPanel({
             <Crown className="size-3.5" aria-hidden="true" />
             当前套餐
           </span>
-          <strong>{planLabel}</strong>
-          <button type="button" onClick={onOpenRecharge} disabled={!user}>
-            查看
+          <strong>{planDisplay.label}</strong>
+          <button type="button" onClick={planStatus.status === "error" ? onRefresh : onOpenRecharge} disabled={!user}>
+            {planDisplay.actionLabel}
           </button>
         </div>
         <div className="account-popover-row">
@@ -89,9 +94,9 @@ export function WorkspaceAccountPanel({
             <CalendarCheck className="size-3.5" aria-hidden="true" />
             每日签到
           </span>
-          <strong>{checkInLabel}</strong>
-          <button type="button" disabled>
-            签到
+          <strong>{checkInDisplay.label}</strong>
+          <button type="button" onClick={checkInStatus === "error" ? onRefresh : undefined} disabled={checkInDisplay.actionDisabled || !user}>
+            {checkInDisplay.actionLabel}
           </button>
         </div>
       </div>
