@@ -2077,6 +2077,10 @@
     display: grid;
   }
 
+  .template-center-search-trigger {
+    display: none;
+  }
+
   .template-center-search svg {
     position: absolute;
     top: 50%;
@@ -4470,6 +4474,10 @@
     display: flex;
     flex-wrap: wrap;
     gap: 10px;
+  }
+
+  .user-center-mobile-status {
+    display: none;
   }
 
   .user-center-action,
@@ -9230,6 +9238,62 @@
     grid-template-columns: minmax(0, 1fr);
   }
 
+  .shell-panel--mobile-single .user-center-mobile-status {
+    display: grid;
+    gap: 10px;
+    border-top: 1px solid rgba(255, 255, 255, 0.075);
+    padding-top: 12px;
+  }
+
+  .shell-panel--mobile-single .user-center-mobile-status__item {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 6px 10px;
+    align-items: center;
+    border: 1px solid rgba(255, 255, 255, 0.075);
+    border-radius: 11px;
+    background: rgba(255, 255, 255, 0.035);
+    padding: 11px;
+  }
+
+  .shell-panel--mobile-single .user-center-mobile-status__item span {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    color: rgba(255, 255, 255, 0.58);
+    font-size: 12px;
+    font-weight: 650;
+  }
+
+  .shell-panel--mobile-single .user-center-mobile-status__item span svg {
+    color: rgba(255, 43, 136, 0.86);
+  }
+
+  .shell-panel--mobile-single .user-center-mobile-status__item strong {
+    color: rgba(255, 255, 255, 0.9);
+    font-size: 14px;
+    line-height: 1.25;
+  }
+
+  .shell-panel--mobile-single .user-center-mobile-status__item button {
+    grid-row: 1 / span 2;
+    grid-column: 2;
+    min-height: 30px;
+    border: 1px solid rgba(255, 43, 136, 0.2);
+    border-radius: 999px;
+    background: rgba(255, 43, 136, 0.1);
+    color: rgba(255, 220, 238, 0.95);
+    padding: 0 10px;
+    font-size: 12px;
+    font-weight: 700;
+  }
+
+  .shell-panel--mobile-single .user-center-mobile-status__item button:disabled {
+    border-color: rgba(255, 255, 255, 0.07);
+    background: rgba(255, 255, 255, 0.04);
+    color: rgba(255, 255, 255, 0.38);
+  }
+
   .shell-panel--mobile-single .user-center-mini-card {
     grid-template-columns: 34px minmax(0, 1fr);
     align-items: start;
@@ -9299,6 +9363,22 @@
     margin-top: 12px;
   }
 
+  .shell-panel--mobile-single .account-subpage--recharge .account-subpage-breadcrumb,
+  .shell-panel--mobile-single .account-subpage--recharge .account-subpage-header p,
+  .shell-panel--mobile-single .account-subpage--recharge .account-subpage-header__meta,
+  .shell-panel--mobile-single .account-subpage--recharge .account-subpage-header__actions,
+  .shell-panel--mobile-single .account-subpage--recharge .recharge-selection-head p {
+    display: none;
+  }
+
+  .shell-panel--mobile-single .account-subpage--recharge .account-subpage-header {
+    gap: 10px;
+  }
+
+  .shell-panel--mobile-single .account-subpage--recharge .account-subpage-header h2 {
+    font-size: 24px;
+  }
+
   .shell-panel--mobile-single .recharge-header-actions,
   .shell-panel--mobile-single .recharge-account-meta {
     width: 100%;
@@ -9337,9 +9417,33 @@
   }
 
   .shell-panel--mobile-single .recharge-plan-grid,
-  .shell-panel--mobile-single .credit-topup-grid,
   .shell-panel--mobile-single .custom-recharge-card {
     grid-template-columns: minmax(0, 1fr);
+  }
+
+  .shell-panel--mobile-single .credit-topup-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 10px;
+  }
+
+  .shell-panel--mobile-single .credit-topup-card {
+    min-height: 116px;
+    gap: 6px;
+    padding: 13px;
+  }
+
+  .shell-panel--mobile-single .credit-topup-card__headline {
+    align-items: baseline;
+    gap: 6px;
+  }
+
+  .shell-panel--mobile-single .credit-topup-card__amount {
+    font-size: 21px;
+  }
+
+  .shell-panel--mobile-single .credit-topup-card__credits,
+  .shell-panel--mobile-single .credit-topup-card__gift {
+    font-size: 12px;
   }
 
   .shell-panel--mobile-single .recharge-plan-card {
@@ -9348,6 +9452,21 @@
 
   .shell-panel--mobile-single .studio-preview__content {
     gap: 12px;
+  }
+
+  .shell-panel--mobile-single .studio-preview:has(.video-tutorial-guide),
+  .shell-panel--mobile-single .studio-preview:has(.image-editor-tutorial) {
+    align-content: center;
+    justify-items: center;
+  }
+
+  .shell-panel--mobile-single .studio-preview:has(.video-tutorial-guide) .studio-preview__content,
+  .shell-panel--mobile-single .studio-preview:has(.image-editor-tutorial) .studio-preview__content {
+    width: 100%;
+    min-height: 0;
+    align-items: center;
+    justify-items: center;
+    overflow: hidden;
   }
 
   .shell-panel--mobile-single .studio-library-toolbar {
@@ -9399,6 +9518,39 @@
     min-height: 38px;
   }
 
+  .shell-panel--mobile-single .template-center-toolbar {
+    grid-template-columns: minmax(0, 1fr) 40px;
+    gap: 10px;
+    align-items: start;
+  }
+
+  .shell-panel--mobile-single .template-center-search-trigger {
+    display: inline-grid;
+    width: 40px;
+    height: 38px;
+    place-items: center;
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: 10px;
+    background: #111115;
+    color: rgba(255, 255, 255, 0.72);
+  }
+
+  .shell-panel--mobile-single .template-center-toolbar.is-search-open .template-center-search-trigger {
+    border-color: rgba(255, 43, 136, 0.34);
+    background: rgba(255, 43, 136, 0.1);
+    color: #ff72b5;
+  }
+
+  .shell-panel--mobile-single .template-center-search {
+    display: none;
+    grid-column: 1 / -1;
+    margin-top: 0;
+  }
+
+  .shell-panel--mobile-single .template-center-toolbar.is-search-open .template-center-search {
+    display: grid;
+  }
+
   .shell-panel--mobile-single .template-center-search .studio-input {
     height: 38px;
     min-height: 38px;
@@ -9407,6 +9559,30 @@
 
   .shell-panel--mobile-single .template-center-browser {
     gap: 10px;
+  }
+
+  .shell-panel--mobile-single .template-center-panel {
+    grid-column: 1 / -1;
+    width: calc(100vw - (var(--space-page-mobile) * 2));
+    max-width: 100%;
+    margin-top: 8px;
+    margin-right: calc(var(--space-page-mobile) * -1);
+    margin-left: 0;
+    overflow-x: auto;
+    overscroll-behavior-inline: contain;
+    scroll-padding-inline: var(--space-page-mobile);
+  }
+
+  .shell-panel--mobile-single .template-center-categories {
+    min-width: max-content;
+    width: max-content;
+    padding-right: var(--space-page-mobile);
+  }
+
+  .shell-panel--mobile-single .template-center-category {
+    min-height: 34px;
+    padding: 0 13px;
+    font-size: 13px;
   }
 
   .shell-panel--mobile-single .template-center-tab {
@@ -9522,13 +9698,57 @@
   .video-tutorial-guide__section.is-visual-right {
     grid-template-columns: 1fr;
     min-height: auto;
-    gap: var(--space-stack);
-    padding: 14px;
+    gap: 10px;
+    justify-items: center;
+    padding: 10px 0;
   }
 
   .video-tutorial-guide__section.is-visual-right .video-tutorial-guide__visual,
   .video-tutorial-guide__section.is-visual-right .video-tutorial-guide__copy {
     order: initial;
+  }
+
+  .video-tutorial-guide {
+    --video-guide-visual-width: min(252px, calc(100vw - 72px));
+    width: 100%;
+    max-width: 292px;
+    margin-inline: auto;
+    overflow: hidden;
+  }
+
+  .video-tutorial-guide__visual,
+  .video-tutorial-guide__section.is-visual-right .video-tutorial-guide__visual {
+    width: min(100%, 252px);
+    margin-right: auto;
+    margin-left: auto;
+    justify-content: center;
+  }
+
+  .video-tutorial-guide__copy,
+  .video-tutorial-guide__section.is-visual-right .video-tutorial-guide__copy {
+    position: relative;
+    top: auto;
+    right: auto;
+    left: auto;
+    order: 2;
+    width: min(100%, 252px);
+    gap: 6px;
+    text-align: center;
+    justify-self: center;
+  }
+
+  .video-tutorial-guide__copy span {
+    margin-inline: auto;
+    padding: 5px 9px;
+  }
+
+  .video-tutorial-guide__copy h4 {
+    font-size: 16px;
+  }
+
+  .video-tutorial-guide__copy p {
+    font-size: 12px;
+    line-height: 1.42;
   }
 
   .video-tutorial-guide__copy p {
@@ -9618,10 +9838,13 @@
 
   .image-editor-tutorial {
     min-height: auto;
+    place-items: center;
   }
 
   .image-editor-tutorial__canvas {
-    min-height: 360px;
+    width: min(100%, 340px);
+    min-height: 0;
+    max-height: 330px;
   }
 
   .image-editor-photo--input {
@@ -9799,6 +10022,7 @@
   }
 
   .shell-root .shell-panel.shell-panel--mobile-single .user-center-side-cards {
+    display: none;
     grid-template-columns: minmax(0, 1fr);
   }
 

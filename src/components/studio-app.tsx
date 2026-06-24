@@ -2322,6 +2322,32 @@ function UserCenterOverview({
                   立即充值
                 </button>
               </div>
+              <div className="user-center-mobile-status">
+                <div className="user-center-mobile-status__item">
+                  <span>
+                    <Crown className="size-3.5" aria-hidden="true" />
+                    当前套餐
+                  </span>
+                  <strong>{planDisplay.label}</strong>
+                  <button type="button" onClick={() => onViewChange("recharge")} disabled={!user}>
+                    {planDisplay.actionLabel}
+                  </button>
+                </div>
+                <div className="user-center-mobile-status__item">
+                  <span>
+                    <CalendarCheck className="size-3.5" aria-hidden="true" />
+                    每日签到
+                  </span>
+                  <strong>{checkInDisplay.label}</strong>
+                  <button
+                    type="button"
+                    onClick={checkInStatus === "unavailable" ? onCheckInUnavailable : undefined}
+                    disabled={!user || (checkInStatus !== "unavailable" && checkInDisplay.actionDisabled)}
+                  >
+                    {checkInDisplay.actionLabel}
+                  </button>
+                </div>
+              </div>
             </article>
 
             <div className="user-center-side-cards">

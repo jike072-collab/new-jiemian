@@ -396,9 +396,16 @@ function TemplateBrowserPanel({
   onCategoryChange: (value: TemplateCategory | "全部") => void;
 }) {
   const gridMotionKey = `${scope}:${category}:${search.trim().toLowerCase()}`;
+  const searchInputRef = useRef<HTMLInputElement | null>(null);
+  const [mobileSearchOpen, setMobileSearchOpen] = useState(false);
 
   const handleCategoryChange = (value: TemplateCategory | "全部") => {
     onCategoryChange(value);
+  };
+
+  const openMobileSearch = () => {
+    setMobileSearchOpen(true);
+    window.requestAnimationFrame(() => searchInputRef.current?.focus());
   };
 
   const cloneHref = (id: string) => {
@@ -416,7 +423,7 @@ function TemplateBrowserPanel({
         <span className="shell-chip">共 {totalCount} 个模板</span>
       </div>
 
-      <div className="template-center-toolbar">
+      <div className={cn("template-center-toolbar", (mobileSearchOpen || search.trim()) && "is-search-open")}>
         <div className="template-center-tabs" role="tablist" aria-label="模板类型">
           <button
             type="button"
@@ -436,9 +443,20 @@ function TemplateBrowserPanel({
           </button>
         </div>
 
+        <button
+          type="button"
+          className="template-center-search-trigger"
+          onClick={openMobileSearch}
+          aria-label="搜索模板"
+          aria-expanded={mobileSearchOpen || Boolean(search.trim())}
+        >
+          <Search className="size-4" aria-hidden="true" />
+        </button>
+
         <label className="template-center-search">
           <Search className="size-4" aria-hidden="true" />
           <input
+            ref={searchInputRef}
             className="studio-input"
             type="search"
             value={search}
