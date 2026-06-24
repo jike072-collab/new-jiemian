@@ -120,6 +120,27 @@ function canonicalQuery(params: Record<string, string | number | boolean | undef
     .join("&");
 }
 
+let crc32Table: Uint32Array | null = null;
+
+function crc32Hex(buffer: Buffer) {
+  if (!crc32Table) {
+    crc32Table = new Uint32Array(256);
+    for (let index = 0; index < 256; index += 1) {
+      let value = index;
+      for (let bit = 0; bit < 8; bit += 1) {
+        value = (value & 1) ? (0xEDB88320 ^ (value >>> 1)) : (value >>> 1);
+      }
+      crc32Table[index] = value >>> 0;
+    }
+  }
+
+  let crc = 0 ^ -1;
+  for (const byte of buffer) {
+    crc = (crc >>> 8) ^ crc32Table[(crc ^ byte) & 0xff];
+  }
+  return ((crc ^ -1) >>> 0).toString(16).padStart(8, "0");
+}
+
 async function openapiRequest<T>({
   endpoint,
   service,
@@ -259,12 +280,15 @@ export async function readUpscaleStatus() {
 }
 
 async function uploadByAddress(file: UploadedUpscaleFile, uploadHost: string, storeUri: string, auth: string) {
-  const url = `https://${uploadHost.replace(/^https?:\/\//, "").replace(/\/+$/, "")}/${storeUri.replace(/^\/+/, "")}`;
+  const url = `https://${uploadHost.replace(/^https?:\/\//, "").replace(/\/+$/, "")}/upload/v1/${storeUri.replace(/^\/+/, "")}`;
   const response = await fetch(url, {
-    method: "PUT",
+    method: "POST",
     headers: {
       Authorization: auth,
-      "Content-Type": file.mimeType || "application/octet-stream",
+      "Content-Type": "application/octet-stream",
+      "Content-Disposition": `attachment; filename="${file.fileName.replace(/"/g, "")}"`,
+      "Content-Crc32": crc32Hex(file.bytes),
+      "Content-Length": String(file.bytes.length),
     },
     body: new Uint8Array(file.bytes),
     signal: AbortSignal.timeout(30 * 60 * 1000),

@@ -14,7 +14,8 @@ export async function ensureRuntimeDirs() {
 
 export async function readJsonFile<T>(path: string, fallback: T): Promise<T> {
   try {
-    return JSON.parse(await readFile(path, "utf8")) as T;
+    const text = await readFile(path, "utf8");
+    return JSON.parse(text.charCodeAt(0) === 0xFEFF ? text.slice(1) : text) as T;
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code === "ENOENT") return fallback;
     throw error;
