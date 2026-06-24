@@ -269,6 +269,7 @@ const jimengVideoRatios = ["16:9", "9:16", "1:1"];
 const upscaleUnavailableMessage = "高清处理暂时不可用，请稍后重试";
 const promptOptimizationTargetPlatform = "TikTok Shop";
 const PROMPT_OPTIMIZATION_QUOTA_UNITS = 0;
+const quotaSymbol = "✦";
 
 const imageWorkspaceModeMeta: Record<WorkspaceImageMode, {
   title: string;
@@ -2920,7 +2921,11 @@ function formatQuotaUnits(value: number | null | undefined) {
   return new Intl.NumberFormat("zh-CN").format(value);
 }
 
-const promptOptimizationCostLabel = `花费 ${formatQuotaUnits(PROMPT_OPTIMIZATION_QUOTA_UNITS)} 积分`;
+function formatQuotaSymbolLabel(value: number | null | undefined) {
+  return `${formatQuotaUnits(value)} ${quotaSymbol}`;
+}
+
+const promptOptimizationCostLabel = formatQuotaSymbolLabel(PROMPT_OPTIMIZATION_QUOTA_UNITS);
 
 function getCreditTopUpGift(option: CreditTopUpOption) {
   return Math.max(0, option.credits - option.amount * CREDIT_TOP_UP_BASE_RATE);
@@ -3158,7 +3163,7 @@ function ImageGenerator({
   useEffect(() => {
     registerMobileAction({
       label: state.loading ? meta.loadingLabel : meta.submitLabel,
-      costLabel: `花费 ${formatQuotaUnits(estimatedQuotaUnits)} 积分`,
+      costLabel: formatQuotaSymbolLabel(estimatedQuotaUnits),
       loading: state.loading,
       disabled: !canSubmit,
       onClick: onSubmit,
@@ -3241,7 +3246,7 @@ function ImageGenerator({
           disabled={!canSubmit}
           loading={state.loading}
           loadingLabel={meta.loadingLabel}
-          costLabel={`花费 ${formatQuotaUnits(estimatedQuotaUnits)} 积分`}
+          costLabel={formatQuotaSymbolLabel(estimatedQuotaUnits)}
           onClick={onSubmit}
         >
           {meta.submitLabel}
@@ -3366,7 +3371,7 @@ function VideoGenerator({
   useEffect(() => {
     registerMobileAction({
       label: state.loading ? meta.loadingLabel : meta.submitLabel,
-      costLabel: `花费 ${formatQuotaUnits(estimatedQuotaUnits)} 积分`,
+      costLabel: formatQuotaSymbolLabel(estimatedQuotaUnits),
       loading: state.loading,
       disabled: !canSubmit,
       onClick: onSubmit,
@@ -3440,7 +3445,7 @@ function VideoGenerator({
           disabled={!canSubmit}
           loading={state.loading}
           loadingLabel={meta.loadingLabel}
-          costLabel={`花费 ${formatQuotaUnits(estimatedQuotaUnits)} 积分`}
+          costLabel={formatQuotaSymbolLabel(estimatedQuotaUnits)}
           onClick={onSubmit}
         >
           {meta.submitLabel}
@@ -3565,7 +3570,7 @@ function VideoPromptBox({
             ) : (
               <span className="studio-prompt-action__copy">
                 <span>✨ 优化提示词</span>
-                {optimizeCostLabel ? <small>（{optimizeCostLabel}）</small> : null}
+                {optimizeCostLabel ? <small>{optimizeCostLabel}</small> : null}
               </span>
             )}
           </button>
@@ -5420,7 +5425,7 @@ function MobileActionBar({
         {loading ? <Loader2 className="size-4 animate-spin" aria-hidden="true" /> : <Wand2 className="size-4" aria-hidden="true" />}
         <span className="studio-primary-action__copy">
           <span>{label}</span>
-          {!loading && costLabel ? <small>（{costLabel}）</small> : null}
+          {!loading && costLabel ? <small>{costLabel}</small> : null}
         </span>
       </button>
     </div>
@@ -5971,7 +5976,7 @@ function PromptBox({
             ) : (
               <span className="studio-prompt-action__copy">
                 <span>✨ 优化提示词</span>
-                {optimizeCostLabel ? <small>（{optimizeCostLabel}）</small> : null}
+                {optimizeCostLabel ? <small>{optimizeCostLabel}</small> : null}
               </span>
             )}
           </button>
@@ -6025,7 +6030,7 @@ function SubmitButton({
       {loading ? <Loader2 className="size-4 animate-spin" aria-hidden="true" /> : <Wand2 className="size-4" aria-hidden="true" />}
       <span className="studio-primary-action__copy">
         <span>{label}</span>
-        {!loading && costLabel ? <small>（{costLabel}）</small> : null}
+        {!loading && costLabel ? <small>{costLabel}</small> : null}
       </span>
     </button>
   );
