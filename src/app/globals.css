@@ -8621,6 +8621,22 @@
     min-width: 0;
   }
 
+  .studio-mobile-action .studio-primary-action__copy {
+    color: rgba(255, 255, 255, 0.9);
+  }
+
+  .studio-mobile-action .studio-primary-action__copy > span {
+    color: inherit;
+    font-size: 14px;
+    font-weight: 700;
+  }
+
+  .studio-mobile-action .studio-primary-action__copy > small {
+    color: rgba(255, 255, 255, 0.62);
+    font-size: 11.5px;
+    font-weight: 650;
+  }
+
   .studio-toast {
     position: fixed;
     right: 24px;

@@ -155,6 +155,7 @@ type OutputState = {
 
 type MobileActionState = {
   label: string;
+  costLabel?: string;
   loading: boolean;
   disabled: boolean;
   onClick: () => void;
@@ -3154,12 +3155,13 @@ function ImageGenerator({
   useEffect(() => {
     registerMobileAction({
       label: state.loading ? meta.loadingLabel : meta.submitLabel,
+      costLabel: `花费 ${formatQuotaUnits(estimatedQuotaUnits)} 积分`,
       loading: state.loading,
       disabled: !canSubmit,
       onClick: onSubmit,
     });
     return () => registerMobileAction(null);
-  }, [canSubmit, meta.loadingLabel, meta.submitLabel, onSubmit, registerMobileAction, state.loading]);
+  }, [canSubmit, estimatedQuotaUnits, meta.loadingLabel, meta.submitLabel, onSubmit, registerMobileAction, state.loading]);
 
   return (
     <FormPanel>
@@ -3360,12 +3362,13 @@ function VideoGenerator({
   useEffect(() => {
     registerMobileAction({
       label: state.loading ? meta.loadingLabel : meta.submitLabel,
+      costLabel: `花费 ${formatQuotaUnits(estimatedQuotaUnits)} 积分`,
       loading: state.loading,
       disabled: !canSubmit,
       onClick: onSubmit,
     });
     return () => registerMobileAction(null);
-  }, [canSubmit, meta.loadingLabel, meta.submitLabel, onSubmit, registerMobileAction, state.loading]);
+  }, [canSubmit, estimatedQuotaUnits, meta.loadingLabel, meta.submitLabel, onSubmit, registerMobileAction, state.loading]);
 
   return (
     <FormPanel>
@@ -5390,11 +5393,13 @@ function FormPanel({ children }: { children: React.ReactNode }) {
 
 function MobileActionBar({
   label,
+  costLabel,
   loading,
   disabled,
   onClick,
 }: {
   label: string;
+  costLabel?: string;
   loading: boolean;
   disabled: boolean;
   onClick: () => void;
@@ -5403,7 +5408,10 @@ function MobileActionBar({
     <div className="studio-mobile-action">
       <button type="button" className="studio-primary-action studio-mobile-action__button" disabled={disabled} onClick={onClick}>
         {loading ? <Loader2 className="size-4 animate-spin" aria-hidden="true" /> : <Wand2 className="size-4" aria-hidden="true" />}
-        {label}
+        <span className="studio-primary-action__copy">
+          <span>{label}</span>
+          {!loading && costLabel ? <small>（{costLabel}）</small> : null}
+        </span>
       </button>
     </div>
   );
