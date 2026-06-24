@@ -3,16 +3,17 @@
 /* eslint-disable @next/next/no-img-element */
 
 import Link from "next/link";
-import { ArrowRight, Search } from "lucide-react";
-import { useCallback, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent } from "react";
+import { ArrowRight, Search, SlidersHorizontal } from "lucide-react";
+import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type PointerEvent as ReactPointerEvent } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 
 import { WorkbenchShell } from "@/components/workbench-shell";
+import { fetchJson } from "@/lib/client/api";
+import type { PublicAuthUser } from "@/lib/server/auth";
 import { cn } from "@/lib/utils";
 import {
   imagePromptTemplates,
   templateCategories,
-  templateCloneHref,
   templateTabHref,
   type TemplateCategory,
   type TemplatePromptTemplate,
@@ -21,6 +22,18 @@ import {
 import type { WorkspaceAction, WorkspaceToolId } from "@/lib/workspace-registry";
 
 type TemplateScope = "image" | "video";
+
+type AuthSessionResponse =
+  | { ok: true; user: PublicAuthUser; mappingStatus: string | null }
+  | { ok: false; code: string; uiState: string; message: string; retryAfterSeconds?: number };
+
+type QuotaResponse = {
+  ok: true;
+  quota: { quota_units: number; available_quota_units: number };
+};
+
+const templateRailDragThreshold = 12;
+const templateRailLongPressDelay = 180;
 
 type TemplateRailProps = {
   title?: string;
@@ -44,7 +57,9 @@ export function TemplateRail({
     pointerId: -1,
     startX: 0,
     startScrollLeft: 0,
+    dragReady: false,
     dragging: false,
+    longPressTimer: null as number | null,
     suppressClick: false,
   });
 
@@ -57,7 +72,12 @@ export function TemplateRail({
     if (state.dragging) {
       scroll?.classList.remove("is-dragging");
     }
+    if (state.longPressTimer) {
+      window.clearTimeout(state.longPressTimer);
+      state.longPressTimer = null;
+    }
     state.pointerId = -1;
+    state.dragReady = false;
     state.dragging = false;
   }, []);
 
@@ -69,9 +89,17 @@ export function TemplateRail({
     state.pointerId = event.pointerId;
     state.startX = event.clientX;
     state.startScrollLeft = scroll.scrollLeft;
+    state.dragReady = false;
     state.dragging = false;
     state.suppressClick = false;
-    scroll.setPointerCapture(event.pointerId);
+    if (state.longPressTimer) {
+      window.clearTimeout(state.longPressTimer);
+    }
+    state.longPressTimer = window.setTimeout(() => {
+      if (dragStateRef.current.pointerId === event.pointerId) {
+        dragStateRef.current.dragReady = true;
+      }
+    }, templateRailLongPressDelay);
   }, []);
 
   const handlePointerMove = useCallback((event: ReactPointerEvent<HTMLDivElement>) => {
@@ -79,9 +107,12 @@ export function TemplateRail({
     const state = dragStateRef.current;
     if (!scroll || state.pointerId !== event.pointerId) return;
     const delta = event.clientX - state.startX;
-    if (!state.dragging && Math.abs(delta) > 6) {
+    if (!state.dragging && state.dragReady && Math.abs(delta) > templateRailDragThreshold) {
       state.dragging = true;
       scroll.classList.add("is-dragging");
+      if (!scroll.hasPointerCapture(event.pointerId)) {
+        scroll.setPointerCapture(event.pointerId);
+      }
     }
     if (state.dragging) {
       event.preventDefault();
@@ -92,7 +123,9 @@ export function TemplateRail({
   const handlePointerUp = useCallback((event: ReactPointerEvent<HTMLDivElement>) => {
     const state = dragStateRef.current;
     if (state.pointerId !== event.pointerId) return;
-    state.suppressClick = state.dragging;
+    const scroll = scrollRef.current;
+    const didScroll = Boolean(scroll && Math.abs(scroll.scrollLeft - state.startScrollLeft) > 1);
+    state.suppressClick = state.dragging || didScroll;
     releaseDrag(event.pointerId);
   }, [releaseDrag]);
 
@@ -152,8 +185,11 @@ export function TemplateCenterView() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const scope: TemplateScope = searchParams.get("tab") === "video" ? "video" : "image";
+  const previewMode = searchParams.get("preview") === "1";
   const [search, setSearch] = useState("");
   const [category, setCategory] = useState<TemplateCategory | "全部">("全部");
+  const [sessionUser, setSessionUser] = useState<PublicAuthUser | null>(null);
+  const [quotaLabel, setQuotaLabel] = useState<string | null>(null);
 
   const templates = scope === "image" ? imagePromptTemplates : videoPromptTemplates;
   const totalTemplateCount = templates.length;
@@ -181,22 +217,70 @@ export function TemplateCenterView() {
 
   const handleToolAction = (action: WorkspaceAction, tool: WorkspaceToolId) => {
     if (action.kind === "route") {
-      router.push(action.href);
+      router.push(withPreviewParam(action.href, previewMode));
       return;
     }
-    router.push(`/?tool=${encodeURIComponent(tool)}`);
+    const params = new URLSearchParams({ tool });
+    if (previewMode) params.set("preview", "1");
+    router.push(`/?${params.toString()}`);
   };
+
+  const handleOpenAccountCenter = () => {
+    router.push(`/?account=center${previewMode ? "&preview=1" : ""}`);
+  };
+
+  const handleOpenRechargeCenter = () => {
+    router.push(`/?account=recharge${previewMode ? "&preview=1" : ""}`);
+  };
+
+  useEffect(() => {
+    let cancelled = false;
+
+    void (async () => {
+      try {
+        const session = await fetchJson<AuthSessionResponse>("/api/auth/session");
+        if (cancelled) return;
+        if ("ok" in session && session.ok) {
+          setSessionUser(session.user);
+          try {
+            const quotaData = await fetchJson<QuotaResponse>("/api/quota");
+            if (!cancelled) setQuotaLabel(`${new Intl.NumberFormat("zh-CN").format(quotaData.quota.quota_units ?? quotaData.quota.available_quota_units)} ✦`);
+          } catch {
+            if (!cancelled) setQuotaLabel(null);
+          }
+          return;
+        }
+        setSessionUser(null);
+        setQuotaLabel(null);
+      } catch {
+        if (!cancelled) {
+          setSessionUser(null);
+          setQuotaLabel(null);
+        }
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   return (
     <WorkbenchShell
       state={{ activeToolId: "templates" }}
       onToolAction={handleToolAction}
-      isAuthenticated={false}
+      isAuthenticated={Boolean(sessionUser)}
+      canAccessAdmin={sessionUser?.role === "admin"}
+      accountName={sessionUser?.display_name || sessionUser?.username || null}
+      accountPointsLabel={quotaLabel}
+      onOpenAccountCenter={handleOpenAccountCenter}
+      onOpenAccountRecharge={handleOpenRechargeCenter}
       toolTitle="模板中心"
       parameterSlot={null}
       previewSlot={
         <TemplateBrowserPanel
           scope={scope}
+          previewMode={previewMode}
           search={search}
           category={category}
           counts={categoryCounts}
@@ -204,7 +288,7 @@ export function TemplateCenterView() {
           totalCount={totalTemplateCount}
           onScopeChange={(nextScope) => {
             setCategory("全部");
-            router.push(templateTabHref(nextScope), { scroll: false });
+            router.push(`${templateTabHref(nextScope)}${previewMode ? "&preview=1" : ""}`, { scroll: false });
           }}
           onSearchChange={setSearch}
           onCategoryChange={setCategory}
@@ -212,6 +296,11 @@ export function TemplateCenterView() {
       }
     />
   );
+}
+
+function withPreviewParam(href: string, previewMode: boolean) {
+  if (!previewMode || href.includes("preview=1")) return href;
+  return `${href}${href.includes("?") ? "&" : "?"}preview=1`;
 }
 
 const templateCategoryMeta: Record<TemplateCategory | "全部", { title: string; description: string }> = {
@@ -253,13 +342,15 @@ function TemplateCategoryPanel({
   category,
   counts,
   onCategoryChange,
+  className,
 }: {
   category: TemplateCategory | "全部";
   counts: Record<TemplateCategory | "全部", number>;
   onCategoryChange: (value: TemplateCategory | "全部") => void;
+  className?: string;
 }) {
   return (
-    <div className="template-center-panel">
+    <div className={cn("template-center-panel", className)}>
       <div className="template-center-categories" role="group" aria-label="模板分类">
         {templateCategories.filter((item) => item === "全部" || counts[item] > 0).map((item) => {
           const meta = templateCategoryMeta[item];
@@ -285,6 +376,7 @@ function TemplateCategoryPanel({
 
 function TemplateBrowserPanel({
   scope,
+  previewMode,
   search,
   category,
   counts,
@@ -295,6 +387,7 @@ function TemplateBrowserPanel({
   onCategoryChange,
 }: {
   scope: TemplateScope;
+  previewMode: boolean;
   search: string;
   category: TemplateCategory | "全部";
   counts: Record<TemplateCategory | "全部", number>;
@@ -304,17 +397,50 @@ function TemplateBrowserPanel({
   onSearchChange: (value: string) => void;
   onCategoryChange: (value: TemplateCategory | "全部") => void;
 }) {
+  const gridMotionKey = `${scope}:${category}:${search.trim().toLowerCase()}`;
+  const searchInputRef = useRef<HTMLInputElement | null>(null);
+  const [mobileSearchOpen, setMobileSearchOpen] = useState(false);
+  const [mobileCategoryOpen, setMobileCategoryOpen] = useState(false);
+
+  const handleCategoryChange = (value: TemplateCategory | "全部") => {
+    onCategoryChange(value);
+    setMobileCategoryOpen(false);
+  };
+
+  const openMobileSearch = () => {
+    setMobileSearchOpen((value) => {
+      const next = !value;
+      if (next) window.requestAnimationFrame(() => searchInputRef.current?.focus());
+      return next;
+    });
+  };
+
+  const openMobileCategories = () => {
+    setMobileCategoryOpen((value) => !value);
+  };
+
+  const cloneHref = (id: string) => {
+    const params = new URLSearchParams({ template: id });
+    if (previewMode) params.set("preview", "1");
+    return `/?${params.toString()}`;
+  };
+
   return (
     <div className="template-center-browser">
       <div className="template-center-browser__head">
         <div>
           <h3>模板中心</h3>
-          <p>发现适合商品、海报、摄影、插画、图文和界面的常用模板</p>
         </div>
         <span className="shell-chip">共 {totalCount} 个模板</span>
       </div>
 
-      <div className="template-center-toolbar">
+      <div
+        className={cn(
+          "template-center-toolbar",
+          (mobileSearchOpen || search.trim()) && "is-search-open",
+          (mobileCategoryOpen || category !== "全部") && "is-filter-open",
+        )}
+      >
         <div className="template-center-tabs" role="tablist" aria-label="模板类型">
           <button
             type="button"
@@ -334,9 +460,30 @@ function TemplateBrowserPanel({
           </button>
         </div>
 
+        <button
+          type="button"
+          className="template-center-search-trigger"
+          onClick={openMobileSearch}
+          aria-label="搜索模板"
+          aria-expanded={mobileSearchOpen || Boolean(search.trim())}
+        >
+          <Search className="size-4" aria-hidden="true" />
+        </button>
+
+        <button
+          type="button"
+          className={cn("template-center-filter-trigger", (mobileCategoryOpen || category !== "全部") && "is-active")}
+          onClick={openMobileCategories}
+          aria-label="筛选模板分类"
+          aria-expanded={mobileCategoryOpen || category !== "全部"}
+        >
+          <SlidersHorizontal className="size-4" aria-hidden="true" />
+        </button>
+
         <label className="template-center-search">
           <Search className="size-4" aria-hidden="true" />
           <input
+            ref={searchInputRef}
             className="studio-input"
             type="search"
             value={search}
@@ -348,15 +495,17 @@ function TemplateBrowserPanel({
         <TemplateCategoryPanel
           category={category}
           counts={counts}
-          onCategoryChange={onCategoryChange}
+          onCategoryChange={handleCategoryChange}
+          className={cn(mobileCategoryOpen && "is-open is-popover")}
         />
       </div>
 
-      <div className="template-center-grid" aria-label="模板列表">
-        {templates.length ? templates.map((template) => (
+      <div key={gridMotionKey} className="template-center-grid" aria-label="模板列表">
+        {templates.length ? templates.map((template, index) => (
           <article
             key={template.id}
             className="template-center-card"
+            style={{ "--template-card-delay": `${Math.min(index * 20, 220)}ms` } as CSSProperties}
           >
             <span className="template-center-card__thumb">
               <img src={template.thumbnail} alt={template.label} loading="lazy" />
@@ -371,8 +520,8 @@ function TemplateBrowserPanel({
                 <span>{template.requiresImage ? "需图像" : "无须图像"}</span>
               </span>
             </span>
-            <Link href={templateCloneHref(template.id)} className="studio-primary-action template-center-card__clone">
-              克隆
+            <Link href={cloneHref(template.id)} className="studio-primary-action template-center-card__clone">
+              使用模板
               <ArrowRight className="size-4" aria-hidden="true" />
             </Link>
           </article>

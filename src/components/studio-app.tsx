@@ -2,14 +2,21 @@
 
 /* eslint-disable @next/next/no-img-element */
 
-import { useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
-import { AlertTriangle, ArrowDownUp, Check, ChevronDown, Download, ExternalLink, ImageUp, Loader2, Play, RefreshCw, Search, Trash2, UploadCloud, Wand2, X } from "lucide-react";
+import { useCallback, useEffect, useId, useMemo, useRef, useState, type CSSProperties } from "react";
+import { AlertTriangle, ArrowDownUp, ArrowLeft, CalendarCheck, Check, ChevronDown, Crown, CreditCard, Download, ExternalLink, Eye, History, ImageUp, Loader2, Play, RefreshCw, Search, Sparkles, Trash2, UploadCloud, WalletCards, Wand2, X } from "lucide-react";
 import { useRouter, useSearchParams } from "next/navigation";
 
 import { BeforeAfterImageCompare } from "@/components/before-after-image-compare";
+import { ResultReveal } from "@/components/motion";
 import { WorkbenchShell } from "@/components/workbench-shell";
 import { TemplateRail } from "@/components/template-center";
 import { WorkspaceAccountPanel } from "@/components/workspace-account-panel";
+import {
+  getCheckInStatusDisplay,
+  getPlanStatusDisplay,
+  type CheckInStatus,
+  type PlanStatus,
+} from "@/lib/account-status";
 import { ApiError, fetchJson, fetchJsonWithCsrf } from "@/lib/client/api";
 import {
   estimateImageGenerationQuota,
@@ -23,9 +30,10 @@ import {
   templateTabHref,
 } from "@/lib/template-catalog";
 import type { PublicAuthUser } from "@/lib/server/auth";
-import type { BillingOrder, PublicPaymentChannelConfig } from "@/lib/server/billing";
-import type { QuotaSnapshot, UsagePage } from "@/lib/server/quota";
+import type { BillingOrder } from "@/lib/server/billing";
+import type { UsageLogEntry, QuotaSnapshot, UsagePage } from "@/lib/server/quota";
 import { cn } from "@/lib/utils";
+import { useReducedMotion } from "@/lib/use-reduced-motion";
 import type { FrontendProvider, JobRecord, LibraryItem } from "@/lib/server/types";
 import {
   type WorkspaceAction,
@@ -57,11 +65,6 @@ type WorkspacePublicProvider = FrontendProvider & {
   videoOptions?: WorkspaceVideoOptions;
 };
 
-type BillingConfigResponse = {
-  ok: true;
-  channels: PublicPaymentChannelConfig[];
-};
-
 type AuthSessionResponse =
   | { ok: true; user: PublicAuthUser; mappingStatus: string | null }
   | { ok: false; code: string; uiState: string; message: string; retryAfterSeconds?: number };
@@ -75,14 +78,72 @@ type BillingOrdersResponse = {
   has_more: boolean;
 };
 
-type BillingOrderDetailResponse = {
-  ok: true;
-  order: BillingOrder;
+type AccountView = "center" | "recharge" | "usage";
+type RechargeTab = "plans" | "credits";
+type AccountRecordKind = "spend" | "recharge" | "checkin";
+type AccountUsageFilter = "all" | AccountRecordKind;
+
+type PlanOption = {
+  id: string;
+  name: string;
+  price: number;
+  monthlyCredits: number;
+  description: string;
+  recommended?: boolean;
 };
+
+type CreditTopUpOption = {
+  amount: number;
+  credits: number;
+  label?: string;
+};
+
+type AccountRecord = {
+  id: string;
+  createdAt: string;
+  kind: AccountRecordKind;
+  typeLabel: string;
+  quotaDelta: number;
+  description: string;
+};
+
+const planOptions: PlanOption[] = [
+  { id: "basic", name: "基础套餐", price: 19, monthlyCredits: 220, description: "适合偶尔创作" },
+  { id: "standard", name: "标准套餐", price: 49, monthlyCredits: 600, description: "适合日常商品创作", recommended: true },
+  { id: "pro", name: "专业套餐", price: 99, monthlyCredits: 1300, description: "适合高频创作" },
+];
+
+const creditTopUpOptions: CreditTopUpOption[] = [
+  { amount: 1, credits: 10, label: "体验充值" },
+  { amount: 5, credits: 50 },
+  { amount: 10, credits: 100 },
+  { amount: 20, credits: 210 },
+  { amount: 30, credits: 320 },
+  { amount: 50, credits: 550, label: "推荐" },
+  { amount: 100, credits: 1150, label: "最划算" },
+  { amount: 200, credits: 2400, label: "超值" },
+];
+
+const CREDIT_TOP_UP_BASE_RATE = 10;
+const CUSTOM_RECHARGE_MIN_AMOUNT = 1;
+const PLAN_PERIOD_LABEL = "按月";
+const PLAN_PERIOD_UNIT_LABEL = "月";
+const PAYMENT_FLOW_AVAILABLE: boolean = false;
+
+function accountViewTitle(view: AccountView) {
+  if (view === "recharge") return "充值中心";
+  if (view === "usage") return "消费记录";
+  return "用户中心";
+}
 
 function createTaskId(prefix: string) {
   const suffix = globalThis.crypto?.randomUUID?.() || `${Date.now()}-${Math.random().toString(36).slice(2)}`;
   return `${prefix}-${suffix}`;
+}
+
+function withPreviewParam(href: string, previewMode: boolean) {
+  if (!previewMode || href.includes("preview=1")) return href;
+  return `${href}${href.includes("?") ? "&" : "?"}preview=1`;
 }
 
 type OutputState = {
@@ -94,6 +155,7 @@ type OutputState = {
 
 type MobileActionState = {
   label: string;
+  costLabel?: string;
   loading: boolean;
   disabled: boolean;
   onClick: () => void;
@@ -121,6 +183,7 @@ type ImageWorkspaceState = {
   providerId: string;
   ratio: string;
   quality: string;
+  count: number;
   templateId: string;
   prompt: string;
   promptOptimizing: boolean;
@@ -153,6 +216,15 @@ type VideoWorkspaceState = {
   job: JobRecord | null;
 };
 
+type ImageGenerationProgressState = {
+  status: "running" | "done" | "failed";
+  current: number;
+  total: number;
+  startedAt: number;
+  completedAt?: number;
+  message?: string;
+} | null;
+
 type ImageUpscaleWorkspaceFile = {
   file: File;
   previewUrl: string;
@@ -164,7 +236,7 @@ type VideoUpscaleWorkspaceFile = {
 };
 
 type ImageUpscaleWorkspaceState = {
-  scale: "2" | "4";
+  scale: "1" | "2" | "4";
   file: ImageUpscaleWorkspaceFile | null;
   fileError: string;
   submitError: string;
@@ -176,7 +248,7 @@ type ImageUpscaleWorkspaceState = {
 };
 
 type VideoUpscaleWorkspaceState = {
-  scale: "2" | "4";
+  scale: "1" | "2" | "4";
   file: VideoUpscaleWorkspaceFile | null;
   fileError: string;
   submitError: string;
@@ -188,6 +260,16 @@ type VideoUpscaleWorkspaceState = {
   job: JobRecord | null;
 };
 
+function upscaleTargetLabel(scale: string) {
+  if (scale === "4") return "4K";
+  if (scale === "2") return "2K";
+  return "1K";
+}
+
+function videoUpscaleScaleLabel(scale: string) {
+  return upscaleTargetLabel(scale);
+}
+
 const ratios = ["1:1", "16:9", "9:16", "4:3", "3:4", "3:2", "2:3"];
 const defaultVideoDurations = [5, 8, 10, 15];
 const grokVideoDurations = [4, 6, 8, 10, 12, 15];
@@ -196,6 +278,8 @@ const grokVideo15Ratios = ["16:9", "9:16"];
 const jimengVideoRatios = ["16:9", "9:16", "1:1"];
 const upscaleUnavailableMessage = "高清处理暂时不可用，请稍后重试";
 const promptOptimizationTargetPlatform = "TikTok Shop";
+const PROMPT_OPTIMIZATION_QUOTA_UNITS = 0;
+const quotaSymbol = "✦";
 
 const imageWorkspaceModeMeta: Record<WorkspaceImageMode, {
   title: string;
@@ -433,7 +517,9 @@ const ratioShapeClass: Record<string, string> = {
 export function StudioApp() {
   const router = useRouter();
   const searchParams = useSearchParams();
+  const prefersReducedMotion = useReducedMotion();
   const toolParam = searchParams.get("tool");
+  const accountParam = searchParams.get("account");
   const previewMode = searchParams.get("preview") === "1";
   const initialWorkspaceToolId = useMemo<WorkspaceToolId>(() => {
     if (toolParam) {
@@ -450,18 +536,19 @@ export function StudioApp() {
   const [libraryLoading, setLibraryLoading] = useState(true);
   const [libraryError, setLibraryError] = useState("");
   const [sessionUser, setSessionUser] = useState<PublicAuthUser | null>(null);
-  const [mappingStatus, setMappingStatus] = useState<string | null>(null);
   const [sessionLoading, setSessionLoading] = useState(true);
   const [sessionError, setSessionError] = useState("");
   const [quotaSnapshot, setQuotaSnapshot] = useState<QuotaSnapshot | null>(null);
   const [usagePage, setUsagePage] = useState<UsagePage | null>(null);
-  const [billingChannels, setBillingChannels] = useState<PublicPaymentChannelConfig[]>([]);
   const [billingOrders, setBillingOrders] = useState<BillingOrder[]>([]);
-  const [selectedBillingOrderId, setSelectedBillingOrderId] = useState<string | null>(null);
   const [accountLoading, setAccountLoading] = useState(true);
-  const [billingSubmitting, setBillingSubmitting] = useState(false);
-  const billingRequestKeyRef = useRef(new Map<string, string>());
+  const [accountDataError, setAccountDataError] = useState("");
+  const [accountCenterOpen, setAccountCenterOpen] = useState(false);
+  const [accountView, setAccountView] = useState<AccountView>("center");
+  const [accountCloseSignal, setAccountCloseSignal] = useState(0);
   const [message, setMessage] = useState("");
+  const [imageGenerationProgress, setImageGenerationProgress] = useState<ImageGenerationProgressState>(null);
+  const [generationProgressTick, setGenerationProgressTick] = useState(() => Date.now());
   const [outputs, setOutputs] = useState<Partial<Record<BusinessToolId, OutputState>>>({});
   const [mobileAction, setMobileAction] = useState<MobileActionState>(null);
   const [mobilePreviewSignal, setMobilePreviewSignal] = useState(0);
@@ -469,13 +556,16 @@ export function StudioApp() {
   const [librarySort, setLibrarySort] = useState<LibrarySort>("recent");
   const [librarySearch, setLibrarySearch] = useState("");
   const [selectedLibraryItemId, setSelectedLibraryItemId] = useState<string | null>(null);
+  const [libraryDeleteConfirmItemId, setLibraryDeleteConfirmItemId] = useState<string | null>(null);
   const [deletingLibraryItemId, setDeletingLibraryItemId] = useState<string | null>(null);
+  const [removingLibraryItemId, setRemovingLibraryItemId] = useState<string | null>(null);
   const [missingLibraryMediaIds, setMissingLibraryMediaIds] = useState<Set<string>>(() => new Set());
   const [imageWorkspace, setImageWorkspace] = useState<ImageWorkspaceState>({
     providerId: "",
     ratio: "1:1",
     quality: "1k",
-    templateId: featuredImagePromptTemplates[0]?.id || "",
+    count: 1,
+    templateId: "",
     prompt: "",
     promptOptimizing: false,
     promptOptimizeError: "",
@@ -489,7 +579,7 @@ export function StudioApp() {
     providerId: "",
     ratio: "16:9",
     duration: 5,
-    templateId: featuredVideoPromptTemplates[0]?.id || "",
+    templateId: "",
     prompt: "",
     promptOptimizing: false,
     promptOptimizeError: "",
@@ -512,7 +602,7 @@ export function StudioApp() {
     statusError: "",
   });
   const [videoUpscaleWorkspace, setVideoUpscaleWorkspace] = useState<VideoUpscaleWorkspaceState>({
-    scale: "2",
+    scale: "1",
     file: null,
     fileError: "",
     submitError: "",
@@ -528,94 +618,64 @@ export function StudioApp() {
   const imageUpscaleFileRef = useRef<ImageUpscaleWorkspaceFile | null>(null);
   const videoUpscaleFileRef = useRef<VideoUpscaleWorkspaceFile | null>(null);
   const appliedTemplateIdRef = useRef<string | null>(null);
+  const accountPlanStatus = useMemo<PlanStatus>(() => {
+    if (sessionLoading) return { status: "loading" };
+    return { status: "unavailable" };
+  }, [sessionLoading]);
+  const accountCheckInStatus = useMemo<CheckInStatus>(() => {
+    if (sessionLoading) return "loading";
+    return "unavailable";
+  }, [sessionLoading]);
 
   const refreshAccountData = useCallback(async (userId?: string | null) => {
     if (!userId) {
       setQuotaSnapshot(null);
       setUsagePage(null);
       setBillingOrders([]);
-      setSelectedBillingOrderId(null);
+      setAccountDataError("");
       setAccountLoading(false);
       return;
     }
 
     setAccountLoading(true);
-    setSessionError("");
     try {
-      const [quotaData, usageData, billingConfigData, ordersData] = await Promise.all([
+      const [quotaResult, usageResult, ordersResult] = await Promise.allSettled([
         fetchJson<{ ok: true; quota: QuotaSnapshot }>("/api/quota"),
         fetchJson<{ ok: true; usage: UsagePage }>("/api/usage?page=1&pageSize=10"),
-        fetchJson<BillingConfigResponse>("/api/billing/config"),
         fetchJson<BillingOrdersResponse>("/api/billing/orders?page=1&pageSize=8"),
       ]);
-      setQuotaSnapshot(quotaData.quota);
-      setUsagePage(usageData.usage);
-      setBillingChannels(billingConfigData.channels);
-      setBillingOrders(ordersData.orders);
-      setSelectedBillingOrderId((current) => (
-        current && ordersData.orders.some((order) => order.order_id === current)
-          ? current
-          : ordersData.orders[0]?.order_id || null
-      ));
-    } catch (error) {
-      const text = error instanceof Error ? error.message : "账户信息加载失败。";
-      setSessionError(text);
-      setMessage(text);
+
+      if (quotaResult.status === "fulfilled") {
+        setQuotaSnapshot(quotaResult.value.quota);
+      } else {
+        setQuotaSnapshot(null);
+      }
+
+      if (usageResult.status === "fulfilled") {
+        setUsagePage(usageResult.value.usage);
+      } else {
+        setUsagePage(null);
+      }
+
+      if (ordersResult.status === "fulfilled") {
+        setBillingOrders(ordersResult.value.orders);
+      } else {
+        setBillingOrders([]);
+      }
+
+      const failures = [quotaResult, usageResult, ordersResult].filter((result) => result.status === "rejected");
+      if (failures.length) {
+        if (process.env.NODE_ENV !== "production") {
+          console.debug("[account] Failed to load account data", failures);
+        }
+        setAccountDataError("account-data-unavailable");
+      } else {
+        setAccountDataError("");
+      }
     } finally {
       setAccountLoading(false);
     }
   }, []);
-
-  const refreshBillingOrderDetail = useCallback(async (orderId: string | null) => {
-    if (!orderId) return;
-    try {
-      const data = await fetchJson<BillingOrderDetailResponse>(`/api/billing/orders/${orderId}`);
-      setBillingOrders((current) => {
-        const next = current.filter((order) => order.order_id !== data.order.order_id);
-        next.unshift(data.order);
-        return next;
-      });
-      setSelectedBillingOrderId(data.order.order_id);
-    } catch (error) {
-      const text = error instanceof Error ? error.message : "订单详情加载失败。";
-      setMessage(text);
-    }
-  }, []);
-
-  const handleCreateSandboxOrder = useCallback(async (channel: PublicPaymentChannelConfig, amount: number) => {
-    if (!sessionUser) {
-      setMessage("请先登录后再创建充值订单。");
-      router.push("/login");
-      return;
-    }
-    if (billingSubmitting) return;
-    const requestKey = `${channel.channel}:${channel.currency}:${amount}`;
-    const idempotencyKey = billingRequestKeyRef.current.get(requestKey)
-      || createTaskId(`billing-${channel.channel}-${amount}`);
-    billingRequestKeyRef.current.set(requestKey, idempotencyKey);
-    setBillingSubmitting(true);
-    setMessage("");
-    try {
-      const response = await fetchJsonWithCsrf<{ ok: true; order: BillingOrder }>("/api/billing/orders", {
-        method: "POST",
-        body: JSON.stringify({
-          channel: channel.channel,
-          currency: channel.currency,
-          requestedAmount: amount,
-          idempotencyKey,
-        }),
-      });
-      setBillingOrders((current) => [response.order, ...current.filter((order) => order.order_id !== response.order.order_id)]);
-      setSelectedBillingOrderId(response.order.order_id);
-      setMessage(`已创建 ${channel.name} 充值订单。`);
-      billingRequestKeyRef.current.delete(requestKey);
-    } catch (error) {
-      const text = error instanceof ApiError ? error.message : error instanceof Error ? error.message : "创建订单失败。";
-      setMessage(text);
-    } finally {
-      setBillingSubmitting(false);
-    }
-  }, [billingSubmitting, router, sessionUser]);
 
   const handleLogout = useCallback(async () => {
     if (!sessionUser) return;
@@ -625,12 +685,9 @@ export function StudioApp() {
       setMessage(error instanceof Error ? error.message : "退出失败。");
     } finally {
       setSessionUser(null);
-      setMappingStatus(null);
       setQuotaSnapshot(null);
       setUsagePage(null);
-      setBillingChannels([]);
       setBillingOrders([]);
-      setSelectedBillingOrderId(null);
       router.replace("/login");
     }
   }, [router, sessionUser]);
@@ -642,26 +699,21 @@ export function StudioApp() {
       const result = await fetchJson<AuthSessionResponse>("/api/auth/session");
       if ("ok" in result && result.ok) {
         setSessionUser(result.user);
-        setMappingStatus(result.mappingStatus || null);
         await refreshAccountData(result.user.local_user_id);
         return;
       }
       setSessionUser(null);
-      setMappingStatus(null);
       setQuotaSnapshot(null);
       setUsagePage(null);
-      setBillingChannels([]);
       setBillingOrders([]);
-      setSelectedBillingOrderId(null);
+      setAccountDataError("");
     } catch (error) {
       if (error instanceof ApiError && error.status === 401) {
         setSessionUser(null);
-        setMappingStatus(null);
         setQuotaSnapshot(null);
         setUsagePage(null);
-        setBillingChannels([]);
         setBillingOrders([]);
-        setSelectedBillingOrderId(null);
+        setAccountDataError("");
       } else {
         const text = error instanceof Error ? error.message : "会话加载失败。";
         setSessionError(text);
@@ -775,6 +827,7 @@ export function StudioApp() {
   }, [providers.video]);
 
   const handleToolAction = useCallback((action: WorkspaceAction, tool: WorkspaceToolId) => {
+    setAccountCenterOpen(false);
     if (action.kind === "route") {
       router.push(action.href);
       return;
@@ -804,6 +857,14 @@ export function StudioApp() {
   const templateParam = searchParams.get("template") || "";
   const activeImageTemplate = useMemo(() => templateById(imageWorkspace.templateId), [imageWorkspace.templateId]);
   const activeVideoTemplate = useMemo(() => templateById(videoWorkspace.templateId), [videoWorkspace.templateId]);
+  const imageTemplateCenterHref = useMemo(
+    () => withPreviewParam(templateTabHref("image"), previewMode),
+    [previewMode],
+  );
+  const videoTemplateCenterHref = useMemo(
+    () => withPreviewParam(templateTabHref("video"), previewMode),
+    [previewMode],
+  );
 
   const applyTemplatePreset = useCallback((templateId: string) => {
     const template = templateById(templateId);
@@ -819,6 +880,7 @@ export function StudioApp() {
         prompt: template.prompt,
         ratio: template.aspectRatio,
         quality: template.quality,
+        count: 1,
         fileError: template.requiresImage && !prev.files.length ? "请先上传图像。" : "",
         promptOptimizeError: "",
         promptOptimizeUndo: "",
@@ -849,6 +911,13 @@ export function StudioApp() {
     applyTemplatePreset(templateParam);
   }, [applyTemplatePreset, templateParam]);
 
+  useEffect(() => {
+    if (accountParam !== "center" && accountParam !== "recharge" && accountParam !== "usage") return;
+    setAccountCenterOpen(true);
+    setAccountView(accountParam);
+    setAccountCloseSignal((value) => value + 1);
+  }, [accountParam]);
+
   const currentLibraryItems = useMemo(() => {
     const search = librarySearch.trim().toLowerCase();
     const filtered = library.filter((item) => (
@@ -870,14 +939,26 @@ export function StudioApp() {
     () => currentLibraryItems.find((item) => item.id === selectedLibraryItemId) || null,
     [currentLibraryItems, selectedLibraryItemId],
   );
-  const selectedBillingOrder = useMemo(
-    () => billingOrders.find((order) => order.order_id === selectedBillingOrderId) || billingOrders[0] || null,
-    [billingOrders, selectedBillingOrderId],
-  );
+  const handleOpenAccountCenter = useCallback(() => {
+    setAccountCenterOpen(true);
+    setAccountView("center");
+    setAccountCloseSignal((value) => value + 1);
+  }, []);
 
-  useEffect(() => {
-    void refreshBillingOrderDetail(selectedBillingOrderId);
-  }, [refreshBillingOrderDetail, selectedBillingOrderId]);
+  const handleOpenRechargeCenter = useCallback(() => {
+    setAccountCenterOpen(true);
+    setAccountView("recharge");
+    setAccountCloseSignal((value) => value + 1);
+  }, []);
+
+  const handlePaymentUnavailable = useCallback((text = "充值功能暂未开放") => {
+    setMessage(text);
+  }, []);
+
+  const handleCheckInUnavailable = useCallback(() => {
+    setMessage("每日签到功能暂未开放。");
+  }, []);
+
   const markLibraryMediaMissing = useCallback((id: string) => {
     setMissingLibraryMediaIds((prev) => {
       if (prev.has(id)) return prev;
@@ -886,11 +967,33 @@ export function StudioApp() {
       return next;
     });
   }, []);
-  const handleDeleteLibraryItem = useCallback(async (id: string) => {
+  const handleRequestDeleteLibraryItem = useCallback(async (id: string) => {
     if (deletingLibraryItemId) return;
-    const item = library.find((entry) => entry.id === id);
-    const confirmed = window.confirm(`确认删除作品「${item?.title || "未命名作品"}」？删除后会同步移除可删除的本地结果文件。`);
-    if (!confirmed) return;
+    setLibraryDeleteConfirmItemId(id);
+  }, [deletingLibraryItemId]);
+
+  const handleCancelDeleteLibraryItem = useCallback(() => {
+    if (deletingLibraryItemId) return;
+    setLibraryDeleteConfirmItemId(null);
+  }, [deletingLibraryItemId]);
+
+  useEffect(() => {
+    if (!selectedLibraryItemId && !libraryDeleteConfirmItemId) return undefined;
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key !== "Escape" || deletingLibraryItemId) return;
+      if (libraryDeleteConfirmItemId) {
+        setLibraryDeleteConfirmItemId(null);
+        return;
+      }
+      setSelectedLibraryItemId(null);
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [deletingLibraryItemId, libraryDeleteConfirmItemId, selectedLibraryItemId]);
+
+  const handleConfirmDeleteLibraryItem = useCallback(async () => {
+    if (!libraryDeleteConfirmItemId || deletingLibraryItemId) return;
+    const id = libraryDeleteConfirmItemId;
 
     setDeletingLibraryItemId(id);
     setLibraryError("");
@@ -900,35 +1003,51 @@ export function StudioApp() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ id }),
       });
-      await refreshLibrary();
+      setRemovingLibraryItemId(id);
       setSelectedLibraryItemId((current) => (current === id ? null : current));
+      setLibraryDeleteConfirmItemId(null);
+      if (!prefersReducedMotion) {
+        await new Promise((resolve) => window.setTimeout(resolve, 220));
+      }
+      await refreshLibrary();
     } catch (error) {
       const text = error instanceof Error ? error.message : "删除失败。";
       setLibraryError(text);
       setMessage(text);
     } finally {
       setDeletingLibraryItemId(null);
+      setRemovingLibraryItemId(null);
     }
-  }, [deletingLibraryItemId, library, refreshLibrary]);
+  }, [deletingLibraryItemId, libraryDeleteConfirmItemId, prefersReducedMotion, refreshLibrary]);
 
   const libraryCounts = useMemo(() => ({
     all: library.length,
     image: library.filter((item) => item.type === "image").length,
     video: library.filter((item) => item.type === "video").length,
   }), [library]);
+  const libraryDeleteConfirmItem = useMemo(
+    () => library.find((item) => item.id === libraryDeleteConfirmItemId) || null,
+    [library, libraryDeleteConfirmItemId],
+  );
 
   const accountHeaderSlot = (
-    <div className="hidden items-center gap-2 rounded-full border border-white/10 bg-white/[0.03] px-3 py-2 text-xs text-white/68 md:flex">
-      <span>额度</span>
-      <strong className="text-white">{quotaSnapshot ? `${quotaSnapshot.available_quota_units}` : "—"}</strong>
-      <span className="text-white/38">/</span>
+    <div className="workspace-account-chip hidden items-center gap-2 rounded-full border border-white/10 bg-white/[0.03] px-3 py-2 text-xs text-white/68 md:flex">
       <span>{sessionUser ? sessionUser.display_name : "未登录"}</span>
+      <span className="text-white/38">/</span>
+      <strong className="text-white">{sessionLoading || accountLoading ? "加载中" : quotaSnapshot ? `${formatQuotaUnits(quotaSnapshot.quota_units)} ✦` : "—"}</strong>
     </div>
   );
 
   const handleImageResult = useCallback((item: LibraryItem) => {
     setOutputs((prev) => ({ ...prev, image: { item, title: "图片结果", tool: "image" } }));
   }, []);
+
+  useEffect(() => {
+    if (!imageGenerationProgress || imageGenerationProgress.status !== "running") return undefined;
+
+    const timer = window.setInterval(() => setGenerationProgressTick(Date.now()), 1000);
+    return () => window.clearInterval(timer);
+  }, [imageGenerationProgress]);
 
   const selectedImageProvider = useMemo(() => {
     if (!providers.image.length) return null;
@@ -939,6 +1058,12 @@ export function StudioApp() {
   const imageWorkspaceHasFiles = imageWorkspaceFiles.length > 0;
   const imageWorkspacePrompt = imageWorkspace.prompt.trim();
   const imageWorkspaceRequiresFile = activeImageTemplate?.scope === "image" && activeImageTemplate.requiresImage;
+  const imageGenerationCount = Math.min(Math.max(Math.round(Number(imageWorkspace.count) || 1), 1), 4);
+  const imageEstimatedQuotaUnits = estimateImageGenerationQuota({
+    mode: activeImageMode,
+    quality: imageWorkspace.quality,
+    referenceImages: imageWorkspace.files.length,
+  }) * imageGenerationCount;
   const imageWorkspaceCanSubmit = Boolean(selectedImageProvider)
     && !providersLoading
     && !imageWorkspace.loading
@@ -1100,40 +1225,12 @@ export function StudioApp() {
       return;
     }
 
-    const taskId = createTaskId("image");
-    const estimatedQuotaUnits = estimateImageGenerationQuota({
+    const totalCount = imageGenerationCount;
+    const estimatedQuotaUnitsPerImage = estimateImageGenerationQuota({
       mode: activeImageMode,
       quality: imageWorkspace.quality,
       referenceImages: imageWorkspace.files.length,
     });
-    const requestFingerprint = generationBillingFingerprint({
-      kind: "image",
-      providerId: selectedImageProvider.id,
-      mode: activeImageMode,
-      ratio: imageWorkspace.ratio,
-      quality: imageWorkspace.quality,
-      referenceImages: imageWorkspace.files.length,
-      taskId,
-      estimatedQuotaUnits,
-    });
-
-    try {
-      await fetchJsonWithCsrf("/api/quota/precheck", {
-        method: "POST",
-        body: JSON.stringify({
-          operation: "cloud_image_generation",
-          taskId,
-          idempotencyKey: taskId,
-          estimatedQuotaUnits,
-          requestFingerprint,
-        }),
-      });
-    } catch (error) {
-      const text = error instanceof Error ? error.message : "额度预检失败。";
-      setImageWorkspace((prev) => ({ ...prev, submitError: text }));
-      setMessage(text);
-      return;
-    }
 
     setImageWorkspace((prev) => ({
       ...prev,
@@ -1143,30 +1240,96 @@ export function StudioApp() {
     }));
     setMobilePreviewSignal((value) => value + 1);
     setMessage("");
+    const startedAt = Date.now();
+    setGenerationProgressTick(startedAt);
+    setImageGenerationProgress({
+      status: "running",
+      current: 0,
+      total: totalCount,
+      startedAt,
+      message: totalCount > 1 ? `正在生成第 1 / ${totalCount} 张` : "正在生成图片",
+    });
     try {
-      const form = new FormData();
-      form.set("providerId", selectedImageProvider.id);
-      form.set("mode", activeImageMode);
-      form.set("ratio", imageWorkspace.ratio);
-      form.set("quality", imageWorkspace.quality);
-      form.set("prompt", imageWorkspace.prompt);
-      form.set("taskId", taskId);
-      form.set("idempotencyKey", taskId);
-      form.set("estimatedQuotaUnits", String(estimatedQuotaUnits));
-      imageWorkspace.files.forEach((attachment) => form.append("files", attachment.file));
-      const data = await fetchJsonWithCsrf<{ item: LibraryItem }>("/api/generate/image", {
-        method: "POST",
-        body: form,
-      });
-      handleImageResult(data.item);
+      for (let index = 0; index < totalCount; index += 1) {
+        const taskId = createTaskId(`image-${index + 1}`);
+        const requestFingerprint = generationBillingFingerprint({
+          kind: "image",
+          providerId: selectedImageProvider.id,
+          mode: activeImageMode,
+          ratio: imageWorkspace.ratio,
+          quality: imageWorkspace.quality,
+          referenceImages: imageWorkspace.files.length,
+          taskId,
+          estimatedQuotaUnits: estimatedQuotaUnitsPerImage,
+        });
+
+        setImageGenerationProgress((current) => current ? {
+          ...current,
+          status: "running",
+          current: index,
+          message: totalCount > 1 ? `正在生成第 ${index + 1} / ${totalCount} 张` : "正在生成图片",
+        } : current);
+
+        try {
+          await fetchJsonWithCsrf("/api/quota/precheck", {
+            method: "POST",
+            body: JSON.stringify({
+              operation: "cloud_image_generation",
+              taskId,
+              idempotencyKey: taskId,
+              estimatedQuotaUnits: estimatedQuotaUnitsPerImage,
+              requestFingerprint,
+            }),
+          });
+        } catch (error) {
+          const text = error instanceof Error ? error.message : "额度预检失败。";
+          setImageWorkspace((prev) => ({ ...prev, submitError: text }));
+          throw new Error(text);
+        }
+
+        const form = new FormData();
+        form.set("providerId", selectedImageProvider.id);
+        form.set("mode", activeImageMode);
+        form.set("ratio", imageWorkspace.ratio);
+        form.set("quality", imageWorkspace.quality);
+        form.set("prompt", imageWorkspace.prompt);
+        form.set("taskId", taskId);
+        form.set("idempotencyKey", taskId);
+        form.set("estimatedQuotaUnits", String(estimatedQuotaUnitsPerImage));
+        imageWorkspace.files.forEach((attachment) => form.append("files", attachment.file));
+        const data = await fetchJsonWithCsrf<{ item: LibraryItem }>("/api/generate/image", {
+          method: "POST",
+          body: form,
+        });
+        handleImageResult(data.item);
+        setImageGenerationProgress((current) => current ? {
+          ...current,
+          current: index + 1,
+          message: totalCount > 1 ? `已完成 ${index + 1} / ${totalCount} 张` : "图片已生成",
+        } : current);
+      }
+
       await refreshLibrary();
       await refreshAccountData(sessionUser?.local_user_id || null);
+      setImageGenerationProgress((current) => current ? {
+        ...current,
+        status: "done",
+        current: totalCount,
+        completedAt: Date.now(),
+        message: totalCount > 1 ? `${totalCount} 张图片已生成` : "图片已生成",
+      } : current);
     } catch (error) {
       const text = error instanceof Error ? error.message : "图片生成失败。";
       setImageWorkspace((prev) => ({
         ...prev,
         submitError: text,
       }));
+      setImageGenerationProgress((current) => current ? {
+        ...current,
+        status: "failed",
+        completedAt: Date.now(),
+        message: text,
+      } : current);
       setMessage(text);
     } finally {
       setImageWorkspace((prev) => ({
@@ -1182,6 +1345,7 @@ export function StudioApp() {
     imageWorkspace.quality,
     imageWorkspace.ratio,
     imageWorkspace.prompt,
+    imageGenerationCount,
     imageWorkspacePrompt,
     refreshAccountData,
     imageWorkspaceHasFiles,
@@ -1209,6 +1373,11 @@ export function StudioApp() {
   const videoWorkspaceNeedsFile = activeVideoMode === "image-to-video";
   const videoWorkspaceRequiresFile = activeVideoTemplate?.scope === "video" && activeVideoTemplate.requiresImage;
   const selectedVideoModelRequiresFile = videoProviderRequiresReferenceImage(selectedVideoProvider);
+  const videoEstimatedQuotaUnits = estimateVideoGenerationQuota({
+    mode: activeVideoMode,
+    durationSeconds: videoWorkspace.duration,
+    referenceImages: videoWorkspace.files.length,
+  });
   const videoWorkspaceCanSubmit = Boolean(selectedVideoProvider)
     && !providersLoading
     && !videoWorkspace.loading
@@ -1804,14 +1973,17 @@ export function StudioApp() {
           mode={activeImageMode}
           showTemplates={activeWorkspaceToolId !== "image-editor"}
           providers={providers.image}
-          providersLoading={providersLoading}
-          providersError={providersError}
-          selectedProvider={selectedImageProvider}
+              providersLoading={providersLoading}
+              providersError={providersError}
+              selectedProvider={selectedImageProvider}
+          templateCenterHref={imageTemplateCenterHref}
           state={imageWorkspace}
           canSubmit={imageWorkspaceCanSubmit}
+          estimatedQuotaUnits={imageEstimatedQuotaUnits}
           onProviderChange={(value) => updateImageWorkspace({ providerId: value })}
           onRatioChange={(value) => updateImageWorkspace({ ratio: value })}
           onQualityChange={(value) => updateImageWorkspace({ quality: value })}
+          onCountChange={(value) => updateImageWorkspace({ count: value })}
           onTemplateChange={applyImagePromptTemplate}
           onPromptChange={(value) => updateImageWorkspace({ prompt: value, promptOptimizeError: "", submitError: "" })}
           onPromptOptimize={optimizeImagePrompt}
@@ -1828,11 +2000,13 @@ export function StudioApp() {
         <VideoGenerator
           mode={activeVideoMode}
           providers={providers.video}
-          providersLoading={providersLoading}
-          providersError={providersError}
-          selectedProvider={selectedVideoProvider}
+              providersLoading={providersLoading}
+              providersError={providersError}
+              selectedProvider={selectedVideoProvider}
+          templateCenterHref={videoTemplateCenterHref}
           state={videoWorkspace}
           canSubmit={videoWorkspaceCanSubmit}
+          estimatedQuotaUnits={videoEstimatedQuotaUnits}
           onProviderChange={(value) => updateVideoWorkspace({ providerId: value, submitError: "" })}
           onRatioChange={(value) => updateVideoWorkspace({ ratio: value })}
           onDurationChange={(value) => updateVideoWorkspace({ duration: value })}
@@ -1855,7 +2029,7 @@ export function StudioApp() {
         <ImageUpscaleForm
           state={imageUpscaleWorkspace}
           canSubmit={imageUpscaleCanSubmit}
-          onScaleChange={(value) => updateImageUpscaleWorkspace({ scale: value as "2" | "4", submitError: "" })}
+          onScaleChange={(value) => updateImageUpscaleWorkspace({ scale: value as "1" | "2" | "4", submitError: "" })}
           onFilesChange={replaceImageUpscaleFile}
           onFileRemove={removeImageUpscaleFile}
           onFilesClear={removeImageUpscaleFile}
@@ -1867,7 +2041,7 @@ export function StudioApp() {
         <VideoUpscaleForm
           state={videoUpscaleWorkspace}
           canSubmit={videoUpscaleCanSubmit}
-          onScaleChange={(value) => updateVideoUpscaleWorkspace({ scale: value as "2" | "4", submitError: "" })}
+          onScaleChange={(value) => updateVideoUpscaleWorkspace({ scale: value as "1" | "2" | "4", submitError: "" })}
           onFilesChange={replaceVideoUpscaleFile}
           onFileRemove={removeVideoUpscaleFile}
           onFilesClear={removeVideoUpscaleFile}
@@ -1886,32 +2060,47 @@ export function StudioApp() {
         isAuthenticated={Boolean(sessionUser)}
         canAccessAdmin={sessionUser?.role === "admin"}
         accountName={sessionUser?.display_name || sessionUser?.username || null}
-        accountQuotaLabel={quotaSnapshot ? String(quotaSnapshot.available_quota_units) : null}
+        accountPointsLabel={sessionLoading || accountLoading ? "加载中" : quotaSnapshot ? `${formatQuotaUnits(quotaSnapshot.quota_units)} ✦` : "—"}
         headerRightSlot={accountHeaderSlot}
+        accountCloseSignal={accountCloseSignal}
+        onOpenAccountCenter={handleOpenAccountCenter}
+        onOpenAccountRecharge={handleOpenRechargeCenter}
         accountSlot={(
           <WorkspaceAccountPanel
             user={sessionUser}
-            mappingStatus={mappingStatus}
             quota={quotaSnapshot}
-            usage={usagePage}
-            billingChannels={billingChannels}
-            billingOrders={billingOrders}
-            selectedOrderId={selectedBillingOrderId}
-            selectedOrder={selectedBillingOrder}
             loading={sessionLoading || accountLoading}
-            loadingOrders={accountLoading}
-            submitting={billingSubmitting}
-            onSelectOrder={setSelectedBillingOrderId}
-            onCreateOrder={(channel, amount) => void handleCreateSandboxOrder(channel, amount)}
+            accountError={accountDataError}
+            accountView={accountCenterOpen ? accountView : undefined}
+            planStatus={accountPlanStatus}
+            checkInStatus={accountCheckInStatus}
             onRefresh={() => void refreshAccountSnapshot()}
             onLogout={() => void handleLogout()}
+            onOpenCenter={handleOpenAccountCenter}
+            onOpenRecharge={handleOpenRechargeCenter}
+            onCheckInUnavailable={handleCheckInUnavailable}
           />
         )}
-        toolTitle={activeWorkspaceTool.label}
+        contentMode={accountCenterOpen ? "account" : "default"}
+        toolTitle={accountCenterOpen ? accountViewTitle(accountView) : activeWorkspaceTool.label}
         parameterSlot={parameterSlot}
         mobilePreviewSignal={mobilePreviewSignal}
         previewSlot={
-          activeBusinessTool === "library" ? (
+          accountCenterOpen ? (
+            <UserCenterWorkspace
+              user={sessionUser}
+              quota={quotaSnapshot}
+              usage={usagePage}
+              loading={sessionLoading || accountLoading}
+              billingOrders={billingOrders}
+              accountView={accountView}
+              planStatus={accountPlanStatus}
+              checkInStatus={accountCheckInStatus}
+              onViewChange={setAccountView}
+              onPaymentUnavailable={handlePaymentUnavailable}
+              onCheckInUnavailable={handleCheckInUnavailable}
+            />
+          ) : activeBusinessTool === "library" ? (
             <LibraryWorkspace
               items={currentLibraryItems}
               totalCount={library.length}
@@ -1924,12 +2113,13 @@ export function StudioApp() {
               sort={librarySort}
               search={librarySearch}
               deletingItemId={deletingLibraryItemId}
+              removingItemId={removingLibraryItemId}
               missingMediaIds={missingLibraryMediaIds}
               onFilterChange={setLibraryFilter}
               onSortChange={setLibrarySort}
               onSearchChange={setLibrarySearch}
               onSelectItem={setSelectedLibraryItemId}
-              onDelete={handleDeleteLibraryItem}
+              onDelete={handleRequestDeleteLibraryItem}
               onRefresh={refreshLibrary}
               onMediaMissing={markLibraryMediaMissing}
               onLogin={() => router.push("/login")}
@@ -1984,9 +2174,947 @@ export function StudioApp() {
         }
         mobileActionSlot={mobileAction ? <MobileActionBar {...mobileAction} /> : null}
       />
+      <LibraryDeleteConfirmDialog
+        item={libraryDeleteConfirmItem}
+        deleting={Boolean(libraryDeleteConfirmItem && deletingLibraryItemId === libraryDeleteConfirmItem.id)}
+        onCancel={handleCancelDeleteLibraryItem}
+        onConfirm={() => void handleConfirmDeleteLibraryItem()}
+      />
+      {imageGenerationProgress ? (
+        <ImageGenerationProgressToast
+          progress={imageGenerationProgress}
+          tick={generationProgressTick}
+          stacked={Boolean(message)}
+          onClose={() => setImageGenerationProgress(null)}
+        />
+      ) : null}
       {message ? <Toast message={message} onClose={() => setMessage("")} /> : null}
     </>
   );
+}
+
+function UserCenterWorkspace({
+  user,
+  quota,
+  usage,
+  loading,
+  billingOrders,
+  accountView,
+  planStatus,
+  checkInStatus,
+  onViewChange,
+  onPaymentUnavailable,
+  onCheckInUnavailable,
+}: {
+  user: PublicAuthUser | null;
+  quota: QuotaSnapshot | null;
+  usage: UsagePage | null;
+  loading: boolean;
+  billingOrders: BillingOrder[];
+  accountView: AccountView;
+  planStatus: PlanStatus;
+  checkInStatus: CheckInStatus;
+  onViewChange: (view: AccountView) => void;
+  onPaymentUnavailable: (text?: string) => void;
+  onCheckInUnavailable: () => void;
+}) {
+  if (accountView === "recharge") {
+    return (
+      <RechargeCenterWorkspace
+        user={user}
+        quota={quota}
+        loading={loading}
+        planStatus={planStatus}
+        onViewChange={onViewChange}
+        onPaymentUnavailable={onPaymentUnavailable}
+      />
+    );
+  }
+
+  if (accountView === "usage") {
+    return (
+      <UsageRecordsWorkspace
+        usage={usage}
+        billingOrders={billingOrders}
+        loading={loading}
+        onViewChange={onViewChange}
+      />
+    );
+  }
+
+  return (
+    <UserCenterOverview
+      user={user}
+      quota={quota}
+      usage={usage}
+      loading={loading}
+      planStatus={planStatus}
+      checkInStatus={checkInStatus}
+      onCheckInUnavailable={onCheckInUnavailable}
+      onViewChange={onViewChange}
+    />
+  );
+}
+
+function UserCenterOverview({
+  user,
+  quota,
+  usage,
+  loading,
+  planStatus,
+  checkInStatus,
+  onCheckInUnavailable,
+  onViewChange,
+}: {
+  user: PublicAuthUser | null;
+  quota: QuotaSnapshot | null;
+  usage: UsagePage | null;
+  loading: boolean;
+  planStatus: PlanStatus;
+  checkInStatus: CheckInStatus;
+  onCheckInUnavailable: () => void;
+  onViewChange: (view: AccountView) => void;
+}) {
+  const usageEntries = usage?.entries?.slice(0, 6) || [];
+  const quotaUnits = quota?.quota_units ?? null;
+  const quotaValue = loading ? "加载中" : quota ? `${formatQuotaUnits(quota.quota_units)} ✦` : "—";
+  const quotaNote = loading
+    ? "正在同步真实账户积分。"
+    : quota
+      ? "积分用于图片和视频创作。"
+      : "登录后将显示真实账户积分。";
+  const planDisplay = getPlanStatusDisplay(planStatus);
+  const checkInDisplay = getCheckInStatusDisplay(checkInStatus);
+  const previousQuotaUnitsRef = useRef<number | null>(quotaUnits);
+  const [quotaChanged, setQuotaChanged] = useState(false);
+
+  useEffect(() => {
+    if (quotaUnits === null) return undefined;
+    if (previousQuotaUnitsRef.current === null) {
+      previousQuotaUnitsRef.current = quotaUnits;
+      return undefined;
+    }
+    if (previousQuotaUnitsRef.current === quotaUnits) return undefined;
+
+    previousQuotaUnitsRef.current = quotaUnits;
+    let timer: number | null = null;
+    const frame = window.requestAnimationFrame(() => {
+      setQuotaChanged(true);
+      timer = window.setTimeout(() => setQuotaChanged(false), 720);
+    });
+    return () => {
+      window.cancelAnimationFrame(frame);
+      if (timer) window.clearTimeout(timer);
+    };
+  }, [quotaUnits]);
+
+  return (
+    <section className="user-center-page" aria-label="用户中心">
+      <header className="user-center-page__header">
+        <div>
+          <h2>用户中心</h2>
+          <p>查看积分、套餐与签到信息</p>
+        </div>
+      </header>
+
+      <div className="user-center-page__grid">
+        <div className="user-center-page__main">
+          <div className="user-center-account-summary">
+            <article className={cn("user-center-points-card", quotaChanged && "is-updated")}>
+              <span className="user-center-card-icon user-center-card-icon--primary">
+                <Sparkles className="size-5" aria-hidden="true" />
+              </span>
+              <div className="user-center-points-card__copy">
+                <span>当前可用积分</span>
+                <strong className="user-center-points-card__value">{quotaValue}</strong>
+                <p>{quotaNote}</p>
+              </div>
+              <div className="user-center-points-card__actions">
+                <button type="button" className="user-center-action user-center-action--primary" onClick={() => onViewChange("recharge")} disabled={!user}>
+                  <WalletCards className="size-4" aria-hidden="true" />
+                  立即充值
+                </button>
+              </div>
+              <div className="user-center-mobile-status">
+                <div className="user-center-mobile-status__item">
+                  <span>
+                    <Crown className="size-3.5" aria-hidden="true" />
+                    当前套餐
+                  </span>
+                  <strong>{planDisplay.label}</strong>
+                  <button type="button" onClick={() => onViewChange("recharge")} disabled={!user}>
+                    {planDisplay.actionLabel}
+                  </button>
+                </div>
+                <div className="user-center-mobile-status__item">
+                  <span>
+                    <CalendarCheck className="size-3.5" aria-hidden="true" />
+                    每日签到
+                  </span>
+                  <strong>{checkInDisplay.label}</strong>
+                  <button
+                    type="button"
+                    onClick={checkInStatus === "unavailable" ? onCheckInUnavailable : undefined}
+                    disabled={!user || (checkInStatus !== "unavailable" && checkInDisplay.actionDisabled)}
+                  >
+                    {checkInDisplay.actionLabel}
+                  </button>
+                </div>
+              </div>
+            </article>
+
+            <div className="user-center-side-cards">
+              <article className="user-center-mini-card">
+                <span className="user-center-card-icon">
+                  <Crown className="size-4" aria-hidden="true" />
+                </span>
+                <div>
+                  <span>当前套餐</span>
+                  <strong>{planDisplay.label}</strong>
+                  <p>{planDisplay.note}</p>
+                </div>
+                <button
+                  type="button"
+                  className="user-center-mini-card__action"
+                  onClick={() => onViewChange("recharge")}
+                  disabled={!user}
+                >
+                  {planDisplay.actionLabel}
+                </button>
+              </article>
+
+              <article className="user-center-mini-card">
+                <span className="user-center-card-icon">
+                  <CalendarCheck className="size-4" aria-hidden="true" />
+                </span>
+                <div>
+                  <span>每日签到</span>
+                  <strong>{checkInDisplay.label}</strong>
+                  <p>{checkInDisplay.note}</p>
+                </div>
+                <button
+                  type="button"
+                  className="user-center-mini-card__action"
+                  onClick={checkInStatus === "unavailable" ? onCheckInUnavailable : undefined}
+                  disabled={!user || (checkInStatus !== "unavailable" && checkInDisplay.actionDisabled)}
+                >
+                  {checkInDisplay.actionLabel}
+                </button>
+              </article>
+            </div>
+          </div>
+
+          <section className="user-center-usage">
+            <div className="user-center-section-head">
+              <div>
+                <h3>最近使用记录</h3>
+                <p>仅展示最近的真实使用记录。</p>
+              </div>
+              <button type="button" className="user-center-link-button" onClick={() => onViewChange("usage")}>
+                查看全部记录
+              </button>
+            </div>
+
+            {loading && !usageEntries.length ? (
+              <div className="user-center-usage__list">
+                <div className="user-center-usage__row user-center-usage__row--head" aria-hidden="true">
+                  <span>时间</span>
+                  <span>功能</span>
+                  <span>积分变动</span>
+                  <span>描述</span>
+                </div>
+                {Array.from({ length: 5 }).map((_, index) => (
+                  <div key={index} className="user-center-usage__row user-center-usage__row--skeleton" aria-hidden="true">
+                    <span className="motion-skeleton-shimmer" />
+                    <span className="motion-skeleton-shimmer" />
+                    <span className="motion-skeleton-shimmer" />
+                    <span className="motion-skeleton-shimmer" />
+                  </div>
+                ))}
+              </div>
+            ) : usageEntries.length ? (
+              <div className="user-center-usage__list">
+                <div className="user-center-usage__row user-center-usage__row--head" aria-hidden="true">
+                  <span>时间</span>
+                  <span>功能</span>
+                  <span>积分变动</span>
+                  <span>描述</span>
+                </div>
+                {usageEntries.map((entry, index) => (
+                  <div key={entry.id} className="user-center-usage__row" style={{ "--usage-row-delay": `${index < 6 ? index * 24 : 0}ms` } as CSSProperties}>
+                    <span>{formatUsageDate(entry.created_at)}</span>
+                    <strong>{usageOperationLabel(entry.operation)}</strong>
+                    <em>-{formatQuotaUnits(entry.actual_quota_units ?? entry.estimated_quota_units)} 分</em>
+                    <span>{usageDescription(entry)}</span>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div className="user-center-usage__empty">
+                <History className="size-5" aria-hidden="true" />
+                <strong>暂无使用记录</strong>
+                <span>开始生成图片或视频后，记录会自动出现在这里。</span>
+              </div>
+            )}
+          </section>
+        </div>
+      </div>
+    </section>
+  );
+}
+
+function RechargeCenterWorkspace({
+  user,
+  quota,
+  loading,
+  planStatus,
+  onViewChange,
+  onPaymentUnavailable,
+}: {
+  user: PublicAuthUser | null;
+  quota: QuotaSnapshot | null;
+  loading: boolean;
+  planStatus: PlanStatus;
+  onViewChange: (view: AccountView) => void;
+  onPaymentUnavailable: (text?: string) => void;
+}) {
+  const [activeTab, setActiveTab] = useState<RechargeTab>("plans");
+  const [selectedPlanId, setSelectedPlanId] = useState("standard");
+  const [selectedCreditAmount, setSelectedCreditAmount] = useState<number | null>(50);
+  const [customAmount, setCustomAmount] = useState("");
+
+  const defaultPlan = planOptions.find((plan) => plan.recommended) || planOptions[0] || null;
+  const selectedPlan = planOptions.find((plan) => plan.id === selectedPlanId) || defaultPlan;
+  const selectedCredit = selectedCreditAmount === null
+    ? null
+    : creditTopUpOptions.find((option) => option.amount === selectedCreditAmount) || null;
+  const customAmountValue = Number(customAmount);
+  const customAmountEntered = customAmount.trim() !== "";
+  const customAmountValid = customAmountEntered && Number.isFinite(customAmountValue) && customAmountValue >= CUSTOM_RECHARGE_MIN_AMOUNT;
+  const customCredits = customAmountValid ? calculateCustomRechargeCredits(customAmountValue) : 0;
+  const customRechargeActive = activeTab === "credits" && customAmount.trim() !== "";
+  const customAmountError = customAmountEntered && !customAmountValid
+    ? `最低充值金额 ¥${CUSTOM_RECHARGE_MIN_AMOUNT}`
+    : "";
+  const customAmountHelpId = "custom-recharge-help";
+  const customAmountErrorId = "custom-recharge-error";
+  const pointsStatusLabel = quota ? `${formatQuotaUnits(quota.quota_units)} ✦` : "—";
+  const planStatusLabel = getPlanStatusDisplay(planStatus).label;
+  const creditSummaryLines = customRechargeActive
+    ? createCustomCreditSummaryLines(customAmount, customAmountValid, customCredits)
+    : createFixedCreditSummaryLines(selectedCredit);
+  const creditSummaryReady = customRechargeActive ? customAmountValid : Boolean(selectedCredit);
+  const creditPayableAmount = customRechargeActive && customAmountValid
+    ? customAmount
+    : selectedCredit?.amount ?? "";
+  const planSummaryLines = createPlanSummaryLines(selectedPlan);
+  const planSummaryReady = Boolean(selectedPlan);
+  const planConfirmState = createRechargeConfirmState({
+    mode: "plans",
+    user,
+    ready: planSummaryReady,
+    selectedPlan,
+  });
+  const creditConfirmState = createRechargeConfirmState({
+    mode: "credits",
+    user,
+    ready: creditSummaryReady,
+    customRechargeActive,
+    customAmountValid,
+    amount: creditPayableAmount,
+  });
+  const paymentUnavailableNote = "当前仅可核对订单信息，支付功能暂未开放。";
+
+  return (
+    <section className="user-center-page account-subpage account-subpage--recharge" aria-label="充值中心">
+      <AccountSubpageHeader
+        breadcrumb="用户中心 / 充值中心"
+        title="充值中心"
+        subtitle="选择适合当前创作节奏的套餐或积分充值方式，先核对订单信息，支付开放后再继续。"
+        onBack={() => onViewChange("center")}
+        meta={(
+          <div className="recharge-account-meta" aria-label="账户概览">
+            <span className="recharge-account-meta__item">
+              <span>当前积分</span>
+              {loading && !quota ? (
+                <i className="recharge-account-meta__skeleton motion-skeleton-shimmer" aria-label="积分加载中" />
+              ) : (
+                <strong>{pointsStatusLabel}</strong>
+              )}
+            </span>
+            <span className="recharge-account-meta__item">
+              <span>当前套餐</span>
+              {planStatus.status === "loading" ? (
+                <i className="recharge-account-meta__skeleton motion-skeleton-shimmer" aria-label="套餐加载中" />
+              ) : (
+                <strong>{planStatusLabel}</strong>
+              )}
+            </span>
+          </div>
+        )}
+        actions={(
+          <div className="recharge-header-actions">
+            <button type="button" className="recharge-header-action" onClick={() => onPaymentUnavailable("帮助入口暂未开放")}>
+              <ExternalLink className="size-4" aria-hidden="true" />
+              帮助
+            </button>
+          </div>
+        )}
+      />
+
+      <div className="recharge-center-shell">
+        <div className="recharge-center-tabs" role="tablist" aria-label="充值类型">
+          <button
+            type="button"
+            role="tab"
+            aria-selected={activeTab === "plans"}
+            className={cn("recharge-center-tab", activeTab === "plans" && "is-active")}
+            onClick={() => setActiveTab("plans")}
+          >
+            套餐购买
+          </button>
+          <button
+            type="button"
+            role="tab"
+            aria-selected={activeTab === "credits"}
+            className={cn("recharge-center-tab", activeTab === "credits" && "is-active")}
+            onClick={() => setActiveTab("credits")}
+          >
+            积分充值
+          </button>
+        </div>
+
+        <div className="recharge-layout">
+          <div className="recharge-layout__selection">
+            {activeTab === "plans" ? (
+              <div className="recharge-center-panel" role="tabpanel">
+                <div className="recharge-selection-head">
+                  <h3>选择适合你的套餐</h3>
+                  <p>套餐按月展示，每档仅包含当前支持的月度积分额度。</p>
+                </div>
+                {planOptions.length > 0 ? (
+                  <div className="recharge-plan-grid">
+                    {planOptions.map((plan) => {
+                      const selected = selectedPlan?.id === plan.id;
+                      return (
+                        <button
+                          key={plan.id}
+                          type="button"
+                          className={cn("recharge-plan-card", plan.recommended && "is-recommended", selected && "is-selected")}
+                          onClick={() => setSelectedPlanId(plan.id)}
+                          aria-pressed={selected}
+                        >
+                          <span className="recharge-card-check" aria-hidden="true">
+                            <Check className="size-3.5" />
+                          </span>
+                          <span className="recharge-plan-card__top">
+                            <span className="recharge-plan-card__scene">{plan.description}</span>
+                            {plan.recommended ? <span className="recharge-card-badge">推荐</span> : null}
+                          </span>
+                          <span className="recharge-plan-card__name">{plan.name}</span>
+                          <span className="recharge-plan-card__price">¥{plan.price} <small>/ {PLAN_PERIOD_UNIT_LABEL}</small></span>
+                          <span className="recharge-plan-card__credits">每月 {formatQuotaUnits(plan.monthlyCredits)} 积分</span>
+                          <span className="recharge-plan-card__facts" role="list" aria-label={`${plan.name}套餐信息`}>
+                            {createPlanFactItems(plan).map((item) => (
+                              <span key={item} role="listitem">
+                                <Check className="size-3.5" aria-hidden="true" />
+                                <span>{item}</span>
+                              </span>
+                            ))}
+                          </span>
+                          <span className="recharge-plan-card__action">{selected ? "已选择" : "选择套餐"}</span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                ) : (
+                  <div className="recharge-plan-empty" role="status">
+                    <Crown className="size-5" aria-hidden="true" />
+                    <strong>暂无可购买套餐</strong>
+                    <span>当前暂未返回可购买的套餐配置。</span>
+                  </div>
+                )}
+              </div>
+            ) : (
+              <div className="recharge-center-panel" role="tabpanel">
+                <div className="recharge-selection-head">
+                  <h3>选择充值金额</h3>
+                  <p>充值成功后，积分将发放至当前账户。</p>
+                </div>
+                <div className="credit-topup-grid">
+                  {creditTopUpOptions.map((option) => {
+                    const selected = !customRechargeActive && selectedCredit?.amount === option.amount;
+                    const giftCredits = getCreditTopUpGift(option);
+                    const badge = getCreditTopUpBadge(option, creditTopUpOptions);
+                    return (
+                      <button
+                        key={option.amount}
+                        type="button"
+                        className={cn("credit-topup-card", selected && "is-selected")}
+                        onClick={() => {
+                          setSelectedCreditAmount(option.amount);
+                          setCustomAmount("");
+                        }}
+                        aria-pressed={selected}
+                      >
+                        <span className="recharge-card-check" aria-hidden="true">
+                          <Check className="size-3.5" />
+                        </span>
+                        <span className="credit-topup-card__headline">
+                          <strong className="credit-topup-card__amount">¥{formatRechargeAmount(option.amount)}</strong>
+                          {badge ? <span className="recharge-card-badge">{badge}</span> : null}
+                        </span>
+                        <span className="credit-topup-card__credits">到账 {formatQuotaUnits(option.credits)} 积分</span>
+                        {giftCredits > 0 ? (
+                          <span className="credit-topup-card__gift">含赠送 {formatQuotaUnits(giftCredits)} 积分</span>
+                        ) : null}
+                      </button>
+                    );
+                  })}
+                </div>
+
+                <div className={cn("custom-recharge-card", customRechargeActive && "is-active")}>
+                  <div className="custom-recharge-card__intro">
+                    <h3>自定义充值</h3>
+                    <p>最低金额 ¥{CUSTOM_RECHARGE_MIN_AMOUNT}，换算比例 1 元 = {CREDIT_TOP_UP_BASE_RATE} 积分。</p>
+                  </div>
+                  <label className="custom-recharge-field">
+                    <span>充值金额</span>
+                    <span className={cn("custom-recharge-input", customAmountError && "is-invalid")}>
+                      <em aria-hidden="true">¥</em>
+                      <input
+                        value={customAmount}
+                        inputMode="decimal"
+                        placeholder="输入金额"
+                        onChange={(event) => {
+                          setCustomAmount(sanitizeRechargeAmount(event.target.value));
+                          setSelectedCreditAmount(null);
+                        }}
+                        aria-describedby={customAmountError ? `${customAmountHelpId} ${customAmountErrorId}` : customAmountHelpId}
+                        aria-invalid={customAmountError ? "true" : "false"}
+                      />
+                    </span>
+                    {customAmountError ? <small id={customAmountErrorId}>{customAmountError}</small> : null}
+                  </label>
+                  <div id="custom-recharge-help" className="custom-recharge-preview">
+                    <span>预计到账</span>
+                    <strong>{customAmountValid ? formatQuotaUnits(customCredits) : "—"}</strong>
+                    <em>积分</em>
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
+
+          <aside className="recharge-layout__summary" aria-label="订单摘要">
+            {activeTab === "plans" ? (
+              <RechargeConfirmPanel
+                icon={<Crown className="size-4" aria-hidden="true" />}
+                title="订单确认"
+                lines={planSummaryLines}
+                note={paymentUnavailableNote}
+                buttonLabel={planConfirmState.label}
+                disabled={planConfirmState.disabled}
+                onConfirm={onPaymentUnavailable}
+              />
+            ) : (
+              <RechargeConfirmPanel
+                icon={<CreditCard className="size-4" aria-hidden="true" />}
+                title="订单确认"
+                lines={creditSummaryLines}
+                note={paymentUnavailableNote}
+                buttonLabel={creditConfirmState.label}
+                disabled={creditConfirmState.disabled}
+                onConfirm={onPaymentUnavailable}
+              />
+            )}
+          </aside>
+        </div>
+      </div>
+    </section>
+  );
+}
+
+function UsageRecordsWorkspace({
+  usage,
+  billingOrders,
+  loading,
+  onViewChange,
+}: {
+  usage: UsagePage | null;
+  billingOrders: BillingOrder[];
+  loading: boolean;
+  onViewChange: (view: AccountView) => void;
+}) {
+  const [filter, setFilter] = useState<AccountUsageFilter>("all");
+  const records = useMemo(() => createAccountRecords(usage?.entries || [], billingOrders), [billingOrders, usage?.entries]);
+  const filteredRecords = filter === "all" ? records : records.filter((record) => record.kind === filter);
+
+  return (
+    <section className="user-center-page account-subpage account-subpage--usage" aria-label="消费记录">
+      <AccountSubpageHeader
+        breadcrumb="用户中心 / 消费记录"
+        title="消费记录"
+        subtitle="只展示真实产生的积分支出、充值和签到记录"
+        onBack={() => onViewChange("center")}
+      />
+
+      <div className="usage-record-filters" role="tablist" aria-label="记录筛选">
+        {[
+          ["all", "全部"],
+          ["spend", "支出"],
+          ["recharge", "充值"],
+          ["checkin", "签到"],
+        ].map(([value, label]) => (
+          <button
+            key={value}
+            type="button"
+            className={cn("usage-record-filter", filter === value && "is-active")}
+            onClick={() => setFilter(value as AccountUsageFilter)}
+            aria-pressed={filter === value}
+          >
+            {label}
+          </button>
+        ))}
+      </div>
+
+      <section className="user-center-usage account-records">
+        {loading && !records.length ? (
+          <div className="user-center-usage__list">
+            <div className="user-center-usage__row user-center-usage__row--head" aria-hidden="true">
+              <span>时间</span>
+              <span>类型</span>
+              <span>积分变动</span>
+              <span>描述</span>
+            </div>
+            {Array.from({ length: 5 }).map((_, index) => (
+              <div key={index} className="user-center-usage__row user-center-usage__row--skeleton" aria-hidden="true">
+                <span className="motion-skeleton-shimmer" />
+                <span className="motion-skeleton-shimmer" />
+                <span className="motion-skeleton-shimmer" />
+                <span className="motion-skeleton-shimmer" />
+              </div>
+            ))}
+          </div>
+        ) : filteredRecords.length ? (
+          <div className="user-center-usage__list">
+            <div className="user-center-usage__row user-center-usage__row--head" aria-hidden="true">
+              <span>时间</span>
+              <span>类型</span>
+              <span>积分变动</span>
+              <span>描述</span>
+            </div>
+            {filteredRecords.map((record, index) => (
+              <div
+                key={record.id}
+                className={cn("user-center-usage__row", "account-record-row", `is-${record.kind}`)}
+                style={{ "--usage-row-delay": `${index < 6 ? index * 24 : 0}ms` } as CSSProperties}
+              >
+                <span>{formatUsageDate(record.createdAt)}</span>
+                <strong>{record.typeLabel}</strong>
+                <em>{formatSignedQuota(record.quotaDelta)} 分</em>
+                <span>{record.description}</span>
+              </div>
+            ))}
+          </div>
+        ) : (
+          <div className="user-center-usage__empty">
+            <History className="size-5" aria-hidden="true" />
+            <strong>暂无消费记录</strong>
+            <span>充值、签到或使用创作工具后，相关记录会显示在这里。</span>
+          </div>
+        )}
+      </section>
+    </section>
+  );
+}
+
+function AccountSubpageHeader({
+  breadcrumb,
+  title,
+  subtitle,
+  meta,
+  actions,
+  onBack,
+}: {
+  breadcrumb: string;
+  title: string;
+  subtitle: string;
+  meta?: React.ReactNode;
+  actions?: React.ReactNode;
+  onBack: () => void;
+}) {
+  return (
+    <header className="account-subpage-header">
+      <button type="button" className="account-subpage-back" onClick={onBack}>
+        <ArrowLeft className="size-4" aria-hidden="true" />
+        返回用户中心
+      </button>
+      <div className="account-subpage-header__main">
+        <div>
+          <span className="account-subpage-breadcrumb">{breadcrumb}</span>
+          <h2>{title}</h2>
+          <p>{subtitle}</p>
+          {meta ? <div className="account-subpage-header__meta">{meta}</div> : null}
+        </div>
+        {actions ? <div className="account-subpage-header__actions">{actions}</div> : null}
+      </div>
+    </header>
+  );
+}
+
+function RechargeConfirmPanel({
+  icon,
+  title,
+  lines,
+  note,
+  buttonLabel,
+  disabled,
+  onConfirm,
+}: {
+  icon: React.ReactNode;
+  title: string;
+  lines: Array<[string, string]>;
+  note?: string;
+  buttonLabel: string;
+  disabled: boolean;
+  onConfirm: (text?: string) => void;
+}) {
+  return (
+    <section className="recharge-confirm-panel" aria-label={title}>
+      <div className="recharge-confirm-panel__head">
+        <span>{icon}</span>
+        <strong>{title}</strong>
+      </div>
+      <div className="recharge-confirm-panel__lines">
+        {lines.map(([label, value]) => (
+          <div key={label}>
+            <span>{label}</span>
+            <strong>{value}</strong>
+          </div>
+        ))}
+      </div>
+      {note ? <p className="recharge-confirm-panel__note">{note}</p> : null}
+      <button type="button" className="recharge-confirm-button" onClick={() => onConfirm()} disabled={disabled}>
+        {buttonLabel}
+      </button>
+    </section>
+  );
+}
+
+function createAccountRecords(usageEntries: UsageLogEntry[], billingOrders: BillingOrder[]) {
+  const usageRecords: AccountRecord[] = usageEntries.map((entry) => ({
+    id: `usage-${entry.id}`,
+    createdAt: entry.created_at,
+    kind: "spend",
+    typeLabel: "支出",
+    quotaDelta: -Math.abs(entry.actual_quota_units ?? entry.estimated_quota_units),
+    description: `${usageOperationLabel(entry.operation)}：${usageDescription(entry)}`,
+  }));
+
+  const paidOrders: AccountRecord[] = billingOrders
+    .filter((order) => order.status === "paid" && order.credited_quota > 0)
+    .map((order) => ({
+      id: `order-${order.order_id}`,
+      createdAt: order.paid_at || order.updated_at || order.created_at,
+      kind: "recharge",
+      typeLabel: "充值",
+      quotaDelta: order.credited_quota,
+      description: `充值订单已到账，金额 ${formatMinorCurrency(order.paid_amount || order.requested_amount)}`,
+    }));
+
+  return [...usageRecords, ...paidOrders].sort((a, b) => Number(new Date(b.createdAt)) - Number(new Date(a.createdAt)));
+}
+
+function formatQuotaUnits(value: number | null | undefined) {
+  if (value === null || value === undefined) return "0";
+  return new Intl.NumberFormat("zh-CN").format(value);
+}
+
+function formatQuotaSymbolLabel(value: number | null | undefined) {
+  return `${formatQuotaUnits(value)} ${quotaSymbol}`;
+}
+
+const promptOptimizationCostLabel = formatQuotaSymbolLabel(PROMPT_OPTIMIZATION_QUOTA_UNITS);
+
+function getCreditTopUpGift(option: CreditTopUpOption) {
+  return Math.max(0, option.credits - option.amount * CREDIT_TOP_UP_BASE_RATE);
+}
+
+function getCreditTopUpRate(option: CreditTopUpOption) {
+  if (option.amount <= 0) return 0;
+  return option.credits / option.amount;
+}
+
+function getCreditTopUpBadge(option: CreditTopUpOption, options: CreditTopUpOption[]) {
+  if (option.label === "体验充值") return "体验充值";
+  if (option.label === "推荐") return "推荐";
+
+  const bestRate = Math.max(...options.map(getCreditTopUpRate));
+  if (getCreditTopUpGift(option) > 0 && getCreditTopUpRate(option) === bestRate) return "最划算";
+
+  return "";
+}
+
+function calculateCustomRechargeCredits(amount: number) {
+  return Math.floor(amount * CREDIT_TOP_UP_BASE_RATE);
+}
+
+function formatRechargeAmount(amount: number | string) {
+  const value = typeof amount === "number" ? amount : Number(amount);
+  if (!Number.isFinite(value)) return String(amount);
+  return new Intl.NumberFormat("zh-CN", {
+    minimumFractionDigits: Number.isInteger(value) ? 0 : 2,
+    maximumFractionDigits: 2,
+  }).format(value);
+}
+
+function createPlanFactItems(plan: PlanOption) {
+  return [
+    `${PLAN_PERIOD_LABEL}购买`,
+    `每月获得 ${formatQuotaUnits(plan.monthlyCredits)} 积分`,
+  ];
+}
+
+function createPlanSummaryLines(plan: PlanOption | null): Array<[string, string]> {
+  if (!plan) {
+    return [
+      ["当前选择", "未选择"],
+      ["套餐周期", "—"],
+      ["每月积分", "请选择套餐"],
+      ["应付金额", "—"],
+    ];
+  }
+
+  return [
+    ["当前选择", plan.name],
+    ["套餐周期", PLAN_PERIOD_LABEL],
+    ["每月积分", `${formatQuotaUnits(plan.monthlyCredits)} 积分`],
+    ["套餐金额", `¥${formatRechargeAmount(plan.price)}`],
+    ["应付金额", `¥${formatRechargeAmount(plan.price)}`],
+  ];
+}
+
+function createFixedCreditSummaryLines(option: CreditTopUpOption | null): Array<[string, string]> {
+  if (!option) {
+    return [
+      ["当前选择", "未选择"],
+      ["充值金额", "—"],
+      ["预计到账", "请选择充值档位或输入自定义金额"],
+      ["应付金额", "—"],
+    ];
+  }
+
+  const giftCredits = getCreditTopUpGift(option);
+  const baseCredits = option.amount * CREDIT_TOP_UP_BASE_RATE;
+  const lines: Array<[string, string]> = [
+    ["当前选择", `¥${formatRechargeAmount(option.amount)} 积分档位`],
+    ["充值金额", `¥${formatRechargeAmount(option.amount)}`],
+    ["基础积分", `${formatQuotaUnits(baseCredits)} 积分`],
+  ];
+
+  if (giftCredits > 0) {
+    lines.push(["赠送积分", `${formatQuotaUnits(giftCredits)} 积分`]);
+  }
+
+  lines.push(["预计到账", `${formatQuotaUnits(option.credits)} 积分`]);
+  lines.push(["应付金额", `¥${formatRechargeAmount(option.amount)}`]);
+  return lines;
+}
+
+function createCustomCreditSummaryLines(amountText: string, valid: boolean, credits: number): Array<[string, string]> {
+  const amount = amountText.trim();
+  return [
+    ["当前选择", "自定义充值"],
+    ["充值金额", valid ? `¥${formatRechargeAmount(amount)}` : "未完成"],
+    ["基础积分", valid ? `${formatQuotaUnits(credits)} 积分` : "—"],
+    ["预计到账", valid ? `${formatQuotaUnits(credits)} 积分` : `请输入不低于 ¥${CUSTOM_RECHARGE_MIN_AMOUNT} 的金额`],
+    ["应付金额", valid ? `¥${formatRechargeAmount(amount)}` : "—"],
+  ];
+}
+
+function createRechargeConfirmState(input: {
+  mode: RechargeTab;
+  user: PublicAuthUser | null;
+  ready: boolean;
+  selectedPlan?: PlanOption | null;
+  customRechargeActive?: boolean;
+  customAmountValid?: boolean;
+  amount?: number | string;
+}) {
+  if (!input.ready) {
+    if (input.mode === "credits" && input.customRechargeActive && !input.customAmountValid) {
+      return { disabled: true, label: "请检查充值金额" };
+    }
+    return { disabled: true, label: input.mode === "plans" ? "请选择套餐" : "请选择充值金额" };
+  }
+
+  if (!input.user) return { disabled: true, label: "登录后继续" };
+  if (!PAYMENT_FLOW_AVAILABLE) return { disabled: true, label: "支付功能暂未开放" };
+
+  if (input.mode === "plans" && input.selectedPlan) {
+    return { disabled: false, label: `立即购买 ¥${formatRechargeAmount(input.selectedPlan.price)}` };
+  }
+
+  if (input.mode === "credits" && input.amount !== undefined && input.amount !== "") {
+    return { disabled: false, label: `立即充值 ¥${formatRechargeAmount(input.amount)}` };
+  }
+
+  return { disabled: true, label: input.mode === "plans" ? "请选择套餐" : "请选择充值金额" };
+}
+
+function formatSignedQuota(value: number) {
+  const prefix = value > 0 ? "+" : "";
+  return `${prefix}${formatQuotaUnits(value)}`;
+}
+
+function formatMinorCurrency(value: number) {
+  return new Intl.NumberFormat("zh-CN", {
+    style: "currency",
+    currency: "CNY",
+    minimumFractionDigits: 2,
+  }).format(value / 100);
+}
+
+function sanitizeRechargeAmount(value: string) {
+  const normalized = value.replace(/[^\d.]/g, "");
+  const [integer, ...decimals] = normalized.split(".");
+  const decimal = decimals.join("").slice(0, 2);
+  if (!decimals.length) return integer.replace(/^0+(?=\d)/, "");
+  return `${integer.replace(/^0+(?=\d)/, "") || "0"}.${decimal}`;
+}
+
+function formatUsageDate(value: string) {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "时间未知";
+  return new Intl.DateTimeFormat("zh-CN", {
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+  }).format(date);
+}
+
+function usageOperationLabel(operation: UsageLogEntry["operation"]) {
+  const labels: Record<UsageLogEntry["operation"], string> = {
+    cloud_image_generation: "AI 图像生成器",
+    cloud_video_generation: "AI 视频生成器",
+    cloud_image_upscale: "图片高清",
+    cloud_video_upscale: "视频高清",
+  };
+  return labels[operation] || "AI 工具";
+}
+
+function usageDescription(entry: UsageLogEntry) {
+  const descriptions: Record<UsageLogEntry["operation"], string> = {
+    cloud_image_generation: "生成图片",
+    cloud_video_generation: "生成视频",
+    cloud_image_upscale: "图片高清处理",
+    cloud_video_upscale: "视频高清处理",
+  };
+  if (entry.status === "failed") return `${descriptions[entry.operation] || "工具处理"}失败`;
+  if (entry.status === "refunded") return `${descriptions[entry.operation] || "工具处理"}已退回额度`;
+  return descriptions[entry.operation] || "工具处理";
 }
 
 function ImageGenerator({
@@ -1996,11 +3124,14 @@ function ImageGenerator({
   providersLoading,
   providersError,
   selectedProvider,
+  templateCenterHref,
   state,
   canSubmit,
+  estimatedQuotaUnits,
   onProviderChange,
   onRatioChange,
   onQualityChange,
+  onCountChange,
   onTemplateChange,
   onPromptChange,
   onPromptOptimize,
@@ -2018,11 +3149,14 @@ function ImageGenerator({
   providersLoading: boolean;
   providersError: string;
   selectedProvider: FrontendProvider | null;
+  templateCenterHref: string;
   state: ImageWorkspaceState;
   canSubmit: boolean;
+  estimatedQuotaUnits: number;
   onProviderChange: (value: string) => void;
   onRatioChange: (value: string) => void;
   onQualityChange: (value: string) => void;
+  onCountChange: (value: number) => void;
   onTemplateChange: (value: string) => void;
   onPromptChange: (value: string) => void;
   onPromptOptimize: () => void;
@@ -2039,12 +3173,13 @@ function ImageGenerator({
   useEffect(() => {
     registerMobileAction({
       label: state.loading ? meta.loadingLabel : meta.submitLabel,
+      costLabel: formatQuotaSymbolLabel(estimatedQuotaUnits),
       loading: state.loading,
       disabled: !canSubmit,
       onClick: onSubmit,
     });
     return () => registerMobileAction(null);
-  }, [canSubmit, meta.loadingLabel, meta.submitLabel, onSubmit, registerMobileAction, state.loading]);
+  }, [canSubmit, estimatedQuotaUnits, meta.loadingLabel, meta.submitLabel, onSubmit, registerMobileAction, state.loading]);
 
   return (
     <FormPanel>
@@ -2059,7 +3194,7 @@ function ImageGenerator({
       {showTemplates ? (
         <TemplateRail
           title="模板"
-          viewAllHref={templateTabHref("image")}
+          viewAllHref={templateCenterHref}
           templates={featuredImagePromptTemplates}
           activeTemplateId={state.templateId}
           onSelect={(template) => onTemplateChange(template.id)}
@@ -2076,22 +3211,37 @@ function ImageGenerator({
       <StackedControl label="比例" required>
         <AspectRatioSelector label="比例" value={state.ratio} onChange={onRatioChange} />
       </StackedControl>
-      <StackedControl label="清晰度" required>
-        <ModeSegmentedControl
-          label="清晰度"
-          labelHidden
-          groupId="image-quality"
-          value={state.quality}
-          options={[
-            ["1k", "1K"],
-            ["2k", "2K"],
-          ]}
-          onChange={onQualityChange}
-        />
-      </StackedControl>
+      <div className="studio-dual-fields">
+        <StackedControl label="清晰度" required>
+          <CustomSelect
+            label="清晰度"
+            value={state.quality}
+            options={[
+              { value: "1k", label: "1K（默认）" },
+              { value: "2k", label: "2K（细节更多）" },
+              { value: "4k", label: "4K（大图输出）" },
+            ]}
+            onChange={onQualityChange}
+          />
+        </StackedControl>
+        <StackedControl label="数量" required>
+          <CustomSelect
+            label="数量"
+            value={String(state.count)}
+            options={[
+              { value: "1", label: "1张" },
+              { value: "2", label: "2张" },
+              { value: "3", label: "3张" },
+              { value: "4", label: "4张" },
+            ]}
+            onChange={(value) => onCountChange(Number(value))}
+          />
+        </StackedControl>
+      </div>
       <PromptBox
         value={state.prompt}
         onChange={onPromptChange}
+        optimizeCostLabel={promptOptimizationCostLabel}
         optimizing={state.promptOptimizing}
         optimizeError={state.promptOptimizeError}
         canUndoOptimize={Boolean(state.promptOptimizeUndo)}
@@ -2103,7 +3253,13 @@ function ImageGenerator({
       {state.submitError ? <p className="studio-error-text" role="alert">{state.submitError}</p> : null}
 
       <StickyPrimaryAction>
-        <SubmitButton disabled={!canSubmit} loading={state.loading} loadingLabel={meta.loadingLabel} onClick={onSubmit}>
+        <SubmitButton
+          disabled={!canSubmit}
+          loading={state.loading}
+          loadingLabel={meta.loadingLabel}
+          costLabel={formatQuotaSymbolLabel(estimatedQuotaUnits)}
+          onClick={onSubmit}
+        >
           {meta.submitLabel}
         </SubmitButton>
       </StickyPrimaryAction>
@@ -2174,8 +3330,10 @@ function VideoGenerator({
   providersLoading,
   providersError,
   selectedProvider,
+  templateCenterHref,
   state,
   canSubmit,
+  estimatedQuotaUnits,
   onProviderChange,
   onRatioChange,
   onDurationChange,
@@ -2198,8 +3356,10 @@ function VideoGenerator({
   providersLoading: boolean;
   providersError: string;
   selectedProvider: WorkspacePublicProvider | null;
+  templateCenterHref: string;
   state: VideoWorkspaceState;
   canSubmit: boolean;
+  estimatedQuotaUnits: number;
   onProviderChange: (value: string) => void;
   onRatioChange: (value: string) => void;
   onDurationChange: (value: number) => void;
@@ -2222,12 +3382,13 @@ function VideoGenerator({
   useEffect(() => {
     registerMobileAction({
       label: state.loading ? meta.loadingLabel : meta.submitLabel,
+      costLabel: formatQuotaSymbolLabel(estimatedQuotaUnits),
       loading: state.loading,
       disabled: !canSubmit,
       onClick: onSubmit,
     });
     return () => registerMobileAction(null);
-  }, [canSubmit, meta.loadingLabel, meta.submitLabel, onSubmit, registerMobileAction, state.loading]);
+  }, [canSubmit, estimatedQuotaUnits, meta.loadingLabel, meta.submitLabel, onSubmit, registerMobileAction, state.loading]);
 
   return (
     <FormPanel>
@@ -2241,7 +3402,7 @@ function VideoGenerator({
       />
       <TemplateRail
         title="模板"
-        viewAllHref={templateTabHref("video")}
+        viewAllHref={templateCenterHref}
         templates={featuredVideoPromptTemplates}
         activeTemplateId={state.templateId}
         onSelect={(template) => onTemplateChange(template.id)}
@@ -2280,7 +3441,7 @@ function VideoGenerator({
         label={meta.promptLabel}
         value={state.prompt}
         onChange={onPromptChange}
-        enableOptimization={false}
+        optimizeCostLabel={promptOptimizationCostLabel}
         optimizing={state.promptOptimizing}
         optimizeError={state.promptOptimizeError}
         canUndoOptimize={Boolean(state.promptOptimizeUndo)}
@@ -2291,8 +3452,14 @@ function VideoGenerator({
       />
       {state.submitError ? <p className="studio-error-text" role="alert">{state.submitError}</p> : null}
       <StickyPrimaryAction>
-        <SubmitButton disabled={!canSubmit} loading={state.loading} onClick={onSubmit}>
-          {state.loading ? meta.loadingLabel : meta.submitLabel}
+        <SubmitButton
+          disabled={!canSubmit}
+          loading={state.loading}
+          loadingLabel={meta.loadingLabel}
+          costLabel={formatQuotaSymbolLabel(estimatedQuotaUnits)}
+          onClick={onSubmit}
+        >
+          {meta.submitLabel}
         </SubmitButton>
       </StickyPrimaryAction>
     </FormPanel>
@@ -2362,6 +3529,7 @@ function VideoPromptBox({
   placeholder,
   required,
   optimizing,
+  optimizeCostLabel,
   optimizeError,
   canUndoOptimize,
   onOptimize,
@@ -2374,6 +3542,7 @@ function VideoPromptBox({
   placeholder: string;
   required?: boolean;
   optimizing: boolean;
+  optimizeCostLabel?: string;
   optimizeError: string;
   canUndoOptimize: boolean;
   onOptimize: () => void;
@@ -2410,7 +3579,10 @@ function VideoPromptBox({
                 正在优化…
               </>
             ) : (
-              "✨ 优化提示词"
+              <span className="studio-prompt-action__copy">
+                <span>✨ 优化提示词</span>
+                {optimizeCostLabel ? <small>{optimizeCostLabel}</small> : null}
+              </span>
             )}
           </button>
           {enableOptimization && canUndoOptimize ? (
@@ -2502,8 +3674,9 @@ function ImageUpscaleForm({
           groupId="image-upscale-scale"
           value={state.scale}
           options={[
-            ["2", "2x"],
-            ["4", "4x"],
+            ["1", "1K"],
+            ["2", "2K"],
+            ["4", "4K"],
           ]}
           onChange={onScaleChange}
         />
@@ -2718,8 +3891,8 @@ const toolTutorials: Record<ToolTutorialKind, {
           { src: "/tutorials/image-upscale/detail-high.svg", alt: "高清细节示意", className: "is-detail-right is-tilt-soft-right" },
         ],
         tags: [
-          { text: "2x", className: "is-bottom-left" },
-          { text: "4x", className: "is-bottom-right" },
+          { text: "2K", className: "is-bottom-left" },
+          { text: "4K", className: "is-bottom-right" },
         ],
       },
       {
@@ -2758,7 +3931,7 @@ const toolTutorials: Record<ToolTutorialKind, {
           { src: "/tutorials/video-upscale/frame-low.svg", alt: "原始视频帧", className: "is-flow-left is-tilt-left" },
           { src: "/tutorials/video-upscale/frame-high.svg", alt: "高清视频帧", className: "is-flow-right is-tilt-right" },
         ],
-        tags: [{ text: "2x / 4x", className: "is-center-tag" }],
+        tags: [{ text: "1K / 2K / 4K", className: "is-center-tag" }],
       },
       {
         title: "播放高清结果",
@@ -2814,7 +3987,7 @@ function ImageEditorTutorial() {
         <div className="image-editor-tutorial__canvas" aria-label="图片编辑器示例图片">
           <svg className="image-editor-tutorial__path" viewBox="0 0 980 520" aria-hidden="true">
             <path className="image-editor-tutorial__dash" d="M18 425C98 190 238 330 365 265C487 202 575 262 690 170C750 122 810 82 862 52" />
-            <g className="image-editor-plane-mark" transform="translate(862 52) rotate(8) scale(0.68) translate(-9 -39)">
+            <g className="image-editor-plane-mark">
               <path d="M9 30 56 9 42 56 32 39 9 48 25 33 9 30Z" fill="none" stroke="currentColor" strokeWidth="4.6" strokeLinecap="round" strokeLinejoin="round" />
             </g>
           </svg>
@@ -2822,7 +3995,16 @@ function ImageEditorTutorial() {
           <figure className="image-editor-photo image-editor-photo--input image-editor-photo--single-source">
             <img src="/tutorials/image-editor/single-source.png" alt="方形粉色香水瓶白底素材" />
           </figure>
-          <img className="image-editor-arrow image-editor-arrow--single" src="/tutorials/image-editor/pink-arrow.png" alt="" aria-hidden="true" />
+          <svg className="image-editor-arrow image-editor-arrow--single" viewBox="0 0 128 74" aria-hidden="true" focusable="false">
+            <defs>
+              <marker id="image-editor-arrow-tip-single" viewBox="0 0 22 22" refX="19" refY="11" markerWidth="5.4" markerHeight="5.4" orient="auto">
+                <path className="image-editor-arrow__tip" d="M3 2.6 19 11 3 19.4 7.4 11Z" />
+              </marker>
+            </defs>
+            <path className="image-editor-arrow__halo" pathLength={1} d="M7 50C37 21 84 18 111 36" />
+            <path className="image-editor-arrow__path" pathLength={1} d="M7 50C37 21 84 18 111 36" markerEnd="url(#image-editor-arrow-tip-single)" />
+            <path className="image-editor-arrow__shine" pathLength={1} d="M7 50C37 21 84 18 111 36" />
+          </svg>
           <span className="image-editor-prompt image-editor-prompt--single">
             <span>+</span>
             <span>提示词</span>
@@ -2837,7 +4019,16 @@ function ImageEditorTutorial() {
           <figure className="image-editor-photo image-editor-photo--input image-editor-photo--merge-scene">
             <img src="/tutorials/image-editor/merge-scene.png" alt="新中式牡丹场景素材" />
           </figure>
-          <img className="image-editor-arrow image-editor-arrow--merge" src="/tutorials/image-editor/pink-arrow.png" alt="" aria-hidden="true" />
+          <svg className="image-editor-arrow image-editor-arrow--merge" viewBox="0 0 128 74" aria-hidden="true" focusable="false">
+            <defs>
+              <marker id="image-editor-arrow-tip-merge" viewBox="0 0 22 22" refX="19" refY="11" markerWidth="5.4" markerHeight="5.4" orient="auto">
+                <path className="image-editor-arrow__tip" d="M3 2.6 19 11 3 19.4 7.4 11Z" />
+              </marker>
+            </defs>
+            <path className="image-editor-arrow__halo" pathLength={1} d="M7 50C37 21 84 18 111 36" />
+            <path className="image-editor-arrow__path" pathLength={1} d="M7 50C37 21 84 18 111 36" markerEnd="url(#image-editor-arrow-tip-merge)" />
+            <path className="image-editor-arrow__shine" pathLength={1} d="M7 50C37 21 84 18 111 36" />
+          </svg>
           <span className="image-editor-prompt image-editor-prompt--merge">
             <span>+</span>
             <span>提示词</span>
@@ -2852,96 +4043,77 @@ function ImageEditorTutorial() {
 }
 
 const videoTutorialPromptText = "雨天城市街头，女生撑透明雨伞缓慢向前行走，并自然回头看向镜头。";
-const videoTutorialResultVideoSrc = "";
+const videoTutorialResultVideoSrc = "/tutorials/video-generator/demo-result.mp4";
 
 type VideoTutorialImagePhase = "hidden" | "dragging" | "landed";
+type VideoTutorialPlaybackState =
+  | "final"
+  | "idle"
+  | "image-entering"
+  | "image-touching"
+  | "image-covered"
+  | "typing"
+  | "arrow-to-parameters"
+  | "parameters"
+  | "arrow-to-result"
+  | "result-preparing"
+  | "result-entering"
+  | "result-playing"
+  | "complete"
+  | "resetting"
+  | "fading-out";
 
-function VideoTutorialInputDemo() {
+function createTutorialTimeline() {
+  const timers: number[] = [];
+
+  return {
+    wait(callback: () => void, delay: number) {
+      const timer = window.setTimeout(callback, delay);
+      timers.push(timer);
+      return timer;
+    },
+    clear() {
+      timers.forEach((timer) => window.clearTimeout(timer));
+      timers.length = 0;
+    },
+  };
+}
+
+function isVideoTutorialImageLandedState(playbackState: VideoTutorialPlaybackState) {
+  return !["idle", "image-entering", "image-touching"].includes(playbackState);
+}
+
+function isVideoTutorialPromptVisibleState(playbackState: VideoTutorialPlaybackState) {
+  return !["idle", "image-entering", "image-touching", "image-covered"].includes(playbackState);
+}
+
+function isVideoTutorialParameterVisibleState(playbackState: VideoTutorialPlaybackState) {
+  return ["final", "parameters", "arrow-to-result", "result-preparing", "result-entering", "result-playing", "complete", "resetting", "fading-out"].includes(playbackState);
+}
+
+function isVideoTutorialResultVisibleState(playbackState: VideoTutorialPlaybackState) {
+  return Boolean(playbackState);
+}
+
+function isVideoTutorialResultPlayingState(playbackState: VideoTutorialPlaybackState) {
+  return ["result-preparing", "result-entering", "result-playing"].includes(playbackState);
+}
+
+function VideoTutorialInputDemo({
+  playbackState,
+  promptText,
+}: {
+  playbackState: VideoTutorialPlaybackState;
+  promptText: string;
+}) {
   const demoRef = useRef<HTMLDivElement | null>(null);
-  const [imagePhase, setImagePhase] = useState<VideoTutorialImagePhase>("hidden");
-  const [uploadTargetActive, setUploadTargetActive] = useState(false);
-  const [bubbleVisible, setBubbleVisible] = useState(false);
-  const [typedText, setTypedText] = useState("");
-  const [isInView, setIsInView] = useState(true);
-  const [reducedMotion, setReducedMotion] = useState(false);
-  const sourceImageLanded = reducedMotion || imagePhase === "landed";
-  const promptBubbleVisible = reducedMotion || bubbleVisible;
-  const promptText = reducedMotion ? videoTutorialPromptText : typedText;
-
-  useEffect(() => {
-    const mediaQuery = window.matchMedia("(prefers-reduced-motion: reduce)");
-    const updateMotionPreference = () => setReducedMotion(mediaQuery.matches);
-
-    updateMotionPreference();
-    mediaQuery.addEventListener("change", updateMotionPreference);
-    return () => mediaQuery.removeEventListener("change", updateMotionPreference);
-  }, []);
-
-  useEffect(() => {
-    const node = demoRef.current;
-    if (!node || reducedMotion || typeof IntersectionObserver === "undefined") return undefined;
-
-    const observer = new IntersectionObserver(([entry]) => {
-      setIsInView(entry.isIntersecting);
-    }, { threshold: 0.2 });
-
-    observer.observe(node);
-    return () => observer.disconnect();
-  }, [reducedMotion]);
-
-  useEffect(() => {
-    if (reducedMotion || !isInView) return undefined;
-
-    let stopped = false;
-    const timers: Array<ReturnType<typeof setTimeout>> = [];
-    let typingTimer: ReturnType<typeof setInterval> | undefined;
-
-    const startLoop = () => {
-      if (stopped) return;
-
-      if (typingTimer) clearInterval(typingTimer);
-      setImagePhase("hidden");
-      setUploadTargetActive(false);
-      setBubbleVisible(false);
-      setTypedText("");
-
-      timers.push(
-        setTimeout(() => setImagePhase("dragging"), 650),
-        setTimeout(() => setUploadTargetActive(true), 1250),
-        setTimeout(() => setImagePhase("landed"), 3150),
-        setTimeout(() => {
-          setBubbleVisible(true);
-          setTypedText(videoTutorialPromptText.slice(0, 1));
-
-          let index = 1;
-          typingTimer = setInterval(() => {
-            index += 1;
-            setTypedText(videoTutorialPromptText.slice(0, index));
-
-            if (index >= videoTutorialPromptText.length && typingTimer) {
-              clearInterval(typingTimer);
-              typingTimer = undefined;
-            }
-          }, 58);
-        }, 3150),
-        setTimeout(() => {
-          setImagePhase("hidden");
-          setUploadTargetActive(false);
-          setBubbleVisible(false);
-          setTypedText("");
-        }, 6800),
-        setTimeout(startLoop, 7600),
-      );
-    };
-
-    startLoop();
-
-    return () => {
-      stopped = true;
-      timers.forEach(clearTimeout);
-      if (typingTimer) clearInterval(typingTimer);
-    };
-  }, [isInView, reducedMotion]);
+  const imagePhase: VideoTutorialImagePhase = isVideoTutorialImageLandedState(playbackState)
+    ? "landed"
+    : playbackState === "image-entering" || playbackState === "image-touching"
+      ? "dragging"
+      : "hidden";
+  const targetState = playbackState === "image-touching" ? "touching" : imagePhase === "landed" ? "covered" : "idle";
+  const promptBubbleVisible = isVideoTutorialPromptVisibleState(playbackState);
 
   return (
     <div ref={demoRef} className="video-tutorial-input-demo">
@@ -2949,7 +4121,14 @@ function VideoTutorialInputDemo() {
         <UploadCloud aria-hidden="true" />
         <span>上传图片</span>
       </div>
-      <span className={cn("tutorial-upload-target-ring", uploadTargetActive && "is-active")} aria-hidden="true" />
+      <span
+        className={cn(
+          "tutorial-upload-target-ring",
+          targetState === "touching" && "is-touching",
+          targetState === "covered" && "is-covered",
+        )}
+        aria-hidden="true"
+      />
 
       <img
         src="/tutorials/video-generator/input-person.png"
@@ -2957,39 +4136,109 @@ function VideoTutorialInputDemo() {
         className={cn(
           "tutorial-source-image",
           imagePhase === "dragging" && "is-dragging",
-          sourceImageLanded && "is-visible",
+          imagePhase === "landed" && "is-visible",
         )}
       />
 
       <div className={cn("tutorial-prompt-bubble", promptBubbleVisible && "is-visible")}>
         {promptText}
-        {promptBubbleVisible && !reducedMotion && typedText.length < videoTutorialPromptText.length ? <span className="typing-caret" /> : null}
+        {promptBubbleVisible && playbackState === "typing" && promptText.length < videoTutorialPromptText.length ? <span className="typing-caret" /> : null}
       </div>
     </div>
   );
 }
 
-function VideoTutorialResultSlot() {
+function VideoTutorialResultSlot({
+  playbackState,
+  paused,
+  onPlaybackEnd,
+}: {
+  playbackState: VideoTutorialPlaybackState;
+  paused: boolean;
+  onPlaybackEnd: () => void;
+}) {
+  const mediaRef = useRef<HTMLDivElement | null>(null);
+  const videoRef = useRef<HTMLVideoElement | null>(null);
+  const wasPlayingRef = useRef(false);
+  const [isInView, setIsInView] = useState(typeof IntersectionObserver === "undefined");
+  const shouldPlay = Boolean(videoTutorialResultVideoSrc && !paused && isVideoTutorialResultPlayingState(playbackState) && isInView);
+
+  useEffect(() => {
+    const node = mediaRef.current;
+    if (!node || typeof IntersectionObserver === "undefined") return undefined;
+
+    const observer = new IntersectionObserver(([entry]) => {
+      setIsInView(entry.isIntersecting);
+    }, { threshold: 0.36 });
+
+    observer.observe(node);
+    return () => observer.disconnect();
+  }, []);
+
+  useEffect(() => {
+    const video = videoRef.current;
+    if (!video) return;
+
+    if (shouldPlay) {
+      if (!wasPlayingRef.current) {
+        try {
+          video.currentTime = Math.min(0.1, Number.isFinite(video.duration) && video.duration > 0 ? video.duration : 0.1);
+        } catch {
+          // Metadata may still be settling on first load; playback can still begin muted.
+        }
+        wasPlayingRef.current = true;
+      }
+      void video.play().catch(() => undefined);
+      return;
+    }
+
+    wasPlayingRef.current = false;
+    video.pause();
+  }, [shouldPlay]);
+
   return (
     <div className="video-tutorial-result-slot">
       <div className="video-tutorial-result-slot__backdrop" aria-hidden="true">
         <img src="/tutorials/video-generator/input-person.png" alt="" />
       </div>
-      <div className="video-tutorial-result-slot__media">
+      <div
+        ref={mediaRef}
+        className={cn(
+          "video-tutorial-result-slot__media",
+          isVideoTutorialResultVisibleState(playbackState) && "is-visible",
+          isVideoTutorialResultPlayingState(playbackState) && "is-playing",
+          playbackState === "complete" && "is-complete",
+          playbackState === "resetting" && "is-resetting",
+        )}
+      >
         {videoTutorialResultVideoSrc ? (
-          <video src={videoTutorialResultVideoSrc} poster="/tutorials/video-generator/input-person.png" autoPlay muted loop playsInline preload="metadata" />
+          <video
+            ref={videoRef}
+            src={videoTutorialResultVideoSrc}
+            poster="/tutorials/video-generator/rain-umbrella.png"
+            muted
+            playsInline
+            preload="auto"
+            onEnded={onPlaybackEnd}
+            onError={onPlaybackEnd}
+          />
         ) : (
           <video poster="/tutorials/video-generator/input-person.png" muted playsInline preload="metadata" aria-label="视频结果预留位" />
         )}
-        <span className="video-tutorial-result-slot__play" aria-hidden="true" />
       </div>
     </div>
   );
 }
 
-function VideoTutorialParameterDemo() {
+function VideoTutorialParameterDemo({
+  playbackState,
+}: {
+  playbackState: VideoTutorialPlaybackState;
+}) {
+  const showParameters = isVideoTutorialParameterVisibleState(playbackState);
+
   return (
-    <div className="video-tutorial-parameter-demo">
+    <div className={cn("video-tutorial-parameter-demo", showParameters && "is-active")}>
       <div className="video-tutorial-parameter-demo__preview">
         <img src="/tutorials/video-generator/rain-umbrella.png" alt="" />
       </div>
@@ -3011,34 +4260,195 @@ function VideoTutorialParameterDemo() {
   );
 }
 
-function VideoGenerationTutorial() {
+function VideoGenerationTutorial({ paused = false }: { paused?: boolean }) {
+  const guideRef = useRef<HTMLDivElement | null>(null);
+  const replayTimerRef = useRef<number | undefined>(undefined);
+  const reducedMotion = useReducedMotion();
+  const [playbackStateState, setPlaybackState] = useState<VideoTutorialPlaybackState>("idle");
+  const [typedTextState, setTypedText] = useState("");
+  const [isInView, setIsInView] = useState(true);
+  const [pageVisible, setPageVisible] = useState(true);
+  const [cycle, setCycle] = useState(0);
+  const shouldPause = paused || reducedMotion || !isInView || !pageVisible;
+  const playbackState = reducedMotion ? "final" : playbackStateState;
+  const typedText = reducedMotion ? videoTutorialPromptText : typedTextState;
+  const promptText = reducedMotion ? videoTutorialPromptText : typedText;
+
+  const clearReplayTimer = useCallback(() => {
+    if (replayTimerRef.current) {
+      window.clearTimeout(replayTimerRef.current);
+      replayTimerRef.current = undefined;
+    }
+  }, []);
+
+  const finishTutorialCycle = useCallback(() => {
+    if (shouldPause || reducedMotion || playbackStateState !== "result-playing") return;
+
+    clearReplayTimer();
+    setPlaybackState("complete");
+    setTypedText(videoTutorialPromptText);
+    replayTimerRef.current = window.setTimeout(() => {
+      setPlaybackState("resetting");
+      replayTimerRef.current = window.setTimeout(() => {
+        setPlaybackState("fading-out");
+        replayTimerRef.current = window.setTimeout(() => {
+          replayTimerRef.current = undefined;
+          setPlaybackState("idle");
+          setTypedText("");
+          setCycle((value) => value + 1);
+        }, 520);
+      }, 760);
+    }, 900);
+  }, [clearReplayTimer, playbackStateState, reducedMotion, shouldPause]);
+
+  useEffect(() => {
+    if (playbackStateState !== "resetting") return undefined;
+
+    const timer = window.setTimeout(() => {
+      const video = guideRef.current?.querySelector<HTMLVideoElement>(".video-tutorial-result-slot__media video");
+      if (!video) return;
+      try {
+        video.pause();
+        video.currentTime = 0.1;
+      } catch {
+        // The video may already be unloading between tutorial loops.
+      }
+    }, 260);
+
+    return () => window.clearTimeout(timer);
+  }, [playbackStateState]);
+
+  useEffect(() => {
+    const node = guideRef.current;
+    if (!node || typeof IntersectionObserver === "undefined") return undefined;
+
+    const observer = new IntersectionObserver(([entry]) => {
+      setIsInView(entry.isIntersecting);
+    }, { threshold: 0.18 });
+
+    observer.observe(node);
+    return () => observer.disconnect();
+  }, []);
+
+  useEffect(() => {
+    const syncPageVisibility = () => setPageVisible(document.visibilityState === "visible");
+
+    syncPageVisibility();
+    document.addEventListener("visibilitychange", syncPageVisibility);
+    return () => document.removeEventListener("visibilitychange", syncPageVisibility);
+  }, []);
+
+  useEffect(() => {
+    if (shouldPause) {
+      clearReplayTimer();
+      return undefined;
+    }
+
+    let stopped = false;
+    let typingTimer: number | undefined;
+    const timeline = createTutorialTimeline();
+
+    const stopTyping = () => {
+      if (typingTimer) {
+        window.clearInterval(typingTimer);
+        typingTimer = undefined;
+      }
+    };
+
+    const wait = (callback: () => void, delay: number) => {
+      timeline.wait(() => {
+        if (!stopped) callback();
+      }, delay);
+    };
+
+    const play = () => {
+      if (stopped) return;
+
+      stopTyping();
+      clearReplayTimer();
+      setPlaybackState("idle");
+      setTypedText("");
+
+      wait(() => setPlaybackState("image-entering"), 360);
+      wait(() => setPlaybackState("image-touching"), 1350);
+      wait(() => setPlaybackState("image-covered"), 2700);
+      wait(() => {
+        setPlaybackState("typing");
+        setTypedText(videoTutorialPromptText.slice(0, 1));
+
+        let index = 1;
+        typingTimer = window.setInterval(() => {
+          index += 1;
+          setTypedText(videoTutorialPromptText.slice(0, index));
+
+          if (index >= videoTutorialPromptText.length) {
+            stopTyping();
+            setTypedText(videoTutorialPromptText);
+            wait(() => setPlaybackState("arrow-to-parameters"), 260);
+            wait(() => setPlaybackState("parameters"), 1160);
+            wait(() => setPlaybackState("arrow-to-result"), 2140);
+            wait(() => setPlaybackState("result-preparing"), 2960);
+            wait(() => setPlaybackState("result-entering"), 3060);
+            wait(() => setPlaybackState("result-playing"), 3240);
+          }
+        }, 54);
+      }, 2880);
+    };
+
+    play();
+
+    return () => {
+      stopped = true;
+      timeline.clear();
+      clearReplayTimer();
+      stopTyping();
+    };
+  }, [clearReplayTimer, cycle, shouldPause]);
+
+  useEffect(() => () => clearReplayTimer(), [clearReplayTimer]);
+
   const steps = [
     {
       id: "upload",
       title: "输入内容并确认视频场景",
       description: "上传参考图后输入提示词，让视频围绕起始画面和动作描述生成。",
-      visual: <VideoTutorialInputDemo />,
+      visual: <VideoTutorialInputDemo key={`input-${cycle}`} playbackState={playbackState} promptText={promptText} />,
       visualSide: "left",
     },
     {
       id: "prompt",
       title: "调整视频参数",
       description: "根据需要确认时长、清晰度和比例，让结果更贴近当前创意。",
-      visual: <VideoTutorialParameterDemo />,
+      visual: <VideoTutorialParameterDemo playbackState={playbackState} />,
       visualSide: "right",
     },
     {
       id: "result",
       title: "生成视频并查看结果",
       description: "生成完成后在这里预览视频结果，需要时可以下载或重新生成。",
-      visual: <VideoTutorialResultSlot />,
+      visual: <VideoTutorialResultSlot playbackState={playbackState} paused={shouldPause} onPlaybackEnd={finishTutorialCycle} />,
       visualSide: "left",
     },
   ];
+  const firstArrowDrawing = playbackState === "arrow-to-parameters";
+  const firstArrowDrawn = ["parameters", "arrow-to-result", "result-preparing", "result-entering", "result-playing", "complete", "resetting", "fading-out", "final"].includes(playbackState);
+  const secondArrowDrawing = playbackState === "arrow-to-result";
+  const secondArrowDrawn = ["result-preparing", "result-entering", "result-playing", "complete", "resetting", "fading-out", "final"].includes(playbackState);
 
   return (
     <PreviewState eyebrow="快速教程" title="视频生成快速教程" description="上传参考图，输入提示词，确认比例后生成视频。">
-      <div className="video-tutorial-guide">
+      <div
+        ref={guideRef}
+        className={cn(
+          "video-tutorial-guide",
+          reducedMotion && "is-reduced-motion",
+          firstArrowDrawing && "is-drawing-first-arrow",
+          firstArrowDrawn && "is-first-arrow-drawn",
+          secondArrowDrawing && "is-drawing-second-arrow",
+          secondArrowDrawn && "is-second-arrow-drawn",
+        )}
+        data-playback-state={playbackState}
+      >
         {steps.map((step, index) => (
           <article key={step.id} className={cn("video-tutorial-guide__section", step.visualSide === "right" && "is-visual-right")}>
             <div className="video-tutorial-guide__visual">
@@ -3049,7 +4459,12 @@ function VideoGenerationTutorial() {
               <h4>{step.title}</h4>
               <p>{step.description}</p>
             </div>
-            {index < steps.length - 1 ? <span className="video-tutorial-guide__arrow" aria-hidden="true" /> : null}
+            {index < steps.length - 1 ? (
+              <svg className="video-tutorial-guide__arrow" viewBox="0 0 64 44" aria-hidden="true" focusable="false">
+                <path className="video-tutorial-guide__arrow-path" d="M7 7C22 31 41 36 55 25" />
+                <path className="video-tutorial-guide__arrow-head" d="M45 23L56 25L50 35" />
+              </svg>
+            ) : null}
           </article>
         ))}
       </div>
@@ -3057,7 +4472,7 @@ function VideoGenerationTutorial() {
   );
 }
 
-function ToolTutorial({ kind }: { kind: ToolTutorialKind }) {
+function ToolTutorial({ kind, paused = false }: { kind: ToolTutorialKind; paused?: boolean }) {
   if (kind === "image") {
     return <ImageGenerationTutorial />;
   }
@@ -3067,7 +4482,7 @@ function ToolTutorial({ kind }: { kind: ToolTutorialKind }) {
   }
 
   if (kind === "video") {
-    return <VideoGenerationTutorial />;
+    return <VideoGenerationTutorial paused={paused} />;
   }
 
   const tutorial = toolTutorials[kind];
@@ -3166,14 +4581,14 @@ function UpscaleUnavailablePreview() {
 
 function ImageUpscaleCompareTutorial() {
   return (
-    <PreviewState eyebrow="图片细节对比" title="图片细节对比" description="拖动分割线，查看增强前后的清晰度和细节变化。">
+    <PreviewState eyebrow="图片细节对比" title="图片细节对比" description="拖动分割线，查看高清前后的清晰度和细节变化。">
       <BeforeAfterImageCompare
         beforeSrc="/tutorial/image-upscaler/image-before.jpg"
         afterSrc="/tutorial/image-upscaler/image-after.png"
-        beforeLabel="增强前"
-        afterLabel="增强后"
-        beforeAlt="增强前示例图"
-        afterAlt="增强后示例图"
+        beforeLabel="高清前"
+        afterLabel="高清后"
+        beforeAlt="高清前示例图"
+        afterAlt="高清后示例图"
       />
     </PreviewState>
   );
@@ -3181,18 +4596,16 @@ function ImageUpscaleCompareTutorial() {
 
 function VideoUpscaleCompareTutorial() {
   return (
-    <PreviewState eyebrow="视频细节对比" title="视频细节对比" description="拖动分割线，查看放大前后的视频清晰度和细节变化。">
+    <PreviewState eyebrow="视频细节对比" title="视频细节对比" description="拖动分割线，查看高清前后的视频清晰度和细节变化。">
       <BeforeAfterImageCompare
         beforeSrc="/tutorial/video-upscaler/video-after.mp4"
         afterSrc="/tutorial/video-upscaler/video-after.mp4"
-        beforeLabel="放大前"
-        afterLabel="放大后"
-        beforeAlt="放大前示例视频"
-        afterAlt="放大后示例视频"
+        beforeLabel="高清前"
+        afterLabel="高清后"
+        beforeAlt="高清前示例视频"
+        afterAlt="高清后示例视频"
         mediaType="video"
         beforeEffect="blur"
-        beforePoster="/tutorials/video-upscale/result-poster.svg"
-        afterPoster="/tutorials/video-upscale/result-poster.svg"
       />
     </PreviewState>
   );
@@ -3235,15 +4648,15 @@ function ImageUpscalePreviewPanel({
     const outputSize = typeof params.outputWidth === "number" && typeof params.outputHeight === "number"
       ? `${params.outputWidth} x ${params.outputHeight}`
       : "未记录";
-    const resultScale = typeof params.scale === "number" ? `${params.scale}x` : `${state.scale}x`;
+    const resultScale = typeof params.scale === "number" ? upscaleTargetLabel(String(params.scale)) : upscaleTargetLabel(state.scale);
     return (
-      <PreviewState eyebrow="结果" title="高清结果" description={`${state.scale}x 高清处理完成。`} badge={libraryStatusBadgeLabel(output.item.status)} role="status" live>
+      <PreviewState eyebrow="结果" title="高清结果" description={`${upscaleTargetLabel(state.scale)} 高清处理完成。`} badge={libraryStatusBadgeLabel(output.item.status)} role="status" live>
         {source ? (
           <BeforeAfterImageCompare
             beforeSrc={source.previewUrl}
             afterSrc={output.item.output.url}
-            beforeLabel="增强前"
-            afterLabel="增强后"
+            beforeLabel="高清前"
+            afterLabel="高清后"
             beforeAlt={source.file.name}
             afterAlt={output.item.title}
           />
@@ -3319,15 +4732,15 @@ function VideoUpscalePreviewPanel({
     const outputSize = typeof params.outputWidth === "number" && typeof params.outputHeight === "number"
       ? `${params.outputWidth} x ${params.outputHeight}`
       : "未记录";
-    const resultScale = typeof params.scale === "number" ? `${params.scale}x` : `${state.scale}x`;
+    const resultScale = videoUpscaleScaleLabel(typeof params.scale === "number" ? String(params.scale) : state.scale);
     return (
-      <PreviewState eyebrow="结果" title="高清结果" description={`${state.scale}x 高清处理完成。`} badge={libraryStatusBadgeLabel(output.item.status)} role="status" live>
+      <PreviewState eyebrow="结果" title="高清结果" description={`${videoUpscaleScaleLabel(state.scale)} 高清处理完成。`} badge={libraryStatusBadgeLabel(output.item.status)} role="status" live>
         {source ? (
           <BeforeAfterImageCompare
             beforeSrc={source.previewUrl}
             afterSrc={output.item.output.url}
-            beforeLabel="放大前"
-            afterLabel="放大后"
+            beforeLabel="高清前"
+            afterLabel="高清后"
             beforeAlt={source.file.name}
             afterAlt={output.item.title}
             mediaType="video"
@@ -3434,8 +4847,9 @@ function VideoUpscaleForm({
           groupId="video-upscale-scale"
           value={state.scale}
           options={[
-            ["2", "2x"],
-            ["4", "4x"],
+            ["1", "1K"],
+            ["2", "2K"],
+            ["4", "4K"],
           ]}
           onChange={onScaleChange}
         />
@@ -3466,6 +4880,7 @@ function LibraryWorkspace({
   sort,
   search,
   deletingItemId,
+  removingItemId,
   missingMediaIds,
   onFilterChange,
   onSortChange,
@@ -3488,6 +4903,7 @@ function LibraryWorkspace({
   sort: LibrarySort;
   search: string;
   deletingItemId: string | null;
+  removingItemId: string | null;
   missingMediaIds: Set<string>;
   onFilterChange: (value: LibraryFilter) => void;
   onSortChange: (value: LibrarySort) => void;
@@ -3507,7 +4923,6 @@ function LibraryWorkspace({
       <header className="studio-library-page__header">
         <div>
           <h2>作品库</h2>
-          <p>管理和查看你生成的全部图片与视频</p>
         </div>
         <span className="studio-library-page__count">共 {totalCount} 件作品</span>
       </header>
@@ -3525,10 +4940,14 @@ function LibraryWorkspace({
       {loading ? (
         <div className="studio-library-skeleton-grid" role="status" aria-label="正在加载作品">
           {Array.from({ length: 8 }, (_, index) => (
-            <div key={index} className="studio-library-skeleton-card">
-              <span />
-              <strong />
-              <small />
+            <div
+              key={index}
+              className="studio-library-skeleton-card"
+              style={{ "--library-card-delay": `${index < 6 ? index * 28 : 0}ms` } as CSSProperties}
+            >
+              <span className="motion-skeleton-shimmer" />
+              <strong className="motion-skeleton-shimmer" />
+              <small className="motion-skeleton-shimmer" />
             </div>
           ))}
         </div>
@@ -3569,10 +4988,16 @@ function LibraryWorkspace({
         )
       ) : (
         <div className="studio-library-grid">
-          {items.map((item) => (
+          {items.map((item, index) => (
             <div
               key={item.id}
-              className={cn("studio-library-tile", selectedItem?.id === item.id && "is-active")}
+              className={cn(
+                "studio-library-tile",
+                selectedItem?.id === item.id && "is-active",
+                deletingItemId === item.id && "is-deleting",
+                removingItemId === item.id && "is-removing",
+              )}
+              style={{ "--library-card-delay": `${index < 6 ? index * 28 : 0}ms` } as CSSProperties}
             >
               <button
                 type="button"
@@ -3642,6 +5067,62 @@ function LibraryWorkspace({
   );
 }
 
+function LibraryDeleteConfirmDialog({
+  item,
+  deleting,
+  onCancel,
+  onConfirm,
+}: {
+  item: LibraryItem | null;
+  deleting: boolean;
+  onCancel: () => void;
+  onConfirm: () => void;
+}) {
+  if (!item) return null;
+
+  return (
+    <div className="studio-library-confirm" role="dialog" aria-modal="true" aria-labelledby="library-delete-confirm-title">
+      <button
+        type="button"
+        className="studio-library-confirm__backdrop"
+        aria-label="取消删除"
+        onClick={onCancel}
+        disabled={deleting}
+      />
+      <section className="studio-library-confirm__card">
+        <span className="studio-library-confirm__icon" aria-hidden="true">
+          <Trash2 className="size-5" />
+        </span>
+        <div className="studio-library-confirm__copy">
+          <p className="shell-eyebrow">删除作品</p>
+          <h3 id="library-delete-confirm-title">确认删除这个作品？</h3>
+          <p>
+            作品「{item.title || "未命名作品"}」删除后会同步移除可删除的本地结果文件，操作完成后不能在作品库中恢复。
+          </p>
+        </div>
+        <div className="studio-library-confirm__actions">
+          <button type="button" className="studio-secondary-button" onClick={onCancel} disabled={deleting}>
+            取消
+          </button>
+          <button type="button" className="studio-danger-button" onClick={onConfirm} disabled={deleting}>
+            {deleting ? (
+              <>
+                <Loader2 className="size-4 animate-spin" aria-hidden="true" />
+                删除中
+              </>
+            ) : (
+              <>
+                <Trash2 className="size-4" aria-hidden="true" />
+                确认删除
+              </>
+            )}
+          </button>
+        </div>
+      </section>
+    </div>
+  );
+}
+
 function LibraryKindTabs({
   count,
   filter,
@@ -3683,12 +5164,34 @@ function LibraryToolbar({
   onSortChange: (value: LibrarySort) => void;
   onSearchChange: (value: string) => void;
 }) {
+  const searchInputRef = useRef<HTMLInputElement | null>(null);
+  const [mobileSearchOpen, setMobileSearchOpen] = useState(false);
+  const searchVisible = mobileSearchOpen || Boolean(search.trim());
+
+  const toggleMobileSearch = () => {
+    setMobileSearchOpen((value) => {
+      const next = !value;
+      if (next) window.requestAnimationFrame(() => searchInputRef.current?.focus());
+      return next;
+    });
+  };
+
   return (
-    <div className="studio-library-toolbar">
+    <div className={cn("studio-library-toolbar", searchVisible && "is-search-open")}>
+      <button
+        type="button"
+        className={cn("studio-library-search-trigger", searchVisible && "is-active")}
+        onClick={toggleMobileSearch}
+        aria-label="搜索作品"
+        aria-expanded={searchVisible}
+      >
+        <Search className="size-4" aria-hidden="true" />
+      </button>
       <div className="studio-library-toolbar__search">
         <Search className="size-4" aria-hidden="true" />
         <label className="studio-sr-only" htmlFor="library-search">查找作品</label>
         <input
+          ref={searchInputRef}
           id="library-search"
           value={search}
           onChange={(event) => onSearchChange(event.target.value)}
@@ -3796,8 +5299,8 @@ function ImagePreviewPanel({
   }
 
   if (output) {
-    return (
-      <PreviewState eyebrow="结果" title="结果" badge={libraryStatusBadgeLabel(output.item.status)} role="status" live>
+    const resultContent = (
+      <>
         <MediaCard item={output.item} large compact />
         <div className="studio-actions studio-actions--result">
           {output.item.output?.url ? (
@@ -3817,6 +5320,12 @@ function ImagePreviewPanel({
             放大
           </button>
         </div>
+      </>
+    );
+
+    return (
+      <PreviewState eyebrow="结果" title="结果" badge={libraryStatusBadgeLabel(output.item.status)} role="status" live>
+        {isEditor ? resultContent : <ResultReveal className="studio-result-reveal">{resultContent}</ResultReveal>}
       </PreviewState>
     );
   }
@@ -3884,7 +5393,7 @@ function VideoPreviewPanel({
     );
   }
 
-  return <ToolTutorial kind="video" />;
+  return <ToolTutorial kind="video" paused={loading} />;
 }
 
 function OutputPanel({
@@ -3934,11 +5443,13 @@ function FormPanel({ children }: { children: React.ReactNode }) {
 
 function MobileActionBar({
   label,
+  costLabel,
   loading,
   disabled,
   onClick,
 }: {
   label: string;
+  costLabel?: string;
   loading: boolean;
   disabled: boolean;
   onClick: () => void;
@@ -3947,7 +5458,10 @@ function MobileActionBar({
     <div className="studio-mobile-action">
       <button type="button" className="studio-primary-action studio-mobile-action__button" disabled={disabled} onClick={onClick}>
         {loading ? <Loader2 className="size-4 animate-spin" aria-hidden="true" /> : <Wand2 className="size-4" aria-hidden="true" />}
-        {label}
+        <span className="studio-primary-action__copy">
+          <span>{label}</span>
+          {!loading && costLabel ? <small>{costLabel}</small> : null}
+        </span>
       </button>
     </div>
   );
@@ -4064,6 +5578,8 @@ function CompactDropzone({
   onDraggingChange?: (dragging: boolean) => void;
 }) {
   const helpId = `${inputId}-help`;
+  const hasFiles = files.length > 0;
+  const currentTitle = dragging ? "松开以上传" : hasFiles ? filledTitle : emptyTitle;
 
   const applyFiles = useCallback((fileList: FileList | File[]) => {
     const nextFiles = Array.from(fileList);
@@ -4074,7 +5590,7 @@ function CompactDropzone({
   return (
     <div className="studio-upload-group">
       <div
-        className={cn("studio-upload", dragging && "is-dragging", error && "is-error")}
+        className={cn("studio-upload", dragging && "is-dragging", hasFiles && "is-filled", error && "is-error")}
         role="button"
         tabIndex={0}
         aria-controls={inputId}
@@ -4101,7 +5617,7 @@ function CompactDropzone({
           ref={inputRef}
           id={inputId}
           type="file"
-          aria-label={files.length ? filledTitle : emptyTitle}
+          aria-label={currentTitle}
           aria-describedby={helpId}
           accept={accept}
           multiple={multiple}
@@ -4115,13 +5631,14 @@ function CompactDropzone({
           <UploadCloud className="size-5" />
         </div>
         <div className="studio-upload__content">
-          <strong>{files.length ? filledTitle : emptyTitle}</strong>
+          <strong>{currentTitle}</strong>
           <p id={helpId}>{helpText}</p>
-          {files.length ? <span>点击区域可替换文件</span> : null}
+          {dragging ? <span className="studio-upload__drop-hint">释放后自动读取文件</span> : null}
+          {hasFiles && !dragging ? <span>点击区域可替换文件</span> : null}
         </div>
       </div>
 
-      {files.length ? (
+      {hasFiles ? (
         <div className="studio-upload-list">
           {files.map((file, index) => (
             <div key={`${file.name}-${file.size}-${index}`} className="studio-upload-item">
@@ -4344,45 +5861,45 @@ function CustomSelect({
         <span className="studio-custom-select__value">{selectedOption?.label || placeholder}</span>
         <ChevronDown className={cn("size-4 transition", open && "rotate-180")} aria-hidden="true" />
       </button>
-      {open ? (
-        <div
-          ref={listRef}
-          id={listId}
-          className={cn("studio-custom-select__menu", openAbove && "is-above")}
-          role="listbox"
-          aria-label={label}
-        >
-          {options.map((option, index) => {
-            const selected = option.value === value;
-            const active = index === activeIndex;
-            return (
-              <button
-                key={option.value}
-                type="button"
-                role="option"
-                aria-selected={selected}
-                disabled={option.disabled}
-                className={cn("studio-custom-select__option", selected && "is-selected", active && "is-active")}
-                onMouseEnter={() => setActiveIndex(index)}
-                onPointerDown={(event) => {
-                  event.preventDefault();
-                  event.stopPropagation();
-                  chooseOption(option);
-                }}
-                onMouseDown={(event) => {
-                  event.preventDefault();
-                  event.stopPropagation();
-                  chooseOption(option);
-                }}
-                onClick={() => chooseOption(option)}
-              >
-                <span>{option.label}</span>
-                {selected ? <Check className="size-4" aria-hidden="true" /> : null}
-              </button>
-            );
-          })}
-        </div>
-      ) : null}
+      <div
+        ref={listRef}
+        id={listId}
+        className={cn("studio-custom-select__menu", openAbove && "is-above")}
+        role="listbox"
+        aria-label={label}
+        aria-hidden={!open}
+      >
+        {options.map((option, index) => {
+          const selected = option.value === value;
+          const active = index === activeIndex;
+          return (
+            <button
+              key={option.value}
+              type="button"
+              role="option"
+              aria-selected={selected}
+              disabled={option.disabled}
+              tabIndex={open ? 0 : -1}
+              className={cn("studio-custom-select__option", selected && "is-selected", active && "is-active")}
+              onMouseEnter={() => setActiveIndex(index)}
+              onPointerDown={(event) => {
+                event.preventDefault();
+                event.stopPropagation();
+                chooseOption(option);
+              }}
+              onMouseDown={(event) => {
+                event.preventDefault();
+                event.stopPropagation();
+                chooseOption(option);
+              }}
+              onClick={() => chooseOption(option)}
+            >
+              <span>{option.label}</span>
+              {selected ? <Check className="size-4" aria-hidden="true" /> : null}
+            </button>
+          );
+        })}
+      </div>
     </div>
   );
 }
@@ -4447,6 +5964,7 @@ function PromptBox({
   placeholder,
   required,
   optimizing,
+  optimizeCostLabel,
   optimizeError,
   canUndoOptimize,
   onOptimize,
@@ -4457,6 +5975,7 @@ function PromptBox({
   placeholder: string;
   required?: boolean;
   optimizing: boolean;
+  optimizeCostLabel?: string;
   optimizeError: string;
   canUndoOptimize: boolean;
   onOptimize: () => void;
@@ -4490,7 +6009,10 @@ function PromptBox({
                 正在优化…
               </>
             ) : (
-              "✨ 优化提示词"
+              <span className="studio-prompt-action__copy">
+                <span>✨ 优化提示词</span>
+                {optimizeCostLabel ? <small>{optimizeCostLabel}</small> : null}
+              </span>
             )}
           </button>
           {canUndoOptimize ? (
@@ -4525,19 +6047,26 @@ function SubmitButton({
   disabled,
   loading,
   loadingLabel,
+  costLabel,
   children,
   onClick,
 }: {
   disabled: boolean;
   loading: boolean;
   loadingLabel?: string;
+  costLabel?: string;
   children: React.ReactNode;
   onClick: () => void;
 }) {
+  const label = loading ? loadingLabel || children : children;
+
   return (
     <button type="button" data-testid="primary-submit" disabled={disabled} onClick={onClick} className="studio-primary-action" aria-busy={loading}>
       {loading ? <Loader2 className="size-4 animate-spin" aria-hidden="true" /> : <Wand2 className="size-4" aria-hidden="true" />}
-      <span>{loading ? loadingLabel || children : children}</span>
+      <span className="studio-primary-action__copy">
+        <span>{label}</span>
+        {!loading && costLabel ? <small>{costLabel}</small> : null}
+      </span>
     </button>
   );
 }
@@ -4560,14 +6089,17 @@ function LibraryCardActions({
   return (
     <div className="studio-library-tile__actions" aria-label="作品操作">
       <button type="button" onClick={onPreview}>
+        <Eye className="size-4" aria-hidden="true" />
         预览
       </button>
       {canDownloadStoredFile ? (
         <a href={item.output?.url} download>
+          <Download className="size-4" aria-hidden="true" />
           下载
         </a>
       ) : null}
       <button type="button" onClick={onDelete} disabled={deleting}>
+        {deleting ? <Loader2 className="size-4 animate-spin" aria-hidden="true" /> : <Trash2 className="size-4" aria-hidden="true" />}
         {deleting ? "删除中" : "删除"}
       </button>
     </div>
@@ -4717,6 +6249,83 @@ function libraryDuration(item: LibraryItem) {
   return `${minutes}:${String(rest).padStart(2, "0")}`;
 }
 
+function formatElapsedClock(milliseconds: number) {
+  const totalSeconds = Math.max(0, Math.floor(milliseconds / 1000));
+  const minutes = Math.floor(totalSeconds / 60);
+  const seconds = totalSeconds % 60;
+  return `${String(minutes).padStart(2, "0")}:${String(seconds).padStart(2, "0")}`;
+}
+
+function ImageGenerationProgressToast({
+  progress,
+  tick,
+  stacked,
+  onClose,
+}: {
+  progress: NonNullable<ImageGenerationProgressState>;
+  tick: number;
+  stacked?: boolean;
+  onClose: () => void;
+}) {
+  useEffect(() => {
+    if (progress.status === "running") return undefined;
+    const timer = window.setTimeout(onClose, 5200);
+    return () => window.clearTimeout(timer);
+  }, [onClose, progress.status]);
+
+  const total = Math.max(progress.total, 1);
+  const completed = Math.min(Math.max(progress.current, 0), total);
+  const activeIndex = progress.status === "running" ? Math.min(completed + 1, total) : completed;
+  const elapsedMs = (progress.completedAt ?? tick) - progress.startedAt;
+  const progressRatio = progress.status === "done"
+    ? 1
+    : Math.min(Math.max(completed / total, 0), 1);
+  const title = progress.status === "done"
+    ? "生成已完成"
+    : progress.status === "failed"
+      ? "生成失败"
+      : "图片生成中";
+  const statusText = progress.status === "running"
+    ? `第 ${activeIndex} / ${total} 张`
+    : progress.status === "done"
+      ? `已完成 ${total} 张`
+      : `已完成 ${completed} / ${total} 张`;
+
+  return (
+    <div
+      className={cn(
+        "image-generation-progress",
+        `is-${progress.status}`,
+        stacked && "is-stacked",
+      )}
+      role="status"
+      aria-live="polite"
+    >
+      <span className="image-generation-progress__icon" aria-hidden="true">
+        {progress.status === "done" ? <Check className="size-4" /> : null}
+        {progress.status === "failed" ? <AlertTriangle className="size-4" /> : null}
+        {progress.status === "running" ? <Loader2 className="size-4" /> : null}
+      </span>
+      <span className="image-generation-progress__body">
+        <span className="image-generation-progress__head">
+          <strong>{title}</strong>
+          <button type="button" aria-label="关闭生成进度" onClick={onClose}>
+            <X className="size-3.5" aria-hidden="true" />
+          </button>
+        </span>
+        <small>{progress.message || statusText}</small>
+        <span className="image-generation-progress__meta">
+          <span>{statusText}</span>
+          <span>用时 {formatElapsedClock(elapsedMs)}</span>
+        </span>
+        <span className="image-generation-progress__track" aria-hidden="true">
+          <span style={{ width: `${Math.round(progressRatio * 100)}%` }} />
+        </span>
+      </span>
+    </div>
+  );
+}
+
 function Toast({ message, onClose }: { message: string; onClose: () => void }) {
   useEffect(() => {
     const timer = window.setTimeout(onClose, 4500);
@@ -4724,8 +6333,14 @@ function Toast({ message, onClose }: { message: string; onClose: () => void }) {
   }, [onClose]);
 
   return (
-    <div className="studio-toast">
-      {message}
+    <div className="studio-toast" role="status" aria-live="polite">
+      <span className="studio-toast__icon" aria-hidden="true">
+        <AlertTriangle className="size-4" />
+      </span>
+      <span className="studio-toast__body">
+        <strong>{message}</strong>
+        <small>请根据提示处理当前操作，必要时稍后再试。</small>
+      </span>
     </div>
   );
 }
@@ -4750,13 +6365,13 @@ const previewContent: Record<
     title: "图片高清",
     desc: "上传图像后选择倍数，结果会在这里显示。",
     image: "/images/reference/sample-2.png",
-    notes: ["上传图像", "选择 2x 或 4x", "处理后进入作品库"],
+    notes: ["上传图像", "选择 1K / 2K / 4K", "处理后进入作品库"],
   },
   "video-upscale": {
     title: "视频高清",
     desc: "上传视频后选择倍数，结果会在这里播放。",
     image: "/images/reference/sample-3.png",
-    notes: ["上传视频", "选择 2x 或 4x", "处理后刷新作品库"],
+    notes: ["上传视频", "选择 1K / 2K / 4K", "处理后刷新作品库"],
   },
   library: {
     title: "作品库",

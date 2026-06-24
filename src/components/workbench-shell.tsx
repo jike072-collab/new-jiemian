@@ -3,15 +3,15 @@
 import Link from "next/link";
 import {
   ChevronDown,
+  CreditCard,
   LogIn,
   Menu,
   PanelLeft,
   PanelRight,
-  Settings,
   UserRound,
   X,
 } from "lucide-react";
-import { type ReactNode, type RefObject, useEffect, useRef, useState } from "react";
+import { type ReactNode, type RefObject, useCallback, useEffect, useId, useRef, useState } from "react";
 
 import { BrandLogo } from "@/components/brand-logo";
 import { cn } from "@/lib/utils";
@@ -38,14 +38,18 @@ type WorkbenchShellProps = {
   isAuthenticated: boolean;
   canAccessAdmin?: boolean;
   accountName?: string | null;
-  accountQuotaLabel?: string | null;
+  accountPointsLabel?: string | null;
   headerRightSlot?: ReactNode;
   accountSlot?: ReactNode;
+  accountCloseSignal?: number;
+  onOpenAccountCenter?: () => void;
+  onOpenAccountRecharge?: () => void;
   parameterSlot: ReactNode;
   previewSlot: ReactNode;
   mobileActionSlot?: ReactNode;
   mobilePreviewSignal?: number;
   toolTitle?: string;
+  contentMode?: "default" | "account";
 };
 
 export function WorkbenchShell({
@@ -54,26 +58,73 @@ export function WorkbenchShell({
   isAuthenticated,
   canAccessAdmin = false,
   accountName,
-  accountQuotaLabel,
+  accountPointsLabel,
   headerRightSlot,
   accountSlot,
+  accountCloseSignal,
+  onOpenAccountCenter,
+  onOpenAccountRecharge,
   parameterSlot,
   previewSlot,
   mobileActionSlot,
   mobilePreviewSignal,
   toolTitle,
+  contentMode = "default",
 }: WorkbenchShellProps) {
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [pane, setPane] = useState<ShellPane>("parameters");
   const [accountOpen, setAccountOpen] = useState(false);
+  const [accountPopoverVisible, setAccountPopoverVisible] = useState(false);
+  const [accountPopoverClosing, setAccountPopoverClosing] = useState(false);
   const drawerRef = useRef<HTMLDivElement>(null);
   const drawerButtonRef = useRef<HTMLButtonElement>(null);
   const rootRef = useRef<HTMLDivElement>(null);
+  const desktopAccountRef = useRef<HTMLDivElement>(null);
+  const lastAccountTriggerRef = useRef<HTMLElement | null>(null);
+  const accountCloseTimerRef = useRef<number | null>(null);
   const previousOverflowRef = useRef("");
 
   const activeTool = workspaceToolById(state.activeToolId) || workspaceToolEntries[0];
   const drawerId = "workspace-mobile-drawer";
-  const singlePaneMobile = activeTool.id === "templates" || activeTool.id === "library";
+  const accountPopoverBaseId = useId();
+  const desktopAccountPopoverId = `${accountPopoverBaseId}-desktop-account`;
+  const headerAccountPopoverId = `${accountPopoverBaseId}-header-account`;
+  const contentOnly = contentMode === "account";
+  const singlePaneMobile = contentOnly || activeTool.id === "templates" || activeTool.id === "library";
+
+  const openAccountPopover = useCallback((trigger?: HTMLElement | null) => {
+    if (trigger) lastAccountTriggerRef.current = trigger;
+    if (accountCloseTimerRef.current) {
+      window.clearTimeout(accountCloseTimerRef.current);
+      accountCloseTimerRef.current = null;
+    }
+    setAccountPopoverVisible(true);
+    setAccountPopoverClosing(false);
+    setAccountOpen(true);
+  }, []);
+
+  const closeAccountPopover = useCallback((options?: { restoreFocus?: boolean }) => {
+    if (accountCloseTimerRef.current) {
+      window.clearTimeout(accountCloseTimerRef.current);
+      accountCloseTimerRef.current = null;
+    }
+    setAccountOpen(false);
+    setAccountPopoverClosing(true);
+    accountCloseTimerRef.current = window.setTimeout(() => {
+      setAccountPopoverVisible(false);
+      setAccountPopoverClosing(false);
+      accountCloseTimerRef.current = null;
+      if (options?.restoreFocus !== false) lastAccountTriggerRef.current?.focus();
+    }, 140);
+  }, []);
+
+  const toggleAccountPopover = useCallback((trigger?: HTMLElement | null) => {
+    if (accountOpen) {
+      closeAccountPopover();
+      return;
+    }
+    openAccountPopover(trigger);
+  }, [accountOpen, closeAccountPopover, openAccountPopover]);
 
   useEffect(() => {
     const frame = window.requestAnimationFrame(() => {
@@ -92,6 +143,61 @@ export function WorkbenchShell({
     });
     return () => window.cancelAnimationFrame(frame);
   }, [mobilePreviewSignal]);
+
+  useEffect(() => {
+    if (!accountCloseSignal) return;
+    const frame = window.requestAnimationFrame(() => {
+      closeAccountPopover({ restoreFocus: false });
+    });
+    return () => window.cancelAnimationFrame(frame);
+  }, [accountCloseSignal, closeAccountPopover]);
+
+  useEffect(() => {
+    const frame = window.requestAnimationFrame(() => {
+      closeAccountPopover({ restoreFocus: false });
+    });
+    return () => window.cancelAnimationFrame(frame);
+  }, [closeAccountPopover, state.activeToolId, contentMode]);
+
+  useEffect(() => {
+    if (!accountOpen) return;
+    const frame = window.requestAnimationFrame(() => {
+      const targetPopoverId = lastAccountTriggerRef.current?.closest(".shell-header")
+        ? headerAccountPopoverId
+        : desktopAccountPopoverId;
+      const panel = rootRef.current?.querySelector<HTMLElement>(`#${CSS.escape(targetPopoverId)}`);
+      const firstAction = panel?.querySelector<HTMLElement>(
+        'button:not([disabled]), a[href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])',
+      );
+      (firstAction || panel)?.focus();
+    });
+    const onPointerDown = (event: PointerEvent) => {
+      const target = event.target;
+      if (!(target instanceof Node)) return;
+      if (target instanceof Element && target.closest(".account-popover-card, .shell-account")) return;
+      if (desktopAccountRef.current?.contains(target)) return;
+      closeAccountPopover();
+    };
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") closeAccountPopover();
+    };
+    window.addEventListener("pointerdown", onPointerDown);
+    window.addEventListener("keydown", onKeyDown);
+    return () => {
+      window.cancelAnimationFrame(frame);
+      window.removeEventListener("pointerdown", onPointerDown);
+      window.removeEventListener("keydown", onKeyDown);
+    };
+  }, [accountOpen, desktopAccountPopoverId, headerAccountPopoverId, closeAccountPopover]);
+
+  useEffect(() => {
+    return () => {
+      if (accountCloseTimerRef.current) {
+        window.clearTimeout(accountCloseTimerRef.current);
+        accountCloseTimerRef.current = null;
+      }
+    };
+  }, []);
 
   useEffect(() => {
     if (!drawerOpen) return;
@@ -135,39 +241,35 @@ export function WorkbenchShell({
       ref={rootRef}
       className={cn(
         "shell-root min-h-[100dvh] overflow-hidden bg-[var(--background)] text-[var(--foreground)]",
-        `shell-root--tool-${state.activeToolId}`,
+        !contentOnly && `shell-root--tool-${state.activeToolId}`,
+        contentOnly && "shell-root--account-center",
       )}
     >
       <Header
         isAuthenticated={isAuthenticated}
         accountName={accountName}
+        accountPointsLabel={accountPointsLabel}
         onToggleDrawer={() => setDrawerOpen((value) => !value)}
-        onToggleAccount={() => setAccountOpen((value) => !value)}
+        onToggleAccount={toggleAccountPopover}
+        onOpenAccountCenter={onOpenAccountCenter}
         accountOpen={accountOpen}
+        accountPopoverVisible={accountPopoverVisible}
+        accountPopoverClosing={accountPopoverClosing}
         headerRightSlot={headerRightSlot}
         accountSlot={accountSlot}
+        accountPopoverId={headerAccountPopoverId}
         drawerButtonRef={drawerButtonRef}
         drawerId={drawerId}
         drawerOpen={drawerOpen}
       />
 
-      {isAuthenticated && accountOpen ? (
-        <div className="shell-account-popover">
-          {accountSlot ? (
-            accountSlot
-          ) : (
-            <div className="rounded-[1.5rem] border border-white/10 bg-[#0f0f13] p-4 text-sm text-white/68 shadow-[0_20px_60px_rgba(0,0,0,0.28)]">
-              <p className="text-white/92">账户功能暂未加载。</p>
-            </div>
-          )}
-        </div>
-      ) : null}
-
       <MobileOverlay
         activeTool={activeTool}
+        title={toolTitle || activeTool.label}
         drawerOpen={drawerOpen}
         pane={pane}
         singlePane={singlePaneMobile}
+        accountCenterActive={contentOnly}
         onClose={() => setDrawerOpen(false)}
         onSelect={(action, tool) => {
           onToolAction(action, tool);
@@ -192,9 +294,17 @@ export function WorkbenchShell({
             isAuthenticated={isAuthenticated}
             canAccessAdmin={canAccessAdmin}
             accountName={accountName}
-            accountQuotaLabel={accountQuotaLabel}
+            accountPointsLabel={accountPointsLabel}
             accountOpen={accountOpen}
-            onToggleAccount={() => setAccountOpen((value) => !value)}
+            accountPopoverVisible={accountPopoverVisible}
+            accountPopoverClosing={accountPopoverClosing}
+            accountCenterActive={contentOnly}
+            accountSlot={accountSlot}
+            accountPopoverId={desktopAccountPopoverId}
+            accountContainerRef={desktopAccountRef}
+            onToggleAccount={toggleAccountPopover}
+            onOpenAccountCenter={onOpenAccountCenter}
+            onOpenAccountRecharge={onOpenAccountRecharge}
           />
 
           <section className={cn("shell-panel shell-panel--controls", singlePaneMobile && "shell-panel--mobile-single-hidden")}>
@@ -224,22 +334,32 @@ export function WorkbenchShell({
 function Header({
   isAuthenticated,
   accountName,
+  accountPointsLabel,
   onToggleDrawer,
   onToggleAccount,
+  onOpenAccountCenter,
   accountOpen,
+  accountPopoverVisible,
+  accountPopoverClosing,
   headerRightSlot,
   accountSlot,
+  accountPopoverId,
   drawerButtonRef,
   drawerId,
   drawerOpen,
 }: {
   isAuthenticated: boolean;
   accountName?: string | null;
+  accountPointsLabel?: string | null;
   onToggleDrawer: () => void;
-  onToggleAccount: () => void;
+  onToggleAccount: (trigger?: HTMLElement | null) => void;
+  onOpenAccountCenter?: () => void;
   accountOpen: boolean;
+  accountPopoverVisible: boolean;
+  accountPopoverClosing: boolean;
   headerRightSlot?: ReactNode;
   accountSlot?: ReactNode;
+  accountPopoverId: string;
   drawerButtonRef: RefObject<HTMLButtonElement | null>;
   drawerId: string;
   drawerOpen: boolean;
@@ -267,10 +387,27 @@ function Header({
       <div className="shell-header__actions">
         {headerRightSlot}
         {isAuthenticated ? (
-          <button type="button" className="shell-account" onClick={onToggleAccount} title={accountName || "账户"}>
+          <button
+            type="button"
+            className="shell-account"
+            onClick={(event) => {
+              if (accountSlot) {
+                onToggleAccount(event.currentTarget);
+                return;
+              }
+              onOpenAccountCenter?.();
+            }}
+            title={accountName || "账户"}
+            aria-haspopup={accountSlot ? "dialog" : undefined}
+            aria-expanded={accountSlot ? accountOpen : undefined}
+            aria-controls={accountSlot && accountPopoverVisible ? accountPopoverId : undefined}
+          >
             <span className="shell-account__avatar">{(accountName || "账户").slice(0, 2).toUpperCase()}</span>
-            <span className="shell-account__name">{accountName || "账户"}</span>
-            <ChevronDown className={cn("size-4 transition", accountOpen && "rotate-180")} />
+            <span className="shell-account__meta">
+              <span className="shell-account__name">{accountName || "账户"}</span>
+              <span className="shell-account__points">{accountPointsLabel || "—"}</span>
+            </span>
+            {accountSlot ? <ChevronDown className={cn("size-4 transition", accountOpen && "rotate-180")} /> : null}
           </button>
         ) : (
           <Link href="/login" className="shell-login">
@@ -280,15 +417,15 @@ function Header({
         )}
       </div>
 
-      {isAuthenticated && accountOpen ? (
-        <div className="absolute right-4 top-[calc(100%+12px)] z-[90] w-[min(92vw,420px)]">
-          {accountSlot ? (
-            accountSlot
-          ) : (
-            <div className="rounded-[1.5rem] border border-white/10 bg-[#0f0f13] p-4 text-sm text-white/68 shadow-[0_20px_60px_rgba(0,0,0,0.28)]">
-              <p className="text-white/92">账户功能暂未加载。</p>
-            </div>
-          )}
+      {isAuthenticated && accountSlot && accountPopoverVisible ? (
+        <div
+          id={accountPopoverId}
+          className={cn("shell-header-account__popover", accountPopoverClosing && "is-closing")}
+          role="dialog"
+          aria-label="快捷账户面板"
+          tabIndex={-1}
+        >
+          {accountSlot}
         </div>
       ) : null}
 
@@ -303,9 +440,17 @@ function DesktopNavigation({
   isAuthenticated,
   canAccessAdmin,
   accountName,
-  accountQuotaLabel,
+  accountPointsLabel,
   accountOpen,
+  accountPopoverVisible,
+  accountPopoverClosing,
+  accountCenterActive,
+  accountSlot,
+  accountPopoverId,
+  accountContainerRef,
   onToggleAccount,
+  onOpenAccountCenter,
+  onOpenAccountRecharge,
 }: {
   activeToolId: WorkspaceToolId;
   onSelect: (action: WorkspaceAction, tool: WorkspaceToolId) => void;
@@ -313,9 +458,17 @@ function DesktopNavigation({
   isAuthenticated: boolean;
   canAccessAdmin: boolean;
   accountName?: string | null;
-  accountQuotaLabel?: string | null;
+  accountPointsLabel?: string | null;
   accountOpen: boolean;
-  onToggleAccount: () => void;
+  accountPopoverVisible: boolean;
+  accountPopoverClosing: boolean;
+  accountCenterActive: boolean;
+  accountSlot?: ReactNode;
+  accountPopoverId: string;
+  accountContainerRef: RefObject<HTMLDivElement | null>;
+  onToggleAccount: (trigger?: HTMLElement | null) => void;
+  onOpenAccountCenter?: () => void;
+  onOpenAccountRecharge?: () => void;
 }) {
   const displayName = accountName || "账户";
   const avatarText = displayName.slice(0, 2).toUpperCase();
@@ -345,7 +498,7 @@ function DesktopNavigation({
                     <ToolButton
                       key={item.id}
                       item={item}
-                      active={activeToolId === item.id}
+                      active={!accountCenterActive && activeToolId === item.id}
                       showDescription={false}
                       onClick={() => onSelect(item.action, item.id)}
                     />
@@ -357,32 +510,58 @@ function DesktopNavigation({
         </div>
       </nav>
 
-      <div className="shell-nav__account" aria-label="账户状态">
+      <div
+        ref={accountContainerRef}
+        className={cn("shell-nav__account", isAuthenticated && accountOpen && "is-open", accountCenterActive && "is-active")}
+        aria-label="账户状态"
+      >
         {isAuthenticated ? (
           <>
-            <div className="shell-nav-account__main">
+            <button
+              type="button"
+              className="shell-nav-account__main shell-nav-account__main--button"
+              onClick={(event) => {
+                if (accountSlot) {
+                  onToggleAccount(event.currentTarget);
+                  return;
+                }
+                onOpenAccountCenter?.();
+              }}
+              aria-haspopup={accountSlot ? "dialog" : undefined}
+              aria-expanded={accountSlot ? accountOpen : undefined}
+              aria-controls={accountSlot && accountPopoverVisible ? accountPopoverId : undefined}
+            >
               <span className="shell-nav-account__avatar">{avatarText}</span>
               <span className="shell-nav-account__copy">
                 <strong>{displayName}</strong>
-                <span>剩余额度 {accountQuotaLabel || "读取中"}</span>
+                <span>剩余积分 {accountPointsLabel || "—"}</span>
               </span>
-            </div>
-            <div className={cn("shell-nav-account__actions", canAccessAdmin && "is-split")}>
+            </button>
+            <div className="shell-nav-account__actions is-split">
               <button
                 type="button"
-                className={cn("shell-nav-account__button", accountOpen && "is-active")}
-                onClick={onToggleAccount}
+                className={cn("shell-nav-account__button", accountCenterActive && "is-active")}
+                onClick={onOpenAccountCenter || ((event) => onToggleAccount(event.currentTarget))}
               >
                 <UserRound className="size-4" aria-hidden="true" />
-                账户中心
+                用户中心
               </button>
-              {canAccessAdmin ? (
-                <Link href="/admin/providers" className="shell-nav-account__button shell-nav-account__button--admin">
-                  <Settings className="size-4" aria-hidden="true" />
-                  后台管理
-                </Link>
-              ) : null}
+              <button type="button" className="shell-nav-account__button shell-nav-account__button--primary" onClick={onOpenAccountRecharge || ((event) => onToggleAccount(event.currentTarget))}>
+                <CreditCard className="size-4" aria-hidden="true" />
+                充值
+              </button>
             </div>
+            {accountSlot && accountPopoverVisible ? (
+              <div
+                id={accountPopoverId}
+                className={cn("shell-nav-account__popover", accountPopoverClosing && "is-closing")}
+                role="dialog"
+                aria-label="快捷账户面板"
+                tabIndex={-1}
+              >
+                {accountSlot}
+              </div>
+            ) : null}
           </>
         ) : (
           <>
@@ -408,9 +587,11 @@ function DesktopNavigation({
 
 function MobileOverlay({
   activeTool,
+  title,
   drawerOpen,
   pane,
   singlePane,
+  accountCenterActive,
   onClose,
   onSelect,
   onChangePane,
@@ -423,9 +604,11 @@ function MobileOverlay({
   drawerId,
 }: {
   activeTool: WorkspaceToolEntry;
+  title: string;
   drawerOpen: boolean;
   pane: ShellPane;
   singlePane: boolean;
+  accountCenterActive: boolean;
   onClose: () => void;
   onSelect: (action: WorkspaceAction, tool: WorkspaceToolId) => void;
   onChangePane: (value: ShellPane) => void;
@@ -444,7 +627,7 @@ function MobileOverlay({
       <div className={cn("shell-mobile-tabs", singlePane && "is-single-pane")}>
         <div className="shell-mobile-tabs__left">
           <span className="shell-eyebrow">当前工具</span>
-          <strong className="shell-mobile-tabs__title">{activeTool.label}</strong>
+          <strong className="shell-mobile-tabs__title">{title}</strong>
         </div>
         {!singlePane ? <div className="shell-mobile-tabs__switch" role="tablist" aria-label="参数和预览视图">
           <button
@@ -474,7 +657,7 @@ function MobileOverlay({
         </div> : null}
       </div>
 
-      <div className="shell-mobile-action-slot">{mobileActionSlot}</div>
+      <div className="shell-mobile-action-slot">{pane === "parameters" ? mobileActionSlot : null}</div>
 
       <div className={cn("shell-drawer-backdrop", drawerOpen && "is-open")} onClick={onClose} aria-hidden="true" />
       <aside
@@ -512,7 +695,7 @@ function MobileOverlay({
                     <ToolButton
                       key={item.id}
                       item={item}
-                      active={activeTool.id === item.id}
+                      active={!accountCenterActive && activeTool.id === item.id}
                       showDescription={false}
                       onClick={() => {
                         onSelect(item.action, item.id);
@@ -584,6 +767,7 @@ function ToolButton({
       className={cn("shell-nav-item", active && "is-active", compact && "is-compact")}
       aria-current={active ? "page" : undefined}
     >
+      <span className="shell-nav-item__indicator" aria-hidden="true" />
       <span className="shell-nav-item__icon-wrap" aria-hidden="true">
         <Icon className="shell-nav-item__icon" />
         {SecondaryIcon ? <SecondaryIcon className="shell-nav-item__icon-secondary" /> : null}

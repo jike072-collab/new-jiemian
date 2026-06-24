@@ -16,19 +16,15 @@ const endpointOptions: Array<{ value: EndpointType; label: string }> = [
   { value: "images-generations", label: "OpenAI-compatible images/generations" },
   { value: "images-edits", label: "OpenAI-compatible images/edits (multipart)" },
   { value: "videos-generations", label: "OpenAI-compatible videos/generations" },
-  { value: "upscayl-cli", label: "本地 Upscayl CLI（图片高清）" },
-  { value: "video2x-cli", label: "本地 Video2X CLI（视频高清）" },
+  { value: "volcengine-imagex-upscale", label: "火山 ImageX（图片高清）" },
+  { value: "volcengine-vod-upscale", label: "火山 VOD（视频高清）" },
 ];
 
 function endpointOptionsFor(provider: EditableProvider) {
   if (provider.kind === "image") return endpointOptions.filter((option) => option.value.startsWith("images-"));
   if (provider.kind === "video") return endpointOptions.filter((option) => option.value === "videos-generations");
-  if (provider.kind === "image-upscale") return endpointOptions.filter((option) => option.value === "upscayl-cli");
-  return endpointOptions.filter((option) => option.value === "video2x-cli");
-}
-
-function isLocalCli(endpointType: EndpointType) {
-  return endpointType === "upscayl-cli" || endpointType === "video2x-cli";
+  if (provider.kind === "image-upscale") return endpointOptions.filter((option) => option.value === "volcengine-imagex-upscale");
+  return endpointOptions.filter((option) => option.value === "volcengine-vod-upscale");
 }
 
 async function readJson(response: Response) {
@@ -172,8 +168,8 @@ export function AdminProvidersClient() {
                 <div>
                   <div className="flex items-center gap-3">
                     <h2 className="text-xl font-black">{provider.title}</h2>
-                    <span className={`rounded-full px-2 py-1 text-xs ${provider.configured || isLocalCli(provider.endpointType) ? "bg-emerald-500/15 text-emerald-300" : "bg-amber-500/15 text-amber-200"}`}>
-                      {isLocalCli(provider.endpointType) ? "无需密钥" : provider.configured ? "已配置" : "缺少密钥"}
+                    <span className={`rounded-full px-2 py-1 text-xs ${provider.configured ? "bg-emerald-500/15 text-emerald-300" : "bg-amber-500/15 text-amber-200"}`}>
+                      {provider.configured ? "已配置" : "缺少密钥"}
                     </span>
                   </div>
                   <p className="mt-1 text-sm text-white/45">{provider.role}</p>
@@ -191,12 +187,11 @@ export function AdminProvidersClient() {
 
               <div className="mt-5 grid gap-4 xl:grid-cols-[1.2fr_.75fr_.75fr_1fr]">
                 <label className="admin-field">
-                  {isLocalCli(provider.endpointType) ? "可执行文件路径（留空自动检测）" : "接口地址"}
+                  接口地址
                   <input
-                    type={isLocalCli(provider.endpointType) ? "text" : "url"}
+                    type="url"
                     value={provider.apiUrl}
                     onChange={(event) => update(provider.id, { apiUrl: event.target.value })}
-                    placeholder={isLocalCli(provider.endpointType) ? "留空时自动检测本机安装路径" : undefined}
                     className="admin-input"
                   />
                 </label>
@@ -231,38 +226,31 @@ export function AdminProvidersClient() {
                 </label>
               </div>
 
-              {isLocalCli(provider.endpointType) ? (
-                <div className="mt-4 flex items-center gap-3 rounded-2xl border border-emerald-400/15 bg-emerald-500/8 px-4 py-3 text-sm text-emerald-200">
-                  <KeyRound className="size-4 shrink-0" />
-                  本地 CLI 直接在本机运行，无需 API Key。
-                </div>
-              ) : (
-                <div className="mt-4 grid gap-4 md:grid-cols-[1fr_auto] md:items-end">
-                  <label className="admin-field">
-                    <span className="flex items-center gap-2">
-                      <KeyRound className="size-4" />
-                      替换 API Key
-                    </span>
-                    <input
-                      type="password"
-                      value={provider.newApiKey}
-                      disabled={provider.clearApiKey}
-                      onChange={(event) => update(provider.id, { newApiKey: event.target.value })}
-                      placeholder={provider.keyPreview ? `当前密钥：${provider.keyPreview}；留空保持不变` : "尚未配置密钥"}
-                      className="admin-input"
-                    />
-                  </label>
-                  <label className="flex h-12 items-center gap-2 rounded-2xl border border-white/10 px-4 text-sm text-white/55">
-                    <input
-                      type="checkbox"
-                      checked={provider.clearApiKey}
-                      onChange={(event) => update(provider.id, { clearApiKey: event.target.checked, newApiKey: "" })}
-                      className="size-4 accent-red-500"
-                    />
-                    清除密钥
-                  </label>
-                </div>
-              )}
+              <div className="mt-4 grid gap-4 md:grid-cols-[1fr_auto] md:items-end">
+                <label className="admin-field">
+                  <span className="flex items-center gap-2">
+                    <KeyRound className="size-4" />
+                    替换 API Key
+                  </span>
+                  <input
+                    type="password"
+                    value={provider.newApiKey}
+                    disabled={provider.clearApiKey}
+                    onChange={(event) => update(provider.id, { newApiKey: event.target.value })}
+                    placeholder={provider.keyPreview ? `当前密钥：${provider.keyPreview}；留空保持不变` : "尚未配置密钥"}
+                    className="admin-input"
+                  />
+                </label>
+                <label className="flex h-12 items-center gap-2 rounded-2xl border border-white/10 px-4 text-sm text-white/55">
+                  <input
+                    type="checkbox"
+                    checked={provider.clearApiKey}
+                    onChange={(event) => update(provider.id, { clearApiKey: event.target.checked, newApiKey: "" })}
+                    className="size-4 accent-red-500"
+                  />
+                  清除密钥
+                </label>
+              </div>
             </article>
           ))}
         </section>

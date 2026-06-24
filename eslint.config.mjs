@@ -15,6 +15,7 @@ const eslintConfig = defineConfig([
     "next-env.d.ts",
     ".chrome-stage5/**",
     "**/.chrome-stage5/**",
+    "artifacts/**",
   ]),
 ]);
 
