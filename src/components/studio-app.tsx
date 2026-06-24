@@ -3213,6 +3213,7 @@ function ImageGenerator({
             options={[
               { value: "1k", label: "1K（默认）" },
               { value: "2k", label: "2K（细节更多）" },
+              { value: "4k", label: "4K（大图输出）" },
             ]}
             onChange={onQualityChange}
           />

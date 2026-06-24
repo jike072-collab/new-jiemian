@@ -7,7 +7,7 @@ export function estimateImageGenerationQuota(input: {
   quality: string;
   referenceImages: number;
 }) {
-  const base = input.quality === "2k" ? 80 : 40;
+  const base = input.quality === "4k" ? 160 : input.quality === "2k" ? 80 : 40;
   const referenceCost = input.mode === "image-to-image" ? Math.min(40, Math.max(0, input.referenceImages) * 8) : 0;
   return Math.max(20, base + referenceCost);
 }

@@ -115,6 +115,14 @@ function ratioTo720pSize(ratio: string) {
   return "720x720";
 }
 
+function imageQualityLabel(quality: string) {
+  return quality === "4k" || quality === "2k" ? "high" : "standard";
+}
+
+function imageUpscaleValue(quality: string) {
+  return quality === "4k" ? "4k" : quality === "2k" ? "2k" : "";
+}
+
 function normalizeStatus(value: string) {
   const status = value.toLowerCase();
   if (["done", "completed", "succeeded", "success"].includes(status)) return "done";
@@ -347,14 +355,15 @@ async function callImageProvider({
   const apiUrl = imageEndpoint(provider, useMultipart);
 
   if (useMultipart) {
+    const upscale = imageUpscaleValue(quality);
     const form = new FormData();
     form.append("model", provider.model);
     form.append("prompt", prompt);
     form.append("n", "1");
     form.append("size", size);
-    form.append("quality", quality === "2k" ? "high" : "standard");
+    form.append("quality", imageQualityLabel(quality));
     form.append("response_format", "url");
-    if (quality === "2k") form.append("upscale", "2k");
+    if (upscale) form.append("upscale", upscale);
     files.forEach((file, index) => {
       form.append(
         index === 0 ? "image" : "image[]",
@@ -372,6 +381,7 @@ async function callImageProvider({
     return parseProviderOutput(await readProviderJson(response));
   }
 
+  const upscale = imageUpscaleValue(quality);
   const response = await fetch(apiUrl, {
     method: "POST",
     headers: {
@@ -382,9 +392,9 @@ async function callImageProvider({
       model: provider.model,
       prompt,
       size,
-      quality: quality === "2k" ? "high" : "standard",
+      quality: imageQualityLabel(quality),
       response_format: "url",
-      ...(quality === "2k" ? { upscale: "2k" } : {}),
+      ...(upscale ? { upscale } : {}),
     }),
     signal: AbortSignal.timeout(300000),
   });

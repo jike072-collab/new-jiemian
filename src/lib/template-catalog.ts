@@ -25,7 +25,7 @@ export type ImagePromptTemplate = TemplateBase & {
   targetToolId: "image" | "image-editor";
   mode: WorkspaceImageMode;
   aspectRatio: string;
-  quality: "1k" | "2k";
+  quality: "1k" | "2k" | "4k";
 };
 
 export type VideoPromptTemplate = TemplateBase & {
