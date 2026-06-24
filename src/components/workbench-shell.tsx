@@ -654,7 +654,7 @@ function MobileOverlay({
         </div> : null}
       </div>
 
-      <div className="shell-mobile-action-slot">{mobileActionSlot}</div>
+      <div className="shell-mobile-action-slot">{pane === "parameters" ? mobileActionSlot : null}</div>
 
       <div className={cn("shell-drawer-backdrop", drawerOpen && "is-open")} onClick={onClose} aria-hidden="true" />
       <aside

@@ -260,6 +260,10 @@ type VideoUpscaleWorkspaceState = {
   job: JobRecord | null;
 };
 
+function videoUpscaleScaleLabel(scale: string) {
+  return scale === "4" ? "2K" : "1K";
+}
+
 const ratios = ["1:1", "16:9", "9:16", "4:3", "3:4", "3:2", "2:3"];
 const defaultVideoDurations = [5, 8, 10, 15];
 const grokVideoDurations = [4, 6, 8, 10, 12, 15];
@@ -592,7 +596,7 @@ export function StudioApp() {
     statusError: "",
   });
   const [videoUpscaleWorkspace, setVideoUpscaleWorkspace] = useState<VideoUpscaleWorkspaceState>({
-    scale: "2",
+    scale: "4",
     file: null,
     fileError: "",
     submitError: "",
@@ -4720,9 +4724,9 @@ function VideoUpscalePreviewPanel({
     const outputSize = typeof params.outputWidth === "number" && typeof params.outputHeight === "number"
       ? `${params.outputWidth} x ${params.outputHeight}`
       : "未记录";
-    const resultScale = typeof params.scale === "number" ? `${params.scale}x` : `${state.scale}x`;
+    const resultScale = videoUpscaleScaleLabel(typeof params.scale === "number" ? String(params.scale) : state.scale);
     return (
-      <PreviewState eyebrow="结果" title="高清结果" description={`${state.scale}x 高清处理完成。`} badge={libraryStatusBadgeLabel(output.item.status)} role="status" live>
+      <PreviewState eyebrow="结果" title="高清结果" description={`${videoUpscaleScaleLabel(state.scale)} 高清处理完成。`} badge={libraryStatusBadgeLabel(output.item.status)} role="status" live>
         {source ? (
           <BeforeAfterImageCompare
             beforeSrc={source.previewUrl}
@@ -4835,8 +4839,8 @@ function VideoUpscaleForm({
           groupId="video-upscale-scale"
           value={state.scale}
           options={[
-            ["2", "2x"],
-            ["4", "4x"],
+            ["2", "1K"],
+            ["4", "2K"],
           ]}
           onChange={onScaleChange}
         />
@@ -5151,12 +5155,34 @@ function LibraryToolbar({
   onSortChange: (value: LibrarySort) => void;
   onSearchChange: (value: string) => void;
 }) {
+  const searchInputRef = useRef<HTMLInputElement | null>(null);
+  const [mobileSearchOpen, setMobileSearchOpen] = useState(false);
+  const searchVisible = mobileSearchOpen || Boolean(search.trim());
+
+  const toggleMobileSearch = () => {
+    setMobileSearchOpen((value) => {
+      const next = !value;
+      if (next) window.requestAnimationFrame(() => searchInputRef.current?.focus());
+      return next;
+    });
+  };
+
   return (
-    <div className="studio-library-toolbar">
+    <div className={cn("studio-library-toolbar", searchVisible && "is-search-open")}>
+      <button
+        type="button"
+        className={cn("studio-library-search-trigger", searchVisible && "is-active")}
+        onClick={toggleMobileSearch}
+        aria-label="搜索作品"
+        aria-expanded={searchVisible}
+      >
+        <Search className="size-4" aria-hidden="true" />
+      </button>
       <div className="studio-library-toolbar__search">
         <Search className="size-4" aria-hidden="true" />
         <label className="studio-sr-only" htmlFor="library-search">查找作品</label>
         <input
+          ref={searchInputRef}
           id="library-search"
           value={search}
           onChange={(event) => onSearchChange(event.target.value)}

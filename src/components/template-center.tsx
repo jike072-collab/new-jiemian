@@ -3,7 +3,7 @@
 /* eslint-disable @next/next/no-img-element */
 
 import Link from "next/link";
-import { ArrowRight, Search } from "lucide-react";
+import { ArrowRight, Search, SlidersHorizontal } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type PointerEvent as ReactPointerEvent } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 
@@ -342,13 +342,15 @@ function TemplateCategoryPanel({
   category,
   counts,
   onCategoryChange,
+  className,
 }: {
   category: TemplateCategory | "全部";
   counts: Record<TemplateCategory | "全部", number>;
   onCategoryChange: (value: TemplateCategory | "全部") => void;
+  className?: string;
 }) {
   return (
-    <div className="template-center-panel">
+    <div className={cn("template-center-panel", className)}>
       <div className="template-center-categories" role="group" aria-label="模板分类">
         {templateCategories.filter((item) => item === "全部" || counts[item] > 0).map((item) => {
           const meta = templateCategoryMeta[item];
@@ -398,14 +400,22 @@ function TemplateBrowserPanel({
   const gridMotionKey = `${scope}:${category}:${search.trim().toLowerCase()}`;
   const searchInputRef = useRef<HTMLInputElement | null>(null);
   const [mobileSearchOpen, setMobileSearchOpen] = useState(false);
+  const [mobileCategoryOpen, setMobileCategoryOpen] = useState(false);
 
   const handleCategoryChange = (value: TemplateCategory | "全部") => {
     onCategoryChange(value);
   };
 
   const openMobileSearch = () => {
-    setMobileSearchOpen(true);
-    window.requestAnimationFrame(() => searchInputRef.current?.focus());
+    setMobileSearchOpen((value) => {
+      const next = !value;
+      if (next) window.requestAnimationFrame(() => searchInputRef.current?.focus());
+      return next;
+    });
+  };
+
+  const openMobileCategories = () => {
+    setMobileCategoryOpen((value) => !value);
   };
 
   const cloneHref = (id: string) => {
@@ -423,7 +433,13 @@ function TemplateBrowserPanel({
         <span className="shell-chip">共 {totalCount} 个模板</span>
       </div>
 
-      <div className={cn("template-center-toolbar", (mobileSearchOpen || search.trim()) && "is-search-open")}>
+      <div
+        className={cn(
+          "template-center-toolbar",
+          (mobileSearchOpen || search.trim()) && "is-search-open",
+          (mobileCategoryOpen || category !== "全部") && "is-filter-open",
+        )}
+      >
         <div className="template-center-tabs" role="tablist" aria-label="模板类型">
           <button
             type="button"
@@ -453,6 +469,16 @@ function TemplateBrowserPanel({
           <Search className="size-4" aria-hidden="true" />
         </button>
 
+        <button
+          type="button"
+          className={cn("template-center-filter-trigger", (mobileCategoryOpen || category !== "全部") && "is-active")}
+          onClick={openMobileCategories}
+          aria-label="筛选模板分类"
+          aria-expanded={mobileCategoryOpen || category !== "全部"}
+        >
+          <SlidersHorizontal className="size-4" aria-hidden="true" />
+        </button>
+
         <label className="template-center-search">
           <Search className="size-4" aria-hidden="true" />
           <input
@@ -469,6 +495,7 @@ function TemplateBrowserPanel({
           category={category}
           counts={counts}
           onCategoryChange={handleCategoryChange}
+          className={cn((mobileCategoryOpen || category !== "全部") && "is-open")}
         />
       </div>
 
