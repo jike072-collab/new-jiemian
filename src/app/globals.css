@@ -8932,6 +8932,29 @@
   }
 }
 
+@media (max-width: 1199px) {
+  html,
+  body,
+  .shell-grid,
+  .shell-nav__scroll,
+  .shell-drawer__nav,
+  .shell-panel__body {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+  }
+
+  html::-webkit-scrollbar,
+  body::-webkit-scrollbar,
+  .shell-grid::-webkit-scrollbar,
+  .shell-nav__scroll::-webkit-scrollbar,
+  .shell-drawer__nav::-webkit-scrollbar,
+  .shell-panel__body::-webkit-scrollbar {
+    display: none;
+    width: 0;
+    height: 0;
+  }
+}
+
 @media (max-width: 1199px) and (min-width: 768px) {
   .shell-grid {
     grid-template-columns: 72px minmax(320px, 352px) minmax(0, 1fr);
