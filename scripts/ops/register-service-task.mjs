@@ -39,7 +39,7 @@ function writeWatchdogScript(config) {
     "$ErrorActionPreference = 'Stop'",
     `$root = '${escapePowerShellSingleQuoted(config.root)}'`,
     "Set-Location -LiteralPath $root",
-    `node scripts/ops/start-service.mjs ${config.service}`,
+    `node scripts/ops/watchdog-service.mjs ${config.service}`,
     "",
   ].join("\r\n");
   writeFileSync(scriptPath, `\uFEFF${script}`, "utf8");

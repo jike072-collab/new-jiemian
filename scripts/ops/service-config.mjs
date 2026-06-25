@@ -1,5 +1,5 @@
 import { existsSync } from "node:fs";
-import { dirname, join, resolve } from "node:path";
+import { dirname, isAbsolute, join, relative, resolve } from "node:path";
 
 export const serviceNames = ["production", "staging"];
 
@@ -36,7 +36,8 @@ export function assertServiceName(service) {
 
 export function getServiceConfig(service, options = {}) {
   assertServiceName(service);
-  const root = resolve(options.root || process.cwd());
+  const root = resolve(options.root || getKnownServiceRoot(service));
+  assertServiceRoot(service, root);
   const definition = serviceDefinitions[service];
   const runtimeDir = join(root, ".runtime");
   const portEnvKey = service === "production" ? "PRODUCTION_PORT" : "STAGING_PORT";
@@ -60,20 +61,65 @@ export function getServiceConfig(service, options = {}) {
 
 export function getKnownServiceRoot(service, options = {}) {
   assertServiceName(service);
-  if (options.root) return resolve(options.root);
+  if (options.root) {
+    const root = resolve(options.root);
+    assertServiceRoot(service, root);
+    return root;
+  }
   const envKey = service === "production" ? "AOHUANG_PRODUCTION_ROOT" : "AOHUANG_STAGING_ROOT";
-  if (process.env[envKey]) return resolve(process.env[envKey]);
+  if (process.env[envKey]) {
+    const root = resolve(process.env[envKey]);
+    assertServiceRoot(service, root);
+    return root;
+  }
 
   const cwd = resolve(process.cwd());
   const parent = dirname(cwd);
   const sibling = service === "production" ? join(parent, "new-jiemian") : join(parent, "new-jiemian-3107");
-  if (existsSync(join(sibling, "package.json"))) return sibling;
-  return cwd;
+  if (existsSync(join(sibling, "package.json"))) {
+    assertServiceRoot(service, sibling);
+    return sibling;
+  }
+  throw new Error(`Unable to resolve ${service} service root. Pass --root or set ${envKey}; refusing to fall back to the current directory.`);
 }
 
 export function getAllServiceConfigs(options = {}) {
-  return serviceNames.map((service) => {
+  const configs = serviceNames.map((service) => {
     const root = getKnownServiceRoot(service, { root: options[`${service}Root`] });
     return getServiceConfig(service, { root });
   });
+  assertServiceConfigsSeparated(configs);
+  return configs;
+}
+
+export function assertServiceRoot(service, root) {
+  assertServiceName(service);
+  const resolved = resolve(root);
+  if (!existsSync(join(resolved, "package.json"))) {
+    throw new Error(`${service} service root is invalid: package.json is missing at ${resolved}`);
+  }
+}
+
+export function assertServiceConfigsSeparated(configs) {
+  const [production, staging] = configs;
+  if (!production || !staging) return;
+  if (samePath(production.root, staging.root)) {
+    throw new Error("production and staging service roots must not be the same directory.");
+  }
+  for (const prodPath of [production.dataDir, production.uploadsDir]) {
+    for (const stagingPath of [staging.dataDir, staging.uploadsDir]) {
+      if (samePath(prodPath, stagingPath) || isPathInside(prodPath, stagingPath) || isPathInside(stagingPath, prodPath)) {
+        throw new Error("production and staging data/uploads directories must be isolated.");
+      }
+    }
+  }
+}
+
+function samePath(left, right) {
+  return resolve(left).toLowerCase() === resolve(right).toLowerCase();
+}
+
+function isPathInside(parent, child) {
+  const rel = relative(resolve(parent), resolve(child));
+  return Boolean(rel) && !rel.startsWith("..") && !isAbsolute(rel);
 }

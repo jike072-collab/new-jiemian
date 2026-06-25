@@ -6,7 +6,8 @@ import { pathToFileURL } from "node:url";
 import { buildRuntimeEnv, formatRuntimeEnvSummary } from "./load-runtime-env.mjs";
 import { getServiceConfig } from "./service-config.mjs";
 import { rotateLogFile } from "./log-utils.mjs";
-import { assertPortAvailable, run, runSync } from "./process-utils.mjs";
+import { assertPortAvailable, getProcessInfo, run } from "./process-utils.mjs";
+import { buildServiceState, classifyServiceProcess } from "./process-identity.mjs";
 
 export async function startService(service, options = {}) {
   const config = getServiceConfig(service, options);
@@ -15,6 +16,10 @@ export async function startService(service, options = {}) {
     throw new Error(`Missing required runtime configuration before stopping any process: ${runtime.missing.join(", ")}`);
   }
   if (options.preflightOnly !== true && options.foreground !== true) {
+    const identity = await classifyServiceProcess(service, { root: config.root, port: config.port });
+    if (!["stopped", "stale"].includes(identity.status)) {
+      throw new Error(`Port ${config.port} is already in use by ${identity.status} process; refusing duplicate start.`);
+    }
     await assertPortAvailable(config.port);
   }
   mkdirSync(config.runtimeDir, { recursive: true });
@@ -56,29 +61,13 @@ export async function startService(service, options = {}) {
   child.unref();
   closeSync(outFd);
 
-  writeFileSync(config.stateFile, JSON.stringify({
-    service,
+  writeFileSync(config.stateFile, JSON.stringify(buildServiceState(config, {
     pid: child.pid,
-    port: config.port,
-    root: config.root,
-    dataDir: config.dataDir,
-    uploadsDir: config.uploadsDir,
-    logFile: config.logFile,
-    startedAt: new Date().toISOString(),
-    command: `node ${nextBin} start -H 127.0.0.1`,
+    processInfo: getProcessInfo(child.pid),
     envFiles: runtime.summary.files,
-    commit: safeGitHead(config.root),
-  }, null, 2));
+  }), null, 2));
 
   return { config, runtime, pid: child.pid };
-}
-
-function safeGitHead(root) {
-  try {
-    return runSync("git", ["rev-parse", "HEAD"], { cwd: root }).stdout.trim();
-  } catch {
-    return "unknown";
-  }
 }
 
 async function cli() {

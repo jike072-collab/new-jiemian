@@ -8,9 +8,14 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import net from "node:net";
 import { buildRuntimeEnv, formatRuntimeEnvSummary } from "./ops/load-runtime-env.mjs";
-import { getServiceConfig } from "./ops/service-config.mjs";
+import { getKnownServiceRoot, getServiceConfig } from "./ops/service-config.mjs";
 import { getServiceStatus } from "./ops/service-status.mjs";
-import { createServiceBackup, snapshotDirectory, writeRollbackScript } from "./ops/backup-utils.mjs";
+import { createServiceBackup, restoreDataAndUploads, snapshotDirectory, verifyBackupManifest, writeRollbackScript } from "./ops/backup-utils.mjs";
+import { createDatabaseBackup } from "./ops/database-backup.mjs";
+import { prepareDatabaseRestore } from "./ops/database-restore.mjs";
+import { classifyServiceProcess, createCommandFingerprint } from "./ops/process-identity.mjs";
+import { stopService } from "./ops/stop-service.mjs";
+import { runWatchdog } from "./ops/watchdog-service.mjs";
 
 const tests = [];
 let passed = 0;
@@ -104,6 +109,21 @@ test("environment values are masked in summaries", async () => {
   });
 });
 
+test("process.env overrides env files but service invariants still win", async () => {
+  await withTempProject(async (root) => {
+    const report = withProcessEnv({
+      APP_DATABASE_EXPECTED_NAME: "process_db",
+      DATA_DIR: join(root, "wrong-data"),
+      UPLOADS_DIR: join(root, "wrong-uploads"),
+    }, () => buildRuntimeEnv("staging", { root }));
+    assert.equal(report.env.APP_DATABASE_EXPECTED_NAME, "process_db");
+    assert.equal(report.sources.APP_DATABASE_EXPECTED_NAME, "process");
+    assert.equal(report.env.DATA_DIR, join(root, "data-staging"));
+    assert.equal(report.env.UPLOADS_DIR, join(root, "uploads-staging"));
+    assert.equal(report.sources.DATA_DIR, "service-invariant");
+  });
+});
+
 test("missing required environment fails before process stop", async () => {
   await withTempProject(async (root) => {
     await writeFile(join(root, ".env.local"), "AUTH_SESSION_SECRET=only-secret\n");
@@ -162,6 +182,36 @@ test("status command identifies invalid pid as not listening", async () => {
   });
 });
 
+test("stale state is detected without killing a reused pid", async () => {
+  await withTempProject(async (root) => {
+    const config = getServiceConfig("staging", { root, port: "49999" });
+    await writeFile(config.stateFile, JSON.stringify({
+      serviceName: "staging",
+      port: config.port,
+      pid: 999999,
+      workdir: config.root,
+      dataDir: config.dataDir,
+      uploadsDir: config.uploadsDir,
+    }, null, 2));
+    const identity = await classifyServiceProcess("staging", { root, port: config.port });
+    assert.equal(identity.status, "stale");
+  });
+});
+
+test("foreign port occupant is not stopped", async () => {
+  await withTempProject(async (root) => {
+    const port = await findAvailablePort();
+    const server = net.createServer((socket) => socket.end("foreign"));
+    await new Promise((resolve) => server.listen(port, "127.0.0.1", resolve));
+    try {
+      await assertRejectsAsync(() => stopService("staging", { root, port: String(port) }), /refused/);
+      assert.equal(server.listening, true);
+    } finally {
+      await new Promise((resolve) => server.close(resolve));
+    }
+  });
+});
+
 test("status command reads commit from git metadata without git process access", async () => {
   await withTempProject(async (root) => {
     const commit = "04674d00060334ddfeb018b2724f6fa1c988f7a5";
@@ -204,6 +254,149 @@ test("backup and rollback script are generated without touching data", async () 
   });
 });
 
+test("full rollback restores data and uploads from verified backup", async () => {
+  await withTempProject(async (root) => {
+    await writeFile(join(root, "data", "library.json"), "before");
+    await writeFile(join(root, "uploads", "asset.txt"), "upload-before");
+    const config = getServiceConfig("production", { root });
+    const backup = createServiceBackup(config, { note: "rollback test" });
+    await writeFile(join(root, "data", "library.json"), "after");
+    await writeFile(join(root, "data", "new.json"), "new");
+    await writeFile(join(root, "uploads", "asset.txt"), "upload-after");
+    restoreDataAndUploads(config, backup.backupDir);
+    assert.equal(readFileSync(join(root, "data", "library.json"), "utf8"), "before");
+    assert.equal(existsSync(join(root, "data", "new.json")), false);
+    assert.equal(readFileSync(join(root, "uploads", "asset.txt"), "utf8"), "upload-before");
+  });
+});
+
+test("corrupt rollback backup fails before restore", async () => {
+  await withTempProject(async (root) => {
+    await writeFile(join(root, "data", "library.json"), "before");
+    const config = getServiceConfig("production", { root });
+    const backup = createServiceBackup(config, { note: "corrupt rollback test" });
+    await writeFile(join(backup.backupDir, "data", "library.json"), "corrupt");
+    assert.throws(() => verifyBackupManifest(config, backup.backupDir), /checksum mismatch/);
+  });
+});
+
+test("postgres backup uses pg_dump and pg_restore without logging the connection string", async () => {
+  await withTempProject(async (root) => {
+    const bin = join(root, "fake-bin");
+    mkdirSync(bin, { recursive: true });
+    const fakeDump = join(bin, "pg-dump.mjs");
+    const fakeRestore = join(bin, "pg-restore.mjs");
+    await writeFile(fakeDump, [
+      "import { writeFileSync } from 'node:fs';",
+      "if (process.argv.includes('--version')) { console.log('pg_dump (PostgreSQL) 16.0'); process.exit(0); }",
+      "const index = process.argv.indexOf('--file');",
+      "writeFileSync(process.argv[index + 1], 'fake dump');",
+      "",
+    ].join("\n"));
+    await writeFile(fakeRestore, [
+      "if (process.argv.includes('--version')) { console.log('pg_restore (PostgreSQL) 16.0'); process.exit(0); }",
+      "if (process.argv.includes('--list')) { console.log('fake list'); process.exit(0); }",
+      "",
+    ].join("\n"));
+    const config = getServiceConfig("production", { root });
+    const result = withProcessEnv({
+      APP_DATABASE_URL: "postgresql://example_user:example_password@127.0.0.1:5432/app_db",
+    }, () => createDatabaseBackup(config, {
+      backupDir: join(root, "backup"),
+      pgDumpCommand: [process.execPath, fakeDump],
+      pgRestoreCommand: [process.execPath, fakeRestore],
+    }));
+    assert.equal(result.type, "postgres");
+    assert.equal(existsSync(result.files[0]), true);
+    assert(!JSON.stringify(result).includes("example_password"));
+    assert(!JSON.stringify(result).includes("postgresql://"));
+  });
+});
+
+test("postgres restore refuses destructive restore before service stop without explicit allow", async () => {
+  await withTempProject(async (root) => {
+    const config = getServiceConfig("production", { root });
+    const dump = join(root, "backup", "database", "production-postgres.dump");
+    mkdirSync(join(root, "backup", "database"), { recursive: true });
+    await writeFile(dump, "fake dump");
+    const fakeRestore = join(root, "pg-restore.mjs");
+    await writeFile(fakeRestore, [
+      "if (process.argv.includes('--version')) { console.log('pg_restore (PostgreSQL) 16.0'); process.exit(0); }",
+      "if (process.argv.includes('--list')) { console.log('fake list'); process.exit(0); }",
+      "",
+    ].join("\n"));
+    const manifest = {
+      serviceName: "production",
+      databaseBackup: {
+        type: "postgres",
+        files: [dump],
+        databaseName: "app_db",
+      },
+    };
+    assert.throws(() => prepareDatabaseRestore(config, manifest, {
+      APP_DATABASE_URL: "postgresql://example_user:example_password@127.0.0.1:5432/app_db",
+    }, { pgRestoreCommand: [process.execPath, fakeRestore] }), /requires AOHUANG_ALLOW_DATABASE_RESTORE/);
+  });
+});
+
+test("watchdog leaves a healthy foreign-free service alone", async () => {
+  await withTempProject(async (root) => {
+    const port = await findAvailablePort();
+    const config = getServiceConfig("staging", { root, port: String(port) });
+    let requests = 0;
+    const server = http.createServer((request, response) => {
+      requests += 1;
+      response.writeHead(request.url === "/admin/providers" ? 307 : 200);
+      response.end("ok");
+    });
+    await new Promise((resolve) => server.listen(port, "127.0.0.1", resolve));
+    await writeFile(config.stateFile, JSON.stringify({
+      statusVersion: 2,
+      serviceName: "staging",
+      service: "staging",
+      port: config.port,
+      pid: process.pid,
+      workdir: config.root,
+      root: config.root,
+      dataDir: config.dataDir,
+      uploadsDir: config.uploadsDir,
+      runtimeCommit: "runtime",
+      commandFingerprint: createCommandFingerprint(config),
+    }, null, 2));
+    try {
+      const result = await runWatchdog("staging", {
+        root,
+        port: String(port),
+        timeoutMs: 100,
+        processInfoProvider: () => ({
+          ProcessId: process.pid,
+          ParentProcessId: process.ppid,
+          CommandLine: `node ${join(root, "node_modules", "next", "dist", "bin", "next")} start -H 127.0.0.1 -p ${port}`,
+        }),
+      });
+      assert.equal(result.ok, true);
+      assert.equal(result.action, "none");
+      assert(requests > 0);
+    } finally {
+      await new Promise((resolve) => server.close(resolve));
+    }
+  });
+});
+
+test("watchdog refuses a foreign port occupant", async () => {
+  await withTempProject(async (root) => {
+    const port = await findAvailablePort();
+    const server = net.createServer((socket) => socket.end("foreign"));
+    await new Promise((resolve) => server.listen(port, "127.0.0.1", resolve));
+    try {
+      await assertRejectsAsync(() => runWatchdog("staging", { root, port: String(port), timeoutMs: 100 }), /refused/);
+      assert.equal(server.listening, true);
+    } finally {
+      await new Promise((resolve) => server.close(resolve));
+    }
+  });
+});
+
 test("deploy script names keep staging and production scoped to their ports", () => {
   const source = readFileSync(join(process.cwd(), "scripts", "ops", "deploy-service.mjs"), "utf8");
   assert.match(source, /deployService\(service/);
@@ -240,10 +433,17 @@ test("ops scripts support Windows paths with spaces and Chinese characters", asy
   });
 });
 
+test("service root resolution fails instead of falling back to cwd", async () => {
+  await withTempProject(async (root) => {
+    assert.throws(() => getKnownServiceRoot("staging", { root: join(root, "missing") }), /package.json/);
+  });
+});
+
 test("task registration uses known service roots instead of the development worktree", () => {
   const source = readFileSync(join(process.cwd(), "scripts", "ops", "register-service-task.mjs"), "utf8");
   assert.match(source, /getKnownServiceRoot/);
-  assert.match(source, /start-service\.mjs/);
+  assert.match(source, /watchdog-service\.mjs/);
+  assert(!source.includes("start-service.mjs"));
   assert.match(source, /watchdog-\$\{config\.service\}\.ps1/);
   assert.match(source, /-File/);
   assert.match(source, /\\uFEFF/);
@@ -262,6 +462,17 @@ function findAvailablePort() {
       server.close(() => resolve(port));
     });
   });
+}
+
+async function assertRejectsAsync(fn, pattern) {
+  let rejected = null;
+  try {
+    await fn();
+  } catch (error) {
+    rejected = error;
+  }
+  assert(rejected, "Expected async function to reject.");
+  assert.match(rejected.message, pattern);
 }
 
 for (const { name, fn } of tests) {
