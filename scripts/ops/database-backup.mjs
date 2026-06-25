@@ -26,7 +26,18 @@ export function createDatabaseBackup(config, options = {}) {
   if (database.type === "sqlite") {
     return { type: "sqlite", required: false, files: [] };
   }
-  return createPostgresBackup(config, database.url, databaseDir, env, options);
+  try {
+    return createPostgresBackup(config, database.url, databaseDir, env, options);
+  } catch (error) {
+    if (config.service === "production") throw error;
+    return {
+      type: "postgres",
+      required: false,
+      files: [],
+      available: false,
+      reason: "postgres-backup-unavailable",
+    };
+  }
 }
 
 function createPostgresBackup(config, databaseUrl, databaseDir, env, options = {}) {

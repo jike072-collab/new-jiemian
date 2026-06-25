@@ -313,6 +313,64 @@ test("postgres backup uses pg_dump and pg_restore without logging the connection
   });
 });
 
+test("staging postgres backup can be unavailable without leaking the connection string", async () => {
+  await withTempProject(async (root) => {
+    const fakeDump = join(root, "pg-dump-fail.mjs");
+    const fakeRestore = join(root, "pg-restore.mjs");
+    await writeFile(fakeDump, [
+      "if (process.argv.includes('--version')) { console.log('pg_dump (PostgreSQL) 16.0'); process.exit(0); }",
+      "console.error('backup unavailable');",
+      "process.exit(1);",
+      "",
+    ].join("\n"));
+    await writeFile(fakeRestore, [
+      "if (process.argv.includes('--version')) { console.log('pg_restore (PostgreSQL) 16.0'); process.exit(0); }",
+      "",
+    ].join("\n"));
+    const config = getServiceConfig("staging", { root });
+    const result = createDatabaseBackup(config, {
+      backupDir: join(root, "backup"),
+      env: {
+        APP_DATABASE_URL: "postgresql://example_user:example_password@127.0.0.1:5432/app_db",
+      },
+      pgDumpCommand: [process.execPath, fakeDump],
+      pgRestoreCommand: [process.execPath, fakeRestore],
+    });
+    assert.equal(result.type, "postgres");
+    assert.equal(result.required, false);
+    assert.equal(result.available, false);
+    assert.equal(result.reason, "postgres-backup-unavailable");
+    assert(!JSON.stringify(result).includes("example_password"));
+    assert(!JSON.stringify(result).includes("postgresql://"));
+  });
+});
+
+test("production postgres backup still fails closed when unavailable", async () => {
+  await withTempProject(async (root) => {
+    const fakeDump = join(root, "pg-dump-fail.mjs");
+    const fakeRestore = join(root, "pg-restore.mjs");
+    await writeFile(fakeDump, [
+      "if (process.argv.includes('--version')) { console.log('pg_dump (PostgreSQL) 16.0'); process.exit(0); }",
+      "console.error('backup unavailable');",
+      "process.exit(1);",
+      "",
+    ].join("\n"));
+    await writeFile(fakeRestore, [
+      "if (process.argv.includes('--version')) { console.log('pg_restore (PostgreSQL) 16.0'); process.exit(0); }",
+      "",
+    ].join("\n"));
+    const config = getServiceConfig("production", { root });
+    assert.throws(() => createDatabaseBackup(config, {
+      backupDir: join(root, "backup"),
+      env: {
+        APP_DATABASE_URL: "postgresql://example_user:example_password@127.0.0.1:5432/app_db",
+      },
+      pgDumpCommand: [process.execPath, fakeDump],
+      pgRestoreCommand: [process.execPath, fakeRestore],
+    }), /backup unavailable/);
+  });
+});
+
 test("postgres restore refuses destructive restore before service stop without explicit allow", async () => {
   await withTempProject(async (root) => {
     const config = getServiceConfig("production", { root });
