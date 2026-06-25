@@ -434,6 +434,11 @@ test("deploy verification installs dev tooling before production preflight", () 
   assert.match(source, /args\.join\(" "\) === "run test:staging-smoke"/);
 });
 
+test("deploy validation passes the temporary root to preflight", () => {
+  const source = readFileSync(join(process.cwd(), "scripts", "ops", "deploy-service.mjs"), "utf8");
+  assert(source.includes('"scripts/ops/start-service.mjs", service, "--preflight-only", "--root", validationRoot'));
+});
+
 test("generation endpoints are not used by health checks", () => {
   const source = readFileSync(join(process.cwd(), "scripts", "ops", "health-check.mjs"), "utf8");
   assert(!source.includes("/api/generate/"));
