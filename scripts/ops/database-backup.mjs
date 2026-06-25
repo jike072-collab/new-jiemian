@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { existsSync, mkdirSync } from "node:fs";
 import { join } from "node:path";
 import { runSync } from "./process-utils.mjs";
@@ -26,22 +27,12 @@ export function createDatabaseBackup(config, options = {}) {
   if (database.type === "sqlite") {
     return { type: "sqlite", required: false, files: [] };
   }
-  try {
-    return createPostgresBackup(config, database.url, databaseDir, env, options);
-  } catch (error) {
-    if (config.service === "production") throw error;
-    return {
-      type: "postgres",
-      required: false,
-      files: [],
-      available: false,
-      reason: "postgres-backup-unavailable",
-    };
-  }
+  return createPostgresBackup(config, database.url, databaseDir, env, options);
 }
 
 function createPostgresBackup(config, databaseUrl, databaseDir, env, options = {}) {
   const url = new URL(databaseUrl);
+  const fingerprint = createDatabaseFingerprint(config, env);
   const output = join(databaseDir, `${config.service}-postgres.dump`);
   const pgDump = commandSpec(options.pgDumpCommand || options.pgDumpPath || "pg_dump");
   const pgRestore = commandSpec(options.pgRestoreCommand || options.pgRestorePath || "pg_restore");
@@ -78,6 +69,7 @@ function createPostgresBackup(config, databaseUrl, databaseDir, env, options = {
     required: config.service === "production",
     files: [output],
     format: "custom",
+    fingerprint,
     pgDumpVersion,
     pgRestoreVersion,
     databaseName: decodeURIComponent(url.pathname.replace(/^\//, "")),
@@ -85,6 +77,39 @@ function createPostgresBackup(config, databaseUrl, databaseDir, env, options = {
     port: url.port || "5432",
     user: decodeURIComponent(url.username),
   };
+}
+
+export function createDatabaseFingerprint(config, env = process.env) {
+  const database = detectDatabase(env);
+  if (database.type !== "postgres") {
+    return { type: database.type, serviceName: config.service };
+  }
+  const url = new URL(database.url);
+  const host = normalizeHost(url.hostname);
+  const port = url.port || "5432";
+  const databaseName = decodeURIComponent(url.pathname.replace(/^\//, ""));
+  const username = decodeURIComponent(url.username || "");
+  const sslMode = url.searchParams.get("sslmode") || env.PGSSLMODE || "default";
+  const payload = {
+    type: "postgres",
+    serviceName: config.service,
+    environment: config.service,
+    host,
+    port,
+    databaseName,
+    usernameHash: username ? createHash("sha256").update(username).digest("hex") : null,
+    sslMode,
+  };
+  return {
+    ...payload,
+    sha256: createHash("sha256").update(JSON.stringify(payload)).digest("hex"),
+  };
+}
+
+function normalizeHost(hostname) {
+  const value = String(hostname || "").toLowerCase();
+  if (["localhost", "127.0.0.1", "::1", "[::1]"].includes(value)) return "loopback";
+  return value;
 }
 
 function commandSpec(command) {
