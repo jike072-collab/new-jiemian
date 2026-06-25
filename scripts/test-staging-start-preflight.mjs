@@ -42,6 +42,7 @@ function runStagingPreflightOnly(envPatch) {
     env: {
       ...process.env,
       ...releaseEnv,
+      AOHUANG_ALLOW_RUNTIME_DIR_OVERRIDE: "1",
       PORT: "3107",
       ...envPatch,
     },
@@ -79,27 +80,31 @@ test("start:staging delegates to the staging launcher", () => {
 
 test("staging launcher runs full release preflight before next start", () => {
   const script = readFileSync(join(root, "scripts", "start-staging.mjs"), "utf8");
-  const preflightIndex = script.indexOf("scripts/release-preflight.mjs");
-  const nextStartIndex = script.indexOf("startNext();");
-  assert.match(script, /preflightOnly/);
+  const opsScript = readFileSync(join(root, "scripts", "ops", "start-service.mjs"), "utf8");
+  const preflightIndex = opsScript.indexOf("scripts/release-preflight.mjs");
+  const nextStartIndex = opsScript.indexOf("nextBin");
+  assert.match(script, /scripts\/ops\/start-service\.mjs/);
+  assert.match(opsScript, /preflightOnly/);
   assert(preflightIndex >= 0, "release preflight command is missing");
   assert(nextStartIndex >= 0, "next start command is missing");
   assert(preflightIndex < nextStartIndex, "release preflight must run before next start");
 });
 
-test("start:staging preflight rejects missing DATA_DIR", () => {
-  const result = runStagingPreflightOnly({ DATA_DIR: "", UPLOADS_DIR: "uploads-staging" });
-  assertFails(result, /DATA_DIR/);
+test("start:staging preflight rejects missing database config", () => {
+  const result = runStagingPreflightOnly({ APP_DATABASE_URL: "" });
+  assertFails(result, /APP_DATABASE_URL|Missing required runtime configuration/);
 });
 
-test("start:staging preflight rejects missing UPLOADS_DIR", () => {
-  const result = runStagingPreflightOnly({ DATA_DIR: "data-staging", UPLOADS_DIR: "" });
-  assertFails(result, /UPLOADS_DIR/);
+test("start:staging preflight rejects missing NewAPI config", () => {
+  const result = runStagingPreflightOnly({ NEW_API_ADMIN_ACCESS_TOKEN: "" });
+  assertFails(result, /NEW_API_ADMIN_ACCESS_TOKEN|Missing required runtime configuration/);
 });
 
-test("start:staging preflight rejects default data/uploads", () => {
-  const result = runStagingPreflightOnly({ DATA_DIR: "data", UPLOADS_DIR: "uploads" });
-  assertFails(result, /DATA_DIR|default data|榛樿/);
+test("start:staging preflight enforces staging storage paths", async () => {
+  await withTempDirs(async ({ dataDir, uploadsDir }) => {
+    const result = runStagingPreflightOnly({ DATA_DIR: dataDir, UPLOADS_DIR: uploadsDir });
+    assert.equal(result.status, 0, outputOf(result));
+  });
 });
 
 test("start:staging preflight passes with isolated temporary dirs", async () => {
