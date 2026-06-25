@@ -24,6 +24,16 @@ npm run dev
 - 供应商后台：`http://localhost:3000/admin/providers`
 - 客户登录入口：`http://localhost:3000/login`
 
+## 3106 正式端口与 3107 测试端口
+
+- 3106 是正式端口。
+- 3107 是测试端口。
+- 新功能先在 3107 验证。
+- 通过后再考虑合并并发布到 3106。
+- 详细流程见 `docs/PORT_RELEASE_WORKFLOW.md`。
+- 手动测试见 `docs/3107_MANUAL_TEST_CHECKLIST.md`。
+- 部署和数据规划见 `docs/DEPLOYMENT_AND_DATA_PLAN.md`。
+
 ## 环境变量
 
 复制 `.env.example` 为 `.env.local`，按需填写。真实 API Key 不要提交到 Git。

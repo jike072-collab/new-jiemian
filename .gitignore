@@ -12,6 +12,7 @@ dist/
 # Environment
 .env
 .env.local
+.env.*.local
 .env.development.local
 .env.test.local
 .env.production.local
@@ -69,7 +70,9 @@ artifacts/
 
 # Local runtime data
 data/
+data-staging/
 uploads/
+uploads-staging/
 .runtime/
 
 # Isolated New API test deployment
