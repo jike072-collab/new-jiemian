@@ -224,6 +224,7 @@ test("owned service state keeps watchdog from misclassifying a matching process"
       const identity = await classifyServiceProcess("staging", {
         root,
         port: config.port,
+        listeningPidProvider: () => process.pid,
         processInfoProvider: () => ({
           ProcessId: process.pid,
           ParentProcessId: process.ppid,

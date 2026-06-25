@@ -50,7 +50,7 @@ export function buildServiceState(config, details = {}) {
 export async function classifyServiceProcess(service, options = {}) {
   const config = getServiceConfig(service, options);
   const state = readServiceState(config);
-  const pid = getListeningPid(config.port);
+  const pid = options.listeningPidProvider ? options.listeningPidProvider(config.port) : getListeningPid(config.port);
   const portAvailable = pid ? false : await isPortAvailable(config.port);
   if (!pid && portAvailable) {
     return {
