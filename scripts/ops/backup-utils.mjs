@@ -5,14 +5,22 @@ import { createDatabaseBackup } from "./database-backup.mjs";
 import { safeGit } from "./git-utils.mjs";
 
 export function snapshotDirectory(path) {
-  if (!existsSync(path)) return { path, exists: false, count: 0, size: 0, latestUtc: null };
+  if (!existsSync(path)) return { path, exists: false, count: 0, size: 0, latestUtc: null, sha256: null };
   const files = listFiles(path);
   let size = 0;
   let latest = 0;
+  const hash = createHash("sha256");
   for (const file of files) {
     const stats = statSync(file);
+    const relativePath = toManifestPath(relative(path, file));
     size += stats.size;
     latest = Math.max(latest, stats.mtimeMs);
+    hash.update(relativePath);
+    hash.update("\0");
+    hash.update(hashFile(file));
+    hash.update("\0");
+    hash.update(String(stats.size));
+    hash.update("\0");
   }
   return {
     path,
@@ -20,6 +28,7 @@ export function snapshotDirectory(path) {
     count: files.length,
     size,
     latestUtc: latest ? new Date(latest).toISOString() : null,
+    sha256: hash.digest("hex"),
   };
 }
 

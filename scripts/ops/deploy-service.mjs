@@ -21,7 +21,7 @@ import { stopService } from "./stop-service.mjs";
 import { getListeningPid, isPortAvailable, run, runSync, wait } from "./process-utils.mjs";
 import { safeGit } from "./git-utils.mjs";
 import { createDatabaseRestoreAuthorization, prepareDatabaseRestore, restoreDatabaseBackup, writeDatabaseRestoreAuthorizationFile } from "./database-restore.mjs";
-import { acquireServiceOperationLock, releaseServiceOperationLock } from "./operation-lock.mjs";
+import { acquireServiceOperationLock, markServiceOperationFailed, releaseServiceOperationLock } from "./operation-lock.mjs";
 
 const validationCheckCommands = [
   ["npm", ["ci"]],
@@ -248,6 +248,7 @@ export async function rollbackService(service, options = {}) {
   const prepared = await prepareRollbackCodeCandidate(service, config, runtime, options.commit);
   let artifacts = null;
   let restoredDirectories = null;
+  let keepFailedLock = false;
   try {
     await stopService(service, { root: config.root });
     await wait(1500);
@@ -266,6 +267,8 @@ export async function rollbackService(service, options = {}) {
     cleanupPreparedArtifacts(artifacts);
     return health;
   } catch (error) {
+    markServiceOperationFailed(config, operationLock, error);
+    keepFailedLock = true;
     rollbackRestoredDirectories(restoredDirectories);
     rollbackPreparedArtifacts(artifacts);
     if (originalCommit !== "unknown") {
@@ -273,7 +276,7 @@ export async function rollbackService(service, options = {}) {
     }
     throw error;
   } finally {
-    releaseServiceOperationLock(operationLock);
+    if (!keepFailedLock) releaseServiceOperationLock(operationLock);
     cleanupValidationWorktree(config.root, prepared.root);
   }
 }
@@ -371,6 +374,9 @@ function assertNoDataLoss(before, after) {
   for (const key of ["data", "uploads"]) {
     if (after[key].count < before[key].count) {
       throw new Error(`${key} file count decreased from ${before[key].count} to ${after[key].count}.`);
+    }
+    if (before[key].sha256 && after[key].sha256 && before[key].sha256 !== after[key].sha256) {
+      throw new Error(`${key} checksum changed during deployment.`);
     }
   }
 }

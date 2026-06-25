@@ -7,7 +7,7 @@ export function acquireServiceOperationLock(config, operation, details = {}, opt
   mkdirSync(config.runtimeDir, { recursive: true });
   const lockFile = lockPath(config, operation);
   removeStaleLock(lockFile, options.staleMs || DEFAULT_STALE_MS);
-  if (options.existingLock) return { ...options.existingLock, shared: true };
+  if (options.existingLock) return { ...options.existingLock, shared: true, ownerLock: options.existingLock };
   const fd = openSync(lockFile, "wx");
   const payload = {
     lockVersion: 1,
@@ -24,11 +24,30 @@ export function acquireServiceOperationLock(config, operation, details = {}, opt
 export function releaseServiceOperationLock(lock) {
   if (!lock) return;
   if (lock.shared) return;
+  if (lock.failed) {
+    closeSync(lock.fd);
+    return;
+  }
   try {
     closeSync(lock.fd);
   } finally {
     rmSync(lock.lockFile, { force: true });
   }
+}
+
+export function markServiceOperationFailed(config, lock, error) {
+  if (!lock) return null;
+  const ownerLock = lock.ownerLock || lock;
+  const payload = {
+    ...(lock.payload || {}),
+    operation: `${lock.payload?.operation || "operation"}_failed`,
+    failedAt: new Date().toISOString(),
+    error: error instanceof Error ? error.message : String(error),
+  };
+  writeFileSync(lock.lockFile, JSON.stringify(payload, null, 2));
+  ownerLock.failed = true;
+  ownerLock.payload = payload;
+  return { ...lock, failed: true, payload };
 }
 
 export function getActiveServiceOperation(config, operations = ["deploy", "rollback"]) {

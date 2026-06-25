@@ -8,7 +8,9 @@ async function cli() {
   const backupDir = valueAfter("--backup");
   const commit = valueAfter("--commit");
   const mode = valueAfter("--mode") || "code-only";
-  const health = await rollbackService(service, { root, backupDir, commit, mode });
+  const rollbackAuthorizationFile = valueAfter("--rollback-authorization-file");
+  const deploymentId = valueAfter("--deployment-id");
+  const health = await rollbackService(service, { root, backupDir, commit, mode, rollbackAuthorizationFile, deploymentId });
   console.log(JSON.stringify({ service, mode, ok: health.ok, health }, null, 2));
 }
 

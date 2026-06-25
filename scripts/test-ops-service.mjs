@@ -2,7 +2,7 @@
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
-import { existsSync, mkdirSync, readFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import http from "node:http";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -299,6 +299,59 @@ test("backup and rollback script are generated without touching data", async () 
     assert.equal(readFileSync(rollback, "utf8").includes("abc123"), true);
     const after = snapshotDirectory(config.dataDir);
     assert.deepEqual(after, before);
+  });
+});
+
+test("directory snapshots include content checksums", async () => {
+  await withTempProject(async (root) => {
+    const config = getServiceConfig("production", { root });
+    await writeFile(join(root, "data", "library.json"), "before");
+    const before = snapshotDirectory(config.dataDir);
+    await writeFile(join(root, "data", "library.json"), "after");
+    const after = snapshotDirectory(config.dataDir);
+    assert.equal(before.count, after.count);
+    assert.notEqual(before.sha256, after.sha256);
+  });
+});
+
+test("windows PowerShell rollback script forwards one-time authorization arguments", async () => {
+  if (process.platform !== "win32") return;
+  await withTempProject(async (root) => {
+    const config = getServiceConfig("production", { root });
+    const backup = createServiceBackup(config, { note: "powershell rollback test", deploymentId: "deployment-powershell" });
+    const authFile = join(backup.backupDir, "rollback-authorization.pending.json");
+    await writeFile(authFile, "{}");
+    const rollback = writeRollbackScript(config, backup, "abc123", {
+      rollbackAuthorizationFile: authFile,
+      deploymentId: "deployment-powershell",
+    });
+    const shimDir = join(root, "node-shim");
+    mkdirSync(shimDir, { recursive: true });
+    const capture = join(root, "powershell-rollback-args.txt");
+    await writeFile(join(shimDir, "node.cmd"), [
+      "@echo off",
+      `echo %* > "${capture}"`,
+      "exit /b 0",
+      "",
+    ].join("\r\n"));
+    const result = spawnSync("powershell.exe", [
+      "-NoProfile",
+      "-ExecutionPolicy",
+      "Bypass",
+      "-File",
+      rollback,
+    ], {
+      cwd: root,
+      env: { ...process.env, PATH: `${shimDir};${process.env.PATH || ""}` },
+      encoding: "utf8",
+      shell: false,
+    });
+    assert.equal(result.status, 0, result.stderr || result.stdout);
+    const args = readFileSync(capture, "utf8");
+    assert(args.includes("scripts/ops/rollback-service.mjs production"));
+    assert(args.includes("--rollback-authorization-file"));
+    assert(args.includes(authFile));
+    assert(args.includes("--deployment-id deployment-powershell"));
   });
 });
 
@@ -625,6 +678,22 @@ test("watchdog refuses ambiguous occupied ports when pid lookup is unavailable",
   });
 });
 
+test("watchdog defers while rollback_failed lock is present", async () => {
+  await withTempProject(async (root) => {
+    const config = getServiceConfig("staging", { root });
+    writeFileSync(join(config.runtimeDir, `operation-${config.service}.lock`), JSON.stringify({
+      lockVersion: 1,
+      serviceName: config.service,
+      operation: "rollback_failed",
+      createdAt: new Date().toISOString(),
+    }, null, 2));
+    const result = await runWatchdog("staging", { root, timeoutMs: 100 });
+    assert.equal(result.ok, true);
+    assert.equal(result.deferred, true);
+    assert.equal(result.operation, "rollback_failed");
+  });
+});
+
 test("deploy script names keep staging and production scoped to their ports", () => {
   const source = readFileSync(join(process.cwd(), "scripts", "ops", "deploy-service.mjs"), "utf8");
   assert.match(source, /deployService\(service/);
@@ -651,6 +720,14 @@ test("rollback code is prepared before service stop and no install runs while st
   assert(!stoppedWindow.includes('await run("npm"'));
   assert(!stoppedWindow.includes('["npm", ["ci"]]'));
   assert(!stoppedWindow.includes('["npm", ["run", "build"]]'));
+});
+
+test("rollback CLI accepts authorization file and deployment id", () => {
+  const source = readFileSync(join(process.cwd(), "scripts", "ops", "rollback-service.mjs"), "utf8");
+  assert.match(source, /valueAfter\("--rollback-authorization-file"\)/);
+  assert.match(source, /valueAfter\("--deployment-id"\)/);
+  assert.match(source, /rollbackAuthorizationFile/);
+  assert.match(source, /deploymentId/);
 });
 
 test("deploy verification installs dev tooling before production preflight", () => {
