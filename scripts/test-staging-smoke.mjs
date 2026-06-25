@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-import { spawn, spawnSync } from "node:child_process";
+import { spawn } from "node:child_process";
 import { existsSync } from "node:fs";
 import { mkdtemp, readdir, rm, stat } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -59,28 +59,12 @@ async function fetchStatus(path) {
 }
 
 function spawnNext(env) {
-  return spawn(process.execPath, ["scripts/with-staging-env.mjs", "next", "start", "-H", host], {
+  return spawn(process.execPath, ["scripts/start-staging.mjs"], {
     cwd: root,
     env,
     shell: false,
     stdio: ["ignore", "pipe", "pipe"],
   });
-}
-
-function runPreflight(env) {
-  const result = spawnSync(process.execPath, [
-    "--disable-warning=MODULE_TYPELESS_PACKAGE_JSON",
-    "scripts/runtime-storage-preflight.mjs",
-  ], {
-    cwd: root,
-    env,
-    encoding: "utf8",
-    shell: false,
-  });
-  if (result.status !== 0) {
-    throw new Error(result.stderr || result.stdout || "runtime storage preflight failed.");
-  }
-  if (result.stdout) process.stdout.write(result.stdout);
 }
 
 async function stopProcess(child) {
@@ -116,12 +100,18 @@ try {
     RUNTIME_STORAGE_ISOLATION: "strict",
     DATA_DIR: dataDir,
     UPLOADS_DIR: uploadsDir,
-    NEW_API_ENABLED: "false",
-    APP_AUTH_PERSISTENCE_MODE: "json",
-    APP_BILLING_PERSISTENCE_MODE: "json",
-    APP_TASK_BILLING_PERSISTENCE_MODE: "json",
+    NEW_API_ENABLED: "true",
+    AUTH_SESSION_SECRET: "staging-smoke-auth-session-secret-32-chars",
+    APP_DATABASE_URL: "postgresql://staging_user:staging_pass@127.0.0.1:5432/aohuang_app",
+    APP_DATABASE_EXPECTED_NAME: "aohuang_app",
+    APP_AUTH_PERSISTENCE_MODE: "postgres",
+    APP_BILLING_PERSISTENCE_MODE: "postgres",
+    APP_TASK_BILLING_PERSISTENCE_MODE: "postgres",
+    NEW_API_BASE_URL: "https://new-api.example.test",
+    NEW_API_ENVIRONMENT: "production",
+    NEW_API_ADMIN_USER_ID: "1",
+    NEW_API_ADMIN_ACCESS_TOKEN: "staging-smoke-admin-token",
   };
-  runPreflight(env);
   child = spawnNext(env);
   child.stdout.on("data", (chunk) => process.stdout.write(chunk));
   child.stderr.on("data", (chunk) => process.stderr.write(chunk));

@@ -17,8 +17,12 @@ function fail(message) {
 
 async function runRuntimeStoragePreflight() {
   try {
-    const { validateRuntimeStorageIsolation } = await import("../src/lib/server/runtime-paths.ts");
-    validateRuntimeStorageIsolation();
+    const { ensureDataDir, ensureUploadsDir, validateRuntimeStorageIsolation } = await import("../src/lib/server/runtime-paths.ts");
+    const report = validateRuntimeStorageIsolation();
+    if (report.strict) {
+      await ensureDataDir();
+      await ensureUploadsDir();
+    }
   } catch (error) {
     fail(error instanceof Error ? error.message : "运行时存储目录检查失败。");
   }
