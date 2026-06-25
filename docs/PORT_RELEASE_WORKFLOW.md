@@ -52,6 +52,8 @@ npm run build
 - `ADMIN_PASSWORD` 可以和正式不同。
 - NewAPI Key 可以使用测试令牌，或使用正式令牌但要控制调用频率。
 - `data` 和 `uploads` 必须和 3106 正式目录隔离。
+- `dev:staging` 和 `start:staging` 会在启动前执行运行时目录校验。
+- `PORT=3107` 时，缺少 `DATA_DIR` / `UPLOADS_DIR` 或使用默认 `data/`、`uploads/` 会拒绝启动。
 - 3107 可以复制一份测试数据，但不能覆盖 3106 的正式数据。
 - 复制数据前必须备份，复制 `uploads` 前要注意磁盘容量。
 
@@ -64,6 +66,18 @@ npm run build
 - 正式 `data` 和 `uploads` 必须定期备份。
 - 正式环境不要随意开启测试功能。
 - 正式环境不要直接跑未合并分支。
+
+## 5.1 自动化验证要求
+
+3107 合并前必须由自动化提供证据：
+
+```bash
+npm run test:runtime-isolation
+npm run check:runtime-paths
+npm run test:staging-smoke
+```
+
+`test:staging-smoke` 只请求首页、登录页、供应商后台和健康接口，不调用图片生成、视频生成或 NewAPI 消耗额度接口。若本机 3107 已被其他服务占用，测试必须拒绝继续，不能误测旧服务。
 
 ## 6. 最小改动原则
 

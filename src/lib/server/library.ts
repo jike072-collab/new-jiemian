@@ -7,8 +7,8 @@ import {
   ensureRuntimeDirs,
   runtimeFileUrl,
   safeStoredName,
-  uploadsRoot,
   readJsonFile,
+  resolveUploadPath,
   writeJsonFile,
 } from "./paths";
 import { type JobRecord, type LibraryItem } from "./types";
@@ -49,7 +49,7 @@ async function storedFileExists(storedName: string) {
   const safeName = safeStoredName(storedName);
   if (!safeName || safeName !== storedName) return false;
   try {
-    await access(join(uploadsRoot, safeName));
+    await access(resolveUploadPath(safeName));
     return true;
   } catch {
     return false;
@@ -73,7 +73,7 @@ function safeOutputPath(storedName: string) {
   if (!safeName || safeName !== storedName) {
     throw new LibraryOperationError(400, "作品文件名无效。");
   }
-  return join(uploadsRoot, safeName);
+  return resolveUploadPath(safeName);
 }
 
 async function removeStoredOutputFile(storedName: string) {
@@ -188,7 +188,7 @@ export function extensionForMime(mimeType: string, fallback = ".bin") {
 export async function storeBytes(bytes: Buffer, mimeType: string, prefix: string) {
   await ensureRuntimeDirs();
   const storedName = safeStoredName(`${prefix}-${randomUUID()}${extensionForMime(mimeType)}`);
-  const target = join(uploadsRoot, storedName);
+  const target = resolveUploadPath(storedName);
   await writeFile(target, bytes);
   return {
     storedName,
@@ -214,5 +214,5 @@ export async function storeRemoteUrl(url: string, prefix: string, fallbackMime: 
 export async function readStoredFile(storedName: string) {
   const safeName = safeStoredName(storedName);
   if (!safeName || safeName !== storedName) return null;
-  return readFile(join(uploadsRoot, safeName));
+  return readFile(resolveUploadPath(safeName));
 }

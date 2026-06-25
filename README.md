@@ -52,6 +52,13 @@ DATA_DIR=data-staging
 UPLOADS_DIR=uploads-staging
 ```
 
+3107 启动会强制校验隔离目录；缺少 `DATA_DIR` / `UPLOADS_DIR`，或指向默认 `data/`、`uploads/` 时会拒绝启动。
+
+```bash
+npm run dev:staging
+npm run start:staging
+```
+
 未设置 `DATA_DIR` / `UPLOADS_DIR` 时，默认仍使用 `data/` 和 `uploads/`。
 
 ### 从旧项目保留下来的接口地址
