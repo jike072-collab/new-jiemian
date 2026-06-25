@@ -339,8 +339,9 @@ test("postgres restore refuses destructive restore before service stop without e
   });
 });
 
-test("watchdog leaves a healthy foreign-free service alone", async () => {
+test("watchdog leaves a healthy owned service alone when pid lookup is supported", async () => {
   await withTempProject(async (root) => {
+    if (process.platform !== "win32") return;
     const port = await findAvailablePort();
     const config = getServiceConfig("staging", { root, port: String(port) });
     let requests = 0;
@@ -391,6 +392,20 @@ test("watchdog refuses a foreign port occupant", async () => {
     try {
       await assertRejectsAsync(() => runWatchdog("staging", { root, port: String(port), timeoutMs: 100 }), /refused/);
       assert.equal(server.listening, true);
+    } finally {
+      await new Promise((resolve) => server.close(resolve));
+    }
+  });
+});
+
+test("watchdog refuses ambiguous occupied ports when pid lookup is unavailable", async () => {
+  if (process.platform === "win32") return;
+  await withTempProject(async (root) => {
+    const port = await findAvailablePort();
+    const server = net.createServer((socket) => socket.end("occupied"));
+    await new Promise((resolve) => server.listen(port, "127.0.0.1", resolve));
+    try {
+      await assertRejectsAsync(() => runWatchdog("staging", { root, port: String(port), timeoutMs: 100 }), /ambiguous/);
     } finally {
       await new Promise((resolve) => server.close(resolve));
     }
