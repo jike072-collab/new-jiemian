@@ -1,23 +1,31 @@
-import { createHash } from "node:crypto";
-import { existsSync, readFileSync } from "node:fs";
-import { basename, resolve } from "node:path";
+import { createHash, randomUUID } from "node:crypto";
+import { existsSync, renameSync, readFileSync, writeFileSync } from "node:fs";
+import { basename, join, resolve } from "node:path";
 import { createDatabaseFingerprint } from "./database-backup.mjs";
 import { runSync } from "./process-utils.mjs";
 
 const DEFAULT_RESTORE_AUTH_TTL_MS = 15 * 60 * 1000;
+const RESTORE_AUTH_VERSION = 1;
+const AUTH_PENDING = "rollback-authorization.pending.json";
+const AUTH_CONSUMING = "rollback-authorization.consuming.json";
+const AUTH_USED = "rollback-authorization.used.json";
 
 export function createDatabaseRestoreAuthorization(config, manifest, env = process.env, options = {}) {
   const database = manifest.databaseBackup || { type: manifest.databaseType || "none" };
   if (database.type !== "postgres") {
     return { type: database.type, required: false };
   }
+  if (!options.deploymentId) throw new Error("deploymentId is required for PostgreSQL rollback authorization.");
   const createdAt = new Date();
   const ttlMs = options.ttlMs || DEFAULT_RESTORE_AUTH_TTL_MS;
-  return {
+  const authorization = {
+    authorizationVersion: RESTORE_AUTH_VERSION,
+    authorizationId: options.authorizationId || randomUUID(),
     type: "postgres",
     purpose: "deploy-failure-full-rollback",
     deploymentId: options.deploymentId,
     serviceName: config.service,
+    environment: config.service,
     backupDir: resolve(manifest.backupDir || options.backupDir || ""),
     backupManifestHash: hashBackupManifest(manifest.backupDir || options.backupDir),
     sourceCommit: options.sourceCommit || manifest.sourceCommit || manifest.commit,
@@ -25,8 +33,10 @@ export function createDatabaseRestoreAuthorization(config, manifest, env = proce
     databaseFingerprint: createDatabaseFingerprint(config, env),
     createdAt: createdAt.toISOString(),
     expiresAt: new Date(createdAt.getTime() + ttlMs).toISOString(),
+    nonce: options.nonce || randomUUID(),
     used: false,
   };
+  return attachAuthorizationSignature(authorization);
 }
 
 export function prepareDatabaseRestore(config, manifest, env = process.env, options = {}) {
@@ -59,30 +69,36 @@ export function restoreDatabaseBackup(config, manifest, env = process.env, optio
   if (expectedDb && expectedDb !== targetDb) {
     throw new Error("PostgreSQL restore target database does not match the backup manifest.");
   }
-  verifyDatabaseRestoreAuthorization(config, manifest, env, options, { consume: true });
-  const pgRestore = commandSpec(options.pgRestoreCommand || options.pgRestorePath || "pg_restore");
-  runSync(pgRestore.command, [
-    ...pgRestore.args,
-    "--clean",
-    "--if-exists",
-    "--single-transaction",
-    "--no-owner",
-    "--dbname",
-    targetDb,
-    "--host",
-    url.hostname,
-    "--port",
-    url.port || "5432",
-    "--username",
-    decodeURIComponent(url.username),
-    dump,
-  ], {
-    env: {
-      ...env,
-      PGPASSWORD: decodeURIComponent(url.password || ""),
-    },
-  });
-  return { ...prepared, restored: true };
+  const consumedAuthorization = claimDatabaseRestoreAuthorization(config, manifest, env, options);
+  try {
+    const pgRestore = commandSpec(options.pgRestoreCommand || options.pgRestorePath || "pg_restore");
+    runSync(pgRestore.command, [
+      ...pgRestore.args,
+      "--clean",
+      "--if-exists",
+      "--single-transaction",
+      "--no-owner",
+      "--dbname",
+      targetDb,
+      "--host",
+      url.hostname,
+      "--port",
+      url.port || "5432",
+      "--username",
+      decodeURIComponent(url.username),
+      dump,
+    ], {
+      env: {
+        ...env,
+        PGPASSWORD: decodeURIComponent(url.password || ""),
+      },
+    });
+    markAuthorizationUsed(consumedAuthorization, "restored");
+    return { ...prepared, restored: true };
+  } catch (error) {
+    markAuthorizationUsed(consumedAuthorization, "failed", error instanceof Error ? error.message : String(error));
+    throw error;
+  }
 }
 
 export function hashBackupManifest(backupDir) {
@@ -93,18 +109,41 @@ export function hashBackupManifest(backupDir) {
 }
 
 function verifyDatabaseRestoreAuthorization(config, manifest, env, options, verifyOptions = {}) {
-  const authorization = options.rollbackAuthorization;
+  const authorization = loadAuthorization(config, manifest, options);
   if (!authorization || authorization.type !== "postgres") {
     throw new Error("PostgreSQL full restore requires deployment-scoped rollback authorization.");
   }
-  if (authorization.used) {
+  assertAuthorizationSignature(authorization);
+  if (authorization.authorizationVersion !== RESTORE_AUTH_VERSION) {
+    throw new Error("PostgreSQL restore authorization version is invalid.");
+  }
+  if (!authorization.authorizationId) {
+    throw new Error("PostgreSQL restore authorization id is missing.");
+  }
+  if (authorization.__state === "consuming") {
+    throw new Error("PostgreSQL restore authorization is currently being consumed.");
+  }
+  if (authorization.__state === "used" || authorization.used) {
     throw new Error("PostgreSQL restore authorization has already been used.");
   }
   if (authorization.purpose !== "deploy-failure-full-rollback") {
     throw new Error("PostgreSQL restore authorization purpose is invalid.");
   }
+  const deploymentId = options.deploymentId || authorization.deploymentId || manifest.deploymentId;
+  if (!authorization.deploymentId || !manifest.deploymentId) {
+    throw new Error("PostgreSQL restore requires deploymentId in manifest, authorization, and restore context.");
+  }
+  if (deploymentId && authorization.deploymentId !== deploymentId) {
+    throw new Error("PostgreSQL restore authorization deploymentId does not match.");
+  }
+  if (authorization.deploymentId !== manifest.deploymentId) {
+    throw new Error("PostgreSQL restore authorization deploymentId does not match manifest.");
+  }
   if (authorization.serviceName !== config.service) {
     throw new Error("PostgreSQL restore authorization service does not match.");
+  }
+  if (authorization.environment !== config.service) {
+    throw new Error("PostgreSQL restore authorization environment does not match.");
   }
   if (resolve(authorization.backupDir) !== resolve(manifest.backupDir)) {
     throw new Error("PostgreSQL restore authorization backup directory does not match.");
@@ -130,7 +169,8 @@ function verifyDatabaseRestoreAuthorization(config, manifest, env, options, veri
   if (!Number.isFinite(expiresAt) || Date.now() > expiresAt) {
     throw new Error("PostgreSQL restore authorization has expired.");
   }
-  if (verifyOptions.consume) authorization.used = true;
+  if (!verifyOptions.consume) return authorization;
+  return claimDatabaseRestoreAuthorization(config, manifest, env, options, authorization);
 }
 
 function sameFingerprint(left, right) {
@@ -146,4 +186,89 @@ function assertBackupBelongsToService(config, manifest) {
 function commandSpec(command) {
   if (Array.isArray(command)) return { command: command[0], args: command.slice(1) };
   return { command, args: [] };
+}
+
+export function writeDatabaseRestoreAuthorizationFile(config, manifest, authorization) {
+  if (!authorization || authorization.type !== "postgres") return null;
+  const signed = attachAuthorizationSignature({ ...authorization, used: false });
+  const file = join(resolve(manifest.backupDir), AUTH_PENDING);
+  writeFileSync(file, JSON.stringify(signed, null, 2), { flag: "wx" });
+  return file;
+}
+
+export function readDatabaseRestoreAuthorizationFile(file) {
+  const authorization = JSON.parse(readFileSync(file, "utf8"));
+  return { ...authorization, __path: resolve(file) };
+}
+
+export function defaultAuthorizationPath(backupDir) {
+  return join(resolve(backupDir), AUTH_PENDING);
+}
+
+function loadAuthorization(config, manifest, options) {
+  if (options.rollbackAuthorizationFile) return readDatabaseRestoreAuthorizationFile(options.rollbackAuthorizationFile);
+  if (options.rollbackAuthorization) return options.rollbackAuthorization;
+  const defaultPath = defaultAuthorizationPath(manifest.backupDir);
+  const consumingPath = join(resolve(manifest.backupDir || ""), AUTH_CONSUMING);
+  const usedPath = join(resolve(manifest.backupDir || ""), AUTH_USED);
+  if (existsSync(defaultPath)) return { ...readDatabaseRestoreAuthorizationFile(defaultPath), __state: "pending" };
+  if (existsSync(consumingPath)) return { ...readDatabaseRestoreAuthorizationFile(consumingPath), __state: "consuming" };
+  if (existsSync(usedPath)) return { ...readDatabaseRestoreAuthorizationFile(usedPath), __state: "used" };
+  return null;
+}
+
+function claimDatabaseRestoreAuthorization(config, manifest, env, options, authorization = null) {
+  const verified = authorization || verifyDatabaseRestoreAuthorization(config, manifest, env, options, { consume: false });
+  if (verified.__path) {
+    const pending = verified.__path;
+    if (!pending.endsWith(AUTH_PENDING)) {
+      throw new Error("PostgreSQL restore authorization file must be pending before use.");
+    }
+    const consuming = pending.replace(AUTH_PENDING, AUTH_CONSUMING);
+    renameSync(pending, consuming);
+    return { ...verified, __path: consuming, __consumingPath: consuming, __state: "consuming" };
+  }
+  verified.__state = "consuming";
+  return verified;
+}
+
+function markAuthorizationUsed(authorization, status, error) {
+  const finished = attachAuthorizationSignature({
+    ...withoutPrivateFields(authorization),
+    used: true,
+    consumedAt: new Date().toISOString(),
+    consumeStatus: status,
+    error: error ? String(error).slice(0, 500) : undefined,
+  });
+  if (!authorization?.__consumingPath) {
+    Object.assign(authorization, finished, { __state: "used" });
+    return authorization;
+  }
+  const usedPath = authorization.__consumingPath.replace(AUTH_CONSUMING, AUTH_USED);
+  writeFileSync(authorization.__consumingPath, JSON.stringify(finished, null, 2));
+  renameSync(authorization.__consumingPath, usedPath);
+  return { ...authorization, __path: usedPath, __state: "used", used: true };
+}
+
+function attachAuthorizationSignature(authorization) {
+  const unsigned = withoutPrivateFields({ ...authorization });
+  delete unsigned.signature;
+  return { ...unsigned, signature: signatureFor(unsigned) };
+}
+
+function assertAuthorizationSignature(authorization) {
+  const unsigned = withoutPrivateFields({ ...authorization });
+  const signature = unsigned.signature;
+  delete unsigned.signature;
+  if (!signature || signature !== signatureFor(unsigned)) {
+    throw new Error("PostgreSQL restore authorization signature is invalid.");
+  }
+}
+
+function signatureFor(value) {
+  return createHash("sha256").update(JSON.stringify(value)).digest("hex");
+}
+
+function withoutPrivateFields(value) {
+  return Object.fromEntries(Object.entries(value).filter(([key, entry]) => !key.startsWith("__") && entry !== undefined));
 }

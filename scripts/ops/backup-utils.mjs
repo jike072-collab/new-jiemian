@@ -1,4 +1,4 @@
-import { createHash } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { closeSync, copyFileSync, cpSync, existsSync, mkdirSync, openSync, readFileSync, readSync, readdirSync, renameSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { basename, dirname, join, relative } from "node:path";
 import { createDatabaseBackup } from "./database-backup.mjs";
@@ -26,6 +26,7 @@ export function snapshotDirectory(path) {
 export function createServiceBackup(config, options = {}) {
   const stamp = new Date().toISOString().replace(/[-:]/g, "").replace(/\..+/, "").replace("T", "-");
   const backupDir = join(config.backupRoot, `${config.backupPrefix}-${stamp}`);
+  const deploymentId = options.deploymentId || randomUUID();
   mkdirSync(backupDir, { recursive: true });
 
   for (const entry of [
@@ -64,6 +65,7 @@ export function createServiceBackup(config, options = {}) {
 
   const meta = {
     backupVersion: 2,
+    deploymentId,
     createdAt: new Date().toISOString(),
     serviceName: config.service,
     service: config.service,
@@ -96,14 +98,18 @@ export function createServiceBackup(config, options = {}) {
   return { backupDir, meta, checksums };
 }
 
-export function writeRollbackScript(config, backup, targetCommit) {
+export function writeRollbackScript(config, backup, targetCommit, options = {}) {
+  const authFile = options.rollbackAuthorizationFile || join(backup.backupDir, "rollback-authorization.pending.json");
+  const deploymentId = options.deploymentId || backup.meta?.deploymentId || "";
   const script = [
     "$ErrorActionPreference = 'Stop'",
     `$root = '${config.root.replace(/'/g, "''")}'`,
     `$backup = '${backup.backupDir.replace(/'/g, "''")}'`,
     `$commit = '${targetCommit}'`,
+    `$authorization = '${authFile.replace(/'/g, "''")}'`,
+    `$deploymentId = '${deploymentId.replace(/'/g, "''")}'`,
     "Set-Location -LiteralPath $root",
-    `node scripts/ops/rollback-service.mjs ${config.service} --root $root --backup $backup --commit $commit --mode full`,
+    `node scripts/ops/rollback-service.mjs ${config.service} --root $root --backup $backup --commit $commit --mode full --rollback-authorization-file $authorization --deployment-id $deploymentId`,
   ].join("\r\n");
   const rollbackPath = join(backup.backupDir, `rollback-${config.service}.ps1`);
   writeFileSync(rollbackPath, `\uFEFF${script}`, "utf8");
@@ -118,6 +124,7 @@ export function verifyBackupManifest(config, backupDir) {
   const manifest = JSON.parse(readFileSync(manifestPath, "utf8"));
   if ((manifest.serviceName || manifest.service) !== config.service) throw new Error("Rollback backup belongs to a different service.");
   if (manifest.backupVersion !== 2) throw new Error("Unsupported backup manifest version.");
+  if (!manifest.deploymentId) throw new Error("Rollback backup deploymentId is missing.");
   for (const entry of JSON.parse(readFileSync(checksumsPath, "utf8"))) {
     const file = join(backupDir, entry.path);
     if (!existsSync(file)) throw new Error(`Rollback checksum target is missing: ${entry.path}`);
@@ -133,21 +140,29 @@ export function verifyBackupManifest(config, backupDir) {
 export function restoreDataAndUploads(config, backupDir, options = {}) {
   verifyBackupManifest(config, backupDir);
   const checksums = readBackupChecksums(backupDir);
-  const restored = [
-    restoreDirectory(join(backupDir, "data"), config.dataDir, {
+  const restored = [];
+  const prepared = [];
+  try {
+    prepared.push(restoreDirectory(join(backupDir, "data"), config.dataDir, {
       backupDir,
       checksums,
       prefix: "data",
-      deferCleanup: options.deferCleanup,
-    }),
-    restoreDirectory(join(backupDir, "uploads"), config.uploadsDir, {
+      stageOnly: true,
+    }));
+    prepared.push(restoreDirectory(join(backupDir, "uploads"), config.uploadsDir, {
       backupDir,
       checksums,
       prefix: "uploads",
-      deferCleanup: options.deferCleanup,
-    }),
-  ];
-  return { backupDir, restored };
+      stageOnly: true,
+    }));
+    for (const entry of prepared) {
+      restored.push(commitRestoredDirectory(entry, { deferCleanup: Boolean(options.deferCleanup) }));
+    }
+    return { backupDir, restored };
+  } catch (error) {
+    rollbackRestoredDirectories({ restored: [...restored, ...prepared] });
+    throw error;
+  }
 }
 
 export function checksumFiles(root) {
@@ -188,7 +203,6 @@ function restoreDirectory(source, target, options = {}) {
   mkdirSync(dirname(target), { recursive: true });
   const stamp = new Date().toISOString().replace(/[-:]/g, "").replace(/\..+/, "").replace("T", "-");
   const temp = `${target}.restore-${stamp}`;
-  const old = `${target}.old-${stamp}`;
   cpSync(source, temp, { recursive: true, force: true });
   try {
     verifyRestoredDirectory(source, temp, options);
@@ -196,11 +210,23 @@ function restoreDirectory(source, target, options = {}) {
     rmSync(temp, { recursive: true, force: true });
     throw error;
   }
+  if (options.stageOnly) {
+    return { source, target, old: null, temp, staged: true };
+  }
+  return commitRestoredDirectory({ source, target, old: null, temp, staged: true }, options);
+}
+
+function commitRestoredDirectory(state, options = {}) {
+  const { target, temp } = state;
+  const old = `${target}.old-${new Date().toISOString().replace(/[-:]/g, "").replace(/\..+/, "").replace("T", "-")}`;
   if (existsSync(target)) renameSync(target, old);
   try {
     renameSync(temp, target);
-    if (!options.deferCleanup && existsSync(old)) rmSync(old, { recursive: true, force: true });
-    return { source, target, old: existsSync(old) ? old : null, temp: null };
+    const committed = { source: state.source, target, old: existsSync(old) ? old : null, temp: null };
+    if (!options.deferCleanup && committed.old && existsSync(committed.old)) {
+      rmSync(committed.old, { recursive: true, force: true });
+    }
+    return committed;
   } catch (error) {
     if (existsSync(target)) rmSync(target, { recursive: true, force: true });
     if (existsSync(old)) renameSync(old, target);

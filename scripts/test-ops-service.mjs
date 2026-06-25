@@ -462,6 +462,7 @@ test("postgres restore authorization is fingerprint-bound and one-time", async (
     };
     const manifest = {
       backupVersion: 2,
+      deploymentId: "deployment-1",
       serviceName: "production",
       backupDir,
       sourceCommit: "source-commit",
@@ -483,18 +484,21 @@ test("postgres restore authorization is fingerprint-bound and one-time", async (
       pgRestoreCommand: [process.execPath, fakeRestore],
       rollbackAuthorization: authorization,
       expectedTargetCommit: "target-commit",
+      deploymentId: "deployment-1",
     });
     assert.equal(authorization.used, false);
     restoreDatabaseBackup(config, manifest, env, {
       pgRestoreCommand: [process.execPath, fakeRestore],
       rollbackAuthorization: authorization,
       expectedTargetCommit: "target-commit",
+      deploymentId: "deployment-1",
     });
     assert.equal(authorization.used, true);
     assert.throws(() => prepareDatabaseRestore(config, manifest, env, {
       pgRestoreCommand: [process.execPath, fakeRestore],
       rollbackAuthorization: authorization,
       expectedTargetCommit: "target-commit",
+      deploymentId: "deployment-1",
     }), /already been used/);
     assert(!JSON.stringify(authorization).includes("example_password"));
     assert(!JSON.stringify(authorization).includes("postgresql://"));
@@ -518,6 +522,7 @@ test("postgres restore authorization refuses a different target database", async
     };
     const manifest = {
       backupVersion: 2,
+      deploymentId: "deployment-1",
       serviceName: "production",
       backupDir,
       sourceCommit: "source-commit",
@@ -541,6 +546,7 @@ test("postgres restore authorization refuses a different target database", async
       pgRestoreCommand: [process.execPath, fakeRestore],
       rollbackAuthorization: authorization,
       expectedTargetCommit: "target-commit",
+      deploymentId: "deployment-1",
     }), /fingerprint/);
   });
 });

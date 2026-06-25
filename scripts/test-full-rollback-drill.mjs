@@ -50,6 +50,7 @@ try {
   const backup = createServiceBackup(config, {
     note: "isolated full rollback drill",
     env,
+    deploymentId: "isolated-drill",
     databaseOptions: {
       pgDumpCommand: [process.execPath, fakeDump],
       pgRestoreCommand: [process.execPath, fakeRestore],
@@ -71,12 +72,14 @@ try {
     pgRestoreCommand: [process.execPath, fakeRestore],
     rollbackAuthorization: authorization,
     expectedTargetCommit: "drill-target",
+    deploymentId: "isolated-drill",
   });
   const restored = restoreDataAndUploads(config, backup.backupDir, { deferCleanup: true });
   restoreDatabaseBackup(config, manifest, env, {
     pgRestoreCommand: [process.execPath, fakeRestore],
     rollbackAuthorization: authorization,
     expectedTargetCommit: "drill-target",
+    deploymentId: "isolated-drill",
   });
   cleanupRestoredDirectories(restored);
 
@@ -94,6 +97,7 @@ try {
     pgRestoreCommand: [process.execPath, fakeRestore],
     rollbackAuthorization: authorization,
     expectedTargetCommit: "drill-target",
+    deploymentId: "isolated-drill",
   }), /already been used/);
 
   console.log(JSON.stringify({
