@@ -212,6 +212,13 @@ test("foreign port occupant is not stopped", async () => {
   });
 });
 
+test("windows process stop remains behind owned identity checks", () => {
+  const stopSource = readFileSync(join(process.cwd(), "scripts", "ops", "stop-service.mjs"), "utf8");
+  const processSource = readFileSync(join(process.cwd(), "scripts", "ops", "process-utils.mjs"), "utf8");
+  assert.match(stopSource, /assertOwnedIdentity\(identity, "stop-service"\);\s+stopProcessTree\(identity\.pid\);/);
+  assert(processSource.includes('"taskkill.exe", ["/PID", String(pid), "/T", "/F"]'));
+});
+
 test("status command reads commit from git metadata without git process access", async () => {
   await withTempProject(async (root) => {
     const commit = "04674d00060334ddfeb018b2724f6fa1c988f7a5";
