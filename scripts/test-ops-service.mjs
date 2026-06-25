@@ -215,6 +215,9 @@ test("task registration uses known service roots instead of the development work
   const source = readFileSync(join(process.cwd(), "scripts", "ops", "register-service-task.mjs"), "utf8");
   assert.match(source, /getKnownServiceRoot/);
   assert.match(source, /start-service\.mjs/);
+  assert.match(source, /watchdog-\$\{config\.service\}\.ps1/);
+  assert.match(source, /-File/);
+  assert(!source.includes("-Command"));
   assert.match(source, /"MINUTE"/);
   assert.match(source, /"1"/);
 });

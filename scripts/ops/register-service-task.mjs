@@ -1,18 +1,15 @@
 #!/usr/bin/env node
 import { pathToFileURL } from "node:url";
+import { mkdirSync, writeFileSync } from "node:fs";
+import { join } from "node:path";
 import { getKnownServiceRoot, getServiceConfig } from "./service-config.mjs";
 import { runSync } from "./process-utils.mjs";
 
 export function registerServiceTask(service, options = {}) {
   const root = getKnownServiceRoot(service, options);
   const config = getServiceConfig(service, { root });
-  const command = [
-    "powershell.exe",
-    "-NoProfile",
-    "-ExecutionPolicy Bypass",
-    "-Command",
-    quotePowerShellCommand(`Set-Location -LiteralPath '${escapePowerShellSingleQuoted(config.root)}'; node scripts/ops/start-service.mjs ${service}`),
-  ].join(" ");
+  const watchdogScript = writeWatchdogScript(config);
+  const command = `powershell.exe -NoProfile -ExecutionPolicy Bypass -File "${watchdogScript}"`;
   const args = [
     "/Create",
     "/TN",
@@ -28,15 +25,24 @@ export function registerServiceTask(service, options = {}) {
     "/F",
   ];
   runSync("schtasks.exe", args);
-  return { service, taskName: config.taskName, created: true, requiresAdmin: false };
+  return { service, taskName: config.taskName, watchdogScript, created: true, requiresAdmin: false };
 }
 
 function escapePowerShellSingleQuoted(value) {
   return String(value).replace(/'/g, "''");
 }
 
-function quotePowerShellCommand(value) {
-  return `"${String(value).replace(/"/g, '\\"')}"`;
+function writeWatchdogScript(config) {
+  mkdirSync(config.runtimeDir, { recursive: true });
+  const scriptPath = join(config.runtimeDir, `watchdog-${config.service}.ps1`);
+  writeFileSync(scriptPath, [
+    "$ErrorActionPreference = 'Stop'",
+    `$root = '${escapePowerShellSingleQuoted(config.root)}'`,
+    "Set-Location -LiteralPath $root",
+    `node scripts/ops/start-service.mjs ${config.service}`,
+    "",
+  ].join("\r\n"));
+  return scriptPath;
 }
 
 function cli() {
