@@ -114,10 +114,9 @@ test("start:staging preflight runs backend release checks", async () => {
     const result = runStagingPreflightOnly({
       DATA_DIR: dataDir,
       UPLOADS_DIR: uploadsDir,
-      AUTH_SESSION_SECRET: "",
-      SESSION_SECRET: "",
+      NEW_API_ENABLED: "false",
     });
-    assertFails(result, /Backend release preflight failed|AUTH_SESSION_SECRET|SESSION_SECRET/);
+    assertFails(result, /Backend release preflight failed|NEW_API_ENABLED/);
   });
 });
 
