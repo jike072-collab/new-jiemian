@@ -17,9 +17,9 @@ const fullCheckCommands = [
   ["npm", ["run", "test:runtime-isolation"]],
   ["npm", ["run", "check:runtime-paths"]],
   ["npm", ["run", "test:security-release"]],
-  ["npm", ["run", "test:staging-smoke"]],
   ["npm", ["run", "test:ops"]],
   ["npm", ["run", "build"]],
+  ["npm", ["run", "test:staging-smoke"]],
   ["npm", ["run", "check"]],
 ];
 
