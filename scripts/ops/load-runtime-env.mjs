@@ -47,7 +47,8 @@ function applyValues(target, values, source, sources) {
 
 export function buildRuntimeEnv(service, options = {}) {
   const config = getServiceConfig(service, options);
-  const env = { ...process.env };
+  const baseEnv = options.baseEnv || process.env;
+  const env = {};
   const sources = {};
   const files = [];
 
@@ -57,11 +58,14 @@ export function buildRuntimeEnv(service, options = {}) {
     if (parsed.exists) applyValues(env, parsed.values, parsed.source, sources);
   }
 
-  for (const key of Object.keys(process.env)) {
-    if (process.env[key] !== undefined && process.env[key] !== "") sources[key] = "process";
+  for (const [key, value] of Object.entries(baseEnv)) {
+    if (value !== undefined && value !== "") {
+      env[key] = value;
+      sources[key] = "process";
+    }
   }
 
-  const allowRuntimeDirOverride = process.env.AOHUANG_ALLOW_RUNTIME_DIR_OVERRIDE === "1";
+  const allowRuntimeDirOverride = baseEnv.AOHUANG_ALLOW_RUNTIME_DIR_OVERRIDE === "1";
   const enforced = {
     NODE_ENV: "production",
     PORT: config.port,

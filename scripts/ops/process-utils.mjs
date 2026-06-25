@@ -66,7 +66,7 @@ export async function assertPortAvailable(port) {
 
 export function getListeningPid(port) {
   if (process.platform === "win32") {
-    const result = spawnSync("cmd.exe", ["/d", "/s", "/c", "netstat -ano -p tcp"], {
+    const result = spawnSync("netstat.exe", ["-ano", "-p", "tcp"], {
       encoding: "utf8",
       shell: false,
       maxBuffer: 10 * 1024 * 1024,
@@ -112,7 +112,7 @@ export function getProcessInfo(pid) {
 export function stopProcessTree(pid) {
   if (!pid) return;
   if (process.platform === "win32") {
-    runSync("taskkill.exe", ["/PID", String(pid), "/T", "/F"], { allowStatus: [0, 128] });
+    runSync("taskkill.exe", ["/PID", String(pid), "/T"], { allowStatus: [0, 128] });
     return;
   }
   try {

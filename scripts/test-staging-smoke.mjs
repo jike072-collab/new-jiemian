@@ -59,7 +59,7 @@ async function fetchStatus(path) {
 }
 
 function spawnNext(env) {
-  return spawn(process.execPath, ["scripts/ops/start-service.mjs", "staging", "--foreground"], {
+  return spawn(process.execPath, ["scripts/ops/start-service.mjs", "staging", "--foreground", "--root", root], {
     cwd: root,
     env,
     detached: process.platform !== "win32",

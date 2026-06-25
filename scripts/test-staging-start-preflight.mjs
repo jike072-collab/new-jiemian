@@ -1,8 +1,8 @@
 #!/usr/bin/env node
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { readFileSync } from "node:fs";
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdirSync, readFileSync } from "node:fs";
+import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -33,10 +33,11 @@ function test(name, fn) {
   tests.push({ name, fn });
 }
 
-function runStagingPreflightOnly(envPatch) {
+function runStagingPreflightOnly(envPatch, options = {}) {
   return spawnSync(process.execPath, [
     "scripts/start-staging.mjs",
     "--preflight-only",
+    ...(options.serviceRoot ? ["--root", options.serviceRoot] : []),
   ], {
     cwd: root,
     env: {
@@ -50,6 +51,17 @@ function runStagingPreflightOnly(envPatch) {
     shell: false,
     maxBuffer: 20 * 1024 * 1024,
   });
+}
+
+async function withTempServiceRoot(fn) {
+  const tempRoot = await mkdtemp(join(tmpdir(), "aohuang-staging-service-"));
+  try {
+    mkdirSync(join(tempRoot, ".runtime"), { recursive: true });
+    await writeFile(join(tempRoot, "package.json"), "{}");
+    return await fn(tempRoot);
+  } finally {
+    await rm(tempRoot, { recursive: true, force: true });
+  }
 }
 
 async function withTempDirs(fn) {
@@ -90,26 +102,30 @@ test("staging launcher runs full release preflight before next start", () => {
   assert(preflightIndex < nextStartIndex, "release preflight must run before next start");
 });
 
-test("start:staging preflight rejects missing database config", () => {
-  const result = runStagingPreflightOnly({ APP_DATABASE_URL: "" });
-  assertFails(result, /APP_DATABASE_URL|Missing required runtime configuration/);
+test("start:staging preflight rejects missing database config", async () => {
+  await withTempServiceRoot(async (serviceRoot) => {
+    const result = runStagingPreflightOnly({ APP_DATABASE_URL: "" }, { serviceRoot });
+    assertFails(result, /APP_DATABASE_URL|Missing required runtime configuration/);
+  });
 });
 
-test("start:staging preflight rejects missing NewAPI config", () => {
-  const result = runStagingPreflightOnly({ NEW_API_ADMIN_ACCESS_TOKEN: "" });
-  assertFails(result, /NEW_API_ADMIN_ACCESS_TOKEN|Missing required runtime configuration/);
+test("start:staging preflight rejects missing NewAPI config", async () => {
+  await withTempServiceRoot(async (serviceRoot) => {
+    const result = runStagingPreflightOnly({ NEW_API_ADMIN_ACCESS_TOKEN: "" }, { serviceRoot });
+    assertFails(result, /NEW_API_ADMIN_ACCESS_TOKEN|Missing required runtime configuration/);
+  });
 });
 
 test("start:staging preflight enforces staging storage paths", async () => {
   await withTempDirs(async ({ dataDir, uploadsDir }) => {
-    const result = runStagingPreflightOnly({ DATA_DIR: dataDir, UPLOADS_DIR: uploadsDir });
+    const result = runStagingPreflightOnly({ DATA_DIR: dataDir, UPLOADS_DIR: uploadsDir }, { serviceRoot: root });
     assert.equal(result.status, 0, outputOf(result));
   });
 });
 
 test("start:staging preflight passes with isolated temporary dirs", async () => {
   await withTempDirs(async ({ dataDir, uploadsDir }) => {
-    const result = runStagingPreflightOnly({ DATA_DIR: dataDir, UPLOADS_DIR: uploadsDir });
+    const result = runStagingPreflightOnly({ DATA_DIR: dataDir, UPLOADS_DIR: uploadsDir }, { serviceRoot: root });
     assert.equal(result.status, 0, outputOf(result));
   });
 });
@@ -120,7 +136,7 @@ test("start:staging preflight runs backend release checks", async () => {
       DATA_DIR: dataDir,
       UPLOADS_DIR: uploadsDir,
       NEW_API_ENABLED: "false",
-    });
+    }, { serviceRoot: root });
     assertFails(result, /Backend release preflight failed|NEW_API_ENABLED/);
   });
 });

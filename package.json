@@ -42,6 +42,8 @@
     "service:start:production": "node scripts/ops/start-service.mjs production",
     "service:stop:staging": "node scripts/ops/stop-service.mjs staging",
     "service:stop:production": "node scripts/ops/stop-service.mjs production",
+    "service:watchdog:staging": "node scripts/ops/watchdog-service.mjs staging",
+    "service:watchdog:production": "node scripts/ops/watchdog-service.mjs production",
     "deploy:staging": "node scripts/ops/deploy-service.mjs staging",
     "deploy:production": "node scripts/ops/deploy-service.mjs production",
     "check": "npm run lint && npm run typecheck && npm run test:runtime-isolation && npm run check:runtime-paths && npm run test:security-release && npm run test:ops && npm run build",

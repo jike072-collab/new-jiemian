@@ -13,9 +13,10 @@ Runtime environment is loaded by `scripts/ops/load-runtime-env.mjs`.
 
 Priority:
 
-1. Service environment files in the current service worktree.
+1. Service invariants enforced by the operation script.
 2. Current process environment.
-3. Service invariants enforced by the operation script.
+3. Service environment files in the current service worktree.
+4. Code defaults.
 
 Production reads only the production worktree:
 
@@ -88,7 +89,7 @@ Deploy production:
 npm run deploy:production
 ```
 
-The deployment script checks the worktree, fetches target code, records current PID and commit, creates backups and checksums, runs `npm ci`, automated tests, build, release preflight, then stops the old process and starts the new one. If deployment validation fails after the old process is stopped, it attempts automatic rollback.
+The deployment script checks the worktree, fetches target code, records current PID and commit, creates backups and checksums, runs `npm ci`, automated tests, build, release preflight, then verifies service process identity before stopping the old process and starting the new one. If deployment validation fails after the old process is stopped, it attempts full rollback from the verified backup.
 
 ## Health Checks
 
@@ -122,9 +123,14 @@ Backups are written under:
 ../_rollback_backups
 ```
 
-Each deployment backup includes runtime metadata, `data`, `uploads`, selected local config files, and checksums. A rollback PowerShell script is generated in the backup folder.
+Each deployment backup includes a manifest, runtime metadata, `data`, `uploads`, selected local config files, database backup metadata, and checksums. PostgreSQL backups use `pg_dump` custom format and are verified with `pg_restore --list`.
 
-Rollback scripts restore the previous commit and start the corresponding service. They must not delete or recreate `data` or `uploads`.
+Rollback supports two explicit modes:
+
+- `code-only`: restore code and restart the service without restoring data.
+- `full`: restore code, verified `data`, verified `uploads`, and database backup artifacts before restart.
+
+Full rollback validates the manifest, service name, commit, checksums, and prepared rollback code before stopping the service. It must not restore a staging backup into production or a production backup into staging.
 
 ## Process Recovery
 
@@ -144,7 +150,7 @@ If the current Windows session lacks permission to create system tasks, do not r
 
 No PM2 or NSSM dependency is required.
 
-The task scheduler entry runs once per minute as a watchdog. If the service is already listening, `start-service` refuses to start a duplicate process. If the service has exited, the next watchdog run starts it again. This covers normal reboot recovery and unexpected process exit without adding PM2 or NSSM.
+The task scheduler entry runs once per minute as a health watchdog. It runs `scripts/ops/watchdog-service.mjs`, not `start-service` directly. The watchdog first verifies process identity and health. A healthy service exits with code 0 and is not restarted. A stopped service is started only after confirming the port is free. An owned but unhealthy service is restarted only after repeated health failures. Foreign or ambiguous port owners are never killed.
 
 ## Operator Responsibility
 

@@ -3,13 +3,15 @@ import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
-import { createServiceBackup, snapshotDirectory, writeRollbackScript } from "./backup-utils.mjs";
+import { createServiceBackup, restoreDataAndUploads, snapshotDirectory, verifyBackupManifest, writeRollbackScript } from "./backup-utils.mjs";
 import { buildRuntimeEnv } from "./load-runtime-env.mjs";
 import { getServiceConfig } from "./service-config.mjs";
 import { checkServiceHealth } from "./health-check.mjs";
 import { startService } from "./start-service.mjs";
 import { stopService } from "./stop-service.mjs";
 import { getListeningPid, isPortAvailable, run, runSync, wait } from "./process-utils.mjs";
+import { safeGit } from "./git-utils.mjs";
+import { prepareDatabaseRestore, restoreDatabaseBackup } from "./database-restore.mjs";
 
 const validationCheckCommands = [
   ["npm", ["ci"]],
@@ -65,14 +67,14 @@ export async function deployService(service, options = {}) {
 
   await validateTargetInWorktree(service, config, runtime, targetCommit, report);
 
-  const backup = createServiceBackup(config, { note: `before deploy to ${targetCommit}` });
+  const backup = createServiceBackup(config, { note: `before deploy to ${targetCommit}`, env: runtime.env });
   const rollbackScript = writeRollbackScript(config, backup, before.commit);
   report.backup = backup.backupDir;
   report.rollback = rollbackScript;
 
   try {
     if (!options.dryRun) {
-      stopService(service, { root: config.root });
+      await stopService(service, { root: config.root });
       serviceStopped = true;
       await wait(1500);
       runSync("git", ["checkout", "--detach", targetCommit], { cwd: config.root });
@@ -101,7 +103,7 @@ export async function deployService(service, options = {}) {
   } catch (error) {
     report.error = error instanceof Error ? error.message : String(error);
     if (!options.dryRun && serviceStopped) {
-      await rollbackService(service, { root: config.root, backupDir: backup.backupDir, commit: before.commit });
+      await rollbackService(service, { root: config.root, backupDir: backup.backupDir, commit: before.commit, mode: "full" });
       report.rollbackTriggered = true;
     }
     throw Object.assign(new Error(report.error), { report });
@@ -175,17 +177,20 @@ async function findTemporaryPort() {
 
 export async function rollbackService(service, options = {}) {
   const config = getServiceConfig(service, options);
-  stopService(service, { root: config.root });
+  if (!options.backupDir) throw new Error("rollback requires --backup.");
+  if (!options.commit) throw new Error("rollback requires --commit.");
+  const manifest = verifyBackupManifest(config, options.backupDir);
+  runSync("git", ["cat-file", "-e", `${options.commit}^{commit}`], { cwd: config.root });
+  if (options.mode === "full") prepareDatabaseRestore(config, manifest, process.env, options);
+  await stopService(service, { root: config.root });
   await wait(1500);
+  if (!await isPortAvailable(config.port)) throw new Error(`${service} port ${config.port} did not stop cleanly.`);
   runSync("git", ["checkout", "--detach", options.commit], { cwd: config.root });
   await run("npm", ["ci"], { cwd: config.root });
   await run("npm", ["run", "build"], { cwd: config.root });
-  if (options.backupDir) {
-    const dataBackup = join(options.backupDir, "data");
-    const uploadsBackup = join(options.backupDir, "uploads");
-    if (!existsSync(dataBackup) || !existsSync(uploadsBackup)) {
-      throw new Error("Rollback backup is missing data or uploads snapshot.");
-    }
+  if (options.mode === "full") {
+    restoreDataAndUploads(config, options.backupDir);
+    restoreDatabaseBackup(config, manifest, process.env, options);
   }
   await startService(service, { root: config.root });
   const health = await checkServiceHealth(service, { root: config.root, repeat: 10 });
@@ -213,14 +218,6 @@ function assertNoDataLoss(before, after) {
     if (after[key].count < before[key].count) {
       throw new Error(`${key} file count decreased from ${before[key].count} to ${after[key].count}.`);
     }
-  }
-}
-
-function safeGit(root, args) {
-  try {
-    return runSync("git", args, { cwd: root }).stdout.trim();
-  } catch {
-    return "";
   }
 }
 
