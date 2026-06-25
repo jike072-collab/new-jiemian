@@ -50,7 +50,7 @@ export function buildServiceState(config, details = {}) {
 export async function classifyServiceProcess(service, options = {}) {
   const config = getServiceConfig(service, options);
   const state = readServiceState(config);
-  const pid = getListeningPid(config.port);
+  const pid = options.listeningPidProvider ? options.listeningPidProvider(config.port) : getListeningPid(config.port);
   const portAvailable = pid ? false : await isPortAvailable(config.port);
   if (!pid && portAvailable) {
     return {
@@ -92,7 +92,7 @@ export async function classifyServiceProcess(service, options = {}) {
   if (state.processStartedAt && processInfo.CreationDate && state.processStartedAt !== processInfo.CreationDate) {
     return { service, config, status: "stale", pid, processInfo, state, reason: "pid-reused-process-start-time-changed" };
   }
-  if (!processLooksLikeService(config, processInfo)) {
+  if (!processLooksLikeService(config, processInfo) && !processLooksLikeServiceState(config, state, processInfo)) {
     return { service, config, status: "foreign", pid, processInfo, state, reason: "command-line-does-not-match-service" };
   }
   return { service, config, status: "owned", pid, processInfo, state, reason: "owned" };
@@ -131,6 +131,17 @@ function processLooksLikeService(config, processInfo) {
     && commandLine.includes("next")
     && commandLine.includes(String(config.port))
     && (commandLine.includes(root) || commandLine.includes(root.replaceAll("\\", "/")));
+}
+
+function processLooksLikeServiceState(config, state, processInfo) {
+  const commandLine = String(processInfo?.CommandLine || "").toLowerCase();
+  if (!commandLine) return false;
+  const command = String(state?.command || "").toLowerCase();
+  return command.includes("next start")
+    && command.includes(String(config.port))
+    && commandLine.includes("next")
+    && commandLine.includes(String(config.port))
+    && samePath(state?.root || state?.workdir, config.root);
 }
 
 function samePath(left, right) {

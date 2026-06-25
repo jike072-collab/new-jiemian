@@ -9,12 +9,18 @@ import { startService } from "./start-service.mjs";
 import { stopService } from "./stop-service.mjs";
 import { classifyServiceProcess } from "./process-identity.mjs";
 import { wait } from "./process-utils.mjs";
+import { getActiveServiceOperation } from "./operation-lock.mjs";
 
 export async function runWatchdog(service, options = {}) {
   const config = getServiceConfig(service, options);
   mkdirSync(config.runtimeDir, { recursive: true });
   const lock = acquireLock(config, options);
   try {
+    const activeOperation = getActiveServiceOperation(config);
+    if (activeOperation) {
+      writeWatchdogLog(config, "deferred-active-operation", { operation: activeOperation.operation });
+      return { service, action: "none", ok: true, deferred: true, operation: activeOperation.operation };
+    }
     const identity = await classifyServiceProcess(service, { root: config.root, port: config.port, processInfoProvider: options.processInfoProvider });
     if (identity.status === "owned") {
       const health = await checkServiceHealth(service, { root: config.root, port: config.port, repeat: 1, timeoutMs: options.timeoutMs || 5000 });
