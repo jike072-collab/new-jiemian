@@ -179,7 +179,14 @@ test("deploy script names keep staging and production scoped to their ports", ()
   const source = readFileSync(join(process.cwd(), "scripts", "ops", "deploy-service.mjs"), "utf8");
   assert.match(source, /deployService\(service/);
   assert.match(source, /stopService\(service/);
+  assert.match(source, /validateTargetInWorktree/);
   assert(!source.includes("git reset --hard"));
+});
+
+test("deploy validation happens before the live service is stopped", () => {
+  const source = readFileSync(join(process.cwd(), "scripts", "ops", "deploy-service.mjs"), "utf8");
+  assert(source.indexOf("await validateTargetInWorktree") < source.indexOf("stopService(service"));
+  assert.match(source, /git", \["worktree", "add"/);
 });
 
 test("generation endpoints are not used by health checks", () => {

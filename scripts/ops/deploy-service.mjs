@@ -1,5 +1,6 @@
 #!/usr/bin/env node
-import { existsSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
 import { createServiceBackup, snapshotDirectory, writeRollbackScript } from "./backup-utils.mjs";
@@ -10,7 +11,7 @@ import { startService } from "./start-service.mjs";
 import { stopService } from "./stop-service.mjs";
 import { getListeningPid, isPortAvailable, run, runSync, wait } from "./process-utils.mjs";
 
-const fullCheckCommands = [
+const validationCheckCommands = [
   ["npm", ["ci"]],
   ["npm", ["run", "lint"]],
   ["npm", ["run", "typecheck"]],
@@ -23,9 +24,15 @@ const fullCheckCommands = [
   ["npm", ["run", "check"]],
 ];
 
+const serviceRefreshCommands = [
+  ["npm", ["ci"]],
+  ["npm", ["run", "build"]],
+];
+
 export async function deployService(service, options = {}) {
   const config = getServiceConfig(service, options);
   const target = options.target || "origin/main";
+  let serviceStopped = false;
   const before = {
     pid: getListeningPid(config.port),
     commit: safeGit(config.root, ["rev-parse", "HEAD"]),
@@ -56,27 +63,25 @@ export async function deployService(service, options = {}) {
     throw new Error(`Missing required runtime configuration before stopping old process: ${runtime.missing.join(", ")}`);
   }
 
+  await validateTargetInWorktree(service, config, runtime, targetCommit, report);
+
   const backup = createServiceBackup(config, { note: `before deploy to ${targetCommit}` });
   const rollbackScript = writeRollbackScript(config, backup, before.commit);
   report.backup = backup.backupDir;
   report.rollback = rollbackScript;
 
-  runSync("git", ["checkout", "--detach", targetCommit], { cwd: config.root });
   try {
-    const checkEnv = {
-      ...runtime.env,
-      STAGING_SMOKE_PORT: String(await findTemporaryPort()),
-    };
-    for (const [command, args] of fullCheckCommands) {
-      await run(command, args, { cwd: config.root, env: checkEnv });
-      report.checks.push({ command: `${command} ${args.join(" ")}`, ok: true });
-    }
-    await startService(service, { root: config.root, preflightOnly: true });
-    report.checks.push({ command: "start-service --preflight-only", ok: true });
-
     if (!options.dryRun) {
       stopService(service, { root: config.root });
+      serviceStopped = true;
       await wait(1500);
+      runSync("git", ["checkout", "--detach", targetCommit], { cwd: config.root });
+      for (const [command, args] of serviceRefreshCommands) {
+        await run(command, args, { cwd: config.root, env: runtime.env });
+        report.checks.push({ command: `service ${command} ${args.join(" ")}`, ok: true });
+      }
+      await startService(service, { root: config.root, preflightOnly: true });
+      report.checks.push({ command: "service start-service --preflight-only", ok: true });
       await startService(service, { root: config.root });
       await wait(1500);
       const health = await checkServiceHealth(service, { root: config.root, repeat: 10 });
@@ -95,14 +100,50 @@ export async function deployService(service, options = {}) {
     return report;
   } catch (error) {
     report.error = error instanceof Error ? error.message : String(error);
-    if (!options.dryRun) {
+    if (!options.dryRun && serviceStopped) {
       await rollbackService(service, { root: config.root, backupDir: backup.backupDir, commit: before.commit });
       report.rollbackTriggered = true;
     }
     throw Object.assign(new Error(report.error), { report });
   } finally {
+    mkdirSync(config.runtimeDir, { recursive: true });
     writeFileSync(join(config.runtimeDir, `deploy-${service}-last.json`), JSON.stringify(report, null, 2));
   }
+}
+
+async function validateTargetInWorktree(service, config, runtime, targetCommit, report) {
+  const validationRoot = mkdtempSync(join(tmpdir(), `aohuang-${service}-deploy-check-`));
+  report.validationRoot = validationRoot;
+  try {
+    runSync("git", ["worktree", "add", "--detach", validationRoot, targetCommit], { cwd: config.root });
+    const validationConfig = getServiceConfig(service, { root: validationRoot, port: config.port });
+    const checkEnv = {
+      ...runtime.env,
+      AOHUANG_ALLOW_RUNTIME_DIR_OVERRIDE: "1",
+      DATA_DIR: validationConfig.dataDir,
+      UPLOADS_DIR: validationConfig.uploadsDir,
+      STAGING_SMOKE_PORT: String(await findTemporaryPort()),
+    };
+    for (const [command, args] of validationCheckCommands) {
+      await run(command, args, { cwd: validationRoot, env: checkEnv });
+      report.checks.push({ command: `validation ${command} ${args.join(" ")}`, ok: true });
+    }
+    await run(process.execPath, ["scripts/ops/start-service.mjs", service, "--preflight-only"], {
+      cwd: validationRoot,
+      env: checkEnv,
+    });
+    report.checks.push({ command: "validation start-service --preflight-only", ok: true });
+  } finally {
+    cleanupValidationWorktree(config.root, validationRoot);
+  }
+}
+
+function cleanupValidationWorktree(repoRoot, validationRoot) {
+  runSync("git", ["worktree", "remove", "--force", validationRoot], {
+    cwd: repoRoot,
+    allowStatus: [0, 128],
+  });
+  if (existsSync(validationRoot)) rmSync(validationRoot, { recursive: true, force: true });
 }
 
 async function findTemporaryPort() {
