@@ -189,6 +189,12 @@ test("deploy validation happens before the live service is stopped", () => {
   assert.match(source, /git", \["worktree", "add"/);
 });
 
+test("deploy verification installs dev tooling before production preflight", () => {
+  const source = readFileSync(join(process.cwd(), "scripts", "ops", "deploy-service.mjs"), "utf8");
+  assert.match(source, /buildVerificationEnv/);
+  assert.match(source, /npm_config_production: "false"/);
+});
+
 test("generation endpoints are not used by health checks", () => {
   const source = readFileSync(join(process.cwd(), "scripts", "ops", "health-check.mjs"), "utf8");
   assert(!source.includes("/api/generate/"));

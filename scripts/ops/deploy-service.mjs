@@ -77,7 +77,7 @@ export async function deployService(service, options = {}) {
       await wait(1500);
       runSync("git", ["checkout", "--detach", targetCommit], { cwd: config.root });
       for (const [command, args] of serviceRefreshCommands) {
-        await run(command, args, { cwd: config.root, env: runtime.env });
+        await run(command, args, { cwd: config.root, env: buildVerificationEnv(runtime.env) });
         report.checks.push({ command: `service ${command} ${args.join(" ")}`, ok: true });
       }
       await startService(service, { root: config.root, preflightOnly: true });
@@ -118,7 +118,7 @@ async function validateTargetInWorktree(service, config, runtime, targetCommit, 
     runSync("git", ["worktree", "add", "--detach", validationRoot, targetCommit], { cwd: config.root });
     const validationConfig = getServiceConfig(service, { root: validationRoot, port: config.port });
     const checkEnv = {
-      ...runtime.env,
+      ...buildVerificationEnv(runtime.env),
       AOHUANG_ALLOW_RUNTIME_DIR_OVERRIDE: "1",
       DATA_DIR: validationConfig.dataDir,
       UPLOADS_DIR: validationConfig.uploadsDir,
@@ -130,12 +130,20 @@ async function validateTargetInWorktree(service, config, runtime, targetCommit, 
     }
     await run(process.execPath, ["scripts/ops/start-service.mjs", service, "--preflight-only"], {
       cwd: validationRoot,
-      env: checkEnv,
+      env: { ...runtime.env, DATA_DIR: checkEnv.DATA_DIR, UPLOADS_DIR: checkEnv.UPLOADS_DIR },
     });
     report.checks.push({ command: "validation start-service --preflight-only", ok: true });
   } finally {
     cleanupValidationWorktree(config.root, validationRoot);
   }
+}
+
+function buildVerificationEnv(runtimeEnv) {
+  return {
+    ...runtimeEnv,
+    NODE_ENV: "development",
+    npm_config_production: "false",
+  };
 }
 
 function cleanupValidationWorktree(repoRoot, validationRoot) {
