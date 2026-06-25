@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { existsSync, mkdirSync, readFileSync } from "node:fs";
+import http from "node:http";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import net from "node:net";
@@ -158,6 +159,34 @@ test("status command identifies invalid pid as not listening", async () => {
     const status = await withProcessEnv({ STAGING_PORT: "49999" }, () => getServiceStatus("staging", { root }));
     assert.equal(status.listening, false);
     assert.equal(status.pid, null);
+  });
+});
+
+test("status command reads commit from git metadata without git process access", async () => {
+  await withTempProject(async (root) => {
+    const commit = "04674d00060334ddfeb018b2724f6fa1c988f7a5";
+    mkdirSync(join(root, ".git"), { recursive: true });
+    await writeFile(join(root, ".git", "HEAD"), `${commit}\n`);
+    const status = await getServiceStatus("staging", { root, port: "49999" });
+    assert.equal(status.commit, commit);
+  });
+});
+
+test("status command treats an occupied port as listening", async () => {
+  await withTempProject(async (root) => {
+    const port = await findAvailablePort();
+    const server = http.createServer((request, response) => {
+      response.writeHead(request.url === "/" ? 200 : 404);
+      response.end("ops status test");
+    });
+    await new Promise((resolve) => server.listen(port, "127.0.0.1", resolve));
+    try {
+      const status = await getServiceStatus("staging", { root, port: String(port), timeoutMs: 100 });
+      assert.equal(status.listening, true);
+      assert.equal(status.healthOk, false);
+    } finally {
+      await new Promise((resolve) => server.close(resolve));
+    }
   });
 });
 

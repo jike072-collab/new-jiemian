@@ -1,8 +1,9 @@
 #!/usr/bin/env node
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync, readFileSync, statSync } from "node:fs";
+import { dirname, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 import { getAllServiceConfigs, getServiceConfig, serviceNames } from "./service-config.mjs";
-import { getListeningPid, getProcessInfo, runSync } from "./process-utils.mjs";
+import { getListeningPid, getProcessInfo, isPortAvailable, runSync } from "./process-utils.mjs";
 import { checkServiceHealth } from "./health-check.mjs";
 
 export async function getServiceStatus(service, options = {}) {
@@ -11,10 +12,11 @@ export async function getServiceStatus(service, options = {}) {
   const processInfo = getProcessInfo(pid);
   const state = readStateFile(config.stateFile);
   const commit = safeGit(config.root, ["rev-parse", "HEAD"]);
-  const health = pid ? await checkServiceHealth(service, { ...options, repeat: options.repeat || 1 }) : null;
+  const listening = Boolean(pid) || !(await isPortAvailable(config.port));
+  const health = listening ? await checkServiceHealth(service, { ...options, port: config.port, repeat: options.repeat || 1 }) : null;
   return {
     service,
-    listening: Boolean(pid),
+    listening,
     pid,
     port: config.port,
     root: config.root,
@@ -41,10 +43,28 @@ function readStateFile(file) {
 
 function safeGit(root, args) {
   try {
-    return runSync("git", args, { cwd: root }).stdout.trim();
+    return runSync("git", ["-c", `safe.directory=${root.replaceAll("\\", "/")}`, ...args], { cwd: root }).stdout.trim();
   } catch {
+    if (args.join(" ") === "rev-parse HEAD") return readGitHead(root) || "unknown";
     return "unknown";
   }
+}
+
+function readGitHead(root) {
+  try {
+    const dotGit = resolve(root, ".git");
+    const gitDir = statSync(dotGit).isDirectory()
+      ? dotGit
+      : resolve(dirname(dotGit), readFileSync(dotGit, "utf8").replace(/^gitdir:\s*/i, "").trim());
+    const head = readFileSync(resolve(gitDir, "HEAD"), "utf8").trim();
+    if (!head.startsWith("ref:")) return head;
+    const ref = head.replace(/^ref:\s*/, "").trim();
+    const refFile = resolve(gitDir, ref);
+    if (existsSync(refFile)) return readFileSync(refFile, "utf8").trim();
+  } catch {
+    return null;
+  }
+  return null;
 }
 
 async function cli() {
