@@ -648,8 +648,11 @@ test("task registration uses known service roots instead of the development work
   assert.match(source, /-File/);
   assert.match(source, /\\uFEFF/);
   assert(!source.includes("-Command"));
+  assert.match(source, /wscript\.exe/);
+  assert.match(source, /watchdog-\$\{config\.service\}-hidden\.vbs/);
+  assert.match(source, /-WindowStyle Hidden/);
   assert.match(source, /"MINUTE"/);
-  assert.match(source, /"1"/);
+  assert.match(source, /"10"/);
 });
 
 function findAvailablePort() {
