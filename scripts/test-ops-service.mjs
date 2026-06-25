@@ -198,6 +198,46 @@ test("stale state is detected without killing a reused pid", async () => {
   });
 });
 
+test("owned service state keeps watchdog from misclassifying a matching process", async () => {
+  await withTempProject(async (root) => {
+    const port = await findAvailablePort();
+    const server = http.createServer((request, response) => {
+      response.writeHead(200);
+      response.end("ok");
+    });
+    await new Promise((resolve) => server.listen(port, "127.0.0.1", resolve));
+    try {
+      const config = getServiceConfig("staging", { root, port: String(port) });
+      await writeFile(config.stateFile, JSON.stringify({
+        statusVersion: 2,
+        serviceName: "staging",
+        service: "staging",
+        port: config.port,
+        pid: process.pid,
+        workdir: config.root,
+        root: config.root,
+        dataDir: config.dataDir,
+        uploadsDir: config.uploadsDir,
+        command: `node ${join(config.root, "node_modules", "next", "dist", "bin", "next")} start -H 127.0.0.1 -p ${config.port}`,
+        processStartedAt: "2026-06-25T00:00:00.000Z",
+      }, null, 2));
+      const identity = await classifyServiceProcess("staging", {
+        root,
+        port: config.port,
+        processInfoProvider: () => ({
+          ProcessId: process.pid,
+          ParentProcessId: process.ppid,
+          CommandLine: `\"C:\\Program Files\\nodejs\\node.exe\" next start -H 127.0.0.1 -p ${config.port}`,
+          CreationDate: "2026-06-25T00:00:00.000Z",
+        }),
+      });
+      assert.equal(identity.status, "owned");
+    } finally {
+      await new Promise((resolve) => server.close(resolve));
+    }
+  });
+});
+
 test("foreign port occupant is not stopped", async () => {
   await withTempProject(async (root) => {
     const port = await findAvailablePort();
@@ -645,9 +685,10 @@ test("task registration uses known service roots instead of the development work
   assert.match(source, /watchdog-service\.mjs/);
   assert(!source.includes("start-service.mjs"));
   assert.match(source, /watchdog-\$\{config\.service\}\.ps1/);
+  assert.match(source, /powershell\.exe -NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File/);
+  assert.match(source, /--root \$root/);
   assert.match(source, /-File/);
   assert.match(source, /\\uFEFF/);
-  assert(!source.includes("-Command"));
   assert.match(source, /"MINUTE"/);
   assert.match(source, /"1"/);
 });
