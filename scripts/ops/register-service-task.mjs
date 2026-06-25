@@ -35,13 +35,14 @@ function escapePowerShellSingleQuoted(value) {
 function writeWatchdogScript(config) {
   mkdirSync(config.runtimeDir, { recursive: true });
   const scriptPath = join(config.runtimeDir, `watchdog-${config.service}.ps1`);
-  writeFileSync(scriptPath, [
+  const script = [
     "$ErrorActionPreference = 'Stop'",
     `$root = '${escapePowerShellSingleQuoted(config.root)}'`,
     "Set-Location -LiteralPath $root",
     `node scripts/ops/start-service.mjs ${config.service}`,
     "",
-  ].join("\r\n"));
+  ].join("\r\n");
+  writeFileSync(scriptPath, `\uFEFF${script}`, "utf8");
   return scriptPath;
 }
 

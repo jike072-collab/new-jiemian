@@ -246,6 +246,7 @@ test("task registration uses known service roots instead of the development work
   assert.match(source, /start-service\.mjs/);
   assert.match(source, /watchdog-\$\{config\.service\}\.ps1/);
   assert.match(source, /-File/);
+  assert.match(source, /\\uFEFF/);
   assert(!source.includes("-Command"));
   assert.match(source, /"MINUTE"/);
   assert.match(source, /"1"/);
