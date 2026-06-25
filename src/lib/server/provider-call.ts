@@ -123,6 +123,17 @@ function imageUpscaleValue(quality: string) {
   return quality === "4k" ? "4k" : quality === "2k" ? "2k" : "";
 }
 
+function isImg2ImageProvider(provider: ProviderConfig) {
+  return provider.id === "image-img2-4k" || provider.model === "image4k";
+}
+
+function img2ImageSize(ratio: string, quality: string) {
+  const multiplier = quality === "4k" ? 4 : quality === "2k" ? 2 : 1;
+  const [width, height] = ratioToSize(ratio).split("x").map((value) => Number(value));
+  if (!Number.isFinite(width) || !Number.isFinite(height)) return ratioToSize(ratio);
+  return `${width * multiplier}x${height * multiplier}`;
+}
+
 function normalizeStatus(value: string) {
   const status = value.toLowerCase();
   if (["done", "completed", "succeeded", "success"].includes(status)) return "done";
@@ -353,6 +364,23 @@ async function callImageProvider({
   const size = ratioToSize(ratio);
   const useMultipart = files.length > 0;
   const apiUrl = imageEndpoint(provider, useMultipart);
+
+  if (isImg2ImageProvider(provider) && !useMultipart) {
+    const response = await fetch(apiUrl, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        ...authHeaders(provider),
+      },
+      body: JSON.stringify({
+        model: provider.model,
+        prompt,
+        size: img2ImageSize(ratio, quality),
+      }),
+      signal: AbortSignal.timeout(300000),
+    });
+    return parseProviderOutput(await readProviderJson(response));
+  }
 
   if (useMultipart) {
     const upscale = imageUpscaleValue(quality);

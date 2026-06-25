@@ -34,5 +34,11 @@ jobs:
       - name: Type check
         run: npm run typecheck
 
+      - name: Runtime isolation tests
+        run: npm run test:runtime-isolation
+
+      - name: Runtime path usage check
+        run: npm run check:runtime-paths
+
       - name: Build
         run: npm run build

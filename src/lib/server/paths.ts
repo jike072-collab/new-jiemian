@@ -1,9 +1,19 @@
 import { mkdir, readFile, rename, unlink, writeFile } from "node:fs/promises";
-import { join } from "node:path";
 import { randomUUID } from "node:crypto";
 
-export const dataRoot = join(process.cwd(), "data");
-export const uploadsRoot = join(process.cwd(), "uploads");
+import {
+  getDataDir,
+  getUploadsDir,
+  resolveDataPath,
+  resolveUploadPath,
+  validateRuntimeStorageIsolation,
+} from "./runtime-paths";
+
+validateRuntimeStorageIsolation();
+
+export const dataRoot = getDataDir();
+export const uploadsRoot = getUploadsDir();
+export { resolveDataPath, resolveUploadPath, validateRuntimeStorageIsolation };
 
 export async function ensureRuntimeDirs() {
   await Promise.all([

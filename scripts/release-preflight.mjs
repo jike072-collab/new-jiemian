@@ -15,6 +15,19 @@ function fail(message) {
   process.exit(1);
 }
 
+async function runRuntimeStoragePreflight() {
+  try {
+    const { ensureDataDir, ensureUploadsDir, validateRuntimeStorageIsolation } = await import("../src/lib/server/runtime-paths.ts");
+    const report = validateRuntimeStorageIsolation();
+    if (report.strict) {
+      await ensureDataDir();
+      await ensureUploadsDir();
+    }
+  } catch (error) {
+    fail(error instanceof Error ? error.message : "运行时存储目录检查失败。");
+  }
+}
+
 function run(command, args, options = {}) {
   const useWindowsCommandShell = process.platform === "win32" && ["npx"].includes(command);
   const executable = useWindowsCommandShell ? "cmd.exe" : command;
@@ -34,6 +47,8 @@ function run(command, args, options = {}) {
 }
 
 if (existsSync(outDir)) rmSync(outDir, { recursive: true, force: true });
+
+await runRuntimeStoragePreflight();
 
 run("npx", [
   "tsc",
