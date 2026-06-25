@@ -1,9 +1,18 @@
 #!/usr/bin/env node
-import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { randomUUID } from "node:crypto";
+import { existsSync, mkdirSync, mkdtempSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
-import { createServiceBackup, restoreDataAndUploads, snapshotDirectory, verifyBackupManifest, writeRollbackScript } from "./backup-utils.mjs";
+import {
+  cleanupRestoredDirectories,
+  createServiceBackup,
+  restoreDataAndUploads,
+  rollbackRestoredDirectories,
+  snapshotDirectory,
+  verifyBackupManifest,
+  writeRollbackScript,
+} from "./backup-utils.mjs";
 import { buildRuntimeEnv } from "./load-runtime-env.mjs";
 import { getServiceConfig } from "./service-config.mjs";
 import { checkServiceHealth } from "./health-check.mjs";
@@ -11,7 +20,7 @@ import { startService } from "./start-service.mjs";
 import { stopService } from "./stop-service.mjs";
 import { getListeningPid, isPortAvailable, run, runSync, wait } from "./process-utils.mjs";
 import { safeGit } from "./git-utils.mjs";
-import { prepareDatabaseRestore, restoreDatabaseBackup } from "./database-restore.mjs";
+import { createDatabaseRestoreAuthorization, prepareDatabaseRestore, restoreDatabaseBackup } from "./database-restore.mjs";
 
 const validationCheckCommands = [
   ["npm", ["ci"]],
@@ -31,9 +40,17 @@ const serviceRefreshCommands = [
   ["npm", ["run", "build"]],
 ];
 
+const rollbackCandidateCommands = [
+  ["npm", ["ci"]],
+  ["npm", ["run", "lint"]],
+  ["npm", ["run", "typecheck"]],
+  ["npm", ["run", "build"]],
+];
+
 export async function deployService(service, options = {}) {
   const config = getServiceConfig(service, options);
   const target = options.target || "origin/main";
+  const deploymentId = randomUUID();
   let serviceStopped = false;
   const before = {
     pid: getListeningPid(config.port),
@@ -46,6 +63,7 @@ export async function deployService(service, options = {}) {
     root: config.root,
     port: config.port,
     target,
+    deploymentId,
     startedAt: new Date().toISOString(),
     before,
     backup: null,
@@ -68,6 +86,13 @@ export async function deployService(service, options = {}) {
   await validateTargetInWorktree(service, config, runtime, targetCommit, report);
 
   const backup = createServiceBackup(config, { note: `before deploy to ${targetCommit}`, env: runtime.env });
+  const backupManifest = verifyBackupManifest(config, backup.backupDir);
+  const rollbackAuthorization = createDatabaseRestoreAuthorization(config, backupManifest, runtime.env, {
+    deploymentId,
+    backupDir: backup.backupDir,
+    sourceCommit: before.commit,
+    targetCommit,
+  });
   const rollbackScript = writeRollbackScript(config, backup, before.commit);
   report.backup = backup.backupDir;
   report.rollback = rollbackScript;
@@ -103,7 +128,15 @@ export async function deployService(service, options = {}) {
   } catch (error) {
     report.error = error instanceof Error ? error.message : String(error);
     if (!options.dryRun && serviceStopped) {
-      await rollbackService(service, { root: config.root, backupDir: backup.backupDir, commit: before.commit, mode: "full" });
+      await rollbackService(service, {
+        root: config.root,
+        backupDir: backup.backupDir,
+        commit: before.commit,
+        mode: "full",
+        env: runtime.env,
+        rollbackAuthorization,
+        expectedTargetCommit: targetCommit,
+      });
       report.rollbackTriggered = true;
     }
     throw Object.assign(new Error(report.error), { report });
@@ -179,23 +212,119 @@ export async function rollbackService(service, options = {}) {
   const config = getServiceConfig(service, options);
   if (!options.backupDir) throw new Error("rollback requires --backup.");
   if (!options.commit) throw new Error("rollback requires --commit.");
+  const runtime = buildRuntimeEnv(service, { root: config.root });
+  if (runtime.missing.length) {
+    throw new Error(`Missing required runtime configuration before rollback: ${runtime.missing.join(", ")}`);
+  }
+  const rollbackEnv = options.env || runtime.env;
   const manifest = verifyBackupManifest(config, options.backupDir);
   runSync("git", ["cat-file", "-e", `${options.commit}^{commit}`], { cwd: config.root });
-  if (options.mode === "full") prepareDatabaseRestore(config, manifest, process.env, options);
-  await stopService(service, { root: config.root });
-  await wait(1500);
-  if (!await isPortAvailable(config.port)) throw new Error(`${service} port ${config.port} did not stop cleanly.`);
-  runSync("git", ["checkout", "--detach", options.commit], { cwd: config.root });
-  await run("npm", ["ci"], { cwd: config.root });
-  await run("npm", ["run", "build"], { cwd: config.root });
-  if (options.mode === "full") {
-    restoreDataAndUploads(config, options.backupDir);
-    restoreDatabaseBackup(config, manifest, process.env, options);
+  if (options.mode === "full") prepareDatabaseRestore(config, manifest, rollbackEnv, options);
+  const originalCommit = safeGit(config.root, ["rev-parse", "HEAD"], "unknown");
+  const prepared = await prepareRollbackCodeCandidate(service, config, runtime, options.commit);
+  let artifacts = null;
+  let restoredDirectories = null;
+  try {
+    await stopService(service, { root: config.root });
+    await wait(1500);
+    if (!await isPortAvailable(config.port)) throw new Error(`${service} port ${config.port} did not stop cleanly.`);
+    runSync("git", ["checkout", "--detach", options.commit], { cwd: config.root });
+    artifacts = activatePreparedRollbackArtifacts(config, prepared);
+    await startService(service, { root: config.root, preflightOnly: true });
+    if (options.mode === "full") {
+      restoredDirectories = restoreDataAndUploads(config, options.backupDir, { deferCleanup: true });
+      restoreDatabaseBackup(config, manifest, rollbackEnv, options);
+    }
+    await startService(service, { root: config.root });
+    const health = await checkServiceHealth(service, { root: config.root, repeat: 10 });
+    if (!health.ok) throw new Error(`${service} rollback health check failed.`);
+    cleanupRestoredDirectories(restoredDirectories);
+    cleanupPreparedRollbackArtifacts(artifacts);
+    return health;
+  } catch (error) {
+    rollbackRestoredDirectories(restoredDirectories);
+    rollbackPreparedRollbackArtifacts(artifacts);
+    if (originalCommit !== "unknown") {
+      runSync("git", ["checkout", "--detach", originalCommit], { cwd: config.root, allowStatus: [0, 128] });
+    }
+    throw error;
+  } finally {
+    cleanupValidationWorktree(config.root, prepared.root);
   }
-  await startService(service, { root: config.root });
-  const health = await checkServiceHealth(service, { root: config.root, repeat: 10 });
-  if (!health.ok) throw new Error(`${service} rollback health check failed.`);
-  return health;
+}
+
+async function prepareRollbackCodeCandidate(service, config, runtime, commit) {
+  mkdirSync(config.backupRoot, { recursive: true });
+  const stamp = new Date().toISOString().replace(/[-:]/g, "").replace(/\..+/, "").replace("T", "-");
+  const candidateRoot = join(config.backupRoot, `${config.backupPrefix}-rollback-code-${stamp}-${process.pid}`);
+  runSync("git", ["worktree", "add", "--detach", candidateRoot, commit], { cwd: config.root });
+  try {
+    const verificationEnv = buildVerificationEnv(runtime.env, { includeRuntimeConfig: false });
+    for (const [command, args] of rollbackCandidateCommands) {
+      await run(command, args, { cwd: candidateRoot, env: verificationEnv });
+    }
+    await run(process.execPath, ["scripts/ops/start-service.mjs", service, "--preflight-only", "--root", candidateRoot], {
+      cwd: candidateRoot,
+      env: runtime.env,
+    });
+    const smokeConfig = getServiceConfig(service, { root: candidateRoot, port: config.port });
+    await run("npm", ["run", "test:staging-smoke"], {
+      cwd: candidateRoot,
+      env: {
+        ...runtime.env,
+        AOHUANG_ALLOW_RUNTIME_DIR_OVERRIDE: "1",
+        DATA_DIR: join(smokeConfig.runtimeDir, "rollback-smoke-data"),
+        UPLOADS_DIR: join(smokeConfig.runtimeDir, "rollback-smoke-uploads"),
+        STAGING_SMOKE_PORT: String(await findTemporaryPort()),
+      },
+    });
+    return { root: candidateRoot };
+  } catch (error) {
+    cleanupValidationWorktree(config.root, candidateRoot);
+    throw error;
+  }
+}
+
+function activatePreparedRollbackArtifacts(config, prepared) {
+  const stamp = new Date().toISOString().replace(/[-:]/g, "").replace(/\..+/, "").replace("T", "-");
+  const state = { moved: [] };
+  try {
+    for (const name of ["node_modules", ".next"]) {
+      const source = join(prepared.root, name);
+      const target = join(config.root, name);
+      if (!existsSync(source)) throw new Error(`Prepared rollback artifact is missing: ${name}`);
+      const old = `${target}.before-rollback-${stamp}`;
+      let oldPath = null;
+      if (existsSync(target)) {
+        renameSync(target, old);
+        oldPath = old;
+      }
+      try {
+        renameSync(source, target);
+      } catch (error) {
+        if (oldPath && existsSync(oldPath)) renameSync(oldPath, target);
+        throw error;
+      }
+      state.moved.push({ name, source, target, old: oldPath });
+    }
+  } catch (error) {
+    rollbackPreparedRollbackArtifacts(state);
+    throw error;
+  }
+  return state;
+}
+
+function cleanupPreparedRollbackArtifacts(state) {
+  for (const entry of state?.moved || []) {
+    if (entry.old && existsSync(entry.old)) rmSync(entry.old, { recursive: true, force: true });
+  }
+}
+
+function rollbackPreparedRollbackArtifacts(state) {
+  for (const entry of [...(state?.moved || [])].reverse()) {
+    if (entry.target && existsSync(entry.target)) rmSync(entry.target, { recursive: true, force: true });
+    if (entry.old && existsSync(entry.old)) renameSync(entry.old, entry.target);
+  }
 }
 
 function assertCleanWorktree(root) {

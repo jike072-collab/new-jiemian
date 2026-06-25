@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { copyFileSync, cpSync, existsSync, mkdirSync, readdirSync, readFileSync, renameSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { closeSync, copyFileSync, cpSync, existsSync, mkdirSync, openSync, readFileSync, readSync, readdirSync, renameSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { basename, dirname, join, relative } from "node:path";
 import { createDatabaseBackup } from "./database-backup.mjs";
 import { safeGit } from "./git-utils.mjs";
@@ -59,6 +59,7 @@ export function createServiceBackup(config, options = {}) {
   const database = createDatabaseBackup(config, {
     backupDir,
     env: options.env || process.env,
+    ...(options.databaseOptions || {}),
   });
 
   const meta = {
@@ -120,23 +121,55 @@ export function verifyBackupManifest(config, backupDir) {
   for (const entry of JSON.parse(readFileSync(checksumsPath, "utf8"))) {
     const file = join(backupDir, entry.path);
     if (!existsSync(file)) throw new Error(`Rollback checksum target is missing: ${entry.path}`);
-    const actual = createHash("sha256").update(readFileSync(file)).digest("hex");
+    const actual = hashFile(file);
     if (actual !== entry.sha256) throw new Error(`Rollback checksum mismatch: ${entry.path}`);
+    if (typeof entry.size === "number" && statSync(file).size !== entry.size) {
+      throw new Error(`Rollback checksum size mismatch: ${entry.path}`);
+    }
   }
   return manifest;
 }
 
-export function restoreDataAndUploads(config, backupDir) {
+export function restoreDataAndUploads(config, backupDir, options = {}) {
   verifyBackupManifest(config, backupDir);
-  restoreDirectory(join(backupDir, "data"), config.dataDir);
-  restoreDirectory(join(backupDir, "uploads"), config.uploadsDir);
+  const checksums = readBackupChecksums(backupDir);
+  const restored = [
+    restoreDirectory(join(backupDir, "data"), config.dataDir, {
+      backupDir,
+      checksums,
+      prefix: "data",
+      deferCleanup: options.deferCleanup,
+    }),
+    restoreDirectory(join(backupDir, "uploads"), config.uploadsDir, {
+      backupDir,
+      checksums,
+      prefix: "uploads",
+      deferCleanup: options.deferCleanup,
+    }),
+  ];
+  return { backupDir, restored };
 }
 
 export function checksumFiles(root) {
   return listFiles(root).filter((file) => !["checksums.json"].includes(relative(root, file))).map((file) => ({
-    path: relative(root, file),
-    sha256: createHash("sha256").update(readFileSync(file)).digest("hex"),
+    path: toManifestPath(relative(root, file)),
+    size: statSync(file).size,
+    sha256: hashFile(file),
   }));
+}
+
+export function cleanupRestoredDirectories(restoreState) {
+  for (const entry of restoreState?.restored || []) {
+    if (entry.old && existsSync(entry.old)) rmSync(entry.old, { recursive: true, force: true });
+  }
+}
+
+export function rollbackRestoredDirectories(restoreState) {
+  for (const entry of [...(restoreState?.restored || [])].reverse()) {
+    if (entry.target && existsSync(entry.target)) rmSync(entry.target, { recursive: true, force: true });
+    if (entry.old && existsSync(entry.old)) renameSync(entry.old, entry.target);
+    if (entry.temp && existsSync(entry.temp)) rmSync(entry.temp, { recursive: true, force: true });
+  }
 }
 
 function listFiles(root) {
@@ -150,27 +183,92 @@ function listFiles(root) {
   return results;
 }
 
-function restoreDirectory(source, target) {
+function restoreDirectory(source, target, options = {}) {
   if (!existsSync(source)) throw new Error(`Rollback source directory is missing: ${source}`);
   mkdirSync(dirname(target), { recursive: true });
   const stamp = new Date().toISOString().replace(/[-:]/g, "").replace(/\..+/, "").replace("T", "-");
   const temp = `${target}.restore-${stamp}`;
   const old = `${target}.old-${stamp}`;
   cpSync(source, temp, { recursive: true, force: true });
-  const sourceSnapshot = snapshotDirectory(source);
-  const tempSnapshot = snapshotDirectory(temp);
-  if (sourceSnapshot.count !== tempSnapshot.count || sourceSnapshot.size !== tempSnapshot.size) {
+  try {
+    verifyRestoredDirectory(source, temp, options);
+  } catch (error) {
     rmSync(temp, { recursive: true, force: true });
-    throw new Error(`Rollback restore verification failed for ${target}.`);
+    throw error;
   }
   if (existsSync(target)) renameSync(target, old);
   try {
     renameSync(temp, target);
-    if (existsSync(old)) rmSync(old, { recursive: true, force: true });
+    if (!options.deferCleanup && existsSync(old)) rmSync(old, { recursive: true, force: true });
+    return { source, target, old: existsSync(old) ? old : null, temp: null };
   } catch (error) {
     if (existsSync(target)) rmSync(target, { recursive: true, force: true });
     if (existsSync(old)) renameSync(old, target);
     if (existsSync(temp)) rmSync(temp, { recursive: true, force: true });
     throw error;
   }
+}
+
+function verifyRestoredDirectory(source, temp, options) {
+  const prefix = options.prefix;
+  const expected = new Map(
+    (options.checksums || [])
+      .filter((entry) => manifestPathStartsWith(entry.path, prefix))
+      .map((entry) => [stripManifestPrefix(entry.path, prefix), entry]),
+  );
+  const sourceFiles = listFiles(source).map((file) => toManifestPath(relative(source, file))).sort();
+  const tempFiles = listFiles(temp).map((file) => toManifestPath(relative(temp, file))).sort();
+  if (sourceFiles.length !== tempFiles.length || sourceFiles.some((file, index) => file !== tempFiles[index])) {
+    throw new Error(`Rollback restore verification failed for ${temp}: copied files differ from source.`);
+  }
+  if (expected.size !== tempFiles.length) {
+    throw new Error(`Rollback restore verification failed for ${temp}: checksum file list does not match.`);
+  }
+  for (const relativePath of tempFiles) {
+    const entry = expected.get(relativePath);
+    if (!entry) throw new Error(`Rollback restore verification failed for ${temp}: unexpected file ${relativePath}.`);
+    const file = join(temp, relativePath);
+    if (typeof entry.size === "number" && statSync(file).size !== entry.size) {
+      throw new Error(`Rollback restore verification failed for ${relativePath}: size mismatch.`);
+    }
+    if (hashFile(file) !== entry.sha256) {
+      throw new Error(`Rollback restore verification failed for ${relativePath}: checksum mismatch.`);
+    }
+  }
+}
+
+function readBackupChecksums(backupDir) {
+  return JSON.parse(readFileSync(join(backupDir, "checksums.json"), "utf8")).map((entry) => ({
+    ...entry,
+    path: toManifestPath(entry.path),
+  }));
+}
+
+function hashFile(file) {
+  const hash = createHash("sha256");
+  const fd = openSync(file, "r");
+  const buffer = Buffer.alloc(1024 * 1024);
+  try {
+    let bytesRead = 0;
+    do {
+      bytesRead = readSync(fd, buffer, 0, buffer.length, null);
+      if (bytesRead > 0) hash.update(buffer.subarray(0, bytesRead));
+    } while (bytesRead > 0);
+  } finally {
+    closeSync(fd);
+  }
+  return hash.digest("hex");
+}
+
+function toManifestPath(value) {
+  return String(value).replace(/\\/g, "/");
+}
+
+function manifestPathStartsWith(path, prefix) {
+  return toManifestPath(path) === prefix || toManifestPath(path).startsWith(`${prefix}/`);
+}
+
+function stripManifestPrefix(path, prefix) {
+  const normalized = toManifestPath(path);
+  return normalized === prefix ? "" : normalized.slice(prefix.length + 1);
 }

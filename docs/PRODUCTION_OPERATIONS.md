@@ -91,6 +91,8 @@ npm run deploy:production
 
 The deployment script checks the worktree, fetches target code, records current PID and commit, creates backups and checksums, runs `npm ci`, automated tests, build, release preflight, then verifies service process identity before stopping the old process and starting the new one. If deployment validation fails after the old process is stopped, it attempts full rollback from the verified backup.
 
+All changes must be deployed and verified on `3107` before `3106` is considered. Do not directly restart or overwrite `3106` while testing a branch.
+
 ## Health Checks
 
 Health checks call only safe endpoints:
@@ -125,12 +127,38 @@ Backups are written under:
 
 Each deployment backup includes a manifest, runtime metadata, `data`, `uploads`, selected local config files, database backup metadata, and checksums. PostgreSQL backups use `pg_dump` custom format and are verified with `pg_restore --list`.
 
+If a service has PostgreSQL configured, backup failure blocks deployment for both staging and production. Staging may skip database backup only when no database is explicitly configured.
+
 Rollback supports two explicit modes:
 
 - `code-only`: restore code and restart the service without restoring data.
 - `full`: restore code, verified `data`, verified `uploads`, and database backup artifacts before restart.
 
-Full rollback validates the manifest, service name, commit, checksums, and prepared rollback code before stopping the service. It must not restore a staging backup into production or a production backup into staging.
+Full rollback validates the manifest, service name, commit, checksums, PostgreSQL database fingerprint, and prepared rollback code before stopping the service. It must not restore a staging backup into production or a production backup into staging.
+
+For PostgreSQL, full restore requires a deployment-scoped, in-memory rollback authorization created by the deploy session that made the backup. The authorization binds the service, backup directory, manifest hash, source commit, target commit, database fingerprint, purpose, and expiry time, and it is consumed once. A normal CLI rollback command must not restore a PostgreSQL database without that authorization.
+
+Rollback code is prepared in a temporary Git worktree before stopping the live service. The candidate commit must complete dependency install, lint, typecheck, build, startup preflight, and isolated smoke testing first. After the service is stopped, rollback must not run `npm ci`, `npm install`, or `npm run build`; it may only activate the already prepared code artifacts, restore verified data, and start the service.
+
+`data` and `uploads` are restored through a temporary directory first. The copied files are checked against `checksums.json` by relative path, file size, and SHA-256 before replacing the live directories. Previous live directories are kept until the service passes health checks, then cleaned up.
+
+## Release Reliability Checks
+
+CI must include Linux and Windows jobs. Linux runs the isolated rollback drill against a PostgreSQL service container. Windows runs the same operations checks without a real database service, so Windows path and process behavior are covered without touching production resources.
+
+Local release validation must include:
+
+```powershell
+npm run lint
+npm run typecheck
+npm run test:runtime-isolation
+npm run check:runtime-paths
+npm run test:security-release
+npm run test:ops
+npm run test:rollback-drill
+npm run build
+npm run check
+```
 
 ## Process Recovery
 

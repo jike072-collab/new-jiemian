@@ -11,8 +11,8 @@ import { buildRuntimeEnv, formatRuntimeEnvSummary } from "./ops/load-runtime-env
 import { getKnownServiceRoot, getServiceConfig } from "./ops/service-config.mjs";
 import { getServiceStatus } from "./ops/service-status.mjs";
 import { createServiceBackup, restoreDataAndUploads, snapshotDirectory, verifyBackupManifest, writeRollbackScript } from "./ops/backup-utils.mjs";
-import { createDatabaseBackup } from "./ops/database-backup.mjs";
-import { prepareDatabaseRestore } from "./ops/database-restore.mjs";
+import { createDatabaseBackup, createDatabaseFingerprint } from "./ops/database-backup.mjs";
+import { createDatabaseRestoreAuthorization, prepareDatabaseRestore, restoreDatabaseBackup } from "./ops/database-restore.mjs";
 import { classifyServiceProcess, createCommandFingerprint } from "./ops/process-identity.mjs";
 import { stopService } from "./ops/stop-service.mjs";
 import { runWatchdog } from "./ops/watchdog-service.mjs";
@@ -320,7 +320,7 @@ test("postgres backup uses pg_dump and pg_restore without logging the connection
   });
 });
 
-test("staging postgres backup can be unavailable without leaking the connection string", async () => {
+test("staging postgres backup fails closed without leaking the connection string", async () => {
   await withTempProject(async (root) => {
     const fakeDump = join(root, "pg-dump-fail.mjs");
     const fakeRestore = join(root, "pg-restore.mjs");
@@ -335,20 +335,14 @@ test("staging postgres backup can be unavailable without leaking the connection 
       "",
     ].join("\n"));
     const config = getServiceConfig("staging", { root });
-    const result = createDatabaseBackup(config, {
+    assert.throws(() => createDatabaseBackup(config, {
       backupDir: join(root, "backup"),
       env: {
         APP_DATABASE_URL: "postgresql://example_user:example_password@127.0.0.1:5432/app_db",
       },
       pgDumpCommand: [process.execPath, fakeDump],
       pgRestoreCommand: [process.execPath, fakeRestore],
-    });
-    assert.equal(result.type, "postgres");
-    assert.equal(result.required, false);
-    assert.equal(result.available, false);
-    assert.equal(result.reason, "postgres-backup-unavailable");
-    assert(!JSON.stringify(result).includes("example_password"));
-    assert(!JSON.stringify(result).includes("postgresql://"));
+    }), /backup unavailable/);
   });
 });
 
@@ -378,7 +372,7 @@ test("production postgres backup still fails closed when unavailable", async () 
   });
 });
 
-test("postgres restore refuses destructive restore before service stop without explicit allow", async () => {
+test("postgres restore refuses destructive restore without deployment authorization", async () => {
   await withTempProject(async (root) => {
     const config = getServiceConfig("production", { root });
     const dump = join(root, "backup", "database", "production-postgres.dump");
@@ -392,15 +386,122 @@ test("postgres restore refuses destructive restore before service stop without e
     ].join("\n"));
     const manifest = {
       serviceName: "production",
+      backupDir: join(root, "backup"),
       databaseBackup: {
         type: "postgres",
         files: [dump],
         databaseName: "app_db",
+        fingerprint: createDatabaseFingerprint(config, {
+          APP_DATABASE_URL: "postgresql://example_user:example_password@127.0.0.1:5432/app_db",
+        }),
       },
     };
+    await writeFile(join(root, "backup", "backup-manifest.json"), JSON.stringify(manifest, null, 2));
     assert.throws(() => prepareDatabaseRestore(config, manifest, {
       APP_DATABASE_URL: "postgresql://example_user:example_password@127.0.0.1:5432/app_db",
-    }, { pgRestoreCommand: [process.execPath, fakeRestore] }), /requires AOHUANG_ALLOW_DATABASE_RESTORE/);
+    }, { pgRestoreCommand: [process.execPath, fakeRestore] }), /requires deployment-scoped rollback authorization/);
+  });
+});
+
+test("postgres restore authorization is fingerprint-bound and one-time", async () => {
+  await withTempProject(async (root) => {
+    const config = getServiceConfig("production", { root });
+    const backupDir = join(root, "backup");
+    const dump = join(backupDir, "database", "production-postgres.dump");
+    mkdirSync(join(backupDir, "database"), { recursive: true });
+    await writeFile(dump, "fake dump");
+    const fakeRestore = join(root, "pg-restore.mjs");
+    await writeFile(fakeRestore, [
+      "if (process.argv.includes('--version')) { console.log('pg_restore (PostgreSQL) 16.0'); process.exit(0); }",
+      "if (process.argv.includes('--list')) { console.log('fake list'); process.exit(0); }",
+      "process.exit(0);",
+      "",
+    ].join("\n"));
+    const env = {
+      APP_DATABASE_URL: "postgresql://example_user:example_password@127.0.0.1:5432/app_db",
+    };
+    const manifest = {
+      backupVersion: 2,
+      serviceName: "production",
+      backupDir,
+      sourceCommit: "source-commit",
+      databaseBackup: {
+        type: "postgres",
+        files: [dump],
+        databaseName: "app_db",
+        fingerprint: createDatabaseFingerprint(config, env),
+      },
+    };
+    await writeFile(join(backupDir, "backup-manifest.json"), JSON.stringify(manifest, null, 2));
+    const authorization = createDatabaseRestoreAuthorization(config, manifest, env, {
+      backupDir,
+      sourceCommit: "source-commit",
+      targetCommit: "target-commit",
+      deploymentId: "deployment-1",
+    });
+    prepareDatabaseRestore(config, manifest, env, {
+      pgRestoreCommand: [process.execPath, fakeRestore],
+      rollbackAuthorization: authorization,
+      expectedTargetCommit: "target-commit",
+    });
+    assert.equal(authorization.used, false);
+    restoreDatabaseBackup(config, manifest, env, {
+      pgRestoreCommand: [process.execPath, fakeRestore],
+      rollbackAuthorization: authorization,
+      expectedTargetCommit: "target-commit",
+    });
+    assert.equal(authorization.used, true);
+    assert.throws(() => prepareDatabaseRestore(config, manifest, env, {
+      pgRestoreCommand: [process.execPath, fakeRestore],
+      rollbackAuthorization: authorization,
+      expectedTargetCommit: "target-commit",
+    }), /already been used/);
+    assert(!JSON.stringify(authorization).includes("example_password"));
+    assert(!JSON.stringify(authorization).includes("postgresql://"));
+  });
+});
+
+test("postgres restore authorization refuses a different target database", async () => {
+  await withTempProject(async (root) => {
+    const config = getServiceConfig("production", { root });
+    const backupDir = join(root, "backup");
+    const dump = join(backupDir, "database", "production-postgres.dump");
+    mkdirSync(join(backupDir, "database"), { recursive: true });
+    await writeFile(dump, "fake dump");
+    const fakeRestore = join(root, "pg-restore.mjs");
+    await writeFile(fakeRestore, [
+      "if (process.argv.includes('--list')) { console.log('fake list'); process.exit(0); }",
+      "",
+    ].join("\n"));
+    const env = {
+      APP_DATABASE_URL: "postgresql://example_user:example_password@127.0.0.1:5432/app_db",
+    };
+    const manifest = {
+      backupVersion: 2,
+      serviceName: "production",
+      backupDir,
+      sourceCommit: "source-commit",
+      databaseBackup: {
+        type: "postgres",
+        files: [dump],
+        databaseName: "app_db",
+        fingerprint: createDatabaseFingerprint(config, env),
+      },
+    };
+    await writeFile(join(backupDir, "backup-manifest.json"), JSON.stringify(manifest, null, 2));
+    const authorization = createDatabaseRestoreAuthorization(config, manifest, env, {
+      backupDir,
+      sourceCommit: "source-commit",
+      targetCommit: "target-commit",
+      deploymentId: "deployment-1",
+    });
+    assert.throws(() => prepareDatabaseRestore(config, manifest, {
+      APP_DATABASE_URL: "postgresql://example_user:example_password@127.0.0.1:5432/other_db",
+    }, {
+      pgRestoreCommand: [process.execPath, fakeRestore],
+      rollbackAuthorization: authorization,
+      expectedTargetCommit: "target-commit",
+    }), /fingerprint/);
   });
 });
 
@@ -489,6 +590,20 @@ test("deploy validation happens before the live service is stopped", () => {
   const source = readFileSync(join(process.cwd(), "scripts", "ops", "deploy-service.mjs"), "utf8");
   assert(source.indexOf("await validateTargetInWorktree") < source.indexOf("stopService(service"));
   assert.match(source, /git", \["worktree", "add"/);
+});
+
+test("rollback code is prepared before service stop and no install runs while stopped", () => {
+  const source = readFileSync(join(process.cwd(), "scripts", "ops", "deploy-service.mjs"), "utf8");
+  const rollbackStart = source.indexOf("export async function rollbackService");
+  const prepareIndex = source.indexOf("prepareRollbackCodeCandidate", rollbackStart);
+  const stopIndex = source.indexOf("stopService(service", rollbackStart);
+  const prepareFunctionIndex = source.indexOf("async function prepareRollbackCodeCandidate");
+  assert(rollbackStart >= 0);
+  assert(prepareIndex > rollbackStart && prepareIndex < stopIndex);
+  const stoppedWindow = source.slice(stopIndex, prepareFunctionIndex);
+  assert(!stoppedWindow.includes('await run("npm"'));
+  assert(!stoppedWindow.includes('["npm", ["ci"]]'));
+  assert(!stoppedWindow.includes('["npm", ["run", "build"]]'));
 });
 
 test("deploy verification installs dev tooling before production preflight", () => {
