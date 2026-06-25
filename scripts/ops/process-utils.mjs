@@ -112,7 +112,7 @@ export function getProcessInfo(pid) {
 export function stopProcessTree(pid) {
   if (!pid) return;
   if (process.platform === "win32") {
-    runSync("taskkill.exe", ["/PID", String(pid), "/T"], { allowStatus: [0, 128] });
+    runSync("taskkill.exe", ["/PID", String(pid), "/T", "/F"], { allowStatus: [0, 128] });
     return;
   }
   try {
