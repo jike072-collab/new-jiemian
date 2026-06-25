@@ -77,7 +77,7 @@ export async function deployService(service, options = {}) {
       await wait(1500);
       runSync("git", ["checkout", "--detach", targetCommit], { cwd: config.root });
       for (const [command, args] of serviceRefreshCommands) {
-        await run(command, args, { cwd: config.root, env: buildVerificationEnv(runtime.env) });
+        await run(command, args, { cwd: config.root, env: buildVerificationEnv(runtime.env, { includeRuntimeConfig: true }) });
         report.checks.push({ command: `service ${command} ${args.join(" ")}`, ok: true });
       }
       await startService(service, { root: config.root, preflightOnly: true });
@@ -117,20 +117,22 @@ async function validateTargetInWorktree(service, config, runtime, targetCommit, 
   try {
     runSync("git", ["worktree", "add", "--detach", validationRoot, targetCommit], { cwd: config.root });
     const validationConfig = getServiceConfig(service, { root: validationRoot, port: config.port });
-    const checkEnv = {
-      ...buildVerificationEnv(runtime.env),
+    const verificationEnv = buildVerificationEnv(process.env, { includeRuntimeConfig: false });
+    const smokeEnv = {
+      ...buildVerificationEnv(runtime.env, { includeRuntimeConfig: true }),
       AOHUANG_ALLOW_RUNTIME_DIR_OVERRIDE: "1",
       DATA_DIR: validationConfig.dataDir,
       UPLOADS_DIR: validationConfig.uploadsDir,
       STAGING_SMOKE_PORT: String(await findTemporaryPort()),
     };
     for (const [command, args] of validationCheckCommands) {
-      await run(command, args, { cwd: validationRoot, env: checkEnv });
+      const commandEnv = command === "npm" && args.join(" ") === "run test:staging-smoke" ? smokeEnv : verificationEnv;
+      await run(command, args, { cwd: validationRoot, env: commandEnv });
       report.checks.push({ command: `validation ${command} ${args.join(" ")}`, ok: true });
     }
     await run(process.execPath, ["scripts/ops/start-service.mjs", service, "--preflight-only"], {
       cwd: validationRoot,
-      env: { ...runtime.env, DATA_DIR: checkEnv.DATA_DIR, UPLOADS_DIR: checkEnv.UPLOADS_DIR },
+      env: { ...runtime.env, DATA_DIR: smokeEnv.DATA_DIR, UPLOADS_DIR: smokeEnv.UPLOADS_DIR },
     });
     report.checks.push({ command: "validation start-service --preflight-only", ok: true });
   } finally {
@@ -138,12 +140,22 @@ async function validateTargetInWorktree(service, config, runtime, targetCommit, 
   }
 }
 
-function buildVerificationEnv(runtimeEnv) {
-  return {
-    ...runtimeEnv,
-    NODE_ENV: "development",
+function buildVerificationEnv(baseEnv, options = {}) {
+  const env = {
+    ...baseEnv,
     npm_config_production: "false",
   };
+  if (options.includeRuntimeConfig !== true) {
+    delete env.NODE_ENV;
+    delete env.PORT;
+    delete env.STAGING_PORT;
+    delete env.PRODUCTION_PORT;
+    delete env.STAGING_SMOKE_PORT;
+    delete env.DATA_DIR;
+    delete env.UPLOADS_DIR;
+    delete env.AOHUANG_ALLOW_RUNTIME_DIR_OVERRIDE;
+  }
+  return env;
 }
 
 function cleanupValidationWorktree(repoRoot, validationRoot) {

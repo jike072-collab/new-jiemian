@@ -193,6 +193,8 @@ test("deploy verification installs dev tooling before production preflight", () 
   const source = readFileSync(join(process.cwd(), "scripts", "ops", "deploy-service.mjs"), "utf8");
   assert.match(source, /buildVerificationEnv/);
   assert.match(source, /npm_config_production: "false"/);
+  assert.match(source, /delete env\.STAGING_SMOKE_PORT/);
+  assert.match(source, /args\.join\(" "\) === "run test:staging-smoke"/);
 });
 
 test("generation endpoints are not used by health checks", () => {
