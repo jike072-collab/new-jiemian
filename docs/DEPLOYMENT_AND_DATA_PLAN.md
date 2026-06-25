@@ -37,8 +37,8 @@
 - `PORT=3106`。
 - `ADMIN_PASSWORD` 必填。
 - 使用正式 NewAPI Key。
-- 使用正式 `data` 目录。
-- 使用正式 `uploads` 目录。
+- 使用正式 `data` 目录，或通过 `DATA_DIR` 显式指定正式数据目录。
+- 使用正式 `uploads` 目录，或通过 `UPLOADS_DIR` 显式指定正式上传目录。
 - 定期备份 `data` 和 `uploads`。
 - 不直接运行未验证分支。
 - 不把测试数据覆盖到正式环境。
@@ -48,8 +48,9 @@
 - `PORT=3107`。
 - 使用独立 `ADMIN_PASSWORD`。
 - 使用测试 NewAPI Key，或使用正式 Key 但控制调用频率。
-- 使用独立 `data-staging`。
-- 使用独立 `uploads-staging`。
+- 设置 `DATA_DIR=data-staging`。
+- 设置 `UPLOADS_DIR=uploads-staging`。
+- 确认 `data-staging` 和 `uploads-staging` 不指向 3106 正式目录。
 - 允许从 3106 复制一份数据做测试，但必须先备份。
 - 禁止把 3107 数据反向覆盖到 3106。
 

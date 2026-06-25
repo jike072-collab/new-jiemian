@@ -44,6 +44,16 @@ cp .env.example .env.local
 
 生成结果默认保存到本地 `data/` 和 `uploads/`，这两个目录已被 `.gitignore` 忽略。
 
+运行 3107 测试环境时，建议显式隔离数据目录，避免写入 3106 正式数据：
+
+```dotenv
+PORT=3107
+DATA_DIR=data-staging
+UPLOADS_DIR=uploads-staging
+```
+
+未设置 `DATA_DIR` / `UPLOADS_DIR` 时，默认仍使用 `data/` 和 `uploads/`。
+
 ### 从旧项目保留下来的接口地址
 
 旧仓库 `jike072-collab/codex_sp` 里的可用后端地址已经对照过：

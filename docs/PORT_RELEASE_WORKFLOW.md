@@ -47,9 +47,11 @@ npm run build
 
 - 3107 使用独立 `.env` 文件，例如 `.env.staging` 或服务器环境变量。
 - 设置 `PORT=3107`。
+- 设置 `DATA_DIR=data-staging`。
+- 设置 `UPLOADS_DIR=uploads-staging`。
 - `ADMIN_PASSWORD` 可以和正式不同。
 - NewAPI Key 可以使用测试令牌，或使用正式令牌但要控制调用频率。
-- `data` 和 `uploads` 最好使用独立目录，例如 `data-staging/`、`uploads-staging/`。
+- `data` 和 `uploads` 必须和 3106 正式目录隔离。
 - 3107 可以复制一份测试数据，但不能覆盖 3106 的正式数据。
 - 复制数据前必须备份，复制 `uploads` 前要注意磁盘容量。
 
@@ -58,7 +60,8 @@ npm run build
 - 设置 `PORT=3106`。
 - `ADMIN_PASSWORD` 必填。
 - `.env.local` 不进 Git。
-- `data` 和 `uploads` 必须定期备份。
+- `DATA_DIR` 和 `UPLOADS_DIR` 未设置时默认使用 `data/` 和 `uploads/`。
+- 正式 `data` 和 `uploads` 必须定期备份。
 - 正式环境不要随意开启测试功能。
 - 正式环境不要直接跑未合并分支。
 
