@@ -1,5 +1,18 @@
 # 3107 测试与 3106 发布流程
 
+## Unified Operations Commands
+
+Use the hardened operations commands for service work:
+
+- Status: `npm run service:status`
+- Health: `npm run service:health`
+- Start staging: `npm run service:start:staging`
+- Start production: `npm run service:start:production`
+- Deploy staging: `npm run deploy:staging`
+- Deploy production: `npm run deploy:production`
+
+Production deploy must run only after staging has passed on 3107 and the PR has been merged to `main`.
+
 本流程用于保证所有改动先经过 3107 测试，再考虑进入 `main` 和 3106。它只定义流程，不改变业务功能，不新增部署依赖。
 
 ## 1. 端口职责

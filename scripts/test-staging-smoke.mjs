@@ -97,6 +97,7 @@ try {
   const env = {
     ...process.env,
     PORT: String(requestedPort),
+    AOHUANG_ALLOW_RUNTIME_DIR_OVERRIDE: "1",
     RUNTIME_STORAGE_ISOLATION: "strict",
     DATA_DIR: dataDir,
     UPLOADS_DIR: uploadsDir,
