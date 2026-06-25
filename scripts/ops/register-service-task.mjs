@@ -9,7 +9,7 @@ export function registerServiceTask(service, options = {}) {
   const root = getKnownServiceRoot(service, options);
   const config = getServiceConfig(service, { root });
   const watchdogScript = writeWatchdogScript(config);
-  const command = `powershell.exe -NoProfile -ExecutionPolicy Bypass -File "${watchdogScript}"`;
+  const command = `powershell.exe -NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File "${watchdogScript}"`;
   const args = [
     "/Create",
     "/TN",
@@ -38,8 +38,9 @@ function writeWatchdogScript(config) {
   const script = [
     "$ErrorActionPreference = 'Stop'",
     `$root = '${escapePowerShellSingleQuoted(config.root)}'`,
+    "$watchdog = Join-Path $root 'scripts/ops/watchdog-service.mjs'",
     "Set-Location -LiteralPath $root",
-    `node scripts/ops/watchdog-service.mjs ${config.service}`,
+    `node $watchdog ${config.service} --root $root`,
     "",
   ].join("\r\n");
   writeFileSync(scriptPath, `\uFEFF${script}`, "utf8");
