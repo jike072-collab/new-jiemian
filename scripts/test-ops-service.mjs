@@ -685,12 +685,15 @@ test("task registration uses known service roots instead of the development work
   assert.match(source, /watchdog-service\.mjs/);
   assert(!source.includes("start-service.mjs"));
   assert.match(source, /watchdog-\$\{config\.service\}\.ps1/);
+  assert.match(source, /watchdog-\$\{config\.service\}-hidden\.vbs/);
+  assert.match(source, /wscript\.exe "\$\{hiddenLauncher\}"/);
   assert.match(source, /powershell\.exe -NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File/);
-  assert.match(source, /--root \$root/);
+  assert.match(source, /Start-Process -FilePath \$node -ArgumentList \$arguments -WorkingDirectory \$root -WindowStyle Hidden -PassThru -Wait/);
+  assert.match(source, /'--root', \$root/);
   assert.match(source, /-File/);
   assert.match(source, /\\uFEFF/);
   assert.match(source, /"MINUTE"/);
-  assert.match(source, /"1"/);
+  assert.match(source, /"10"/);
 });
 
 function findAvailablePort() {

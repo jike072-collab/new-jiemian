@@ -9,7 +9,8 @@ export function registerServiceTask(service, options = {}) {
   const root = getKnownServiceRoot(service, options);
   const config = getServiceConfig(service, { root });
   const watchdogScript = writeWatchdogScript(config);
-  const command = `powershell.exe -NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File "${watchdogScript}"`;
+  const hiddenLauncher = writeHiddenLauncher(config);
+  const command = `wscript.exe "${hiddenLauncher}"`;
   const args = [
     "/Create",
     "/TN",
@@ -17,7 +18,7 @@ export function registerServiceTask(service, options = {}) {
     "/SC",
     "MINUTE",
     "/MO",
-    "1",
+    "10",
     "/TR",
     command,
     "/RL",
@@ -25,7 +26,7 @@ export function registerServiceTask(service, options = {}) {
     "/F",
   ];
   runSync("schtasks.exe", args);
-  return { service, taskName: config.taskName, watchdogScript, created: true, requiresAdmin: false };
+  return { service, taskName: config.taskName, watchdogScript, hiddenLauncher, created: true, requiresAdmin: false };
 }
 
 function escapePowerShellSingleQuoted(value) {
@@ -40,11 +41,34 @@ function writeWatchdogScript(config) {
     `$root = '${escapePowerShellSingleQuoted(config.root)}'`,
     "$watchdog = Join-Path $root 'scripts/ops/watchdog-service.mjs'",
     "Set-Location -LiteralPath $root",
-    `node $watchdog ${config.service} --root $root`,
+    `$node = '${escapePowerShellSingleQuoted(process.execPath)}'`,
+    `$arguments = @($watchdog, '${escapePowerShellSingleQuoted(config.service)}', '--root', $root)`,
+    "$process = Start-Process -FilePath $node -ArgumentList $arguments -WorkingDirectory $root -WindowStyle Hidden -PassThru -Wait",
+    "exit $process.ExitCode",
     "",
   ].join("\r\n");
   writeFileSync(scriptPath, `\uFEFF${script}`, "utf8");
   return scriptPath;
+}
+
+function writeHiddenLauncher(config) {
+  mkdirSync(config.runtimeDir, { recursive: true });
+  const launcherPath = join(config.runtimeDir, `watchdog-${config.service}-hidden.vbs`);
+  const scriptName = `watchdog-${config.service}.ps1`;
+  const script = [
+    'Set shell = CreateObject("WScript.Shell")',
+    'Set files = CreateObject("Scripting.FileSystemObject")',
+    "runtimeDir = files.GetParentFolderName(WScript.ScriptFullName)",
+    "root = files.GetParentFolderName(runtimeDir)",
+    `scriptPath = files.BuildPath(runtimeDir, "${scriptName}")`,
+    "shell.CurrentDirectory = root",
+    'command = "powershell.exe -NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File """ & scriptPath & """"',
+    "exitCode = shell.Run(command, 0, True)",
+    "WScript.Quit exitCode",
+    "",
+  ].join("\r\n");
+  writeFileSync(launcherPath, script, "ascii");
+  return launcherPath;
 }
 
 function cli() {
