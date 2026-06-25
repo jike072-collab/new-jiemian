@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-import { spawn } from "node:child_process";
+import { spawn, spawnSync } from "node:child_process";
 import { existsSync } from "node:fs";
 import { mkdtemp, readdir, rm, stat } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -59,9 +59,10 @@ async function fetchStatus(path) {
 }
 
 function spawnNext(env) {
-  return spawn(process.execPath, ["scripts/start-staging.mjs"], {
+  return spawn(process.execPath, ["scripts/ops/start-service.mjs", "staging", "--foreground"], {
     cwd: root,
     env,
+    detached: process.platform !== "win32",
     shell: false,
     stdio: ["ignore", "pipe", "pipe"],
   });
@@ -69,11 +70,28 @@ function spawnNext(env) {
 
 async function stopProcess(child) {
   if (child.exitCode !== null || child.signalCode !== null) return;
-  child.kill("SIGTERM");
+  if (process.platform === "win32") {
+    spawnSync("taskkill.exe", ["/PID", String(child.pid), "/T", "/F"], { stdio: "ignore" });
+  } else {
+    try {
+      process.kill(-child.pid, "SIGTERM");
+    } catch {
+      child.kill("SIGTERM");
+    }
+  }
   await Promise.race([
     new Promise((resolveStop) => child.once("exit", resolveStop)),
     wait(5000).then(() => {
-      if (child.exitCode === null && child.signalCode === null) child.kill("SIGKILL");
+      if (child.exitCode !== null || child.signalCode !== null) return;
+      if (process.platform === "win32") {
+        spawnSync("taskkill.exe", ["/PID", String(child.pid), "/T", "/F"], { stdio: "ignore" });
+        return;
+      }
+      try {
+        process.kill(-child.pid, "SIGKILL");
+      } catch {
+        child.kill("SIGKILL");
+      }
     }),
   ]);
 }
