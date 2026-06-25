@@ -118,14 +118,14 @@ test("start:staging preflight rejects missing NewAPI config", async () => {
 
 test("start:staging preflight enforces staging storage paths", async () => {
   await withTempDirs(async ({ dataDir, uploadsDir }) => {
-    const result = runStagingPreflightOnly({ DATA_DIR: dataDir, UPLOADS_DIR: uploadsDir });
+    const result = runStagingPreflightOnly({ DATA_DIR: dataDir, UPLOADS_DIR: uploadsDir }, { serviceRoot: root });
     assert.equal(result.status, 0, outputOf(result));
   });
 });
 
 test("start:staging preflight passes with isolated temporary dirs", async () => {
   await withTempDirs(async ({ dataDir, uploadsDir }) => {
-    const result = runStagingPreflightOnly({ DATA_DIR: dataDir, UPLOADS_DIR: uploadsDir });
+    const result = runStagingPreflightOnly({ DATA_DIR: dataDir, UPLOADS_DIR: uploadsDir }, { serviceRoot: root });
     assert.equal(result.status, 0, outputOf(result));
   });
 });
@@ -136,7 +136,7 @@ test("start:staging preflight runs backend release checks", async () => {
       DATA_DIR: dataDir,
       UPLOADS_DIR: uploadsDir,
       NEW_API_ENABLED: "false",
-    });
+    }, { serviceRoot: root });
     assertFails(result, /Backend release preflight failed|NEW_API_ENABLED/);
   });
 });
