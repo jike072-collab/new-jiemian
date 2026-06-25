@@ -132,7 +132,7 @@ async function validateTargetInWorktree(service, config, runtime, targetCommit, 
       await run(command, args, { cwd: validationRoot, env: commandEnv });
       report.checks.push({ command: `validation ${command} ${args.join(" ")}`, ok: true });
     }
-    await run(process.execPath, ["scripts/ops/start-service.mjs", service, "--preflight-only"], {
+    await run(process.execPath, ["scripts/ops/start-service.mjs", service, "--preflight-only", "--root", validationRoot], {
       cwd: validationRoot,
       env: { ...runtime.env, DATA_DIR: smokeEnv.DATA_DIR, UPLOADS_DIR: smokeEnv.UPLOADS_DIR },
     });
