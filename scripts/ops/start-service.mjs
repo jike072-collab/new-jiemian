@@ -3,6 +3,7 @@ import { closeSync, existsSync, mkdirSync, openSync, writeFileSync } from "node:
 import { join } from "node:path";
 import { spawn } from "node:child_process";
 import { pathToFileURL } from "node:url";
+import { resolveServiceRuntime } from "./active-release.mjs";
 import { buildRuntimeEnv, formatRuntimeEnvSummary } from "./load-runtime-env.mjs";
 import { getServiceConfig } from "./service-config.mjs";
 import { rotateLogFile } from "./log-utils.mjs";
@@ -11,6 +12,7 @@ import { buildServiceState, classifyServiceProcess } from "./process-identity.mj
 
 export async function startService(service, options = {}) {
   const config = getServiceConfig(service, options);
+  const { activeRelease, runtimeRoot } = resolveServiceRuntime(config);
   const runtime = buildRuntimeEnv(service, { root: config.root });
   if (runtime.missing.length) {
     throw new Error(`Missing required runtime configuration before stopping any process: ${runtime.missing.join(", ")}`);
@@ -31,17 +33,17 @@ export async function startService(service, options = {}) {
     "--disable-warning=MODULE_TYPELESS_PACKAGE_JSON",
     "scripts/release-preflight.mjs",
   ], {
-    cwd: config.root,
+    cwd: runtimeRoot,
     env: runtime.env,
   });
 
   if (options.preflightOnly) return { config, runtime };
 
-  const nextBin = join(config.root, "node_modules", "next", "dist", "bin", "next");
+  const nextBin = join(runtimeRoot, "node_modules", "next", "dist", "bin", "next");
   if (!existsSync(nextBin)) throw new Error("Next.js binary is missing. Run npm ci first.");
   if (options.foreground) {
     await run(process.execPath, [nextBin, "start", "-H", "127.0.0.1", "-p", config.port], {
-      cwd: config.root,
+      cwd: runtimeRoot,
       env: runtime.env,
     });
     return { config, runtime, pid: process.pid };
@@ -52,7 +54,7 @@ export async function startService(service, options = {}) {
   writeFileSync(outFd, logHeader);
 
   const child = spawn(process.execPath, [nextBin, "start", "-H", "127.0.0.1", "-p", config.port], {
-    cwd: config.root,
+    cwd: runtimeRoot,
     env: runtime.env,
     shell: false,
     stdio: ["ignore", outFd, outFd],
@@ -63,6 +65,8 @@ export async function startService(service, options = {}) {
 
   writeFileSync(config.stateFile, JSON.stringify(buildServiceState(config, {
     pid: child.pid,
+    runtimeRoot,
+    runtimeCommit: activeRelease?.runtimeCommit,
     processInfo: getProcessInfo(child.pid),
     envFiles: runtime.summary.files,
   }), null, 2));

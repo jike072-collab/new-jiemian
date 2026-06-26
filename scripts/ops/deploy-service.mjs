@@ -3,6 +3,7 @@ import { randomUUID } from "node:crypto";
 import { existsSync, mkdirSync, readdirSync, renameSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { basename, join, parse, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
+import { clearActiveRelease, readActiveRelease, restoreActiveRelease, writeActiveRelease } from "./active-release.mjs";
 import {
   cleanupRestoredDirectories,
   createServiceBackup,
@@ -52,7 +53,8 @@ export async function deployService(service, options = {}) {
   let backup = null;
   let rollbackAuthorization = null;
   let preparedRelease = null;
-  let releaseArtifacts = null;
+  let previousActiveRelease = null;
+  let activatedRelease = null;
   const before = {
     pid: getListeningPid(config.port),
     commit: safeGit(config.root, ["rev-parse", "HEAD"]),
@@ -104,13 +106,17 @@ export async function deployService(service, options = {}) {
     report.rollbackAuthorizationFile = rollbackAuthorizationFile;
 
     if (!options.dryRun) {
+      previousActiveRelease = readActiveRelease(config, { optional: true });
       await stopService(service, { root: config.root });
       serviceStopped = true;
-      await waitForStoppedServiceArtifacts(config);
       runSync("git", ["checkout", "--detach", targetCommit], { cwd: config.root });
-      await waitForStoppedServiceArtifacts(config, { timeoutMs: 60_000, intervalMs: 1_000 });
-      releaseArtifacts = activatePreparedArtifacts(config, preparedRelease, "release");
-      report.releaseArtifacts = releaseArtifacts.moved.map((entry) => entry.name);
+      activatedRelease = writeActiveRelease(config, {
+        releaseRoot: preparedRelease.root,
+        runtimeCommit: targetCommit,
+        deploymentId,
+      });
+      report.releaseRoot = activatedRelease.releaseRoot;
+      report.activeReleaseFile = config.activeReleaseFile;
       await startService(service, { root: config.root, preflightOnly: true });
       report.checks.push({ command: "service start-service --preflight-only", ok: true });
       await startService(service, { root: config.root });
@@ -126,45 +132,29 @@ export async function deployService(service, options = {}) {
       };
       report.after = after;
       assertNoDataLoss(before, after);
-      cleanupPreparedArtifacts(releaseArtifacts);
-      releaseArtifacts = null;
     }
     report.success = true;
     return report;
   } catch (error) {
     report.error = error instanceof Error ? error.message : String(error);
     if (!options.dryRun && serviceStopped) {
-      if (releaseArtifacts) {
-        await rollbackService(service, {
-          root: config.root,
-          backupDir: backup.backupDir,
-          commit: before.commit,
-          mode: "full",
-          env: runtime.env,
-          rollbackAuthorization,
-          deploymentId,
-          expectedTargetCommit: targetCommit,
-          operationLock,
-        });
-        report.rollbackTriggered = true;
-        cleanupPreparedArtifacts(releaseArtifacts);
-        releaseArtifacts = null;
-      } else {
-        if (before.commit && before.commit !== "unknown") {
-          runSync("git", ["checkout", "--detach", before.commit], { cwd: config.root, allowStatus: [0, 128] });
-        }
-        await startService(service, { root: config.root });
-        report.previousArtifactsRestarted = true;
-        report.recoveryHealth = await checkServiceHealth(service, { root: config.root, repeat: 10 });
-        if (!report.recoveryHealth.ok) {
-          throw Object.assign(new Error(`${service} previous artifact restart health check failed.`), { report });
-        }
+      await stopService(service, { root: config.root }).catch(() => null);
+      if (before.commit && before.commit !== "unknown") {
+        runSync("git", ["checkout", "--detach", before.commit], { cwd: config.root, allowStatus: [0, 128] });
+      }
+      restoreActiveRelease(config, previousActiveRelease);
+      await startService(service, { root: config.root });
+      report.previousArtifactsRestarted = true;
+      report.recoveryHealth = await checkServiceHealth(service, { root: config.root, repeat: 10 });
+      if (!report.recoveryHealth.ok) {
+        throw Object.assign(new Error(`${service} previous release restart health check failed.`), { report });
       }
     }
     throw Object.assign(new Error(report.error), { report });
   } finally {
-    if (releaseArtifacts) rollbackPreparedArtifacts(releaseArtifacts);
-    if (preparedRelease?.root) cleanupValidationWorktree(config.root, preparedRelease.root);
+    if (!report.success && activatedRelease && previousActiveRelease == null) {
+      clearActiveRelease(config);
+    }
     if (preparedRelease?.scratchRoot) rmSync(preparedRelease.scratchRoot, { recursive: true, force: true });
     releaseServiceOperationLock(operationLock);
     mkdirSync(config.runtimeDir, { recursive: true });
@@ -204,9 +194,9 @@ async function validateTargetInWorktree(service, config, runtime, targetCommit, 
     });
     report.checks.push({ command: "validation start-service --preflight-only", ok: true });
     assertReleaseCandidateSafe(config, validationRoot, validationConfig);
+    report.releaseRoot = validationRoot;
     return { root: validationRoot, scratchRoot: validationScratchRoot };
   } catch (error) {
-    cleanupValidationWorktree(config.root, validationRoot);
     rmSync(validationScratchRoot, { recursive: true, force: true });
     throw error;
   }
@@ -262,14 +252,6 @@ function buildVerificationEnv(baseEnv, options = {}) {
   return env;
 }
 
-function cleanupValidationWorktree(repoRoot, validationRoot) {
-  runSync("git", ["worktree", "remove", "--force", validationRoot], {
-    cwd: repoRoot,
-    allowStatus: [0, 128],
-  });
-  if (existsSync(validationRoot)) rmSync(validationRoot, { recursive: true, force: true });
-}
-
 async function findTemporaryPort() {
   for (let port = 43107; port < 43200; port += 1) {
     if (await isPortAvailable(port)) return port;
@@ -286,6 +268,7 @@ export async function rollbackService(service, options = {}) {
     throw new Error(`Missing required runtime configuration before rollback: ${runtime.missing.join(", ")}`);
   }
   const rollbackEnv = options.env || runtime.env;
+  const previousActiveRelease = readActiveRelease(config, { optional: true });
   let operationLock = null;
   const manifest = verifyBackupManifest(config, options.backupDir);
   const deploymentId = options.deploymentId || manifest.deploymentId;
@@ -300,14 +283,16 @@ export async function rollbackService(service, options = {}) {
   }
   const originalCommit = safeGit(config.root, ["rev-parse", "HEAD"], "unknown");
   const prepared = await prepareRollbackCodeCandidate(service, config, runtime, options.commit);
-  let artifacts = null;
   let restoredDirectories = null;
   let keepFailedLock = false;
   try {
     await stopService(service, { root: config.root });
-    await waitForStoppedServiceArtifacts(config);
     runSync("git", ["checkout", "--detach", options.commit], { cwd: config.root });
-    artifacts = activatePreparedArtifacts(config, prepared, "rollback");
+    writeActiveRelease(config, {
+      releaseRoot: prepared.root,
+      runtimeCommit: options.commit,
+      deploymentId,
+    });
     await startService(service, { root: config.root, preflightOnly: true });
     if (options.mode === "full") {
       restoredDirectories = restoreDataAndUploads(config, options.backupDir, { deferCleanup: true });
@@ -322,31 +307,24 @@ export async function rollbackService(service, options = {}) {
     const health = await checkServiceHealth(service, { root: config.root, repeat: 10 });
     if (!health.ok) throw new Error(`${service} rollback health check failed.`);
     cleanupRestoredDirectories(restoredDirectories);
-    cleanupPreparedArtifacts(artifacts);
     return health;
   } catch (error) {
     markServiceOperationFailed(config, operationLock, error);
     keepFailedLock = true;
     rollbackRestoredDirectories(restoredDirectories);
-    if (artifacts) {
-      await stopService(service, { root: config.root });
-      await waitForStoppedServiceArtifacts(config, { timeoutMs: 60_000, intervalMs: 1_000 });
-      rollbackPreparedArtifacts(artifacts);
-    }
+    await stopService(service, { root: config.root }).catch(() => null);
+    restoreActiveRelease(config, previousActiveRelease);
     if (originalCommit !== "unknown") {
       runSync("git", ["checkout", "--detach", originalCommit], { cwd: config.root, allowStatus: [0, 128] });
     }
     throw error;
   } finally {
     if (!keepFailedLock) releaseServiceOperationLock(operationLock);
-    cleanupValidationWorktree(config.root, prepared.root);
   }
 }
 
 async function prepareRollbackCodeCandidate(service, config, runtime, commit) {
-  mkdirSync(config.backupRoot, { recursive: true });
-  const stamp = new Date().toISOString().replace(/[-:]/g, "").replace(/\..+/, "").replace("T", "-");
-  const candidateRoot = join(config.backupRoot, `${config.backupPrefix}-rollback-code-${stamp}-${process.pid}`);
+  const candidateRoot = createReleaseCandidateRoot(config, commit, `rollback-${process.pid}`);
   runSync("git", ["worktree", "add", "--detach", candidateRoot, commit], { cwd: config.root });
   try {
     const verificationEnv = buildVerificationEnv(runtime.env, { includeRuntimeConfig: false });
@@ -370,7 +348,6 @@ async function prepareRollbackCodeCandidate(service, config, runtime, commit) {
     });
     return { root: candidateRoot };
   } catch (error) {
-    cleanupValidationWorktree(config.root, candidateRoot);
     throw error;
   }
 }
@@ -452,12 +429,6 @@ function probeArtifactWritable(config, options = {}) {
     }
   }
   return { ok: true };
-}
-
-function cleanupPreparedArtifacts(state) {
-  for (const entry of state?.moved || []) {
-    if (entry.old && existsSync(entry.old)) rmSync(entry.old, { recursive: true, force: true });
-  }
 }
 
 function rollbackPreparedArtifacts(state) {

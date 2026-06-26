@@ -54,6 +54,7 @@ export function getServiceConfig(service, options = {}) {
     runtimeDir,
     logFile: join(runtimeDir, definition.logFileName),
     stateFile: join(runtimeDir, definition.stateFileName),
+    activeReleaseFile: join(runtimeDir, `active-release-${service}.json`),
     envFilePaths: definition.envFiles.map((file) => resolve(root, file)),
     backupRoot: resolve(root, "..", "_rollback_backups"),
   };
