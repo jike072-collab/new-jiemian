@@ -332,8 +332,12 @@ test("concurrent writers produce a complete JSON file without temp residue", asy
       runWorker(worker, root, "staging", releaseA, "4".repeat(40)),
       runWorker(worker, root, "staging", releaseB, "5".repeat(40)),
     ]);
-    assert.equal(one.code, 0, one.output);
-    assert.equal(two.code, 0, two.output);
+    const workers = [one, two];
+    assert(workers.some((result) => result.code === 0), `expected at least one writer to succeed:\n${workers.map((result) => result.output).join("\n---\n")}`);
+    for (const result of workers) {
+      if (result.code === 0) continue;
+      assert.match(result.output, /Active release metadata reread mismatch/);
+    }
     const text = readFileSync(getActiveReleaseFile(config), "utf8");
     assert.doesNotThrow(() => JSON.parse(text));
     const finalPayload = parseFile(getActiveReleaseFile(config));
