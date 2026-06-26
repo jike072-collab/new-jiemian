@@ -108,6 +108,7 @@ export async function deployService(service, options = {}) {
       serviceStopped = true;
       await waitForStoppedServiceArtifacts(config);
       runSync("git", ["checkout", "--detach", targetCommit], { cwd: config.root });
+      await waitForStoppedServiceArtifacts(config, { timeoutMs: 60_000, intervalMs: 1_000 });
       releaseArtifacts = activatePreparedArtifacts(config, preparedRelease, "release");
       report.releaseArtifacts = releaseArtifacts.moved.map((entry) => entry.name);
       await startService(service, { root: config.root, preflightOnly: true });
@@ -133,20 +134,32 @@ export async function deployService(service, options = {}) {
   } catch (error) {
     report.error = error instanceof Error ? error.message : String(error);
     if (!options.dryRun && serviceStopped) {
-      await rollbackService(service, {
-        root: config.root,
-        backupDir: backup.backupDir,
-        commit: before.commit,
-        mode: "full",
-        env: runtime.env,
-        rollbackAuthorization,
-        deploymentId,
-        expectedTargetCommit: targetCommit,
-        operationLock,
-      });
-      report.rollbackTriggered = true;
-      cleanupPreparedArtifacts(releaseArtifacts);
-      releaseArtifacts = null;
+      if (releaseArtifacts) {
+        await rollbackService(service, {
+          root: config.root,
+          backupDir: backup.backupDir,
+          commit: before.commit,
+          mode: "full",
+          env: runtime.env,
+          rollbackAuthorization,
+          deploymentId,
+          expectedTargetCommit: targetCommit,
+          operationLock,
+        });
+        report.rollbackTriggered = true;
+        cleanupPreparedArtifacts(releaseArtifacts);
+        releaseArtifacts = null;
+      } else {
+        if (before.commit && before.commit !== "unknown") {
+          runSync("git", ["checkout", "--detach", before.commit], { cwd: config.root, allowStatus: [0, 128] });
+        }
+        await startService(service, { root: config.root });
+        report.previousArtifactsRestarted = true;
+        report.recoveryHealth = await checkServiceHealth(service, { root: config.root, repeat: 10 });
+        if (!report.recoveryHealth.ok) {
+          throw Object.assign(new Error(`${service} previous artifact restart health check failed.`), { report });
+        }
+      }
     }
     throw Object.assign(new Error(report.error), { report });
   } finally {
@@ -315,7 +328,11 @@ export async function rollbackService(service, options = {}) {
     markServiceOperationFailed(config, operationLock, error);
     keepFailedLock = true;
     rollbackRestoredDirectories(restoredDirectories);
-    rollbackPreparedArtifacts(artifacts);
+    if (artifacts) {
+      await stopService(service, { root: config.root });
+      await waitForStoppedServiceArtifacts(config, { timeoutMs: 60_000, intervalMs: 1_000 });
+      rollbackPreparedArtifacts(artifacts);
+    }
     if (originalCommit !== "unknown") {
       runSync("git", ["checkout", "--detach", originalCommit], { cwd: config.root, allowStatus: [0, 128] });
     }
@@ -378,19 +395,15 @@ export function activatePreparedArtifacts(config, prepared, label, options = {})
       const source = join(prepared.root, name);
       const target = join(config.root, name);
       const old = `${target}.before-${label}-${stamp}`;
-      let oldPath = null;
+      const entry = { name, source, target, old: null, activated: false };
       if (existsSync(target)) {
         renameWithRetry(target, old, renameOptions);
-        oldPath = old;
+        entry.old = old;
       }
-      try {
-        renameWithRetry(source, target, renameOptions);
-        assertPreparedArtifact(name, target);
-      } catch (error) {
-        if (oldPath && existsSync(oldPath)) renameWithRetry(oldPath, target, renameOptions);
-        throw error;
-      }
-      state.moved.push({ name, source, target, old: oldPath });
+      state.moved.push(entry);
+      renameWithRetry(source, target, renameOptions);
+      entry.activated = true;
+      assertPreparedArtifact(name, target);
     }
     assertActivatedArtifactSet(config.root);
   } catch (error) {
@@ -449,7 +462,9 @@ function cleanupPreparedArtifacts(state) {
 
 function rollbackPreparedArtifacts(state) {
   for (const entry of [...(state?.moved || [])].reverse()) {
-    if (entry.target && existsSync(entry.target)) rmSync(entry.target, { recursive: true, force: true });
+    if (entry.target && existsSync(entry.target) && (entry.activated || entry.old)) {
+      rmSync(entry.target, { recursive: true, force: true });
+    }
     if (entry.old && existsSync(entry.old)) renameWithRetry(entry.old, entry.target, state?.renameOptions);
   }
   if (state?.moved?.length) assertActivatedArtifactSet(state.root);
@@ -459,10 +474,10 @@ function renameWithRetry(source, target, options = {}) {
   const rename = options?.rename || renameSync;
   const attempts = Number.isFinite(options?.attempts)
     ? Number(options.attempts)
-    : (process.platform === "win32" ? 20 : 1);
+    : (process.platform === "win32" ? 60 : 1);
   const delayMs = Number.isFinite(options?.delayMs)
     ? Number(options.delayMs)
-    : (process.platform === "win32" ? 250 : 0);
+    : (process.platform === "win32" ? 500 : 0);
   for (let attempt = 1; attempt <= Math.max(1, attempts); attempt += 1) {
     try {
       return rename(source, target);

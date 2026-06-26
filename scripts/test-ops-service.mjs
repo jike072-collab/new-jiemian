@@ -1117,6 +1117,26 @@ test("deploy waits until stopped service artifacts can be renamed", async () => 
   });
 });
 
+test("deploy rechecks artifact writability after checkout before activation", () => {
+  const source = readFileSync(join(process.cwd(), "scripts", "ops", "deploy-service.mjs"), "utf8");
+  const checkoutIndex = source.indexOf('runSync("git", ["checkout", "--detach", targetCommit]');
+  const waitIndex = source.indexOf("await waitForStoppedServiceArtifacts(config, { timeoutMs: 60_000", checkoutIndex);
+  const activateIndex = source.indexOf("releaseArtifacts = activatePreparedArtifacts", checkoutIndex);
+  assert(checkoutIndex > 0);
+  assert(waitIndex > checkoutIndex && waitIndex < activateIndex);
+});
+
+test("deploy skips full rollback until release artifacts are activated", () => {
+  const source = readFileSync(join(process.cwd(), "scripts", "ops", "deploy-service.mjs"), "utf8");
+  const catchIndex = source.indexOf("if (!options.dryRun && serviceStopped)");
+  const guardIndex = source.indexOf("if (releaseArtifacts)", catchIndex);
+  const rollbackIndex = source.indexOf("await rollbackService(service", catchIndex);
+  const restartIndex = source.indexOf("previousArtifactsRestarted", catchIndex);
+  assert(catchIndex > 0);
+  assert(guardIndex > catchIndex && guardIndex < rollbackIndex);
+  assert(restartIndex > rollbackIndex);
+});
+
 test("deploy refuses activation when stopped service artifacts stay locked", async () => {
   await withTempProject(async (root) => {
     const port = await findAvailablePort();
