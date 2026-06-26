@@ -1061,6 +1061,36 @@ test("release activation restores old artifacts when same-volume rename fails", 
   });
 });
 
+test("release activation retries transient Windows artifact locks", async () => {
+  await withTempProject(async (root) => {
+    const config = getServiceConfig("staging", { root });
+    const preparedRoot = join(config.runtimeDir, "releases", "transient-rename-lock");
+    seedPreparedArtifacts(preparedRoot, "new");
+    seedPreparedArtifacts(config.root, "old");
+    let targetToOldAttempts = 0;
+    const rename = (source, target) => {
+      if (source.endsWith("node_modules") && target.includes(".before-release-")) {
+        targetToOldAttempts += 1;
+        if (targetToOldAttempts === 1) {
+          const error = new Error("simulated transient EPERM while activating node_modules");
+          error.code = "EPERM";
+          throw error;
+        }
+      }
+      return renameSyncForTest(source, target);
+    };
+    const state = activatePreparedArtifacts(config, { root: preparedRoot }, "release", {
+      rename,
+      renameAttempts: 2,
+      renameDelayMs: 0,
+    });
+    assert.equal(targetToOldAttempts, 2);
+    assert.equal(state.moved.length, 2);
+    assert.equal(readFileSync(join(config.root, "node_modules", "@next", "env", "package.json"), "utf8"), "new");
+    assert.equal(readFileSync(join(config.root, ".next", "BUILD_ID"), "utf8"), "new");
+  });
+});
+
 test("deploy waits until stopped service artifacts can be renamed", async () => {
   await withTempProject(async (root) => {
     const port = await findAvailablePort();

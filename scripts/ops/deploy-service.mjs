@@ -360,8 +360,13 @@ async function prepareRollbackCodeCandidate(service, config, runtime, commit) {
 
 export function activatePreparedArtifacts(config, prepared, label, options = {}) {
   const stamp = new Date().toISOString().replace(/[-:]/g, "").replace(/\..+/, "").replace("T", "-");
-  const state = { root: config.root, moved: [] };
   const rename = options.rename || renameSync;
+  const renameOptions = {
+    rename,
+    attempts: options.renameAttempts,
+    delayMs: options.renameDelayMs,
+  };
+  const state = { root: config.root, moved: [], renameOptions };
   try {
     for (const name of ["node_modules", ".next"]) {
       const source = join(prepared.root, name);
@@ -375,14 +380,14 @@ export function activatePreparedArtifacts(config, prepared, label, options = {})
       const old = `${target}.before-${label}-${stamp}`;
       let oldPath = null;
       if (existsSync(target)) {
-        rename(target, old);
+        renameWithRetry(target, old, renameOptions);
         oldPath = old;
       }
       try {
-        rename(source, target);
+        renameWithRetry(source, target, renameOptions);
         assertPreparedArtifact(name, target);
       } catch (error) {
-        if (oldPath && existsSync(oldPath)) rename(oldPath, target);
+        if (oldPath && existsSync(oldPath)) renameWithRetry(oldPath, target, renameOptions);
         throw error;
       }
       state.moved.push({ name, source, target, old: oldPath });
@@ -445,9 +450,36 @@ function cleanupPreparedArtifacts(state) {
 function rollbackPreparedArtifacts(state) {
   for (const entry of [...(state?.moved || [])].reverse()) {
     if (entry.target && existsSync(entry.target)) rmSync(entry.target, { recursive: true, force: true });
-    if (entry.old && existsSync(entry.old)) renameSync(entry.old, entry.target);
+    if (entry.old && existsSync(entry.old)) renameWithRetry(entry.old, entry.target, state?.renameOptions);
   }
   if (state?.moved?.length) assertActivatedArtifactSet(state.root);
+}
+
+function renameWithRetry(source, target, options = {}) {
+  const rename = options?.rename || renameSync;
+  const attempts = Number.isFinite(options?.attempts)
+    ? Number(options.attempts)
+    : (process.platform === "win32" ? 20 : 1);
+  const delayMs = Number.isFinite(options?.delayMs)
+    ? Number(options.delayMs)
+    : (process.platform === "win32" ? 250 : 0);
+  for (let attempt = 1; attempt <= Math.max(1, attempts); attempt += 1) {
+    try {
+      return rename(source, target);
+    } catch (error) {
+      if (attempt >= Math.max(1, attempts) || !isRetryableRenameError(error)) throw error;
+      sleepSync(delayMs);
+    }
+  }
+}
+
+function isRetryableRenameError(error) {
+  return ["EPERM", "EBUSY", "EACCES", "ENOTEMPTY"].includes(error?.code);
+}
+
+function sleepSync(ms) {
+  if (!ms || ms <= 0) return;
+  Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms);
 }
 
 function assertPreparedArtifact(name, path) {
