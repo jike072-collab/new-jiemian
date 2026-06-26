@@ -16,7 +16,7 @@ import { createDatabaseRestoreAuthorization, prepareDatabaseRestore, restoreData
 import { classifyServiceProcess, createCommandFingerprint } from "./ops/process-identity.mjs";
 import { stopService } from "./ops/stop-service.mjs";
 import { runWatchdog } from "./ops/watchdog-service.mjs";
-import { activatePreparedArtifacts, createReleaseCandidateRoot, sameVolume } from "./ops/deploy-service.mjs";
+import { activatePreparedArtifacts, createReleaseCandidateRoot, sameVolume, waitForStoppedServiceArtifacts } from "./ops/deploy-service.mjs";
 import { cleanupStaleServiceOperationLock, classifyOperationLock } from "./ops/operation-lock.mjs";
 
 const tests = [];
@@ -1036,6 +1036,54 @@ test("release activation restores old artifacts when same-volume rename fails", 
     assert.throws(() => activatePreparedArtifacts(config, { root: preparedRoot }, "release", { rename }), /simulated/);
     assert.equal(movedOld, true);
     assert.equal(readFileSync(join(config.root, "node_modules", "next", "dist", "bin", "next"), "utf8"), "old");
+    assert.equal(readFileSync(join(config.root, ".next", "BUILD_ID"), "utf8"), "old");
+  });
+});
+
+test("deploy waits until stopped service artifacts can be renamed", async () => {
+  await withTempProject(async (root) => {
+    const port = await findAvailablePort();
+    const config = getServiceConfig("staging", { root, port: String(port) });
+    seedPreparedArtifacts(config.root, "old");
+    let attempts = 0;
+    const rename = (source, target) => {
+      attempts += 1;
+      if (attempts === 1 && source.endsWith("node_modules")) {
+        const error = new Error("simulated EPERM while process releases node_modules");
+        error.code = "EPERM";
+        throw error;
+      }
+      return renameSyncForTest(source, target);
+    };
+    assert.equal(await waitForStoppedServiceArtifacts(config, {
+      rename,
+      intervalMs: 1,
+      timeoutMs: 200,
+    }), true);
+    assert(attempts > 1);
+    assert.equal(readFileSync(join(config.root, "node_modules", "@next", "env", "package.json"), "utf8"), "old");
+    assert.equal(readFileSync(join(config.root, ".next", "BUILD_ID"), "utf8"), "old");
+  });
+});
+
+test("deploy refuses activation when stopped service artifacts stay locked", async () => {
+  await withTempProject(async (root) => {
+    const port = await findAvailablePort();
+    const config = getServiceConfig("staging", { root, port: String(port) });
+    seedPreparedArtifacts(config.root, "old");
+    await assertRejectsAsync(() => waitForStoppedServiceArtifacts(config, {
+      rename: (source, target) => {
+        if (source.endsWith("node_modules")) {
+          const error = new Error("simulated persistent EPERM");
+          error.code = "EPERM";
+          throw error;
+        }
+        return renameSyncForTest(source, target);
+      },
+      intervalMs: 1,
+      timeoutMs: 5,
+    }), /did not release service artifacts/);
+    assert.equal(readFileSync(join(config.root, "node_modules", "@next", "env", "package.json"), "utf8"), "old");
     assert.equal(readFileSync(join(config.root, ".next", "BUILD_ID"), "utf8"), "old");
   });
 });

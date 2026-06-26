@@ -106,7 +106,7 @@ export async function deployService(service, options = {}) {
     if (!options.dryRun) {
       await stopService(service, { root: config.root });
       serviceStopped = true;
-      await wait(1500);
+      await waitForStoppedServiceArtifacts(config);
       runSync("git", ["checkout", "--detach", targetCommit], { cwd: config.root });
       releaseArtifacts = activatePreparedArtifacts(config, preparedRelease, "release");
       report.releaseArtifacts = releaseArtifacts.moved.map((entry) => entry.name);
@@ -292,8 +292,7 @@ export async function rollbackService(service, options = {}) {
   let keepFailedLock = false;
   try {
     await stopService(service, { root: config.root });
-    await wait(1500);
-    if (!await isPortAvailable(config.port)) throw new Error(`${service} port ${config.port} did not stop cleanly.`);
+    await waitForStoppedServiceArtifacts(config);
     runSync("git", ["checkout", "--detach", options.commit], { cwd: config.root });
     artifacts = activatePreparedArtifacts(config, prepared, "rollback");
     await startService(service, { root: config.root, preflightOnly: true });
@@ -394,6 +393,47 @@ export function activatePreparedArtifacts(config, prepared, label, options = {})
     throw error;
   }
   return state;
+}
+
+export async function waitForStoppedServiceArtifacts(config, options = {}) {
+  const timeoutMs = options.timeoutMs || 20_000;
+  const intervalMs = options.intervalMs || 500;
+  const startedAt = Date.now();
+  let lastReason = "";
+  do {
+    if (!await isPortAvailable(config.port)) {
+      lastReason = `port ${config.port} is still in use`;
+    } else {
+      const probe = probeArtifactWritable(config, options);
+      if (probe.ok) return true;
+      lastReason = probe.reason;
+    }
+    await wait(intervalMs);
+  } while (Date.now() - startedAt < timeoutMs);
+  throw new Error(`${config.service} did not release service artifacts after stop: ${lastReason}`);
+}
+
+function probeArtifactWritable(config, options = {}) {
+  const rename = options.rename || renameSync;
+  for (const name of ["node_modules", ".next"]) {
+    const target = join(config.root, name);
+    if (!existsSync(target)) continue;
+    const probe = `${target}.release-probe-${process.pid}-${Date.now()}`;
+    try {
+      rename(target, probe);
+      rename(probe, target);
+    } catch (error) {
+      if (!existsSync(target) && existsSync(probe)) {
+        try {
+          rename(probe, target);
+        } catch (restoreError) {
+          throw new Error(`Artifact release probe could not restore ${name}: ${restoreError instanceof Error ? restoreError.message : String(restoreError)}`);
+        }
+      }
+      return { ok: false, reason: `${name}: ${error instanceof Error ? error.message : String(error)}` };
+    }
+  }
+  return { ok: true };
 }
 
 function cleanupPreparedArtifacts(state) {
