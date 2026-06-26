@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import { spawnSync } from "node:child_process";
 import { test } from "node:test";
@@ -189,6 +189,8 @@ test("standard npm start includes the release preflight", () => {
 });
 
 test("release preflight rejects missing production configuration", () => {
+  rmSync(join(process.cwd(), "dist", "release-preflight"), { recursive: true, force: true });
+  rmSync(join(process.cwd(), "dist", "release-preflight.tsbuildinfo"), { force: true });
   const run = spawnSync("npm", ["run", "release:preflight"], {
     cwd: process.cwd(),
     encoding: "utf8",
@@ -212,4 +214,6 @@ test("release preflight rejects missing production configuration", () => {
   for (const leaked of ["postgresql://", "release-test-admin-token", "new-api.example.test"]) {
     assert.equal(output.includes(leaked), false, `preflight output leaked ${leaked}`);
   }
+  assert.equal(existsSync(join(process.cwd(), "dist", "release-preflight")), false);
+  assert.equal(existsSync(join(process.cwd(), "dist", "release-preflight.tsbuildinfo")), false);
 });
