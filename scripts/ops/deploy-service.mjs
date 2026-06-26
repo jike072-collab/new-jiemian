@@ -361,15 +361,18 @@ async function prepareRollbackCodeCandidate(service, config, runtime, commit) {
 
 export function activatePreparedArtifacts(config, prepared, label, options = {}) {
   const stamp = new Date().toISOString().replace(/[-:]/g, "").replace(/\..+/, "").replace("T", "-");
-  const state = { moved: [] };
+  const state = { root: config.root, moved: [] };
   const rename = options.rename || renameSync;
   try {
     for (const name of ["node_modules", ".next"]) {
       const source = join(prepared.root, name);
-      const target = join(config.root, name);
       if (!existsSync(source)) throw new Error(`Prepared rollback artifact is missing: ${name}`);
       assertPreparedArtifact(name, source);
-      assertSameVolume(source, target, options);
+      assertSameVolume(source, join(config.root, name), options);
+    }
+    for (const name of ["node_modules", ".next"]) {
+      const source = join(prepared.root, name);
+      const target = join(config.root, name);
       const old = `${target}.before-${label}-${stamp}`;
       let oldPath = null;
       if (existsSync(target)) {
@@ -385,6 +388,7 @@ export function activatePreparedArtifacts(config, prepared, label, options = {})
       }
       state.moved.push({ name, source, target, old: oldPath });
     }
+    assertActivatedArtifactSet(config.root);
   } catch (error) {
     rollbackPreparedArtifacts(state);
     throw error;
@@ -403,6 +407,7 @@ function rollbackPreparedArtifacts(state) {
     if (entry.target && existsSync(entry.target)) rmSync(entry.target, { recursive: true, force: true });
     if (entry.old && existsSync(entry.old)) renameSync(entry.old, entry.target);
   }
+  if (state?.moved?.length) assertActivatedArtifactSet(state.root);
 }
 
 function assertPreparedArtifact(name, path) {
@@ -410,6 +415,9 @@ function assertPreparedArtifact(name, path) {
   if (files <= 0) throw new Error(`Prepared artifact is empty: ${name}`);
   if (name === "node_modules" && !existsSync(join(path, "next", "dist", "bin", "next"))) {
     throw new Error("Prepared node_modules is missing Next.js binary.");
+  }
+  if (name === "node_modules" && !existsSync(join(path, "@next", "env", "package.json"))) {
+    throw new Error("Prepared node_modules is missing @next/env.");
   }
   if (name === ".next") {
     for (const keyFile of ["BUILD_ID", "required-server-files.json"]) {
@@ -421,6 +429,11 @@ function assertPreparedArtifact(name, path) {
       }
     }
   }
+}
+
+function assertActivatedArtifactSet(root) {
+  assertPreparedArtifact("node_modules", join(root, "node_modules"));
+  assertPreparedArtifact(".next", join(root, ".next"));
 }
 
 function countFiles(path) {

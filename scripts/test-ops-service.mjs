@@ -2,7 +2,7 @@
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
-import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, renameSync, unlinkSync, writeFileSync } from "node:fs";
 import http from "node:http";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -1008,6 +1008,19 @@ test("release activation refuses simulated cross-volume artifact moves", async (
   });
 });
 
+test("release activation refuses incomplete node_modules before moving old artifacts", async () => {
+  await withTempProject(async (root) => {
+    const config = getServiceConfig("staging", { root });
+    const preparedRoot = join(config.runtimeDir, "releases", "incomplete-node-modules");
+    seedPreparedArtifacts(preparedRoot, "new");
+    seedPreparedArtifacts(config.root, "old");
+    assert.equal(unlinkSync(join(preparedRoot, "node_modules", "@next", "env", "package.json")), undefined);
+    assert.throws(() => activatePreparedArtifacts(config, { root: preparedRoot }, "release"), /@next\/env/);
+    assert.equal(readFileSync(join(config.root, "node_modules", "@next", "env", "package.json"), "utf8"), "old");
+    assert.equal(readFileSync(join(config.root, ".next", "BUILD_ID"), "utf8"), "old");
+  });
+});
+
 test("release activation restores old artifacts when same-volume rename fails", async () => {
   await withTempProject(async (root) => {
     const config = getServiceConfig("staging", { root });
@@ -1113,9 +1126,11 @@ function findAvailablePort() {
 
 function seedPreparedArtifacts(root, marker) {
   mkdirSync(join(root, "node_modules", "next", "dist", "bin"), { recursive: true });
+  mkdirSync(join(root, "node_modules", "@next", "env"), { recursive: true });
   mkdirSync(join(root, ".next", "server"), { recursive: true });
   mkdirSync(join(root, ".next", "static"), { recursive: true });
   writeFileSync(join(root, "node_modules", "next", "dist", "bin", "next"), marker);
+  writeFileSync(join(root, "node_modules", "@next", "env", "package.json"), marker);
   writeFileSync(join(root, ".next", "BUILD_ID"), marker);
   writeFileSync(join(root, ".next", "required-server-files.json"), "{}");
   writeFileSync(join(root, ".next", "server", "index.js"), marker);
