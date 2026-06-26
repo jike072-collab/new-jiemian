@@ -60,6 +60,12 @@ jobs:
       - name: Security release tests
         run: npm run test:security-release
 
+      - name: Studio API contracts
+        run: npm run check:studio-api-contracts
+
+      - name: Stage 3 Studio regression logic
+        run: npm run test:stage3-studio-regression -- --skip-runtime
+
       - name: Operations service tests
         run: npm run test:ops
 
@@ -75,6 +81,18 @@ jobs:
         run: npm run test:staging-smoke
         env:
           STAGING_SMOKE_PORT: 43107
+
+      - name: Stage 2 UI acceptance
+        run: npm run test:stage2-ui-acceptance
+        env:
+          STUDIO_TEST_MANAGE_SERVER: "1"
+          STUDIO_TEST_PORT: 43108
+
+      - name: Stage 3 Studio regression runtime
+        run: npm run test:stage3-studio-regression
+        env:
+          STUDIO_TEST_MANAGE_SERVER: "1"
+          STUDIO_TEST_PORT: 43109
 
   windows-quality:
     runs-on: windows-latest
@@ -107,6 +125,12 @@ jobs:
 
       - name: Security release tests
         run: npm run test:security-release
+
+      - name: Studio API contracts
+        run: npm run check:studio-api-contracts
+
+      - name: Stage 3 Studio regression logic
+        run: npm run test:stage3-studio-regression -- --skip-runtime
 
       - name: Operations service tests
         run: npm run test:ops
