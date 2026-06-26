@@ -13,6 +13,8 @@ const eslintConfig = defineConfig([
     "build/**",
     "dist/**",
     "next-env.d.ts",
+    ".runtime/**",
+    "**/.runtime/**",
     ".chrome-stage5/**",
     "**/.chrome-stage5/**",
     "artifacts/**",
