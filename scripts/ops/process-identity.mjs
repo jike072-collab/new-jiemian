@@ -14,10 +14,18 @@ export function createLaunchId() {
 
 export function createCommandFingerprint(config) {
   const { runtimeRoot } = resolveServiceRuntime(config);
+  return fingerprintForRuntime(config, runtimeRoot);
+}
+
+function createLegacyCommandFingerprint(config, runtimeRoot) {
+  return fingerprintForRuntime(config, runtimeRoot, { includePort: false, includeRuntimeRoot: false });
+}
+
+function fingerprintForRuntime(config, runtimeRoot, options = {}) {
   return createHash("sha256").update([
     config.service,
     normalizePath(config.root),
-    normalizePath(runtimeRoot),
+    ...(options.includeRuntimeRoot === false ? [] : [normalizePath(runtimeRoot)]),
     String(config.port),
     normalizePath(join(runtimeRoot, "node_modules", "next", "dist", "bin", "next")),
     "next start -H 127.0.0.1",
@@ -127,8 +135,18 @@ function validateState(config, state) {
   if (!samePath(state.workdir || runtimeRoot, runtimeRoot)) return "state-workdir-mismatch";
   if (!samePath(state.dataDir, config.dataDir)) return "state-data-dir-mismatch";
   if (!samePath(state.uploadsDir, config.uploadsDir)) return "state-uploads-dir-mismatch";
-  if (state.commandFingerprint && state.commandFingerprint !== createCommandFingerprint(config)) return "state-command-fingerprint-mismatch";
+  if (state.commandFingerprint && !matchesCommandFingerprint(config, state, runtimeRoot)) return "state-command-fingerprint-mismatch";
   return null;
+}
+
+function matchesCommandFingerprint(config, state, runtimeRoot) {
+  const current = createCommandFingerprint(config);
+  if (state.commandFingerprint === current) return true;
+  if (!state.runtimeRoot) {
+    const legacy = createLegacyCommandFingerprint(config, runtimeRoot);
+    if (state.commandFingerprint === legacy) return true;
+  }
+  return false;
 }
 
 function processLooksLikeService(config, processInfo) {

@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
+import { createHash } from "node:crypto";
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { existsSync, mkdirSync, readFileSync, renameSync, unlinkSync, writeFileSync } from "node:fs";
 import http from "node:http";
@@ -302,6 +303,54 @@ test("backup and rollback script are generated without touching data", async () 
     assert.equal(readFileSync(rollback, "utf8").includes("abc123"), true);
     const after = snapshotDirectory(config.dataDir);
     assert.deepEqual(after, before);
+  });
+});
+
+test("legacy owned service fingerprint remains stoppable after runtime-root upgrade", async () => {
+  await withTempProject(async (root) => {
+    const port = await findAvailablePort();
+    const server = http.createServer((request, response) => {
+      response.writeHead(200);
+      response.end("ok");
+    });
+    await new Promise((resolve) => server.listen(port, "127.0.0.1", resolve));
+    try {
+      const config = getServiceConfig("staging", { root, port: String(port) });
+      await writeFile(config.stateFile, JSON.stringify({
+        statusVersion: 2,
+        serviceName: "staging",
+        service: "staging",
+        port: config.port,
+        pid: process.pid,
+        workdir: config.root,
+        root: config.root,
+        dataDir: config.dataDir,
+        uploadsDir: config.uploadsDir,
+        commandFingerprint: createHash("sha256").update([
+          config.service,
+          config.root.toLowerCase(),
+          String(config.port),
+          join(config.root, "node_modules", "next", "dist", "bin", "next").toLowerCase(),
+          "next start -H 127.0.0.1",
+        ].join("|")).digest("hex"),
+        command: `node ${join(config.root, "node_modules", "next", "dist", "bin", "next")} start -H 127.0.0.1`,
+        processStartedAt: "2026-06-25T00:00:00.000Z",
+      }, null, 2));
+      const identity = await classifyServiceProcess("staging", {
+        root,
+        port: config.port,
+        listeningPidProvider: () => process.pid,
+        processInfoProvider: () => ({
+          ProcessId: process.pid,
+          ParentProcessId: process.ppid,
+          CommandLine: `\"C:\\Program Files\\nodejs\\node.exe\" ${join(config.root, "node_modules", "next", "dist", "bin", "next")} start -H 127.0.0.1 -p ${config.port}`,
+          CreationDate: "2026-06-25T00:00:00.000Z",
+        }),
+      });
+      assert.equal(identity.status, "owned");
+    } finally {
+      await new Promise((resolve) => server.close(resolve));
+    }
   });
 });
 
