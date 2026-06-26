@@ -1,0 +1,31 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "allowImportingTsExtensions": false,
+    "declaration": false,
+    "emitDeclarationOnly": false,
+    "incremental": false,
+    "module": "NodeNext",
+    "moduleResolution": "NodeNext",
+    "noEmit": false,
+    "outDir": "dist/provider-health-tests",
+    "rootDir": ".",
+    "target": "ES2022",
+    "tsBuildInfoFile": "dist/provider-health-tests.tsbuildinfo"
+  },
+  "include": [
+    "src/lib/server/provider-health.ts",
+    "src/lib/server/providers.ts",
+    "src/lib/server/types.ts",
+    "src/lib/server/paths.ts",
+    "src/lib/server/runtime-paths.ts",
+    "src/lib/server/admin/**/*.ts",
+    "src/lib/server/auth/**/*.ts",
+    "src/lib/server/billing/**/*.ts",
+    "src/lib/server/quota/**/*.ts",
+    "src/lib/server/database/**/*.ts",
+    "src/lib/server/integrations/new-api/**/*.ts",
+    "src/lib/server/security/health.ts",
+    "src/lib/server/__tests__/provider-health.test.ts"
+  ]
+}

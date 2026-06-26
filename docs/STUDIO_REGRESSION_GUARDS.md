@@ -24,6 +24,8 @@ Stage 3 tests must not call:
 
 Allowed requests are page loads, static assets, `/api/health/backend`, `/api/library`, and permission redirects such as `/admin/providers`.
 
+Stage 4 adds `/api/admin/provider-health` as an admin-only, read-only diagnostics endpoint. It is allowed in provider-health tests because it does not submit generation payloads and is covered by separate mock-server guards.
+
 ## Commands
 
 Run the full Stage 3 logic checks:
