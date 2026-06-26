@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 import { randomUUID } from "node:crypto";
-import { existsSync, mkdirSync, readdirSync, renameSync, rmSync, statSync, writeFileSync } from "node:fs";
-import { basename, join, parse, resolve } from "node:path";
+import { cpSync, existsSync, mkdirSync, readdirSync, renameSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { basename, extname, join, parse, relative, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 import { clearActiveRelease, readActiveRelease, restoreActiveRelease, writeActiveRelease } from "./active-release.mjs";
 import {
@@ -157,6 +157,7 @@ export async function deployService(service, options = {}) {
       clearActiveRelease(config);
     }
     if (preparedRelease?.scratchRoot) rmSync(preparedRelease.scratchRoot, { recursive: true, force: true });
+    if (preparedRelease?.validationRoot) removeReleaseValidationWorktree(config, preparedRelease.validationRoot);
     releaseServiceOperationLock(operationLock);
     mkdirSync(config.runtimeDir, { recursive: true });
     writeFileSync(join(config.runtimeDir, `deploy-${service}-last.json`), JSON.stringify(report, null, 2));
@@ -164,19 +165,21 @@ export async function deployService(service, options = {}) {
 }
 
 async function validateTargetInWorktree(service, config, runtime, targetCommit, report) {
-  const validationRoot = createReleaseCandidateRoot(config, targetCommit, report.deploymentId);
-  const validationScratchRoot = join(config.runtimeDir, "release-smoke", basename(validationRoot));
-  report.validationRoot = validationRoot;
+  const releaseRoot = createReleaseCandidateRoot(config, targetCommit, report.deploymentId);
+  const validationRoot = createReleaseValidationWorktreeRoot(config, targetCommit, report.deploymentId);
+  const validationScratchRoot = join(config.runtimeDir, "release-smoke", basename(releaseRoot));
+  report.validationRoot = releaseRoot;
+  report.validationWorktreeRoot = validationRoot;
   report.validationScratchRoot = validationScratchRoot;
   try {
     runSync("git", ["worktree", "add", "--detach", validationRoot, targetCommit], { cwd: config.root });
-    const validationConfig = getServiceConfig(service, { root: validationRoot, port: config.port });
-    const verificationEnv = buildVerificationEnv(process.env, { includeRuntimeConfig: false });
+    const verificationEnv = buildReleaseCandidateVerificationEnv(process.env, validationScratchRoot, {
+      includeRuntimeConfig: false,
+    });
     const smokeEnv = {
-      ...buildVerificationEnv(runtime.env, { includeRuntimeConfig: true }),
-      AOHUANG_ALLOW_RUNTIME_DIR_OVERRIDE: "1",
-      DATA_DIR: join(validationScratchRoot, "data"),
-      UPLOADS_DIR: join(validationScratchRoot, "uploads"),
+      ...buildReleaseCandidateVerificationEnv(runtime.env, validationScratchRoot, {
+        includeRuntimeConfig: true,
+      }),
       STAGING_SMOKE_PORT: String(await findTemporaryPort()),
     };
     for (const [command, args] of validationCheckCommands) {
@@ -186,21 +189,33 @@ async function validateTargetInWorktree(service, config, runtime, targetCommit, 
     }
     await run(process.execPath, ["scripts/ops/start-service.mjs", service, "--preflight-only", "--root", validationRoot], {
       cwd: validationRoot,
-      env: {
-        ...runtime.env,
-        AOHUANG_ALLOW_RUNTIME_DIR_OVERRIDE: "1",
-        DATA_DIR: smokeEnv.DATA_DIR,
-        UPLOADS_DIR: smokeEnv.UPLOADS_DIR,
-      },
+      env: buildReleaseCandidateVerificationEnv(runtime.env, validationScratchRoot, {
+        includeRuntimeConfig: true,
+      }),
     });
     report.checks.push({ command: "validation start-service --preflight-only", ok: true });
-    assertReleaseCandidateSafe(config, validationRoot, validationConfig);
-    report.releaseRoot = validationRoot;
-    return { root: validationRoot, scratchRoot: validationScratchRoot };
+    prepareReleaseArtifact(config, validationRoot, releaseRoot);
+    const releaseConfig = getServiceConfig(service, { root: releaseRoot, port: config.port });
+    assertReleaseCandidateSafe(config, releaseRoot, releaseConfig);
+    report.releaseRoot = releaseRoot;
+    return { root: releaseRoot, scratchRoot: validationScratchRoot, validationRoot };
   } catch (error) {
     rmSync(validationScratchRoot, { recursive: true, force: true });
+    rmSync(releaseRoot, { recursive: true, force: true });
+    removeReleaseValidationWorktree(config, validationRoot);
     throw error;
   }
+}
+
+export function buildReleaseCandidateVerificationEnv(baseEnv, scratchRoot, options = {}) {
+  const env = buildVerificationEnv(baseEnv, options);
+  return {
+    ...env,
+    AOHUANG_ALLOW_RUNTIME_DIR_OVERRIDE: "1",
+    RUNTIME_STORAGE_ISOLATION: "strict",
+    DATA_DIR: join(scratchRoot, "data"),
+    UPLOADS_DIR: join(scratchRoot, "uploads"),
+  };
 }
 
 export function createReleaseCandidateRoot(config, targetCommit, deploymentId = randomUUID()) {
@@ -219,6 +234,36 @@ export function createReleaseCandidateRoot(config, targetCommit, deploymentId = 
   return candidateRoot;
 }
 
+export function createReleaseValidationWorktreeRoot(config, targetCommit, deploymentId = randomUUID()) {
+  const shortCommit = String(targetCommit || "unknown").slice(0, 12).replace(/[^a-f0-9]/gi, "x");
+  const safeId = String(deploymentId || randomUUID()).replace(/[^a-z0-9-]/gi, "").slice(0, 18) || randomUUID().slice(0, 8);
+  const worktreesRoot = join(config.runtimeDir, "release-worktrees");
+  mkdirSync(worktreesRoot, { recursive: true });
+  const validationRoot = resolve(worktreesRoot, `${shortCommit}-${safeId}`);
+  const worktreesPrefix = `${resolve(worktreesRoot).toLowerCase()}${process.platform === "win32" ? "\\" : "/"}`;
+  if (!validationRoot.toLowerCase().startsWith(worktreesPrefix)) {
+    throw new Error("Release validation worktree path escaped the service runtime directory.");
+  }
+  if (isSamePath(validationRoot, config.dataDir) || isSamePath(validationRoot, config.uploadsDir)) {
+    throw new Error("Release validation worktree must not overlap data/uploads.");
+  }
+  return validationRoot;
+}
+
+function prepareReleaseArtifact(config, validationRoot, releaseRoot) {
+  if (!sameVolume(config.root, releaseRoot)) {
+    throw new Error("Release artifact must be created on the same volume as the target service root.");
+  }
+  if (existsSync(releaseRoot)) rmSync(releaseRoot, { recursive: true, force: true });
+  mkdirSync(releaseRoot, { recursive: true });
+  cpSync(validationRoot, releaseRoot, {
+    recursive: true,
+    force: true,
+    filter: (source) => !shouldExcludeFromReleaseArtifact(source, { artifactRoot: validationRoot }),
+  });
+  assertReleaseArtifactClean(releaseRoot);
+}
+
 function assertReleaseCandidateSafe(config, validationRoot, validationConfig) {
   if (!sameVolume(config.root, validationRoot)) {
     throw new Error("Release candidate must be created on the same volume as the target service root.");
@@ -233,6 +278,87 @@ function assertReleaseCandidateSafe(config, validationRoot, validationConfig) {
   for (const path of forbidden) {
     if (existsSync(path)) throw new Error(`Release candidate contains forbidden runtime state: ${path}`);
   }
+  assertReleaseArtifactClean(validationRoot);
+}
+
+const releaseArtifactForbiddenNames = new Set([
+  ".git",
+  ".runtime",
+  "_rollback_backups",
+  "artifacts",
+  "data",
+  "data-staging",
+  "dist",
+  "logs",
+  "uploads",
+  "uploads-staging",
+]);
+
+const releaseArtifactForbiddenFiles = new Set([
+  ".env",
+  ".env.local",
+  "rollback-authorization.consuming.json",
+  "rollback-authorization.pending.json",
+  "rollback-authorization.used.json",
+]);
+
+const releaseArtifactForbiddenExtensions = new Set([
+  ".db",
+  ".dump",
+  ".log",
+  ".pid",
+  ".sqlite",
+  ".sqlite3",
+  ".tsbuildinfo",
+]);
+
+export function shouldExcludeFromReleaseArtifact(path, options = {}) {
+  const artifactRoot = resolve(String(options.artifactRoot || process.cwd()));
+  const resolved = resolve(String(path || ""));
+  const relativePath = relative(artifactRoot, resolved);
+  if (!relativePath || relativePath === ".") return false;
+  const segments = relativePath.split(/[\\/]+/).filter(Boolean);
+  if (segments.includes("node_modules")) return false;
+  const name = basename(resolved);
+  if (segments.some((segment) => releaseArtifactForbiddenNames.has(segment))) return true;
+  if (releaseArtifactForbiddenNames.has(name)) return true;
+  if ((name === ".env" || name.startsWith(".env.")) && name !== ".env.example") return true;
+  if (releaseArtifactForbiddenFiles.has(name)) return true;
+  if (releaseArtifactForbiddenExtensions.has(extname(name).toLowerCase())) return true;
+  return false;
+}
+
+export function assertReleaseArtifactClean(releaseDir) {
+  const root = resolve(releaseDir);
+  if (!existsSync(root)) throw new Error(`Release artifact is missing: ${root}`);
+  for (const path of listArtifactPaths(root)) {
+    if (shouldExcludeFromReleaseArtifact(path, { artifactRoot: root })) {
+      throw new Error(`Release artifact contains forbidden runtime state: ${path}`);
+    }
+  }
+}
+
+function listArtifactPaths(root) {
+  const results = [];
+  for (const entry of readdirSync(root, { withFileTypes: true })) {
+    const fullPath = join(root, entry.name);
+    results.push(fullPath);
+    if (entry.isDirectory()) {
+      if (entry.name === "node_modules") continue;
+      results.push(...listArtifactPaths(fullPath));
+    }
+  }
+  return results;
+}
+
+function removeReleaseValidationWorktree(config, validationRoot) {
+  if (!validationRoot) return;
+  const resolved = resolve(validationRoot);
+  const worktreesRoot = resolve(join(config.runtimeDir, "release-worktrees"));
+  const worktreesPrefix = `${worktreesRoot.toLowerCase()}${process.platform === "win32" ? "\\" : "/"}`;
+  if (!resolved.toLowerCase().startsWith(worktreesPrefix)) return;
+  runSync("git", ["worktree", "remove", "--force", resolved], { cwd: config.root, allowStatus: [0, 128] });
+  if (existsSync(resolved)) rmSync(resolved, { recursive: true, force: true });
 }
 
 function buildVerificationEnv(baseEnv, options = {}) {
@@ -325,30 +451,40 @@ export async function rollbackService(service, options = {}) {
 }
 
 async function prepareRollbackCodeCandidate(service, config, runtime, commit) {
-  const candidateRoot = createReleaseCandidateRoot(config, commit, `rollback-${process.pid}`);
-  runSync("git", ["worktree", "add", "--detach", candidateRoot, commit], { cwd: config.root });
+  const releaseRoot = createReleaseCandidateRoot(config, commit, `rollback-${process.pid}`);
+  const validationRoot = createReleaseValidationWorktreeRoot(config, commit, `rollback-${process.pid}`);
+  const candidateScratchRoot = join(config.runtimeDir, "release-smoke", basename(releaseRoot));
+  runSync("git", ["worktree", "add", "--detach", validationRoot, commit], { cwd: config.root });
   try {
-    const verificationEnv = buildVerificationEnv(runtime.env, { includeRuntimeConfig: false });
-    for (const [command, args] of rollbackCandidateCommands) {
-      await run(command, args, { cwd: candidateRoot, env: verificationEnv });
-    }
-    await run(process.execPath, ["scripts/ops/start-service.mjs", service, "--preflight-only", "--root", candidateRoot], {
-      cwd: candidateRoot,
-      env: runtime.env,
+    const verificationEnv = buildReleaseCandidateVerificationEnv(runtime.env, candidateScratchRoot, {
+      includeRuntimeConfig: false,
     });
-    const smokeConfig = getServiceConfig(service, { root: candidateRoot, port: config.port });
+    for (const [command, args] of rollbackCandidateCommands) {
+      await run(command, args, { cwd: validationRoot, env: verificationEnv });
+    }
+    await run(process.execPath, ["scripts/ops/start-service.mjs", service, "--preflight-only", "--root", validationRoot], {
+      cwd: validationRoot,
+      env: buildReleaseCandidateVerificationEnv(runtime.env, candidateScratchRoot, {
+        includeRuntimeConfig: true,
+      }),
+    });
     await run("npm", ["run", "test:staging-smoke"], {
-      cwd: candidateRoot,
+      cwd: validationRoot,
       env: {
-        ...runtime.env,
-        AOHUANG_ALLOW_RUNTIME_DIR_OVERRIDE: "1",
-        DATA_DIR: join(smokeConfig.runtimeDir, "rollback-smoke-data"),
-        UPLOADS_DIR: join(smokeConfig.runtimeDir, "rollback-smoke-uploads"),
+        ...buildReleaseCandidateVerificationEnv(runtime.env, candidateScratchRoot, {
+          includeRuntimeConfig: true,
+        }),
         STAGING_SMOKE_PORT: String(await findTemporaryPort()),
       },
     });
-    return { root: candidateRoot };
+    prepareReleaseArtifact(config, validationRoot, releaseRoot);
+    const releaseConfig = getServiceConfig(service, { root: releaseRoot, port: config.port });
+    assertReleaseCandidateSafe(config, releaseRoot, releaseConfig);
+    return { root: releaseRoot, scratchRoot: candidateScratchRoot, validationRoot };
   } catch (error) {
+    rmSync(candidateScratchRoot, { recursive: true, force: true });
+    rmSync(releaseRoot, { recursive: true, force: true });
+    removeReleaseValidationWorktree(config, validationRoot);
     throw error;
   }
 }

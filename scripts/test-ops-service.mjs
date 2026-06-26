@@ -6,7 +6,7 @@ import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { existsSync, mkdirSync, readFileSync, renameSync, unlinkSync, writeFileSync } from "node:fs";
 import http from "node:http";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { join, resolve } from "node:path";
 import net from "node:net";
 import { buildRuntimeEnv, formatRuntimeEnvSummary } from "./ops/load-runtime-env.mjs";
 import { getKnownServiceRoot, getServiceConfig } from "./ops/service-config.mjs";
@@ -17,7 +17,16 @@ import { createDatabaseRestoreAuthorization, prepareDatabaseRestore, restoreData
 import { classifyServiceProcess, createCommandFingerprint } from "./ops/process-identity.mjs";
 import { stopService } from "./ops/stop-service.mjs";
 import { runWatchdog } from "./ops/watchdog-service.mjs";
-import { activatePreparedArtifacts, createReleaseCandidateRoot, sameVolume, waitForStoppedServiceArtifacts } from "./ops/deploy-service.mjs";
+import {
+  activatePreparedArtifacts,
+  assertReleaseArtifactClean,
+  buildReleaseCandidateVerificationEnv,
+  createReleaseCandidateRoot,
+  createReleaseValidationWorktreeRoot,
+  sameVolume,
+  shouldExcludeFromReleaseArtifact,
+  waitForStoppedServiceArtifacts,
+} from "./ops/deploy-service.mjs";
 import { cleanupStaleServiceOperationLock, classifyOperationLock } from "./ops/operation-lock.mjs";
 
 const tests = [];
@@ -1050,18 +1059,25 @@ test("deploy validation happens before the live service is stopped", () => {
   assert(source.indexOf("await validateTargetInWorktree") < source.indexOf("stopService(service"));
   assert.match(source, /git", \["worktree", "add"/);
   assert.match(source, /createReleaseCandidateRoot/);
-  assert(!source.includes("tmpdir()"));
+  assert.match(source, /createReleaseValidationWorktreeRoot/);
 });
 
-test("release candidate root is created under the target service runtime releases directory", async () => {
+test("release artifact and validation worktree roots are isolated under service runtime", async () => {
   await withTempProject(async (root) => {
     const config = getServiceConfig("staging", { root });
     const candidate = createReleaseCandidateRoot(config, "abcdef1234567890", "deploy-id");
+    const validation = createReleaseValidationWorktreeRoot(config, "abcdef1234567890", "deploy-id");
     assert(candidate.startsWith(join(config.runtimeDir, "releases")));
+    assert(validation.startsWith(join(config.runtimeDir, "release-worktrees")));
     assert(candidate.includes("abcdef123456"));
+    assert(validation.includes("abcdef123456"));
+    assert.notEqual(candidate, validation);
     assert(!candidate.includes("data-staging"));
     assert(!candidate.includes("uploads-staging"));
+    assert(!validation.includes("data-staging"));
+    assert(!validation.includes("uploads-staging"));
     assert.equal(sameVolume(config.root, candidate), true);
+    assert.equal(sameVolume(config.root, validation), true);
   });
 });
 
@@ -1248,6 +1264,36 @@ test("deploy verification installs dev tooling before production preflight", () 
 test("deploy validation passes the temporary root to preflight", () => {
   const source = readFileSync(join(process.cwd(), "scripts", "ops", "deploy-service.mjs"), "utf8");
   assert(source.includes('"scripts/ops/start-service.mjs", service, "--preflight-only", "--root", validationRoot'));
+  assert.match(source, /buildReleaseCandidateVerificationEnv\(runtime\.env, validationScratchRoot/);
+});
+
+test("release candidate validation uses scratch data outside the artifact", async () => {
+  await withTempProject(async (root) => {
+    const config = getServiceConfig("production", { root });
+    const candidateRoot = createReleaseCandidateRoot(config, "abcdef1234567890", "deploy-id");
+    const scratchRoot = join(config.runtimeDir, "release-smoke", "candidate");
+    const env = buildReleaseCandidateVerificationEnv({
+      PORT: "3106",
+      DATA_DIR: "data",
+      UPLOADS_DIR: "uploads",
+    }, scratchRoot, { includeRuntimeConfig: true });
+    assert.equal(env.DATA_DIR, join(scratchRoot, "data"));
+    assert.equal(env.UPLOADS_DIR, join(scratchRoot, "uploads"));
+    assert.equal(resolve(env.DATA_DIR).startsWith(resolve(candidateRoot)), false);
+    assert.equal(resolve(env.UPLOADS_DIR).startsWith(resolve(candidateRoot)), false);
+  });
+});
+
+test("release artifact cleanliness rejects runtime state recursively", async () => {
+  await withTempProject(async (root) => {
+    const config = getServiceConfig("production", { root });
+    const candidateRoot = createReleaseCandidateRoot(config, "abcdef1234567890", "dirty");
+    seedPreparedArtifacts(candidateRoot, "new");
+    mkdirSync(join(candidateRoot, "nested", "uploads"), { recursive: true });
+    writeFileSync(join(candidateRoot, "nested", "uploads", "asset.txt"), "runtime upload");
+    assert.throws(() => assertReleaseArtifactClean(candidateRoot), /uploads/);
+    assert.equal(shouldExcludeFromReleaseArtifact(join(candidateRoot, "src", "data-model.ts"), { artifactRoot: candidateRoot }), false);
+  });
 });
 
 test("generation endpoints are not used by health checks", () => {
