@@ -1,8 +1,9 @@
 #!/usr/bin/env node
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
+import { createHash } from "node:crypto";
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
-import { existsSync, mkdirSync, readFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, renameSync, unlinkSync, writeFileSync } from "node:fs";
 import http from "node:http";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -10,12 +11,14 @@ import net from "node:net";
 import { buildRuntimeEnv, formatRuntimeEnvSummary } from "./ops/load-runtime-env.mjs";
 import { getKnownServiceRoot, getServiceConfig } from "./ops/service-config.mjs";
 import { getServiceStatus } from "./ops/service-status.mjs";
-import { createServiceBackup, restoreDataAndUploads, snapshotDirectory, verifyBackupManifest, writeRollbackScript } from "./ops/backup-utils.mjs";
+import { createServiceBackup, restoreDataAndUploads, rollbackRestoredDirectories, snapshotDirectory, verifyBackupManifest, writeRollbackScript } from "./ops/backup-utils.mjs";
 import { createDatabaseBackup, createDatabaseFingerprint } from "./ops/database-backup.mjs";
 import { createDatabaseRestoreAuthorization, prepareDatabaseRestore, restoreDatabaseBackup } from "./ops/database-restore.mjs";
 import { classifyServiceProcess, createCommandFingerprint } from "./ops/process-identity.mjs";
 import { stopService } from "./ops/stop-service.mjs";
 import { runWatchdog } from "./ops/watchdog-service.mjs";
+import { activatePreparedArtifacts, createReleaseCandidateRoot, sameVolume, waitForStoppedServiceArtifacts } from "./ops/deploy-service.mjs";
+import { cleanupStaleServiceOperationLock, classifyOperationLock } from "./ops/operation-lock.mjs";
 
 const tests = [];
 let passed = 0;
@@ -216,6 +219,7 @@ test("owned service state keeps watchdog from misclassifying a matching process"
         pid: process.pid,
         workdir: config.root,
         root: config.root,
+        runtimeRoot: config.root,
         dataDir: config.dataDir,
         uploadsDir: config.uploadsDir,
         command: `node ${join(config.root, "node_modules", "next", "dist", "bin", "next")} start -H 127.0.0.1 -p ${config.port}`,
@@ -302,6 +306,128 @@ test("backup and rollback script are generated without touching data", async () 
   });
 });
 
+test("legacy owned service fingerprint remains stoppable after runtime-root upgrade", async () => {
+  await withTempProject(async (root) => {
+    const port = await findAvailablePort();
+    const server = http.createServer((request, response) => {
+      response.writeHead(200);
+      response.end("ok");
+    });
+    await new Promise((resolve) => server.listen(port, "127.0.0.1", resolve));
+    try {
+      const config = getServiceConfig("staging", { root, port: String(port) });
+      await writeFile(config.stateFile, JSON.stringify({
+        statusVersion: 2,
+        serviceName: "staging",
+        service: "staging",
+        port: config.port,
+        pid: process.pid,
+        workdir: config.root,
+        root: config.root,
+        dataDir: config.dataDir,
+        uploadsDir: config.uploadsDir,
+        commandFingerprint: createHash("sha256").update([
+          config.service,
+          config.root.toLowerCase(),
+          String(config.port),
+          join(config.root, "node_modules", "next", "dist", "bin", "next").toLowerCase(),
+          "next start -H 127.0.0.1",
+        ].join("|")).digest("hex"),
+        command: `node ${join(config.root, "node_modules", "next", "dist", "bin", "next")} start -H 127.0.0.1`,
+        processStartedAt: "2026-06-25T00:00:00.000Z",
+      }, null, 2));
+      const identity = await classifyServiceProcess("staging", {
+        root,
+        port: config.port,
+        listeningPidProvider: () => process.pid,
+        processInfoProvider: () => ({
+          ProcessId: process.pid,
+          ParentProcessId: process.ppid,
+          CommandLine: `\"C:\\Program Files\\nodejs\\node.exe\" ${join(config.root, "node_modules", "next", "dist", "bin", "next")} start -H 127.0.0.1 -p ${config.port}`,
+          CreationDate: "2026-06-25T00:00:00.000Z",
+        }),
+      });
+      assert.equal(identity.status, "owned");
+    } finally {
+      await new Promise((resolve) => server.close(resolve));
+    }
+  });
+});
+
+test("service backup ignores release candidates and build artifacts", async () => {
+  await withTempProject(async (root) => {
+    const config = getServiceConfig("staging", { root });
+    mkdirSync(join(root, "database"), { recursive: true });
+    mkdirSync(join(root, ".runtime", "releases", "candidate"), { recursive: true });
+    mkdirSync(join(root, ".next", "cache"), { recursive: true });
+    mkdirSync(join(root, "node_modules"), { recursive: true });
+    await writeFile(join(root, "database", "app.sqlite"), "real-db");
+    await writeFile(join(root, ".runtime", "releases", "candidate", "nested.sqlite"), "release-db");
+    await writeFile(join(root, ".next", "cache", "ignored.sqlite"), "build-db");
+    await writeFile(join(root, "node_modules", "ignored.sqlite"), "module-db");
+    const backup = createServiceBackup(config, { note: "ignore release artifacts" });
+    const dbFiles = JSON.parse(readFileSync(join(backup.backupDir, "checksums.json"), "utf8"))
+      .map((entry) => entry.path)
+      .filter((path) => path.startsWith("db-files/"));
+    assert(dbFiles.some((path) => path.includes("database_app.sqlite")));
+    assert(!dbFiles.some((path) => path.includes("nested.sqlite")));
+    assert(!dbFiles.some((path) => path.includes("ignored.sqlite")));
+  });
+});
+
+test("directory snapshots include content checksums", async () => {
+  await withTempProject(async (root) => {
+    const config = getServiceConfig("production", { root });
+    await writeFile(join(root, "data", "library.json"), "before");
+    const before = snapshotDirectory(config.dataDir);
+    await writeFile(join(root, "data", "library.json"), "after");
+    const after = snapshotDirectory(config.dataDir);
+    assert.equal(before.count, after.count);
+    assert.notEqual(before.sha256, after.sha256);
+  });
+});
+
+test("windows PowerShell rollback script forwards one-time authorization arguments", async () => {
+  if (process.platform !== "win32") return;
+  await withTempProject(async (root) => {
+    const config = getServiceConfig("production", { root });
+    const backup = createServiceBackup(config, { note: "powershell rollback test", deploymentId: "deployment-powershell" });
+    const authFile = join(backup.backupDir, "rollback-authorization.pending.json");
+    await writeFile(authFile, "{}");
+    const rollback = writeRollbackScript(config, backup, "abc123", {
+      rollbackAuthorizationFile: authFile,
+      deploymentId: "deployment-powershell",
+    });
+    const shimDir = join(root, "node-shim");
+    mkdirSync(shimDir, { recursive: true });
+    const capture = join(root, "powershell-rollback-args.txt");
+    await writeFile(join(shimDir, "node.cmd"), [
+      "@echo off",
+      `echo %* > "${capture}"`,
+      "exit /b 0",
+      "",
+    ].join("\r\n"));
+    const result = spawnSync("powershell.exe", [
+      "-NoProfile",
+      "-ExecutionPolicy",
+      "Bypass",
+      "-File",
+      rollback,
+    ], {
+      cwd: root,
+      env: { ...process.env, PATH: `${shimDir};${process.env.PATH || ""}` },
+      encoding: "utf8",
+      shell: false,
+    });
+    assert.equal(result.status, 0, result.stderr || result.stdout);
+    const args = readFileSync(capture, "utf8");
+    assert(args.includes("scripts/ops/rollback-service.mjs production"));
+    assert(args.includes("--rollback-authorization-file"));
+    assert(args.includes(authFile));
+    assert(args.includes("--deployment-id deployment-powershell"));
+  });
+});
+
 test("full rollback restores data and uploads from verified backup", async () => {
   await withTempProject(async (root) => {
     await writeFile(join(root, "data", "library.json"), "before");
@@ -315,6 +441,50 @@ test("full rollback restores data and uploads from verified backup", async () =>
     assert.equal(readFileSync(join(root, "data", "library.json"), "utf8"), "before");
     assert.equal(existsSync(join(root, "data", "new.json")), false);
     assert.equal(readFileSync(join(root, "uploads", "asset.txt"), "utf8"), "upload-before");
+  });
+});
+
+test("rollback restore leaves official directories unchanged when data prepare fails", async () => {
+  await assertRestoreFailurePreservesRuntime("data prepare failed", async ({ config, backup }) => {
+    await writeFile(join(backup.backupDir, "data", "library.json"), "corrupt");
+    assert.throws(() => restoreDataAndUploads(config, backup.backupDir), /checksum mismatch/);
+  });
+});
+
+test("rollback restore leaves official directories unchanged when uploads prepare fails", async () => {
+  await assertRestoreFailurePreservesRuntime("uploads prepare failed", async ({ config, backup }) => {
+    await writeFile(join(backup.backupDir, "uploads", "asset.txt"), "corrupt");
+    assert.throws(() => restoreDataAndUploads(config, backup.backupDir), /checksum mismatch/);
+  });
+});
+
+test("rollback restore leaves official directories unchanged when data staged and uploads prepare fails", async () => {
+  await assertRestoreFailurePreservesRuntime("data staged uploads prepare failed", async ({ config, backup }) => {
+    assert.throws(() => restoreDataAndUploads(config, backup.backupDir, {
+      beforePrepare: (name) => {
+        if (name === "uploads") throw new Error("simulated uploads prepare failure");
+      },
+    }), /uploads prepare failure/);
+  });
+});
+
+test("rollback restore restores data when data commit succeeds and uploads commit fails", async () => {
+  await assertRestoreFailurePreservesRuntime("data commit succeeded uploads commit failed", async ({ config, backup }) => {
+    const rename = (source, target) => {
+      if (source.includes("uploads.restore-")) throw new Error("simulated uploads commit failure");
+      return renameSync(source, target);
+    };
+    assert.throws(() => restoreDataAndUploads(config, backup.backupDir, { rename }), /uploads commit failure/);
+  });
+});
+
+test("rollback restore can roll back both committed directories after database restore failure", async () => {
+  await assertRestoreFailurePreservesRuntime("database restore failed after both commits", async ({ config, backup }) => {
+    const restoreState = restoreDataAndUploads(config, backup.backupDir, { deferCleanup: true });
+    assert.throws(() => {
+      throw new Error("simulated database restore failure");
+    }, /database restore failure/);
+    rollbackRestoredDirectories(restoreState);
   });
 });
 
@@ -488,7 +658,7 @@ test("postgres restore authorization is fingerprint-bound and one-time", async (
       deploymentId: "deployment-1",
     });
     assert.equal(authorization.used, false);
-    restoreDatabaseBackup(config, manifest, env, {
+    await restoreDatabaseBackup(config, manifest, env, {
       pgRestoreCommand: [process.execPath, fakeRestore],
       rollbackAuthorization: authorization,
       expectedTargetCommit: "target-commit",
@@ -503,6 +673,58 @@ test("postgres restore authorization is fingerprint-bound and one-time", async (
     }), /already been used/);
     assert(!JSON.stringify(authorization).includes("example_password"));
     assert(!JSON.stringify(authorization).includes("postgresql://"));
+  });
+});
+
+test("postgres restore emits heartbeat progress during long restore", async () => {
+  await withTempProject(async (root) => {
+    const config = getServiceConfig("production", { root });
+    const backupDir = join(root, "backup");
+    const dump = join(backupDir, "database", "production-postgres.dump");
+    mkdirSync(join(backupDir, "database"), { recursive: true });
+    await writeFile(dump, "fake dump");
+    const fakeRestore = join(root, "pg-restore-slow.mjs");
+    await writeFile(fakeRestore, [
+      "if (process.argv.includes('--list')) { console.log('fake list'); process.exit(0); }",
+      "setTimeout(() => process.exit(0), 80);",
+      "",
+    ].join("\n"));
+    const env = {
+      APP_DATABASE_URL: "postgresql://example_user:example_password@127.0.0.1:5432/app_db",
+    };
+    const manifest = {
+      backupVersion: 2,
+      deploymentId: "deployment-heartbeat",
+      serviceName: "production",
+      backupDir,
+      sourceCommit: "source-commit",
+      databaseBackup: {
+        type: "postgres",
+        files: [dump],
+        databaseName: "app_db",
+        fingerprint: createDatabaseFingerprint(config, env),
+      },
+    };
+    await writeFile(join(backupDir, "backup-manifest.json"), JSON.stringify(manifest, null, 2));
+    const authorization = createDatabaseRestoreAuthorization(config, manifest, env, {
+      backupDir,
+      sourceCommit: "source-commit",
+      targetCommit: "target-commit",
+      deploymentId: "deployment-heartbeat",
+    });
+    const phases = [];
+    await restoreDatabaseBackup(config, manifest, env, {
+      pgRestoreCommand: [process.execPath, fakeRestore],
+      rollbackAuthorization: authorization,
+      expectedTargetCommit: "target-commit",
+      deploymentId: "deployment-heartbeat",
+      heartbeatMs: 10,
+      onProgress: (event) => phases.push(event.phase),
+    });
+    assert(phases.includes("before-pg-restore"));
+    assert(phases.includes("pg-restore-started"));
+    assert(phases.includes("pg-restore-heartbeat"));
+    assert(phases.includes("after-pg-restore"));
   });
 });
 
@@ -625,6 +847,196 @@ test("watchdog refuses ambiguous occupied ports when pid lookup is unavailable",
   });
 });
 
+test("watchdog defers while rollback_failed lock is present", async () => {
+  await withTempProject(async (root) => {
+    const config = getServiceConfig("staging", { root });
+    writeFileSync(join(config.runtimeDir, `operation-${config.service}.lock`), JSON.stringify({
+      lockVersion: 1,
+      serviceName: config.service,
+      operation: "rollback_failed",
+      createdAt: new Date().toISOString(),
+    }, null, 2));
+    const result = await runWatchdog("staging", { root, timeoutMs: 100 });
+    assert.equal(result.ok, true);
+    assert.equal(result.deferred, true);
+    assert.equal(result.operation, "rollback_failed");
+    assert.equal(result.lockStatus, "failed");
+  });
+});
+
+test("operation lock remains active after 30 minutes when pid is alive", async () => {
+  await withTempProject(async (root) => {
+    const config = getServiceConfig("staging", { root });
+    writeOperationLock(config, {
+      operation: "deploy",
+      pid: 12345,
+      processStartedAt: "2026-06-25T00:00:00.000Z",
+      updatedAt: new Date(Date.now() - 60 * 60 * 1000).toISOString(),
+    });
+    const status = await classifyOperationLock(config, undefined, {
+      processInfoProvider: () => ({ ProcessId: 12345, CreationDate: "2026-06-25T00:00:00.000Z" }),
+    });
+    assert.equal(status.status, "active");
+    await assertRejectsAsync(() => cleanupStaleServiceOperationLock(config, {
+      processInfoProvider: () => ({ ProcessId: 12345, CreationDate: "2026-06-25T00:00:00.000Z" }),
+    }), /active/);
+  });
+});
+
+test("operation lock rollback_failed is not automatically deleted", async () => {
+  await withTempProject(async (root) => {
+    const config = getServiceConfig("staging", { root });
+    writeOperationLock(config, {
+      operation: "rollback_failed",
+      pid: 12345,
+      updatedAt: new Date(Date.now() - 60 * 60 * 1000).toISOString(),
+    });
+    const status = await classifyOperationLock(config, undefined, {
+      processInfoProvider: () => null,
+    });
+    assert.equal(status.status, "failed");
+    await assertRejectsAsync(() => cleanupStaleServiceOperationLock(config, {
+      processInfoProvider: () => null,
+    }), /failed/);
+  });
+});
+
+test("operation lock with missing pid and inactive service becomes stale", async () => {
+  await withTempProject(async (root) => {
+    const config = getServiceConfig("staging", { root, port: "49999" });
+    writeOperationLock(config, {
+      operation: "deploy",
+      pid: 12345,
+      updatedAt: new Date(Date.now() - 60 * 60 * 1000).toISOString(),
+    });
+    const status = await classifyOperationLock(config, undefined, {
+      processInfoProvider: () => null,
+    });
+    assert.equal(status.status, "stale");
+    await cleanupStaleServiceOperationLock(config, {
+      processInfoProvider: () => null,
+    });
+    assert.equal(existsSync(join(config.runtimeDir, `operation-${config.service}.lock`)), false);
+  });
+});
+
+test("operation lock stays active while database restore subprocess is running", async () => {
+  await withTempProject(async (root) => {
+    const config = getServiceConfig("staging", { root, port: "49999" });
+    writeOperationLock(config, {
+      operation: "rollback",
+      pid: 12345,
+      deploymentId: "deployment-db-child",
+      updatedAt: new Date(Date.now() - 60 * 60 * 1000).toISOString(),
+    });
+    const status = await classifyOperationLock(config, undefined, {
+      processInfoProvider: () => null,
+      databaseChildProcessProvider: (details) => details.deploymentId === "deployment-db-child",
+    });
+    assert.equal(status.status, "active");
+    assert.equal(status.reason, "database-subprocess-active");
+  });
+});
+
+test("operation lock with reused pid becomes stale", async () => {
+  await withTempProject(async (root) => {
+    const config = getServiceConfig("staging", { root });
+    writeOperationLock(config, {
+      operation: "rollback",
+      pid: 12345,
+      processStartedAt: "2026-06-25T00:00:00.000Z",
+      updatedAt: new Date(Date.now() - 60 * 60 * 1000).toISOString(),
+    });
+    const status = await classifyOperationLock(config, undefined, {
+      processInfoProvider: () => ({ ProcessId: 12345, CreationDate: "2026-06-25T01:00:00.000Z" }),
+    });
+    assert.equal(status.status, "stale");
+  });
+});
+
+test("operation lock with reused pid stays active when database child is still running", async () => {
+  await withTempProject(async (root) => {
+    const config = getServiceConfig("staging", { root });
+    writeOperationLock(config, {
+      operation: "rollback",
+      pid: 12345,
+      processStartedAt: "2026-06-25T00:00:00.000Z",
+      deploymentId: "deployment-db-child",
+      updatedAt: new Date(Date.now() - 60 * 60 * 1000).toISOString(),
+    });
+    const status = await classifyOperationLock(config, undefined, {
+      processInfoProvider: () => ({ ProcessId: 12345, CreationDate: "2026-06-25T01:00:00.000Z" }),
+      databaseChildProcessProvider: (details) => details.deploymentId === "deployment-db-child",
+    });
+    assert.equal(status.status, "active");
+    assert.equal(status.reason, "database-subprocess-active");
+  });
+});
+
+test("corrupt operation lock is preserved and classified unknown", async () => {
+  await withTempProject(async (root) => {
+    const config = getServiceConfig("staging", { root });
+    writeFileSync(join(config.runtimeDir, `operation-${config.service}.lock`), "{not-json");
+    const status = await classifyOperationLock(config);
+    assert.equal(status.status, "unknown");
+    await assertRejectsAsync(() => cleanupStaleServiceOperationLock(config), /unknown/);
+    assert.equal(existsSync(join(config.runtimeDir, `operation-${config.service}.lock`)), true);
+  });
+});
+
+test("watchdog defers for active, failed, and unknown operation locks but ignores stale locks", async () => {
+  await withTempProject(async (root) => {
+    const config = getServiceConfig("staging", { root, port: "49999" });
+    writeOperationLock(config, {
+      operation: "deploy",
+      pid: 12345,
+      processStartedAt: "2026-06-25T00:00:00.000Z",
+      updatedAt: new Date(Date.now() - 60 * 60 * 1000).toISOString(),
+    });
+    const active = await runWatchdog("staging", {
+      root,
+      port: "49999",
+      timeoutMs: 100,
+      operationLockOptions: {
+        processInfoProvider: () => ({ ProcessId: 12345, CreationDate: "2026-06-25T00:00:00.000Z" }),
+      },
+    });
+    assert.equal(active.deferred, true);
+    assert.equal(active.lockStatus, "active");
+
+    writeOperationLock(config, {
+      operation: "rollback_failed",
+      pid: 12345,
+      updatedAt: new Date(Date.now() - 60 * 60 * 1000).toISOString(),
+    });
+    const failed = await runWatchdog("staging", {
+      root,
+      port: "49999",
+      timeoutMs: 100,
+      operationLockOptions: { processInfoProvider: () => null },
+    });
+    assert.equal(failed.deferred, true);
+    assert.equal(failed.lockStatus, "failed");
+
+    writeFileSync(join(config.runtimeDir, `operation-${config.service}.lock`), "{not-json");
+    const unknown = await runWatchdog("staging", { root, port: "49999", timeoutMs: 100 });
+    assert.equal(unknown.deferred, true);
+    assert.equal(unknown.lockStatus, "unknown");
+
+    writeOperationLock(config, {
+      operation: "deploy",
+      pid: 12345,
+      updatedAt: new Date(Date.now() - 60 * 60 * 1000).toISOString(),
+    });
+    await assertRejectsAsync(() => runWatchdog("staging", {
+      root,
+      port: "49999",
+      timeoutMs: 100,
+      operationLockOptions: { processInfoProvider: () => null },
+    }), /already in use|Next\.js binary is missing|Missing required runtime configuration|release-preflight\.mjs failed/);
+  });
+});
+
 test("deploy script names keep staging and production scoped to their ports", () => {
   const source = readFileSync(join(process.cwd(), "scripts", "ops", "deploy-service.mjs"), "utf8");
   assert.match(source, /deployService\(service/);
@@ -637,6 +1049,170 @@ test("deploy validation happens before the live service is stopped", () => {
   const source = readFileSync(join(process.cwd(), "scripts", "ops", "deploy-service.mjs"), "utf8");
   assert(source.indexOf("await validateTargetInWorktree") < source.indexOf("stopService(service"));
   assert.match(source, /git", \["worktree", "add"/);
+  assert.match(source, /createReleaseCandidateRoot/);
+  assert(!source.includes("tmpdir()"));
+});
+
+test("release candidate root is created under the target service runtime releases directory", async () => {
+  await withTempProject(async (root) => {
+    const config = getServiceConfig("staging", { root });
+    const candidate = createReleaseCandidateRoot(config, "abcdef1234567890", "deploy-id");
+    assert(candidate.startsWith(join(config.runtimeDir, "releases")));
+    assert(candidate.includes("abcdef123456"));
+    assert(!candidate.includes("data-staging"));
+    assert(!candidate.includes("uploads-staging"));
+    assert.equal(sameVolume(config.root, candidate), true);
+  });
+});
+
+test("release activation refuses simulated cross-volume artifact moves", async () => {
+  await withTempProject(async (root) => {
+    const config = getServiceConfig("staging", { root });
+    const preparedRoot = join(config.runtimeDir, "releases", "cross-volume");
+    seedPreparedArtifacts(preparedRoot, "new");
+    seedPreparedArtifacts(config.root, "old");
+    assert.throws(() => activatePreparedArtifacts(config, { root: preparedRoot }, "release", {
+      volumeProvider: (path) => path.includes("cross-volume") ? "Z:\\" : "E:\\",
+    }), /same volume/);
+    assert.equal(readFileSync(join(config.root, ".next", "BUILD_ID"), "utf8"), "old");
+    assert.equal(existsSync(join(config.root, "node_modules", "next", "dist", "bin", "next")), true);
+  });
+});
+
+test("release activation refuses incomplete node_modules before moving old artifacts", async () => {
+  await withTempProject(async (root) => {
+    const config = getServiceConfig("staging", { root });
+    const preparedRoot = join(config.runtimeDir, "releases", "incomplete-node-modules");
+    seedPreparedArtifacts(preparedRoot, "new");
+    seedPreparedArtifacts(config.root, "old");
+    assert.equal(unlinkSync(join(preparedRoot, "node_modules", "@next", "env", "package.json")), undefined);
+    assert.throws(() => activatePreparedArtifacts(config, { root: preparedRoot }, "release"), /@next\/env/);
+    assert.equal(readFileSync(join(config.root, "node_modules", "@next", "env", "package.json"), "utf8"), "old");
+    assert.equal(readFileSync(join(config.root, ".next", "BUILD_ID"), "utf8"), "old");
+  });
+});
+
+test("release activation restores old artifacts when same-volume rename fails", async () => {
+  await withTempProject(async (root) => {
+    const config = getServiceConfig("staging", { root });
+    const preparedRoot = join(config.runtimeDir, "releases", "rename-failure");
+    seedPreparedArtifacts(preparedRoot, "new");
+    seedPreparedArtifacts(config.root, "old");
+    let movedOld = false;
+    const rename = (source, target) => {
+      if (source.endsWith(".next")) throw new Error("simulated same-volume activation failure");
+      if (target.includes(".before-release-")) movedOld = true;
+      return renameSyncForTest(source, target);
+    };
+    assert.throws(() => activatePreparedArtifacts(config, { root: preparedRoot }, "release", { rename }), /simulated/);
+    assert.equal(movedOld, true);
+    assert.equal(readFileSync(join(config.root, "node_modules", "next", "dist", "bin", "next"), "utf8"), "old");
+    assert.equal(readFileSync(join(config.root, ".next", "BUILD_ID"), "utf8"), "old");
+  });
+});
+
+test("release activation retries transient Windows artifact locks", async () => {
+  await withTempProject(async (root) => {
+    const config = getServiceConfig("staging", { root });
+    const preparedRoot = join(config.runtimeDir, "releases", "transient-rename-lock");
+    seedPreparedArtifacts(preparedRoot, "new");
+    seedPreparedArtifacts(config.root, "old");
+    let targetToOldAttempts = 0;
+    const rename = (source, target) => {
+      if (source.endsWith("node_modules") && target.includes(".before-release-")) {
+        targetToOldAttempts += 1;
+        if (targetToOldAttempts === 1) {
+          const error = new Error("simulated transient EPERM while activating node_modules");
+          error.code = "EPERM";
+          throw error;
+        }
+      }
+      return renameSyncForTest(source, target);
+    };
+    const state = activatePreparedArtifacts(config, { root: preparedRoot }, "release", {
+      rename,
+      renameAttempts: 2,
+      renameDelayMs: 0,
+    });
+    assert.equal(targetToOldAttempts, 2);
+    assert.equal(state.moved.length, 2);
+    assert.equal(readFileSync(join(config.root, "node_modules", "@next", "env", "package.json"), "utf8"), "new");
+    assert.equal(readFileSync(join(config.root, ".next", "BUILD_ID"), "utf8"), "new");
+  });
+});
+
+test("deploy waits until stopped service artifacts can be renamed", async () => {
+  await withTempProject(async (root) => {
+    const port = await findAvailablePort();
+    const config = getServiceConfig("staging", { root, port: String(port) });
+    seedPreparedArtifacts(config.root, "old");
+    let attempts = 0;
+    const rename = (source, target) => {
+      attempts += 1;
+      if (attempts === 1 && source.endsWith("node_modules")) {
+        const error = new Error("simulated EPERM while process releases node_modules");
+        error.code = "EPERM";
+        throw error;
+      }
+      return renameSyncForTest(source, target);
+    };
+    assert.equal(await waitForStoppedServiceArtifacts(config, {
+      rename,
+      intervalMs: 1,
+      timeoutMs: 200,
+    }), true);
+    assert(attempts > 1);
+    assert.equal(readFileSync(join(config.root, "node_modules", "@next", "env", "package.json"), "utf8"), "old");
+    assert.equal(readFileSync(join(config.root, ".next", "BUILD_ID"), "utf8"), "old");
+  });
+});
+
+test("deploy rechecks artifact writability after checkout before activation", () => {
+  const source = readFileSync(join(process.cwd(), "scripts", "ops", "deploy-service.mjs"), "utf8");
+  const checkoutIndex = source.indexOf('runSync("git", ["checkout", "--detach", targetCommit]');
+  const activateIndex = source.indexOf("activatedRelease = writeActiveRelease(config", checkoutIndex);
+  assert(checkoutIndex > 0);
+  assert(activateIndex > checkoutIndex);
+});
+
+test("immutable release deploy path does not call legacy artifact activation helper", () => {
+  const source = readFileSync(join(process.cwd(), "scripts", "ops", "deploy-service.mjs"), "utf8");
+  const legacyDefinition = source.indexOf("export function activatePreparedArtifacts");
+  const legacyCallBeforeDefinition = source.indexOf("activatePreparedArtifacts(");
+  assert.match(source, /Deprecated legacy same-root activation path/);
+  assert.equal(legacyCallBeforeDefinition, legacyDefinition + "export function ".length);
+  assert.equal(source.indexOf("activatePreparedArtifacts(", legacyCallBeforeDefinition + 1), -1);
+});
+
+test("deploy skips full rollback until release artifacts are activated", () => {
+  const source = readFileSync(join(process.cwd(), "scripts", "ops", "deploy-service.mjs"), "utf8");
+  const catchIndex = source.indexOf("if (!options.dryRun && serviceStopped)");
+  const restoreIndex = source.indexOf("restoreActiveRelease(config, previousActiveRelease);", catchIndex);
+  const restartIndex = source.indexOf("previousArtifactsRestarted", catchIndex);
+  assert(catchIndex > 0);
+  assert(restoreIndex > catchIndex && restoreIndex < restartIndex);
+});
+
+test("deploy refuses activation when stopped service artifacts stay locked", async () => {
+  await withTempProject(async (root) => {
+    const port = await findAvailablePort();
+    const config = getServiceConfig("staging", { root, port: String(port) });
+    seedPreparedArtifacts(config.root, "old");
+    await assertRejectsAsync(() => waitForStoppedServiceArtifacts(config, {
+      rename: (source, target) => {
+        if (source.endsWith("node_modules")) {
+          const error = new Error("simulated persistent EPERM");
+          error.code = "EPERM";
+          throw error;
+        }
+        return renameSyncForTest(source, target);
+      },
+      intervalMs: 1,
+      timeoutMs: 5,
+    }), /did not release service artifacts/);
+    assert.equal(readFileSync(join(config.root, "node_modules", "@next", "env", "package.json"), "utf8"), "old");
+    assert.equal(readFileSync(join(config.root, ".next", "BUILD_ID"), "utf8"), "old");
+  });
 });
 
 test("rollback code is prepared before service stop and no install runs while stopped", () => {
@@ -651,6 +1227,14 @@ test("rollback code is prepared before service stop and no install runs while st
   assert(!stoppedWindow.includes('await run("npm"'));
   assert(!stoppedWindow.includes('["npm", ["ci"]]'));
   assert(!stoppedWindow.includes('["npm", ["run", "build"]]'));
+});
+
+test("rollback CLI accepts authorization file and deployment id", () => {
+  const source = readFileSync(join(process.cwd(), "scripts", "ops", "rollback-service.mjs"), "utf8");
+  assert.match(source, /valueAfter\("--rollback-authorization-file"\)/);
+  assert.match(source, /valueAfter\("--deployment-id"\)/);
+  assert.match(source, /rollbackAuthorizationFile/);
+  assert.match(source, /deploymentId/);
 });
 
 test("deploy verification installs dev tooling before production preflight", () => {
@@ -712,6 +1296,53 @@ function findAvailablePort() {
       const port = address.port;
       server.close(() => resolve(port));
     });
+  });
+}
+
+function seedPreparedArtifacts(root, marker) {
+  mkdirSync(join(root, "node_modules", "next", "dist", "bin"), { recursive: true });
+  mkdirSync(join(root, "node_modules", "@next", "env"), { recursive: true });
+  mkdirSync(join(root, ".next", "server"), { recursive: true });
+  mkdirSync(join(root, ".next", "static"), { recursive: true });
+  writeFileSync(join(root, "node_modules", "next", "dist", "bin", "next"), marker);
+  writeFileSync(join(root, "node_modules", "@next", "env", "package.json"), marker);
+  writeFileSync(join(root, ".next", "BUILD_ID"), marker);
+  writeFileSync(join(root, ".next", "required-server-files.json"), "{}");
+  writeFileSync(join(root, ".next", "server", "index.js"), marker);
+  writeFileSync(join(root, ".next", "static", "asset.js"), marker);
+}
+
+function renameSyncForTest(source, target) {
+  return renameSync(source, target);
+}
+
+function writeOperationLock(config, values = {}) {
+  writeFileSync(join(config.runtimeDir, `operation-${config.service}.lock`), JSON.stringify({
+    lockVersion: 1,
+    serviceName: config.service,
+    operation: "deploy",
+    pid: process.pid,
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+    ...values,
+  }, null, 2));
+}
+
+async function assertRestoreFailurePreservesRuntime(label, exercise) {
+  await withTempProject(async (root) => {
+    await writeFile(join(root, "data", "library.json"), `runtime-data-${label}`);
+    await writeFile(join(root, "uploads", "asset.txt"), `runtime-upload-${label}`);
+    const config = getServiceConfig("production", { root });
+    const backup = createServiceBackup(config, { note: `rollback failure ${label}` });
+    await writeFile(join(root, "data", "library.json"), `mutated-data-${label}`);
+    await writeFile(join(root, "data", "runtime-only.txt"), `runtime-only-${label}`);
+    await writeFile(join(root, "uploads", "asset.txt"), `mutated-upload-${label}`);
+    await writeFile(join(root, "uploads", "runtime-only.txt"), `runtime-upload-only-${label}`);
+    const beforeData = snapshotDirectory(config.dataDir);
+    const beforeUploads = snapshotDirectory(config.uploadsDir);
+    await exercise({ root, config, backup });
+    assert.deepEqual(snapshotDirectory(config.dataDir), beforeData);
+    assert.deepEqual(snapshotDirectory(config.uploadsDir), beforeUploads);
   });
 }
 

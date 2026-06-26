@@ -1,18 +1,26 @@
 import { createHash, randomUUID } from "node:crypto";
-import { closeSync, copyFileSync, cpSync, existsSync, mkdirSync, openSync, readFileSync, readSync, readdirSync, renameSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { closeSync, copyFileSync, cpSync, existsSync, lstatSync, mkdirSync, openSync, readFileSync, readSync, readdirSync, renameSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { basename, dirname, join, relative } from "node:path";
 import { createDatabaseBackup } from "./database-backup.mjs";
 import { safeGit } from "./git-utils.mjs";
 
 export function snapshotDirectory(path) {
-  if (!existsSync(path)) return { path, exists: false, count: 0, size: 0, latestUtc: null };
+  if (!existsSync(path)) return { path, exists: false, count: 0, size: 0, latestUtc: null, sha256: null };
   const files = listFiles(path);
   let size = 0;
   let latest = 0;
+  const hash = createHash("sha256");
   for (const file of files) {
     const stats = statSync(file);
+    const relativePath = toManifestPath(relative(path, file));
     size += stats.size;
     latest = Math.max(latest, stats.mtimeMs);
+    hash.update(relativePath);
+    hash.update("\0");
+    hash.update(hashFile(file));
+    hash.update("\0");
+    hash.update(String(stats.size));
+    hash.update("\0");
   }
   return {
     path,
@@ -20,6 +28,7 @@ export function snapshotDirectory(path) {
     count: files.length,
     size,
     latestUtc: latest ? new Date(latest).toISOString() : null,
+    sha256: hash.digest("hex"),
   };
 }
 
@@ -51,8 +60,7 @@ export function createServiceBackup(config, options = {}) {
 
   const dbDir = join(backupDir, "db-files");
   mkdirSync(dbDir, { recursive: true });
-  const dbFiles = listFiles(config.root)
-    .filter((file) => /\.(sqlite|sqlite3|db)$/i.test(file) || file.includes(`${config.root}\\database\\`));
+  const dbFiles = listDatabaseFiles(config.root);
   for (const file of dbFiles) {
     const target = join(dbDir, relative(config.root, file).replace(/[\\/:*?"<>|]/g, "_"));
     copyFileSync(file, target);
@@ -141,26 +149,39 @@ export function restoreDataAndUploads(config, backupDir, options = {}) {
   verifyBackupManifest(config, backupDir);
   const checksums = readBackupChecksums(backupDir);
   const restored = [];
-  const prepared = [];
+  const staged = [];
+  const entries = [
+    ["data", join(backupDir, "data"), config.dataDir],
+    ["uploads", join(backupDir, "uploads"), config.uploadsDir],
+  ];
   try {
-    prepared.push(restoreDirectory(join(backupDir, "data"), config.dataDir, {
-      backupDir,
-      checksums,
-      prefix: "data",
-      stageOnly: true,
-    }));
-    prepared.push(restoreDirectory(join(backupDir, "uploads"), config.uploadsDir, {
-      backupDir,
-      checksums,
-      prefix: "uploads",
-      stageOnly: true,
-    }));
-    for (const entry of prepared) {
-      restored.push(commitRestoredDirectory(entry, { deferCleanup: Boolean(options.deferCleanup) }));
+    for (const [name, source, target] of entries) {
+      options.beforePrepare?.(name);
+      const entry = prepareRestoredDirectory(source, target, {
+        backupDir,
+        checksums,
+        prefix: name,
+      });
+      staged.push(entry);
+      options.afterPrepare?.(name, entry);
     }
-    return { backupDir, restored };
+    while (staged.length) {
+      const entry = staged[0];
+      options.beforeCommit?.(entry.prefix, entry);
+      const committed = commitRestoredDirectory(entry, {
+        deferCleanup: true,
+        rename: options.rename,
+      });
+      restored.push(committed);
+      staged.shift();
+      options.afterCommit?.(entry.prefix, committed);
+    }
+    const restoreState = { backupDir, restored };
+    if (!options.deferCleanup) cleanupRestoredDirectories(restoreState);
+    return restoreState;
   } catch (error) {
-    rollbackRestoredDirectories({ restored: [...restored, ...prepared] });
+    rollbackRestoredDirectories({ restored });
+    rollbackStagedDirectories({ staged });
     throw error;
   }
 }
@@ -174,31 +195,60 @@ export function checksumFiles(root) {
 }
 
 export function cleanupRestoredDirectories(restoreState) {
-  for (const entry of restoreState?.restored || []) {
+  const restored = restoreState?.restored || [];
+  assertRestorePhase(restored, "committed");
+  for (const entry of restored) {
     if (entry.old && existsSync(entry.old)) rmSync(entry.old, { recursive: true, force: true });
   }
 }
 
 export function rollbackRestoredDirectories(restoreState) {
-  for (const entry of [...(restoreState?.restored || [])].reverse()) {
+  const restored = restoreState?.restored || [];
+  assertRestorePhase(restored, "committed");
+  for (const entry of [...restored].reverse()) {
     if (entry.target && existsSync(entry.target)) rmSync(entry.target, { recursive: true, force: true });
     if (entry.old && existsSync(entry.old)) renameSync(entry.old, entry.target);
     if (entry.temp && existsSync(entry.temp)) rmSync(entry.temp, { recursive: true, force: true });
   }
 }
 
-function listFiles(root) {
+export function rollbackStagedDirectories(restoreState) {
+  const staged = restoreState?.staged || [];
+  assertRestorePhase(staged, "staged");
+  for (const entry of [...staged].reverse()) {
+    if (entry.old) throw new Error("Staged rollback cannot contain an old target directory.");
+    if (entry.temp && existsSync(entry.temp)) rmSync(entry.temp, { recursive: true, force: true });
+  }
+}
+
+function listDatabaseFiles(root) {
+  return listFiles(root, {
+    skipDirNames: new Set([".git", ".next", ".runtime", "artifacts", "dist", "node_modules"]),
+  }).filter((file) => /\.(sqlite|sqlite3|db)$/i.test(file) || isDatabasePath(root, file));
+}
+
+function listFiles(root, options = {}) {
   if (!existsSync(root)) return [];
   const results = [];
   for (const entry of readdirSync(root, { withFileTypes: true })) {
     const fullPath = join(root, entry.name);
-    if (entry.isDirectory()) results.push(...listFiles(fullPath));
+    if (entry.isSymbolicLink()) continue;
+    if (entry.isDirectory()) {
+      if (options.skipDirNames?.has(entry.name)) continue;
+      const stats = lstatSync(fullPath);
+      if (stats.isSymbolicLink()) continue;
+      results.push(...listFiles(fullPath, options));
+    }
     else if (entry.isFile()) results.push(fullPath);
   }
   return results;
 }
 
-function restoreDirectory(source, target, options = {}) {
+function isDatabasePath(root, file) {
+  return toManifestPath(relative(root, file)).startsWith("database/");
+}
+
+function prepareRestoredDirectory(source, target, options = {}) {
   if (!existsSync(source)) throw new Error(`Rollback source directory is missing: ${source}`);
   mkdirSync(dirname(target), { recursive: true });
   const stamp = new Date().toISOString().replace(/[-:]/g, "").replace(/\..+/, "").replace("T", "-");
@@ -210,19 +260,18 @@ function restoreDirectory(source, target, options = {}) {
     rmSync(temp, { recursive: true, force: true });
     throw error;
   }
-  if (options.stageOnly) {
-    return { source, target, old: null, temp, staged: true };
-  }
-  return commitRestoredDirectory({ source, target, old: null, temp, staged: true }, options);
+  return { phase: "staged", prefix: options.prefix, source, target, old: null, temp };
 }
 
 function commitRestoredDirectory(state, options = {}) {
+  assertRestorePhase([state], "staged");
   const { target, temp } = state;
+  const rename = options.rename || renameSync;
   const old = `${target}.old-${new Date().toISOString().replace(/[-:]/g, "").replace(/\..+/, "").replace("T", "-")}`;
-  if (existsSync(target)) renameSync(target, old);
+  if (existsSync(target)) rename(target, old);
   try {
-    renameSync(temp, target);
-    const committed = { source: state.source, target, old: existsSync(old) ? old : null, temp: null };
+    rename(temp, target);
+    const committed = { phase: "committed", prefix: state.prefix, source: state.source, target, old: existsSync(old) ? old : null, temp: null };
     if (!options.deferCleanup && committed.old && existsSync(committed.old)) {
       rmSync(committed.old, { recursive: true, force: true });
     }
@@ -232,6 +281,14 @@ function commitRestoredDirectory(state, options = {}) {
     if (existsSync(old)) renameSync(old, target);
     if (existsSync(temp)) rmSync(temp, { recursive: true, force: true });
     throw error;
+  }
+}
+
+function assertRestorePhase(entries, expected) {
+  for (const entry of entries) {
+    if (!entry || entry.phase !== expected) {
+      throw new Error(`Unknown restore state; refusing to ${expected === "staged" ? "clean staged" : "rollback committed"} directories.`);
+    }
   }
 }
 

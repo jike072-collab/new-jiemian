@@ -35,7 +35,7 @@
     "test:runtime-isolation": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON scripts/test-runtime-data-isolation.mjs && node scripts/test-staging-start-preflight.mjs",
     "check:runtime-paths": "node scripts/check-runtime-path-usage.mjs",
     "test:staging-smoke": "node scripts/test-staging-smoke.mjs",
-    "test:ops": "node scripts/test-ops-service.mjs",
+    "test:ops": "node scripts/test-ops-service.mjs && node scripts/test-active-release-atomic.mjs",
     "test:rollback-drill": "node scripts/test-full-rollback-drill.mjs",
     "service:status": "node scripts/ops/service-status.mjs",
     "service:health": "node scripts/ops/health-check.mjs",

@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 import { existsSync } from "node:fs";
 import { pathToFileURL } from "node:url";
+import { resolveServiceRuntime } from "./active-release.mjs";
 import { getAllServiceConfigs, getServiceConfig, serviceNames } from "./service-config.mjs";
 import { checkServiceHealth } from "./health-check.mjs";
 import { classifyServiceProcess } from "./process-identity.mjs";
@@ -8,6 +9,7 @@ import { safeGit } from "./git-utils.mjs";
 
 export async function getServiceStatus(service, options = {}) {
   const config = getServiceConfig(service, options);
+  const { activeRelease, runtimeRoot } = resolveServiceRuntime(config);
   const identity = await classifyServiceProcess(service, { ...options, root: config.root, port: config.port });
   const workspaceCommit = safeGit(config.root, ["rev-parse", "HEAD"], "unknown");
   const runtimeCommit = identity.status === "owned" ? identity.state?.runtimeCommit || "unknown" : "unknown";
@@ -19,6 +21,8 @@ export async function getServiceStatus(service, options = {}) {
     pid: identity.pid,
     port: config.port,
     root: config.root,
+    runtimeRoot,
+    activeRelease: activeRelease?.releaseRoot || null,
     commit: workspaceCommit,
     workspaceCommit,
     runtimeCommit,

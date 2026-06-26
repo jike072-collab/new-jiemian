@@ -1,4 +1,5 @@
 import { createHash, randomUUID } from "node:crypto";
+import { spawn } from "node:child_process";
 import { existsSync, renameSync, readFileSync, writeFileSync } from "node:fs";
 import { basename, join, resolve } from "node:path";
 import { createDatabaseFingerprint } from "./database-backup.mjs";
@@ -9,6 +10,8 @@ const RESTORE_AUTH_VERSION = 1;
 const AUTH_PENDING = "rollback-authorization.pending.json";
 const AUTH_CONSUMING = "rollback-authorization.consuming.json";
 const AUTH_USED = "rollback-authorization.used.json";
+const DEFAULT_RESTORE_HEARTBEAT_MS = 30 * 1000;
+const MAX_CHILD_OUTPUT_BYTES = 1024 * 1024;
 
 export function createDatabaseRestoreAuthorization(config, manifest, env = process.env, options = {}) {
   const database = manifest.databaseBackup || { type: manifest.databaseType || "none" };
@@ -54,7 +57,7 @@ export function prepareDatabaseRestore(config, manifest, env = process.env, opti
   return { type: "postgres", required: true, ready: true, restored: false, dump: basename(dump) };
 }
 
-export function restoreDatabaseBackup(config, manifest, env = process.env, options = {}) {
+export async function restoreDatabaseBackup(config, manifest, env = process.env, options = {}) {
   const prepared = prepareDatabaseRestore(config, manifest, env, options);
   if (prepared.type !== "postgres") return prepared;
   const database = manifest.databaseBackup;
@@ -71,8 +74,9 @@ export function restoreDatabaseBackup(config, manifest, env = process.env, optio
   }
   const consumedAuthorization = claimDatabaseRestoreAuthorization(config, manifest, env, options);
   try {
+    options.onProgress?.({ phase: "before-pg-restore" });
     const pgRestore = commandSpec(options.pgRestoreCommand || options.pgRestorePath || "pg_restore");
-    runSync(pgRestore.command, [
+    await runWithHeartbeat(pgRestore.command, [
       ...pgRestore.args,
       "--clean",
       "--if-exists",
@@ -92,7 +96,10 @@ export function restoreDatabaseBackup(config, manifest, env = process.env, optio
         ...env,
         PGPASSWORD: decodeURIComponent(url.password || ""),
       },
+      heartbeatMs: options.heartbeatMs,
+      onProgress: options.onProgress,
     });
+    options.onProgress?.({ phase: "after-pg-restore" });
     markAuthorizationUsed(consumedAuthorization, "restored");
     return { ...prepared, restored: true };
   } catch (error) {
@@ -186,6 +193,58 @@ function assertBackupBelongsToService(config, manifest) {
 function commandSpec(command) {
   if (Array.isArray(command)) return { command: command[0], args: command.slice(1) };
   return { command, args: [] };
+}
+
+function runWithHeartbeat(command, args, options = {}) {
+  const heartbeatMs = Number.isFinite(Number(options.heartbeatMs))
+    ? Number(options.heartbeatMs)
+    : DEFAULT_RESTORE_HEARTBEAT_MS;
+  return new Promise((resolve, reject) => {
+    let stdout = "";
+    let stderr = "";
+    const child = spawn(command, args, {
+      cwd: options.cwd || process.cwd(),
+      env: options.env || process.env,
+      shell: false,
+      stdio: ["ignore", "pipe", "pipe"],
+    });
+    const emitProgress = (phase) => {
+      options.onProgress?.({ phase, pid: child.pid });
+    };
+    const append = (current, chunk) => {
+      const next = current + chunk.toString();
+      return next.length > MAX_CHILD_OUTPUT_BYTES ? next.slice(-MAX_CHILD_OUTPUT_BYTES) : next;
+    };
+    let interval = null;
+    child.stdout.on("data", (chunk) => {
+      stdout = append(stdout, chunk);
+    });
+    child.stderr.on("data", (chunk) => {
+      stderr = append(stderr, chunk);
+    });
+    child.on("spawn", () => {
+      emitProgress("pg-restore-started");
+      if (heartbeatMs > 0) {
+        interval = setInterval(() => emitProgress("pg-restore-heartbeat"), heartbeatMs);
+      }
+    });
+    child.on("error", (error) => {
+      if (interval) clearInterval(interval);
+      reject(error);
+    });
+    child.on("exit", (code, signal) => {
+      if (interval) clearInterval(interval);
+      if (signal) {
+        reject(new Error(`${command} ${args.join(" ")} exited with signal ${signal}`));
+        return;
+      }
+      if (code === 0) {
+        resolve({ code, stdout, stderr });
+        return;
+      }
+      reject(new Error(stderr || stdout || `${command} ${args.join(" ")} failed with status ${code ?? 1}`));
+    });
+  });
 }
 
 export function writeDatabaseRestoreAuthorizationFile(config, manifest, authorization) {

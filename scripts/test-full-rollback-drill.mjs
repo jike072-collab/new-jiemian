@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 import assert from "node:assert/strict";
+import { spawnSync } from "node:child_process";
 import { mkdirSync, readFileSync } from "node:fs";
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -10,6 +11,7 @@ import { getServiceConfig } from "./ops/service-config.mjs";
 
 const root = await mkdtemp(join(tmpdir(), "aohuang-full-rollback-drill-"));
 const realDatabaseUrl = process.env.ROLLBACK_DRILL_DATABASE_URL || "";
+const markerTable = "aohuang_rollback_drill_marker";
 
 try {
   mkdirSync(join(root, "data"), { recursive: true });
@@ -47,6 +49,14 @@ try {
   const env = {
     APP_DATABASE_URL: realDatabaseUrl || "postgresql://drill_user:drill_password@127.0.0.1:5432/drill_db",
   };
+  if (realDatabaseUrl) {
+    runPsql(realDatabaseUrl, [
+      `drop table if exists ${markerTable};`,
+      `create table ${markerTable} (id integer primary key, label text not null);`,
+      `insert into ${markerTable}(id, label) values (1, 'original-a'), (2, 'original-b');`,
+    ]);
+    assert.equal(queryPsql(realDatabaseUrl, `select string_agg(id || ':' || label, ',' order by id) from ${markerTable};`), "1:original-a,2:original-b");
+  }
   const backup = createServiceBackup(config, {
     note: "isolated full rollback drill",
     env,
@@ -67,6 +77,14 @@ try {
   await writeFile(join(root, "data", "library.json"), JSON.stringify([{ id: "after" }]));
   await writeFile(join(root, "uploads", "asset.txt"), "upload-after");
   await writeFile(join(root, "data", "new.json"), "should disappear");
+  if (realDatabaseUrl) {
+    runPsql(realDatabaseUrl, [
+      `update ${markerTable} set label = 'mutated' where id = 1;`,
+      `delete from ${markerTable} where id = 2;`,
+      `insert into ${markerTable}(id, label) values (3, 'new-row');`,
+    ]);
+    assert.equal(queryPsql(realDatabaseUrl, `select string_agg(id || ':' || label, ',' order by id) from ${markerTable};`), "1:mutated,3:new-row");
+  }
 
   prepareDatabaseRestore(config, manifest, env, {
     pgRestoreCommand: [process.execPath, fakeRestore],
@@ -75,7 +93,7 @@ try {
     deploymentId: "isolated-drill",
   });
   const restored = restoreDataAndUploads(config, backup.backupDir, { deferCleanup: true });
-  restoreDatabaseBackup(config, manifest, env, {
+  await restoreDatabaseBackup(config, manifest, env, {
     pgRestoreCommand: [process.execPath, fakeRestore],
     rollbackAuthorization: authorization,
     expectedTargetCommit: "drill-target",
@@ -85,6 +103,9 @@ try {
 
   assert.equal(readFileSync(join(root, "data", "library.json"), "utf8"), JSON.stringify([{ id: "before" }]));
   assert.equal(readFileSync(join(root, "uploads", "asset.txt"), "utf8"), "upload-before");
+  if (realDatabaseUrl) {
+    assert.equal(queryPsql(realDatabaseUrl, `select string_agg(id || ':' || label, ',' order by id) from ${markerTable};`), "1:original-a,2:original-b");
+  }
   assert.equal(authorization.used, true);
   const restoreReport = JSON.parse(readFileSync(restoreLog, "utf8"));
   assert(restoreReport.args.includes("--single-transaction"));
@@ -112,7 +133,58 @@ try {
     secrets: "masked",
   }, null, 2));
 } finally {
+  if (realDatabaseUrl) {
+    try {
+      runPsql(realDatabaseUrl, [`drop table if exists ${markerTable};`]);
+    } catch {
+      // Cleanup should not hide the drill result.
+    }
+  }
   await rm(root, { recursive: true, force: true });
+}
+
+function runPsql(databaseUrl, statements) {
+  const url = new URL(databaseUrl);
+  const result = spawnSync("psql", [
+    "--host", url.hostname,
+    "--port", url.port || "5432",
+    "--username", decodeURIComponent(url.username),
+    "--dbname", decodeURIComponent(url.pathname.replace(/^\//, "")),
+    "--set", "ON_ERROR_STOP=1",
+    "--quiet",
+    "--command", statements.join("\n"),
+  ], {
+    env: { ...process.env, PGPASSWORD: decodeURIComponent(url.password || "") },
+    encoding: "utf8",
+    shell: false,
+  });
+  if (result.status !== 0) {
+    throw new Error(result.stderr || result.stdout || `psql failed with status ${result.status}`);
+  }
+  return result.stdout.trim();
+}
+
+function queryPsql(databaseUrl, statement) {
+  const url = new URL(databaseUrl);
+  const result = spawnSync("psql", [
+    "--host", url.hostname,
+    "--port", url.port || "5432",
+    "--username", decodeURIComponent(url.username),
+    "--dbname", decodeURIComponent(url.pathname.replace(/^\//, "")),
+    "--set", "ON_ERROR_STOP=1",
+    "--tuples-only",
+    "--no-align",
+    "--quiet",
+    "--command", statement,
+  ], {
+    env: { ...process.env, PGPASSWORD: decodeURIComponent(url.password || "") },
+    encoding: "utf8",
+    shell: false,
+  });
+  if (result.status !== 0) {
+    throw new Error(result.stderr || result.stdout || `psql query failed with status ${result.status}`);
+  }
+  return result.stdout.trim();
 }
 
 async function writePostgresWrapper(file, command, restoreLog) {

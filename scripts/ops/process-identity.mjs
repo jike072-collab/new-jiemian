@@ -1,6 +1,7 @@
 import { createHash, randomUUID } from "node:crypto";
 import { existsSync, readFileSync } from "node:fs";
 import { join, resolve } from "node:path";
+import { resolveServiceRuntime } from "./active-release.mjs";
 import { getServiceConfig } from "./service-config.mjs";
 import { getListeningPid, getProcessInfo, isPortAvailable } from "./process-utils.mjs";
 import { safeGit } from "./git-utils.mjs";
@@ -12,16 +13,28 @@ export function createLaunchId() {
 }
 
 export function createCommandFingerprint(config) {
+  const { runtimeRoot } = resolveServiceRuntime(config);
+  return fingerprintForRuntime(config, runtimeRoot);
+}
+
+function createLegacyCommandFingerprint(config, runtimeRoot) {
+  return fingerprintForRuntime(config, runtimeRoot, { includePort: false, includeRuntimeRoot: false });
+}
+
+function fingerprintForRuntime(config, runtimeRoot, options = {}) {
   return createHash("sha256").update([
     config.service,
     normalizePath(config.root),
+    ...(options.includeRuntimeRoot === false ? [] : [normalizePath(runtimeRoot)]),
     String(config.port),
-    normalizePath(join(config.root, "node_modules", "next", "dist", "bin", "next")),
+    normalizePath(join(runtimeRoot, "node_modules", "next", "dist", "bin", "next")),
     "next start -H 127.0.0.1",
   ].join("|")).digest("hex");
 }
 
 export function buildServiceState(config, details = {}) {
+  const runtimeRoot = resolve(details.runtimeRoot || resolveServiceRuntime(config).runtimeRoot);
+  const runtimeCommit = details.runtimeCommit || safeGit(runtimeRoot, ["rev-parse", "HEAD"], "unknown");
   const processInfo = details.processInfo || getProcessInfo(details.pid);
   const workspaceCommit = safeGit(config.root, ["rev-parse", "HEAD"], "unknown");
   return {
@@ -31,10 +44,11 @@ export function buildServiceState(config, details = {}) {
     port: config.port,
     pid: details.pid,
     parentPid: normalizeNumber(processInfo?.ParentProcessId ?? details.parentPid),
-    runtimeCommit: details.runtimeCommit || workspaceCommit,
+    runtimeCommit,
     workspaceCommitAtStart: workspaceCommit,
-    workdir: config.root,
+    workdir: runtimeRoot,
     root: config.root,
+    runtimeRoot,
     dataDir: config.dataDir,
     uploadsDir: config.uploadsDir,
     logFile: config.logFile,
@@ -42,7 +56,7 @@ export function buildServiceState(config, details = {}) {
     processStartedAt: processInfo?.CreationDate || details.processStartedAt || null,
     launchId: details.launchId || createLaunchId(),
     commandFingerprint: createCommandFingerprint(config),
-    command: `node ${join(config.root, "node_modules", "next", "dist", "bin", "next")} start -H 127.0.0.1`,
+    command: `node ${join(runtimeRoot, "node_modules", "next", "dist", "bin", "next")} start -H 127.0.0.1 -p ${config.port}`,
     envFiles: details.envFiles || [],
   };
 }
@@ -116,32 +130,46 @@ export function readServiceState(config) {
 function validateState(config, state) {
   if ((state.serviceName || state.service) !== config.service) return "state-service-name-mismatch";
   if (String(state.port) !== String(config.port)) return "state-port-mismatch";
-  if (!samePath(state.workdir || state.root, config.root)) return "state-root-mismatch";
+  if (!samePath(state.root, config.root)) return "state-root-mismatch";
+  const runtimeRoot = state.runtimeRoot || state.workdir || state.root;
+  if (!samePath(state.workdir || runtimeRoot, runtimeRoot)) return "state-workdir-mismatch";
   if (!samePath(state.dataDir, config.dataDir)) return "state-data-dir-mismatch";
   if (!samePath(state.uploadsDir, config.uploadsDir)) return "state-uploads-dir-mismatch";
-  if (state.commandFingerprint && state.commandFingerprint !== createCommandFingerprint(config)) return "state-command-fingerprint-mismatch";
+  if (state.commandFingerprint && !matchesCommandFingerprint(config, state, runtimeRoot)) return "state-command-fingerprint-mismatch";
   return null;
+}
+
+function matchesCommandFingerprint(config, state, runtimeRoot) {
+  const current = createCommandFingerprint(config);
+  if (state.commandFingerprint === current) return true;
+  if (!state.runtimeRoot) {
+    const legacy = createLegacyCommandFingerprint(config, runtimeRoot);
+    if (state.commandFingerprint === legacy) return true;
+  }
+  return false;
 }
 
 function processLooksLikeService(config, processInfo) {
   const commandLine = String(processInfo?.CommandLine || "").toLowerCase();
   if (!commandLine) return false;
-  const root = normalizePath(config.root);
+  const runtimeRoot = normalizePath(resolveServiceRuntime(config).runtimeRoot);
   return commandLine.includes("node")
     && commandLine.includes("next")
     && commandLine.includes(String(config.port))
-    && (commandLine.includes(root) || commandLine.includes(root.replaceAll("\\", "/")));
+    && (commandLine.includes(runtimeRoot) || commandLine.includes(runtimeRoot.replaceAll("\\", "/")));
 }
 
 function processLooksLikeServiceState(config, state, processInfo) {
   const commandLine = String(processInfo?.CommandLine || "").toLowerCase();
   if (!commandLine) return false;
   const command = String(state?.command || "").toLowerCase();
+  const runtimeRoot = state?.runtimeRoot || state?.workdir || state?.root;
   return command.includes("next start")
     && command.includes(String(config.port))
     && commandLine.includes("next")
     && commandLine.includes(String(config.port))
-    && samePath(state?.root || state?.workdir, config.root);
+    && samePath(state?.root, config.root)
+    && samePath(state?.workdir || runtimeRoot, runtimeRoot);
 }
 
 function samePath(left, right) {
