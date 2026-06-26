@@ -1175,6 +1175,15 @@ test("deploy rechecks artifact writability after checkout before activation", ()
   assert(activateIndex > checkoutIndex);
 });
 
+test("immutable release deploy path does not call legacy artifact activation helper", () => {
+  const source = readFileSync(join(process.cwd(), "scripts", "ops", "deploy-service.mjs"), "utf8");
+  const legacyDefinition = source.indexOf("export function activatePreparedArtifacts");
+  const legacyCallBeforeDefinition = source.indexOf("activatePreparedArtifacts(");
+  assert.match(source, /Deprecated legacy same-root activation path/);
+  assert.equal(legacyCallBeforeDefinition, legacyDefinition + "export function ".length);
+  assert.equal(source.indexOf("activatePreparedArtifacts(", legacyCallBeforeDefinition + 1), -1);
+});
+
 test("deploy skips full rollback until release artifacts are activated", () => {
   const source = readFileSync(join(process.cwd(), "scripts", "ops", "deploy-service.mjs"), "utf8");
   const catchIndex = source.indexOf("if (!options.dryRun && serviceStopped)");

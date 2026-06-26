@@ -352,6 +352,7 @@ async function prepareRollbackCodeCandidate(service, config, runtime, commit) {
   }
 }
 
+// Deprecated legacy same-root activation path. Immutable release deploys must not call this helper.
 export function activatePreparedArtifacts(config, prepared, label, options = {}) {
   const stamp = new Date().toISOString().replace(/[-:]/g, "").replace(/\..+/, "").replace("T", "-");
   const rename = options.rename || renameSync;
