@@ -1,5 +1,5 @@
 import { createHash, randomUUID } from "node:crypto";
-import { closeSync, copyFileSync, cpSync, existsSync, mkdirSync, openSync, readFileSync, readSync, readdirSync, renameSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { closeSync, copyFileSync, cpSync, existsSync, lstatSync, mkdirSync, openSync, readFileSync, readSync, readdirSync, renameSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { basename, dirname, join, relative } from "node:path";
 import { createDatabaseBackup } from "./database-backup.mjs";
 import { safeGit } from "./git-utils.mjs";
@@ -60,8 +60,7 @@ export function createServiceBackup(config, options = {}) {
 
   const dbDir = join(backupDir, "db-files");
   mkdirSync(dbDir, { recursive: true });
-  const dbFiles = listFiles(config.root)
-    .filter((file) => /\.(sqlite|sqlite3|db)$/i.test(file) || file.includes(`${config.root}\\database\\`));
+  const dbFiles = listDatabaseFiles(config.root);
   for (const file of dbFiles) {
     const target = join(dbDir, relative(config.root, file).replace(/[\\/:*?"<>|]/g, "_"));
     copyFileSync(file, target);
@@ -222,15 +221,31 @@ export function rollbackStagedDirectories(restoreState) {
   }
 }
 
-function listFiles(root) {
+function listDatabaseFiles(root) {
+  return listFiles(root, {
+    skipDirNames: new Set([".git", ".next", ".runtime", "artifacts", "dist", "node_modules"]),
+  }).filter((file) => /\.(sqlite|sqlite3|db)$/i.test(file) || isDatabasePath(root, file));
+}
+
+function listFiles(root, options = {}) {
   if (!existsSync(root)) return [];
   const results = [];
   for (const entry of readdirSync(root, { withFileTypes: true })) {
     const fullPath = join(root, entry.name);
-    if (entry.isDirectory()) results.push(...listFiles(fullPath));
+    if (entry.isSymbolicLink()) continue;
+    if (entry.isDirectory()) {
+      if (options.skipDirNames?.has(entry.name)) continue;
+      const stats = lstatSync(fullPath);
+      if (stats.isSymbolicLink()) continue;
+      results.push(...listFiles(fullPath, options));
+    }
     else if (entry.isFile()) results.push(fullPath);
   }
   return results;
+}
+
+function isDatabasePath(root, file) {
+  return toManifestPath(relative(root, file)).startsWith("database/");
 }
 
 function prepareRestoredDirectory(source, target, options = {}) {

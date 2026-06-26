@@ -304,6 +304,27 @@ test("backup and rollback script are generated without touching data", async () 
   });
 });
 
+test("service backup ignores release candidates and build artifacts", async () => {
+  await withTempProject(async (root) => {
+    const config = getServiceConfig("staging", { root });
+    mkdirSync(join(root, "database"), { recursive: true });
+    mkdirSync(join(root, ".runtime", "releases", "candidate"), { recursive: true });
+    mkdirSync(join(root, ".next", "cache"), { recursive: true });
+    mkdirSync(join(root, "node_modules"), { recursive: true });
+    await writeFile(join(root, "database", "app.sqlite"), "real-db");
+    await writeFile(join(root, ".runtime", "releases", "candidate", "nested.sqlite"), "release-db");
+    await writeFile(join(root, ".next", "cache", "ignored.sqlite"), "build-db");
+    await writeFile(join(root, "node_modules", "ignored.sqlite"), "module-db");
+    const backup = createServiceBackup(config, { note: "ignore release artifacts" });
+    const dbFiles = JSON.parse(readFileSync(join(backup.backupDir, "checksums.json"), "utf8"))
+      .map((entry) => entry.path)
+      .filter((path) => path.startsWith("db-files/"));
+    assert(dbFiles.some((path) => path.includes("database_app.sqlite")));
+    assert(!dbFiles.some((path) => path.includes("nested.sqlite")));
+    assert(!dbFiles.some((path) => path.includes("ignored.sqlite")));
+  });
+});
+
 test("directory snapshots include content checksums", async () => {
   await withTempProject(async (root) => {
     const config = getServiceConfig("production", { root });
