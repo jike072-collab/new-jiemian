@@ -121,7 +121,12 @@ test("backend liveness report omits secrets, URLs, and internal paths", async ()
     assert.equal(report.ok, true);
     assert.equal(report.mode, "liveness");
     assert.equal(report.requestId, "req-health");
-    assert.deepEqual(Object.keys(report.checks).sort(), ["newApi", "process", "productionPayment"]);
+    assert.deepEqual(Object.keys(report.checks).sort(), ["newApi", "process", "productionPayment", "providerHealth"]);
+    assert.deepEqual(report.checks.providerHealth, {
+      available: true,
+      externalCalls: false,
+      liveGenerationEnabled: false,
+    });
     const serialized = JSON.stringify(report);
     for (const leaked of [
       "release_pass",

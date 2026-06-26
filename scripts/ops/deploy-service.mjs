@@ -30,6 +30,7 @@ const validationCheckCommands = [
   ["npm", ["run", "test:runtime-isolation"]],
   ["npm", ["run", "check:runtime-paths"]],
   ["npm", ["run", "test:security-release"]],
+  ["npm", ["run", "test:stage4-provider-health"]],
   ["npm", ["run", "test:ops"]],
   ["npm", ["run", "build"]],
   ["npm", ["run", "test:staging-smoke"]],

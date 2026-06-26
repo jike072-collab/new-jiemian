@@ -31,6 +31,11 @@ export type BackendHealthReport = {
     productionPayment: {
       enabled: boolean;
     };
+    providerHealth: {
+      available: true;
+      externalCalls: false;
+      liveGenerationEnabled: false;
+    };
     database?: {
       ok: boolean;
       errorCode?: string;
@@ -58,6 +63,11 @@ export function backendLivenessReport(requestId: string = randomUUID(), now = ne
       },
       productionPayment: {
         enabled: Boolean(productionPayment?.enabled),
+      },
+      providerHealth: {
+        available: true,
+        externalCalls: false,
+        liveGenerationEnabled: false,
       },
     },
   };
