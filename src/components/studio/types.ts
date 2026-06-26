@@ -1,4 +1,5 @@
 import type { FrontendProvider, JobRecord, LibraryItem } from "@/lib/server/types";
+import type { ErrorDiagnostic } from "@/lib/error-diagnostic-catalog";
 
 export type BusinessToolId = "image" | "video" | "image-upscale" | "video-upscale" | "library";
 export type LibraryFilter = "image" | "video";
@@ -27,6 +28,8 @@ export type OutputState = {
   title: string;
   tool: BusinessToolId;
 } | null;
+
+export type StudioErrorDiagnostic = ErrorDiagnostic;
 
 export type MobileActionState = {
   label: string;
@@ -67,6 +70,7 @@ export type ImageWorkspaceState = {
   files: ImageWorkspaceFile[];
   fileError: string;
   submitError: string;
+  submitDiagnostic?: StudioErrorDiagnostic | null;
   loading: boolean;
 };
 
@@ -87,6 +91,7 @@ export type VideoWorkspaceState = {
   files: VideoWorkspaceFile[];
   fileError: string;
   submitError: string;
+  submitDiagnostic?: StudioErrorDiagnostic | null;
   loading: boolean;
   job: JobRecord | null;
 };
@@ -115,6 +120,7 @@ export type ImageUpscaleWorkspaceState = {
   file: ImageUpscaleWorkspaceFile | null;
   fileError: string;
   submitError: string;
+  submitDiagnostic?: StudioErrorDiagnostic | null;
   loading: boolean;
   statusLoading: boolean;
   checked: boolean;
@@ -127,6 +133,7 @@ export type VideoUpscaleWorkspaceState = {
   file: VideoUpscaleWorkspaceFile | null;
   fileError: string;
   submitError: string;
+  submitDiagnostic?: StudioErrorDiagnostic | null;
   loading: boolean;
   statusLoading: boolean;
   checked: boolean;

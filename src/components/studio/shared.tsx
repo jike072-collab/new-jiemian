@@ -6,7 +6,7 @@ import { useCallback, useEffect, useId, useRef, useState } from "react";
 import { Check, ChevronDown, ImageUp, Loader2, UploadCloud, Wand2, X } from "lucide-react";
 
 import { ratioShapeClass, ratios } from "@/components/studio/constants";
-import type { SelectOption, UploadFilePreview } from "@/components/studio/types";
+import type { SelectOption, StudioErrorDiagnostic, UploadFilePreview } from "@/components/studio/types";
 import type { FrontendProvider } from "@/lib/server/types";
 import { cn } from "@/lib/utils";
 
@@ -20,6 +20,47 @@ export function FormPanel({ children }: { children: React.ReactNode }) {
   return (
     <div className="studio-form-panel">
       <div className="studio-form-panel__content">{children}</div>
+    </div>
+  );
+}
+
+export function StudioErrorAlert({
+  message,
+  diagnostic,
+}: {
+  message?: string;
+  diagnostic?: StudioErrorDiagnostic | null;
+}) {
+  if (!message && !diagnostic) return null;
+  const code = diagnostic?.code;
+  const requestId = diagnostic?.requestId;
+  const retryText = diagnostic ? (diagnostic.retryable ? "可重试" : "需调整后重试") : "";
+  return (
+    <div className="studio-error-alert" role="alert">
+      <p className="studio-error-alert__message">{diagnostic?.message || message}</p>
+      {diagnostic?.action ? <p className="studio-error-alert__action">{diagnostic.action}</p> : null}
+      {code || requestId || retryText ? (
+        <dl className="studio-error-alert__meta" aria-label="错误诊断信息">
+          {code ? (
+            <div>
+              <dt>Code</dt>
+              <dd>{code}</dd>
+            </div>
+          ) : null}
+          {requestId ? (
+            <div>
+              <dt>Request ID</dt>
+              <dd>{requestId}</dd>
+            </div>
+          ) : null}
+          {retryText ? (
+            <div>
+              <dt>Retry</dt>
+              <dd>{retryText}</dd>
+            </div>
+          ) : null}
+        </dl>
+      ) : null}
     </div>
   );
 }

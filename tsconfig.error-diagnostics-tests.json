@@ -1,0 +1,21 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "allowImportingTsExtensions": false,
+    "declaration": false,
+    "emitDeclarationOnly": false,
+    "incremental": false,
+    "module": "NodeNext",
+    "moduleResolution": "NodeNext",
+    "noEmit": false,
+    "outDir": "dist/error-diagnostics-tests",
+    "rootDir": ".",
+    "target": "ES2022",
+    "tsBuildInfoFile": "dist/error-diagnostics-tests.tsbuildinfo"
+  },
+  "include": [
+    "src/lib/error-diagnostic-catalog.ts",
+    "src/lib/server/error-diagnostics.ts",
+    "src/lib/server/__tests__/error-diagnostics.test.ts"
+  ]
+}

@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 
+import { diagnosticErrorResponse } from "@/lib/server/error-diagnostics";
 import { submitVideoUpscale, uploadedUpscaleFile } from "@/lib/server/volcengine-upscale";
 
 export const runtime = "nodejs";
@@ -15,8 +16,12 @@ export async function POST(request: Request) {
     const file = await uploadedUpscaleFile(form, "video");
     return NextResponse.json(await submitVideoUpscale(file, scale));
   } catch (error) {
-    return NextResponse.json({
-      error: error instanceof Error ? error.message : "视频高清任务提交失败。",
-    }, { status: 400 });
+    return diagnosticErrorResponse(error, {
+      requestId: request.headers.get("x-request-id"),
+      fallbackMessage: "视频高清任务提交失败。",
+      tool: "video-upscale",
+      operation: "upscale-video",
+      defaultCode: "UNKNOWN_ERROR",
+    });
   }
 }

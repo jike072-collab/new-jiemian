@@ -26,6 +26,8 @@ Allowed requests are page loads, static assets, `/api/health/backend`, `/api/lib
 
 Stage 4 adds `/api/admin/provider-health` as an admin-only, read-only diagnostics endpoint. It is allowed in provider-health tests because it does not submit generation payloads and is covered by separate mock-server guards.
 
+Stage 5 adds compatible error diagnostics for generation and upscale failures. `npm run test:stage5-error-diagnostics` checks the diagnostic catalog, redaction behavior, route contracts, frontend diagnostic rendering, and confirms the test itself does not call generation or NewAPI endpoints.
+
 ## Commands
 
 Run the full Stage 3 logic checks:

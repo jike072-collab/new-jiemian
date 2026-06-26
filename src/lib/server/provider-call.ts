@@ -6,6 +6,7 @@ import {
 } from "@/lib/generation-quota";
 
 import { addJob, addLibraryItem, storeBytes, storeDataUrl, storeRemoteUrl, updateJob, updateLibraryItem } from "./library";
+import { codeForUpstreamStatus, GenerationDiagnosticError } from "./error-diagnostics";
 import { getTaskBillingService } from "./quota";
 import { jimengVideoOptionsForModel, providerById } from "./providers";
 import { type JobRecord, type LibraryItem, type ProviderConfig } from "./types";
@@ -99,6 +100,42 @@ function parseProviderOutput(payload: unknown): ProviderOutput {
 
 function authHeaders(provider: ProviderConfig) {
   return { Authorization: `Bearer ${provider.apiKey}` };
+}
+
+function assertProviderReady(
+  provider: ProviderConfig | null | undefined,
+  expectedKind: ProviderConfig["kind"],
+  modelMissingCode: "MODEL_MISSING_IMAGE" | "MODEL_MISSING_VIDEO",
+) {
+  if (!provider || provider.kind !== expectedKind) {
+    throw new GenerationDiagnosticError({ code: "PROVIDER_NOT_CONFIGURED" });
+  }
+  if (!provider.enabled) {
+    throw new GenerationDiagnosticError({ code: "PROVIDER_DISABLED", providerId: provider.id, model: provider.model });
+  }
+  if (!provider.apiUrl.trim()) {
+    throw new GenerationDiagnosticError({ code: "PROVIDER_MISSING_ENDPOINT", providerId: provider.id, model: provider.model });
+  }
+  try {
+    const url = new URL(provider.apiUrl);
+    if (url.protocol !== "http:" && url.protocol !== "https:") {
+      throw new Error("invalid protocol");
+    }
+  } catch (error) {
+    throw new GenerationDiagnosticError({
+      code: "PROVIDER_INVALID_ENDPOINT",
+      providerId: provider.id,
+      model: provider.model,
+      cause: error,
+    });
+  }
+  if (!provider.apiKey.trim()) {
+    throw new GenerationDiagnosticError({ code: "PROVIDER_MISSING_API_KEY", providerId: provider.id, model: provider.model });
+  }
+  if (!provider.model.trim()) {
+    throw new GenerationDiagnosticError({ code: modelMissingCode, providerId: provider.id });
+  }
+  return provider;
 }
 
 function ratioToSize(ratio: string) {
@@ -280,7 +317,7 @@ async function uploadGrokReferenceImage(provider: ProviderConfig, file: Uploaded
     }),
     signal: AbortSignal.timeout(120000),
   });
-  const payload = await readProviderJson(response);
+  const payload = await readProviderJson(response, provider);
   const url = firstString(asRecord(payload).url);
   if (!url) throw new Error("Grok 参考图上传未返回可用 URL。");
   return url;
@@ -311,7 +348,7 @@ async function callGrokVideoProvider(provider: ProviderConfig, input: {
     body: form,
     signal: AbortSignal.timeout(180000),
   });
-  return parseProviderOutput(await readProviderJson(response));
+  return parseProviderOutput(await readProviderJson(response, provider));
 }
 
 async function outputToLibraryFromAuthenticatedUrl(provider: ProviderConfig, url: string, prefix: string) {
@@ -337,13 +374,60 @@ function imageEndpoint(provider: ProviderConfig, useEdits: boolean) {
   throw new Error(`当前图片接口地址无法自动切换为 images/${target}。请在供应商后台填写标准 OpenAI-compatible 图片接口地址。`);
 }
 
-async function readProviderJson(response: Response) {
-  const payload = await response.json().catch(() => ({}));
+async function readProviderJson(response: Response, provider?: ProviderConfig) {
+  const text = await response.text().catch(() => "");
   if (!response.ok) {
+    if (!text.trim()) {
+      throw new GenerationDiagnosticError({
+        code: codeForUpstreamStatus(response.status),
+        providerId: provider?.id,
+        model: provider?.model,
+        upstreamStatus: response.status,
+        safeDetails: { upstreamStatus: response.status },
+      });
+    }
+    let payload: unknown;
+    try {
+      payload = JSON.parse(text);
+    } catch {
+      payload = {};
+    }
     const record = asRecord(payload);
     const message = firstString(asRecord(record.error).message, record.message)
       || `供应商请求失败：HTTP ${response.status}`;
-    throw new Error(message);
+    throw new GenerationDiagnosticError({
+      code: codeForUpstreamStatus(response.status),
+      message,
+      providerId: provider?.id,
+      model: provider?.model,
+      upstreamStatus: response.status,
+      safeDetails: { upstreamStatus: response.status },
+    });
+  }
+  if (!text.trim()) {
+    throw new GenerationDiagnosticError({
+      code: "PROVIDER_EMPTY_RESPONSE",
+      providerId: provider?.id,
+      model: provider?.model,
+      upstreamStatus: response.status,
+      safeDetails: { upstreamStatus: response.status },
+    });
+  }
+  let payload: unknown;
+  try {
+    payload = JSON.parse(text);
+  } catch (error) {
+    throw new GenerationDiagnosticError({
+      code: "PROVIDER_NON_JSON_RESPONSE",
+      providerId: provider?.id,
+      model: provider?.model,
+      upstreamStatus: response.status,
+      safeDetails: {
+        upstreamStatus: response.status,
+        contentType: response.headers.get("content-type") || "",
+      },
+      cause: error,
+    });
   }
   return payload;
 }
@@ -379,7 +463,7 @@ async function callImageProvider({
       }),
       signal: AbortSignal.timeout(300000),
     });
-    return parseProviderOutput(await readProviderJson(response));
+    return parseProviderOutput(await readProviderJson(response, provider));
   }
 
   if (useMultipart) {
@@ -406,7 +490,7 @@ async function callImageProvider({
       body: form,
       signal: AbortSignal.timeout(300000),
     });
-    return parseProviderOutput(await readProviderJson(response));
+    return parseProviderOutput(await readProviderJson(response, provider));
   }
 
   const upscale = imageUpscaleValue(quality);
@@ -426,7 +510,7 @@ async function callImageProvider({
     }),
     signal: AbortSignal.timeout(300000),
   });
-  return parseProviderOutput(await readProviderJson(response));
+  return parseProviderOutput(await readProviderJson(response, provider));
 }
 
 async function outputToLibrary(output: ProviderOutput, type: "image" | "video", prefix: string) {
@@ -586,12 +670,10 @@ export async function generateImage(input: {
     estimatedQuotaUnits,
   });
   try {
-    if (!provider || provider.kind !== "image" || !provider.enabled || !provider.apiKey) {
-      throw new Error("图片供应商未配置或未启用。");
-    }
-    if (!input.prompt.trim()) throw new Error("请输入图片提示词。");
+    const readyProvider = assertProviderReady(provider, "image", "MODEL_MISSING_IMAGE");
+    if (!input.prompt.trim()) throw new GenerationDiagnosticError({ code: "INPUT_MISSING_PROMPT", providerId: readyProvider.id, model: readyProvider.model });
     if (input.mode === "image-to-image" && !input.files.length) {
-      throw new Error("图生图模式需要上传参考图片。");
+      throw new GenerationDiagnosticError({ code: "INPUT_MISSING_IMAGE", providerId: readyProvider.id, model: readyProvider.model });
     }
     await claimGenerationBillingDispatch({
       localUserId: input.billingLocalUserId,
@@ -603,11 +685,11 @@ export async function generateImage(input: {
     await markGenerationProviderStarted({
       localUserId: input.billingLocalUserId,
       taskId: input.billingTaskId,
-      upstreamModel: provider.model,
+      upstreamModel: readyProvider.model,
     });
 
     const output = await callImageProvider({
-      provider,
+      provider: readyProvider,
       prompt: input.prompt,
       ratio: input.ratio,
       quality: input.quality,
@@ -619,8 +701,8 @@ export async function generateImage(input: {
       mode: input.mode,
       title: input.prompt.slice(0, 42) || "图片生成",
       prompt: input.prompt,
-      providerId: provider.id,
-      model: provider.model,
+      providerId: readyProvider.id,
+      model: readyProvider.model,
       status: "done",
       output: stored,
       params: {
@@ -637,14 +719,14 @@ export async function generateImage(input: {
       localUserId: input.billingLocalUserId,
       taskId: input.billingTaskId,
       newApiTaskId: output.jobId || item.id,
-      upstreamModel: provider.model,
+      upstreamModel: readyProvider.model,
     });
     const settled = await settleGeneratedTaskBilling({
       localUserId: input.billingLocalUserId,
       taskId: input.billingTaskId,
       estimatedQuotaUnits,
       outcome: "success",
-      upstreamModel: provider.model,
+      upstreamModel: readyProvider.model,
       newApiTaskId: output.jobId || item.id,
     });
     if (!settled.ok) {
@@ -698,20 +780,18 @@ export async function submitVideo(input: {
     estimatedQuotaUnits,
   });
   try {
-    if (!input.prompt.trim()) throw new Error("请输入视频提示词。");
+    if (!input.prompt.trim()) throw new GenerationDiagnosticError({ code: "INPUT_MISSING_PROMPT", providerId: provider?.id, model: provider?.model });
     if (input.mode === "text-to-video" && input.files.length) {
-      throw new Error("文生视频模式不接收首帧图片。");
+      throw new GenerationDiagnosticError({ code: "INPUT_INVALID_PARAMETERS", providerId: provider?.id, model: provider?.model });
     }
     if (input.mode === "image-to-video") {
       if (!input.files.length) {
-        throw new Error("图生视频模式需要上传 1 张首帧图片。");
+        throw new GenerationDiagnosticError({ code: "INPUT_MISSING_IMAGE", providerId: provider?.id, model: provider?.model });
       }
     }
 
-    if (!provider || provider.kind !== "video" || !provider.enabled || !provider.apiKey) {
-      throw new Error("视频供应商未配置或未启用。");
-    }
-    validateVideoInput(provider, input);
+    const readyProvider = assertProviderReady(provider, "video", "MODEL_MISSING_VIDEO");
+    validateVideoInput(readyProvider, input);
     await claimGenerationBillingDispatch({
       localUserId: input.billingLocalUserId,
       taskId: input.billingTaskId,
@@ -722,17 +802,17 @@ export async function submitVideo(input: {
     await markGenerationProviderStarted({
       localUserId: input.billingLocalUserId,
       taskId: input.billingTaskId,
-      upstreamModel: provider.model,
+      upstreamModel: readyProvider.model,
     });
 
     let output: ProviderOutput;
-    if (isGrokVideoProvider(provider)) {
-      output = await callGrokVideoProvider(provider, input);
+    if (isGrokVideoProvider(readyProvider)) {
+      output = await callGrokVideoProvider(readyProvider, input);
     } else {
-      const providerVideoOptions = videoOptionsForProvider(provider);
+      const providerVideoOptions = videoOptionsForProvider(readyProvider);
       const resolution = providerVideoOptions?.resolution || "720p";
       const providerPayload: Record<string, string | number | string[]> = {
-        model: provider.model,
+        model: readyProvider.model,
         prompt: input.prompt,
         duration: input.duration,
         seconds: input.duration,
@@ -746,30 +826,30 @@ export async function submitVideo(input: {
         providerPayload.image = [`data:${file.mimeType};base64,${file.bytes.toString("base64")}`];
       }
 
-      const response = await fetch(provider.apiUrl, {
+      const response = await fetch(readyProvider.apiUrl, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          ...authHeaders(provider),
+          ...authHeaders(readyProvider),
         },
         body: JSON.stringify(providerPayload),
         signal: AbortSignal.timeout(180000),
       });
-      output = parseProviderOutput(await readProviderJson(response));
+      output = parseProviderOutput(await readProviderJson(response, readyProvider));
     }
 
     if (output.url) {
-      const outputUrl = absolutizeProviderUrl(provider, output.url);
-      const stored = isGrokVideoProvider(provider) && outputUrl.includes("/content")
-        ? await outputToLibraryFromAuthenticatedUrl(provider, outputUrl, "video")
+      const outputUrl = absolutizeProviderUrl(readyProvider, output.url);
+      const stored = isGrokVideoProvider(readyProvider) && outputUrl.includes("/content")
+        ? await outputToLibraryFromAuthenticatedUrl(readyProvider, outputUrl, "video")
         : await outputToLibrary({ ...output, url: outputUrl }, "video", "video");
       const item = await addLibraryItem({
         type: "video",
         mode: input.mode,
         title: input.prompt.slice(0, 42) || "视频生成",
         prompt: input.prompt,
-        providerId: provider.id,
-        model: provider.model,
+        providerId: readyProvider.id,
+        model: readyProvider.model,
         status: "done",
         output: stored,
         params: {
@@ -786,14 +866,14 @@ export async function submitVideo(input: {
         localUserId: input.billingLocalUserId,
         taskId: input.billingTaskId,
         newApiTaskId: output.jobId || item.id,
-        upstreamModel: provider.model,
+        upstreamModel: readyProvider.model,
       });
       const settled = await settleGeneratedTaskBilling({
         localUserId: input.billingLocalUserId,
         taskId: input.billingTaskId,
         estimatedQuotaUnits,
         outcome: "success",
-        upstreamModel: provider.model,
+        upstreamModel: readyProvider.model,
         newApiTaskId: output.jobId || item.id,
       });
       if (!settled.ok) {
@@ -807,8 +887,8 @@ export async function submitVideo(input: {
       mode: input.mode,
       title: input.prompt.slice(0, 42) || "视频生成",
       prompt: input.prompt,
-      providerId: provider.id,
-      model: provider.model,
+      providerId: readyProvider.id,
+      model: readyProvider.model,
       status: normalizeStatus(output.status || ""),
       params: {
         ratio: input.ratio,
@@ -821,18 +901,18 @@ export async function submitVideo(input: {
       localUserId: input.billingLocalUserId,
       taskId: input.billingTaskId,
       newApiTaskId: jobId,
-      upstreamModel: provider.model,
+      upstreamModel: readyProvider.model,
     });
     const job = await addJob({
       id: jobId,
       libraryItemId: item.id,
       type: "video",
       ownerLocalUserId: input.billingLocalUserId || null,
-      providerId: provider.id,
+      providerId: readyProvider.id,
       status: normalizeStatus(output.status || ""),
       statusUrl: output.statusUrl
-        ? absolutizeProviderUrl(provider, output.statusUrl)
-        : isGrokVideoProvider(provider) ? grokStatusUrl(provider.apiUrl, jobId) : deriveStatusUrl(provider.apiUrl, jobId),
+        ? absolutizeProviderUrl(readyProvider, output.statusUrl)
+        : isGrokVideoProvider(readyProvider) ? grokStatusUrl(readyProvider.apiUrl, jobId) : deriveStatusUrl(readyProvider.apiUrl, jobId),
       billing_task_id: input.billingTaskId || null,
       billing_local_user_id: input.billingLocalUserId || null,
       billing_idempotency_key: input.billingIdempotencyKey || null,
@@ -913,7 +993,7 @@ export async function refreshVideoJob(jobId: string, localUserId?: string | null
     headers: authHeaders(provider),
     signal: AbortSignal.timeout(60000),
   });
-  const output = parseProviderOutput(await readProviderJson(response));
+  const output = parseProviderOutput(await readProviderJson(response, provider));
   const status = normalizeStatus(output.status || "");
 
   if (output.url) {

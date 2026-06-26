@@ -1,6 +1,7 @@
 import { type NextRequest, NextResponse } from "next/server";
 
 import { authResultResponse, csrfFailure, requireAuthSession, requireCsrf } from "@/lib/server/auth";
+import { diagnosticErrorResponse } from "@/lib/server/error-diagnostics";
 import { submitVideo, uploadedMediaFromForm } from "@/lib/server/provider-call";
 
 export const runtime = "nodejs";
@@ -34,8 +35,12 @@ export async function POST(request: NextRequest) {
     });
     return NextResponse.json(result);
   } catch (error) {
-    return NextResponse.json({
-      error: error instanceof Error ? error.message : "视频生成失败。",
-    }, { status: 400 });
+    return diagnosticErrorResponse(error, {
+      requestId: request.headers.get("x-request-id"),
+      fallbackMessage: "视频生成失败。",
+      tool: "video",
+      operation: "generate-video",
+      defaultCode: "UNKNOWN_ERROR",
+    });
   }
 }

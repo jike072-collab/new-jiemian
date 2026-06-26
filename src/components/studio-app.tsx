@@ -55,6 +55,7 @@ import type {
   VideoWorkspaceFile,
   VideoWorkspaceState,
   WorkspacePublicProvider,
+  StudioErrorDiagnostic,
 } from "@/components/studio/types";
 import { ImageUpscaleForm, VideoUpscaleForm } from "@/components/studio/upscale-form";
 import { VideoGenerator } from "@/components/studio/video-generator";
@@ -301,6 +302,10 @@ function videoProviderRequiresReferenceImage(provider: WorkspacePublicProvider |
   return provider?.model === "grok-video-1.5";
 }
 
+function diagnosticFromError(error: unknown): StudioErrorDiagnostic | null {
+  return error instanceof ApiError ? error.diagnostic || null : null;
+}
+
 export function StudioApp() {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -360,6 +365,7 @@ export function StudioApp() {
     files: [],
     fileError: "",
     submitError: "",
+    submitDiagnostic: null,
     loading: false,
   });
   const [videoWorkspace, setVideoWorkspace] = useState<VideoWorkspaceState>({
@@ -374,6 +380,7 @@ export function StudioApp() {
     files: [],
     fileError: "",
     submitError: "",
+    submitDiagnostic: null,
     loading: false,
     job: null,
   });
@@ -382,6 +389,7 @@ export function StudioApp() {
     file: null,
     fileError: "",
     submitError: "",
+    submitDiagnostic: null,
     loading: false,
     statusLoading: true,
     checked: false,
@@ -393,6 +401,7 @@ export function StudioApp() {
     file: null,
     fileError: "",
     submitError: "",
+    submitDiagnostic: null,
     loading: false,
     statusLoading: true,
     checked: false,
@@ -609,7 +618,7 @@ export function StudioApp() {
         return prev.providerId ? { ...prev, providerId: "" } : prev;
       }
       if (nextProviders.some((provider) => provider.id === prev.providerId)) return prev;
-      return { ...prev, providerId: nextProviders[0].id, submitError: "" };
+      return { ...prev, providerId: nextProviders[0].id, submitError: "", submitDiagnostic: null };
     });
   }, [providers.video]);
 
@@ -622,12 +631,12 @@ export function StudioApp() {
 
     const nextImageMode = action.mode === "text-to-image" || action.mode === "image-to-image" ? action.mode : null;
     if (action.toolId === "image" && nextImageMode) {
-      setImageWorkspace((prev) => ({ ...prev, submitError: "", fileError: "" }));
+      setImageWorkspace((prev) => ({ ...prev, submitError: "", submitDiagnostic: null, fileError: "" }));
     }
 
     const nextVideoMode = action.mode === "text-to-video" || action.mode === "image-to-video" ? action.mode : null;
     if (action.toolId === "video" && nextVideoMode) {
-      setVideoWorkspace((prev) => ({ ...prev, fileError: "", submitError: "" }));
+      setVideoWorkspace((prev) => ({ ...prev, fileError: "", submitError: "", submitDiagnostic: null }));
     }
 
     setActiveWorkspaceToolId(tool);
@@ -672,6 +681,7 @@ export function StudioApp() {
         promptOptimizeError: "",
         promptOptimizeUndo: "",
         submitError: "",
+        submitDiagnostic: null,
       }));
       return;
     }
@@ -687,6 +697,7 @@ export function StudioApp() {
       promptOptimizeError: "",
       promptOptimizeUndo: "",
       submitError: "",
+      submitDiagnostic: null,
     }));
   }, []);
 
@@ -858,7 +869,11 @@ export function StudioApp() {
     && (!imageWorkspaceRequiresFile || imageWorkspaceHasFiles);
 
   const updateImageWorkspace = useCallback((patch: Partial<ImageWorkspaceState>) => {
-    setImageWorkspace((prev) => ({ ...prev, ...patch }));
+    setImageWorkspace((prev) => ({
+      ...prev,
+      ...patch,
+      ...("submitError" in patch && !("submitDiagnostic" in patch) ? { submitDiagnostic: null } : {}),
+    }));
   }, []);
 
   const applyImagePromptTemplate = useCallback((templateId: string) => {
@@ -935,6 +950,7 @@ export function StudioApp() {
         promptOptimizeUndo: "",
         promptOptimizeError: "",
         submitError: "",
+        submitDiagnostic: null,
       };
     });
   }, []);
@@ -948,6 +964,7 @@ export function StudioApp() {
         ...prev,
         fileError: error instanceof Error ? error.message : "图像读取失败。",
         submitError: "",
+        submitDiagnostic: null,
       }));
       return;
     }
@@ -956,6 +973,7 @@ export function StudioApp() {
       files: nextFiles,
       fileError: "",
       submitError: "",
+      submitDiagnostic: null,
     }));
     imageWorkspaceFilesRef.current.forEach((file) => URL.revokeObjectURL(file.previewUrl));
     imageWorkspaceFilesRef.current = nextFiles;
@@ -972,6 +990,7 @@ export function StudioApp() {
         files: nextFiles,
         fileError: "",
         submitError: "",
+        submitDiagnostic: null,
       };
     });
   }, []);
@@ -984,6 +1003,7 @@ export function StudioApp() {
       files: [],
       fileError: "",
       submitError: "",
+      submitDiagnostic: null,
     }));
   }, []);
 
@@ -992,6 +1012,7 @@ export function StudioApp() {
       setImageWorkspace((prev) => ({
         ...prev,
         submitError: "当前尚未配置可用模型。",
+        submitDiagnostic: null,
       }));
       setMessage("当前尚未配置可用模型。");
       return;
@@ -1000,6 +1021,7 @@ export function StudioApp() {
       setImageWorkspace((prev) => ({
         ...prev,
         submitError: "请输入提示词。",
+        submitDiagnostic: null,
       }));
       return;
     }
@@ -1023,6 +1045,7 @@ export function StudioApp() {
       ...prev,
       loading: true,
       submitError: "",
+      submitDiagnostic: null,
       fileError: "",
     }));
     setMobilePreviewSignal((value) => value + 1);
@@ -1070,7 +1093,7 @@ export function StudioApp() {
           });
         } catch (error) {
           const text = error instanceof Error ? error.message : "额度预检失败。";
-          setImageWorkspace((prev) => ({ ...prev, submitError: text }));
+          setImageWorkspace((prev) => ({ ...prev, submitError: text, submitDiagnostic: diagnosticFromError(error) }));
           throw new Error(text);
         }
 
@@ -1110,6 +1133,7 @@ export function StudioApp() {
       setImageWorkspace((prev) => ({
         ...prev,
         submitError: text,
+        submitDiagnostic: diagnosticFromError(error),
       }));
       setImageGenerationProgress((current) => current ? {
         ...current,
@@ -1174,7 +1198,11 @@ export function StudioApp() {
     && (!selectedVideoModelRequiresFile || videoWorkspaceHasFiles);
 
   const updateVideoWorkspace = useCallback((patch: Partial<VideoWorkspaceState>) => {
-    setVideoWorkspace((prev) => ({ ...prev, ...patch }));
+    setVideoWorkspace((prev) => ({
+      ...prev,
+      ...patch,
+      ...("submitError" in patch && !("submitDiagnostic" in patch) ? { submitDiagnostic: null } : {}),
+    }));
   }, []);
 
   const applyVideoPromptTemplate = useCallback((templateId: string) => {
@@ -1273,6 +1301,7 @@ export function StudioApp() {
         promptOptimizeUndo: "",
         promptOptimizeError: "",
         submitError: "",
+        submitDiagnostic: null,
       };
     });
   }, []);
@@ -1286,6 +1315,7 @@ export function StudioApp() {
         ...prev,
         fileError: error instanceof Error ? error.message : "图像读取失败。",
         submitError: "",
+        submitDiagnostic: null,
       }));
       return;
     }
@@ -1294,6 +1324,7 @@ export function StudioApp() {
       files: nextFiles,
       fileError: "",
       submitError: "",
+      submitDiagnostic: null,
     }));
     videoWorkspaceFilesRef.current.forEach((file) => URL.revokeObjectURL(file.previewUrl));
     videoWorkspaceFilesRef.current = nextFiles;
@@ -1310,6 +1341,7 @@ export function StudioApp() {
         files: nextFiles,
         fileError: selectedVideoModelRequiresFile && !nextFiles.length ? videoModelReferenceMessage : "",
         submitError: "",
+        submitDiagnostic: null,
       };
     });
   }, [selectedVideoModelRequiresFile]);
@@ -1322,11 +1354,16 @@ export function StudioApp() {
       files: [],
       fileError: selectedVideoModelRequiresFile ? videoModelReferenceMessage : "",
       submitError: "",
+      submitDiagnostic: null,
     }));
   }, [selectedVideoModelRequiresFile]);
 
   const updateImageUpscaleWorkspace = useCallback((patch: Partial<ImageUpscaleWorkspaceState>) => {
-    setImageUpscaleWorkspace((prev) => ({ ...prev, ...patch }));
+    setImageUpscaleWorkspace((prev) => ({
+      ...prev,
+      ...patch,
+      ...("submitError" in patch && !("submitDiagnostic" in patch) ? { submitDiagnostic: null } : {}),
+    }));
   }, []);
 
   const checkImageUpscaleAvailability = useCallback(async () => {
@@ -1417,7 +1454,7 @@ export function StudioApp() {
       await refreshLibrary();
     } catch (error) {
       const text = error instanceof Error ? error.message : "图片高清处理失败。";
-      updateImageUpscaleWorkspace({ submitError: text });
+      updateImageUpscaleWorkspace({ submitError: text, submitDiagnostic: diagnosticFromError(error) });
       setMessage(text);
     } finally {
       updateImageUpscaleWorkspace({ loading: false });
@@ -1430,7 +1467,11 @@ export function StudioApp() {
     && !imageUpscaleWorkspace.statusLoading;
 
   const updateVideoUpscaleWorkspace = useCallback((patch: Partial<VideoUpscaleWorkspaceState>) => {
-    setVideoUpscaleWorkspace((prev) => ({ ...prev, ...patch }));
+    setVideoUpscaleWorkspace((prev) => ({
+      ...prev,
+      ...patch,
+      ...("submitError" in patch && !("submitDiagnostic" in patch) ? { submitDiagnostic: null } : {}),
+    }));
   }, []);
 
   const checkVideoUpscaleAvailability = useCallback(async () => {
@@ -1533,7 +1574,7 @@ export function StudioApp() {
       await refreshLibrary();
     } catch (error) {
       const text = error instanceof Error ? error.message : "视频高清处理失败。";
-      updateVideoUpscaleWorkspace({ submitError: text });
+      updateVideoUpscaleWorkspace({ submitError: text, submitDiagnostic: diagnosticFromError(error) });
       setMessage(text);
     } finally {
       updateVideoUpscaleWorkspace({ loading: false });
@@ -1605,7 +1646,7 @@ export function StudioApp() {
         await refreshLibrary();
       } catch (error) {
         const text = error instanceof Error ? error.message : "视频高清任务查询失败。";
-        updateVideoUpscaleWorkspace({ submitError: text });
+        updateVideoUpscaleWorkspace({ submitError: text, submitDiagnostic: diagnosticFromError(error) });
         setMessage(text);
       }
     }, 5000);
@@ -1625,7 +1666,7 @@ export function StudioApp() {
         await refreshLibrary();
       } catch (error) {
         const text = error instanceof Error ? error.message : "视频任务查询失败。";
-        updateVideoWorkspace({ submitError: text });
+        updateVideoWorkspace({ submitError: text, submitDiagnostic: diagnosticFromError(error) });
         setMessage(text);
       }
     }, 5000);
@@ -1692,7 +1733,7 @@ export function StudioApp() {
       });
     } catch (error) {
       const text = error instanceof Error ? error.message : "额度预检失败。";
-      updateVideoWorkspace({ submitError: text });
+      updateVideoWorkspace({ submitError: text, submitDiagnostic: diagnosticFromError(error) });
       setMessage(text);
       return;
     }
@@ -1727,7 +1768,7 @@ export function StudioApp() {
       await refreshAccountData(sessionUser?.local_user_id || null);
     } catch (error) {
       const text = error instanceof Error ? error.message : "视频生成失败。";
-      updateVideoWorkspace({ submitError: text });
+      updateVideoWorkspace({ submitError: text, submitDiagnostic: diagnosticFromError(error) });
       setMessage(text);
     } finally {
       updateVideoWorkspace({ loading: false });
@@ -1919,6 +1960,7 @@ export function StudioApp() {
                 output={activeOutput}
                 loading={imageWorkspace.loading}
                 submitError={imageWorkspace.submitError}
+                submitDiagnostic={imageWorkspace.submitDiagnostic}
                 isEditor={activeWorkspaceToolId === "image-editor"}
                 promptFilled={Boolean(imageWorkspacePrompt)}
                 hasProvider={Boolean(selectedImageProvider)}
@@ -1933,6 +1975,7 @@ export function StudioApp() {
                 output={activeOutput}
                 loading={videoWorkspace.loading}
                 submitError={videoWorkspace.submitError}
+                submitDiagnostic={videoWorkspace.submitDiagnostic}
                 promptFilled={Boolean(videoWorkspacePrompt)}
                 hasProvider={Boolean(selectedVideoProvider)}
                 hasFiles={videoWorkspaceHasFiles}
