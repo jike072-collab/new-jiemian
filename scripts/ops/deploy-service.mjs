@@ -120,7 +120,11 @@ export async function deployService(service, options = {}) {
       report.activeReleaseFile = config.activeReleaseFile;
       await startService(service, { root: config.root, preflightOnly: true });
       report.checks.push({ command: "service start-service --preflight-only", ok: true });
+      assertReleaseArtifactClean(preparedRelease.root);
+      report.checks.push({ command: "service release artifact cleanliness after preflight", ok: true });
       await startService(service, { root: config.root });
+      assertReleaseArtifactClean(preparedRelease.root);
+      report.checks.push({ command: "service release artifact cleanliness after start", ok: true });
       await wait(1500);
       const health = await checkServiceHealth(service, { root: config.root, repeat: 10 });
       report.health = health;
