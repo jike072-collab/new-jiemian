@@ -25,7 +25,7 @@ export function readActiveRelease(config) {
 export function writeActiveRelease(config, details = {}, options = {}) {
   const targetFile = getActiveReleaseFile(config);
   const payload = buildActiveReleasePayload(config, details);
-  const previous = existsSync(targetFile) ? readActiveRelease(config, { optional: false }) : null;
+  const previous = existsSync(targetFile) ? readActiveRelease(config) : null;
   mkdirSync(config.runtimeDir, { recursive: true });
   writeJsonAtomically(targetFile, payload, options.writerOptions);
   try {
@@ -33,7 +33,7 @@ export function writeActiveRelease(config, details = {}, options = {}) {
     assertStoredActiveReleaseMatches(payload, stored);
     return stored;
   } catch (error) {
-    recoverFailedActiveReleaseUpdate(config, previous, options);
+    recoverFailedActiveReleaseUpdate(config, previous, payload, options);
     throw error;
   }
 }
@@ -205,13 +205,17 @@ function assertStoredActiveReleaseMatches(expected, actual) {
 }
 
 function defaultReadBack(config) {
-  return readActiveRelease(config, { optional: false });
+  return readActiveRelease(config);
 }
 
-function recoverFailedActiveReleaseUpdate(config, previous, options = {}) {
+function recoverFailedActiveReleaseUpdate(config, previous, attemptedPayload, options = {}) {
   const targetFile = getActiveReleaseFile(config);
   const warn = options.writerOptions?.warn || defaultAtomicWriteWarning;
   try {
+    const current = readActiveReleaseFileIfValid(config);
+    if (current && !sameActiveReleaseIdentity(current, attemptedPayload)) {
+      return;
+    }
     if (previous) {
       writeJsonAtomically(targetFile, previous, options.rollbackWriterOptions || options.writerOptions);
       return;
@@ -239,6 +243,20 @@ function createExclusiveTempFile(targetFile, options = {}) {
     }
   }
   throw new Error(`Unable to reserve a unique temporary metadata file for ${targetBase}.`);
+}
+
+function readActiveReleaseFileIfValid(config) {
+  try {
+    return readActiveRelease(config);
+  } catch {
+    return null;
+  }
+}
+
+function sameActiveReleaseIdentity(left, right) {
+  if (!left || !right) return false;
+  return ["serviceName", "releaseId", "releaseRoot", "runtimeCommit", "status"]
+    .every((key) => String(left[key] || "") === String(right[key] || ""));
 }
 
 function defaultAtomicWriteWarning(message) {
