@@ -169,6 +169,24 @@ test("candidate verification data and uploads are outside release artifact", asy
   });
 });
 
+test("non-runtime validation checks do not inherit scratch data overrides", async () => {
+  await withTempProject(async (root) => {
+    const config = getServiceConfig("production", { root });
+    const scratchRoot = join(config.runtimeDir, "release-smoke", "abcdef123456-deploy-id");
+    const env = buildReleaseCandidateVerificationEnv({
+      DATA_DIR: "process-data",
+      UPLOADS_DIR: "process-uploads",
+      AOHUANG_ALLOW_RUNTIME_DIR_OVERRIDE: "1",
+      RUNTIME_STORAGE_ISOLATION: "strict",
+    }, scratchRoot, { includeRuntimeConfig: false });
+
+    assert.equal(env.DATA_DIR, undefined);
+    assert.equal(env.UPLOADS_DIR, undefined);
+    assert.equal(env.AOHUANG_ALLOW_RUNTIME_DIR_OVERRIDE, undefined);
+    assert.equal(env.RUNTIME_STORAGE_ISOLATION, undefined);
+  });
+});
+
 test("cleanup targets candidate scratch only and preserves official runtime data", async () => {
   await withTempProject(async (root) => {
     const config = getServiceConfig("production", { root });

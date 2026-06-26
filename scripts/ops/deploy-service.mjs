@@ -209,6 +209,7 @@ async function validateTargetInWorktree(service, config, runtime, targetCommit, 
 
 export function buildReleaseCandidateVerificationEnv(baseEnv, scratchRoot, options = {}) {
   const env = buildVerificationEnv(baseEnv, options);
+  if (options.includeRuntimeConfig !== true) return env;
   return {
     ...env,
     AOHUANG_ALLOW_RUNTIME_DIR_OVERRIDE: "1",
@@ -375,6 +376,7 @@ function buildVerificationEnv(baseEnv, options = {}) {
     delete env.DATA_DIR;
     delete env.UPLOADS_DIR;
     delete env.AOHUANG_ALLOW_RUNTIME_DIR_OVERRIDE;
+    delete env.RUNTIME_STORAGE_ISOLATION;
   }
   return env;
 }
