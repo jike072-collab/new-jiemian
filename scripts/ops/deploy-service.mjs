@@ -1,8 +1,7 @@
 #!/usr/bin/env node
 import { randomUUID } from "node:crypto";
-import { existsSync, mkdirSync, mkdtempSync, renameSync, rmSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { existsSync, mkdirSync, readdirSync, renameSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { basename, join, parse, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 import {
   cleanupRestoredDirectories,
@@ -21,7 +20,7 @@ import { stopService } from "./stop-service.mjs";
 import { getListeningPid, isPortAvailable, run, runSync, wait } from "./process-utils.mjs";
 import { safeGit } from "./git-utils.mjs";
 import { createDatabaseRestoreAuthorization, prepareDatabaseRestore, restoreDatabaseBackup, writeDatabaseRestoreAuthorizationFile } from "./database-restore.mjs";
-import { acquireServiceOperationLock, markServiceOperationFailed, releaseServiceOperationLock } from "./operation-lock.mjs";
+import { acquireServiceOperationLock, markServiceOperationFailed, releaseServiceOperationLock, touchServiceOperationLock } from "./operation-lock.mjs";
 
 const validationCheckCommands = [
   ["npm", ["ci"]],
@@ -76,7 +75,7 @@ export async function deployService(service, options = {}) {
   };
 
   try {
-    operationLock = acquireServiceOperationLock(config, "deploy", { deploymentId, target });
+    operationLock = await acquireServiceOperationLock(config, "deploy", { deploymentId, target });
     assertCleanWorktree(config.root);
     runSync("git", ["fetch", "origin"], { cwd: config.root });
     targetCommit = runSync("git", ["rev-parse", target], { cwd: config.root }).stdout.trim();
@@ -153,6 +152,7 @@ export async function deployService(service, options = {}) {
   } finally {
     if (releaseArtifacts) rollbackPreparedArtifacts(releaseArtifacts);
     if (preparedRelease?.root) cleanupValidationWorktree(config.root, preparedRelease.root);
+    if (preparedRelease?.scratchRoot) rmSync(preparedRelease.scratchRoot, { recursive: true, force: true });
     releaseServiceOperationLock(operationLock);
     mkdirSync(config.runtimeDir, { recursive: true });
     writeFileSync(join(config.runtimeDir, `deploy-${service}-last.json`), JSON.stringify(report, null, 2));
@@ -160,8 +160,10 @@ export async function deployService(service, options = {}) {
 }
 
 async function validateTargetInWorktree(service, config, runtime, targetCommit, report) {
-  const validationRoot = mkdtempSync(join(tmpdir(), `aohuang-${service}-deploy-check-`));
+  const validationRoot = createReleaseCandidateRoot(config, targetCommit, report.deploymentId);
+  const validationScratchRoot = join(config.runtimeDir, "release-smoke", basename(validationRoot));
   report.validationRoot = validationRoot;
+  report.validationScratchRoot = validationScratchRoot;
   try {
     runSync("git", ["worktree", "add", "--detach", validationRoot, targetCommit], { cwd: config.root });
     const validationConfig = getServiceConfig(service, { root: validationRoot, port: config.port });
@@ -169,8 +171,8 @@ async function validateTargetInWorktree(service, config, runtime, targetCommit, 
     const smokeEnv = {
       ...buildVerificationEnv(runtime.env, { includeRuntimeConfig: true }),
       AOHUANG_ALLOW_RUNTIME_DIR_OVERRIDE: "1",
-      DATA_DIR: validationConfig.dataDir,
-      UPLOADS_DIR: validationConfig.uploadsDir,
+      DATA_DIR: join(validationScratchRoot, "data"),
+      UPLOADS_DIR: join(validationScratchRoot, "uploads"),
       STAGING_SMOKE_PORT: String(await findTemporaryPort()),
     };
     for (const [command, args] of validationCheckCommands) {
@@ -180,13 +182,52 @@ async function validateTargetInWorktree(service, config, runtime, targetCommit, 
     }
     await run(process.execPath, ["scripts/ops/start-service.mjs", service, "--preflight-only", "--root", validationRoot], {
       cwd: validationRoot,
-      env: { ...runtime.env, DATA_DIR: smokeEnv.DATA_DIR, UPLOADS_DIR: smokeEnv.UPLOADS_DIR },
+      env: {
+        ...runtime.env,
+        AOHUANG_ALLOW_RUNTIME_DIR_OVERRIDE: "1",
+        DATA_DIR: smokeEnv.DATA_DIR,
+        UPLOADS_DIR: smokeEnv.UPLOADS_DIR,
+      },
     });
     report.checks.push({ command: "validation start-service --preflight-only", ok: true });
-    return { root: validationRoot };
+    assertReleaseCandidateSafe(config, validationRoot, validationConfig);
+    return { root: validationRoot, scratchRoot: validationScratchRoot };
   } catch (error) {
     cleanupValidationWorktree(config.root, validationRoot);
+    rmSync(validationScratchRoot, { recursive: true, force: true });
     throw error;
+  }
+}
+
+export function createReleaseCandidateRoot(config, targetCommit, deploymentId = randomUUID()) {
+  const shortCommit = String(targetCommit || "unknown").slice(0, 12).replace(/[^a-f0-9]/gi, "x");
+  const safeId = String(deploymentId || randomUUID()).replace(/[^a-z0-9-]/gi, "").slice(0, 18) || randomUUID().slice(0, 8);
+  const releasesRoot = join(config.runtimeDir, "releases");
+  mkdirSync(releasesRoot, { recursive: true });
+  const candidateRoot = resolve(releasesRoot, `${shortCommit}-${safeId}`);
+  const releasesPrefix = `${resolve(releasesRoot).toLowerCase()}${process.platform === "win32" ? "\\" : "/"}`;
+  if (!candidateRoot.toLowerCase().startsWith(releasesPrefix)) {
+    throw new Error("Release candidate path escaped the service release directory.");
+  }
+  if (isSamePath(candidateRoot, config.dataDir) || isSamePath(candidateRoot, config.uploadsDir)) {
+    throw new Error("Release candidate path must not overlap data/uploads.");
+  }
+  return candidateRoot;
+}
+
+function assertReleaseCandidateSafe(config, validationRoot, validationConfig) {
+  if (!sameVolume(config.root, validationRoot)) {
+    throw new Error("Release candidate must be created on the same volume as the target service root.");
+  }
+  const forbidden = [
+    validationConfig.dataDir,
+    validationConfig.uploadsDir,
+    join(validationRoot, ".env.local"),
+    join(validationRoot, ".runtime", "staging.env"),
+    join(validationRoot, ".runtime", "production.env"),
+  ];
+  for (const path of forbidden) {
+    if (existsSync(path)) throw new Error(`Release candidate contains forbidden runtime state: ${path}`);
   }
 }
 
@@ -237,7 +278,7 @@ export async function rollbackService(service, options = {}) {
   const deploymentId = options.deploymentId || manifest.deploymentId;
   const restoreOptions = { ...options, deploymentId };
   try {
-    operationLock = acquireServiceOperationLock(config, "rollback", { deploymentId, backupDir: options.backupDir }, { existingLock: options.operationLock });
+    operationLock = await acquireServiceOperationLock(config, "rollback", { deploymentId, backupDir: options.backupDir }, { existingLock: options.operationLock });
     runSync("git", ["cat-file", "-e", `${options.commit}^{commit}`], { cwd: config.root });
     if (options.mode === "full") prepareDatabaseRestore(config, manifest, rollbackEnv, restoreOptions);
   } catch (error) {
@@ -258,7 +299,12 @@ export async function rollbackService(service, options = {}) {
     await startService(service, { root: config.root, preflightOnly: true });
     if (options.mode === "full") {
       restoredDirectories = restoreDataAndUploads(config, options.backupDir, { deferCleanup: true });
-      restoreDatabaseBackup(config, manifest, rollbackEnv, restoreOptions);
+      touchServiceOperationLock(operationLock);
+      await restoreDatabaseBackup(config, manifest, rollbackEnv, {
+        ...restoreOptions,
+        onProgress: () => touchServiceOperationLock(operationLock),
+      });
+      touchServiceOperationLock(operationLock);
     }
     await startService(service, { root: config.root });
     const health = await checkServiceHealth(service, { root: config.root, repeat: 10 });
@@ -313,24 +359,28 @@ async function prepareRollbackCodeCandidate(service, config, runtime, commit) {
   }
 }
 
-function activatePreparedArtifacts(config, prepared, label) {
+export function activatePreparedArtifacts(config, prepared, label, options = {}) {
   const stamp = new Date().toISOString().replace(/[-:]/g, "").replace(/\..+/, "").replace("T", "-");
   const state = { moved: [] };
+  const rename = options.rename || renameSync;
   try {
     for (const name of ["node_modules", ".next"]) {
       const source = join(prepared.root, name);
       const target = join(config.root, name);
       if (!existsSync(source)) throw new Error(`Prepared rollback artifact is missing: ${name}`);
+      assertPreparedArtifact(name, source);
+      assertSameVolume(source, target, options);
       const old = `${target}.before-${label}-${stamp}`;
       let oldPath = null;
       if (existsSync(target)) {
-        renameSync(target, old);
+        rename(target, old);
         oldPath = old;
       }
       try {
-        renameSync(source, target);
+        rename(source, target);
+        assertPreparedArtifact(name, target);
       } catch (error) {
-        if (oldPath && existsSync(oldPath)) renameSync(oldPath, target);
+        if (oldPath && existsSync(oldPath)) rename(oldPath, target);
         throw error;
       }
       state.moved.push({ name, source, target, old: oldPath });
@@ -353,6 +403,56 @@ function rollbackPreparedArtifacts(state) {
     if (entry.target && existsSync(entry.target)) rmSync(entry.target, { recursive: true, force: true });
     if (entry.old && existsSync(entry.old)) renameSync(entry.old, entry.target);
   }
+}
+
+function assertPreparedArtifact(name, path) {
+  const files = countFiles(path);
+  if (files <= 0) throw new Error(`Prepared artifact is empty: ${name}`);
+  if (name === "node_modules" && !existsSync(join(path, "next", "dist", "bin", "next"))) {
+    throw new Error("Prepared node_modules is missing Next.js binary.");
+  }
+  if (name === ".next") {
+    for (const keyFile of ["BUILD_ID", "required-server-files.json"]) {
+      if (!existsSync(join(path, keyFile))) throw new Error(`Prepared .next is missing ${keyFile}.`);
+    }
+    for (const keyDir of ["server", "static"]) {
+      if (!existsSync(join(path, keyDir)) || !statSync(join(path, keyDir)).isDirectory()) {
+        throw new Error(`Prepared .next is missing ${keyDir}.`);
+      }
+    }
+  }
+}
+
+function countFiles(path) {
+  if (!existsSync(path)) return 0;
+  const stats = statSync(path);
+  if (stats.isFile()) return 1;
+  if (!stats.isDirectory()) return 0;
+  let total = 0;
+  for (const entry of readdirSync(path)) {
+    total += countFiles(join(path, entry));
+  }
+  return total;
+}
+
+function assertSameVolume(source, target, options = {}) {
+  if (!sameVolume(source, target, options)) {
+    throw new Error(`Prepared artifact must be on the same volume as the target: ${source} -> ${target}`);
+  }
+}
+
+export function sameVolume(left, right, options = {}) {
+  const volumeProvider = options.volumeProvider || defaultVolume;
+  return volumeProvider(left) === volumeProvider(right);
+}
+
+function defaultVolume(path) {
+  if (process.platform === "win32") return parse(resolve(path)).root.toLowerCase();
+  return "/";
+}
+
+function isSamePath(left, right) {
+  return resolve(left).toLowerCase() === resolve(right).toLowerCase();
 }
 
 function assertCleanWorktree(root) {

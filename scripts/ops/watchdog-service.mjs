@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-import { appendFileSync, closeSync, existsSync, mkdirSync, openSync, rmSync, statSync } from "node:fs";
+import { appendFileSync, closeSync, existsSync, mkdirSync, openSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
 import { checkServiceHealth } from "./health-check.mjs";
@@ -8,7 +8,7 @@ import { getServiceConfig } from "./service-config.mjs";
 import { startService } from "./start-service.mjs";
 import { stopService } from "./stop-service.mjs";
 import { classifyServiceProcess } from "./process-identity.mjs";
-import { wait } from "./process-utils.mjs";
+import { getProcessInfo, wait } from "./process-utils.mjs";
 import { getActiveServiceOperation } from "./operation-lock.mjs";
 
 export async function runWatchdog(service, options = {}) {
@@ -16,10 +16,22 @@ export async function runWatchdog(service, options = {}) {
   mkdirSync(config.runtimeDir, { recursive: true });
   const lock = acquireLock(config, options);
   try {
-    const activeOperation = getActiveServiceOperation(config);
+    const activeOperation = await getActiveServiceOperation(config, ["deploy", "rollback"], options.operationLockOptions || {});
     if (activeOperation) {
-      writeWatchdogLog(config, "deferred-active-operation", { operation: activeOperation.operation });
-      return { service, action: "none", ok: true, deferred: true, operation: activeOperation.operation };
+      writeWatchdogLog(config, "deferred-active-operation", {
+        operation: activeOperation.operation,
+        lockStatus: activeOperation.status,
+        reason: activeOperation.reason,
+      });
+      return {
+        service,
+        action: "none",
+        ok: true,
+        deferred: true,
+        operation: activeOperation.operation,
+        lockStatus: activeOperation.status,
+        reason: activeOperation.reason,
+      };
     }
     const identity = await classifyServiceProcess(service, { root: config.root, port: config.port, processInfoProvider: options.processInfoProvider });
     if (identity.status === "owned") {
@@ -66,9 +78,26 @@ async function confirmHealthFailure(service, config, options) {
 function acquireLock(config, options = {}) {
   const lockFile = join(config.runtimeDir, `watchdog-${config.service}.lock`);
   const staleMs = Number(options.staleMs || 5 * 60 * 1000);
-  if (existsSync(lockFile) && Date.now() - statSync(lockFile).mtimeMs > staleMs) rmSync(lockFile, { force: true });
+  if (existsSync(lockFile) && Date.now() - statSync(lockFile).mtimeMs > staleMs) {
+    const lock = readWatchdogLock(lockFile);
+    const pid = Number(lock?.pid);
+    if (Number.isFinite(pid) && pid > 0 && getProcessInfo(pid)) {
+      throw new Error(`${config.service} watchdog lock is still owned by a live pid.`);
+    }
+    rmSync(lockFile, { force: true });
+  }
   const fd = openSync(lockFile, "wx");
+  const payload = { pid: process.pid, createdAt: new Date().toISOString() };
+  writeFileSync(fd, JSON.stringify(payload));
   return { fd, lockFile };
+}
+
+function readWatchdogLock(lockFile) {
+  try {
+    return JSON.parse(readFileSync(lockFile, "utf8"));
+  } catch {
+    return null;
+  }
 }
 
 function releaseLock(lock) {

@@ -93,7 +93,7 @@ try {
     deploymentId: "isolated-drill",
   });
   const restored = restoreDataAndUploads(config, backup.backupDir, { deferCleanup: true });
-  restoreDatabaseBackup(config, manifest, env, {
+  await restoreDatabaseBackup(config, manifest, env, {
     pgRestoreCommand: [process.execPath, fakeRestore],
     rollbackAuthorization: authorization,
     expectedTargetCommit: "drill-target",
