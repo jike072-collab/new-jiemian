@@ -86,6 +86,7 @@ test("Stage 8A provider health report exposes only read-only model health fields
   assert.deepEqual(image.supportedTools, ["image", "image-edit"]);
   assert.equal(image.reachable, "unchecked");
   assert.equal(image.apiKey.masked.includes("stage8a-provider-secret-key"), false);
+  assert.equal(image.apiKey.masked.startsWith("sta"), false);
 
   const video = report.providers.find((item) => item.providerId === "stage8a-video");
   assert(video);
@@ -108,7 +109,24 @@ test("Stage 8A configured flags match public provider sanitization without expos
   assert.equal(publicMissingKey.configured, false);
 });
 
-test("Stage 8A model list check only reads /models and never sends generation payloads", async () => {
+test("Stage 8A model health skips external provider model-list calls by default", async () => {
+  const fetchImpl: typeof fetch = async () => {
+    throw new Error("external provider fetch should not be called by default");
+  };
+
+  const report = await checkProviderHealth({
+    mode: "models",
+    fetchImpl,
+    providers: [provider()],
+  });
+
+  assert.equal(report.providers[0]?.models.image.available, "unknown");
+  assert.equal(report.providers[0]?.reachable, "skipped");
+  assert.equal(report.providers[0]?.warnings.some((issue) => issue.code === "MODEL_LIST_SKIPPED"), true);
+  assertNoSecretLeak(report);
+});
+
+test("Stage 8A explicitly authorized model list check only reads /models and never sends generation payloads", async () => {
   const requests: Array<{ method: string; url: string; body: string }> = [];
   const fetchImpl: typeof fetch = async (url, init) => {
     requests.push({
@@ -124,6 +142,7 @@ test("Stage 8A model list check only reads /models and never sends generation pa
 
   const report = await checkProviderHealth({
     mode: "models",
+    allowExternalProviderModelList: true,
     fetchImpl,
     providers: [provider()],
   });

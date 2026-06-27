@@ -141,7 +141,7 @@ async function readHealthJson(response: Response) {
 const healthModes: Array<{ mode: HealthMode; label: string; detail: string }> = [
   { mode: "static", label: "静态检测", detail: "只读本地配置" },
   { mode: "connectivity", label: "连接检测", detail: "HEAD/GET 网关" },
-  { mode: "models", label: "模型列表检测", detail: "读取 /models" },
+  { mode: "models", label: "模型配置检测", detail: "默认不探测外部 /models" },
 ];
 
 const modelLabels: Record<ModelKind, string> = {

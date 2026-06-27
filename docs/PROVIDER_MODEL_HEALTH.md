@@ -1,6 +1,6 @@
 # Provider Model Health
 
-Stage 8A adds a read-only provider and model health view for administrators. It helps verify whether the configured providers are present, whether required model fields are filled, whether the NewAPI integration is configured, and whether optional read-only checks can inspect provider reachability or model lists.
+Stage 8A adds a read-only provider and model health view for administrators. It helps verify whether the configured providers are present, whether required model fields are filled, and whether the NewAPI integration is configured. External provider model-list probing is skipped by default and requires separate authorization.
 
 ## What It Does
 
@@ -22,14 +22,14 @@ Stage 8A adds a read-only provider and model health view for administrators. It 
 
 ## Why It Does Not Produce Cost
 
-The default static check reads local configuration only. The optional connectivity check uses low-cost HEAD requests. The optional model-list check only reads a provider model list endpoint when supported. No prompt, image, video, upload body, generation request, upscale request, or NewAPI generation request is sent.
+The default static check reads local configuration only. The Stage 8A model configuration check also stays local by default and reports external model-list probing as skipped. No prompt, image, video, upload body, generation request, upscale request, NewAPI generation request, or provider `/models` request is sent unless a future task separately authorizes that external probe.
 
 ## Checked Configuration
 
 - Provider id, name, enabled state, endpoint type, and endpoint URL shape.
 - Provider authentication presence without returning the secret value.
 - Model field presence for supported tool types.
-- Optional provider `/models` list availability for OpenAI-compatible model-list endpoints.
+- Local model field presence for OpenAI-compatible and upscale provider rows; external provider `/models` reads are skipped by default.
 - NewAPI enabled/base URL/admin credential presence, with external connection probing skipped by default.
 
 ## Normal Results
@@ -37,7 +37,7 @@ The default static check reads local configuration only. The optional connectivi
 - `configured=true` means the provider has a valid endpoint, authentication is present, and required model fields for its supported tools are filled.
 - `reachable=unchecked` means no external connectivity check was requested.
 - `reachable=reachable` means the low-cost connectivity check succeeded.
-- `available=yes` means the configured model appeared in a safe model-list response.
+- `available=unknown` with `reachable=skipped` means Stage 8A did not call the external provider model-list endpoint.
 
 ## Results Requiring Configuration
 
@@ -52,4 +52,4 @@ The health report never returns raw provider API keys, `ADMIN_PASSWORD`, `APP_DA
 
 ## Future Live Smoke Tests
 
-A future live generation smoke test can verify end-to-end generation by submitting a tiny controlled request. That is intentionally outside Stage 8A. Any real generation smoke test must be separately authorized because it can call paid provider paths and may create usage costs.
+A future externally authorized probe can read provider model-list endpoints, and a separate live generation smoke test can verify end-to-end generation by submitting a tiny controlled request. Both are intentionally outside Stage 8A. Any real provider probe or generation smoke test must be separately authorized because it can touch external provider paths and may create usage costs.

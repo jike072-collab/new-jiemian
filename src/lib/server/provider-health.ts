@@ -24,6 +24,7 @@ export type ProviderHealthIssueCode =
   | "PROVIDER_BAD_RESPONSE"
   | "PROVIDER_NON_JSON_RESPONSE"
   | "MODEL_LIST_UNAVAILABLE"
+  | "MODEL_LIST_SKIPPED"
   | "MODEL_LIST_EMPTY"
   | "MODEL_MISSING_IMAGE"
   | "MODEL_MISSING_IMAGE_EDIT"
@@ -137,6 +138,7 @@ export type ProviderHealthOptions = {
   maxResponseBytes?: number;
   now?: Date;
   allowLiveGeneration?: boolean;
+  allowExternalProviderModelList?: boolean;
 };
 
 type ModelIdsResult = {
@@ -171,6 +173,7 @@ export const providerHealthIssueMessages: Record<ProviderHealthIssueCode, string
   PROVIDER_BAD_RESPONSE: "供应商返回异常响应。",
   PROVIDER_NON_JSON_RESPONSE: "供应商返回非 JSON 响应。",
   MODEL_LIST_UNAVAILABLE: "模型列表接口不可用。",
+  MODEL_LIST_SKIPPED: "模型列表外部探测已跳过。",
   MODEL_LIST_EMPTY: "模型列表为空。",
   MODEL_MISSING_IMAGE: "图片生成模型未配置。",
   MODEL_MISSING_IMAGE_EDIT: "图片编辑模型未配置。",
@@ -240,9 +243,8 @@ function maskApiKey(provider: ProviderConfig) {
   const text = String(provider.apiKey || "").trim();
   if (!hasValue(text)) return apiKeyConfigured(provider) ? "configured" : "";
   if (text.length <= 4) return "****";
-  const prefix = text.slice(0, Math.min(3, Math.max(0, text.length - 4)));
   const suffix = text.slice(-4);
-  return `${prefix}****${suffix}`;
+  return `****${suffix}`;
 }
 
 function trimText(value: unknown) {
@@ -752,10 +754,22 @@ function applyModelList(result: ProviderHealthResult, modelList: ModelListResult
   return finalizeProviderResult(next);
 }
 
+function skipExternalModelList(result: ProviderHealthResult) {
+  return finalizeProviderResult({
+    ...result,
+    reachable: "skipped",
+    issues: mergeIssues(result.issues, [issue("MODEL_LIST_SKIPPED", "warning")]),
+    lastCheck: {
+      ...result.lastCheck,
+      status: "warning",
+    },
+  });
+}
+
 async function checkProvider(
   provider: ProviderConfig,
   duplicateIds: Set<string>,
-  options: Required<Pick<ProviderHealthOptions, "mode" | "fetchImpl" | "timeoutMs" | "maxResponseBytes">> & { checkedAt: string },
+  options: Required<Pick<ProviderHealthOptions, "mode" | "fetchImpl" | "timeoutMs" | "maxResponseBytes">> & { checkedAt: string; allowExternalProviderModelList: boolean },
 ) {
   const startedAt = Date.now();
   let result = baseResult(provider, duplicateIds, options.checkedAt);
@@ -776,11 +790,15 @@ async function checkProvider(
   }
 
   if (options.mode === "models" && result.endpoint.validUrl && result.apiKey.configured) {
-    const modelList = await checkModelList(provider, options.fetchImpl, options.timeoutMs, options.maxResponseBytes);
-    result = applyModelList({
-      ...result,
-      reachable: modelList.ok ? "reachable" : "unreachable",
-    }, modelList);
+    if (!options.allowExternalProviderModelList) {
+      result = skipExternalModelList(result);
+    } else {
+      const modelList = await checkModelList(provider, options.fetchImpl, options.timeoutMs, options.maxResponseBytes);
+      result = applyModelList({
+        ...result,
+        reachable: modelList.ok ? "reachable" : "unreachable",
+      }, modelList);
+    }
   }
 
   result.lastCheck.durationMs = Math.max(result.lastCheck.durationMs, Date.now() - startedAt);
@@ -802,6 +820,7 @@ export async function checkProviderHealth(input: ProviderHealthOptions): Promise
     fetchImpl,
     timeoutMs,
     maxResponseBytes,
+    allowExternalProviderModelList: Boolean(input.allowExternalProviderModelList),
     checkedAt,
   })));
   const summary = summarize(providers);
