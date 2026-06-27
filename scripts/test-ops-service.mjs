@@ -117,7 +117,8 @@ test("environment values are masked in summaries", async () => {
     const report = buildRuntimeEnv("production", { root });
     const summary = formatRuntimeEnvSummary(report.summary);
     assert(!summary.includes(secret));
-    assert.match(summary, /AUTH_SESSION_SECRET: configured \(masked/);
+    assert.match(summary, /adminAuthConfigured=true/);
+    assert(!summary.includes("AUTH_SESSION_SECRET"));
   });
 });
 
@@ -146,6 +147,8 @@ test("missing required environment fails before process stop", async () => {
     });
     assert.notEqual(result.status, 0);
     assert.match(`${result.stdout}\n${result.stderr}`, /Missing required runtime configuration before stopping any process/);
+    assert.match(`${result.stdout}\n${result.stderr}`, /database/);
+    assert(!`${result.stdout}\n${result.stderr}`.includes("APP_DATABASE_URL"));
   });
 });
 

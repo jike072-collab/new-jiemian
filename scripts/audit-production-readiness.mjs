@@ -8,6 +8,7 @@ import { snapshotDirectory, verifyBackupManifest } from "./ops/backup-utils.mjs"
 import { safeGit } from "./ops/git-utils.mjs";
 import { checkServiceHealth } from "./ops/health-check.mjs";
 import { buildRuntimeEnv } from "./ops/load-runtime-env.mjs";
+import { hasSecretValuePattern } from "./ops/log-utils.mjs";
 import { classifyServiceProcess } from "./ops/process-identity.mjs";
 import { getProcessInfo, runSync } from "./ops/process-utils.mjs";
 import { getAllServiceConfigs, getServiceConfig } from "./ops/service-config.mjs";
@@ -45,14 +46,13 @@ const forbiddenRequestPatterns = [
   /new-api/i,
 ];
 
-const secretNamePattern = /SECRET|TOKEN|PASSWORD|KEY|DSN|URL|COOKIE|AUTHORIZATION/i;
 const suspiciousLogPatterns = [
   { key: "http500", pattern: /\b500\b|Internal Server Error/i },
   { key: "runtimeException", pattern: /Unhandled|TypeError|ReferenceError|SyntaxError|Exception|stack trace/i },
-  { key: "databaseError", pattern: /(database|postgres|APP_DATABASE|ECONNREFUSED).{0,80}(error|failed|timeout|refused|unavailable)/i },
+  { key: "databaseError", pattern: /(database|postgres|ECONNREFUSED).{0,80}(error|failed|timeout|refused|unavailable)/i },
   { key: "provider", pattern: /provider.*(error|failed|missing|invalid)|PROVIDER_/i },
-  { key: "secretKeyword", pattern: /Authorization|Cookie|ADMIN_PASSWORD|APP_DATABASE_URL|NEW_API_ADMIN_ACCESS_TOKEN|api[_-]?key/i },
-  { key: "secretValueLeak", pattern: /Authorization:\s*Bearer\s+[A-Za-z0-9._-]+|Cookie:\s*[^;\s=]+=[^;\s]+|postgres(?:ql)?:\/\/[^:\s"']+:[^@\s"']+@|sk-[A-Za-z0-9_-]{20,}|ghp_[A-Za-z0-9_]{20,}/i },
+  { key: "secretKeyword", pattern: /Authorization|Cookie|Set-Cookie|ADMIN_PASSWORD|APP_DATABASE_URL|NEW_API_ADMIN_ACCESS_TOKEN|api[_-]?key|password\s*[:=]|secret\s*[:=]|token\s*[:=]/i },
+  { key: "secretValueLeak", test: hasSecretValuePattern },
   { key: "generationCall", pattern: /\/api\/generate\/|\/api\/upscale\/(?:image|video)|new-api/i },
 ];
 
@@ -84,12 +84,7 @@ function maskRuntimeSummary(summary) {
       source: file.source,
       exists: file.exists,
     })),
-    keys: summary.keys.map((entry) => ({
-      key: entry.key,
-      state: entry.state,
-      value: entry.state === "configured" && secretNamePattern.test(entry.key) ? "masked" : entry.value,
-      source: entry.source,
-    })),
+    categories: summary.categories || [],
   };
 }
 
@@ -192,18 +187,109 @@ function tailFile(path, maxBytes = 256 * 1024) {
   return fd.subarray(Math.max(0, stats.size - maxBytes)).toString("utf8");
 }
 
-function auditLogs(config) {
+export function auditLogs(config, options = {}) {
   const text = tailFile(config.logFile);
-  if (!text) return { logFile: config.logFile, exists: false, findings: [] };
-  const findings = suspiciousLogPatterns
-    .filter((entry) => entry.pattern.test(text))
-    .map((entry) => entry.key);
+  const windowStart = normalizeTimestamp(options.windowStart);
+  const windowEnd = nowIso();
+  if (!text) {
+    return {
+      logFile: config.logFile,
+      logFiles: [config.logFile],
+      exists: false,
+      windowStart,
+      windowEnd,
+      currentFindings: [],
+      historicalFindings: [],
+      unknownFindings: [],
+      findings: [],
+      currentFindingCount: 0,
+      historicalFindingCount: 0,
+      unknownFindingCount: 0,
+      untimestampedLines: 0,
+    };
+  }
+  const window = splitLogWindow(text, windowStart);
+  const currentFindings = collectLogFindings(window.currentText);
+  const historicalFindings = collectLogFindings(window.historicalText);
+  const unknownFindings = collectLogFindings(window.unknownText);
   return {
     logFile: config.logFile,
+    logFiles: [config.logFile],
     exists: true,
     bytesScanned: Buffer.byteLength(text),
-    findings,
+    windowStart,
+    windowEnd,
+    currentLines: window.currentLines,
+    historicalLines: window.historicalLines,
+    unknownLines: window.unknownLines,
+    untimestampedLines: window.untimestampedLines,
+    currentFindings,
+    historicalFindings,
+    unknownFindings,
+    findings: currentFindings,
+    currentFindingCount: currentFindings.length,
+    historicalFindingCount: historicalFindings.length,
+    unknownFindingCount: unknownFindings.length,
   };
+}
+
+export function splitLogWindow(text, windowStart) {
+  const windowStartMs = parseLogDate(windowStart);
+  const timestampGraceMs = 5000;
+  const buckets = {
+    current: [],
+    historical: [],
+    unknown: [],
+  };
+  let activeBucket = windowStartMs ? "unknown" : "current";
+  let untimestampedLines = 0;
+  for (const line of String(text || "").split(/\r?\n/)) {
+    const timestamp = extractLogTimestamp(line);
+    if (timestamp) {
+      const lineMs = parseLogDate(timestamp);
+      activeBucket = windowStartMs && lineMs + timestampGraceMs < windowStartMs ? "historical" : "current";
+    } else {
+      untimestampedLines += 1;
+    }
+    buckets[activeBucket].push(line);
+  }
+  return {
+    currentText: buckets.current.join("\n"),
+    historicalText: buckets.historical.join("\n"),
+    unknownText: buckets.unknown.join("\n"),
+    currentLines: buckets.current.length,
+    historicalLines: buckets.historical.length,
+    unknownLines: buckets.unknown.length,
+    untimestampedLines,
+  };
+}
+
+export function collectLogFindings(text) {
+  return suspiciousLogPatterns
+    .filter((entry) => entry.test ? entry.test(text) : entry.pattern.test(text))
+    .map((entry) => entry.key);
+}
+
+function normalizeTimestamp(value) {
+  const ms = parseLogDate(value);
+  return ms ? new Date(ms).toISOString() : null;
+}
+
+function extractLogTimestamp(line) {
+  const iso = /\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{3})?Z/.exec(line);
+  return iso ? iso[0] : null;
+}
+
+function parseLogDate(value) {
+  if (!value) return null;
+  const parsed = Date.parse(value);
+  if (Number.isFinite(parsed)) return parsed;
+  const wmi = /^(\d{4})(\d{2})(\d{2})(\d{2})(\d{2})(\d{2})(?:\.(\d{1,6}))?([+-]\d{3})?$/.exec(String(value));
+  if (!wmi) return null;
+  const [, year, month, day, hour, minute, second, fraction = "0", offset = "+000"] = wmi;
+  const millis = Number(fraction.slice(0, 3).padEnd(3, "0"));
+  const utc = Date.UTC(Number(year), Number(month) - 1, Number(day), Number(hour), Number(minute), Number(second), millis);
+  return utc - Number(offset) * 60 * 1000;
 }
 
 function listDatabaseFiles(root) {
@@ -296,7 +382,7 @@ async function auditService(service) {
     databaseFiles: listDatabaseFiles(config.root).map((file) => normalizePath(relative(config.root, file))),
     http,
     health,
-    logs: auditLogs(config),
+    logs: auditLogs(config, { windowStart: identity.state?.startedAt || status.startedAt || identity.processInfo?.CreationDate }),
   };
 }
 
@@ -545,15 +631,8 @@ function evaluateReport(report) {
   if (report.staging.process.identity !== "owned") {
     risks.push(`3107 process identity is ${report.staging.process.identity}`);
   }
-  if (report.production.logs.findings.includes("secretValueLeak")) {
-    blockers.push("3106 recent logs contain a possible secret value");
-  }
-  if (report.production.logs.findings.includes("secretKeyword")) {
-    risks.push("3106 recent logs contain sensitive configuration key names; values are not included in the audit report");
-  }
-  if (report.production.logs.findings.includes("generationCall")) {
-    blockers.push("3106 recent logs contain a possible generation/NewAPI marker");
-  }
+  evaluateLogFindings("3106", report.production, blockers, risks);
+  evaluateLogFindings("3107", report.staging, blockers, risks);
   if (report.gitDiff.risk.businessApi.length) {
     risks.push(`main differs in business API files: ${report.gitDiff.risk.businessApi.join(", ")}`);
   }
@@ -605,6 +684,24 @@ function evaluateHttp(label, serviceReport, blockers, risks) {
   }
   if (serviceReport.http.forbiddenRequests.length) {
     blockers.push(`${label} attempted forbidden requests: ${serviceReport.http.forbiddenRequests.join(", ")}`);
+  }
+}
+
+function evaluateLogFindings(label, serviceReport, blockers, risks) {
+  const logs = serviceReport.logs || {};
+  const current = new Set(logs.currentFindings || logs.findings || []);
+  const unknown = new Set(logs.unknownFindings || []);
+  for (const key of ["http500", "runtimeException", "databaseError", "secretValueLeak", "generationCall"]) {
+    if (current.has(key)) blockers.push(`${label} current log window contains ${key}`);
+  }
+  for (const key of ["secretValueLeak", "generationCall"]) {
+    if (unknown.has(key)) blockers.push(`${label} untimestamped logs contain ${key}`);
+  }
+  for (const key of ["http500", "runtimeException", "databaseError", "provider", "secretKeyword"]) {
+    if (unknown.has(key)) risks.push(`${label} untimestamped logs contain ${key}; current window starts at ${logs.windowStart || "unknown"}`);
+  }
+  if (current.has("secretKeyword")) {
+    risks.push(`${label} current logs contain sensitive key-name markers; values are not included in the audit report`);
   }
 }
 
@@ -717,6 +814,8 @@ function printService(label, service) {
   console.log(`${label}: data count=${service.data.count} size=${service.data.size} sha256=${service.data.sha256}`);
   console.log(`${label}: uploads count=${service.uploads.count} size=${service.uploads.size} sha256=${service.uploads.sha256}`);
   console.log(`${label}: home=${service.http.routes["/"]?.status} login=${service.http.routes["/login"]?.status} health=${service.http.routes["/api/health/backend"]?.status} library=${service.http.routes["/api/library"]?.status}`);
+  console.log(`${label}: logFile=${service.logs.logFile} windowStart=${service.logs.windowStart || "unknown"} windowEnd=${service.logs.windowEnd || "unknown"}`);
+  console.log(`${label}: logFindings current=${service.logs.currentFindingCount || 0} historical=${service.logs.historicalFindingCount || 0} unknown=${service.logs.unknownFindingCount || 0}`);
 }
 
 if (import.meta.url === pathToFileURL(process.argv[1] || "").href) {
