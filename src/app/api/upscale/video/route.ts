@@ -1,12 +1,16 @@
-import { NextResponse } from "next/server";
+import { type NextRequest, NextResponse } from "next/server";
 
+import { authResultResponse, csrfFailure, requireAuthSession, requireCsrf } from "@/lib/server/auth";
 import { diagnosticErrorResponse } from "@/lib/server/error-diagnostics";
 import { submitVideoUpscale, uploadedUpscaleFile } from "@/lib/server/volcengine-upscale";
 
 export const runtime = "nodejs";
 
-export async function POST(request: Request) {
+export async function POST(request: NextRequest) {
   try {
+    if (!requireCsrf(request)) return authResultResponse(request, csrfFailure());
+    const session = await requireAuthSession(request);
+    if (!session.ok) return authResultResponse(request, session);
     const form = await request.formData();
     const requestedScale = Number(form.get("scale"));
     if (requestedScale !== 1 && requestedScale !== 2 && requestedScale !== 4) {

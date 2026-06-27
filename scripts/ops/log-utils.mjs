@@ -23,13 +23,21 @@ const sensitiveNormalizedNames = new Set([
   "appdatabaseurl",
   "newapi",
   "dsn",
+  "sqldsn",
+  "session",
+  "webhooksecret",
+  "accesskey",
+  "secretaccesskey",
 ]);
 
 const sensitiveTextPatterns = [
-  /\b(Authorization|Cookie|Set-Cookie)\s*[:=]\s*("[^"\r\n]*"|'[^'\r\n]*'|[^\r\n]+)/gi,
-  /\b([A-Za-z0-9_.-]*(?:password|secret|token|api[-_]?key|apikey|database[-_]?url|app[-_]?database[-_]?url|new[-_]?api|newapi|dsn)[A-Za-z0-9_.-]*)\s*[:=]\s*("[^"\r\n]*"|'[^'\r\n]*'|[^\s,;}\]\r\n]+)/gi,
-  /([?&](?:password|secret|token|api[-_]?key|apikey|access_token|refresh_token|database_url|app_database_url|key)=)[^&\s"'()]+/gi,
+  /\b(Authorization|Cookie|Set-Cookie|X-Admin-Password|X-Api-Key)\s*[:=]\s*("[^"\r\n]*"|'[^'\r\n]*'|[^\r\n]+)/gi,
+  /("[^"]*(?:password|secret|token|api[-_]?key|apikey|database[-_]?url|app[-_]?database[-_]?url|new[-_]?api|newapi|dsn|session)[^"]*"\s*:\s*)"[^"\r\n]*"/gi,
+  /('[^']*(?:password|secret|token|api[-_]?key|apikey|database[-_]?url|app[-_]?database[-_]?url|new[-_]?api|newapi|dsn|session)[^']*'\s*:\s*)'[^'\r\n]*'/gi,
+  /\b([A-Za-z0-9_.-]*(?:password|secret|token|api[-_]?key|apikey|database[-_]?url|app[-_]?database[-_]?url|new[-_]?api|newapi|dsn|session)[A-Za-z0-9_.-]*)\s*[:=]\s*("[^"\r\n]*"|'[^'\r\n]*'|[^\s,;}\]\r\n]+)/gi,
+  /([?&](?:password|secret|token|api[-_]?key|apikey|access_token|refresh_token|database_url|app_database_url|session|key)=)[^&\s"'()]+/gi,
   /postgres(?:ql)?:\/\/[^\s"')]+/gi,
+  /\b([A-Za-z][A-Za-z0-9+.-]*:\/\/)[^:\s"'/]+:[^@\s"']+@([^\s"')]+)/gi,
   /\bBearer\s+[A-Za-z0-9._~+/=-]+/gi,
   /\bsk-[A-Za-z0-9_-]{20,}\b/g,
   /\bghp_[A-Za-z0-9_]{20,}\b/g,
@@ -41,7 +49,7 @@ export function isSensitiveLogKey(key) {
   const normalized = raw.toLowerCase().replace(/[^a-z0-9]/g, "");
   if (!normalized) return false;
   if (sensitiveNormalizedNames.has(normalized)) return true;
-  if (/(password|secret|token|authorization|cookie|apikey|databaseurl|appdatabaseurl|newapi)/.test(normalized)) {
+  if (/(password|secret|token|authorization|cookie|apikey|databaseurl|appdatabaseurl|newapi|dsn|session)/.test(normalized)) {
     return true;
   }
   return /(^|[^a-z0-9])key([^a-z0-9]|$)/i.test(raw) || normalized === "key";
@@ -53,13 +61,16 @@ export function redactSensitiveText(value, options = {}) {
   if (isLargeEncodedPayload(text, options)) return redactedValue;
   let output = text;
   output = output.replace(sensitiveTextPatterns[0], "$1: [REDACTED]");
-  output = output.replace(sensitiveTextPatterns[1], "$1=[REDACTED]");
-  output = output.replace(sensitiveTextPatterns[2], "$1[REDACTED]");
-  output = output.replace(sensitiveTextPatterns[3], "postgresql://[REDACTED]");
-  output = output.replace(sensitiveTextPatterns[4], "Bearer [REDACTED]");
-  output = output.replace(sensitiveTextPatterns[5], redactedValue);
-  output = output.replace(sensitiveTextPatterns[6], redactedValue);
-  output = output.replace(sensitiveTextPatterns[7], redactedValue);
+  output = output.replace(sensitiveTextPatterns[1], "$1\"[REDACTED]\"");
+  output = output.replace(sensitiveTextPatterns[2], "$1'[REDACTED]'");
+  output = output.replace(sensitiveTextPatterns[3], "$1=[REDACTED]");
+  output = output.replace(sensitiveTextPatterns[4], "$1[REDACTED]");
+  output = output.replace(sensitiveTextPatterns[5], "postgresql://[REDACTED]");
+  output = output.replace(sensitiveTextPatterns[6], "$1[REDACTED]@$2");
+  output = output.replace(sensitiveTextPatterns[7], "Bearer [REDACTED]");
+  output = output.replace(sensitiveTextPatterns[8], redactedValue);
+  output = output.replace(sensitiveTextPatterns[9], redactedValue);
+  output = output.replace(sensitiveTextPatterns[10], redactedValue);
   if (output.length > maxStringLength) return `${output.slice(0, maxStringLength)}...[truncated]`;
   return output;
 }

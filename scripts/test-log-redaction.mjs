@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 
 import { collectLogFindings, splitLogWindow } from "./audit-production-readiness.mjs";
 import { buildRuntimeEnv, formatRuntimeEnvSummary } from "./ops/load-runtime-env.mjs";
@@ -10,6 +11,7 @@ import {
   redactSensitiveText,
   safeLogJson,
 } from "./ops/log-utils.mjs";
+import { redactNewApiLogText } from "./ops/redact-new-api-logs.mjs";
 
 const tests = [];
 let passed = 0;
@@ -23,10 +25,15 @@ function assertNoSecret(text) {
   for (const secret of [
     "Bearer live-token-123456",
     "session=secret-cookie",
+    "set-cookie-secret",
     "refresh-secret-value",
     "secret-password",
     "sk-real-secret-token-1234567890",
     "postgresql://user:pass",
+    "postgres://user:password",
+    "dsn-password",
+    "query-secret-value",
+    "json-secret-value",
   ]) {
     assert(!String(text).includes(secret), `leaked ${secret}`);
   }
@@ -46,7 +53,7 @@ test("authorization values are fully redacted", () => {
 test("cookie and set-cookie values are fully redacted", () => {
   const output = redactLogValue({
     Cookie: "session=secret-cookie",
-    "Set-Cookie": "session=secret-cookie; HttpOnly",
+    "Set-Cookie": "session=set-cookie-secret; HttpOnly",
   });
   assert.equal(output.Cookie, "[REDACTED]");
   assert.equal(output["Set-Cookie"], "[REDACTED]");
@@ -72,6 +79,9 @@ test("sensitive key matching is case-insensitive", () => {
   assert.equal(isSensitiveLogKey("ACCESS_TOKEN"), true);
   assert.equal(isSensitiveLogKey("Api-Key"), true);
   assert.equal(isSensitiveLogKey("newApi"), true);
+  assert.equal(isSensitiveLogKey("APP_DATABASE_URL"), true);
+  assert.equal(isSensitiveLogKey("SQL_DSN"), true);
+  assert.equal(isSensitiveLogKey("webhook secret"), true);
   assert.equal(redactLogValue({ ACCESS_TOKEN: "refresh-secret-value" }).ACCESS_TOKEN, "[REDACTED]");
 });
 
@@ -172,6 +182,62 @@ test("log serialization does not output detected real values", () => {
   });
   assertNoSecret(output);
   assert(output.includes("[REDACTED]"));
+});
+
+test("database urls dsn and query secrets are redacted in text", () => {
+  const output = redactSensitiveText([
+    "APP_DATABASE_URL=postgresql://user:pass@127.0.0.1:55432/app",
+    "SQL_DSN=postgres://user:password@db.internal:5432/newapi",
+    "callback=https://example.test/cb?token=query-secret-value&safe=ok",
+    "dsn=mysql://root:dsn-password@db.internal:3306/app",
+  ].join("\n"));
+  assertNoSecret(output);
+  assert(output.includes("APP_DATABASE_URL=[REDACTED]"));
+  assert(output.includes("SQL_DSN=[REDACTED]"));
+  assert(output.includes("token=[REDACTED]"));
+  assert(output.includes("dsn=[REDACTED]"));
+});
+
+test("json-shaped secret text is redacted while keeping field names", () => {
+  const output = redactSensitiveText(JSON.stringify({
+    apiKey: "sk-real-secret-token-1234567890",
+    token: "json-secret-value",
+    password: "secret-password",
+    secret: "json-secret-value",
+    message: "普通中文日志保留",
+  }));
+  assertNoSecret(output);
+  assert(output.includes("\"apiKey\":\"[REDACTED]\""));
+  assert(output.includes("\"token\":\"[REDACTED]\""));
+  assert(output.includes("普通中文日志保留"));
+});
+
+test("NewAPI raw log filter redacts multiline shell output", () => {
+  const raw = [
+    "new-api | Authorization=Bearer live-token-123456",
+    "new-api | Cookie: session=secret-cookie",
+    "new-api | Set-Cookie: session=set-cookie-secret; HttpOnly",
+    "new-api | APP_DATABASE_URL=postgresql://user:pass@127.0.0.1:55432/app",
+    "new-api | postgres://user:password@db.internal:5432/newapi",
+    "new-api | GET /api/logs?token=query-secret-value&safe=ok",
+    "new-api | {\"password\":\"secret-password\",\"secret\":\"json-secret-value\",\"message\":\"普通中文日志保留\"}",
+  ].join("\n");
+  const output = redactNewApiLogText(raw);
+  assertNoSecret(output);
+  assert(output.includes("Authorization: [REDACTED]"));
+  assert(output.includes("Cookie: [REDACTED]"));
+  assert(output.includes("Set-Cookie: [REDACTED]"));
+  assert(output.includes("APP_DATABASE_URL=[REDACTED]"));
+  assert(output.includes("postgresql://[REDACTED]"));
+  assert(output.includes("token=[REDACTED]"));
+  assert(output.includes("普通中文日志保留"));
+});
+
+test("NewAPI logs script always pipes through redaction", () => {
+  const logsScript = readFileSync("infra/new-api/scripts/logs", "utf8");
+  assert(logsScript.includes("compose_logs | \"$SCRIPT_DIR/redact-logs\""));
+  assert(!logsScript.includes("NEW_API_LOGS_RAW"));
+  assert(!logsScript.includes("\"--raw\""));
 });
 
 test("runtime environment summary omits sensitive key names", () => {

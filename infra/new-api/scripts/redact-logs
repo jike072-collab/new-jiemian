@@ -5,7 +5,7 @@ SCRIPT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 DEPLOY_DIR=$(CDPATH= cd -- "$SCRIPT_DIR/.." && pwd)
 
 usage() {
-  echo "Usage: $0 --input <log-file> --output <log-file>" >&2
+  echo "Usage: $0 [--input <log-file> --output <log-file>]" >&2
   exit 1
 }
 
@@ -31,14 +31,15 @@ while [ "$#" -gt 0 ]; do
   shift
 done
 
-[ -n "$INPUT" ] || usage
-[ -n "$OUTPUT" ] || usage
-[ -f "$INPUT" ] || { echo "Missing input log: $INPUT" >&2; exit 1; }
+if { [ -n "$INPUT" ] && [ -z "$OUTPUT" ]; } || { [ -z "$INPUT" ] && [ -n "$OUTPUT" ]; }; then
+  usage
+fi
+[ -z "$INPUT" ] || [ -f "$INPUT" ] || { echo "Missing input log: $INPUT" >&2; exit 1; }
 
-sed -E \
-  -e 's#(Authorization:|Cookie:|Set-Cookie:|X-Admin-Password:)[^[:cntrl:]]+#\1 [REDACTED]#Ig' \
-  -e 's#(PASSWORD|SECRET|KEY|TOKEN|COOKIE|AUTH|DSN|CONN_STRING)=([^[:space:]]+)#\1=[REDACTED]#Ig' \
-  -e 's#sk-[A-Za-z0-9_-]+#sk-[REDACTED]#g' \
-  "$INPUT" > "$OUTPUT"
+REDACT_SCRIPT=${NEW_API_REDACT_LOGS_SCRIPT:-"$DEPLOY_DIR/../../scripts/ops/redact-new-api-logs.mjs"}
 
-printf '%s\n' "$OUTPUT"
+if [ -n "$INPUT" ]; then
+  node "$REDACT_SCRIPT" --input "$INPUT" --output "$OUTPUT"
+else
+  node "$REDACT_SCRIPT"
+fi

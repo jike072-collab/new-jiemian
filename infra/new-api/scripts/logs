@@ -6,8 +6,12 @@ DEPLOY_DIR=$(CDPATH= cd -- "$SCRIPT_DIR/.." && pwd)
 
 cd "$DEPLOY_DIR"
 
-if docker compose version >/dev/null 2>&1; then
-  docker compose -f docker-compose.yml logs --tail="${NEW_API_LOG_TAIL:-200}"
-else
-  docker-compose -f docker-compose.yml logs --tail="${NEW_API_LOG_TAIL:-200}"
-fi
+compose_logs() {
+  if docker compose version >/dev/null 2>&1; then
+    docker compose -f docker-compose.yml logs --tail="${NEW_API_LOG_TAIL:-200}"
+  else
+    docker-compose -f docker-compose.yml logs --tail="${NEW_API_LOG_TAIL:-200}"
+  fi
+}
+
+compose_logs | "$SCRIPT_DIR/redact-logs"

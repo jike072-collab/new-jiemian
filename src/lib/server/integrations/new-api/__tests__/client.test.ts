@@ -229,16 +229,32 @@ test("validates configuration", () => {
 });
 
 test("redacts headers, json, and secret-shaped text", () => {
-  const redacted = redactSecret("Authorization=Bearer test-secret-token");
-  assert.equal(redacted.includes("test-secret-token"), false);
+  const redacted = redactSecret([
+    "Authorization=Bearer test-secret-token",
+    "APP_DATABASE_URL=postgresql://user:password@127.0.0.1:55432/app",
+    "SQL_DSN=postgres://user:password@db.internal:5432/newapi",
+    "GET /api/logs?token=query-secret-value&safe=ok",
+    "{\"password\":\"json-password\",\"secret\":\"json-secret\"}",
+  ].join("\n"));
+  for (const leaked of [
+    "test-secret-token",
+    "postgresql://user:password",
+    "postgres://user:password",
+    "query-secret-value",
+    "json-password",
+    "json-secret",
+  ]) {
+    assert.equal(redacted.includes(leaked), false);
+  }
   assert.equal(redacted.includes("[REDACTED]"), true);
   assert.equal(redactSecret("Bearer abc.def"), "Bearer [REDACTED]");
   assert.deepEqual(redactHeaders({ Authorization: "Bearer abc", "X-Test": "ok" }), {
     Authorization: "[REDACTED]",
     "X-Test": "ok",
   });
-  assert.deepEqual(redactJson({ token: "abc", nested: { password: "secret" } }), {
+  assert.deepEqual(redactJson({ token: "abc", databaseUrl: "postgresql://user:password@127.0.0.1/app", nested: { password: "secret" } }), {
     token: "[REDACTED]",
+    databaseUrl: "[REDACTED]",
     nested: { password: "[REDACTED]" },
   });
 });
