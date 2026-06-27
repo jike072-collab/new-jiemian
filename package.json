@@ -49,6 +49,8 @@
     "security:network-hardening-rollback": "node scripts/run-network-hardening-script.mjs rollback",
     "check:release-test-artifact-isolation": "node scripts/check-release-test-artifact-isolation.mjs",
     "audit:production-readiness": "node scripts/audit-production-readiness.mjs",
+    "audit:database": "node scripts/audit-database-current-state.mjs",
+    "check:database-docs": "node scripts/check-database-docs.mjs",
     "check:studio-api-contracts": "node scripts/check-studio-api-contracts.mjs",
     "test:ops": "node scripts/test-ops-service.mjs && node scripts/test-active-release-atomic.mjs",
     "test:rollback-drill": "node scripts/test-full-rollback-drill.mjs",

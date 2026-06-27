@@ -1,0 +1,267 @@
+# Database Security And Backup Plan
+
+Stage 9A is design only. It does not create a new backup, restore a backup, run
+`pg_dump`, run `pg_restore`, change secrets, call NewAPI, call providers, or
+modify production data.
+
+## Current Backup Material
+
+Stage 8B created production rollback material that includes:
+
+- backup manifests
+- `data` backup
+- `uploads` backup
+- PostgreSQL custom-format dump
+- `pg_restore --list` verification recorded in manifest material
+- rollback script
+- checksum file
+- rollback authorization file
+
+The rollback authorization has expired. Backup material exists, but any real
+rollback must be separately authorized before execution.
+
+## Database Connection String Protection
+
+Rules:
+
+- `APP_DATABASE_URL` is server-only.
+- It must not be logged, returned by APIs, committed, or placed in a frontend
+  bundle.
+- Reports may only say `configured`, `missing`, `masked`, or `schema_only`.
+- Database identity must be checked with `current_database()`, not by showing or
+  parsing the URL in reports.
+
+## Provider And NewAPI Secrets
+
+Rules:
+
+- provider API keys never enter the frontend bundle
+- provider API keys never appear in logs
+- provider API keys are not committed
+- admin UI shows configured state and redacted preview only
+- NewAPI secrets are treated the same way
+- live provider `/models` requires separate authorization because it can make
+  external provider requests
+- real generation smoke tests require separate authorization because they can
+  consume quota or money
+
+If provider secrets move into the application database later, use:
+
+- `encrypted_secret`
+- `key_version`
+- `last_rotated_at`
+- `secret_status`
+- a KMS or application-managed envelope key outside the database
+
+Never store raw secret values in audit logs, error events, or API call logs.
+
+## Log Redaction
+
+Logs must redact:
+
+- Authorization
+- Cookie and Set-Cookie
+- API keys
+- database URLs
+- passwords
+- provider tokens
+- NewAPI tokens
+- raw provider responses
+- prompt text when private
+
+Logs may contain:
+
+- request id
+- safe error code
+- retryable flag
+- provider id
+- model id
+- status code
+- duration
+- sanitized category
+
+## PostgreSQL Backup Strategy
+
+Use `pg_dump` custom format for production backups:
+
+- supports `pg_restore --list`
+- supports restore rehearsal to disposable databases
+- keeps schema/data in a single verifiable artifact
+- should be stored outside Git
+- should be checksummed
+
+Recommended command class:
+
+- custom format dump
+- no plaintext password in command line output
+- explicit target database identity before dump
+- artifact path under controlled backup root
+
+Do not run backup scripts from Stage 9A. This is a future operational process.
+
+## Restore Verification Strategy
+
+Every PostgreSQL backup should be verified by:
+
+1. `pg_restore --list`
+2. checksum of the dump file
+3. manifest entry
+4. optional restore rehearsal into a disposable database
+5. read-only schema/count validation after rehearsal
+
+Restore rehearsal must not point to production.
+
+## data/uploads Backup Strategy
+
+`data` and `uploads` are part of the application state today and must be backed
+up together with the database.
+
+Required manifest fields:
+
+- path role: data or uploads
+- file count
+- total size
+- latest modified time
+- stable SHA-256 over relative path, file content hash, and file size
+- backup time
+- source commit
+- service name
+
+For object storage later, store:
+
+- bucket
+- object key prefix
+- object count
+- object checksums when available
+- version id if object versioning is enabled
+
+## Checksum Strategy
+
+Use stable checksums that include:
+
+- sorted relative paths
+- file content hash
+- file size
+
+Exclude:
+
+- directory mtime
+- absolute root path
+- generated checksum manifest itself when computing manifest checksums
+
+## Backup Manifest Fields
+
+Recommended fields:
+
+- backup version
+- deployment id
+- service name
+- environment
+- source commit
+- root path
+- data snapshot
+- uploads snapshot
+- database type
+- database backup metadata
+- tool versions
+- checksum file name
+- created at
+- verified boolean
+- rollback target commit
+
+Never include:
+
+- database password
+- full connection string
+- API key
+- cookie
+- authorization header
+
+## Backup Storage And Retention
+
+Recommended storage:
+
+- local short-term rollback backup
+- off-host backup for production
+- encrypted storage for database dumps
+- access restricted to release operators
+
+Suggested retention:
+
+- release rollback backups: keep through the rollback window
+- daily database backups: 7 to 14 days
+- weekly backups: 4 to 8 weeks
+- monthly backups: according to business/legal requirements
+
+The exact policy should be finalized before real paid usage.
+
+## Git Safety
+
+Do not commit backup or runtime material.
+
+Never commit:
+
+- `.env`
+- `.env.local`
+- database dumps
+- backup directories
+- data/uploads runtime state
+- `.runtime`
+- logs
+- PID files
+- screenshots/videos generated by tests
+- raw provider responses
+
+## Recovery Rehearsal
+
+A small restore drill should:
+
+1. create a disposable database
+2. restore a recent dump
+3. validate schema/table metadata
+4. restore data/uploads to a temporary directory
+5. verify checksums
+6. run read-only application checks against the temporary state
+7. destroy the disposable state after recording the result
+
+Do not rehearse restore against production.
+
+## Avoiding Backup Leakage
+
+- run all backup logs through redaction
+- keep manifests free of secrets
+- avoid printing process environment
+- avoid putting DB URLs in command lines that can be listed by process tools
+- restrict backup directory permissions
+
+## Avoiding Backup Overwrite
+
+- use timestamp plus deployment id in backup directory names
+- refuse to overwrite an existing backup directory
+- write manifest last after all artifacts are present
+- verify checksums after writing
+
+## Database/File Consistency
+
+When assets move to the database model, production releases must back up:
+
+- PostgreSQL
+- `uploads`
+- object storage metadata
+- any still-active JSON stores
+
+Restore must use a matched backup set. Mixing a newer database with older files
+can produce broken library entries, missing thumbnails, or orphaned assets.
+
+## Stop-Release Conditions
+
+Stop production release or migration if:
+
+- backup cannot be verified
+- rollback authorization is missing or expired
+- expected database identity does not match
+- data/uploads checksum changes unexpectedly
+- log scan finds a secret
+- generation/NewAPI/live provider call is observed during a no-call stage
+- 3107 and 3106 storage/database isolation fails
+- CI fails
