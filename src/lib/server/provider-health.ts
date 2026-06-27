@@ -1,4 +1,5 @@
 import { modelsEndpointFor } from "./providers";
+import { getNewApiConfig } from "./integrations/new-api/config";
 import { type EndpointType, type ProviderConfig, type ProviderKind } from "./types";
 
 export type ProviderHealthMode = "static" | "connectivity" | "models";
@@ -6,6 +7,8 @@ export type ProviderHealthStatus = "ok" | "warning" | "error" | "unknown";
 export type ProviderHealthSeverity = "info" | "warning" | "error";
 export type ProviderModelAvailability = "unknown" | "yes" | "no";
 export type ProviderModelKind = "image" | "imageEdit" | "video" | "imageUpscale" | "videoUpscale";
+export type ProviderReachability = "unchecked" | "reachable" | "unreachable" | "skipped";
+export type NewApiReachability = "unchecked" | "reachable" | "unreachable" | "skipped";
 
 export type ProviderHealthIssueCode =
   | "PROVIDER_MISSING_ENDPOINT"
@@ -21,6 +24,7 @@ export type ProviderHealthIssueCode =
   | "PROVIDER_BAD_RESPONSE"
   | "PROVIDER_NON_JSON_RESPONSE"
   | "MODEL_LIST_UNAVAILABLE"
+  | "MODEL_LIST_SKIPPED"
   | "MODEL_LIST_EMPTY"
   | "MODEL_MISSING_IMAGE"
   | "MODEL_MISSING_IMAGE_EDIT"
@@ -31,6 +35,9 @@ export type ProviderHealthIssueCode =
   | "PROVIDER_EMPTY_VALUE"
   | "PROVIDER_TRIMMED_VALUE"
   | "PROVIDER_ENVIRONMENT_MIXED"
+  | "NEW_API_NOT_CONFIGURED"
+  | "NEW_API_CONNECTIVITY_SKIPPED"
+  | "NEW_API_CONFIG_INVALID"
   | "LIVE_GENERATION_DISABLED"
   | "UNKNOWN_ERROR";
 
@@ -59,20 +66,51 @@ export type ProviderHealthModel = {
 };
 
 export type ProviderHealthResult = {
+  providerId: string;
+  providerName: string;
   id: string;
   name: string;
   kind: ProviderKind;
   enabled: boolean;
+  configured: boolean;
+  reachable: ProviderReachability;
+  authConfigured: boolean;
+  modelsConfigured: boolean;
+  supportedTools: string[];
   endpointType: EndpointType;
   endpoint: ProviderHealthEndpoint;
   apiKey: ProviderHealthApiKey;
   models: Record<ProviderModelKind, ProviderHealthModel>;
   status: ProviderHealthStatus;
   issues: ProviderHealthIssue[];
+  warnings: ProviderHealthIssue[];
+  errors: ProviderHealthIssue[];
+  checkedAt: string;
   lastCheck: {
     status: ProviderHealthStatus;
     durationMs: number;
   };
+};
+
+export type ProviderModelKindSummary = {
+  configured: number;
+  missing: number;
+  unavailable: number;
+  unknown: number;
+  providerIds: string[];
+  missingProviderIds: string[];
+  unavailableProviderIds: string[];
+};
+
+export type NewApiHealthSummary = {
+  configured: boolean;
+  baseUrlConfigured: boolean;
+  adminConfigured: boolean;
+  reachable: NewApiReachability;
+  checked: boolean;
+  skippedReason: string;
+  warnings: ProviderHealthIssue[];
+  errors: ProviderHealthIssue[];
 };
 
 export type ProviderHealthReport = {
@@ -80,6 +118,8 @@ export type ProviderHealthReport = {
   checkedAt: string;
   mode: ProviderHealthMode;
   providers: ProviderHealthResult[];
+  modelHealth: Record<ProviderModelKind, ProviderModelKindSummary>;
+  newApi: NewApiHealthSummary;
   summary: {
     total: number;
     ok: number;
@@ -98,6 +138,7 @@ export type ProviderHealthOptions = {
   maxResponseBytes?: number;
   now?: Date;
   allowLiveGeneration?: boolean;
+  allowExternalProviderModelList?: boolean;
 };
 
 type ModelIdsResult = {
@@ -132,6 +173,7 @@ export const providerHealthIssueMessages: Record<ProviderHealthIssueCode, string
   PROVIDER_BAD_RESPONSE: "供应商返回异常响应。",
   PROVIDER_NON_JSON_RESPONSE: "供应商返回非 JSON 响应。",
   MODEL_LIST_UNAVAILABLE: "模型列表接口不可用。",
+  MODEL_LIST_SKIPPED: "模型列表外部探测已跳过。",
   MODEL_LIST_EMPTY: "模型列表为空。",
   MODEL_MISSING_IMAGE: "图片生成模型未配置。",
   MODEL_MISSING_IMAGE_EDIT: "图片编辑模型未配置。",
@@ -142,6 +184,9 @@ export const providerHealthIssueMessages: Record<ProviderHealthIssueCode, string
   PROVIDER_EMPTY_VALUE: "供应商配置存在空字符串。",
   PROVIDER_TRIMMED_VALUE: "供应商配置存在前后空格。",
   PROVIDER_ENVIRONMENT_MIXED: "供应商配置可能混用 staging/production。",
+  NEW_API_NOT_CONFIGURED: "NewAPI 未配置。",
+  NEW_API_CONNECTIVITY_SKIPPED: "NewAPI 连接探测已跳过。",
+  NEW_API_CONFIG_INVALID: "NewAPI 配置无效。",
   LIVE_GENERATION_DISABLED: "真实生成检测在本阶段默认关闭。",
   UNKNOWN_ERROR: "未知错误。",
 };
@@ -198,9 +243,8 @@ function maskApiKey(provider: ProviderConfig) {
   const text = String(provider.apiKey || "").trim();
   if (!hasValue(text)) return apiKeyConfigured(provider) ? "configured" : "";
   if (text.length <= 4) return "****";
-  const prefix = text.slice(0, Math.min(3, Math.max(0, text.length - 4)));
   const suffix = text.slice(-4);
-  return `${prefix}****${suffix}`;
+  return `****${suffix}`;
 }
 
 function trimText(value: unknown) {
@@ -271,6 +315,14 @@ function modelKindsFor(provider: ProviderConfig): ProviderModelKind[] {
   return [];
 }
 
+function toolForModelKind(kind: ProviderModelKind) {
+  if (kind === "image") return "image";
+  if (kind === "imageEdit") return "image-edit";
+  if (kind === "video") return "video";
+  if (kind === "imageUpscale") return "image-upscale";
+  return "video-upscale";
+}
+
 function missingModelCode(kind: ProviderModelKind): ProviderHealthIssueCode {
   if (kind === "image") return "MODEL_MISSING_IMAGE";
   if (kind === "imageEdit") return "MODEL_MISSING_IMAGE_EDIT";
@@ -308,6 +360,28 @@ function statusFromIssues(issues: ProviderHealthIssue[]): ProviderHealthStatus {
   return "ok";
 }
 
+function warningsFromIssues(issues: ProviderHealthIssue[]) {
+  return issues.filter((item) => item.severity === "warning");
+}
+
+function errorsFromIssues(issues: ProviderHealthIssue[]) {
+  return issues.filter((item) => item.severity === "error");
+}
+
+function finalizeProviderResult(result: ProviderHealthResult): ProviderHealthResult {
+  const status = statusFromIssues(result.issues);
+  return {
+    ...result,
+    status,
+    warnings: warningsFromIssues(result.issues),
+    errors: errorsFromIssues(result.issues),
+    lastCheck: {
+      ...result.lastCheck,
+      status,
+    },
+  };
+}
+
 function summarize(providers: ProviderHealthResult[]) {
   return {
     total: providers.length,
@@ -316,6 +390,61 @@ function summarize(providers: ProviderHealthResult[]) {
     error: providers.filter((provider) => provider.status === "error").length,
     unknown: providers.filter((provider) => provider.status === "unknown").length,
   };
+}
+
+function summarizeModelKind(providers: ProviderHealthResult[], kind: ProviderModelKind): ProviderModelKindSummary {
+  const relevant = providers.filter((provider) => provider.supportedTools.includes(toolForModelKind(kind)));
+  const configuredProviders = relevant.filter((provider) => provider.models[kind].configured);
+  const unavailableProviders = configuredProviders.filter((provider) => provider.models[kind].available === "no");
+  const unknownProviders = configuredProviders.filter((provider) => provider.models[kind].available === "unknown");
+  const missingProviders = relevant.filter((provider) => !provider.models[kind].configured);
+  return {
+    configured: configuredProviders.length,
+    missing: missingProviders.length,
+    unavailable: unavailableProviders.length,
+    unknown: unknownProviders.length,
+    providerIds: relevant.map((provider) => provider.providerId),
+    missingProviderIds: missingProviders.map((provider) => provider.providerId),
+    unavailableProviderIds: unavailableProviders.map((provider) => provider.providerId),
+  };
+}
+
+function summarizeModelHealth(providers: ProviderHealthResult[]): Record<ProviderModelKind, ProviderModelKindSummary> {
+  return {
+    image: summarizeModelKind(providers, "image"),
+    imageEdit: summarizeModelKind(providers, "imageEdit"),
+    video: summarizeModelKind(providers, "video"),
+    imageUpscale: summarizeModelKind(providers, "imageUpscale"),
+    videoUpscale: summarizeModelKind(providers, "videoUpscale"),
+  };
+}
+
+function inspectNewApiConfig(): NewApiHealthSummary {
+  try {
+    const config = getNewApiConfig();
+    const configured = Boolean(config.enabled && config.baseUrl);
+    return {
+      configured,
+      baseUrlConfigured: Boolean(config.baseUrl),
+      adminConfigured: Boolean(config.adminAccessToken && config.adminUserId),
+      reachable: "skipped",
+      checked: false,
+      skippedReason: "Stage 8A 仅做只读配置检查；NewAPI 外部连接探测需单独授权。",
+      warnings: configured ? [issue("NEW_API_CONNECTIVITY_SKIPPED", "warning")] : [issue("NEW_API_NOT_CONFIGURED", "warning")],
+      errors: [],
+    };
+  } catch (error) {
+    return {
+      configured: false,
+      baseUrlConfigured: false,
+      adminConfigured: false,
+      reachable: "skipped",
+      checked: false,
+      skippedReason: "NewAPI 配置解析失败，已跳过外部连接探测。",
+      warnings: [issue("NEW_API_CONNECTIVITY_SKIPPED", "warning")],
+      errors: [issue("NEW_API_CONFIG_INVALID", "error", error instanceof Error ? error.message : String(error))],
+    };
+  }
 }
 
 function hasTrimRisk(value: unknown) {
@@ -360,16 +489,28 @@ function duplicateProviderIds(providers: ProviderConfig[]) {
   return new Set([...counts.entries()].filter(([, count]) => count > 1).map(([id]) => id));
 }
 
-function baseResult(provider: ProviderConfig, duplicateIds: Set<string>): ProviderHealthResult {
+function baseResult(provider: ProviderConfig, duplicateIds: Set<string>, checkedAt: string): ProviderHealthResult {
   const endpoint = trimText(provider.apiUrl);
   const validUrl = validateHttpUrl(endpoint);
   const { issues, models } = staticIssues(provider, duplicateIds);
+  const supportedModelKinds = modelKindsFor(provider);
+  const supportedTools = supportedModelKinds.map(toolForModelKind);
+  const authConfigured = apiKeyConfigured(provider);
+  const modelsConfigured = supportedModelKinds.length > 0
+    && supportedModelKinds.every((kind) => models[kind].configured);
   const status = statusFromIssues(issues);
-  return {
+  return finalizeProviderResult({
+    providerId: trimText(provider.id),
+    providerName: trimText(provider.title) || trimText(provider.id),
     id: trimText(provider.id),
     name: trimText(provider.title) || trimText(provider.id),
     kind: provider.kind,
     enabled: Boolean(provider.enabled),
+    configured: Boolean(validUrl && authConfigured && modelsConfigured),
+    reachable: "unchecked",
+    authConfigured,
+    modelsConfigured,
+    supportedTools,
     endpointType: provider.endpointType,
     endpoint: {
       configured: hasValue(endpoint),
@@ -377,17 +518,20 @@ function baseResult(provider: ProviderConfig, duplicateIds: Set<string>): Provid
       validUrl,
     },
     apiKey: {
-      configured: apiKeyConfigured(provider),
+      configured: authConfigured,
       masked: maskApiKey(provider),
     },
     models,
     status,
     issues,
+    warnings: [],
+    errors: [],
+    checkedAt,
     lastCheck: {
       status,
       durationMs: 0,
     },
-  };
+  });
 }
 
 async function safeFetch(
@@ -607,23 +751,34 @@ function applyModelList(result: ProviderHealthResult, modelList: ModelListResult
     }
   }
   next.issues = mergeIssues(next.issues, modelList.issues);
-  next.status = statusFromIssues(next.issues);
-  next.lastCheck = { ...next.lastCheck, status: next.status };
-  return next;
+  return finalizeProviderResult(next);
+}
+
+function skipExternalModelList(result: ProviderHealthResult) {
+  return finalizeProviderResult({
+    ...result,
+    reachable: "skipped",
+    issues: mergeIssues(result.issues, [issue("MODEL_LIST_SKIPPED", "warning")]),
+    lastCheck: {
+      ...result.lastCheck,
+      status: "warning",
+    },
+  });
 }
 
 async function checkProvider(
   provider: ProviderConfig,
   duplicateIds: Set<string>,
-  options: Required<Pick<ProviderHealthOptions, "mode" | "fetchImpl" | "timeoutMs" | "maxResponseBytes">>,
+  options: Required<Pick<ProviderHealthOptions, "mode" | "fetchImpl" | "timeoutMs" | "maxResponseBytes">> & { checkedAt: string; allowExternalProviderModelList: boolean },
 ) {
   const startedAt = Date.now();
-  let result = baseResult(provider, duplicateIds);
+  let result = baseResult(provider, duplicateIds, options.checkedAt);
 
   if (options.mode === "connectivity" && result.endpoint.validUrl) {
     const connectivity = await checkConnectivity(provider, options.fetchImpl, options.timeoutMs);
     result = {
       ...result,
+      reachable: connectivity.status === "ok" ? "reachable" : "unreachable",
       issues: mergeIssues(result.issues, connectivity.issues),
       lastCheck: {
         status: connectivity.status,
@@ -635,12 +790,19 @@ async function checkProvider(
   }
 
   if (options.mode === "models" && result.endpoint.validUrl && result.apiKey.configured) {
-    const modelList = await checkModelList(provider, options.fetchImpl, options.timeoutMs, options.maxResponseBytes);
-    result = applyModelList(result, modelList);
+    if (!options.allowExternalProviderModelList) {
+      result = skipExternalModelList(result);
+    } else {
+      const modelList = await checkModelList(provider, options.fetchImpl, options.timeoutMs, options.maxResponseBytes);
+      result = applyModelList({
+        ...result,
+        reachable: modelList.ok ? "reachable" : "unreachable",
+      }, modelList);
+    }
   }
 
   result.lastCheck.durationMs = Math.max(result.lastCheck.durationMs, Date.now() - startedAt);
-  return result;
+  return finalizeProviderResult(result);
 }
 
 export async function checkProviderHealth(input: ProviderHealthOptions): Promise<ProviderHealthReport> {
@@ -652,18 +814,24 @@ export async function checkProviderHealth(input: ProviderHealthOptions): Promise
   const timeoutMs = input.timeoutMs || (mode === "models" ? modelListTimeoutMs : connectivityTimeoutMs);
   const maxResponseBytes = input.maxResponseBytes || defaultMaxResponseBytes;
   const duplicateIds = duplicateProviderIds(input.providers);
+  const checkedAt = (input.now || new Date()).toISOString();
   const providers = await Promise.all(input.providers.map((provider) => checkProvider(provider, duplicateIds, {
     mode,
     fetchImpl,
     timeoutMs,
     maxResponseBytes,
+    allowExternalProviderModelList: Boolean(input.allowExternalProviderModelList),
+    checkedAt,
   })));
   const summary = summarize(providers);
+  const newApi = inspectNewApiConfig();
   return {
-    ok: summary.error === 0,
-    checkedAt: (input.now || new Date()).toISOString(),
+    ok: summary.error === 0 && newApi.errors.length === 0,
+    checkedAt,
     mode,
     providers,
+    modelHealth: summarizeModelHealth(providers),
+    newApi,
     summary,
     liveGenerationEnabled: false,
   };

@@ -24,10 +24,17 @@ type HealthIssue = {
 };
 
 type ProviderHealthResult = {
+  providerId: string;
+  providerName: string;
   id: string;
   name: string;
   kind: ProviderKind;
   enabled: boolean;
+  configured: boolean;
+  reachable: "unchecked" | "reachable" | "unreachable" | "skipped";
+  authConfigured: boolean;
+  modelsConfigured: boolean;
+  supportedTools: string[];
   endpointType: EndpointType;
   endpoint: {
     configured: boolean;
@@ -45,17 +52,41 @@ type ProviderHealthResult = {
   }>;
   status: HealthStatus;
   issues: HealthIssue[];
+  warnings: HealthIssue[];
+  errors: HealthIssue[];
+  checkedAt: string;
   lastCheck: {
     status: HealthStatus;
     durationMs: number;
   };
 };
 
+type ModelHealthSummary = Record<ModelKind, {
+  configured: number;
+  missing: number;
+  unavailable: number;
+  unknown: number;
+  providerIds: string[];
+  missingProviderIds: string[];
+  unavailableProviderIds: string[];
+}>;
+
 type ProviderHealthReport = {
   ok: boolean;
   checkedAt: string;
   mode: HealthMode;
   providers: ProviderHealthResult[];
+  modelHealth: ModelHealthSummary;
+  newApi: {
+    configured: boolean;
+    baseUrlConfigured: boolean;
+    adminConfigured: boolean;
+    reachable: "unchecked" | "reachable" | "unreachable" | "skipped";
+    checked: boolean;
+    skippedReason: string;
+    warnings: HealthIssue[];
+    errors: HealthIssue[];
+  };
   summary: {
     total: number;
     ok: number;
@@ -110,7 +141,7 @@ async function readHealthJson(response: Response) {
 const healthModes: Array<{ mode: HealthMode; label: string; detail: string }> = [
   { mode: "static", label: "静态检测", detail: "只读本地配置" },
   { mode: "connectivity", label: "连接检测", detail: "HEAD/GET 网关" },
-  { mode: "models", label: "模型列表检测", detail: "读取 /models" },
+  { mode: "models", label: "模型配置检测", detail: "默认不探测外部 /models" },
 ];
 
 const modelLabels: Record<ModelKind, string> = {
@@ -146,6 +177,13 @@ function modelAvailabilityLabel(value: "unknown" | "yes" | "no") {
   if (value === "yes") return "可用";
   if (value === "no") return "缺失";
   return "未知";
+}
+
+function reachabilityLabel(value: ProviderHealthResult["reachable"]) {
+  if (value === "reachable") return "可连接";
+  if (value === "unreachable") return "不可连接";
+  if (value === "skipped") return "跳过检测";
+  return "未检测";
 }
 
 export function AdminProvidersClient() {
@@ -298,7 +336,7 @@ export function AdminProvidersClient() {
                 <ServerCog className="size-5 text-fuchsia-300" />
                 <h2 className="text-xl font-black">供应商连接检测</h2>
               </div>
-              <p className="mt-2 text-sm text-white/48">检测只读配置、网关连通性和模型列表，不提交图片、视频或高清生成任务。</p>
+              <p className="mt-2 text-sm text-white/48">检测只读配置、网关连通性和模型列表，不会调用生成接口，不会产生费用，不会提交图片、视频或高清生成任务。</p>
             </div>
             <div className="flex flex-wrap gap-2">
               {healthModes.map((item) => (
@@ -340,6 +378,32 @@ export function AdminProvidersClient() {
                 ))}
               </div>
 
+              <div className="mt-4 grid gap-3 xl:grid-cols-[0.95fr_1.4fr]">
+                <div className="rounded-2xl border border-white/10 bg-white/[0.03] p-4">
+                  <p className="text-xs font-bold uppercase tracking-[0.18em] text-fuchsia-200">NewAPI</p>
+                  <div className="mt-3 grid gap-2 text-sm text-white/58">
+                    <span>配置状态：{healthReport.newApi.configured ? "已配置" : "未配置"}</span>
+                    <span>基础连接：{healthReport.newApi.reachable === "skipped" ? "跳过检测" : reachabilityLabel(healthReport.newApi.reachable)}</span>
+                    <span>管理员凭据：{healthReport.newApi.adminConfigured ? "已配置" : "未配置"}</span>
+                    {healthReport.newApi.skippedReason ? (
+                      <span className="text-white/42">{healthReport.newApi.skippedReason}</span>
+                    ) : null}
+                  </div>
+                </div>
+                <div className="rounded-2xl border border-white/10 bg-white/[0.03] p-4">
+                  <p className="text-xs font-bold uppercase tracking-[0.18em] text-fuchsia-200">模型可用性</p>
+                  <div className="mt-3 grid gap-2 sm:grid-cols-2 xl:grid-cols-5">
+                    {Object.entries(healthReport.modelHealth).map(([kind, summary]) => (
+                      <div key={kind} className="rounded-xl border border-white/10 bg-black/20 p-3">
+                        <p className="text-xs text-white/45">{modelLabels[kind as ModelKind]}</p>
+                        <p className="mt-1 text-sm text-white/70">已配置 {summary.configured}</p>
+                        <p className="text-xs text-white/38">缺失 {summary.missing} · 不可用 {summary.unavailable}</p>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </div>
+
               <div className="mt-4 grid gap-3">
                 {healthReport.providers.length ? healthReport.providers.map((provider) => (
                   <article key={provider.id} className="rounded-2xl border border-white/10 bg-black/22 p-4">
@@ -360,7 +424,7 @@ export function AdminProvidersClient() {
                       <div className="grid gap-2 text-xs text-white/55 sm:grid-cols-3 xl:min-w-[520px]">
                         <span>Endpoint：{provider.endpoint.maskedHost || (provider.endpoint.configured ? "格式异常" : "未配置")}</span>
                         <span>API Key：{provider.apiKey.configured ? (provider.apiKey.masked || "configured") : "missing"}</span>
-                        <span>耗时：{provider.lastCheck.durationMs}ms</span>
+                        <span>连接：{reachabilityLabel(provider.reachable)} · 耗时：{provider.lastCheck.durationMs}ms</span>
                       </div>
                     </div>
 

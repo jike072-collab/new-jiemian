@@ -192,7 +192,17 @@ test("connectivity checks classify timeouts and network failures without failing
   assert(issueCodes(networkReport, "network").includes("PROVIDER_NETWORK_ERROR"));
 });
 
-test("model list checks parse safe model ids, detect missing models, and never call generation endpoints", async () => {
+test("model list checks are skipped by default to avoid external provider calls", async () => {
+  const report = await checkProviderHealth({
+    mode: "models",
+    providers: [provider({ id: "image-ok", apiUrl: "https://provider.example.test/v1/images/generations", model: "gpt-image-2" })],
+  });
+  assert.equal(report.providers.find((item) => item.id === "image-ok")?.reachable, "skipped");
+  assert(issueCodes(report, "image-ok").includes("MODEL_LIST_SKIPPED"));
+  assertNoSecretLeak(report);
+});
+
+test("explicitly authorized model list checks parse safe model ids, detect missing models, and never call generation endpoints", async () => {
   await withMockServer((request, response) => {
     assert.equal(request.headers.authorization, "Bearer stage4-test-provider-key-1234");
     json(response, 200, {
@@ -204,6 +214,7 @@ test("model list checks parse safe model ids, detect missing models, and never c
   }, async (baseUrl, requests) => {
     const report = await checkProviderHealth({
       mode: "models",
+      allowExternalProviderModelList: true,
       providers: [
         provider({ id: "image-ok", apiUrl: `${baseUrl}/v1/images/generations`, model: "gpt-image-2" }),
         provider({ id: "video-missing", kind: "video", endpointType: "videos-generations", apiUrl: `${baseUrl}/v1/videos/generations`, model: "missing-video" }),
@@ -233,6 +244,7 @@ test("model list checks classify empty, malformed, non-json, auth, and timeout r
   }, async (baseUrl) => {
     const report = await checkProviderHealth({
       mode: "models",
+      allowExternalProviderModelList: true,
       timeoutMs: 20,
       providers: [
         provider({ id: "empty", apiUrl: `${baseUrl}/empty/v1/images/generations` }),
@@ -257,6 +269,7 @@ test("model list checks do not call unsupported provider model endpoints", async
   }, async (baseUrl, requests) => {
     const report = await checkProviderHealth({
       mode: "models",
+      allowExternalProviderModelList: true,
       providers: [
         provider({
           id: "image-upscale",
@@ -279,6 +292,7 @@ test("model list response size is limited", async () => {
   }, async (baseUrl) => {
     const report = await checkProviderHealth({
       mode: "models",
+      allowExternalProviderModelList: true,
       maxResponseBytes: 64,
       providers: [provider({ id: "large", apiUrl: `${baseUrl}/v1/images/generations` })],
     });

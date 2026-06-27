@@ -69,6 +69,9 @@ jobs:
       - name: Stage 4 provider health
         run: npm run test:stage4-provider-health
 
+      - name: Stage 8A provider health
+        run: npm run test:provider-health
+
       - name: Release artifact cleanliness
         run: npm run test:release-artifact-cleanliness
 
@@ -155,6 +158,9 @@ jobs:
 
       - name: Stage 4 provider health
         run: npm run test:stage4-provider-health
+
+      - name: Stage 8A provider health
+        run: npm run test:provider-health
 
       - name: Release artifact cleanliness
         run: npm run test:release-artifact-cleanliness
