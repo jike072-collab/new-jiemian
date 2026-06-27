@@ -75,6 +75,9 @@ jobs:
       - name: Stage 5 error diagnostics
         run: npm run test:stage5-error-diagnostics
 
+      - name: Release test artifact isolation
+        run: npm run check:release-test-artifact-isolation
+
       - name: Operations service tests
         run: npm run test:ops
 
@@ -149,6 +152,9 @@ jobs:
 
       - name: Stage 5 error diagnostics
         run: npm run test:stage5-error-diagnostics
+
+      - name: Release test artifact isolation
+        run: npm run check:release-test-artifact-isolation
 
       - name: Operations service tests
         run: npm run test:ops

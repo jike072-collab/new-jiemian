@@ -1054,6 +1054,15 @@ test("deploy script names keep staging and production scoped to their ports", ()
   assert(!source.includes("git reset --hard"));
 });
 
+test("production deploy requires an explicit current main target", () => {
+  const source = readFileSync(join(process.cwd(), "scripts", "ops", "deploy-service.mjs"), "utf8");
+  assert.match(source, /assertExplicitProductionTarget\(service, options\.target\)/);
+  assert.match(source, /deploy:production requires an explicit --target commit/);
+  assert.match(source, /assertProductionTargetMatchesMain\(service, config\.root, targetCommit\)/);
+  assert.match(source, /rev-parse", "origin\/main"/);
+  assert.match(source, /deploy:production target .* must match origin\/main/);
+});
+
 test("deploy validation happens before the live service is stopped", () => {
   const source = readFileSync(join(process.cwd(), "scripts", "ops", "deploy-service.mjs"), "utf8");
   assert(source.indexOf("await validateTargetInWorktree") < source.indexOf("stopService(service"));

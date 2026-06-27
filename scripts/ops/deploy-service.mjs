@@ -34,6 +34,7 @@ const validationCheckCommands = [
   ["npm", ["run", "test:ops"]],
   ["npm", ["run", "build"]],
   ["npm", ["run", "test:staging-smoke"]],
+  ["npm", ["run", "check:release-test-artifact-isolation"]],
   ["npm", ["run", "check"]],
 ];
 
@@ -46,6 +47,7 @@ const rollbackCandidateCommands = [
 
 export async function deployService(service, options = {}) {
   const config = getServiceConfig(service, options);
+  assertExplicitProductionTarget(service, options.target);
   const target = options.target || "origin/main";
   const deploymentId = randomUUID();
   let serviceStopped = false;
@@ -82,6 +84,7 @@ export async function deployService(service, options = {}) {
     assertCleanWorktree(config.root);
     runSync("git", ["fetch", "origin"], { cwd: config.root });
     targetCommit = runSync("git", ["rev-parse", target], { cwd: config.root }).stdout.trim();
+    assertProductionTargetMatchesMain(service, config.root, targetCommit);
     report.targetCommit = targetCommit;
     checkDiskSpace(config.root);
 
@@ -673,6 +676,20 @@ function isSamePath(left, right) {
 function assertCleanWorktree(root) {
   const status = runSync("git", ["status", "--porcelain"], { cwd: root }).stdout.trim();
   if (status) throw new Error("Working tree must be clean before deployment.");
+}
+
+function assertExplicitProductionTarget(service, target) {
+  if (service === "production" && !target) {
+    throw new Error("deploy:production requires an explicit --target commit.");
+  }
+}
+
+function assertProductionTargetMatchesMain(service, root, targetCommit) {
+  if (service !== "production") return;
+  const mainCommit = runSync("git", ["rev-parse", "origin/main"], { cwd: root }).stdout.trim();
+  if (targetCommit !== mainCommit) {
+    throw new Error(`deploy:production target ${targetCommit} must match origin/main ${mainCommit}.`);
+  }
 }
 
 function checkDiskSpace(root) {

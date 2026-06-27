@@ -86,7 +86,7 @@ npm run deploy:staging
 Deploy production:
 
 ```powershell
-npm run deploy:production
+npm run deploy:production -- --target <origin-main-merge-commit>
 ```
 
 The deployment script checks the worktree, fetches target code, records current PID and commit, creates backups and checksums, runs `npm ci`, automated tests, build, release preflight, then verifies service process identity before stopping the old process and starting the new one. If deployment validation fails after the old process is stopped, it attempts full rollback from the verified backup.
