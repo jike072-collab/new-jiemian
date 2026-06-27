@@ -10,6 +10,7 @@ import {
   ModeSegmentedControl,
   StackedControl,
   StickyPrimaryAction,
+  StudioErrorAlert,
   SubmitButton,
 } from "@/components/studio/shared";
 import type {
@@ -90,6 +91,7 @@ export function ImageUpscaleForm({
       {state.checked && !state.statusLoading && !state.availability?.ready ? (
         <p className="studio-error-text" role="alert">{upscaleUnavailableMessage}</p>
       ) : null}
+      <StudioErrorAlert message={state.submitError} diagnostic={state.submitDiagnostic} />
 
       <StickyPrimaryAction>
         <SubmitButton disabled={!canSubmit} loading={state.loading} loadingLabel="正在增强" onClick={onSubmit}>
@@ -178,6 +180,7 @@ export function VideoUpscaleForm({
       {state.checked && !state.statusLoading && !state.availability?.ready ? (
         <p className="studio-error-text" role="alert">{upscaleUnavailableMessage}</p>
       ) : null}
+      <StudioErrorAlert message={state.submitError} diagnostic={state.submitDiagnostic} />
 
       <StickyPrimaryAction>
         <SubmitButton disabled={!canSubmit || processing} loading={processing} loadingLabel="正在增强" onClick={onSubmit}>

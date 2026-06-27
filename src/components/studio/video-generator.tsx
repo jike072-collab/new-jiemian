@@ -22,6 +22,7 @@ import {
   ProviderSelect,
   StackedControl,
   StickyPrimaryAction,
+  StudioErrorAlert,
   SubmitButton,
 } from "@/components/studio/shared";
 import type { MobileActionState, VideoWorkspaceFile, VideoWorkspaceState, WorkspacePublicProvider } from "@/components/studio/types";
@@ -153,7 +154,7 @@ export function VideoGenerator({
         required
         placeholder={meta.promptPlaceholder}
       />
-      {state.submitError ? <p className="studio-error-text" role="alert">{state.submitError}</p> : null}
+      <StudioErrorAlert message={state.submitError} diagnostic={state.submitDiagnostic} />
       <StickyPrimaryAction>
         <SubmitButton
           disabled={!canSubmit}

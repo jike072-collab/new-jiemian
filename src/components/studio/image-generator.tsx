@@ -17,6 +17,7 @@ import {
   ProviderSelect,
   StackedControl,
   StickyPrimaryAction,
+  StudioErrorAlert,
   SubmitButton,
 } from "@/components/studio/shared";
 import type { ImageWorkspaceFile, ImageWorkspaceState, MobileActionState } from "@/components/studio/types";
@@ -154,7 +155,7 @@ export function ImageGenerator({
         required
         placeholder={meta.promptPlaceholder}
       />
-      {state.submitError ? <p className="studio-error-text" role="alert">{state.submitError}</p> : null}
+      <StudioErrorAlert message={state.submitError} diagnostic={state.submitDiagnostic} />
 
       <StickyPrimaryAction>
         <SubmitButton

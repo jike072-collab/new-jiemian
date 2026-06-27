@@ -1,6 +1,7 @@
 import { type NextRequest, NextResponse } from "next/server";
 
 import { authResultResponse, csrfFailure, requireAuthSession, requireCsrf } from "@/lib/server/auth";
+import { diagnosticErrorResponse } from "@/lib/server/error-diagnostics";
 import { generateImage, uploadedMediaFromForm } from "@/lib/server/provider-call";
 
 export const runtime = "nodejs";
@@ -25,8 +26,12 @@ export async function POST(request: NextRequest) {
     });
     return NextResponse.json({ item });
   } catch (error) {
-    return NextResponse.json({
-      error: error instanceof Error ? error.message : "图片生成失败。",
-    }, { status: 400 });
+    return diagnosticErrorResponse(error, {
+      requestId: request.headers.get("x-request-id"),
+      fallbackMessage: "图片生成失败。",
+      tool: "image",
+      operation: "generate-image",
+      defaultCode: "UNKNOWN_ERROR",
+    });
   }
 }

@@ -85,3 +85,9 @@ Do not use generation endpoints as a fallback for health checks.
 Checks that might send prompts, upload media, submit jobs, or produce images/videos require a separate future stage and explicit authorization. They are not allowed by Stage 4.
 
 The automated test suite covers this boundary; users do not need to run manual technical tests.
+
+## Stage 5 Error Diagnostics
+
+Stage 5 reuses the stable provider-health error-code vocabulary for generation and upscale failure reporting. Runtime failures now return a compatible top-level `error` string plus a sanitized `diagnostic` object with `code`, `category`, `retryable`, `requestId`, action text, and safe details.
+
+Provider health checks remain read-only. They still do not submit prompts, files, image payloads, video payloads, or generation parameters. See `docs/ERROR_DIAGNOSTICS.md` for the shared diagnostic contract and redaction boundary.

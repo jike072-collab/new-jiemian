@@ -10,6 +10,7 @@ import {
   updateJob,
   updateLibraryItem,
 } from "./library";
+import { codeForUpstreamStatus, GenerationDiagnosticError } from "./error-diagnostics";
 import { providerById } from "./providers";
 import { type JobRecord, type ProviderConfig } from "./types";
 
@@ -215,13 +216,38 @@ async function openapiRequest<T>({
     body: method === "POST" ? bodyText : undefined,
     signal: AbortSignal.timeout(timeoutMs),
   });
-  const payload = await response.json().catch(() => ({}));
+  const text = await response.text().catch(() => "");
+  let payload: unknown;
+  try {
+    payload = text.trim() ? JSON.parse(text) : {};
+  } catch (error) {
+    throw new GenerationDiagnosticError({
+      code: "PROVIDER_NON_JSON_RESPONSE",
+      upstreamStatus: response.status,
+      safeDetails: {
+        service,
+        upstreamStatus: response.status,
+        contentType: response.headers.get("content-type") || "",
+      },
+      cause: error,
+    });
+  }
   const metadata = asRecord(asRecord(payload).ResponseMetadata);
   const error = asRecord(metadata.Error);
   if (!response.ok || Object.keys(error).length) {
     const message = firstString(error.Message, error.message, asRecord(payload).message)
       || `火山接口请求失败：HTTP ${response.status}`;
-    throw new Error(message);
+    throw new GenerationDiagnosticError({
+      code: codeForUpstreamStatus(response.status || 502),
+      message,
+      upstreamStatus: response.status,
+      safeDetails: {
+        service,
+        action: query.Action,
+        upstreamStatus: response.status,
+        errorCode: firstString(error.Code, error.code),
+      },
+    });
   }
   return payload as T;
 }
@@ -329,7 +355,8 @@ function readImageDimensions(bytes: Buffer) {
 }
 
 async function uploadImageToImagex(file: UploadedUpscaleFile, config: ReturnType<typeof imageConfig>) {
-  if (!config.credential || !config.serviceId) throw new Error("图片高清火山配置不完整。");
+  if (!config.credential) throw new GenerationDiagnosticError({ code: "PROVIDER_MISSING_API_KEY" });
+  if (!config.serviceId) throw new GenerationDiagnosticError({ code: "MODEL_MISSING_IMAGE_UPSCALE" });
   const extension = fileExtension(file);
   const storeKey = `upscale/${randomUUID()}.${extension}`;
   const apply = await openapiRequest<{
@@ -358,7 +385,7 @@ async function uploadImageToImagex(file: UploadedUpscaleFile, config: ReturnType
   const storeInfo = address?.StoreInfos?.[0];
   const host = address?.UploadHosts?.[0];
   if (!storeInfo?.StoreUri || !storeInfo.Auth || !host || !address?.SessionKey) {
-    throw new Error("火山 ImageX 未返回完整上传地址。");
+    throw new GenerationDiagnosticError({ code: "PROVIDER_BAD_RESPONSE", safeDetails: { service: imagexServiceName, step: "apply-upload" } });
   }
   const imageSessionKey = address.SessionKey;
   await uploadByAddress(file, host, storeInfo.StoreUri, storeInfo.Auth);
@@ -383,9 +410,10 @@ async function uploadImageToImagex(file: UploadedUpscaleFile, config: ReturnType
 }
 
 async function imageResourceUrl(objectKey: string, config: ReturnType<typeof imageConfig>) {
-  if (!config.credential || !config.serviceId) throw new Error("图片高清火山配置不完整。");
+  if (!config.credential) throw new GenerationDiagnosticError({ code: "PROVIDER_MISSING_API_KEY" });
+  if (!config.serviceId) throw new GenerationDiagnosticError({ code: "MODEL_MISSING_IMAGE_UPSCALE" });
   if (!config.outputDomain) {
-    throw new Error("图片高清结果已生成，但缺少 VOLCENGINE_IMAGEX_OUTPUT_DOMAIN，无法自动取回结果图。");
+    throw new GenerationDiagnosticError({ code: "RESULT_ASSET_MISSING", safeDetails: { missing: "VOLCENGINE_IMAGEX_OUTPUT_DOMAIN" } });
   }
   const response = await openapiRequest<{
     Result?: {
@@ -418,7 +446,15 @@ async function imageResourceUrl(objectKey: string, config: ReturnType<typeof ima
 export async function upscaleImage(file: UploadedUpscaleFile, scale: TargetScale) {
   const provider = await providerById("image-upscale");
   const status = providerReady(provider, "image");
-  if (!provider || provider.endpointType !== "volcengine-imagex-upscale" || !status.ready) throw new Error(status.detail);
+  if (!provider) throw new GenerationDiagnosticError({ code: "PROVIDER_NOT_CONFIGURED" });
+  if (provider.endpointType !== "volcengine-imagex-upscale" || !status.ready) {
+    throw new GenerationDiagnosticError({
+      code: provider.enabled ? "PROVIDER_HEALTH_CHECK_FAILED" : "PROVIDER_DISABLED",
+      providerId: provider.id,
+      model: provider.model,
+      safeDetails: { detail: status.detail },
+    });
+  }
   const config = imageConfig(provider);
   const inputKey = await uploadImageToImagex(file, config);
   const workflowParameter = JSON.stringify({
@@ -452,9 +488,9 @@ export async function upscaleImage(file: UploadedUpscaleFile, scale: TargetScale
   });
   const output = parseJsonString(processed.Result?.Output);
   const objectKey = firstString(output.ObjectKey, output.objectKey, output.URI, output.Uri);
-  if (!objectKey) throw new Error("火山 ImageX 未返回结果图 URI。");
+  if (!objectKey) throw new GenerationDiagnosticError({ code: "PROVIDER_BAD_RESPONSE", providerId: provider.id, model: provider.model });
   const outputUrl = await imageResourceUrl(objectKey, config);
-  if (!outputUrl) throw new Error("火山 ImageX 未返回可访问的结果图 URL。");
+  if (!outputUrl) throw new GenerationDiagnosticError({ code: "RESULT_ASSET_MISSING", providerId: provider.id, model: provider.model });
   const stored = await storeRemoteUrl(outputUrl, "image-upscale", "image/png");
   const sourceDimensions = readImageDimensions(file.bytes);
   return addLibraryItem({
@@ -480,7 +516,8 @@ export async function upscaleImage(file: UploadedUpscaleFile, scale: TargetScale
 }
 
 async function uploadVideoToVod(file: UploadedUpscaleFile, config: ReturnType<typeof videoConfig>) {
-  if (!config.credential || !config.spaceName) throw new Error("视频高清火山配置不完整。");
+  if (!config.credential) throw new GenerationDiagnosticError({ code: "PROVIDER_MISSING_API_KEY" });
+  if (!config.spaceName) throw new GenerationDiagnosticError({ code: "MODEL_MISSING_VIDEO_UPSCALE" });
   const extension = `.${fileExtension(file)}`;
   const apply = await openapiRequest<{
     Result?: {
@@ -511,7 +548,7 @@ async function uploadVideoToVod(file: UploadedUpscaleFile, config: ReturnType<ty
   const storeInfo = address?.StoreInfos?.[0];
   const host = address?.UploadHosts?.[0];
   if (!storeInfo?.StoreUri || !storeInfo.Auth || !host || !address?.SessionKey) {
-    throw new Error("火山 VOD 未返回完整上传地址。");
+    throw new GenerationDiagnosticError({ code: "PROVIDER_BAD_RESPONSE", safeDetails: { service: vodServiceName, step: "apply-upload" } });
   }
   const videoSessionKey = address.SessionKey;
   await uploadByAddress(file, host, storeInfo.StoreUri, storeInfo.Auth);
@@ -537,14 +574,22 @@ async function uploadVideoToVod(file: UploadedUpscaleFile, config: ReturnType<ty
     },
   });
   const data = commit.Result?.Data;
-  if (!data?.Vid) throw new Error("火山 VOD 上传确认后未返回 Vid。");
+  if (!data?.Vid) throw new GenerationDiagnosticError({ code: "PROVIDER_BAD_RESPONSE", safeDetails: { service: vodServiceName, step: "commit-upload" } });
   return { ...data, Vid: data.Vid };
 }
 
 export async function submitVideoUpscale(file: UploadedUpscaleFile, scale: TargetScale) {
   const provider = await providerById("video-upscale");
   const status = providerReady(provider, "video");
-  if (!provider || provider.endpointType !== "volcengine-vod-upscale" || !status.ready) throw new Error(status.detail);
+  if (!provider) throw new GenerationDiagnosticError({ code: "PROVIDER_NOT_CONFIGURED" });
+  if (provider.endpointType !== "volcengine-vod-upscale" || !status.ready) {
+    throw new GenerationDiagnosticError({
+      code: provider.enabled ? "PROVIDER_HEALTH_CHECK_FAILED" : "PROVIDER_DISABLED",
+      providerId: provider.id,
+      model: provider.model,
+      safeDetails: { detail: status.detail },
+    });
+  }
   const config = videoConfig(provider);
   const uploaded = await uploadVideoToVod(file, config);
   const vid = uploaded.Vid;
@@ -668,14 +713,14 @@ function fileUrlFromStoreUri(storeUri: string, outputDomain: string) {
 
 export async function refreshVideoUpscaleJob(jobId: string, localUserId?: string | null) {
   const job = (await readJobs()).find((item) => item.id === jobId);
-  if (!job) throw new Error("任务不存在。");
+  if (!job) throw new GenerationDiagnosticError({ code: "TASK_POLL_FAILED", status: 404 });
   const jobOwner = job.ownerLocalUserId || job.billing_local_user_id || null;
-  if (localUserId && jobOwner && jobOwner !== localUserId) throw new Error("任务不存在。");
+  if (localUserId && jobOwner && jobOwner !== localUserId) throw new GenerationDiagnosticError({ code: "TASK_POLL_FAILED", status: 404 });
   if (job.status === "done" || job.status === "failed") return job;
 
   const provider = await providerById(job.providerId);
   const config = videoConfig(provider);
-  if (!config.credential) throw new Error("视频高清缺少火山 AK/SK。");
+  if (!config.credential) throw new GenerationDiagnosticError({ code: "PROVIDER_MISSING_API_KEY", providerId: provider?.id, model: provider?.model });
   const response = await openapiRequest<{ Result?: Record<string, unknown> }>({
     endpoint: config.endpoint,
     service: vodServiceName,
@@ -729,18 +774,22 @@ export async function uploadedUpscaleFile(
   kind: "image" | "video",
 ): Promise<UploadedUpscaleFile> {
   const value = form.get("file");
-  if (!(value instanceof File) || value.size === 0) throw new Error("请选择要高清处理的文件。");
+  if (!(value instanceof File) || value.size === 0) throw new GenerationDiagnosticError({ code: "UPLOAD_NOT_FOUND" });
   const allowed = kind === "image"
     ? new Set(["image/png", "image/jpeg", "image/webp"])
     : new Set(["video/mp4", "video/webm", "video/quicktime"]);
   if (!allowed.has(value.type)) {
-    throw new Error(kind === "image"
-      ? "图片高清仅支持 PNG、JPEG 和 WebP。"
-      : "视频高清仅支持 MP4、WebM 和 MOV。");
+    throw new GenerationDiagnosticError({
+      code: "INPUT_UNSUPPORTED_FORMAT",
+      safeDetails: { kind, mimeType: value.type },
+    });
   }
   const limit = kind === "image" ? 10 * 1024 * 1024 : 1024 * 1024 * 1024;
   if (value.size > limit) {
-    throw new Error(kind === "image" ? "图片不能超过 10MB。" : "视频不能超过 1GB。");
+    throw new GenerationDiagnosticError({
+      code: "INPUT_FILE_TOO_LARGE",
+      safeDetails: { kind, size: value.size, limit },
+    });
   }
   return {
     bytes: Buffer.from(await value.arrayBuffer()),

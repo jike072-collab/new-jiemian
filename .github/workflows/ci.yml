@@ -72,6 +72,9 @@ jobs:
       - name: Release artifact cleanliness
         run: npm run test:release-artifact-cleanliness
 
+      - name: Stage 5 error diagnostics
+        run: npm run test:stage5-error-diagnostics
+
       - name: Operations service tests
         run: npm run test:ops
 
@@ -143,6 +146,9 @@ jobs:
 
       - name: Release artifact cleanliness
         run: npm run test:release-artifact-cleanliness
+
+      - name: Stage 5 error diagnostics
+        run: npm run test:stage5-error-diagnostics
 
       - name: Operations service tests
         run: npm run test:ops

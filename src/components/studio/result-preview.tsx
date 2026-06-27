@@ -9,8 +9,8 @@ import { BeforeAfterImageCompare } from "@/components/before-after-image-compare
 import { ResultReveal } from "@/components/motion";
 import { upscaleTargetLabel, videoUpscaleScaleLabel } from "@/components/studio/constants";
 import { MediaCard, libraryStatusBadgeLabel } from "@/components/studio/media-card";
-import { PreviewState } from "@/components/studio/shared";
-import type { BusinessToolId, ImageGenerationProgressState, ImageUpscaleWorkspaceState, OutputState, VideoUpscaleWorkspaceState } from "@/components/studio/types";
+import { PreviewState, StudioErrorAlert } from "@/components/studio/shared";
+import type { BusinessToolId, ImageGenerationProgressState, ImageUpscaleWorkspaceState, OutputState, StudioErrorDiagnostic, VideoUpscaleWorkspaceState } from "@/components/studio/types";
 import type { LibraryItem } from "@/lib/server/types";
 import { cn } from "@/lib/utils";
 import { useReducedMotion } from "@/lib/use-reduced-motion";
@@ -867,14 +867,19 @@ function ErrorPreview({
   canRetry,
   onRetry,
   onReloadProviders,
+  message,
+  diagnostic,
 }: {
   canRetry: boolean;
   onRetry: () => void;
   onReloadProviders?: () => Promise<void>;
+  message?: string;
+  diagnostic?: StudioErrorDiagnostic | null;
 }) {
   return (
     <PreviewState eyebrow="失败" title="生成失败" description="生成失败，请检查设置后重试" role="alert">
       <div className="studio-preview__empty">
+        <StudioErrorAlert message={message} diagnostic={diagnostic} />
         <div className="studio-actions">
           {onReloadProviders ? (
             <button type="button" className="studio-secondary-button" onClick={() => void onReloadProviders()}>
@@ -950,7 +955,7 @@ export function ImageUpscalePreviewPanel({
   }
 
   if (state.submitError) {
-    return <ErrorPreview canRetry={canSubmit} onRetry={onSubmit} />;
+    return <ErrorPreview canRetry={canSubmit} onRetry={onSubmit} message={state.submitError} diagnostic={state.submitDiagnostic} />;
   }
 
   if (!state.checked || state.statusLoading || (!state.availability?.ready && !state.statusError)) {
@@ -1034,7 +1039,7 @@ export function VideoUpscalePreviewPanel({
   }
 
   if (state.submitError) {
-    return <ErrorPreview canRetry={canSubmit} onRetry={onSubmit} />;
+    return <ErrorPreview canRetry={canSubmit} onRetry={onSubmit} message={state.submitError} diagnostic={state.submitDiagnostic} />;
   }
 
   if (!state.checked || state.statusLoading || (!state.availability?.ready && !state.statusError)) {
@@ -1106,6 +1111,7 @@ export function ImagePreviewPanel({
   output,
   loading,
   submitError,
+  submitDiagnostic,
   isEditor,
   promptFilled,
   hasProvider,
@@ -1118,6 +1124,7 @@ export function ImagePreviewPanel({
   output: OutputState;
   loading: boolean;
   submitError: string;
+  submitDiagnostic?: StudioErrorDiagnostic | null;
   isEditor: boolean;
   promptFilled: boolean;
   hasProvider: boolean;
@@ -1138,6 +1145,8 @@ export function ImagePreviewPanel({
         canRetry={canRetry}
         onRetry={onSubmit}
         onReloadProviders={!hasProvider ? onReloadProviders : undefined}
+        message={submitError}
+        diagnostic={submitDiagnostic}
       />
     );
   }
@@ -1182,6 +1191,7 @@ export function VideoPreviewPanel({
   output,
   loading,
   submitError,
+  submitDiagnostic,
   promptFilled,
   hasProvider,
   hasFiles,
@@ -1193,6 +1203,7 @@ export function VideoPreviewPanel({
   output: OutputState;
   loading: boolean;
   submitError: string;
+  submitDiagnostic?: StudioErrorDiagnostic | null;
   promptFilled: boolean;
   hasProvider: boolean;
   hasFiles: boolean;
@@ -1212,6 +1223,8 @@ export function VideoPreviewPanel({
         canRetry={canRetry}
         onRetry={onSubmit}
         onReloadProviders={!hasProvider ? onReloadProviders : undefined}
+        message={submitError}
+        diagnostic={submitDiagnostic}
       />
     );
   }

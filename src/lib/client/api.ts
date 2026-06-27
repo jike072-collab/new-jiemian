@@ -1,9 +1,12 @@
+import type { ErrorDiagnostic } from "@/lib/error-diagnostic-catalog";
+
 type ApiErrorPayload = {
   code?: string;
   message?: string;
   uiState?: string;
   retryAfterSeconds?: number;
   error?: string;
+  diagnostic?: ErrorDiagnostic;
 };
 
 export class ApiError extends Error {
@@ -11,14 +14,16 @@ export class ApiError extends Error {
   readonly code?: string;
   readonly uiState?: string;
   readonly retryAfterSeconds?: number;
+  readonly diagnostic?: ErrorDiagnostic;
 
   constructor(message: string, status: number, payload: ApiErrorPayload = {}) {
     super(message);
     this.name = "ApiError";
     this.status = status;
-    this.code = payload.code;
+    this.code = payload.diagnostic?.code || payload.code;
     this.uiState = payload.uiState;
     this.retryAfterSeconds = payload.retryAfterSeconds;
+    this.diagnostic = payload.diagnostic;
   }
 }
 
