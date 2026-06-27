@@ -87,6 +87,9 @@ jobs:
       - name: Network hardening dry-run
         run: npm run test:network-hardening-dry-run
 
+      - name: Database implementation gate
+        run: npm run check:database-gate
+
       - name: Release test artifact isolation
         run: npm run check:release-test-artifact-isolation
 
@@ -176,6 +179,9 @@ jobs:
 
       - name: Network hardening dry-run
         run: npm run test:network-hardening-dry-run
+
+      - name: Database implementation gate
+        run: npm run check:database-gate
 
       - name: Release test artifact isolation
         run: npm run check:release-test-artifact-isolation
