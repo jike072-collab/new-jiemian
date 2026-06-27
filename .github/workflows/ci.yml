@@ -81,6 +81,9 @@ jobs:
       - name: Upscale auth CSRF
         run: npm run test:upscale-auth-csrf
 
+      - name: Network hardening dry-run
+        run: npm run test:network-hardening-dry-run
+
       - name: Release test artifact isolation
         run: npm run check:release-test-artifact-isolation
 
@@ -164,6 +167,9 @@ jobs:
 
       - name: Upscale auth CSRF
         run: npm run test:upscale-auth-csrf
+
+      - name: Network hardening dry-run
+        run: npm run test:network-hardening-dry-run
 
       - name: Release test artifact isolation
         run: npm run check:release-test-artifact-isolation
