@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 import { randomUUID } from "node:crypto";
-import { cpSync, existsSync, mkdirSync, readdirSync, renameSync, rmSync, statSync, writeFileSync } from "node:fs";
-import { basename, extname, join, parse, relative, resolve } from "node:path";
+import { cpSync, existsSync, lstatSync, mkdirSync, readdirSync, readlinkSync, renameSync, rmSync, statSync, symlinkSync, writeFileSync } from "node:fs";
+import { basename, dirname, extname, isAbsolute, join, parse, relative, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 import { clearActiveRelease, readActiveRelease, restoreActiveRelease, writeActiveRelease } from "./active-release.mjs";
 import {
@@ -34,6 +34,7 @@ const validationCheckCommands = [
   ["npm", ["run", "test:ops"]],
   ["npm", ["run", "build"]],
   ["npm", ["run", "test:staging-smoke"]],
+  ["npm", ["run", "check:release-test-artifact-isolation"]],
   ["npm", ["run", "check"]],
 ];
 
@@ -46,6 +47,7 @@ const rollbackCandidateCommands = [
 
 export async function deployService(service, options = {}) {
   const config = getServiceConfig(service, options);
+  assertExplicitProductionTarget(service, options.target);
   const target = options.target || "origin/main";
   const deploymentId = randomUUID();
   let serviceStopped = false;
@@ -82,6 +84,7 @@ export async function deployService(service, options = {}) {
     assertCleanWorktree(config.root);
     runSync("git", ["fetch", "origin"], { cwd: config.root });
     targetCommit = runSync("git", ["rev-parse", target], { cwd: config.root }).stdout.trim();
+    assertProductionTargetMatchesMain(service, config.root, targetCommit);
     report.targetCommit = targetCommit;
     checkDiskSpace(config.root);
 
@@ -266,7 +269,31 @@ function prepareReleaseArtifact(config, validationRoot, releaseRoot) {
     force: true,
     filter: (source) => !shouldExcludeFromReleaseArtifact(source, { artifactRoot: validationRoot }),
   });
+  rewriteReleaseArtifactNextModuleLinks(validationRoot, releaseRoot);
   assertReleaseArtifactClean(releaseRoot);
+}
+
+export function rewriteReleaseArtifactNextModuleLinks(validationRoot, releaseRoot) {
+  const sourceRoot = resolve(validationRoot);
+  const targetRoot = resolve(releaseRoot);
+  const nextNodeModules = join(targetRoot, ".next", "node_modules");
+  if (!existsSync(nextNodeModules)) return;
+  for (const entry of readdirSync(nextNodeModules, { withFileTypes: true })) {
+    const linkPath = join(nextNodeModules, entry.name);
+    const stats = lstatSync(linkPath);
+    if (!stats.isSymbolicLink()) continue;
+    const currentTarget = resolve(dirname(linkPath), readlinkSync(linkPath));
+    if (isPathWithin(targetRoot, currentTarget)) continue;
+    if (!isPathWithin(sourceRoot, currentTarget)) {
+      throw new Error(`Release artifact .next node module link escapes validation root: ${linkPath}`);
+    }
+    const releaseTarget = join(targetRoot, relative(sourceRoot, currentTarget));
+    const linkType = existsSync(releaseTarget) && statSync(releaseTarget).isDirectory()
+      ? (process.platform === "win32" ? "junction" : "dir")
+      : "file";
+    rmSync(linkPath, { recursive: true, force: true });
+    symlinkSync(releaseTarget, linkPath, linkType);
+  }
 }
 
 function assertReleaseCandidateSafe(config, validationRoot, validationConfig) {
@@ -336,9 +363,27 @@ export function shouldExcludeFromReleaseArtifact(path, options = {}) {
 export function assertReleaseArtifactClean(releaseDir) {
   const root = resolve(releaseDir);
   if (!existsSync(root)) throw new Error(`Release artifact is missing: ${root}`);
+  assertReleaseArtifactNextModuleLinks(root);
   for (const path of listArtifactPaths(root)) {
     if (shouldExcludeFromReleaseArtifact(path, { artifactRoot: root })) {
       throw new Error(`Release artifact contains forbidden runtime state: ${path}`);
+    }
+  }
+}
+
+function assertReleaseArtifactNextModuleLinks(root) {
+  const nextNodeModules = join(root, ".next", "node_modules");
+  if (!existsSync(nextNodeModules)) return;
+  for (const entry of readdirSync(nextNodeModules, { withFileTypes: true })) {
+    const entryPath = join(nextNodeModules, entry.name);
+    const stats = lstatSync(entryPath);
+    if (!stats.isSymbolicLink()) continue;
+    const target = resolve(dirname(entryPath), readlinkSync(entryPath));
+    if (!isPathWithin(root, target)) {
+      throw new Error(`Release artifact .next node module link points outside the artifact: ${entryPath}`);
+    }
+    if (!existsSync(target)) {
+      throw new Error(`Release artifact .next node module link target is missing: ${entryPath}`);
     }
   }
 }
@@ -670,9 +715,28 @@ function isSamePath(left, right) {
   return resolve(left).toLowerCase() === resolve(right).toLowerCase();
 }
 
+function isPathWithin(parent, child) {
+  const relativePath = relative(resolve(parent), resolve(child));
+  return relativePath === "" || Boolean(relativePath && !relativePath.startsWith("..") && !isAbsolute(relativePath));
+}
+
 function assertCleanWorktree(root) {
   const status = runSync("git", ["status", "--porcelain"], { cwd: root }).stdout.trim();
   if (status) throw new Error("Working tree must be clean before deployment.");
+}
+
+function assertExplicitProductionTarget(service, target) {
+  if (service === "production" && !target) {
+    throw new Error("deploy:production requires an explicit --target commit.");
+  }
+}
+
+function assertProductionTargetMatchesMain(service, root, targetCommit) {
+  if (service !== "production") return;
+  const mainCommit = runSync("git", ["rev-parse", "origin/main"], { cwd: root }).stdout.trim();
+  if (targetCommit !== mainCommit) {
+    throw new Error(`deploy:production target ${targetCommit} must match origin/main ${mainCommit}.`);
+  }
 }
 
 function checkDiskSpace(root) {

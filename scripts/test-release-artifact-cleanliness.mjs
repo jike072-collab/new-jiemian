@@ -1,15 +1,16 @@
 #!/usr/bin/env node
 import assert from "node:assert/strict";
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
-import { existsSync, mkdirSync, writeFileSync } from "node:fs";
+import { cpSync, existsSync, mkdirSync, readlinkSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join, resolve } from "node:path";
+import { dirname, join, resolve } from "node:path";
 
 import {
   assertReleaseArtifactClean,
   buildReleaseCandidateVerificationEnv,
   createReleaseCandidateRoot,
   createReleaseValidationWorktreeRoot,
+  rewriteReleaseArtifactNextModuleLinks,
   shouldExcludeFromReleaseArtifact,
 } from "./ops/deploy-service.mjs";
 import { getServiceConfig } from "./ops/service-config.mjs";
@@ -40,12 +41,18 @@ function seedCodeArtifact(root) {
   mkdirSync(join(root, ".next", "server"), { recursive: true });
   mkdirSync(join(root, ".next", "static"), { recursive: true });
   mkdirSync(join(root, "node_modules", "next", "dist", "bin"), { recursive: true });
+  mkdirSync(join(root, "node_modules", "pg"), { recursive: true });
   writeFileSync(join(root, "src", "index.ts"), "export const ok = true;\n");
   writeFileSync(join(root, ".next", "BUILD_ID"), "build");
   writeFileSync(join(root, ".next", "required-server-files.json"), "{}");
   writeFileSync(join(root, ".next", "server", "index.js"), "module.exports = {};\n");
   writeFileSync(join(root, ".next", "static", "asset.js"), "console.log('ok');\n");
   writeFileSync(join(root, "node_modules", "next", "dist", "bin", "next"), "next");
+  writeFileSync(join(root, "node_modules", "pg", "package.json"), "{}");
+}
+
+function linkDirectory(target, linkPath) {
+  symlinkSync(target, linkPath, process.platform === "win32" ? "junction" : "dir");
 }
 
 function assertRejectsArtifact(root, relativePath, pattern) {
@@ -147,6 +154,41 @@ test("release artifact checks nested runtime state but ignores package internals
     writeFileSync(join(packageDir, "fixture.db"), "package fixture");
     await rm(join(releaseDir, "docs"), { recursive: true, force: true });
     assert.doesNotThrow(() => assertReleaseArtifactClean(releaseDir));
+  });
+});
+
+test("release artifact rewrites Next node module links into the artifact", async () => {
+  await withTempProject(async (root) => {
+    const validationDir = join(root, ".runtime", "release-worktrees", "validation");
+    const releaseDir = join(root, ".runtime", "releases", "linked artifact");
+    seedCodeArtifact(validationDir);
+    mkdirSync(join(validationDir, ".next", "node_modules"), { recursive: true });
+    linkDirectory(join(validationDir, "node_modules", "pg"), join(validationDir, ".next", "node_modules", "pg-alias"));
+
+    cpSync(validationDir, releaseDir, { recursive: true });
+    const releaseLink = join(releaseDir, ".next", "node_modules", "pg-alias");
+    rmSync(releaseLink, { recursive: true, force: true });
+    linkDirectory(join(validationDir, "node_modules", "pg"), releaseLink);
+
+    rewriteReleaseArtifactNextModuleLinks(validationDir, releaseDir);
+    assert.equal(
+      resolve(dirname(releaseLink), readlinkSync(releaseLink)).toLowerCase(),
+      join(releaseDir, "node_modules", "pg").toLowerCase(),
+    );
+    assert.doesNotThrow(() => assertReleaseArtifactClean(releaseDir));
+  });
+});
+
+test("release artifact rejects Next node module links outside the artifact", async () => {
+  await withTempProject(async (root) => {
+    const releaseDir = join(root, ".runtime", "releases", "external linked artifact");
+    const externalTarget = join(root, "external-node-modules", "pg");
+    seedCodeArtifact(releaseDir);
+    mkdirSync(join(releaseDir, ".next", "node_modules"), { recursive: true });
+    mkdirSync(externalTarget, { recursive: true });
+    linkDirectory(externalTarget, join(releaseDir, ".next", "node_modules", "pg-alias"));
+
+    assert.throws(() => assertReleaseArtifactClean(releaseDir), /outside the artifact/);
   });
 });
 

@@ -9,7 +9,7 @@ Use the hardened operations commands for service work:
 - Start staging: `npm run service:start:staging`
 - Start production: `npm run service:start:production`
 - Deploy staging: `npm run deploy:staging`
-- Deploy production: `npm run deploy:production`
+- Deploy production: `npm run deploy:production -- --target <origin-main-merge-commit>`
 
 Production deploy must run only after staging has passed on 3107 and the PR has been merged to `main`.
 

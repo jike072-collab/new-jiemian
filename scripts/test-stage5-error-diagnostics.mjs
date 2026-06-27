@@ -1,35 +1,62 @@
 #!/usr/bin/env node
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { existsSync, readFileSync, rmSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 const root = process.cwd();
 const outDir = join(root, "dist", "error-diagnostics-tests");
+const tempRoot = mkdtempSync(join(tmpdir(), "aohuang-error-diagnostics-"));
+const dataDir = join(tempRoot, "data");
+const uploadsDir = join(tempRoot, "uploads");
 
-if (existsSync(outDir)) {
-  rmSync(outDir, { recursive: true, force: true });
+let testStatus = 0;
+try {
+  if (existsSync(outDir)) {
+    rmSync(outDir, { recursive: true, force: true });
+  }
+
+  const compile = spawnSync("npx", ["tsc", "-p", "tsconfig.error-diagnostics-tests.json"], {
+    cwd: root,
+    stdio: "inherit",
+    shell: process.platform === "win32",
+  });
+
+  if (compile.status !== 0) {
+    testStatus = compile.status ?? 1;
+  } else {
+    const tests = [
+      "dist/error-diagnostics-tests/src/lib/server/__tests__/error-diagnostics.test.js",
+    ];
+
+    const run = spawnSync("node", ["--conditions=react-server", "--test", ...tests], {
+      cwd: root,
+      env: {
+        ...process.env,
+        PORT: "3107",
+        AOHUANG_ALLOW_RUNTIME_DIR_OVERRIDE: "1",
+        RUNTIME_STORAGE_ISOLATION: "strict",
+        DATA_DIR: dataDir,
+        UPLOADS_DIR: uploadsDir,
+        APP_AUTH_PERSISTENCE_MODE: "json",
+        APP_BILLING_PERSISTENCE_MODE: "json",
+        APP_TASK_BILLING_PERSISTENCE_MODE: "json",
+      },
+      stdio: "inherit",
+      shell: process.platform === "win32",
+    });
+    testStatus = run.status ?? 1;
+  }
+} finally {
+  rmSync(tempRoot, { recursive: true, force: true });
+  if (existsSync(tempRoot)) {
+    console.error("temporary error diagnostics test directory cleanup failed.");
+    testStatus = 1;
+  }
 }
 
-const compile = spawnSync("npx", ["tsc", "-p", "tsconfig.error-diagnostics-tests.json"], {
-  cwd: root,
-  stdio: "inherit",
-  shell: process.platform === "win32",
-});
-
-if (compile.status !== 0) process.exit(compile.status ?? 1);
-
-const tests = [
-  "dist/error-diagnostics-tests/src/lib/server/__tests__/error-diagnostics.test.js",
-];
-
-const run = spawnSync("node", ["--conditions=react-server", "--test", ...tests], {
-  cwd: root,
-  stdio: "inherit",
-  shell: process.platform === "win32",
-});
-
-if (run.status !== 0) process.exit(run.status ?? 1);
+if (testStatus !== 0) process.exit(testStatus);
 
 const sources = {
   imageRoute: read("src/app/api/generate/image/route.ts"),
