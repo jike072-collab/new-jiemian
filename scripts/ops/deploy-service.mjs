@@ -90,7 +90,7 @@ export async function deployService(service, options = {}) {
 
     runtime = buildRuntimeEnv(service, { root: config.root });
     if (runtime.missing.length) {
-      throw new Error(`Missing required runtime configuration before stopping old process: ${runtime.missing.join(", ")}`);
+      throw new Error(`Missing required runtime configuration before stopping old process: ${runtime.missingCategories.join(", ") || `${runtime.missing.length} items`}`);
     }
 
     preparedRelease = await validateTargetInWorktree(service, config, runtime, targetCommit, report);
@@ -443,7 +443,7 @@ export async function rollbackService(service, options = {}) {
   if (!options.commit) throw new Error("rollback requires --commit.");
   const runtime = buildRuntimeEnv(service, { root: config.root });
   if (runtime.missing.length) {
-    throw new Error(`Missing required runtime configuration before rollback: ${runtime.missing.join(", ")}`);
+    throw new Error(`Missing required runtime configuration before rollback: ${runtime.missingCategories.join(", ") || `${runtime.missing.length} items`}`);
   }
   const rollbackEnv = options.env || runtime.env;
   const previousActiveRelease = readActiveRelease(config, { optional: true });

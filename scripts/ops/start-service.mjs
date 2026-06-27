@@ -15,7 +15,7 @@ export async function startService(service, options = {}) {
   const { activeRelease, runtimeRoot } = resolveServiceRuntime(config);
   const runtime = buildRuntimeEnv(service, { root: config.root });
   if (runtime.missing.length) {
-    throw new Error(`Missing required runtime configuration before stopping any process: ${runtime.missing.join(", ")}`);
+    throw new Error(`Missing required runtime configuration before stopping any process: ${runtime.missingCategories.join(", ") || `${runtime.missing.length} items`}`);
   }
   if (options.preflightOnly !== true && options.foreground !== true) {
     const identity = await classifyServiceProcess(service, { root: config.root, port: config.port });
