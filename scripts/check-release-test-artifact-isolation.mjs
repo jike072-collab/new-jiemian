@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 import { existsSync, readFileSync } from "node:fs";
-import { dirname, join, resolve } from "node:path";
+import { basename, dirname, join, resolve } from "node:path";
 
 const root = process.cwd();
 const failures = [];
@@ -33,13 +33,21 @@ function checkCurrentRuntimeRoots() {
 }
 
 function productionRootCandidates() {
-  const candidates = new Set([resolve(root)]);
+  const candidates = new Set();
+  const currentRoot = resolve(root);
+  if (isProductionRootName(currentRoot)) {
+    candidates.add(currentRoot);
+  }
   if (process.env.AOHUANG_PRODUCTION_ROOT) {
     candidates.add(resolve(process.env.AOHUANG_PRODUCTION_ROOT));
   }
   const sibling = resolve(dirname(root), "new-jiemian");
   if (existsSync(join(sibling, "package.json"))) candidates.add(sibling);
   return [...candidates].filter((candidate) => existsSync(join(candidate, "package.json")));
+}
+
+function isProductionRootName(candidate) {
+  return basename(resolve(candidate)).toLowerCase() === "new-jiemian";
 }
 
 function checkScriptIsolation() {
@@ -82,7 +90,14 @@ function checkAutomationCoverage() {
   assertIncludes(".github/workflows/ci.yml", "Release test artifact isolation", "CI must run release test artifact isolation checks");
 }
 
+function checkRootClassification() {
+  if (isProductionRootName(resolve(dirname(root), "new-jiemian-3107"))) {
+    fail("new-jiemian-3107 must not be classified as the production root");
+  }
+}
+
 function main() {
+  checkRootClassification();
   checkCurrentRuntimeRoots();
   checkScriptIsolation();
   checkDeployHardening();
