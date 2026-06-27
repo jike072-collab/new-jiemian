@@ -90,6 +90,21 @@ jobs:
       - name: Database implementation gate
         run: npm run check:database-gate
 
+      - name: Stage 9C-A database MVP schema
+        run: npm run db:schema:check
+
+      - name: Stage 9C-A database MVP migration check
+        run: npm run db:migrate:check
+        env:
+          STAGE9C_TEST_DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/rollback_drill
+          STAGE9C_TEST_DATABASE_EXPECTED_NAME: rollback_drill
+
+      - name: Stage 9C-A database MVP repositories
+        run: npm run test:database-mvp
+        env:
+          STAGE9C_TEST_DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/rollback_drill
+          STAGE9C_TEST_DATABASE_EXPECTED_NAME: rollback_drill
+
       - name: Release test artifact isolation
         run: npm run check:release-test-artifact-isolation
 
@@ -182,6 +197,15 @@ jobs:
 
       - name: Database implementation gate
         run: npm run check:database-gate
+
+      - name: Stage 9C-A database MVP schema
+        run: npm run db:schema:check
+
+      - name: Stage 9C-A database MVP migration check
+        run: npm run db:migrate:check
+
+      - name: Stage 9C-A database MVP repositories
+        run: npm run test:database-mvp
 
       - name: Release test artifact isolation
         run: npm run check:release-test-artifact-isolation
