@@ -13,6 +13,10 @@ const requiredDocs = [
   "docs/DATABASE_STAGE9B_GATE.md",
   "docs/DATABASE_MVP_SCOPE.md",
   "docs/DATABASE_STAGE9C_PRECONDITIONS.md",
+  "docs/DATABASE_MVP_FOUNDATION.md",
+  "docs/DATABASE_MIGRATION_RUNBOOK.md",
+  "docs/DATABASE_BACKUP_RESTORE_RUNBOOK.md",
+  "docs/DATABASE_MULTI_USER_CLOUD_READINESS.md",
 ];
 
 const requiredDocTerms = new Map([
@@ -58,6 +62,44 @@ const requiredDocTerms = new Map([
     "Database/File Consistency",
     "Stop-Release Conditions",
   ]],
+  ["docs/DATABASE_MVP_FOUNDATION.md", [
+    "Stage 9C-A",
+    "generation_jobs",
+    "assets",
+    "library_items",
+    "provider_model_snapshots",
+    "api_call_logs",
+    "error_events",
+    "audit_logs",
+    "quota_accounts",
+    "quota_ledger",
+    "Existing JSON and filesystem behavior remains active",
+  ]],
+  ["docs/DATABASE_MIGRATION_RUNBOOK.md", [
+    "Stage 9C-A",
+    "db:schema:check",
+    "db:migrate:check",
+    "STAGE9C_TEST_DATABASE_URL",
+    "Do not use APP_DATABASE_URL",
+    "Forbidden Production Commands",
+  ]],
+  ["docs/DATABASE_BACKUP_RESTORE_RUNBOOK.md", [
+    "pg_dump",
+    "pg_restore --list",
+    "data",
+    "uploads",
+    "Do not commit",
+    "Stage 9C-A Boundary",
+  ]],
+  ["docs/DATABASE_MULTI_USER_CLOUD_READINESS.md", [
+    "Stage 9C-A",
+    "user_id",
+    "owner",
+    "object_storage",
+    "Stage 9C-B",
+    "Stage 9D",
+    "Stage 9E",
+  ]],
 ]);
 
 const sensitiveValuePatterns = [
@@ -94,6 +136,12 @@ const dangerousLifecyclePatterns = [
   /\bdb:(?:push|seed|reset|migrate)\b/i,
   /\bscripts\/database\/migrate\.mjs\s+up\b/i,
   /\bscripts\\database\\migrate\.mjs\s+up\b/i,
+];
+
+const safeLifecycleDatabaseCommands = [
+  /npm\s+run\s+db:schema:check\b/g,
+  /npm\s+run\s+db:migrate:check\b/g,
+  /npm\s+run\s+test:database-mvp\b/g,
 ];
 
 const mutatingSqlPatterns = [
@@ -199,6 +247,13 @@ function fail(message) {
   failures.push(message);
 }
 
+function lifecycleTextForDangerScan(command) {
+  return safeLifecycleDatabaseCommands.reduce(
+    (text, pattern) => text.replace(pattern, "safe-stage9c-database-check"),
+    command,
+  );
+}
+
 const pkg = readJson(join(root, "package.json"), {});
 const scripts = pkg.scripts || {};
 
@@ -221,15 +276,40 @@ if (scripts["check:database-gate"] !== "node scripts/check-database-implementati
   fail("package.json missing exact check:database-gate script");
 }
 
+if (scripts["db:schema:check"] !== "node scripts/database/check-stage9c-schema.mjs") {
+  fail("package.json missing exact db:schema:check script");
+}
+
+if (scripts["db:migrate:check"] !== "node scripts/database/check-stage9c-migration.mjs") {
+  fail("package.json missing exact db:migrate:check script");
+}
+
+if (scripts["test:database-mvp"] !== "node scripts/database/test-database-mvp.mjs") {
+  fail("package.json missing exact test:database-mvp script");
+}
+
 if (!scripts.check?.includes("npm run check:database-gate")) {
   fail("package.json check script does not run check:database-gate");
+}
+
+if (!scripts.check?.includes("npm run db:schema:check")) {
+  fail("package.json check script does not run db:schema:check");
+}
+
+if (!scripts.check?.includes("npm run db:migrate:check")) {
+  fail("package.json check script does not run db:migrate:check");
+}
+
+if (!scripts.check?.includes("npm run test:database-mvp")) {
+  fail("package.json check script does not run test:database-mvp");
 }
 
 for (const name of lifecycleScripts) {
   const command = scripts[name];
   if (!command) continue;
+  const dangerText = lifecycleTextForDangerScan(command);
   for (const pattern of dangerousLifecyclePatterns) {
-    if (pattern.test(command)) {
+    if (pattern.test(dangerText)) {
       fail(`package script ${name} has dangerous DB write/migration wiring`);
     }
   }
@@ -248,6 +328,12 @@ if (!fileExists(ciPath)) {
   const ciText = readText(ciPath);
   const gateRuns = ciText.match(/npm run check:database-gate/g)?.length || 0;
   if (gateRuns < 2) fail("CI must run check:database-gate in Linux and Windows jobs");
+  const schemaRuns = ciText.match(/npm run db:schema:check/g)?.length || 0;
+  if (schemaRuns < 2) fail("CI must run db:schema:check in Linux and Windows jobs");
+  const migrateCheckRuns = ciText.match(/npm run db:migrate:check/g)?.length || 0;
+  if (migrateCheckRuns < 2) fail("CI must run db:migrate:check in Linux and Windows jobs");
+  const databaseMvpRuns = ciText.match(/npm run test:database-mvp/g)?.length || 0;
+  if (databaseMvpRuns < 2) fail("CI must run test:database-mvp in Linux and Windows jobs");
 }
 
 const gatePath = join(root, "scripts", "check-database-implementation-gate.mjs");
@@ -316,8 +402,8 @@ for (const file of sourceFilesToScan) {
 
 const report = {
   ok: failures.length === 0,
-  stage: "Stage 9B",
-  readOnly: true,
+  stage: "Stage 9C-A",
+  gateMode: "protected_database_foundation",
   databaseConnected: false,
   migrationExecuted: false,
   schemaChanged: false,
@@ -352,6 +438,9 @@ const report = {
     checkRunsDatabaseGate: Boolean(scripts.check?.includes("npm run check:database-gate")),
     migrate: Boolean(scripts.migrate),
     migrateStatus: Boolean(scripts["migrate:status"]),
+    dbSchemaCheck: Boolean(scripts["db:schema:check"]),
+    dbMigrateCheck: Boolean(scripts["db:migrate:check"]),
+    testDatabaseMvp: Boolean(scripts["test:database-mvp"]),
     seedCommands: Object.keys(scripts).filter((name) => /seed/i.test(name)).sort(),
     manualApplyCommands: Object.keys(scripts).filter((name) => /apply/i.test(name)).sort(),
     databaseScriptFiles,
@@ -360,6 +449,15 @@ const report = {
     workflow: fileExists(ciPath),
     checkDatabaseGateRuns: fileExists(ciPath)
       ? (readText(ciPath).match(/npm run check:database-gate/g)?.length || 0)
+      : 0,
+    dbSchemaCheckRuns: fileExists(ciPath)
+      ? (readText(ciPath).match(/npm run db:schema:check/g)?.length || 0)
+      : 0,
+    dbMigrateCheckRuns: fileExists(ciPath)
+      ? (readText(ciPath).match(/npm run db:migrate:check/g)?.length || 0)
+      : 0,
+    testDatabaseMvpRuns: fileExists(ciPath)
+      ? (readText(ciPath).match(/npm run test:database-mvp/g)?.length || 0)
       : 0,
   },
   gitSafety: {

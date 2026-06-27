@@ -9,6 +9,10 @@ const requiredDocs = [
   "docs/DATABASE_MIGRATION_PLAN.md",
   "docs/DATABASE_SECURITY_AND_BACKUP_PLAN.md",
   "docs/DATABASE_STAGE9_IMPLEMENTATION_PLAN.md",
+  "docs/DATABASE_MVP_FOUNDATION.md",
+  "docs/DATABASE_MIGRATION_RUNBOOK.md",
+  "docs/DATABASE_BACKUP_RESTORE_RUNBOOK.md",
+  "docs/DATABASE_MULTI_USER_CLOUD_READINESS.md",
 ];
 
 const requiredTerms = new Map([
@@ -57,6 +61,39 @@ const requiredTerms = new Map([
     "real generation",
     "3106",
     "schema",
+  ]],
+  ["docs/DATABASE_MVP_FOUNDATION.md", [
+    "generation_jobs",
+    "assets",
+    "library_items",
+    "provider_model_snapshots",
+    "api_call_logs",
+    "error_events",
+    "audit_logs",
+    "quota_accounts",
+    "quota_ledger",
+    "Existing JSON and filesystem behavior remains active",
+  ]],
+  ["docs/DATABASE_MIGRATION_RUNBOOK.md", [
+    "db:schema:check",
+    "db:migrate:check",
+    "STAGE9C_TEST_DATABASE_URL",
+    "Forbidden Production Commands",
+  ]],
+  ["docs/DATABASE_BACKUP_RESTORE_RUNBOOK.md", [
+    "pg_dump",
+    "pg_restore --list",
+    "data",
+    "uploads",
+    "Do not commit",
+  ]],
+  ["docs/DATABASE_MULTI_USER_CLOUD_READINESS.md", [
+    "user_id",
+    "owner",
+    "object_storage",
+    "Stage 9C-B",
+    "Stage 9D",
+    "Stage 9E",
   ]],
 ]);
 
