@@ -1446,7 +1446,7 @@ export function StudioApp() {
       const form = new FormData();
       form.set("file", currentFile.file);
       form.set("scale", imageUpscaleWorkspace.scale);
-      const data = await jsonFetch<{ item: LibraryItem; job: JobRecord | null }>("/api/upscale/image", {
+      const data = await fetchJsonWithCsrf<{ item: LibraryItem; job: JobRecord | null }>("/api/upscale/image", {
         method: "POST",
         body: form,
       });
@@ -1565,7 +1565,7 @@ export function StudioApp() {
       const form = new FormData();
       form.set("file", currentFile.file);
       form.set("scale", videoUpscaleWorkspace.scale);
-      const data = await jsonFetch<{ item: LibraryItem; job: JobRecord | null }>("/api/upscale/video", {
+      const data = await fetchJsonWithCsrf<{ item: LibraryItem; job: JobRecord | null }>("/api/upscale/video", {
         method: "POST",
         body: form,
       });

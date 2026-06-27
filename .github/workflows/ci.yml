@@ -75,6 +75,12 @@ jobs:
       - name: Stage 5 error diagnostics
         run: npm run test:stage5-error-diagnostics
 
+      - name: Log redaction
+        run: npm run test:log-redaction
+
+      - name: Upscale auth CSRF
+        run: npm run test:upscale-auth-csrf
+
       - name: Release test artifact isolation
         run: npm run check:release-test-artifact-isolation
 
@@ -152,6 +158,12 @@ jobs:
 
       - name: Stage 5 error diagnostics
         run: npm run test:stage5-error-diagnostics
+
+      - name: Log redaction
+        run: npm run test:log-redaction
+
+      - name: Upscale auth CSRF
+        run: npm run test:upscale-auth-csrf
 
       - name: Release test artifact isolation
         run: npm run check:release-test-artifact-isolation
