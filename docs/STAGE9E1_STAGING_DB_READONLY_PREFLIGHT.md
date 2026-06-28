@@ -139,9 +139,57 @@ Stage 9E-1 stopped with:
 
 This stop condition is expected behavior under Stage 9E-1 rules.
 
-## Required Remediation Before Re-Run
+## Rerun Result
+
+A later separately authorized rerun used `stage9e_readonly_preflight` with a least-privilege staging read-only role.
+
+Rerun summary:
+
+- read-only transaction completed
+- host summary: `loopback:127.0.0.1`
+- port: `5432`
+- database name: `aohuang_app`
+- current user / role: `stage9e_readonly_preflight`
+- current schema: `public`
+- PostgreSQL version: `PostgreSQL 16.14`
+- expected database name matched: `true`
+- direct production pointer risk: not detected
+- role exceeded-read-only blocker: not detected
+- role flags:
+  - `rolsuper=false`
+  - `rolcreatedb=false`
+  - `rolcreaterole=false`
+  - `rolreplication=false`
+  - `rolbypassrls=false`
+- database privileges:
+  - `CONNECT=true`
+  - `CREATE=false`
+  - `TEMP=false`
+- schema privileges:
+  - `USAGE=true`
+  - `CREATE=false`
+- `default_transaction_read_only=on`
+- current session `transaction_read_only=on`
+- `schema_migrations` exists and is readable
+- applied migrations: `6`
+- latest applied migration: `006_task_billing_dispatch_states`
+- Stage 9C MVP tables not present yet:
+  - `generation_jobs`
+  - `assets`
+  - `library_items`
+  - `provider_model_snapshots`
+  - `api_call_logs`
+  - `error_events`
+  - `audit_logs`
+  - `quota_accounts`
+  - `quota_ledger`
+- no migration, write, import, feature flag, 3106 action, NewAPI call, provider call, generation, or cost was authorized
+
+## Original Blocker Remediation
 
 Do not enter Stage 9E-2.
+
+The initial run required this remediation before the successful rerun above.
 
 Before Stage 9E-1 is retried:
 
@@ -151,6 +199,31 @@ Before Stage 9E-1 is retried:
 
 ## Current Conclusion
 
-Stage 9E-1 did connect to the approved staging target in read-only mode, but the current staging role is too privileged.
+Stage 9E-1 has now passed after the successful `stage9e_readonly_preflight` rerun under a least-privilege staging read-only role.
 
-Stage 9E-1 is blocked until a least-privilege read-only staging role is provided or the current role is reduced to an approved read-only scope.
+This confirms staging database identity for Stage 9E-1 only. It does not authorize migration, database write, import, feature flag cutover, 3106 action, NewAPI call, provider call, generation, or cost.
+
+## Stage 9E-2 Plan-Only Summary
+
+Stage 9E-2 remains plan-only unless separately authorized. The next review should cover backup artifact expectations, checksum and manifest evidence, disposable restore-target identity, and restore verification queries.
+
+Plan-only placeholders for the next authorization review:
+
+- backup scope placeholder: `<STAGING_DB>`, `<BACKUP_ARTIFACT>`, `<BACKUP_MANIFEST>`, `<BACKUP_CHECKSUM>`
+- restore target placeholder: `<DISPOSABLE_RESTORE_TARGET_DB>`, `<RESTORE_HOST_LABEL>`, `<RESTORE_SCHEMA>`
+- placeholder commands only:
+  - `pg_dump --dbname=<APPROVED_STAGING_DSN> --format=custom --file=<BACKUP_ARTIFACT>`
+  - `pg_restore --list <BACKUP_ARTIFACT>`
+  - `psql <APPROVED_RESTORE_DSN> -c "select current_database(), current_user, current_schema();"`
+- required pre-execution checks:
+  - approved staging-only target identity
+  - approved disposable restore target identity
+  - backup artifact path, manifest, and checksum
+  - explicit stop/go owner and rollback owner
+- stop conditions:
+  - target identity mismatch
+  - production signal detected
+  - backup artifact or checksum mismatch
+  - restore target not confirmed disposable
+
+This PR does not implement or authorize Stage 9E-2 execution.
