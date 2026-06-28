@@ -26,14 +26,14 @@ The dry-run reports:
 
 ## Hard Boundary
 
-Stage 9D import dry-run must keep all of the following false:
+Stage 9D import dry-run must preserve these values:
 
-- dry-run only = false
-- real import executed = true
-- production data changed = true
-- production uploads changed = true
-- staging data changed = true
-- staging uploads changed = true
+- dry-run only = true
+- real import executed = false
+- production data changed = false
+- production uploads changed = false
+- staging data changed = false
+- staging uploads changed = false
 
 It must not print raw prompts, raw provider responses, API keys, Authorization headers, cookies, or database URLs.
 
