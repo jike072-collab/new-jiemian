@@ -39,4 +39,5 @@ export {
   type DatabaseMvpProviderModelSnapshot,
   type DatabaseMvpQuery,
   type UpdateDatabaseMvpGenerationJobInput,
+  type UpdateDatabaseMvpLibraryItemInput,
 } from "./mvp-repositories";

@@ -17,6 +17,10 @@ const requiredDocs = [
   "docs/DATABASE_MIGRATION_RUNBOOK.md",
   "docs/DATABASE_BACKUP_RESTORE_RUNBOOK.md",
   "docs/DATABASE_MULTI_USER_CLOUD_READINESS.md",
+  "docs/DATABASE_STAGE9CB_INTEGRATION.md",
+  "docs/LIBRARY_DATABASE_BACKEND.md",
+  "docs/GENERATION_JOBS_DATABASE_BACKEND.md",
+  "docs/DATABASE_IMPORT_DRY_RUN_PLAN.md",
 ];
 
 const requiredDocTerms = new Map([
@@ -99,6 +103,34 @@ const requiredDocTerms = new Map([
     "Stage 9C-B",
     "Stage 9D",
     "Stage 9E",
+  ]],
+  ["docs/DATABASE_STAGE9CB_INTEGRATION.md", [
+    "Stage 9C-B",
+    "default-off",
+    "LIBRARY_STORAGE_BACKEND",
+    "GENERATION_JOBS_BACKEND",
+    "3107",
+    "JSON",
+  ]],
+  ["docs/LIBRARY_DATABASE_BACKEND.md", [
+    "data/library.json",
+    "uploads",
+    "soft delete",
+    "JSON mode",
+    "API contract",
+  ]],
+  ["docs/GENERATION_JOBS_DATABASE_BACKEND.md", [
+    "generation_jobs",
+    "queued",
+    "running",
+    "succeeded",
+    "failed",
+  ]],
+  ["docs/DATABASE_IMPORT_DRY_RUN_PLAN.md", [
+    "db:library-import:plan",
+    "db:library-consistency:check",
+    "--apply",
+    "read-only",
   ]],
 ]);
 
@@ -304,6 +336,18 @@ if (!scripts.check?.includes("npm run test:database-mvp")) {
   fail("package.json check script does not run test:database-mvp");
 }
 
+for (const script of [
+  "test:database-library-integration",
+  "test:generation-jobs-db-integration",
+  "db:library-import:plan",
+  "db:library-consistency:check",
+]) {
+  if (!scripts[script]) fail(`package.json missing Stage 9C-B script: ${script}`);
+  if (!scripts.check?.includes(`npm run ${script}`)) {
+    fail(`package.json check script does not run ${script}`);
+  }
+}
+
 for (const name of lifecycleScripts) {
   const command = scripts[name];
   if (!command) continue;
@@ -334,6 +378,15 @@ if (!fileExists(ciPath)) {
   if (migrateCheckRuns < 2) fail("CI must run db:migrate:check in Linux and Windows jobs");
   const databaseMvpRuns = ciText.match(/npm run test:database-mvp/g)?.length || 0;
   if (databaseMvpRuns < 2) fail("CI must run test:database-mvp in Linux and Windows jobs");
+  for (const script of [
+    "test:database-library-integration",
+    "test:generation-jobs-db-integration",
+    "db:library-import:plan",
+    "db:library-consistency:check",
+  ]) {
+    const runs = ciText.match(new RegExp(`npm run ${script.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}`, "g"))?.length || 0;
+    if (runs < 2) fail(`CI must run ${script} in Linux and Windows jobs`);
+  }
 }
 
 const gatePath = join(root, "scripts", "check-database-implementation-gate.mjs");
@@ -441,6 +494,10 @@ const report = {
     dbSchemaCheck: Boolean(scripts["db:schema:check"]),
     dbMigrateCheck: Boolean(scripts["db:migrate:check"]),
     testDatabaseMvp: Boolean(scripts["test:database-mvp"]),
+    testDatabaseLibraryIntegration: Boolean(scripts["test:database-library-integration"]),
+    testGenerationJobsDbIntegration: Boolean(scripts["test:generation-jobs-db-integration"]),
+    dbLibraryImportPlan: Boolean(scripts["db:library-import:plan"]),
+    dbLibraryConsistencyCheck: Boolean(scripts["db:library-consistency:check"]),
     seedCommands: Object.keys(scripts).filter((name) => /seed/i.test(name)).sort(),
     manualApplyCommands: Object.keys(scripts).filter((name) => /apply/i.test(name)).sort(),
     databaseScriptFiles,
@@ -458,6 +515,18 @@ const report = {
       : 0,
     testDatabaseMvpRuns: fileExists(ciPath)
       ? (readText(ciPath).match(/npm run test:database-mvp/g)?.length || 0)
+      : 0,
+    testDatabaseLibraryIntegrationRuns: fileExists(ciPath)
+      ? (readText(ciPath).match(/npm run test:database-library-integration/g)?.length || 0)
+      : 0,
+    testGenerationJobsDbIntegrationRuns: fileExists(ciPath)
+      ? (readText(ciPath).match(/npm run test:generation-jobs-db-integration/g)?.length || 0)
+      : 0,
+    dbLibraryImportPlanRuns: fileExists(ciPath)
+      ? (readText(ciPath).match(/npm run db:library-import:plan/g)?.length || 0)
+      : 0,
+    dbLibraryConsistencyCheckRuns: fileExists(ciPath)
+      ? (readText(ciPath).match(/npm run db:library-consistency:check/g)?.length || 0)
       : 0,
   },
   gitSafety: {
