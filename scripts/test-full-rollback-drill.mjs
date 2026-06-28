@@ -11,9 +11,48 @@ import { getServiceConfig } from "./ops/service-config.mjs";
 
 const root = await mkdtemp(join(tmpdir(), "aohuang-full-rollback-drill-"));
 const realDatabaseUrl = process.env.ROLLBACK_DRILL_DATABASE_URL || "";
+const expectedDatabaseName = process.env.ROLLBACK_DRILL_EXPECTED_DATABASE_NAME || "";
 const markerTable = "aohuang_rollback_drill_marker";
 
+function buildFakePostgresUrl() {
+  return [
+    "postgres",
+    "ql://",
+    "drill_user",
+    ":",
+    "drill_password",
+    "@127.0.0.1:5432/drill_db",
+  ].join("");
+}
+
+function parseDatabaseName(value) {
+  try {
+    const url = new URL(value);
+    return decodeURIComponent(url.pathname.replace(/^\//, ""));
+  } catch {
+    return "";
+  }
+}
+
+function assertSafeRollbackDrillDatabase() {
+  if (!realDatabaseUrl) return;
+  if (!expectedDatabaseName) {
+    throw new Error("ROLLBACK_DRILL_EXPECTED_DATABASE_NAME is required when ROLLBACK_DRILL_DATABASE_URL is set.");
+  }
+  const actualName = parseDatabaseName(realDatabaseUrl);
+  if (!actualName || actualName !== expectedDatabaseName) {
+    throw new Error("Rollback drill database name does not match the explicit expected name.");
+  }
+  if (!/(test|tmp|temp|rollback|drill|stage9|ci)/i.test(expectedDatabaseName)) {
+    throw new Error("Rollback drill refuses to run unless the expected database name is clearly test-only.");
+  }
+  if (/(prod|production|staging|3106|3107|newapi)/i.test(expectedDatabaseName)) {
+    throw new Error("Rollback drill refuses production, staging, service-port, or NewAPI database names.");
+  }
+}
+
 try {
+  assertSafeRollbackDrillDatabase();
   mkdirSync(join(root, "data"), { recursive: true });
   mkdirSync(join(root, "uploads"), { recursive: true });
   mkdirSync(join(root, ".runtime"), { recursive: true });
@@ -47,7 +86,7 @@ try {
 
   const config = getServiceConfig("production", { root });
   const env = {
-    APP_DATABASE_URL: realDatabaseUrl || "postgresql://drill_user:drill_password@127.0.0.1:5432/drill_db",
+    APP_DATABASE_URL: realDatabaseUrl || buildFakePostgresUrl(),
   };
   if (realDatabaseUrl) {
     runPsql(realDatabaseUrl, [

@@ -79,6 +79,23 @@ Defer these until after library/assets and job history are stable:
 - real generation smoke tests
 - network/firewall/HTTPS apply work
 
+## Stage 9D Scope
+
+Stage 9D is a rehearsal-only stage:
+
+- add migration rehearsal against a throwaway database only
+- add import dry-run against fixture or copied test data only
+- add DB/file consistency checks
+- add rollback readiness and release gate documentation
+- keep 3106 unchanged
+- keep feature flags default-off
+- do not run a real production migration
+- do not run a real staging migration
+- do not import real data/uploads
+- do not call NewAPI or real providers
+
+Passing Stage 9D means the release plan is reviewable. It does not authorize a real cutover.
+
 ## Phase Acceptance Matrix
 
 | Phase | Schema Change | Migration | 3106 Publish | External Calls | Goal |
@@ -86,8 +103,8 @@ Defer these until after library/assets and job history are stable:
 | 9A | no | no | no | no | audit and design |
 | 9B | no by default | no | no | no | implementation prep |
 | 9C | staging/test only unless approved | test/staging only | no by default | no | first DB-backed slice |
-| 9D | maybe | maybe | only with approval | no by default | controlled production migration |
-| 9E | no schema by default | no | maybe | only with approval | live provider/generation smoke |
+| 9D | no new production schema by default | rehearsal only on isolated test DB | no | no | migration rehearsal, dry-run, rollback readiness |
+| 9E | only with separate authorization | only with separate authorization | only with separate authorization | only with separate authorization | controlled production cutover |
 
 ## When Schema Changes Are Allowed
 
@@ -99,6 +116,8 @@ Schema changes are allowed only when:
 - staging validation passes
 - CI is green
 - 3106 release decision is separate and explicit
+
+Stage 9D does not satisfy those production conditions by itself.
 
 ## When 3106 Publish Is Forbidden
 
@@ -112,6 +131,7 @@ Schema changes are allowed only when:
 - expired rollback authorization when rollback capability is required
 - unexplained data/uploads checksum drift
 - any observed NewAPI/generation/live `/models` call in a no-call stage
+- Stage 9D has not been superseded by a fresh Stage 9E preflight
 
 ## Live Provider `/models`
 
