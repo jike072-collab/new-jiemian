@@ -13,6 +13,10 @@ const requiredDocs = [
   "docs/DATABASE_MIGRATION_RUNBOOK.md",
   "docs/DATABASE_BACKUP_RESTORE_RUNBOOK.md",
   "docs/DATABASE_MULTI_USER_CLOUD_READINESS.md",
+  "docs/DATABASE_STAGE9CB_INTEGRATION.md",
+  "docs/LIBRARY_DATABASE_BACKEND.md",
+  "docs/GENERATION_JOBS_DATABASE_BACKEND.md",
+  "docs/DATABASE_IMPORT_DRY_RUN_PLAN.md",
 ];
 
 const requiredTerms = new Map([
@@ -94,6 +98,37 @@ const requiredTerms = new Map([
     "Stage 9C-B",
     "Stage 9D",
     "Stage 9E",
+  ]],
+  ["docs/DATABASE_STAGE9CB_INTEGRATION.md", [
+    "Stage 9C-B",
+    "default-off",
+    "LIBRARY_STORAGE_BACKEND",
+    "GENERATION_JOBS_BACKEND",
+    "3107",
+    "JSON",
+    "NewAPI",
+  ]],
+  ["docs/LIBRARY_DATABASE_BACKEND.md", [
+    "data/library.json",
+    "uploads",
+    "soft delete",
+    "JSON mode",
+    "API contract",
+  ]],
+  ["docs/GENERATION_JOBS_DATABASE_BACKEND.md", [
+    "generation_jobs",
+    "queued",
+    "running",
+    "succeeded",
+    "failed",
+    "NewAPI",
+  ]],
+  ["docs/DATABASE_IMPORT_DRY_RUN_PLAN.md", [
+    "db:library-import:plan",
+    "db:library-consistency:check",
+    "--apply",
+    "read-only",
+    "rollback",
   ]],
 ]);
 

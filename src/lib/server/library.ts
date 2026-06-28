@@ -12,11 +12,19 @@ import {
   writeJsonFile,
 } from "./paths";
 import { type JobRecord, type LibraryItem } from "./types";
+import { createStage9cbLibraryDatabaseAdapter } from "./database/library-jobs-adapter";
+import {
+  getStage9cbDatabaseIntegrationFlags,
+  shouldReadLibraryFromDatabase,
+  shouldUseDatabaseJobs,
+  shouldWriteLibraryToDatabase,
+} from "./database/stage9cb-flags";
 
 const libraryPath = join(dataRoot, "library.json");
 const jobsPath = join(dataRoot, "jobs.json");
 let libraryWriteQueue = Promise.resolve();
 let jobsWriteQueue = Promise.resolve();
+let databaseAdapter: ReturnType<typeof createStage9cbLibraryDatabaseAdapter> | null = null;
 
 export class LibraryOperationError extends Error {
   status: number;
@@ -68,6 +76,11 @@ async function saveJobsFile(jobs: JobRecord[]) {
   await writeJsonFile(jobsPath, jobs);
 }
 
+function getDatabaseAdapter() {
+  databaseAdapter ||= createStage9cbLibraryDatabaseAdapter();
+  return databaseAdapter;
+}
+
 function safeOutputPath(storedName: string) {
   const safeName = safeStoredName(storedName);
   if (!safeName || safeName !== storedName) {
@@ -87,6 +100,11 @@ async function removeStoredOutputFile(storedName: string) {
 }
 
 export async function readLibrary() {
+  const flags = getStage9cbDatabaseIntegrationFlags();
+  if (shouldReadLibraryFromDatabase(flags)) {
+    return getDatabaseAdapter().readLibrary();
+  }
+
   const items = await readLibraryFile();
   const withFileState = await Promise.all(items.map(async (item) => {
     if (!item.output?.storedName) return item;
@@ -114,6 +132,9 @@ export async function addLibraryItem(input: Omit<LibraryItem, "id" | "createdAt"
     const items = await readLibraryFile();
     await saveLibrary([item, ...items]);
   });
+  if (shouldWriteLibraryToDatabase(getStage9cbDatabaseIntegrationFlags())) {
+    await getDatabaseAdapter().addLibraryItem(item);
+  }
   return item;
 }
 
@@ -124,11 +145,19 @@ export async function updateLibraryItem(id: string, patch: Partial<LibraryItem>)
       item.id === id ? { ...item, ...patch, updatedAt: new Date().toISOString() } : item
     ));
     await saveLibrary(next);
-    return next.find((item) => item.id === id) || null;
+    const updated = next.find((item) => item.id === id) || null;
+    if (updated && shouldWriteLibraryToDatabase(getStage9cbDatabaseIntegrationFlags())) {
+      await getDatabaseAdapter().updateLibraryItem(id, patch, updated);
+    }
+    return updated;
   });
 }
 
 export async function deleteLibraryItem(id: string) {
+  if (shouldReadLibraryFromDatabase(getStage9cbDatabaseIntegrationFlags())) {
+    return getDatabaseAdapter().softDeleteLibraryItem(id);
+  }
+
   const removed = await serializeWrite("library", async () => {
     const items = await readLibraryFile();
     const removedItem = items.find((item) => item.id === id);
@@ -142,10 +171,16 @@ export async function deleteLibraryItem(id: string) {
     const jobs = await readJobsFile();
     await saveJobsFile(jobs.filter((job) => job.libraryItemId !== id));
   });
+  if (shouldWriteLibraryToDatabase(getStage9cbDatabaseIntegrationFlags())) {
+    await getDatabaseAdapter().softDeleteLibraryItem(id);
+  }
   return { deleted: Boolean(removed) };
 }
 
 export async function readJobs() {
+  if (shouldUseDatabaseJobs(getStage9cbDatabaseIntegrationFlags())) {
+    return getDatabaseAdapter().readJobs();
+  }
   return readJobsFile();
 }
 
@@ -160,6 +195,9 @@ export async function addJob(job: Omit<JobRecord, "createdAt" | "updatedAt">) {
     const jobs = await readJobsFile();
     await saveJobsFile([record, ...jobs]);
   });
+  if (shouldUseDatabaseJobs(getStage9cbDatabaseIntegrationFlags())) {
+    await getDatabaseAdapter().addJob(record);
+  }
   return record;
 }
 
@@ -170,7 +208,11 @@ export async function updateJob(id: string, patch: Partial<JobRecord>) {
       job.id === id ? { ...job, ...patch, updatedAt: new Date().toISOString() } : job
     ));
     await saveJobsFile(next);
-    return next.find((job) => job.id === id) || null;
+    const updated = next.find((job) => job.id === id) || null;
+    if (updated && shouldUseDatabaseJobs(getStage9cbDatabaseIntegrationFlags())) {
+      await getDatabaseAdapter().updateJob(updated);
+    }
+    return updated;
   });
 }
 

@@ -9,6 +9,7 @@ on:
       - db/**
       - scripts/database/**
       - src/lib/server/database/**
+      - src/lib/server/library.ts
       - src/lib/server/auth/**
       - src/lib/server/billing/**
       - src/lib/server/integrations/new-api/**

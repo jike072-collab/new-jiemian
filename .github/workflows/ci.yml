@@ -105,6 +105,18 @@ jobs:
           STAGE9C_TEST_DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/rollback_drill
           STAGE9C_TEST_DATABASE_EXPECTED_NAME: rollback_drill
 
+      - name: Stage 9C-B database library integration
+        run: npm run test:database-library-integration
+
+      - name: Stage 9C-B generation jobs database integration
+        run: npm run test:generation-jobs-db-integration
+
+      - name: Stage 9C-B library import dry-run
+        run: npm run db:library-import:plan
+
+      - name: Stage 9C-B library consistency check
+        run: npm run db:library-consistency:check
+
       - name: Release test artifact isolation
         run: npm run check:release-test-artifact-isolation
 
@@ -206,6 +218,18 @@ jobs:
 
       - name: Stage 9C-A database MVP repositories
         run: npm run test:database-mvp
+
+      - name: Stage 9C-B database library integration
+        run: npm run test:database-library-integration
+
+      - name: Stage 9C-B generation jobs database integration
+        run: npm run test:generation-jobs-db-integration
+
+      - name: Stage 9C-B library import dry-run
+        run: npm run db:library-import:plan
+
+      - name: Stage 9C-B library consistency check
+        run: npm run db:library-consistency:check
 
       - name: Release test artifact isolation
         run: npm run check:release-test-artifact-isolation

@@ -112,7 +112,7 @@ export type CreateDatabaseMvpGenerationJobInput = Omit<DatabaseMvpGenerationJob,
 
 export type UpdateDatabaseMvpGenerationJobInput = Partial<Pick<
   DatabaseMvpGenerationJob,
-  "status" | "output_asset_id" | "provider" | "provider_model" | "error_code" | "user_visible_error" | "internal_error_masked"
+  "status" | "input_asset_id" | "output_asset_id" | "provider" | "provider_model" | "error_code" | "user_visible_error" | "internal_error_masked"
 >> & {
   updated_at?: string | Date;
   started_at?: string | Date | null;
@@ -123,6 +123,14 @@ export type CreateDatabaseMvpLibraryItemInput = Omit<DatabaseMvpLibraryItem, "id
   id?: string;
   is_deleted?: boolean;
   created_at?: string | Date;
+  updated_at?: string | Date;
+  deleted_at?: string | Date | null;
+};
+
+export type UpdateDatabaseMvpLibraryItemInput = Partial<Pick<
+  DatabaseMvpLibraryItem,
+  "asset_id" | "generation_job_id" | "title" | "kind" | "source" | "is_deleted"
+>> & {
   updated_at?: string | Date;
   deleted_at?: string | Date | null;
 };
@@ -355,6 +363,7 @@ export class PostgresDatabaseMvpRepository {
     };
 
     if (patch.status !== undefined) add("status", patch.status);
+    if (patch.input_asset_id !== undefined) add("input_asset_id", optionalText(patch.input_asset_id));
     if (patch.output_asset_id !== undefined) add("output_asset_id", optionalText(patch.output_asset_id));
     if (patch.provider !== undefined) add("provider", optionalText(patch.provider));
     if (patch.provider_model !== undefined) add("provider_model", optionalText(patch.provider_model));
@@ -456,6 +465,48 @@ export class PostgresDatabaseMvpRepository {
       limit $${values.length}
     `, values);
     return result.rows.map(libraryItemFromRow);
+  }
+
+  async getLibraryItem(id: string) {
+    const result = await this.query<LibraryItemRow>("select * from library_items where id = $1", [id.trim()]);
+    return result.rows[0] ? libraryItemFromRow(result.rows[0]) : null;
+  }
+
+  async updateLibraryItem(id: string, patch: UpdateDatabaseMvpLibraryItemInput) {
+    const values: unknown[] = [id.trim()];
+    const assignments: string[] = [];
+    const add = (column: string, value: unknown) => {
+      values.push(value);
+      assignments.push(`${column} = $${values.length}`);
+    };
+
+    if (patch.asset_id !== undefined) add("asset_id", patch.asset_id.trim());
+    if (patch.generation_job_id !== undefined) add("generation_job_id", optionalText(patch.generation_job_id));
+    if (patch.title !== undefined) add("title", optionalText(patch.title));
+    if (patch.kind !== undefined) add("kind", patch.kind.trim());
+    if (patch.source !== undefined) add("source", patch.source.trim());
+    if (patch.is_deleted !== undefined) add("is_deleted", Boolean(patch.is_deleted));
+    if (patch.deleted_at !== undefined) add("deleted_at", optionalTimestamp(patch.deleted_at));
+    add("updated_at", timestamp(patch.updated_at));
+
+    const result = await this.query<LibraryItemRow>(`
+      update library_items
+      set ${assignments.join(", ")}
+      where id = $1
+      returning *
+    `, values);
+    if (!result.rows[0]) {
+      throw new DatabaseMvpRepositoryError("DATABASE_MVP_NOT_FOUND", "Library item was not found.");
+    }
+    return libraryItemFromRow(result.rows[0]);
+  }
+
+  async softDeleteLibraryItem(id: string, deletedAt: string | Date = new Date()) {
+    return this.updateLibraryItem(id, {
+      is_deleted: true,
+      deleted_at: deletedAt,
+      updated_at: deletedAt,
+    });
   }
 
   async appendProviderModelSnapshot(input: CreateDatabaseMvpProviderModelSnapshotInput) {
