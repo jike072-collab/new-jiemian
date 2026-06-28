@@ -17,6 +17,11 @@ const requiredDocs = [
   "docs/LIBRARY_DATABASE_BACKEND.md",
   "docs/GENERATION_JOBS_DATABASE_BACKEND.md",
   "docs/DATABASE_IMPORT_DRY_RUN_PLAN.md",
+  "docs/STAGE9D_MIGRATION_REHEARSAL.md",
+  "docs/STAGE9D_IMPORT_DRY_RUN.md",
+  "docs/STAGE9D_DB_FILE_CONSISTENCY.md",
+  "docs/STAGE9D_ROLLBACK_PLAN.md",
+  "docs/STAGE9D_RELEASE_GATES.md",
 ];
 
 const requiredTerms = new Map([
@@ -130,6 +135,46 @@ const requiredTerms = new Map([
     "read-only",
     "rollback",
   ]],
+  ["docs/STAGE9D_MIGRATION_REHEARSAL.md", [
+    "Stage 9D",
+    "db:migration:rehearsal",
+    "STAGE9D_REHEARSAL_DATABASE_URL",
+    "STAGE9D_REHEARSAL_EXPECTED_NAME",
+    "production",
+    "Stage 9E",
+  ]],
+  ["docs/STAGE9D_IMPORT_DRY_RUN.md", [
+    "Stage 9D",
+    "db:import:dry-run",
+    "dry-run",
+    "real import",
+    "separate user authorization",
+    "Stage 9E",
+  ]],
+  ["docs/STAGE9D_DB_FILE_CONSISTENCY.md", [
+    "db:consistency:check",
+    "library_items",
+    "assets",
+    "generation_jobs",
+    "3106",
+    "3107",
+  ]],
+  ["docs/STAGE9D_ROLLBACK_PLAN.md", [
+    "pg_dump",
+    "pg_restore --list",
+    "backup manifest",
+    "checksum",
+    "stop immediately",
+    "Do not auto-execute",
+  ]],
+  ["docs/STAGE9D_RELEASE_GATES.md", [
+    "Stage 9D",
+    "Stage 9E",
+    "no real migration",
+    "no real import",
+    "3106",
+    "NewAPI",
+  ]],
 ]);
 
 const forbiddenSecretPatterns = [
@@ -160,7 +205,15 @@ for (const doc of requiredDocs) {
 }
 
 const pkg = JSON.parse(readFileSync(join(root, "package.json"), "utf8"));
-for (const script of ["audit:database", "check:database-docs"]) {
+for (const script of [
+  "audit:database",
+  "check:database-docs",
+  "db:migration:rehearsal",
+  "db:import:dry-run",
+  "db:consistency:check",
+  "db:rollback:check",
+  "check:stage9d",
+]) {
   if (!pkg.scripts?.[script]) failures.push(`package.json missing script: ${script}`);
 }
 

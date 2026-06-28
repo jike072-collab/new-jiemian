@@ -72,11 +72,11 @@ Connect selected 3107 runtime code to the database repository behind a feature f
 
 ### Stage 9D
 
-Backfill test/staging library data into `assets` and `library_items`, with checksum-based verification.
+Rehearse migration and import on isolated temporary data only. Use checksum-based verification, consistency checks, and rollback preparation. Do not touch 3106.
 
 ### Stage 9E
 
-Plan production cutover with backup, restore drill, rollback authorization, and user-facing compatibility checks.
+Only after separate authorization, plan production cutover with backup, restore drill, rollback authorization, and user-facing compatibility checks.
 
 ## Explicit Non-Goals
 

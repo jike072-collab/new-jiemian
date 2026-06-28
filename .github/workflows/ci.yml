@@ -117,6 +117,21 @@ jobs:
       - name: Stage 9C-B library consistency check
         run: npm run db:library-consistency:check
 
+      - name: Stage 9D migration rehearsal
+        run: npm run db:migration:rehearsal
+        env:
+          STAGE9D_REHEARSAL_DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/rollback_drill
+          STAGE9D_REHEARSAL_EXPECTED_NAME: rollback_drill
+
+      - name: Stage 9D import dry-run
+        run: npm run db:import:dry-run
+
+      - name: Stage 9D DB/file consistency
+        run: npm run db:consistency:check
+
+      - name: Stage 9D rollback readiness
+        run: npm run db:rollback:check
+
       - name: Release test artifact isolation
         run: npm run check:release-test-artifact-isolation
 
@@ -127,6 +142,7 @@ jobs:
         run: npm run test:rollback-drill
         env:
           ROLLBACK_DRILL_DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/rollback_drill
+          ROLLBACK_DRILL_EXPECTED_DATABASE_NAME: rollback_drill
 
       - name: Build
         run: npm run build
@@ -230,6 +246,18 @@ jobs:
 
       - name: Stage 9C-B library consistency check
         run: npm run db:library-consistency:check
+
+      - name: Stage 9D migration rehearsal
+        run: npm run db:migration:rehearsal
+
+      - name: Stage 9D import dry-run
+        run: npm run db:import:dry-run
+
+      - name: Stage 9D DB/file consistency
+        run: npm run db:consistency:check
+
+      - name: Stage 9D rollback readiness
+        run: npm run db:rollback:check
 
       - name: Release test artifact isolation
         run: npm run check:release-test-artifact-isolation

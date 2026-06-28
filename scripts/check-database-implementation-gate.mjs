@@ -21,6 +21,11 @@ const requiredDocs = [
   "docs/LIBRARY_DATABASE_BACKEND.md",
   "docs/GENERATION_JOBS_DATABASE_BACKEND.md",
   "docs/DATABASE_IMPORT_DRY_RUN_PLAN.md",
+  "docs/STAGE9D_MIGRATION_REHEARSAL.md",
+  "docs/STAGE9D_IMPORT_DRY_RUN.md",
+  "docs/STAGE9D_DB_FILE_CONSISTENCY.md",
+  "docs/STAGE9D_ROLLBACK_PLAN.md",
+  "docs/STAGE9D_RELEASE_GATES.md",
 ];
 
 const requiredDocTerms = new Map([
@@ -131,6 +136,45 @@ const requiredDocTerms = new Map([
     "db:library-consistency:check",
     "--apply",
     "read-only",
+  ]],
+  ["docs/STAGE9D_MIGRATION_REHEARSAL.md", [
+    "Stage 9D",
+    "db:migration:rehearsal",
+    "STAGE9D_REHEARSAL_DATABASE_URL",
+    "STAGE9D_REHEARSAL_EXPECTED_NAME",
+    "production",
+    "Stage 9E",
+  ]],
+  ["docs/STAGE9D_IMPORT_DRY_RUN.md", [
+    "Stage 9D",
+    "db:import:dry-run",
+    "dry-run",
+    "real import",
+    "Stage 9E",
+  ]],
+  ["docs/STAGE9D_DB_FILE_CONSISTENCY.md", [
+    "db:consistency:check",
+    "library_items",
+    "assets",
+    "generation_jobs",
+    "3106",
+    "3107",
+  ]],
+  ["docs/STAGE9D_ROLLBACK_PLAN.md", [
+    "pg_dump",
+    "pg_restore --list",
+    "backup manifest",
+    "checksum",
+    "Do not auto-execute",
+    "separate user authorization",
+  ]],
+  ["docs/STAGE9D_RELEASE_GATES.md", [
+    "Stage 9D",
+    "Stage 9E",
+    "no real migration",
+    "no real import",
+    "3106",
+    "NewAPI",
   ]],
 ]);
 
@@ -316,6 +360,26 @@ if (scripts["db:migrate:check"] !== "node scripts/database/check-stage9c-migrati
   fail("package.json missing exact db:migrate:check script");
 }
 
+if (scripts["db:migration:rehearsal"] !== "node scripts/database/check-stage9d-migration-rehearsal.mjs") {
+  fail("package.json missing exact db:migration:rehearsal script");
+}
+
+if (scripts["db:import:dry-run"] !== "node scripts/database/check-stage9d-import-dry-run.mjs") {
+  fail("package.json missing exact db:import:dry-run script");
+}
+
+if (scripts["db:consistency:check"] !== "node scripts/database/check-stage9d-db-file-consistency.mjs") {
+  fail("package.json missing exact db:consistency:check script");
+}
+
+if (scripts["db:rollback:check"] !== "node scripts/database/check-stage9d-rollback-readiness.mjs") {
+  fail("package.json missing exact db:rollback:check script");
+}
+
+if (scripts["check:stage9d"] !== "npm run db:migration:rehearsal && npm run db:import:dry-run && npm run db:consistency:check && npm run db:rollback:check") {
+  fail("package.json missing exact check:stage9d script");
+}
+
 if (scripts["test:database-mvp"] !== "node scripts/database/test-database-mvp.mjs") {
   fail("package.json missing exact test:database-mvp script");
 }
@@ -334,6 +398,10 @@ if (!scripts.check?.includes("npm run db:migrate:check")) {
 
 if (!scripts.check?.includes("npm run test:database-mvp")) {
   fail("package.json check script does not run test:database-mvp");
+}
+
+if (!scripts.check?.includes("npm run check:stage9d")) {
+  fail("package.json check script does not run check:stage9d");
 }
 
 for (const script of [
@@ -383,6 +451,10 @@ if (!fileExists(ciPath)) {
     "test:generation-jobs-db-integration",
     "db:library-import:plan",
     "db:library-consistency:check",
+    "db:migration:rehearsal",
+    "db:import:dry-run",
+    "db:consistency:check",
+    "db:rollback:check",
   ]) {
     const runs = ciText.match(new RegExp(`npm run ${script.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}`, "g"))?.length || 0;
     if (runs < 2) fail(`CI must run ${script} in Linux and Windows jobs`);
@@ -399,6 +471,11 @@ for (const pattern of mutatingSqlPatterns) {
 }
 if (/new\s+Pool|Client\s*\(|\.query\s*\(/.test(gateText)) {
   fail("gate script must not connect to or query a database");
+}
+
+const rollbackDrillPath = join(root, "scripts", "test-full-rollback-drill.mjs");
+if (!readText(rollbackDrillPath).includes("ROLLBACK_DRILL_EXPECTED_DATABASE_NAME")) {
+  fail("rollback drill must require an explicit expected database name in real database mode");
 }
 
 const migrationsDir = join(root, "db", "migrations");
@@ -440,6 +517,11 @@ const sourceFilesToScan = [
   ...requiredDocs.map((doc) => join(root, doc)),
   join(root, "package.json"),
   ciPath,
+  join(root, "scripts", "database", "check-stage9d-migration-rehearsal.mjs"),
+  join(root, "scripts", "database", "check-stage9d-import-dry-run.mjs"),
+  join(root, "scripts", "database", "check-stage9d-db-file-consistency.mjs"),
+  join(root, "scripts", "database", "check-stage9d-rollback-readiness.mjs"),
+  rollbackDrillPath,
 ].filter((file) => /\.(?:ts|tsx|js|mjs|md|yml|yaml|json|sql)$/i.test(file));
 
 let secretScanFiles = 0;
@@ -455,8 +537,8 @@ for (const file of sourceFilesToScan) {
 
 const report = {
   ok: failures.length === 0,
-  stage: "Stage 9C-A",
-  gateMode: "protected_database_foundation",
+  stage: "Stage 9D",
+  gateMode: "migration_rehearsal_and_rollback_readiness",
   databaseConnected: false,
   migrationExecuted: false,
   schemaChanged: false,
@@ -498,6 +580,11 @@ const report = {
     testGenerationJobsDbIntegration: Boolean(scripts["test:generation-jobs-db-integration"]),
     dbLibraryImportPlan: Boolean(scripts["db:library-import:plan"]),
     dbLibraryConsistencyCheck: Boolean(scripts["db:library-consistency:check"]),
+    dbMigrationRehearsal: Boolean(scripts["db:migration:rehearsal"]),
+    dbImportDryRun: Boolean(scripts["db:import:dry-run"]),
+    dbConsistencyCheck: Boolean(scripts["db:consistency:check"]),
+    dbRollbackCheck: Boolean(scripts["db:rollback:check"]),
+    checkStage9d: Boolean(scripts["check:stage9d"]),
     seedCommands: Object.keys(scripts).filter((name) => /seed/i.test(name)).sort(),
     manualApplyCommands: Object.keys(scripts).filter((name) => /apply/i.test(name)).sort(),
     databaseScriptFiles,
@@ -527,6 +614,18 @@ const report = {
       : 0,
     dbLibraryConsistencyCheckRuns: fileExists(ciPath)
       ? (readText(ciPath).match(/npm run db:library-consistency:check/g)?.length || 0)
+      : 0,
+    dbMigrationRehearsalRuns: fileExists(ciPath)
+      ? (readText(ciPath).match(/npm run db:migration:rehearsal/g)?.length || 0)
+      : 0,
+    dbImportDryRunRuns: fileExists(ciPath)
+      ? (readText(ciPath).match(/npm run db:import:dry-run/g)?.length || 0)
+      : 0,
+    dbConsistencyCheckRuns: fileExists(ciPath)
+      ? (readText(ciPath).match(/npm run db:consistency:check/g)?.length || 0)
+      : 0,
+    dbRollbackCheckRuns: fileExists(ciPath)
+      ? (readText(ciPath).match(/npm run db:rollback:check/g)?.length || 0)
       : 0,
   },
   gitSafety: {
