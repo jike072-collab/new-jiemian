@@ -13,6 +13,7 @@ import {
 } from "./paths";
 import { type JobRecord, type LibraryItem } from "./types";
 import { createStage9cbLibraryDatabaseAdapter } from "./database/library-jobs-adapter";
+import { scheduleLibraryShadowWrite } from "./database/library-shadow-write";
 import {
   getStage9cbDatabaseIntegrationFlags,
   shouldReadLibraryFromDatabase,
@@ -133,7 +134,7 @@ export async function addLibraryItem(input: Omit<LibraryItem, "id" | "createdAt"
     await saveLibrary([item, ...items]);
   });
   if (shouldWriteLibraryToDatabase(getStage9cbDatabaseIntegrationFlags())) {
-    await getDatabaseAdapter().addLibraryItem(item);
+    void scheduleLibraryShadowWrite({ operation: "addLibraryItem", item }, { adapter: getDatabaseAdapter() });
   }
   return item;
 }
@@ -147,7 +148,12 @@ export async function updateLibraryItem(id: string, patch: Partial<LibraryItem>)
     await saveLibrary(next);
     const updated = next.find((item) => item.id === id) || null;
     if (updated && shouldWriteLibraryToDatabase(getStage9cbDatabaseIntegrationFlags())) {
-      await getDatabaseAdapter().updateLibraryItem(id, patch, updated);
+      void scheduleLibraryShadowWrite({
+        operation: "updateLibraryItem",
+        id,
+        patch,
+        nextItem: updated,
+      }, { adapter: getDatabaseAdapter() });
     }
     return updated;
   });
@@ -172,7 +178,7 @@ export async function deleteLibraryItem(id: string) {
     await saveJobsFile(jobs.filter((job) => job.libraryItemId !== id));
   });
   if (shouldWriteLibraryToDatabase(getStage9cbDatabaseIntegrationFlags())) {
-    await getDatabaseAdapter().softDeleteLibraryItem(id);
+    void scheduleLibraryShadowWrite({ operation: "softDeleteLibraryItem", id }, { adapter: getDatabaseAdapter() });
   }
   return { deleted: Boolean(removed) };
 }
