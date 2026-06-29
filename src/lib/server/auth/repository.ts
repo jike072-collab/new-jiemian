@@ -23,6 +23,7 @@ export type CreateAuthUserInput = {
   username: string;
   displayName: string;
   passwordHash: string;
+  maxUsers?: number;
   status?: AuthUserStatus;
   role?: AuthUserRole;
   now?: Date;
@@ -64,7 +65,7 @@ export type AuthAuditRepository = {
 export type AuthRepository = UserRepository & SessionRepository & AuthAuditRepository;
 
 export class AuthRepositoryError extends Error {
-  constructor(readonly code: "AUTH_DUPLICATE_ACCOUNT" | "AUTH_NOT_FOUND", message: string) {
+  constructor(readonly code: "AUTH_DUPLICATE_ACCOUNT" | "AUTH_NOT_FOUND" | "AUTH_USER_LIMIT_REACHED", message: string) {
     super(message);
     this.name = "AuthRepositoryError";
   }
@@ -158,6 +159,9 @@ class StoreAuthRepository implements AuthRepository {
       const duplicate = store.users.find((user) => user.email === email || user.username === username);
       if (duplicate) {
         throw new AuthRepositoryError("AUTH_DUPLICATE_ACCOUNT", "Account already exists.");
+      }
+      if (Number.isFinite(input.maxUsers) && store.users.length >= Number(input.maxUsers)) {
+        throw new AuthRepositoryError("AUTH_USER_LIMIT_REACHED", "3107 短测账号名额已满：本轮只新增开放 8 个测试账号。");
       }
 
       const user: AuthUser = {

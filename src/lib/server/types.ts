@@ -75,6 +75,7 @@ export type LibraryOutput = {
 
 export type LibraryItem = {
   id: string;
+  ownerLocalUserId?: string | null;
   type: MediaType;
   mode: string;
   title: string;

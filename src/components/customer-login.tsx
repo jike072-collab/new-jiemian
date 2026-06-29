@@ -5,7 +5,7 @@ import Image from "next/image";
 import Link from "next/link";
 import { type FormEvent, type PointerEvent, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { ArrowRight, Check, Eye, EyeOff, ImageIcon, Loader2, LockKeyhole, Mail, Play, Sparkles, Video } from "lucide-react";
+import { ArrowRight, Check, Eye, EyeOff, IdCard, ImageIcon, Loader2, LockKeyhole, Mail, Play, Sparkles, TriangleAlert, User, Video } from "lucide-react";
 
 import { ApiError, fetchJson, fetchJsonWithCsrf } from "@/lib/client/api";
 import { motionTokens } from "@/lib/motion-tokens";
@@ -81,6 +81,7 @@ function friendlyAuthError(error: unknown) {
   if (error.code === "AUTH_DUPLICATE_ACCOUNT") return "该账号已存在";
   if (error.code === "AUTH_RATE_LIMITED") return "操作太频繁，请稍后再试";
   if (error.code === "AUTH_VALIDATION_ERROR") return "请检查账号和密码格式";
+  if (error.code === "AUTH_INVITE_REQUIRED") return "测试邀请码不正确或未配置";
   if (error.code === "AUTH_SERVICE_UNAVAILABLE") return "注册暂时不可用，请稍后重试";
   return error.message || "请求失败，请稍后重试";
 }
@@ -89,10 +90,17 @@ function isValidEmail(value: string) {
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value);
 }
 
+function isValidUsername(value: string) {
+  return /^[a-zA-Z0-9_.-]{3,32}$/.test(value);
+}
+
 export function CustomerLogin({ initialMode = "login" }: CustomerLoginProps) {
   const router = useRouter();
   const [mode, setMode] = useState<AuthMode>(initialMode);
   const [identifier, setIdentifier] = useState("");
+  const [username, setUsername] = useState("");
+  const [displayName, setDisplayName] = useState("");
+  const [inviteCode, setInviteCode] = useState("");
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
@@ -143,11 +151,18 @@ export function CustomerLogin({ initialMode = "login" }: CustomerLoginProps) {
 
   function validateForm() {
     const trimmedIdentifier = identifier.trim();
-    if (!trimmedIdentifier || !password) {
+    const trimmedUsername = username.trim();
+    if (isLogin && (!trimmedIdentifier || !password)) {
       return "请填写账号和密码";
+    }
+    if (!isLogin && (!trimmedIdentifier || !trimmedUsername || !inviteCode.trim() || !password)) {
+      return "请填写邮箱、账号、测试邀请码和密码";
     }
     if (!isLogin && !isValidEmail(trimmedIdentifier)) {
       return "请填写有效邮箱";
+    }
+    if (!isLogin && !isValidUsername(trimmedUsername)) {
+      return "账号需为 3-32 位字母、数字、下划线、点或短横线";
     }
     if (!isLogin && password !== confirmPassword) {
       return "两次输入的密码不一致";
@@ -181,7 +196,10 @@ export function CustomerLogin({ initialMode = "login" }: CustomerLoginProps) {
           method: "POST",
           body: JSON.stringify({
             email: identifier.trim(),
+            username: username.trim(),
             password,
+            displayName: displayName.trim() || undefined,
+            inviteCode: inviteCode.trim(),
             redirectTo: "/",
           }),
         });
@@ -280,8 +298,15 @@ export function CustomerLogin({ initialMode = "login" }: CustomerLoginProps) {
                 <span aria-hidden="true" />
               </div>
 
+              {!isLogin ? (
+                <p className="auth-test-warning" role="note">
+                  <TriangleAlert className="size-5" aria-hidden="true" />
+                  这是短期测试环境，请不要使用常用密码，不要上传隐私或敏感资料。
+                </p>
+              ) : null}
+
               <label className="auth-field">
-                <span>邮箱或账号</span>
+                <span>{isLogin ? "邮箱或账号" : "邮箱"}</span>
                 <span className="auth-input">
                   <Mail className="size-5" aria-hidden="true" />
                   <input
@@ -295,6 +320,57 @@ export function CustomerLogin({ initialMode = "login" }: CustomerLoginProps) {
                   />
                 </span>
               </label>
+
+              {!isLogin ? (
+                <>
+                  <label className="auth-field">
+                    <span>账号</span>
+                    <span className="auth-input">
+                      <User className="size-5" aria-hidden="true" />
+                      <input
+                        type="text"
+                        value={username}
+                        onChange={(event) => setUsername(event.target.value)}
+                        autoComplete="username"
+                        disabled={disabled}
+                        aria-invalid={Boolean(message && !username.trim())}
+                        placeholder="请输入账号"
+                      />
+                    </span>
+                  </label>
+
+                  <label className="auth-field">
+                    <span>显示名称（可选）</span>
+                    <span className="auth-input">
+                      <IdCard className="size-5" aria-hidden="true" />
+                      <input
+                        type="text"
+                        value={displayName}
+                        onChange={(event) => setDisplayName(event.target.value)}
+                        autoComplete="nickname"
+                        disabled={disabled}
+                        placeholder="用于页面展示"
+                      />
+                    </span>
+                  </label>
+
+                  <label className="auth-field">
+                    <span>测试邀请码</span>
+                    <span className="auth-input auth-password">
+                      <LockKeyhole className="size-5" aria-hidden="true" />
+                      <input
+                        type="password"
+                        value={inviteCode}
+                        onChange={(event) => setInviteCode(event.target.value)}
+                        autoComplete="off"
+                        disabled={disabled}
+                        aria-invalid={Boolean(message && !inviteCode.trim())}
+                        placeholder="请输入测试邀请码"
+                      />
+                    </span>
+                  </label>
+                </>
+              ) : null}
 
               <label className="auth-field">
                 <span>密码</span>

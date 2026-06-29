@@ -20,6 +20,7 @@ if (compile.status !== 0) process.exit(compile.status ?? 1);
 const tests = [
   "dist/auth-session-tests/src/lib/server/auth/__tests__/auth-service.test.js",
   "dist/auth-session-tests/src/lib/server/auth/__tests__/auth-http.test.js",
+  "dist/auth-session-tests/src/lib/server/auth/__tests__/invite-code.test.js",
 ];
 
 const run = spawnSync("node", ["--conditions=react-server", "--test", ...tests], {

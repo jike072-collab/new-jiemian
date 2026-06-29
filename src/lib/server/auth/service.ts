@@ -41,6 +41,7 @@ export type RegisterInput = {
   username?: string;
   displayName?: string;
   redirectTo?: string;
+  maxUsers?: number;
 };
 
 export type LoginInput = {
@@ -173,6 +174,7 @@ export class AuthService {
         username: normalizedUsername,
         displayName,
         passwordHash: await hashPassword(input.password),
+        maxUsers: input.maxUsers,
         status: "active",
         role: "user",
         now: this.now(),
@@ -185,6 +187,15 @@ export class AuthService {
           code: "AUTH_DUPLICATE_ACCOUNT",
           uiState: "validation_error",
           message: "Account already exists.",
+        });
+      }
+      if (error instanceof AuthRepositoryError && error.code === "AUTH_USER_LIMIT_REACHED") {
+        await this.audit("auth.register.user_limit_reached", null, context, {});
+        return failure({
+          status: 403,
+          code: "AUTH_TEST_USER_LIMIT_REACHED",
+          uiState: "validation_error",
+          message: `${error.message} 已注册用户仍可正常登录。`,
         });
       }
       throw error;

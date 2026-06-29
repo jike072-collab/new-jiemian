@@ -129,7 +129,7 @@ export type CreateDatabaseMvpLibraryItemInput = Omit<DatabaseMvpLibraryItem, "id
 
 export type UpdateDatabaseMvpLibraryItemInput = Partial<Pick<
   DatabaseMvpLibraryItem,
-  "asset_id" | "generation_job_id" | "title" | "kind" | "source" | "is_deleted"
+  "asset_id" | "generation_job_id" | "user_id" | "title" | "kind" | "source" | "is_deleted"
 >> & {
   updated_at?: string | Date;
   deleted_at?: string | Date | null;
@@ -482,6 +482,7 @@ export class PostgresDatabaseMvpRepository {
 
     if (patch.asset_id !== undefined) add("asset_id", patch.asset_id.trim());
     if (patch.generation_job_id !== undefined) add("generation_job_id", optionalText(patch.generation_job_id));
+    if (patch.user_id !== undefined) add("user_id", optionalText(patch.user_id));
     if (patch.title !== undefined) add("title", optionalText(patch.title));
     if (patch.kind !== undefined) add("kind", patch.kind.trim());
     if (patch.source !== undefined) add("source", patch.source.trim());

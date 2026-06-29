@@ -3,7 +3,7 @@
 /* eslint-disable @next/next/no-img-element */
 
 import { useCallback, useEffect, useId, useRef, useState } from "react";
-import { Check, ChevronDown, ImageUp, Loader2, UploadCloud, Wand2, X } from "lucide-react";
+import { Check, ChevronDown, Copy, ImageUp, Loader2, UploadCloud, Wand2, X } from "lucide-react";
 
 import { ratioShapeClass, ratios } from "@/components/studio/constants";
 import type { SelectOption, StudioErrorDiagnostic, UploadFilePreview } from "@/components/studio/types";
@@ -14,6 +14,22 @@ function formatFileSize(size: number) {
   if (size >= 1024 * 1024) return `${(size / 1024 / 1024).toFixed(1)} MB`;
   if (size >= 1024) return `${Math.round(size / 1024)} KB`;
   return `${size} B`;
+}
+
+function diagnosticFeedbackText(message?: string, diagnostic?: StudioErrorDiagnostic | null) {
+  const lines = [
+    "奥皇 AI 短测反馈",
+    `问题现象：${diagnostic?.message || message || "未提供"}`,
+    `错误码：${diagnostic?.code || "无"}`,
+    `Request ID：${diagnostic?.requestId || "无"}`,
+    `发生时间：${diagnostic?.occurredAt || new Date().toISOString()}`,
+    `建议操作：${diagnostic?.action || "请补充截图和复现步骤。"}`,
+    "复现步骤：",
+    "1. ",
+    "2. ",
+    "截图：请附当前页面截图",
+  ];
+  return lines.join("\n");
 }
 
 export function FormPanel({ children }: { children: React.ReactNode }) {
@@ -31,15 +47,30 @@ export function StudioErrorAlert({
   message?: string;
   diagnostic?: StudioErrorDiagnostic | null;
 }) {
+  const [copyState, setCopyState] = useState<"idle" | "copied" | "failed">("idle");
   if (!message && !diagnostic) return null;
   const code = diagnostic?.code;
   const requestId = diagnostic?.requestId;
+  const occurredAt = diagnostic?.occurredAt;
   const retryText = diagnostic ? (diagnostic.retryable ? "可重试" : "需调整后重试") : "";
+  const feedbackText = diagnosticFeedbackText(message, diagnostic);
+
+  async function copyFeedback() {
+    try {
+      await navigator.clipboard.writeText(feedbackText);
+      setCopyState("copied");
+      window.setTimeout(() => setCopyState("idle"), 1800);
+    } catch {
+      setCopyState("failed");
+      window.setTimeout(() => setCopyState("idle"), 2400);
+    }
+  }
+
   return (
     <div className="studio-error-alert" role="alert">
       <p className="studio-error-alert__message">{diagnostic?.message || message}</p>
       {diagnostic?.action ? <p className="studio-error-alert__action">{diagnostic.action}</p> : null}
-      {code || requestId || retryText ? (
+      {code || requestId || occurredAt || retryText ? (
         <dl className="studio-error-alert__meta" aria-label="错误诊断信息">
           {code ? (
             <div>
@@ -53,6 +84,12 @@ export function StudioErrorAlert({
               <dd>{requestId}</dd>
             </div>
           ) : null}
+          {occurredAt ? (
+            <div>
+              <dt>Time</dt>
+              <dd>{occurredAt}</dd>
+            </div>
+          ) : null}
           {retryText ? (
             <div>
               <dt>Retry</dt>
@@ -61,6 +98,13 @@ export function StudioErrorAlert({
           ) : null}
         </dl>
       ) : null}
+      <div className="studio-error-alert__feedback">
+        <p>反馈时请发送截图、操作步骤，并复制这段诊断信息给管理员。</p>
+        <button type="button" className="studio-error-alert__copy" onClick={() => void copyFeedback()}>
+          {copyState === "copied" ? <Check className="size-4" aria-hidden="true" /> : <Copy className="size-4" aria-hidden="true" />}
+          <span>{copyState === "copied" ? "已复制" : copyState === "failed" ? "复制失败" : "复制反馈信息"}</span>
+        </button>
+      </div>
     </div>
   );
 }

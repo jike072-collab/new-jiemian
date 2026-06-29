@@ -1,6 +1,7 @@
-import { NextResponse } from "next/server";
+import { type NextRequest, NextResponse } from "next/server";
 
-import { readStoredFile } from "@/lib/server/library";
+import { authResultResponse, requireAuthSession } from "@/lib/server/auth";
+import { readOwnedStoredFile } from "@/lib/server/library";
 
 export const runtime = "nodejs";
 
@@ -16,18 +17,20 @@ function mimeFromName(name: string) {
 }
 
 export async function GET(
-  _request: Request,
+  request: NextRequest,
   context: { params: Promise<{ name: string }> },
 ) {
+  const session = await requireAuthSession(request);
+  if (!session.ok) return authResultResponse(request, session);
   const { name } = await context.params;
-  const bytes = await readStoredFile(name);
+  const bytes = await readOwnedStoredFile(name, session.user.local_user_id);
   if (!bytes) return NextResponse.json({ error: "文件不存在。" }, { status: 404 });
   const mimeType = mimeFromName(name);
   return new NextResponse(bytes, {
     headers: {
       "Content-Type": mimeType,
       "Content-Disposition": `inline; filename="${name}"`,
-      "Cache-Control": "public, max-age=31536000, immutable",
+      "Cache-Control": "private, no-store",
     },
   });
 }

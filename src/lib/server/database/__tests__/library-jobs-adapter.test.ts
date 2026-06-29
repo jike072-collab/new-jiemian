@@ -146,6 +146,7 @@ function createMemoryRepository() {
       calls.push("listLibraryItems");
       return [...libraryItems.values()]
         .filter((item) => filter.include_deleted || !item.is_deleted)
+        .filter((item) => filter.user_id === undefined || item.user_id === filter.user_id)
         .slice(0, filter.limit || 50);
     },
   };
@@ -255,4 +256,44 @@ test("database library adapter returns false delete for missing records without 
   const result = await adapter.softDeleteLibraryItem("missing");
 
   assert.deepEqual(result, { deleted: false });
+});
+
+test("database library adapter filters reads by owner and excludes unowned rows", async () => {
+  const memory = createMemoryRepository();
+  const adapter = createStage9cbLibraryDatabaseAdapter(memory.repository);
+
+  await adapter.addLibraryItem(libraryItem({
+    id: "owned-a",
+    ownerLocalUserId: "user-a",
+    output: { url: "/api/files/a.png", storedName: "a.png", mimeType: "image/png" },
+  }));
+  await adapter.addLibraryItem(libraryItem({
+    id: "owned-b",
+    ownerLocalUserId: "user-b",
+    output: { url: "/api/files/b.png", storedName: "b.png", mimeType: "image/png" },
+  }));
+  await adapter.addLibraryItem(libraryItem({
+    id: "legacy-unowned",
+    ownerLocalUserId: null,
+    output: { url: "/api/files/legacy.png", storedName: "legacy.png", mimeType: "image/png" },
+  }));
+
+  const userAItems = await adapter.readLibrary("user-a");
+
+  assert.deepEqual(userAItems.map((item) => item.id), ["owned-a"]);
+});
+
+test("database library adapter refuses owner-scoped delete for another or unowned item", async () => {
+  const memory = createMemoryRepository();
+  const adapter = createStage9cbLibraryDatabaseAdapter(memory.repository);
+
+  await adapter.addLibraryItem(libraryItem({ id: "owned-b", ownerLocalUserId: "user-b" }));
+  await adapter.addLibraryItem(libraryItem({ id: "legacy-unowned", ownerLocalUserId: null }));
+
+  assert.deepEqual(await adapter.softDeleteLibraryItem("owned-b", "user-a"), { deleted: false });
+  assert.deepEqual(await adapter.softDeleteLibraryItem("legacy-unowned", "user-a"), { deleted: false });
+
+  const rows = await memory.repository.listLibraryItems({ include_deleted: true });
+  assert.equal(rows.find((item) => item.id === "owned-b")?.is_deleted, false);
+  assert.equal(rows.find((item) => item.id === "legacy-unowned")?.is_deleted, false);
 });

@@ -545,6 +545,29 @@
     background: #ff1478;
   }
 
+  .auth-test-warning {
+    position: relative;
+    z-index: 1;
+    display: flex;
+    align-items: flex-start;
+    gap: 10px;
+    border: 1px solid rgba(251, 191, 36, 0.45);
+    border-radius: 12px;
+    background: rgba(251, 191, 36, 0.14);
+    color: rgba(255, 245, 220, 0.96);
+    font-size: 13px;
+    font-weight: 700;
+    line-height: 1.55;
+    padding: 11px 12px;
+    text-align: left;
+  }
+
+  .auth-test-warning svg {
+    flex: 0 0 auto;
+    margin-top: 1px;
+    color: #fbbf24;
+  }
+
   .auth-field {
     position: relative;
     z-index: 1;

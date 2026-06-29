@@ -156,6 +156,7 @@ function libraryItemFromDatabase(row: DatabaseMvpLibraryItem, asset: DatabaseMvp
     params: {},
     ...(job?.user_visible_error ? { error: job.user_visible_error } : {}),
     fileAvailable: Boolean(output?.storedName || output?.sourceUrl || output?.url),
+    ownerLocalUserId: row.user_id,
   };
 }
 
@@ -199,8 +200,13 @@ async function ensureJobRefAsset(repository: Stage9cbDatabaseRepository, job: Jo
 
 export function createStage9cbLibraryDatabaseAdapter(repository: Stage9cbDatabaseRepository = createPostgresDatabaseMvpRepository()) {
   return {
-    async readLibrary() {
-      const rows = await repository.listLibraryItems({ include_deleted: false, limit: 200 });
+    async readLibrary(ownerLocalUserId?: string | null) {
+      if (ownerLocalUserId && !ownerLocalUserId.trim()) return [];
+      const rows = await repository.listLibraryItems({
+        include_deleted: false,
+        limit: 200,
+        ...(ownerLocalUserId ? { user_id: ownerLocalUserId } : {}),
+      });
       const items = await Promise.all(rows.map(async (row) => {
         const [asset, job] = await Promise.all([
           repository.getAsset(row.asset_id),
@@ -217,7 +223,7 @@ export function createStage9cbLibraryDatabaseAdapter(repository: Stage9cbDatabas
       if (dbJobId && !await repository.getGenerationJob(dbJobId)) {
         await repository.createGenerationJob({
           id: dbJobId,
-          user_id: null,
+          user_id: item.ownerLocalUserId || null,
           kind: kindFromLibraryItem(item),
           status: jsonStatusToDatabase(item.status),
           prompt: item.prompt,
@@ -245,6 +251,7 @@ export function createStage9cbLibraryDatabaseAdapter(repository: Stage9cbDatabas
           updated_at: item.updatedAt,
           is_deleted: false,
           deleted_at: null,
+          user_id: item.ownerLocalUserId || null,
         });
         return item;
       }
@@ -252,7 +259,7 @@ export function createStage9cbLibraryDatabaseAdapter(repository: Stage9cbDatabas
         id: item.id,
         asset_id: asset.id,
         generation_job_id: dbJobId,
-        user_id: null,
+        user_id: item.ownerLocalUserId || null,
         title: item.title,
         kind: kindFromLibraryItem(item),
         source: sourceFromLibraryItem(item),
@@ -292,8 +299,13 @@ export function createStage9cbLibraryDatabaseAdapter(repository: Stage9cbDatabas
       return nextItem || null;
     },
 
-    async softDeleteLibraryItem(id: string) {
+    async softDeleteLibraryItem(id: string, ownerLocalUserId?: string | null) {
       try {
+        if (ownerLocalUserId) {
+          const item = await repository.getLibraryItem(id);
+          if (!item) return { deleted: false };
+          if (item.user_id !== ownerLocalUserId) return { deleted: false };
+        }
         await repository.softDeleteLibraryItem(id);
       } catch (error) {
         if (error instanceof DatabaseMvpRepositoryError && error.code === "DATABASE_MVP_NOT_FOUND") {
