@@ -24,7 +24,9 @@ export type AuthErrorCode =
   | "AUTH_RATE_LIMITED"
   | "AUTH_SERVICE_UNAVAILABLE"
   | "AUTH_SESSION_EXPIRED"
-  | "AUTH_CSRF_REQUIRED";
+  | "AUTH_CSRF_REQUIRED"
+  | "AUTH_INVITE_REQUIRED"
+  | "AUTH_TEST_USER_LIMIT_REACHED";
 
 export type AuthUser = {
   local_user_id: string;

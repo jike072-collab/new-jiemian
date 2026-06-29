@@ -99,10 +99,19 @@ async function removeStoredOutputFile(storedName: string) {
   }
 }
 
-export async function readLibrary() {
+function belongsToOwner(item: LibraryItem, ownerLocalUserId?: string | null) {
+  if (!ownerLocalUserId) return true;
+  return item.ownerLocalUserId === ownerLocalUserId;
+}
+
+function itemOwnsStoredFile(item: LibraryItem, storedName: string, ownerLocalUserId: string) {
+  return item.ownerLocalUserId === ownerLocalUserId && item.output?.storedName === storedName;
+}
+
+export async function readLibrary(ownerLocalUserId?: string | null) {
   const flags = getStage9cbDatabaseIntegrationFlags();
   if (shouldReadLibraryFromDatabase(flags)) {
-    return getDatabaseAdapter().readLibrary();
+    return getDatabaseAdapter().readLibrary(ownerLocalUserId);
   }
 
   const items = await readLibraryFile();
@@ -113,7 +122,9 @@ export async function readLibrary() {
       fileAvailable: await storedFileExists(item.output.storedName),
     };
   }));
-  return withFileState.sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+  return withFileState
+    .filter((item) => belongsToOwner(item, ownerLocalUserId))
+    .sort((a, b) => b.createdAt.localeCompare(a.createdAt));
 }
 
 export async function saveLibrary(items: LibraryItem[]) {
@@ -153,15 +164,18 @@ export async function updateLibraryItem(id: string, patch: Partial<LibraryItem>)
   });
 }
 
-export async function deleteLibraryItem(id: string) {
+export async function deleteLibraryItem(id: string, ownerLocalUserId?: string | null) {
   if (shouldReadLibraryFromDatabase(getStage9cbDatabaseIntegrationFlags())) {
-    return getDatabaseAdapter().softDeleteLibraryItem(id);
+    const result = await getDatabaseAdapter().softDeleteLibraryItem(id, ownerLocalUserId);
+    if (ownerLocalUserId && !result.deleted) throw new LibraryOperationError(404, "浣滃搧涓嶅瓨鍦ㄣ€?");
+    return result;
   }
 
   const removed = await serializeWrite("library", async () => {
     const items = await readLibraryFile();
     const removedItem = items.find((item) => item.id === id);
     if (!removedItem) throw new LibraryOperationError(404, "作品不存在。");
+    if (!belongsToOwner(removedItem, ownerLocalUserId)) throw new LibraryOperationError(404, "作品不存在。");
     if (removedItem.output?.storedName) await removeStoredOutputFile(removedItem.output.storedName);
     const next = items.filter((item) => item.id !== id);
     await saveLibrary(next);
@@ -257,4 +271,12 @@ export async function readStoredFile(storedName: string) {
   const safeName = safeStoredName(storedName);
   if (!safeName || safeName !== storedName) return null;
   return readFile(resolveUploadPath(safeName));
+}
+
+export async function readOwnedStoredFile(storedName: string, ownerLocalUserId: string) {
+  const safeName = safeStoredName(storedName);
+  if (!safeName || safeName !== storedName || !ownerLocalUserId) return null;
+  const items = await readLibrary(ownerLocalUserId);
+  if (!items.some((item) => itemOwnsStoredFile(item, safeName, ownerLocalUserId))) return null;
+  return readStoredFile(safeName);
 }

@@ -71,8 +71,10 @@ artifacts/
 # Local runtime data
 data/
 data-staging/
+data-tunneltest/
 uploads/
 uploads-staging/
+uploads-tunneltest/
 .runtime/
 
 # Isolated New API test deployment
