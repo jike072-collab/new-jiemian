@@ -1345,6 +1345,49 @@ test("task registration uses known service roots instead of the development work
   assert.match(source, /"10"/);
 });
 
+test("deployment operations gate documents reviewable env, preflight, backup, rollback, and artifact checks", () => {
+  const source = readFileSync(join(process.cwd(), "docs", "DEPLOYMENT_OPERATIONS_GATE.md"), "utf8");
+  for (const fragment of [
+    "E:\\codex工作台\\p003\\new-jiemian",
+    "E:\\codex工作台\\p003\\new-jiemian-3107",
+    "No real deployment, migration, restore, data cleanup, provider call, or NewAPI generation call",
+    "AUTH_SESSION_SECRET",
+    "SESSION_SECRET",
+    "APP_DATABASE_URL",
+    "APP_DATABASE_EXPECTED_NAME",
+    "APP_AUTH_PERSISTENCE_MODE",
+    "APP_BILLING_PERSISTENCE_MODE",
+    "APP_TASK_BILLING_PERSISTENCE_MODE",
+    "NEW_API_ENABLED",
+    "NEW_API_BASE_URL",
+    "NEW_API_ENVIRONMENT",
+    "NEW_API_ADMIN_USER_ID",
+    "NEW_API_ADMIN_ACCESS_TOKEN",
+    "PAYMENT_PRODUCTION_ENABLED",
+    "PAYMENT_PRODUCTION_WEBHOOK_SECRET",
+    "node scripts/ops/load-runtime-env.mjs production --json",
+    "npm run release:preflight",
+    "npm run test:security-release",
+    "npm run test:runtime-isolation",
+    "npm run test:release-artifact-cleanliness",
+    "npm run check:release-test-artifact-isolation",
+    "npm run test:ops",
+    "npm run test:rollback-drill",
+    "npm run db:migration:rehearsal",
+    "npm run db:import:dry-run",
+    "npm run db:consistency:check",
+    "npm run db:rollback:check",
+    "pg_dump",
+    "pg_restore --list",
+    "No production migration is allowed from this gate alone.",
+    "no `npm ci`, `npm install`, or `npm run build` runs while the live service is stopped",
+    "Release artifacts must not contain",
+    "CI runs release artifact cleanliness, release test artifact isolation, ops tests, and rollback drill",
+  ]) {
+    assert(source.includes(fragment), `deployment operations gate missing: ${fragment}`);
+  }
+});
+
 function findAvailablePort() {
   return new Promise((resolve, reject) => {
     const server = net.createServer();
