@@ -9,6 +9,8 @@ import { addJob, addLibraryItem, storeBytes, storeDataUrl, storeRemoteUrl, updat
 import { codeForUpstreamStatus, GenerationDiagnosticError } from "./error-diagnostics";
 import { getTaskBillingService } from "./quota";
 import { jimengVideoOptionsForModel, providerById } from "./providers";
+import { createTunneltestReferenceImageUrl } from "./tunneltest-reference-images";
+import { isTunnelTestRuntime } from "./tunneltest-limits";
 import { type JobRecord, type LibraryItem, type ProviderConfig } from "./types";
 
 type UploadedMedia = {
@@ -24,6 +26,7 @@ type ProviderOutput = {
   status?: string;
   statusUrl?: string;
   mimeType?: string;
+  error?: string;
 };
 
 class BillingSettlementRequiredError extends Error {
@@ -40,10 +43,12 @@ class BillingDispatchRejectedError extends Error {
   }
 }
 
-const grokVideoDurations = new Set([4, 6, 8, 10, 12, 15]);
+const grokVideoDurations = new Set([6, 8, 10, 12, 15]);
 const grokVideo10Ratios = new Set(["1:1", "16:9", "9:16", "4:3", "3:4", "3:2", "2:3"]);
 const grokVideo15Ratios = new Set(["16:9", "9:16"]);
 const defaultVideoRatios = new Set(["1:1", "16:9", "9:16", "4:3", "3:4", "3:2", "2:3"]);
+const imageRatios = new Set(["1:1", "16:9", "9:16", "4:3", "3:4", "3:2", "2:3"]);
+const imageQualities = new Set(["1k", "2k", "4k"]);
 
 function asRecord(value: unknown): Record<string, unknown> {
   return value && typeof value === "object" && !Array.isArray(value)
@@ -64,6 +69,16 @@ function parseProviderOutput(payload: unknown): ProviderOutput {
   const metadata = asRecord(root.metadata);
   const first = asRecord(data[0] || root.video || root.result || root.output || payload);
   const firstMetadata = asRecord(first.metadata);
+  const status = firstString(first.status, root.status);
+  const failed = normalizeStatus(status) === "failed";
+  const error = firstString(
+    asRecord(first.error).message,
+    asRecord(root.error).message,
+    first.error,
+    root.error,
+    first.message,
+    root.message,
+  );
   const url = firstString(
     first.url,
     first.image_url,
@@ -89,12 +104,13 @@ function parseProviderOutput(payload: unknown): ProviderOutput {
     root.image_base64,
   );
   return {
-    url,
-    base64,
+    url: failed ? "" : url,
+    base64: failed ? "" : base64,
     jobId: firstString(first.task_id, first.id, first.video_id, root.task_id, root.id, root.video_id),
-    status: firstString(first.status, root.status),
+    status,
     statusUrl: firstString(first.status_url, root.status_url),
     mimeType: firstString(first.mime_type, root.mime_type),
+    error: failed ? error || url || status : error,
   };
 }
 
@@ -236,18 +252,38 @@ function validateGrokVideoInput(provider: ProviderConfig, input: {
   files: UploadedMedia[];
 }) {
   if (!grokVideoDurations.has(input.duration)) {
-    throw new Error("当前 Grok 视频模型只支持 4、6、8、10、12、15 秒。");
+    throw new GenerationDiagnosticError({
+      code: "INPUT_INVALID_PARAMETERS",
+      message: "当前 Grok 视频模型只支持 6、8、10、12、15 秒。",
+      providerId: provider.id,
+      model: provider.model,
+    });
   }
   if (!grokVideoRatioOptions(provider).has(input.ratio)) {
-    throw new Error(provider.model === "grok-video-1.5"
-      ? "grok-video-1.5 只支持 16:9 和 9:16。"
-      : "grok-video-1.0 不支持当前比例。");
+    throw new GenerationDiagnosticError({
+      code: "INPUT_INVALID_PARAMETERS",
+      message: provider.model === "grok-video-1.5"
+        ? "grok-video-1.5 只支持 16:9 和 9:16。"
+        : "grok-video-1.0 不支持当前比例。",
+      providerId: provider.id,
+      model: provider.model,
+    });
   }
   if (provider.model === "grok-video-1.5" && input.files.length !== 1) {
-    throw new Error("grok-video-1.5 必须且只能上传 1 张参考图。");
+    throw new GenerationDiagnosticError({
+      code: input.files.length ? "INPUT_INVALID_PARAMETERS" : "INPUT_MISSING_IMAGE",
+      message: "grok-video-1.5 必须且只能上传 1 张参考图。",
+      providerId: provider.id,
+      model: provider.model,
+    });
   }
   if (provider.model === "grok-video-1.0" && input.files.length > 7) {
-    throw new Error("grok-video-1.0 最多支持 7 张参考图。");
+    throw new GenerationDiagnosticError({
+      code: "INPUT_INVALID_PARAMETERS",
+      message: "grok-video-1.0 最多支持 7 张参考图。",
+      providerId: provider.id,
+      model: provider.model,
+    });
   }
 }
 
@@ -261,6 +297,14 @@ function validateVideoInput(provider: ProviderConfig, input: {
   duration: number;
   files: UploadedMedia[];
 }) {
+  if (!Number.isInteger(input.duration) || input.duration <= 0) {
+    throw new GenerationDiagnosticError({
+      code: "INPUT_INVALID_PARAMETERS",
+      message: "视频时长参数无效。",
+      providerId: provider.id,
+      model: provider.model,
+    });
+  }
   if (isGrokVideoProvider(provider)) {
     validateGrokVideoInput(provider, input);
     return;
@@ -282,6 +326,50 @@ function validateVideoInput(provider: ProviderConfig, input: {
   }
 }
 
+function validateImageInput(provider: ProviderConfig, input: {
+  mode: "text-to-image" | "image-to-image";
+  prompt: string;
+  ratio: string;
+  quality: string;
+  files: UploadedMedia[];
+}) {
+  if (!input.prompt.trim()) throw new GenerationDiagnosticError({ code: "INPUT_MISSING_PROMPT", providerId: provider.id, model: provider.model });
+  if (!imageRatios.has(input.ratio) || !imageQualities.has(input.quality)) {
+    throw new GenerationDiagnosticError({
+      code: "INPUT_INVALID_PARAMETERS",
+      providerId: provider.id,
+      model: provider.model,
+    });
+  }
+  if (input.mode === "text-to-image" && input.files.length) {
+    throw new GenerationDiagnosticError({ code: "INPUT_INVALID_PARAMETERS", providerId: provider.id, model: provider.model });
+  }
+  if (input.mode === "image-to-image" && !input.files.length) {
+    throw new GenerationDiagnosticError({ code: "INPUT_MISSING_IMAGE", providerId: provider.id, model: provider.model });
+  }
+}
+
+export async function assertVideoRequestReady(input: {
+  providerId: string;
+  mode: "text-to-video" | "image-to-video";
+  prompt: string;
+  ratio: string;
+  duration: number;
+  files: UploadedMedia[];
+}) {
+  const provider = await providerById(input.providerId);
+  if (!input.prompt.trim()) throw new GenerationDiagnosticError({ code: "INPUT_MISSING_PROMPT", providerId: provider?.id, model: provider?.model });
+  if (input.mode === "text-to-video" && input.files.length) {
+    throw new GenerationDiagnosticError({ code: "INPUT_INVALID_PARAMETERS", providerId: provider?.id, model: provider?.model });
+  }
+  if (input.mode === "image-to-video" && !input.files.length) {
+    throw new GenerationDiagnosticError({ code: "INPUT_MISSING_IMAGE", providerId: provider?.id, model: provider?.model });
+  }
+  const readyProvider = assertProviderReady(provider, "video", "MODEL_MISSING_VIDEO");
+  validateVideoInput(readyProvider, input);
+  return readyProvider;
+}
+
 function grokReferenceImageEndpoint(apiUrl: string) {
   try {
     const parsed = new URL(grokVideosEndpoint(apiUrl));
@@ -289,8 +377,18 @@ function grokReferenceImageEndpoint(apiUrl: string) {
     parsed.search = "";
     return parsed.toString();
   } catch {
-    return "https://api.manxiaobai.online/v1/video-reference-images";
+    return "";
   }
+}
+
+function grokReferenceImageDataUri(file: UploadedMedia) {
+  return `data:${file.mimeType};base64,${file.bytes.toString("base64")}`;
+}
+
+function shouldInlineGrokReferenceImage(error: unknown) {
+  if (!(error instanceof GenerationDiagnosticError)) return false;
+  return error.upstreamStatus === 404
+    && /video-reference-images|Invalid URL/i.test(error.message);
 }
 
 function grokStatusUrl(apiUrl: string, jobId: string) {
@@ -305,22 +403,38 @@ function grokStatusUrl(apiUrl: string, jobId: string) {
   }
 }
 
-async function uploadGrokReferenceImage(provider: ProviderConfig, file: UploadedMedia) {
-  const response = await fetch(grokReferenceImageEndpoint(provider.apiUrl), {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      ...authHeaders(provider),
-    },
-    body: JSON.stringify({
-      image: `data:${file.mimeType};base64,${file.bytes.toString("base64")}`,
-    }),
-    signal: AbortSignal.timeout(120000),
+async function uploadGrokReferenceImage(provider: ProviderConfig, file: UploadedMedia, referenceBaseUrl?: string | null) {
+  const tunneltestReferenceUrl = await createTunneltestReferenceImageUrl({
+    baseUrl: referenceBaseUrl,
+    bytes: file.bytes,
+    mimeType: file.mimeType,
   });
-  const payload = await readProviderJson(response, provider);
-  const url = firstString(asRecord(payload).url);
-  if (!url) throw new Error("Grok 参考图上传未返回可用 URL。");
-  return url;
+  if (tunneltestReferenceUrl) return tunneltestReferenceUrl;
+
+  const endpoint = grokReferenceImageEndpoint(provider.apiUrl);
+  if (!endpoint) return grokReferenceImageDataUri(file);
+
+  const dataUri = grokReferenceImageDataUri(file);
+  try {
+    const response = await fetch(endpoint, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        ...authHeaders(provider),
+      },
+      body: JSON.stringify({
+        image: dataUri,
+      }),
+      signal: AbortSignal.timeout(120000),
+    });
+    const payload = await readProviderJson(response, provider);
+    const url = firstString(asRecord(payload).url);
+    if (!url) throw new Error("Grok 参考图上传未返回可用 URL。");
+    return url;
+  } catch (error) {
+    if (shouldInlineGrokReferenceImage(error)) return dataUri;
+    throw error;
+  }
 }
 
 async function callGrokVideoProvider(provider: ProviderConfig, input: {
@@ -329,6 +443,7 @@ async function callGrokVideoProvider(provider: ProviderConfig, input: {
   ratio: string;
   duration: number;
   files: UploadedMedia[];
+  referenceBaseUrl?: string | null;
 }) {
   validateGrokVideoInput(provider, input);
   const form = new FormData();
@@ -339,7 +454,7 @@ async function callGrokVideoProvider(provider: ProviderConfig, input: {
   form.append("resolution", "720p");
 
   for (const file of input.files) {
-    form.append("input_reference[image_url]", await uploadGrokReferenceImage(provider, file));
+    form.append("input_reference[image_url]", await uploadGrokReferenceImage(provider, file, input.referenceBaseUrl));
   }
 
   const response = await fetch(grokVideosEndpoint(provider.apiUrl), {
@@ -545,6 +660,7 @@ async function settleGeneratedTaskBilling(input: {
   upstreamModel?: string | null;
   newApiTaskId?: string | null;
 }): Promise<{ ok: true } | { ok: false; status: number; message: string; action?: string }> {
+  if (isTunnelTestRuntime()) return { ok: true };
   if (!input.localUserId || !input.taskId) return { ok: true };
   const billing = getTaskBillingService();
   const actualQuotaUnits = Number.isInteger(input.estimatedQuotaUnits)
@@ -593,6 +709,7 @@ async function claimGenerationBillingDispatch(input: {
   fingerprint: string;
   estimatedQuotaUnits: number;
 }) {
+  if (isTunnelTestRuntime()) return;
   if (!input.localUserId || !input.taskId || !input.idempotencyKey) {
     throw new Error("生成任务缺少有效额度预检。");
   }
@@ -613,6 +730,7 @@ async function markGenerationProviderStarted(input: {
   taskId?: string | null;
   upstreamModel?: string | null;
 }) {
+  if (isTunnelTestRuntime()) return;
   if (!input.localUserId || !input.taskId) return;
   const result = await getTaskBillingService().markProviderStarted({
     localUserId: input.localUserId,
@@ -628,6 +746,7 @@ async function acceptGenerationBilling(input: {
   newApiTaskId?: string | null;
   upstreamModel?: string | null;
 }) {
+  if (isTunnelTestRuntime()) return;
   if (!input.localUserId || !input.taskId) return;
   const result = await getTaskBillingService().accept({
     localUserId: input.localUserId,
@@ -671,10 +790,7 @@ export async function generateImage(input: {
   });
   try {
     const readyProvider = assertProviderReady(provider, "image", "MODEL_MISSING_IMAGE");
-    if (!input.prompt.trim()) throw new GenerationDiagnosticError({ code: "INPUT_MISSING_PROMPT", providerId: readyProvider.id, model: readyProvider.model });
-    if (input.mode === "image-to-image" && !input.files.length) {
-      throw new GenerationDiagnosticError({ code: "INPUT_MISSING_IMAGE", providerId: readyProvider.id, model: readyProvider.model });
-    }
+    validateImageInput(readyProvider, input);
     await claimGenerationBillingDispatch({
       localUserId: input.billingLocalUserId,
       taskId: input.billingTaskId,
@@ -698,6 +814,7 @@ export async function generateImage(input: {
     const stored = await outputToLibrary(output, "image", "image");
     const item = await addLibraryItem({
       type: "image",
+      ownerLocalUserId: input.billingLocalUserId || null,
       mode: input.mode,
       title: input.prompt.slice(0, 42) || "图片生成",
       prompt: input.prompt,
@@ -759,6 +876,7 @@ export async function submitVideo(input: {
   billingTaskId?: string | null;
   billingIdempotencyKey?: string | null;
   billingEstimatedQuotaUnits?: number | null;
+  referenceBaseUrl?: string | null;
 }) {
   const provider = await providerById(input.providerId);
   const estimatedQuotaUnits = estimateGenerationQuota({
@@ -780,18 +898,7 @@ export async function submitVideo(input: {
     estimatedQuotaUnits,
   });
   try {
-    if (!input.prompt.trim()) throw new GenerationDiagnosticError({ code: "INPUT_MISSING_PROMPT", providerId: provider?.id, model: provider?.model });
-    if (input.mode === "text-to-video" && input.files.length) {
-      throw new GenerationDiagnosticError({ code: "INPUT_INVALID_PARAMETERS", providerId: provider?.id, model: provider?.model });
-    }
-    if (input.mode === "image-to-video") {
-      if (!input.files.length) {
-        throw new GenerationDiagnosticError({ code: "INPUT_MISSING_IMAGE", providerId: provider?.id, model: provider?.model });
-      }
-    }
-
-    const readyProvider = assertProviderReady(provider, "video", "MODEL_MISSING_VIDEO");
-    validateVideoInput(readyProvider, input);
+    const readyProvider = await assertVideoRequestReady(input);
     await claimGenerationBillingDispatch({
       localUserId: input.billingLocalUserId,
       taskId: input.billingTaskId,
@@ -845,6 +952,7 @@ export async function submitVideo(input: {
         : await outputToLibrary({ ...output, url: outputUrl }, "video", "video");
       const item = await addLibraryItem({
         type: "video",
+        ownerLocalUserId: input.billingLocalUserId || null,
         mode: input.mode,
         title: input.prompt.slice(0, 42) || "视频生成",
         prompt: input.prompt,
@@ -884,6 +992,7 @@ export async function submitVideo(input: {
 
     const item = await addLibraryItem({
       type: "video",
+      ownerLocalUserId: input.billingLocalUserId || null,
       mode: input.mode,
       title: input.prompt.slice(0, 42) || "视频生成",
       prompt: input.prompt,
@@ -996,6 +1105,30 @@ export async function refreshVideoJob(jobId: string, localUserId?: string | null
   const output = parseProviderOutput(await readProviderJson(response, provider));
   const status = normalizeStatus(output.status || "");
 
+  if (normalizeStatus(output.status || "") === "failed") {
+    const reason = output.error || output.status || "generation failed";
+    await updateLibraryItem(job.libraryItemId, {
+      status: "failed",
+      error: reason,
+    });
+    await settleGeneratedTaskBilling({
+      localUserId: job.billing_local_user_id || job.ownerLocalUserId || localUserId || null,
+      taskId: job.billing_task_id,
+      estimatedQuotaUnits: job.billing_estimated_quota_units ?? null,
+      outcome: "failed",
+      reason,
+      upstreamRequestId: output.jobId || null,
+      upstreamModel: provider.model,
+      newApiTaskId: output.jobId || job.id,
+    });
+    return updateJob(job.id, {
+      status: "failed",
+      billing_state: job.billing_task_id ? job.billing_state || "prechecked" : job.billing_state,
+      billing_last_error: reason,
+      error: reason,
+    });
+  }
+
   if (output.url) {
     const outputUrl = absolutizeProviderUrl(provider, output.url);
     const stored = outputUrl.includes("/content")
@@ -1004,6 +1137,7 @@ export async function refreshVideoJob(jobId: string, localUserId?: string | null
     await updateLibraryItem(job.libraryItemId, {
       status: "done",
       output: stored,
+      ownerLocalUserId: job.ownerLocalUserId || job.billing_local_user_id || localUserId || null,
     } satisfies Partial<LibraryItem>);
     const updated = await updateJob(job.id, {
       status: "done",
@@ -1035,6 +1169,7 @@ export async function refreshVideoJob(jobId: string, localUserId?: string | null
     await updateLibraryItem(job.libraryItemId, {
       status: "done",
       output: stored,
+      ownerLocalUserId: job.ownerLocalUserId || job.billing_local_user_id || localUserId || null,
     } satisfies Partial<LibraryItem>);
     const updated = await updateJob(job.id, {
       status: "done",

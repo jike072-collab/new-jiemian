@@ -2,7 +2,8 @@ import { type NextRequest, NextResponse } from "next/server";
 
 import { authResultResponse, csrfFailure, requireAuthSession, requireCsrf } from "@/lib/server/auth";
 import { diagnosticErrorResponse } from "@/lib/server/error-diagnostics";
-import { uploadedUpscaleFile, upscaleImage } from "@/lib/server/volcengine-upscale";
+import { claimTunneltestLimit, tunneltestLimitResponse } from "@/lib/server/tunneltest-limits";
+import { assertImageUpscaleReady, uploadedUpscaleFile, upscaleImage } from "@/lib/server/volcengine-upscale";
 
 export const runtime = "nodejs";
 export const maxDuration = 900;
@@ -19,7 +20,18 @@ export async function POST(request: NextRequest) {
     }
     const scale = requestedScale;
     const file = await uploadedUpscaleFile(form, "image");
-    return NextResponse.json({ item: await upscaleImage(file, scale), job: null });
+    await assertImageUpscaleReady();
+    const taskId = String(form.get("taskId") || form.get("billingTaskId") || "");
+    const idempotencyKey = String(form.get("idempotencyKey") || form.get("billingIdempotencyKey") || "");
+    const estimatedQuotaUnits = Number(form.get("estimatedQuotaUnits") || form.get("billingEstimatedQuotaUnits") || Number.NaN);
+    const tunneltest = await claimTunneltestLimit({
+      localUserId: session.user.local_user_id,
+      operation: "cloud_image_upscale",
+      taskId,
+      idempotencyKey,
+    });
+    if (tunneltest && !tunneltest.ok) return tunneltestLimitResponse(tunneltest);
+    return NextResponse.json({ item: await upscaleImage(file, scale, session.user.local_user_id, taskId, idempotencyKey, estimatedQuotaUnits), job: null });
   } catch (error) {
     return diagnosticErrorResponse(error, {
       requestId: request.headers.get("x-request-id"),

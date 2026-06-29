@@ -2,7 +2,8 @@ import { type NextRequest, NextResponse } from "next/server";
 
 import { authResultResponse, csrfFailure, requireAuthSession, requireCsrf } from "@/lib/server/auth";
 import { diagnosticErrorResponse } from "@/lib/server/error-diagnostics";
-import { submitVideoUpscale, uploadedUpscaleFile } from "@/lib/server/volcengine-upscale";
+import { claimTunneltestLimit, tunneltestLimitResponse } from "@/lib/server/tunneltest-limits";
+import { assertVideoUpscaleReady, submitVideoUpscale, uploadedUpscaleFile } from "@/lib/server/volcengine-upscale";
 
 export const runtime = "nodejs";
 
@@ -18,7 +19,18 @@ export async function POST(request: NextRequest) {
     }
     const scale = requestedScale;
     const file = await uploadedUpscaleFile(form, "video");
-    return NextResponse.json(await submitVideoUpscale(file, scale));
+    await assertVideoUpscaleReady();
+    const taskId = String(form.get("taskId") || form.get("billingTaskId") || "");
+    const idempotencyKey = String(form.get("idempotencyKey") || form.get("billingIdempotencyKey") || "");
+    const estimatedQuotaUnits = Number(form.get("estimatedQuotaUnits") || form.get("billingEstimatedQuotaUnits") || Number.NaN);
+    const tunneltest = await claimTunneltestLimit({
+      localUserId: session.user.local_user_id,
+      operation: "cloud_video_upscale",
+      taskId,
+      idempotencyKey,
+    });
+    if (tunneltest && !tunneltest.ok) return tunneltestLimitResponse(tunneltest);
+    return NextResponse.json(await submitVideoUpscale(file, scale, session.user.local_user_id, taskId, idempotencyKey, estimatedQuotaUnits));
   } catch (error) {
     return diagnosticErrorResponse(error, {
       requestId: request.headers.get("x-request-id"),
