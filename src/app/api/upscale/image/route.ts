@@ -2,7 +2,7 @@ import { type NextRequest, NextResponse } from "next/server";
 
 import { authResultResponse, csrfFailure, requireAuthSession, requireCsrf } from "@/lib/server/auth";
 import { diagnosticErrorResponse } from "@/lib/server/error-diagnostics";
-import { uploadedUpscaleFile, upscaleImage } from "@/lib/server/volcengine-upscale";
+import { uploadedUpscaleFile, upscaleImage as runUpscaleImage } from "@/lib/server/volcengine-upscale";
 
 export const runtime = "nodejs";
 export const maxDuration = 900;
@@ -19,6 +19,9 @@ export async function POST(request: NextRequest) {
     }
     const scale = requestedScale;
     const file = await uploadedUpscaleFile(form, "image");
+    const upscaleImage = (file: Parameters<typeof runUpscaleImage>[0], scale: Parameters<typeof runUpscaleImage>[1]) => (
+      runUpscaleImage(file, scale, session.user.local_user_id)
+    );
     return NextResponse.json({ item: await upscaleImage(file, scale), job: null });
   } catch (error) {
     return diagnosticErrorResponse(error, {

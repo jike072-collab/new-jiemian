@@ -100,6 +100,10 @@ async function removeStoredOutputFile(storedName: string) {
   }
 }
 
+function isOwnedBy(item: LibraryItem, ownerLocalUserId: string) {
+  return item.ownerLocalUserId === ownerLocalUserId;
+}
+
 export async function readLibrary() {
   const flags = getStage9cbDatabaseIntegrationFlags();
   if (shouldReadLibraryFromDatabase(flags)) {
@@ -115,6 +119,10 @@ export async function readLibrary() {
     };
   }));
   return withFileState.sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+}
+
+export async function readLibraryForOwner(ownerLocalUserId: string) {
+  return (await readLibrary()).filter((item) => isOwnedBy(item, ownerLocalUserId));
 }
 
 export async function saveLibrary(items: LibraryItem[]) {
@@ -179,6 +187,33 @@ export async function deleteLibraryItem(id: string) {
   });
   if (shouldWriteLibraryToDatabase(getStage9cbDatabaseIntegrationFlags())) {
     void scheduleLibraryShadowWrite({ operation: "softDeleteLibraryItem", id }, { adapter: getDatabaseAdapter() });
+  }
+  return { deleted: Boolean(removed) };
+}
+
+export async function deleteLibraryItemForOwner(id: string, ownerLocalUserId: string) {
+  const flags = getStage9cbDatabaseIntegrationFlags();
+  if (shouldReadLibraryFromDatabase(flags)) {
+    const item = (await readLibrary()).find((candidate) => candidate.id === id && isOwnedBy(candidate, ownerLocalUserId));
+    if (!item) throw new LibraryOperationError(404, "Library item not found.");
+    return getDatabaseAdapter().softDeleteLibraryItem(id);
+  }
+
+  const removed = await serializeWrite("library", async () => {
+    const items = await readLibraryFile();
+    const removedItem = items.find((item) => item.id === id && isOwnedBy(item, ownerLocalUserId));
+    if (!removedItem) throw new LibraryOperationError(404, "Library item not found.");
+    if (removedItem.output?.storedName) await removeStoredOutputFile(removedItem.output.storedName);
+    const next = items.filter((item) => item.id !== id);
+    await saveLibrary(next);
+    return removedItem;
+  });
+  await serializeWrite("jobs", async () => {
+    const jobs = await readJobsFile();
+    await saveJobsFile(jobs.filter((job) => job.libraryItemId !== id));
+  });
+  if (shouldWriteLibraryToDatabase(flags)) {
+    await getDatabaseAdapter().softDeleteLibraryItem(id);
   }
   return { deleted: Boolean(removed) };
 }
@@ -262,5 +297,21 @@ export async function storeRemoteUrl(url: string, prefix: string, fallbackMime: 
 export async function readStoredFile(storedName: string) {
   const safeName = safeStoredName(storedName);
   if (!safeName || safeName !== storedName) return null;
-  return readFile(resolveUploadPath(safeName));
+  try {
+    return await readFile(resolveUploadPath(safeName));
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") return null;
+    throw error;
+  }
+}
+
+export async function readStoredFileForOwner(storedName: string, ownerLocalUserId: string) {
+  const safeName = safeStoredName(storedName);
+  if (!safeName || safeName !== storedName) return null;
+  const item = (await readLibrary()).find((candidate) => (
+    isOwnedBy(candidate, ownerLocalUserId)
+    && candidate.output?.storedName === storedName
+  ));
+  if (!item) return null;
+  return readStoredFile(storedName);
 }

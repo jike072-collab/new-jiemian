@@ -24,7 +24,7 @@ const result = await withStudioTestTarget(async ({ baseUrl }) => {
     throw new Error(`admin/providers returned unexpected status ${adminProviders.status}`);
   }
   if (health.status !== 200) throw new Error(`health returned ${health.status}`);
-  if (library.status !== 200) throw new Error(`library returned ${library.status}`);
+  if (library.status !== 401) throw new Error(`unauthenticated /api/library must return 401, got ${library.status}`);
 
   for (const [name, response] of [
     ["home", home],
