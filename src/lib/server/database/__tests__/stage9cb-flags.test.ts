@@ -75,3 +75,34 @@ test("Stage 9C-B database integration can be enabled on isolated 3107 only with 
   assert.equal(flags.databaseRuntimeAllowed, true);
   assert.equal(shouldReadLibraryFromDatabase(flags), true);
 });
+
+test("Stage 9C-B database integration invalid flag values fail closed", () => {
+  const flags = getStage9cbDatabaseIntegrationFlags({
+    NODE_ENV: "test",
+    LIBRARY_STORAGE_BACKEND: "postgres",
+    GENERATION_JOBS_BACKEND: "postgres",
+    DATABASE_LIBRARY_DUAL_WRITE: "maybe",
+    DATABASE_LIBRARY_READ_ENABLED: "enabled",
+    DATABASE_JOBS_WRITE_ENABLED: "enabled",
+  });
+
+  assert.equal(flags.libraryStorageBackend, "json");
+  assert.equal(flags.generationJobsBackend, "existing");
+  assert.equal(flags.databaseLibraryDualWrite, false);
+  assert.equal(flags.databaseLibraryReadEnabled, false);
+  assert.equal(flags.databaseJobsWriteEnabled, false);
+  assert.equal(shouldReadLibraryFromDatabase(flags), false);
+  assert.equal(shouldWriteLibraryToDatabase(flags), false);
+  assert.equal(shouldUseDatabaseJobs(flags), false);
+});
+
+test("Stage 9C-B library dual-write does not switch the read path by itself", () => {
+  const flags = getStage9cbDatabaseIntegrationFlags({
+    NODE_ENV: "test",
+    DATABASE_LIBRARY_DUAL_WRITE: "true",
+    DATABASE_LIBRARY_READ_ENABLED: "true",
+  });
+
+  assert.equal(shouldWriteLibraryToDatabase(flags), true);
+  assert.equal(shouldReadLibraryFromDatabase(flags), false);
+});

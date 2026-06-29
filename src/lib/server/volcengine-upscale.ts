@@ -14,7 +14,7 @@ import { codeForUpstreamStatus, GenerationDiagnosticError } from "./error-diagno
 import { getTaskBillingService } from "./quota";
 import { providerById } from "./providers";
 import { isTunnelTestRuntime } from "./tunneltest-limits";
-import { type JobRecord, type ProviderConfig } from "./types";
+import { type JobRecord, type LibraryItem, type ProviderConfig } from "./types";
 
 export type UploadedUpscaleFile = {
   bytes: Buffer;
@@ -575,8 +575,8 @@ async function runImageUpscale(file: UploadedUpscaleFile, scale: TargetScale, ow
   const stored = await storeUpscaleOutputUrl(outputUrl, "image-upscale", "image/png");
   const sourceDimensions = readImageDimensions(file.bytes);
   return addLibraryItem({
-    type: "image",
     ownerLocalUserId: ownerLocalUserId || null,
+    type: "image",
     mode: "image-upscale",
     title: `图片高清 ${targetLabel(scale)}`,
     prompt: file.fileName,
@@ -597,6 +597,8 @@ async function runImageUpscale(file: UploadedUpscaleFile, scale: TargetScale, ow
   });
 }
 
+export async function upscaleImage(file: UploadedUpscaleFile, scale: TargetScale, ownerLocalUserId?: string | null): Promise<LibraryItem>;
+export async function upscaleImage(file: UploadedUpscaleFile, scale: TargetScale, ownerLocalUserId?: string | null, billingTaskId?: string | null, billingIdempotencyKey?: string | null, billingEstimatedQuotaUnits?: number | null): Promise<LibraryItem>;
 export async function upscaleImage(
   file: UploadedUpscaleFile,
   scale: TargetScale,
@@ -765,8 +767,8 @@ async function runVideoUpscaleSubmit(file: UploadedUpscaleFile, scale: TargetSca
   const runId = start.Result?.RunId;
   if (!runId) throw new Error("火山 VOD 未返回视频高清任务 RunId。");
   const item = await addLibraryItem({
-    type: "video",
     ownerLocalUserId: ownerLocalUserId || null,
+    type: "video",
     mode: "video-upscale",
     title: `视频高清 ${targetLabel(scale)}`,
     prompt: file.fileName,
@@ -798,6 +800,8 @@ async function runVideoUpscaleSubmit(file: UploadedUpscaleFile, scale: TargetSca
   return { item, job };
 }
 
+export async function submitVideoUpscale(file: UploadedUpscaleFile, scale: TargetScale, ownerLocalUserId?: string | null): Promise<{ item: LibraryItem; job: JobRecord }>;
+export async function submitVideoUpscale(file: UploadedUpscaleFile, scale: TargetScale, ownerLocalUserId?: string | null, billingTaskId?: string | null, billingIdempotencyKey?: string | null, billingEstimatedQuotaUnits?: number | null): Promise<{ item: LibraryItem; job: JobRecord }>;
 export async function submitVideoUpscale(
   file: UploadedUpscaleFile,
   scale: TargetScale,

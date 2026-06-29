@@ -13,6 +13,7 @@ import {
 } from "./paths";
 import { type JobRecord, type LibraryItem } from "./types";
 import { createStage9cbLibraryDatabaseAdapter } from "./database/library-jobs-adapter";
+import { scheduleLibraryShadowWrite } from "./database/library-shadow-write";
 import {
   getStage9cbDatabaseIntegrationFlags,
   shouldReadLibraryFromDatabase,
@@ -104,6 +105,10 @@ function belongsToOwner(item: LibraryItem, ownerLocalUserId?: string | null) {
   return item.ownerLocalUserId === ownerLocalUserId;
 }
 
+function isOwnedBy(item: LibraryItem, ownerLocalUserId: string) {
+  return item.ownerLocalUserId === ownerLocalUserId;
+}
+
 function itemOwnsStoredFile(item: LibraryItem, storedName: string, ownerLocalUserId: string) {
   return item.ownerLocalUserId === ownerLocalUserId && item.output?.storedName === storedName;
 }
@@ -127,6 +132,10 @@ export async function readLibrary(ownerLocalUserId?: string | null) {
     .sort((a, b) => b.createdAt.localeCompare(a.createdAt));
 }
 
+export async function readLibraryForOwner(ownerLocalUserId: string) {
+  return readLibrary(ownerLocalUserId);
+}
+
 export async function saveLibrary(items: LibraryItem[]) {
   await writeJsonFile(libraryPath, items);
 }
@@ -144,7 +153,7 @@ export async function addLibraryItem(input: Omit<LibraryItem, "id" | "createdAt"
     await saveLibrary([item, ...items]);
   });
   if (shouldWriteLibraryToDatabase(getStage9cbDatabaseIntegrationFlags())) {
-    await getDatabaseAdapter().addLibraryItem(item);
+    void scheduleLibraryShadowWrite({ operation: "addLibraryItem", item }, { adapter: getDatabaseAdapter() });
   }
   return item;
 }
@@ -158,7 +167,12 @@ export async function updateLibraryItem(id: string, patch: Partial<LibraryItem>)
     await saveLibrary(next);
     const updated = next.find((item) => item.id === id) || null;
     if (updated && shouldWriteLibraryToDatabase(getStage9cbDatabaseIntegrationFlags())) {
-      await getDatabaseAdapter().updateLibraryItem(id, patch, updated);
+      void scheduleLibraryShadowWrite({
+        operation: "updateLibraryItem",
+        id,
+        patch,
+        nextItem: updated,
+      }, { adapter: getDatabaseAdapter() });
     }
     return updated;
   });
@@ -186,9 +200,13 @@ export async function deleteLibraryItem(id: string, ownerLocalUserId?: string | 
     await saveJobsFile(jobs.filter((job) => job.libraryItemId !== id));
   });
   if (shouldWriteLibraryToDatabase(getStage9cbDatabaseIntegrationFlags())) {
-    await getDatabaseAdapter().softDeleteLibraryItem(id);
+    void scheduleLibraryShadowWrite({ operation: "softDeleteLibraryItem", id }, { adapter: getDatabaseAdapter() });
   }
   return { deleted: Boolean(removed) };
+}
+
+export async function deleteLibraryItemForOwner(id: string, ownerLocalUserId: string) {
+  return deleteLibraryItem(id, ownerLocalUserId);
 }
 
 export async function readJobs() {
@@ -270,7 +288,23 @@ export async function storeRemoteUrl(url: string, prefix: string, fallbackMime: 
 export async function readStoredFile(storedName: string) {
   const safeName = safeStoredName(storedName);
   if (!safeName || safeName !== storedName) return null;
-  return readFile(resolveUploadPath(safeName));
+  try {
+    return await readFile(resolveUploadPath(safeName));
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") return null;
+    throw error;
+  }
+}
+
+export async function readStoredFileForOwner(storedName: string, ownerLocalUserId: string) {
+  const safeName = safeStoredName(storedName);
+  if (!safeName || safeName !== storedName) return null;
+  const item = (await readLibrary()).find((candidate) => (
+    isOwnedBy(candidate, ownerLocalUserId)
+    && candidate.output?.storedName === storedName
+  ));
+  if (!item) return null;
+  return readStoredFile(storedName);
 }
 
 export async function readOwnedStoredFile(storedName: string, ownerLocalUserId: string) {

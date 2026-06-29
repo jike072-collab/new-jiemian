@@ -813,8 +813,8 @@ export async function generateImage(input: {
     });
     const stored = await outputToLibrary(output, "image", "image");
     const item = await addLibraryItem({
-      type: "image",
       ownerLocalUserId: input.billingLocalUserId || null,
+      type: "image",
       mode: input.mode,
       title: input.prompt.slice(0, 42) || "图片生成",
       prompt: input.prompt,
@@ -951,8 +951,8 @@ export async function submitVideo(input: {
         ? await outputToLibraryFromAuthenticatedUrl(readyProvider, outputUrl, "video")
         : await outputToLibrary({ ...output, url: outputUrl }, "video", "video");
       const item = await addLibraryItem({
-        type: "video",
         ownerLocalUserId: input.billingLocalUserId || null,
+        type: "video",
         mode: input.mode,
         title: input.prompt.slice(0, 42) || "视频生成",
         prompt: input.prompt,
@@ -991,8 +991,8 @@ export async function submitVideo(input: {
     }
 
     const item = await addLibraryItem({
-      type: "video",
       ownerLocalUserId: input.billingLocalUserId || null,
+      type: "video",
       mode: input.mode,
       title: input.prompt.slice(0, 42) || "视频生成",
       prompt: input.prompt,

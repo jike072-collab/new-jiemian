@@ -1,0 +1,36 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "allowImportingTsExtensions": false,
+    "declaration": false,
+    "emitDeclarationOnly": false,
+    "incremental": false,
+    "module": "NodeNext",
+    "moduleResolution": "NodeNext",
+    "noEmit": false,
+    "outDir": "dist/stage9e-canary",
+    "rootDir": ".",
+    "target": "ES2022",
+    "tsBuildInfoFile": "dist/stage9e-canary.tsbuildinfo"
+  },
+  "include": [
+    "src/lib/server/library.ts",
+    "src/lib/server/paths.ts",
+    "src/lib/server/runtime-paths.ts",
+    "src/lib/server/types.ts",
+    "src/lib/server/database/client.ts",
+    "src/lib/server/database/library-jobs-adapter.ts",
+    "src/lib/server/database/library-shadow-write.ts",
+    "src/lib/server/database/mvp-repositories.ts",
+    "src/lib/server/database/stage9cb-flags.ts",
+    "src/lib/server/integrations/new-api/redaction.ts"
+  ],
+  "exclude": [
+    "node_modules",
+    ".next",
+    ".runtime",
+    "artifacts",
+    "dist",
+    "src/lib/server/database/__tests__"
+  ]
+}

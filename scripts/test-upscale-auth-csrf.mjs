@@ -16,13 +16,13 @@ const routeContracts = [
     name: "image upscale route",
     source: imageRoute,
     endpoint: "/api/upscale/image",
-    providerTokens: ["uploadedUpscaleFile(form, \"image\")", "upscaleImage(file, scale"],
+    providerTokens: ["uploadedUpscaleFile(form, \"image\")", "runUpscaleImage(file, scale"],
   },
   {
     name: "video upscale route",
     source: videoRoute,
     endpoint: "/api/upscale/video",
-    providerTokens: ["uploadedUpscaleFile(form, \"video\")", "submitVideoUpscale(file, scale"],
+    providerTokens: ["uploadedUpscaleFile(form, \"video\")", "runSubmitVideoUpscale(file, scale"],
   },
 ];
 

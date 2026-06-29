@@ -2,14 +2,14 @@ import { type NextRequest, NextResponse } from "next/server";
 
 import { authResultResponse, requireAuthSession } from "@/lib/server/auth";
 import { diagnosticErrorResponse, GenerationDiagnosticError } from "@/lib/server/error-diagnostics";
-import { deleteLibraryItem, LibraryOperationError, readLibrary } from "@/lib/server/library";
+import { deleteLibraryItemForOwner, LibraryOperationError, readLibraryForOwner } from "@/lib/server/library";
 
 export const runtime = "nodejs";
 
 export async function GET(request: NextRequest) {
   const session = await requireAuthSession(request);
   if (!session.ok) return authResultResponse(request, session);
-  return NextResponse.json({ items: await readLibrary(session.user.local_user_id) });
+  return NextResponse.json({ items: await readLibraryForOwner(session.user.local_user_id) });
 }
 
 export async function DELETE(request: NextRequest) {
@@ -24,7 +24,7 @@ export async function DELETE(request: NextRequest) {
         status: 400,
       });
     }
-    return NextResponse.json(await deleteLibraryItem(body.id, session.user.local_user_id));
+    return NextResponse.json(await deleteLibraryItemForOwner(body.id, session.user.local_user_id));
   } catch (error) {
     if (error instanceof LibraryOperationError) {
       return diagnosticErrorResponse(error, {

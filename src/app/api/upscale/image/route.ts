@@ -3,7 +3,7 @@ import { type NextRequest, NextResponse } from "next/server";
 import { authResultResponse, csrfFailure, requireAuthSession, requireCsrf } from "@/lib/server/auth";
 import { diagnosticErrorResponse } from "@/lib/server/error-diagnostics";
 import { claimTunneltestLimit, tunneltestLimitResponse } from "@/lib/server/tunneltest-limits";
-import { assertImageUpscaleReady, uploadedUpscaleFile, upscaleImage } from "@/lib/server/volcengine-upscale";
+import { assertImageUpscaleReady, uploadedUpscaleFile, upscaleImage as runUpscaleImage } from "@/lib/server/volcengine-upscale";
 
 export const runtime = "nodejs";
 export const maxDuration = 900;
@@ -31,7 +31,10 @@ export async function POST(request: NextRequest) {
       idempotencyKey,
     });
     if (tunneltest && !tunneltest.ok) return tunneltestLimitResponse(tunneltest);
-    return NextResponse.json({ item: await upscaleImage(file, scale, session.user.local_user_id, taskId, idempotencyKey, estimatedQuotaUnits), job: null });
+    return NextResponse.json({
+      item: await runUpscaleImage(file, scale, session.user.local_user_id, taskId, idempotencyKey, estimatedQuotaUnits),
+      job: null,
+    });
   } catch (error) {
     return diagnosticErrorResponse(error, {
       requestId: request.headers.get("x-request-id"),

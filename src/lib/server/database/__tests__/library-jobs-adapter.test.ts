@@ -217,6 +217,19 @@ test("database library adapter writes assets and preserves library response shap
   assert.equal(fromDb.fileAvailable, true);
 });
 
+test("database library adapter repeats library writes with stable ids", async () => {
+  const memory = createMemoryRepository();
+  const adapter = createStage9cbLibraryDatabaseAdapter(memory.repository);
+
+  await adapter.addLibraryItem(libraryItem());
+  await adapter.addLibraryItem(libraryItem({ title: "Updated prompt", updatedAt: later }));
+
+  assert.equal(memory.assets.size, 1);
+  assert.equal(memory.libraryItems.size, 1);
+  assert.equal(memory.libraryItems.get("library-1")?.title, "Updated prompt");
+  assert.equal(memory.calls.filter((call) => call === "updateLibraryItem").length, 1);
+});
+
 test("database library adapter uses soft delete and does not remove files", async () => {
   const memory = createMemoryRepository();
   const adapter = createStage9cbLibraryDatabaseAdapter(memory.repository);
