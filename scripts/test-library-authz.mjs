@@ -63,8 +63,8 @@ assert(ownerFieldCount(providerCall) >= 3, "all provider-call library item creat
 assert(upscale.includes("upscaleImage(file: UploadedUpscaleFile, scale: TargetScale, ownerLocalUserId?: string | null)"), "image upscale must accept owner");
 assert(upscale.includes("submitVideoUpscale(file: UploadedUpscaleFile, scale: TargetScale, ownerLocalUserId?: string | null)"), "video upscale must accept owner");
 assert(ownerFieldCount(upscale) >= 3, "upscale library/job creations must set ownerLocalUserId");
-assert(upscaleImageRoute.includes("upscaleImage(file, scale, session.user.local_user_id)"), "image upscale route must pass current owner");
-assert(upscaleVideoRoute.includes("submitVideoUpscale(file, scale, session.user.local_user_id)"), "video upscale route must pass current owner");
+assert(upscaleImageRoute.includes("runUpscaleImage(file, scale, session.user.local_user_id)"), "image upscale route must pass current owner");
+assert(upscaleVideoRoute.includes("runSubmitVideoUpscale(file, scale, session.user.local_user_id)"), "video upscale route must pass current owner");
 
 const self = read("scripts/test-library-authz.mjs");
 for (const token of [

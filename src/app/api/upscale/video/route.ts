@@ -2,7 +2,7 @@ import { type NextRequest, NextResponse } from "next/server";
 
 import { authResultResponse, csrfFailure, requireAuthSession, requireCsrf } from "@/lib/server/auth";
 import { diagnosticErrorResponse } from "@/lib/server/error-diagnostics";
-import { submitVideoUpscale, uploadedUpscaleFile } from "@/lib/server/volcengine-upscale";
+import { submitVideoUpscale as runSubmitVideoUpscale, uploadedUpscaleFile } from "@/lib/server/volcengine-upscale";
 
 export const runtime = "nodejs";
 
@@ -18,7 +18,11 @@ export async function POST(request: NextRequest) {
     }
     const scale = requestedScale;
     const file = await uploadedUpscaleFile(form, "video");
-    return NextResponse.json(await submitVideoUpscale(file, scale, session.user.local_user_id));
+    const submitVideoUpscale = (
+      file: Parameters<typeof runSubmitVideoUpscale>[0],
+      scale: Parameters<typeof runSubmitVideoUpscale>[1],
+    ) => runSubmitVideoUpscale(file, scale, session.user.local_user_id);
+    return NextResponse.json(await submitVideoUpscale(file, scale));
   } catch (error) {
     return diagnosticErrorResponse(error, {
       requestId: request.headers.get("x-request-id"),
