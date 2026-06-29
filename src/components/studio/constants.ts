@@ -12,7 +12,7 @@ export function videoUpscaleScaleLabel(scale: string) {
 
 export const ratios = ["1:1", "16:9", "9:16", "4:3", "3:4", "3:2", "2:3"];
 export const defaultVideoDurations = [5, 8, 10, 15];
-export const grokVideoDurations = [4, 6, 8, 10, 12, 15];
+export const grokVideoDurations = [6, 8, 10, 12, 15];
 export const grokVideo10Ratios = ["1:1", "16:9", "9:16", "4:3", "3:4", "3:2", "2:3"];
 export const grokVideo15Ratios = ["16:9", "9:16"];
 export const jimengVideoRatios = ["16:9", "9:16", "1:1"];

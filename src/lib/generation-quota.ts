@@ -1,6 +1,7 @@
 import type { WorkspaceImageMode, WorkspaceVideoMode } from "@/lib/workspace-registry";
 
 type GenerationBillableOperation = "cloud_image_generation" | "cloud_video_generation";
+type UpscaleBillableOperation = "cloud_image_upscale" | "cloud_video_upscale";
 
 export function estimateImageGenerationQuota(input: {
   mode: WorkspaceImageMode;
@@ -86,5 +87,34 @@ export function generationBillingFingerprint(input: GenerationBillingIntent & {
       Math.max(0, Math.trunc(input.referenceImages)),
       input.estimatedQuotaUnits,
     ];
+  return parts.map((part) => encodeURIComponent(String(part))).join(":");
+}
+
+export function estimateUpscaleQuota(input: {
+  kind: "image" | "video";
+  scale: string | number;
+}) {
+  const numericScale = Math.max(1, Math.trunc(Number(input.scale) || 1));
+  const base = input.kind === "image" ? 40 : 120;
+  return Math.max(base, base * numericScale);
+}
+
+export function upscaleBillingOperation(input: { kind: "image" | "video" }): UpscaleBillableOperation {
+  return input.kind === "image" ? "cloud_image_upscale" : "cloud_video_upscale";
+}
+
+export function upscaleBillingFingerprint(input: {
+  kind: "image" | "video";
+  scale: string | number;
+  taskId: string;
+  estimatedQuotaUnits: number;
+}) {
+  const parts = [
+    `${input.kind}-upscale`,
+    upscaleBillingOperation(input),
+    input.taskId,
+    Math.max(1, Math.trunc(Number(input.scale) || 1)),
+    input.estimatedQuotaUnits,
+  ];
   return parts.map((part) => encodeURIComponent(String(part))).join(":");
 }

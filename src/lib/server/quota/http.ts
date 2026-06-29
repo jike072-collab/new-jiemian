@@ -1,6 +1,13 @@
 import { type NextRequest, NextResponse } from "next/server";
 
 import { authRequestContext, requireAuthSession, readJsonBody } from "../auth";
+import {
+  getTunneltestQuotaSnapshot,
+  getTunneltestUsagePage,
+  isTunnelTestRuntime,
+  precheckTunneltestLimit,
+  tunneltestLimitResponse,
+} from "../tunneltest-limits";
 import { getTaskBillingService } from "./task-billing-service";
 import { getQuotaService } from "./service";
 import { type BillableOperation, type QuotaErrorCode } from "./types";
@@ -59,6 +66,10 @@ export async function quotaSnapshotResponse(request: NextRequest) {
   const auth = await requireLocalUser(request);
   if (!auth.ok) return auth.response;
 
+  if (isTunnelTestRuntime()) {
+    return NextResponse.json({ ok: true, quota: await getTunneltestQuotaSnapshot(auth.localUserId), tunneltest: true });
+  }
+
   const result = await getQuotaService().getCurrentQuota(auth.localUserId, { allowCached: true });
   if (!result.ok) return quotaErrorResponse(result);
   return NextResponse.json({ ok: true, quota: result.snapshot });
@@ -72,6 +83,10 @@ export async function usagePageResponse(request: NextRequest) {
   const page = Number(url.searchParams.get("page") || 1);
   const pageSize = Number(url.searchParams.get("pageSize") || 20);
   const source = url.searchParams.get("source") || "local";
+  if (isTunnelTestRuntime()) {
+    return NextResponse.json({ ok: true, usage: await getTunneltestUsagePage(auth.localUserId, page, pageSize), tunneltest: true });
+  }
+
   const quota = getQuotaService();
   const result = source === "upstream"
     ? await quota.listUpstreamUsage(auth.localUserId, page, pageSize)
@@ -89,6 +104,14 @@ export async function precheckResponse(request: NextRequest) {
   const taskId = String(body.taskId || "").trim();
   const idempotencyKey = String(body.idempotencyKey || body.taskId || "").trim();
   if (!operation || !taskId || !idempotencyKey) return invalidQuotaRequest();
+
+  const tunneltest = await precheckTunneltestLimit({
+    localUserId: auth.localUserId,
+    operation,
+    taskId,
+    idempotencyKey,
+  });
+  if (tunneltest) return tunneltestLimitResponse(tunneltest);
 
   const result = await getTaskBillingService().precheck({
     localUserId: auth.localUserId,

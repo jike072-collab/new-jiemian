@@ -69,8 +69,11 @@ import {
 import { ApiError, fetchJson, fetchJsonWithCsrf } from "@/lib/client/api";
 import {
   estimateImageGenerationQuota,
+  estimateUpscaleQuota,
   estimateVideoGenerationQuota,
   generationBillingFingerprint,
+  upscaleBillingFingerprint,
+  upscaleBillingOperation,
 } from "@/lib/generation-quota";
 import {
   templateById,
@@ -371,7 +374,7 @@ export function StudioApp() {
   const [videoWorkspace, setVideoWorkspace] = useState<VideoWorkspaceState>({
     providerId: "",
     ratio: "16:9",
-    duration: 5,
+    duration: 6,
     templateId: "",
     prompt: "",
     promptOptimizing: false,
@@ -1443,15 +1446,40 @@ export function StudioApp() {
     setMobilePreviewSignal((value) => value + 1);
     setMessage("");
     try {
+      const taskId = createTaskId("image-upscale");
+      const estimatedQuotaUnits = estimateUpscaleQuota({
+        kind: "image",
+        scale: imageUpscaleWorkspace.scale,
+      });
+      const requestFingerprint = upscaleBillingFingerprint({
+        kind: "image",
+        scale: imageUpscaleWorkspace.scale,
+        taskId,
+        estimatedQuotaUnits,
+      });
+      await fetchJsonWithCsrf("/api/quota/precheck", {
+        method: "POST",
+        body: JSON.stringify({
+          operation: upscaleBillingOperation({ kind: "image" }),
+          taskId,
+          idempotencyKey: taskId,
+          estimatedQuotaUnits,
+          requestFingerprint,
+        }),
+      });
       const form = new FormData();
       form.set("file", currentFile.file);
       form.set("scale", imageUpscaleWorkspace.scale);
+      form.set("taskId", taskId);
+      form.set("idempotencyKey", taskId);
+      form.set("estimatedQuotaUnits", String(estimatedQuotaUnits));
       const data = await fetchJsonWithCsrf<{ item: LibraryItem; job: JobRecord | null }>("/api/upscale/image", {
         method: "POST",
         body: form,
       });
       setOutputs((prev) => ({ ...prev, "image-upscale": { item: data.item, job: data.job, title: "图片高清结果", tool: "image-upscale" } }));
       await refreshLibrary();
+      await refreshAccountData(sessionUser?.local_user_id || null);
     } catch (error) {
       const text = error instanceof Error ? error.message : "图片高清处理失败。";
       updateImageUpscaleWorkspace({ submitError: text, submitDiagnostic: diagnosticFromError(error) });
@@ -1459,7 +1487,7 @@ export function StudioApp() {
     } finally {
       updateImageUpscaleWorkspace({ loading: false });
     }
-  }, [imageUpscaleWorkspace.availability?.ready, imageUpscaleWorkspace.file, imageUpscaleWorkspace.loading, imageUpscaleWorkspace.scale, refreshLibrary, setMessage, updateImageUpscaleWorkspace]);
+  }, [imageUpscaleWorkspace.availability?.ready, imageUpscaleWorkspace.file, imageUpscaleWorkspace.loading, imageUpscaleWorkspace.scale, refreshAccountData, refreshLibrary, sessionUser?.local_user_id, setMessage, updateImageUpscaleWorkspace]);
 
   const imageUpscaleCanSubmit = Boolean(imageUpscaleWorkspace.file)
     && Boolean(imageUpscaleWorkspace.availability?.ready)
@@ -1562,9 +1590,33 @@ export function StudioApp() {
     setMobilePreviewSignal((value) => value + 1);
     setMessage("");
     try {
+      const taskId = createTaskId("video-upscale");
+      const estimatedQuotaUnits = estimateUpscaleQuota({
+        kind: "video",
+        scale: videoUpscaleWorkspace.scale,
+      });
+      const requestFingerprint = upscaleBillingFingerprint({
+        kind: "video",
+        scale: videoUpscaleWorkspace.scale,
+        taskId,
+        estimatedQuotaUnits,
+      });
+      await fetchJsonWithCsrf("/api/quota/precheck", {
+        method: "POST",
+        body: JSON.stringify({
+          operation: upscaleBillingOperation({ kind: "video" }),
+          taskId,
+          idempotencyKey: taskId,
+          estimatedQuotaUnits,
+          requestFingerprint,
+        }),
+      });
       const form = new FormData();
       form.set("file", currentFile.file);
       form.set("scale", videoUpscaleWorkspace.scale);
+      form.set("taskId", taskId);
+      form.set("idempotencyKey", taskId);
+      form.set("estimatedQuotaUnits", String(estimatedQuotaUnits));
       const data = await fetchJsonWithCsrf<{ item: LibraryItem; job: JobRecord | null }>("/api/upscale/video", {
         method: "POST",
         body: form,
@@ -1572,6 +1624,7 @@ export function StudioApp() {
       updateVideoUpscaleWorkspace({ job: data.job });
       setOutputs((prev) => ({ ...prev, "video-upscale": { item: data.item, job: data.job, title: "视频高清结果", tool: "video-upscale" } }));
       await refreshLibrary();
+      await refreshAccountData(sessionUser?.local_user_id || null);
     } catch (error) {
       const text = error instanceof Error ? error.message : "视频高清处理失败。";
       updateVideoUpscaleWorkspace({ submitError: text, submitDiagnostic: diagnosticFromError(error) });
@@ -1588,6 +1641,8 @@ export function StudioApp() {
     videoUpscaleWorkspace.job,
     videoUpscaleWorkspace.loading,
     videoUpscaleWorkspace.scale,
+    refreshAccountData,
+    sessionUser?.local_user_id,
   ]);
 
   const videoUpscaleProcessing = Boolean(videoUpscaleWorkspace.job)

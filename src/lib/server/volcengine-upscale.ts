@@ -11,7 +11,9 @@ import {
   updateLibraryItem,
 } from "./library";
 import { codeForUpstreamStatus, GenerationDiagnosticError } from "./error-diagnostics";
+import { getTaskBillingService } from "./quota";
 import { providerById } from "./providers";
+import { isTunnelTestRuntime } from "./tunneltest-limits";
 import { type JobRecord, type ProviderConfig } from "./types";
 
 export type UploadedUpscaleFile = {
@@ -32,6 +34,20 @@ const vodDefaultEndpoint = "https://vod.volcengineapi.com";
 const defaultRegion = "cn-north-1";
 const imagexServiceName = "imagex";
 const vodServiceName = "vod";
+
+class UpscaleBillingDispatchRejectedError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "UpscaleBillingDispatchRejectedError";
+  }
+}
+
+class UpscaleBillingSettlementRequiredError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "UpscaleBillingSettlementRequiredError";
+  }
+}
 
 function env(name: string, fallback = "") {
   return process.env[name] || fallback;
@@ -280,6 +296,41 @@ function videoConfig(provider: ProviderConfig | null) {
   };
 }
 
+async function findImagexOutputDomain(config: ReturnType<typeof imageConfig>) {
+  if (config.outputDomain) return config.outputDomain;
+  if (!config.credential || !config.serviceId) return "";
+  const response = await openapiRequest<{
+    Result?: {
+      Domain?: string;
+      Domains?: string[];
+      DomainList?: Array<string | { Domain?: string; Name?: string }>;
+    };
+  }>({
+    endpoint: config.endpoint,
+    service: imagexServiceName,
+    region: config.region,
+    credential: config.credential,
+    method: "GET",
+    query: {
+      Action: "GetServiceDomains",
+      Version: "2018-08-01",
+      ServiceId: config.serviceId,
+    },
+  }).catch(() => ({ Result: {} }));
+  const result = asRecord(response.Result);
+  const rawDomainList = result.DomainList;
+  const domainList = Array.isArray(rawDomainList) ? rawDomainList : [];
+  for (const item of domainList) {
+    if (typeof item === "string" && item.trim()) return item.trim();
+    const record = asRecord(item);
+    const value = firstString(record.Domain, record.Name);
+    if (value) return value;
+  }
+  const rawDomains = result.Domains;
+  const domains = Array.isArray(rawDomains) ? rawDomains : [];
+  return firstString(result.Domain, ...domains);
+}
+
 function providerReady(provider: ProviderConfig | null, kind: "image" | "video") {
   if (!provider?.enabled) return { ready: false, detail: kind === "image" ? "图片高清供应商未启用。" : "视频高清供应商未启用。" };
   if (kind === "image") {
@@ -303,6 +354,37 @@ export async function readUpscaleStatus() {
     image: providerReady(imageProvider, "image"),
     video: providerReady(videoProvider, "video"),
   };
+}
+
+function throwUpscaleReadiness(provider: ProviderConfig | null, status: { ready: boolean; detail: string }) {
+  throw new GenerationDiagnosticError({
+    code: provider?.enabled ? "PROVIDER_HEALTH_CHECK_FAILED" : "PROVIDER_DISABLED",
+    providerId: provider?.id,
+    model: provider?.model,
+    safeDetails: { detail: status.detail },
+  });
+}
+
+export async function assertImageUpscaleReady() {
+  const provider = await providerById("image-upscale");
+  const status = providerReady(provider, "image");
+  if (!status.ready) throwUpscaleReadiness(provider, status);
+  const config = imageConfig(provider);
+  const outputDomain = await findImagexOutputDomain(config);
+  if (!outputDomain) {
+    throw new GenerationDiagnosticError({
+      code: "RESULT_ASSET_MISSING",
+      providerId: provider?.id,
+      model: provider?.model,
+      safeDetails: { missing: "VOLCENGINE_IMAGEX_OUTPUT_DOMAIN" },
+    });
+  }
+}
+
+export async function assertVideoUpscaleReady() {
+  const provider = await providerById("video-upscale");
+  const status = providerReady(provider, "video");
+  if (!status.ready) throwUpscaleReadiness(provider, status);
 }
 
 async function uploadByAddress(file: UploadedUpscaleFile, uploadHost: string, storeUri: string, auth: string) {
@@ -412,9 +494,8 @@ async function uploadImageToImagex(file: UploadedUpscaleFile, config: ReturnType
 async function imageResourceUrl(objectKey: string, config: ReturnType<typeof imageConfig>) {
   if (!config.credential) throw new GenerationDiagnosticError({ code: "PROVIDER_MISSING_API_KEY" });
   if (!config.serviceId) throw new GenerationDiagnosticError({ code: "MODEL_MISSING_IMAGE_UPSCALE" });
-  if (!config.outputDomain) {
-    throw new GenerationDiagnosticError({ code: "RESULT_ASSET_MISSING", safeDetails: { missing: "VOLCENGINE_IMAGEX_OUTPUT_DOMAIN" } });
-  }
+  const outputDomain = await findImagexOutputDomain(config);
+  if (!outputDomain) throw new GenerationDiagnosticError({ code: "RESULT_ASSET_MISSING", safeDetails: { missing: "VOLCENGINE_IMAGEX_OUTPUT_DOMAIN" } });
   const response = await openapiRequest<{
     Result?: {
       URL?: string;
@@ -432,7 +513,7 @@ async function imageResourceUrl(objectKey: string, config: ReturnType<typeof ima
       Action: "GetResourceURL",
       Version: "2023-05-01",
       ServiceId: config.serviceId,
-      Domain: config.outputDomain,
+      Domain: outputDomain,
       URI: objectKey,
       Proto: "https",
       Format: "image",
@@ -443,7 +524,7 @@ async function imageResourceUrl(objectKey: string, config: ReturnType<typeof ima
   return firstString(result.URL, result.url, result.ObjURL, result.obj_url);
 }
 
-export async function upscaleImage(file: UploadedUpscaleFile, scale: TargetScale) {
+async function runImageUpscale(file: UploadedUpscaleFile, scale: TargetScale, ownerLocalUserId?: string | null) {
   const provider = await providerById("image-upscale");
   const status = providerReady(provider, "image");
   if (!provider) throw new GenerationDiagnosticError({ code: "PROVIDER_NOT_CONFIGURED" });
@@ -491,10 +572,11 @@ export async function upscaleImage(file: UploadedUpscaleFile, scale: TargetScale
   if (!objectKey) throw new GenerationDiagnosticError({ code: "PROVIDER_BAD_RESPONSE", providerId: provider.id, model: provider.model });
   const outputUrl = await imageResourceUrl(objectKey, config);
   if (!outputUrl) throw new GenerationDiagnosticError({ code: "RESULT_ASSET_MISSING", providerId: provider.id, model: provider.model });
-  const stored = await storeRemoteUrl(outputUrl, "image-upscale", "image/png");
+  const stored = await storeUpscaleOutputUrl(outputUrl, "image-upscale", "image/png");
   const sourceDimensions = readImageDimensions(file.bytes);
   return addLibraryItem({
     type: "image",
+    ownerLocalUserId: ownerLocalUserId || null,
     mode: "image-upscale",
     title: `图片高清 ${targetLabel(scale)}`,
     prompt: file.fileName,
@@ -513,6 +595,63 @@ export async function upscaleImage(file: UploadedUpscaleFile, scale: TargetScale
       } : {}),
     },
   });
+}
+
+export async function upscaleImage(
+  file: UploadedUpscaleFile,
+  scale: TargetScale,
+  ownerLocalUserId?: string | null,
+  billingTaskId?: string | null,
+  billingIdempotencyKey?: string | null,
+  billingEstimatedQuotaUnits?: number | null,
+) {
+  const provider = await providerById("image-upscale");
+  const estimatedQuotaUnits = Number.isInteger(billingEstimatedQuotaUnits)
+    ? Math.max(0, billingEstimatedQuotaUnits as number)
+    : upscaleQuotaUnits(scale, "image");
+  const billingFingerprint = upscaleBillingFingerprint({
+    kind: "image",
+    scale,
+    taskId: billingTaskId,
+    estimatedQuotaUnits,
+  });
+  try {
+    await claimUpscaleBillingDispatch({
+      localUserId: ownerLocalUserId,
+      taskId: billingTaskId,
+      idempotencyKey: billingIdempotencyKey,
+      fingerprint: billingFingerprint,
+      estimatedQuotaUnits,
+    });
+    await markUpscaleProviderStarted({
+      localUserId: ownerLocalUserId,
+      taskId: billingTaskId,
+      upstreamModel: provider?.model || null,
+    });
+    const item = await runImageUpscale(file, scale, ownerLocalUserId);
+    const settled = await settleUpscaleBilling({
+      localUserId: ownerLocalUserId,
+      taskId: billingTaskId,
+      estimatedQuotaUnits,
+      outcome: "success",
+      upstreamModel: provider?.model || null,
+      newApiTaskId: item.id,
+    });
+    if (!settled.ok) throw new UpscaleBillingSettlementRequiredError(settled.message);
+    return item;
+  } catch (error) {
+    if (!(error instanceof UpscaleBillingDispatchRejectedError) && !(error instanceof UpscaleBillingSettlementRequiredError)) {
+      await settleUpscaleBilling({
+        localUserId: ownerLocalUserId,
+        taskId: billingTaskId,
+        estimatedQuotaUnits,
+        outcome: "failed",
+        reason: error instanceof Error ? error.message : "image upscale failed",
+        upstreamModel: provider?.model || null,
+      });
+    }
+    throw error;
+  }
 }
 
 async function uploadVideoToVod(file: UploadedUpscaleFile, config: ReturnType<typeof videoConfig>) {
@@ -578,7 +717,7 @@ async function uploadVideoToVod(file: UploadedUpscaleFile, config: ReturnType<ty
   return { ...data, Vid: data.Vid };
 }
 
-export async function submitVideoUpscale(file: UploadedUpscaleFile, scale: TargetScale) {
+async function runVideoUpscaleSubmit(file: UploadedUpscaleFile, scale: TargetScale, ownerLocalUserId?: string | null) {
   const provider = await providerById("video-upscale");
   const status = providerReady(provider, "video");
   if (!provider) throw new GenerationDiagnosticError({ code: "PROVIDER_NOT_CONFIGURED" });
@@ -627,6 +766,7 @@ export async function submitVideoUpscale(file: UploadedUpscaleFile, scale: Targe
   if (!runId) throw new Error("火山 VOD 未返回视频高清任务 RunId。");
   const item = await addLibraryItem({
     type: "video",
+    ownerLocalUserId: ownerLocalUserId || null,
     mode: "video-upscale",
     title: `视频高清 ${targetLabel(scale)}`,
     prompt: file.fileName,
@@ -649,12 +789,86 @@ export async function submitVideoUpscale(file: UploadedUpscaleFile, scale: Targe
     id: runId,
     libraryItemId: item.id,
     type: "video",
+    ownerLocalUserId: ownerLocalUserId || null,
     providerId: provider.id,
     status: "generating",
     statusUrl: "volcengine:vod:GetExecution",
     sourceUrl: vid,
   });
   return { item, job };
+}
+
+export async function submitVideoUpscale(
+  file: UploadedUpscaleFile,
+  scale: TargetScale,
+  ownerLocalUserId?: string | null,
+  billingTaskId?: string | null,
+  billingIdempotencyKey?: string | null,
+  billingEstimatedQuotaUnits?: number | null,
+) {
+  const provider = await providerById("video-upscale");
+  const estimatedQuotaUnits = Number.isInteger(billingEstimatedQuotaUnits)
+    ? Math.max(0, billingEstimatedQuotaUnits as number)
+    : upscaleQuotaUnits(scale, "video");
+  const billingFingerprint = upscaleBillingFingerprint({
+    kind: "video",
+    scale,
+    taskId: billingTaskId,
+    estimatedQuotaUnits,
+  });
+  try {
+    await claimUpscaleBillingDispatch({
+      localUserId: ownerLocalUserId,
+      taskId: billingTaskId,
+      idempotencyKey: billingIdempotencyKey,
+      fingerprint: billingFingerprint,
+      estimatedQuotaUnits,
+    });
+    await markUpscaleProviderStarted({
+      localUserId: ownerLocalUserId,
+      taskId: billingTaskId,
+      upstreamModel: provider?.model || null,
+    });
+    const result = await runVideoUpscaleSubmit(file, scale, ownerLocalUserId);
+    await acceptUpscaleBilling({
+      localUserId: ownerLocalUserId,
+      taskId: billingTaskId,
+      newApiTaskId: result.job?.id || result.item.id,
+      upstreamModel: provider?.model || null,
+    });
+    if (result.job && billingTaskId) {
+      await updateJob(result.job.id, {
+        billing_task_id: billingTaskId,
+        billing_local_user_id: ownerLocalUserId || null,
+        billing_idempotency_key: billingIdempotencyKey || null,
+        billing_estimated_quota_units: estimatedQuotaUnits,
+        billing_state: "accepted",
+        billing_last_error: null,
+      });
+      result.job = {
+        ...result.job,
+        billing_task_id: billingTaskId,
+        billing_local_user_id: ownerLocalUserId || null,
+        billing_idempotency_key: billingIdempotencyKey || null,
+        billing_estimated_quota_units: estimatedQuotaUnits,
+        billing_state: "accepted",
+        billing_last_error: null,
+      };
+    }
+    return result;
+  } catch (error) {
+    if (!(error instanceof UpscaleBillingDispatchRejectedError)) {
+      await settleUpscaleBilling({
+        localUserId: ownerLocalUserId,
+        taskId: billingTaskId,
+        estimatedQuotaUnits,
+        outcome: "failed",
+        reason: error instanceof Error ? error.message : "video upscale failed",
+        upstreamModel: provider?.model || null,
+      });
+    }
+    throw error;
+  }
 }
 
 function normalizeVolcStatus(value: unknown): JobRecord["status"] {
@@ -711,6 +925,141 @@ function fileUrlFromStoreUri(storeUri: string, outputDomain: string) {
   return `https://${outputDomain.replace(/^https?:\/\//, "").replace(/\/+$/, "")}/${storeUri.replace(/^\/+/, "")}`;
 }
 
+function upscaleQuotaUnits(scale: TargetScale, kind: "image" | "video") {
+  const base = kind === "image" ? 40 : 120;
+  return Math.max(base, base * Math.max(1, scale));
+}
+
+function upscaleBillingFingerprint(input: {
+  kind: "image" | "video";
+  scale: TargetScale;
+  taskId?: string | null;
+  estimatedQuotaUnits: number;
+}) {
+  const operation = input.kind === "image" ? "cloud_image_upscale" : "cloud_video_upscale";
+  return [
+    `${input.kind}-upscale`,
+    operation,
+    input.taskId || "",
+    input.scale,
+    input.estimatedQuotaUnits,
+  ].map((part) => encodeURIComponent(String(part))).join(":");
+}
+
+async function claimUpscaleBillingDispatch(input: {
+  localUserId?: string | null;
+  taskId?: string | null;
+  idempotencyKey?: string | null;
+  fingerprint: string;
+  estimatedQuotaUnits: number;
+}) {
+  if (isTunnelTestRuntime()) return;
+  if (!input.taskId && !input.idempotencyKey) return;
+  if (!input.localUserId || !input.taskId || !input.idempotencyKey) {
+    throw new UpscaleBillingDispatchRejectedError("高清任务缺少有效额度预检。");
+  }
+  const result = await getTaskBillingService().claimProviderDispatch({
+    localUserId: input.localUserId,
+    taskId: input.taskId,
+    idempotencyKey: input.idempotencyKey,
+    requestFingerprint: input.fingerprint,
+    estimatedQuotaUnits: input.estimatedQuotaUnits,
+  });
+  if (!result.ok) throw new UpscaleBillingDispatchRejectedError(result.message);
+  if (result.action !== "dispatching") throw new UpscaleBillingDispatchRejectedError("高清任务无法领取上游派发权限。");
+}
+
+async function markUpscaleProviderStarted(input: {
+  localUserId?: string | null;
+  taskId?: string | null;
+  upstreamModel?: string | null;
+}) {
+  if (isTunnelTestRuntime()) return;
+  if (!input.localUserId || !input.taskId) return;
+  const result = await getTaskBillingService().markProviderStarted({
+    localUserId: input.localUserId,
+    taskId: input.taskId,
+    upstreamModel: input.upstreamModel || null,
+  });
+  if (!result.ok) throw new UpscaleBillingDispatchRejectedError(result.message);
+}
+
+async function acceptUpscaleBilling(input: {
+  localUserId?: string | null;
+  taskId?: string | null;
+  newApiTaskId?: string | null;
+  upstreamModel?: string | null;
+}) {
+  if (isTunnelTestRuntime()) return;
+  if (!input.localUserId || !input.taskId) return;
+  const result = await getTaskBillingService().accept({
+    localUserId: input.localUserId,
+    taskId: input.taskId,
+    newApiTaskId: input.newApiTaskId || null,
+    upstreamModel: input.upstreamModel || null,
+  });
+  if (!result.ok) throw new UpscaleBillingDispatchRejectedError(result.message);
+}
+
+async function settleUpscaleBilling(input: {
+  localUserId?: string | null;
+  taskId?: string | null;
+  estimatedQuotaUnits?: number | null;
+  outcome: "success" | "failed";
+  reason?: string | null;
+  upstreamRequestId?: string | null;
+  upstreamModel?: string | null;
+  newApiTaskId?: string | null;
+}) {
+  if (isTunnelTestRuntime()) return { ok: true as const };
+  if (!input.localUserId || !input.taskId) return { ok: true as const };
+  const actualQuotaUnits = Number.isInteger(input.estimatedQuotaUnits)
+    ? Math.max(0, input.estimatedQuotaUnits as number)
+    : 0;
+  try {
+    const result = input.outcome === "success"
+      ? await getTaskBillingService().settleSuccess({
+        localUserId: input.localUserId,
+        taskId: input.taskId,
+        actualQuotaUnits,
+        newApiTaskId: input.newApiTaskId || null,
+        upstreamRequestId: input.upstreamRequestId || null,
+        upstreamModel: input.upstreamModel || null,
+      })
+      : await getTaskBillingService().fail({
+        localUserId: input.localUserId,
+        taskId: input.taskId,
+        reason: input.reason || "upscale failed",
+        newApiTaskId: input.newApiTaskId || null,
+        upstreamRequestId: input.upstreamRequestId || null,
+        upstreamModel: input.upstreamModel || null,
+      });
+    if (!result.ok) return { ok: false as const, status: result.status, message: result.message };
+    if (result.action === "reconciliation_required") {
+      return {
+        ok: false as const,
+        status: 202,
+        message: result.record.last_error || "Task billing requires reconciliation.",
+      };
+    }
+    return { ok: true as const };
+  } catch {
+    return { ok: false as const, status: 503, message: "Task billing settlement failed." };
+  }
+}
+
+async function storeUpscaleOutputUrl(url: string, prefix: "image-upscale" | "video-upscale", fallbackMime: string) {
+  try {
+    return await storeRemoteUrl(url, prefix, fallbackMime);
+  } catch {
+    return {
+      url,
+      mimeType: fallbackMime,
+      sourceUrl: url,
+    };
+  }
+}
+
 export async function refreshVideoUpscaleJob(jobId: string, localUserId?: string | null) {
   const job = (await readJobs()).find((item) => item.id === jobId);
   if (!job) throw new GenerationDiagnosticError({ code: "TASK_POLL_FAILED", status: 404 });
@@ -741,13 +1090,29 @@ export async function refreshVideoUpscaleJob(jobId: string, localUserId?: string
     if (!outputUrl) {
       const message = "视频高清已完成，但缺少可下载结果地址。请配置 VOLCENGINE_VOD_OUTPUT_DOMAIN 或使用 VOD 播放地址接口。";
       await updateLibraryItem(job.libraryItemId, { status: "failed", error: message });
-      return await updateJob(job.id, { status: "failed", error: message }) || job;
+      await settleUpscaleBilling({
+        localUserId: job.billing_local_user_id || job.ownerLocalUserId || localUserId || null,
+        taskId: job.billing_task_id,
+        estimatedQuotaUnits: job.billing_estimated_quota_units ?? null,
+        outcome: "failed",
+        reason: message,
+        upstreamRequestId: job.id,
+        upstreamModel: provider?.model || null,
+        newApiTaskId: job.id,
+      });
+      return await updateJob(job.id, {
+        status: "failed",
+        error: message,
+        billing_state: job.billing_task_id ? "failed" : job.billing_state,
+        billing_last_error: message,
+      }) || job;
     }
-    const stored = await storeRemoteUrl(outputUrl, "video-upscale", "video/mp4");
+    const stored = await storeUpscaleOutputUrl(outputUrl, "video-upscale", "video/mp4");
     const currentItem = (await readLibrary()).find((item) => item.id === job.libraryItemId);
     await updateLibraryItem(job.libraryItemId, {
       status: "done",
       output: stored,
+      ownerLocalUserId: job.ownerLocalUserId || job.billing_local_user_id || localUserId || null,
       params: {
         ...(currentItem?.params || {}),
         ...(output?.vid ? { volcOutputVid: output.vid } : {}),
@@ -758,12 +1123,41 @@ export async function refreshVideoUpscaleJob(jobId: string, localUserId?: string
         ...(output?.duration ? { outputDuration: output.duration } : {}),
       },
     });
-    return await updateJob(job.id, { status: "done", sourceUrl: outputUrl }) || job;
+    const settled = await settleUpscaleBilling({
+      localUserId: job.billing_local_user_id || job.ownerLocalUserId || localUserId || null,
+      taskId: job.billing_task_id,
+      estimatedQuotaUnits: job.billing_estimated_quota_units ?? null,
+      outcome: "success",
+      upstreamRequestId: job.id,
+      upstreamModel: provider?.model || null,
+      newApiTaskId: output?.vid || job.id,
+    });
+    return await updateJob(job.id, {
+      status: "done",
+      sourceUrl: outputUrl,
+      billing_state: job.billing_task_id ? settled.ok ? "settled" : "reconciliation_required" : job.billing_state,
+      billing_last_error: settled.ok ? null : settled.message,
+    }) || job;
   }
   if (status === "failed") {
     const message = firstString(result.Code, asRecord(result).Message) || "视频高清任务失败。";
     await updateLibraryItem(job.libraryItemId, { status: "failed", error: message });
-    return await updateJob(job.id, { status: "failed", error: message }) || job;
+    await settleUpscaleBilling({
+      localUserId: job.billing_local_user_id || job.ownerLocalUserId || localUserId || null,
+      taskId: job.billing_task_id,
+      estimatedQuotaUnits: job.billing_estimated_quota_units ?? null,
+      outcome: "failed",
+      reason: message,
+      upstreamRequestId: job.id,
+      upstreamModel: provider?.model || null,
+      newApiTaskId: job.id,
+    });
+    return await updateJob(job.id, {
+      status: "failed",
+      error: message,
+      billing_state: job.billing_task_id ? "failed" : job.billing_state,
+      billing_last_error: message,
+    }) || job;
   }
   await updateLibraryItem(job.libraryItemId, { status });
   return await updateJob(job.id, { status }) || job;
