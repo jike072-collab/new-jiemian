@@ -53,6 +53,11 @@ P1 items handled in this pass where low risk:
 - Short-test feedback copy block with request id, error code, and timestamp.
 - Deployment preflight, artifact cleanliness, rollback drill, and ops gate.
 - Admin, quota, and billing tests are now part of the aggregate release check.
+- P1 minimal deploy-hardening now includes static abuse-guard contracts and a
+  stale runtime `.tmp` cleanup dry-run/test. This is an audit and operations
+  safety layer only: it does not change HTTP API request or response shapes,
+  does not add Redis, a queue, or a global limiter, and does not modify the
+  provider/NewAPI call chain.
 
 P1/P2 items intentionally deferred because they require production infrastructure
 or larger product design:
@@ -128,3 +133,6 @@ branch is pushed, with these hard gates still required before public production:
 - Configure domain, SSL, and Nginx/reverse proxy.
 - Run a small live smoke test for register/login/session, admin protection,
   provider config, generation/upscale failure diagnostics, and rollback readiness.
+- The 3106 runtime, production env, HTTPS/Nginx, production database, and
+  production uploads backup checks remain real deployment gates and were not
+  completed or simulated by the P1 abuse-guard/temp-cleanup PR.
