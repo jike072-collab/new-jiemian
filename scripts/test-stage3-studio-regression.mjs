@@ -57,7 +57,7 @@ async function runRuntimeRegressionChecks() {
     assert.equal(pages.preview.status, 200, "preview home returns 200");
     assert.equal(pages.login.status, 200, "login returns 200");
     assert.equal(pages.health.status, 200, "health returns 200");
-    assert.equal(pages.library.status, 200, "library returns 200");
+    assert.equal(pages.library.status, 401, "unauthenticated /api/library returns 401");
     assert(allowedAdminStatuses.includes(pages.adminProviders.status), `admin providers returned ${pages.adminProviders.status}`);
 
     for (const [name, response] of Object.entries(pages)) {
