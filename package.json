@@ -58,6 +58,7 @@
     "db:migration:rehearsal": "node scripts/database/check-stage9d-migration-rehearsal.mjs",
     "test:database-mvp": "node scripts/database/test-database-mvp.mjs",
     "test:database-library-integration": "node scripts/database/test-database-library-integration.mjs",
+    "check:stage9e-canary-harness": "node scripts/database/check-stage9e-canary-harness.mjs",
     "test:generation-jobs-db-integration": "node scripts/database/test-generation-jobs-db-integration.mjs",
     "test:library-storage-backend": "npm run test:database-library-integration",
     "db:library-import:plan": "node scripts/database/plan-library-import.mjs",

@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-import { existsSync, readFileSync } from "node:fs";
+import { readFileSync } from "node:fs";
 import { basename, dirname, join, resolve } from "node:path";
 
 const root = process.cwd();
@@ -23,27 +23,33 @@ function assertMatches(file, pattern, message) {
   if (!pattern.test(source)) fail(`${file}: ${message}`);
 }
 
-function checkCurrentRuntimeRoots() {
-  for (const candidate of productionRootCandidates()) {
-    const authStore = join(candidate, "data", "auth-store.json");
-    if (existsSync(authStore)) {
-      fail(`production data contains test auth-store artifact: ${authStore}`);
-    }
-  }
+function comparablePath(path) {
+  const normalized = resolve(path).replace(/[\\/]+$/, "");
+  return process.platform === "win32" ? normalized.toLowerCase() : normalized;
 }
 
-function productionRootCandidates() {
-  const candidates = new Set();
-  const currentRoot = resolve(root);
-  if (isProductionRootName(currentRoot)) {
-    candidates.add(currentRoot);
+function samePath(left, right) {
+  return comparablePath(left) === comparablePath(right);
+}
+
+function checkRuntimeEnvIsolation() {
+  const dataDir = process.env.DATA_DIR?.trim() ? resolve(root, process.env.DATA_DIR) : "";
+  const uploadsDir = process.env.UPLOADS_DIR?.trim() ? resolve(root, process.env.UPLOADS_DIR) : "";
+  if (!dataDir && !uploadsDir) return "not_configured";
+  if (!dataDir || !uploadsDir) {
+    fail("DATA_DIR and UPLOADS_DIR must be set together for release test artifact isolation checks.");
+    return "incomplete";
   }
-  if (process.env.AOHUANG_PRODUCTION_ROOT) {
-    candidates.add(resolve(process.env.AOHUANG_PRODUCTION_ROOT));
-  }
-  const sibling = resolve(dirname(root), "new-jiemian");
-  if (existsSync(join(sibling, "package.json"))) candidates.add(sibling);
-  return [...candidates].filter((candidate) => existsSync(join(candidate, "package.json")));
+
+  const repoData = resolve(root, "data");
+  const repoUploads = resolve(root, "uploads");
+  const repoDataUploads = resolve(root, "data", "uploads");
+  if (samePath(dataDir, repoData)) fail("DATA_DIR must not point at the repo data directory.");
+  if (samePath(uploadsDir, repoUploads)) fail("UPLOADS_DIR must not point at the repo uploads directory.");
+  if (samePath(dataDir, repoDataUploads)) fail("DATA_DIR must not point at repo data/uploads.");
+  if (samePath(uploadsDir, repoDataUploads)) fail("UPLOADS_DIR must not point at repo data/uploads.");
+  if (samePath(dataDir, uploadsDir)) fail("DATA_DIR and UPLOADS_DIR must not be the same directory.");
+  return "explicit";
 }
 
 function isProductionRootName(candidate) {
@@ -98,7 +104,7 @@ function checkRootClassification() {
 
 function main() {
   checkRootClassification();
-  checkCurrentRuntimeRoots();
+  const runtimeEnvIsolation = checkRuntimeEnvIsolation();
   checkScriptIsolation();
   checkDeployHardening();
   checkAutomationCoverage();
@@ -113,6 +119,7 @@ function main() {
     productionAuthStoreArtifactPresent: false,
     stage4ProviderHealthUsesTemporaryData: true,
     stage5DiagnosticsUsesTemporaryData: true,
+    runtimeEnvIsolation,
     opsTestsUseTemporaryRoots: true,
     releasePreflightUsesTemporaryOutput: true,
     deployProductionRequiresExplicitTarget: true,

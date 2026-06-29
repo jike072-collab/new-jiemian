@@ -31,6 +31,7 @@ run(process.execPath, [
   "--test-timeout=30000",
   "dist/database-tests/src/lib/server/database/__tests__/stage9cb-flags.test.js",
   "dist/database-tests/src/lib/server/database/__tests__/library-jobs-adapter.test.js",
+  "dist/database-tests/src/lib/server/database/__tests__/library-shadow-write.test.js",
 ]);
 
 console.log(JSON.stringify({
