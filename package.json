@@ -43,6 +43,7 @@
     "test:stage5-error-diagnostics": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON scripts/test-stage5-error-diagnostics.mjs",
     "test:log-redaction": "node scripts/test-log-redaction.mjs",
     "test:upscale-auth-csrf": "node scripts/test-upscale-auth-csrf.mjs",
+    "test:library-authz": "node scripts/test-library-authz.mjs",
     "test:network-hardening-dry-run": "node scripts/test-network-hardening-dry-run.mjs",
     "security:network-snapshot": "node scripts/run-network-hardening-script.mjs snapshot",
     "security:network-hardening-plan": "node scripts/run-network-hardening-script.mjs plan",

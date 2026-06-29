@@ -18,7 +18,7 @@ export async function POST(request: NextRequest) {
     }
     const scale = requestedScale;
     const file = await uploadedUpscaleFile(form, "video");
-    return NextResponse.json(await submitVideoUpscale(file, scale));
+    return NextResponse.json(await submitVideoUpscale(file, scale, session.user.local_user_id));
   } catch (error) {
     return diagnosticErrorResponse(error, {
       requestId: request.headers.get("x-request-id"),

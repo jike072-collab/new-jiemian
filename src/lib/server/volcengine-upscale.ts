@@ -443,7 +443,7 @@ async function imageResourceUrl(objectKey: string, config: ReturnType<typeof ima
   return firstString(result.URL, result.url, result.ObjURL, result.obj_url);
 }
 
-export async function upscaleImage(file: UploadedUpscaleFile, scale: TargetScale) {
+export async function upscaleImage(file: UploadedUpscaleFile, scale: TargetScale, ownerLocalUserId?: string | null) {
   const provider = await providerById("image-upscale");
   const status = providerReady(provider, "image");
   if (!provider) throw new GenerationDiagnosticError({ code: "PROVIDER_NOT_CONFIGURED" });
@@ -494,6 +494,7 @@ export async function upscaleImage(file: UploadedUpscaleFile, scale: TargetScale
   const stored = await storeRemoteUrl(outputUrl, "image-upscale", "image/png");
   const sourceDimensions = readImageDimensions(file.bytes);
   return addLibraryItem({
+    ownerLocalUserId: ownerLocalUserId || null,
     type: "image",
     mode: "image-upscale",
     title: `图片高清 ${targetLabel(scale)}`,
@@ -578,7 +579,7 @@ async function uploadVideoToVod(file: UploadedUpscaleFile, config: ReturnType<ty
   return { ...data, Vid: data.Vid };
 }
 
-export async function submitVideoUpscale(file: UploadedUpscaleFile, scale: TargetScale) {
+export async function submitVideoUpscale(file: UploadedUpscaleFile, scale: TargetScale, ownerLocalUserId?: string | null) {
   const provider = await providerById("video-upscale");
   const status = providerReady(provider, "video");
   if (!provider) throw new GenerationDiagnosticError({ code: "PROVIDER_NOT_CONFIGURED" });
@@ -626,6 +627,7 @@ export async function submitVideoUpscale(file: UploadedUpscaleFile, scale: Targe
   const runId = start.Result?.RunId;
   if (!runId) throw new Error("火山 VOD 未返回视频高清任务 RunId。");
   const item = await addLibraryItem({
+    ownerLocalUserId: ownerLocalUserId || null,
     type: "video",
     mode: "video-upscale",
     title: `视频高清 ${targetLabel(scale)}`,
@@ -649,6 +651,7 @@ export async function submitVideoUpscale(file: UploadedUpscaleFile, scale: Targe
     id: runId,
     libraryItemId: item.id,
     type: "video",
+    ownerLocalUserId: ownerLocalUserId || null,
     providerId: provider.id,
     status: "generating",
     statusUrl: "volcengine:vod:GetExecution",

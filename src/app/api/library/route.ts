@@ -1,16 +1,21 @@
-import { NextResponse } from "next/server";
+import { type NextRequest, NextResponse } from "next/server";
 
+import { authResultResponse, requireAuthSession } from "@/lib/server/auth";
 import { diagnosticErrorResponse, GenerationDiagnosticError } from "@/lib/server/error-diagnostics";
-import { deleteLibraryItem, LibraryOperationError, readLibrary } from "@/lib/server/library";
+import { deleteLibraryItemForOwner, LibraryOperationError, readLibraryForOwner } from "@/lib/server/library";
 
 export const runtime = "nodejs";
 
-export async function GET() {
-  return NextResponse.json({ items: await readLibrary() });
+export async function GET(request: NextRequest) {
+  const session = await requireAuthSession(request);
+  if (!session.ok) return authResultResponse(request, session);
+  return NextResponse.json({ items: await readLibraryForOwner(session.user.local_user_id) });
 }
 
-export async function DELETE(request: Request) {
+export async function DELETE(request: NextRequest) {
   try {
+    const session = await requireAuthSession(request);
+    if (!session.ok) return authResultResponse(request, session);
     const body = await request.json() as { id?: string };
     if (!body.id) {
       throw new GenerationDiagnosticError({
@@ -19,7 +24,7 @@ export async function DELETE(request: Request) {
         status: 400,
       });
     }
-    return NextResponse.json(await deleteLibraryItem(body.id));
+    return NextResponse.json(await deleteLibraryItemForOwner(body.id, session.user.local_user_id));
   } catch (error) {
     if (error instanceof LibraryOperationError) {
       return diagnosticErrorResponse(error, {

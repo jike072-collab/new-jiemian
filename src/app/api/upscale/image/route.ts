@@ -19,7 +19,7 @@ export async function POST(request: NextRequest) {
     }
     const scale = requestedScale;
     const file = await uploadedUpscaleFile(form, "image");
-    return NextResponse.json({ item: await upscaleImage(file, scale), job: null });
+    return NextResponse.json({ item: await upscaleImage(file, scale, session.user.local_user_id), job: null });
   } catch (error) {
     return diagnosticErrorResponse(error, {
       requestId: request.headers.get("x-request-id"),
