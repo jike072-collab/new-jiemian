@@ -54,6 +54,8 @@
     "ops:cleanup-media:dry-run": "node --conditions=react-server scripts/ops/cleanup-expired-media.mjs --dry-run",
     "ops:cleanup-media:apply": "node --conditions=react-server scripts/ops/cleanup-expired-media.mjs --apply --confirm-apply",
     "ops:storage:check": "node --conditions=react-server scripts/ops/storage-check.mjs",
+    "env:check:production": "node --conditions=react-server scripts/check-production-env.mjs",
+    "env:check:local-staging": "node --conditions=react-server scripts/check-local-staging-env.mjs",
     "check:release-test-artifact-isolation": "node scripts/check-release-test-artifact-isolation.mjs",
     "audit:production-readiness": "node scripts/audit-production-readiness.mjs",
     "audit:database": "node scripts/audit-database-current-state.mjs",

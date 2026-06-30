@@ -23,6 +23,15 @@ The current production preparation branch uses in-process memory limits for earl
 - Normal reads, downloads, library browsing, quota reads, and job status polling must remain available when generation or upload slots are busy.
 - 429 responses should include `Retry-After` when the server can compute a retry window.
 
+## Environment Boundary Checks
+
+- Local 3107 uses `PORT=3107`, local staging data directories, and may use test provider configuration.
+- Server production uses `PORT=3106`, `NODE_ENV=production`, loopback listening only, persistent Linux data/uploads/runtime paths, and strong production-only secrets.
+- Run `npm run env:check:local-staging` before local 3107 acceptance checks.
+- Run `npm run env:check:production` and `npm run release:preflight` before any human-operated 3106 production start or deploy.
+- These checks print variable names and reasons only. They must not print API keys, passwords, cookies, tokens, DSNs, or full production values.
+- See `docs/ENVIRONMENT_VARIABLES.md` for the current variable contract.
+
 本流程用于保证所有服务器准备改动先经过本机 3107 测试，再考虑进入 `main` 和 3106。它只定义流程，不改变业务功能，不新增部署依赖。服务器部署不属于本次 Codex 自动任务。
 
 ## 1. 端口职责

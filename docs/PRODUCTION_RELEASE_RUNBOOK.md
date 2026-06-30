@@ -33,6 +33,7 @@ Before a production release:
 6. Confirm `3107` has already run the target code and passed the acceptance checks.
 7. Record production PID, commit, command line, `data` snapshot, and `uploads` snapshot.
 8. Record staging PID, commit, `data-staging` snapshot, and `uploads-staging` snapshot.
+9. Run `npm run env:check:production` against the private 3106 environment and confirm it prints only variable names and reasons.
 
 Use a stable directory snapshot for data checks:
 
@@ -96,6 +97,8 @@ The release gate should include:
 npm ci
 npm run lint
 npm run typecheck
+npm run env:check:local-staging
+npm run env:check:production
 npm run test:runtime-isolation
 npm run check:runtime-paths
 npm run test:security-release
