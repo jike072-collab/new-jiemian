@@ -45,7 +45,7 @@
     "test:upscale-auth-csrf": "node scripts/test-upscale-auth-csrf.mjs",
     "test:library-authz": "node scripts/test-library-authz.mjs",
     "test:network-hardening-dry-run": "node scripts/test-network-hardening-dry-run.mjs",
-    "test:abuse-guard-contracts": "node scripts/test-abuse-guard-contracts.mjs",
+    "test:abuse-guard-contracts": "node scripts/test-abuse-guard-contracts.mjs && node scripts/test-workload-limits.mjs && node scripts/test-auth-session.mjs",
     "test:upload-temp-cleanup": "node scripts/test-upload-temp-cleanup.mjs && node scripts/test-upload-limits.mjs && node scripts/test-media-retention-cleanup.mjs",
     "security:network-snapshot": "node scripts/run-network-hardening-script.mjs snapshot",
     "security:network-hardening-plan": "node scripts/run-network-hardening-script.mjs plan",

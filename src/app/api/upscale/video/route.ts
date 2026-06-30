@@ -3,6 +3,7 @@ import { type NextRequest, NextResponse } from "next/server";
 import { authResultResponse, csrfFailure, requireAuthSession, requireCsrf } from "@/lib/server/auth";
 import { diagnosticErrorResponse } from "@/lib/server/error-diagnostics";
 import { submitVideoUpscale as runSubmitVideoUpscale, uploadedUpscaleFile } from "@/lib/server/volcengine-upscale";
+import { WorkloadLimitError, withUserVideoWorkload, withVideoProviderUpload, workloadLimitResponse } from "@/lib/server/workload-guard";
 
 export const runtime = "nodejs";
 
@@ -17,13 +18,19 @@ export async function POST(request: NextRequest) {
       throw new Error("视频高清增强仅支持 1K、2K 或 4K。");
     }
     const scale = requestedScale;
-    const file = await uploadedUpscaleFile(form, "video");
-    const submitVideoUpscale = (
-      file: Parameters<typeof runSubmitVideoUpscale>[0],
-      scale: Parameters<typeof runSubmitVideoUpscale>[1],
-    ) => runSubmitVideoUpscale(file, scale, session.user.local_user_id);
-    return NextResponse.json(await submitVideoUpscale(file, scale));
+    const result = await withUserVideoWorkload(session.user.local_user_id, () => (
+      withVideoProviderUpload(session.user.local_user_id, async () => {
+        const file = await uploadedUpscaleFile(form, "video");
+        const submitVideoUpscale = (
+          file: Parameters<typeof runSubmitVideoUpscale>[0],
+          scale: Parameters<typeof runSubmitVideoUpscale>[1],
+        ) => runSubmitVideoUpscale(file, scale, session.user.local_user_id);
+        return submitVideoUpscale(file, scale);
+      })
+    ));
+    return NextResponse.json(result);
   } catch (error) {
+    if (error instanceof WorkloadLimitError) return workloadLimitResponse(error);
     return diagnosticErrorResponse(error, {
       requestId: request.headers.get("x-request-id"),
       fallbackMessage: "视频高清增强任务提交失败。",

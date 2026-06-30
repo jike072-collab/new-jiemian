@@ -13,6 +13,16 @@ Use the hardened operations commands for service work:
 
 Production deploy must run only after local 3107 acceptance has passed and the reviewed change has been merged to `main`.
 
+## Single-Instance Workload Limits
+
+The current production preparation branch uses in-process memory limits for early-user workload protection. This is intentional for the first 30 to 40 users and the current single 3106 instance.
+
+- The counters and concurrency slots reset when the Node.js process restarts.
+- The limits are not shared across multiple app instances.
+- Do not run multiple 3106 app instances behind one proxy until these limits are moved to a shared store such as PostgreSQL or Redis.
+- Normal reads, downloads, library browsing, quota reads, and job status polling must remain available when generation or upload slots are busy.
+- 429 responses should include `Retry-After` when the server can compute a retry window.
+
 本流程用于保证所有服务器准备改动先经过本机 3107 测试，再考虑进入 `main` 和 3106。它只定义流程，不改变业务功能，不新增部署依赖。服务器部署不属于本次 Codex 自动任务。
 
 ## 1. 端口职责
