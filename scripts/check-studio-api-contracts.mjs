@@ -12,6 +12,12 @@ const upscaleForm = read("src/components/studio/upscale-form.tsx");
 const resultPreview = read("src/components/studio/result-preview.tsx");
 const types = read("src/components/studio/types.ts");
 const constants = read("src/components/studio/constants.ts");
+const clientApi = read("src/lib/client/api.ts");
+const uploadLimits = read("src/lib/upload-limits.ts");
+const mediaUploadGuard = read("src/lib/server/media-upload-guard.ts");
+const providerCall = read("src/lib/server/provider-call.ts");
+const volcengineUpscale = read("src/lib/server/volcengine-upscale.ts");
+const library = read("src/lib/server/library.ts");
 
 const contracts = [
   {
@@ -162,6 +168,49 @@ const uiContracts = [
 for (const [source, token] of uiContracts) {
   assert(source.includes(token), `Studio UI contract missing token: ${token}`);
 }
+
+for (const [sourceName, source] of [
+  ["studio app", studioApp],
+  ["studio constants", constants],
+  ["provider call", providerCall],
+  ["volcengine upscale", volcengineUpscale],
+]) {
+  assert(!source.includes("1024 * 1024 * 1024"), `${sourceName} must not keep a 1GB upload magic number`);
+  assert(!source.includes("25 * 1024 * 1024"), `${sourceName} must not keep the old 25MiB image upscale limit`);
+}
+
+assert(uploadLimits.includes("videoUploadDefaultMiB = 200"), "video upload default must be centralized at 200MiB");
+assert(uploadLimits.includes("uploadHardCapMiB = 256"), "upload hard cap must be centralized at 256MiB");
+assert(uploadLimits.includes("recommendedNginxClientMaxBodySize"), "upload limits must expose a Nginx body-size reference");
+assert(constants.includes("defaultPublicUploadLimits"), "client upload limits must import shared defaults");
+assert(clientApi.includes("record.message || record.error || record.detail"), "client must surface server public diagnostic messages");
+assert(studioApp.includes("setUploadLimits"), "client must accept server-reported lowered upload limits");
+assert(studioApp.includes("createVideoUpscaleFile(files, uploadLimits.videoUpscale)"), "video upscale file chooser must use the current shared limit");
+assert(studioApp.includes("视频高清增强文件不能超过 ${limit.label}"), "video upscale client error must use the shared limit label");
+assert(types.includes("uploadLimits?: Pick<PublicUploadLimits"), "upscale status response must carry public upload limits");
+assert(volcengineUpscale.includes("uploadLimits: {"), "upscale status route must return app upload limits");
+assert(mediaUploadGuard.includes("MEDIA_VIDEO_UPLOAD_LIMIT_MIB"), "server must allow lowering the video upload cap via safe env");
+assert(uploadLimits.includes("candidate > policy.hardCapBytes"), "server env limit above hard cap must not take effect");
+assertSequence("upscale upload validation before Buffer allocation", volcengineUpscale, [
+  "assertFileSizeAllowed(value, uploadKind)",
+  "await assertFileFormatAllowed(value, uploadKind)",
+  "Buffer.from(await value.arrayBuffer())",
+]);
+assertSequence("generation image upload validation before Buffer allocation", providerCall, [
+  "assertFileSizeAllowed(file, \"reference-image\")",
+  "await assertFileFormatAllowed(file, \"reference-image\")",
+  "Buffer.from(await file.arrayBuffer())",
+]);
+assertSequence("authenticated video download bounds before allocation", providerCall, [
+  "assertContentLengthAllowed(response.headers.get(\"content-length\"), \"video\")",
+  "Buffer.from(await response.arrayBuffer())",
+  "assertBufferLengthAllowed(bytes.length, \"video\")",
+]);
+assertSequence("remote library download content-length before allocation", library, [
+  "assertContentLengthAllowed(response.headers.get(\"content-length\"), kind)",
+  "Buffer.from(await response.arrayBuffer())",
+  "assertBufferLengthAllowed(bytes.length, kind)",
+]);
 
 const forbiddenCiBypass = read(".github/workflows/ci.yml");
 assert(!forbiddenCiBypass.includes("continue-on-error: true"), "CI must not hide Stage 3 failures with continue-on-error.");

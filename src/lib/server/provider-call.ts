@@ -7,6 +7,12 @@ import {
 
 import { addJob, addLibraryItem, storeBytes, storeDataUrl, storeRemoteUrl, updateJob, updateLibraryItem } from "./library";
 import { codeForUpstreamStatus, GenerationDiagnosticError } from "./error-diagnostics";
+import {
+  assertBufferLengthAllowed,
+  assertContentLengthAllowed,
+  assertFileFormatAllowed,
+  assertFileSizeAllowed,
+} from "./media-upload-guard";
 import { getTaskBillingService } from "./quota";
 import { jimengVideoOptionsForModel, providerById } from "./providers";
 import { type JobRecord, type LibraryItem, type ProviderConfig } from "./types";
@@ -359,7 +365,10 @@ async function outputToLibraryFromAuthenticatedUrl(provider: ProviderConfig, url
   });
   if (!response.ok) throw new Error(`下载视频结果失败：HTTP ${response.status}`);
   const mimeType = response.headers.get("content-type") || "video/mp4";
-  return storeBytes(Buffer.from(await response.arrayBuffer()), mimeType, prefix);
+  assertContentLengthAllowed(response.headers.get("content-length"), "video");
+  const bytes = Buffer.from(await response.arrayBuffer());
+  assertBufferLengthAllowed(bytes.length, "video");
+  return storeBytes(bytes, mimeType, prefix);
 }
 
 function imageEndpoint(provider: ProviderConfig, useEdits: boolean) {
@@ -1088,10 +1097,9 @@ export async function refreshVideoJob(jobId: string, localUserId?: string | null
 export async function uploadedMediaFromForm(form: FormData, fieldName = "files") {
   const files = form.getAll(fieldName).filter((value): value is File => value instanceof File && value.size > 0);
   if (files.length > 10) throw new Error("最多上传 10 张参考图片。");
-  const allowedTypes = new Set(["image/png", "image/jpeg", "image/webp"]);
   for (const file of files) {
-    if (!allowedTypes.has(file.type)) throw new Error("参考图片只支持 PNG、JPEG 和 WebP。");
-    if (file.size > 10 * 1024 * 1024) throw new Error("单张参考图片不能超过 10MB。");
+    assertFileSizeAllowed(file, "reference-image");
+    await assertFileFormatAllowed(file, "reference-image");
   }
   return Promise.all(files.map(async (file) => ({
     bytes: Buffer.from(await file.arrayBuffer()),

@@ -11,6 +11,7 @@ import {
   updateLibraryItem,
 } from "./library";
 import { codeForUpstreamStatus, GenerationDiagnosticError } from "./error-diagnostics";
+import { assertFileFormatAllowed, assertFileSizeAllowed, publicUploadLimits } from "./media-upload-guard";
 import { providerById } from "./providers";
 import { type JobRecord, type ProviderConfig } from "./types";
 
@@ -302,6 +303,10 @@ export async function readUpscaleStatus() {
   return {
     image: providerReady(imageProvider, "image"),
     video: providerReady(videoProvider, "video"),
+    uploadLimits: {
+      imageUpscale: publicUploadLimits().imageUpscale,
+      videoUpscale: publicUploadLimits().videoUpscale,
+    },
   };
 }
 
@@ -778,25 +783,12 @@ export async function uploadedUpscaleFile(
 ): Promise<UploadedUpscaleFile> {
   const value = form.get("file");
   if (!(value instanceof File) || value.size === 0) throw new GenerationDiagnosticError({ code: "UPLOAD_NOT_FOUND" });
-  const allowed = kind === "image"
-    ? new Set(["image/png", "image/jpeg", "image/webp"])
-    : new Set(["video/mp4", "video/webm", "video/quicktime"]);
-  if (!allowed.has(value.type)) {
-    throw new GenerationDiagnosticError({
-      code: "INPUT_UNSUPPORTED_FORMAT",
-      safeDetails: { kind, mimeType: value.type },
-    });
-  }
-  const limit = kind === "image" ? 10 * 1024 * 1024 : 1024 * 1024 * 1024;
-  if (value.size > limit) {
-    throw new GenerationDiagnosticError({
-      code: "INPUT_FILE_TOO_LARGE",
-      safeDetails: { kind, size: value.size, limit },
-    });
-  }
+  const uploadKind = kind === "image" ? "image-upscale" : "video-upscale";
+  assertFileSizeAllowed(value, uploadKind);
+  const mimeType = await assertFileFormatAllowed(value, uploadKind);
   return {
     bytes: Buffer.from(await value.arrayBuffer()),
-    mimeType: value.type,
+    mimeType,
     fileName: value.name || (kind === "image" ? "image.png" : "video.mp4"),
   };
 }

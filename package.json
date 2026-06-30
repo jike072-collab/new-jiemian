@@ -46,7 +46,7 @@
     "test:library-authz": "node scripts/test-library-authz.mjs",
     "test:network-hardening-dry-run": "node scripts/test-network-hardening-dry-run.mjs",
     "test:abuse-guard-contracts": "node scripts/test-abuse-guard-contracts.mjs",
-    "test:upload-temp-cleanup": "node scripts/test-upload-temp-cleanup.mjs",
+    "test:upload-temp-cleanup": "node scripts/test-upload-temp-cleanup.mjs && node scripts/test-upload-limits.mjs",
     "security:network-snapshot": "node scripts/run-network-hardening-script.mjs snapshot",
     "security:network-hardening-plan": "node scripts/run-network-hardening-script.mjs plan",
     "security:network-hardening-rollback": "node scripts/run-network-hardening-script.mjs rollback",

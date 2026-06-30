@@ -36,7 +36,9 @@ providers, merging PRs, or printing secrets.
 - [ ] `proxy_set_header Host`, `X-Forwarded-Host`, `X-Forwarded-For`, and
   `X-Forwarded-Proto` are present.
 - [ ] App upstream is loopback or a private host, not a wildcard public bind.
-- [ ] Upload body limit is explicitly sized for the product.
+- [ ] Upload body limit is explicitly sized for the product. It must be at
+  least the app video upload limit from `src/lib/upload-limits.ts` (`200m` by
+  default) and must not silently undercut the app-level validation.
 - [ ] Long request timeouts are reviewed, but smoke tests still avoid generation
   and provider paths.
 - [ ] Static asset caching does not cache `/api/health/backend` or auth/session

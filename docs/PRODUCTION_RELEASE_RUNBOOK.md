@@ -66,6 +66,22 @@ The script must:
 - run service preflight and health checks
 - avoid image generation, image edit, video generation, upscale, and NewAPI generation calls
 
+## Upload Body Limit
+
+Application upload limits are centralized in `src/lib/upload-limits.ts`.
+The production defaults are:
+
+- images and image edit reference files: `10MB`
+- image upscale input files: `10MB`
+- video upscale input files: `200MB`
+
+The server may lower these with `MEDIA_IMAGE_UPLOAD_LIMIT_MIB` and
+`MEDIA_VIDEO_UPLOAD_LIMIT_MIB`, but normal configuration must not raise them
+above the safe defaults. Values above the `256MiB` hard cap fall back to the
+safe default. The Nginx `client_max_body_size` must be set to at least the
+application video limit, currently `200m`, or legitimate app-level uploads will
+be rejected before they reach Next.js.
+
 Do not deploy production with:
 
 ```powershell

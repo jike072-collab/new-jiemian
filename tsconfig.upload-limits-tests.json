@@ -1,0 +1,21 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "noEmit": false,
+    "outDir": "dist/upload-limits-tests",
+    "module": "NodeNext",
+    "moduleResolution": "NodeNext",
+    "target": "ES2022",
+    "lib": ["ES2022", "DOM", "DOM.Iterable"],
+    "types": ["node"],
+    "incremental": false,
+    "isolatedModules": false
+  },
+  "include": [
+    "src/lib/upload-limits.ts",
+    "src/lib/error-diagnostic-catalog.ts",
+    "src/lib/server/error-diagnostics.ts",
+    "src/lib/server/media-upload-guard.ts",
+    "src/lib/server/__tests__/media-upload-guard.test.ts"
+  ]
+}

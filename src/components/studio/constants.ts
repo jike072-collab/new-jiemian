@@ -1,4 +1,9 @@
 import type { WorkspaceImageMode, WorkspaceVideoMode } from "@/lib/workspace-registry";
+import {
+  allowedImageMimeTypes,
+  allowedVideoMimeTypes,
+  defaultPublicUploadLimits,
+} from "@/lib/upload-limits";
 
 export function upscaleTargetLabel(scale: string) {
   if (scale === "4") return "4K";
@@ -53,13 +58,12 @@ export const imageWorkspaceModeMeta: Record<WorkspaceImageMode, {
   },
 };
 
-export const allowedReferenceImageTypes = new Set(["image/png", "image/jpeg", "image/webp"]);
-export const allowedUpscaleVideoTypes = new Set(["video/mp4", "video/webm", "video/quicktime"]);
-export const maxReferenceImageSize = 10 * 1024 * 1024;
+export const allowedReferenceImageTypes = new Set<string>(allowedImageMimeTypes);
+export const allowedUpscaleVideoTypes = new Set<string>(allowedVideoMimeTypes);
+export const defaultUploadLimits = defaultPublicUploadLimits;
+export const maxReferenceImageSize = defaultUploadLimits.referenceImage.bytes;
 export const maxReferenceImageCount = 10;
 export const maxVideoFirstFrameCount = 1;
-export const maxImageUpscaleSize = 25 * 1024 * 1024;
-export const maxVideoUpscaleSize = 1024 * 1024 * 1024;
 
 export const videoWorkspaceModeMeta: Record<WorkspaceVideoMode, {
   submitLabel: string;

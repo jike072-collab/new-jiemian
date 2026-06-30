@@ -20,6 +20,8 @@ import {
   shouldUseDatabaseJobs,
   shouldWriteLibraryToDatabase,
 } from "./database/stage9cb-flags";
+import type { RemoteMediaKind } from "../upload-limits";
+import { assertBufferLengthAllowed, assertContentLengthAllowed } from "./media-upload-guard";
 
 const libraryPath = join(dataRoot, "library.json");
 const jobsPath = join(dataRoot, "jobs.json");
@@ -291,7 +293,15 @@ export async function storeRemoteUrl(url: string, prefix: string, fallbackMime: 
   const response = await fetch(url, { signal: AbortSignal.timeout(180000) });
   if (!response.ok) throw new Error(`下载生成结果失败：HTTP ${response.status}`);
   const mimeType = response.headers.get("content-type") || fallbackMime;
-  return storeBytes(Buffer.from(await response.arrayBuffer()), mimeType, prefix);
+  const kind = remoteMediaKind(mimeType, prefix);
+  assertContentLengthAllowed(response.headers.get("content-length"), kind);
+  const bytes = Buffer.from(await response.arrayBuffer());
+  assertBufferLengthAllowed(bytes.length, kind);
+  return storeBytes(bytes, mimeType, prefix);
+}
+
+function remoteMediaKind(mimeType: string, prefix: string): RemoteMediaKind {
+  return mimeType.toLowerCase().includes("video") || prefix.toLowerCase().includes("video") ? "video" : "image";
 }
 
 export async function readStoredFile(storedName: string) {
