@@ -1,0 +1,46 @@
+[Unit]
+Description=Aohuang AI Next.js production service on 3106
+Documentation=https://github.com/jike072-collab/new-jiemian
+After=network-online.target
+Wants=network-online.target
+StartLimitIntervalSec=300
+StartLimitBurst=5
+
+[Service]
+Type=simple
+User=aohuang-ai
+Group=aohuang-ai
+WorkingDirectory=/opt/aohuang-ai/current
+
+# Secrets and server-specific values belong in this private file, not in the unit.
+EnvironmentFile=/etc/aohuang-ai/production.env
+
+# Production invariants. Do not create a server-side 3107 unit.
+Environment=NODE_ENV=production
+Environment=PORT=3106
+Environment=APP_BIND_HOST=127.0.0.1
+Environment=NEXT_TELEMETRY_DISABLED=1
+Environment=NPM_CONFIG_CACHE=/var/lib/aohuang-ai/runtime/npm-cache
+
+ExecStartPre=/usr/bin/npm run release:preflight
+ExecStart=/usr/bin/npm run start:next
+
+Restart=on-failure
+RestartSec=5s
+KillSignal=SIGTERM
+TimeoutStopSec=90
+
+UMask=0077
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/lib/aohuang-ai/data
+ReadWritePaths=/var/lib/aohuang-ai/uploads
+ReadWritePaths=/var/lib/aohuang-ai/runtime
+
+# systemd already keeps one instance of this unit active at a time. Do not use
+# templated @ units, PM2, Docker, or another process supervisor for this app.
+
+[Install]
+WantedBy=multi-user.target
