@@ -134,3 +134,21 @@ bash deploy/linux/health-check.sh
 
 Both scripts are read-only. They do not run migrations, invoke generation
 providers, delete media, restart services, or print environment variable values.
+
+## Short-Term Backups
+
+Daily 60GB server backups are documented in `docs/SERVER_BACKUP_AND_RESTORE.md`.
+They back up PostgreSQL and necessary `data` metadata, but do not retain
+24-hour generated media in `uploads`.
+
+Useful commands:
+
+```bash
+npm run ops:backup:dry-run
+npm run ops:backup:apply
+npm run ops:backup:prune:dry-run
+npm run ops:restore:verify -- --backup <server-backup-dir>
+```
+
+Local backups under `/var/lib/aohuang-ai/backups` are short-term copies only.
+Sync them to external storage, a cloud snapshot, or another machine.

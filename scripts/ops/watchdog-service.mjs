@@ -16,7 +16,7 @@ export async function runWatchdog(service, options = {}) {
   mkdirSync(config.runtimeDir, { recursive: true });
   const lock = acquireLock(config, options);
   try {
-    const activeOperation = await getActiveServiceOperation(config, ["deploy", "rollback"], options.operationLockOptions || {});
+    const activeOperation = await getActiveServiceOperation(config, ["backup", "deploy", "rollback"], options.operationLockOptions || {});
     if (activeOperation) {
       writeWatchdogLog(config, "deferred-active-operation", {
         operation: activeOperation.operation,

@@ -119,7 +119,7 @@ The start script rotates logs when they exceed the configured size. Logs are ign
 
 ## Backups And Rollback
 
-Backups are written under:
+Deployment rollback backups are written under:
 
 ```text
 ../_rollback_backups
@@ -141,6 +141,28 @@ For PostgreSQL, full restore requires a deployment-scoped, in-memory rollback au
 Rollback code is prepared in a temporary Git worktree before stopping the live service. The candidate commit must complete dependency install, lint, typecheck, build, startup preflight, and isolated smoke testing first. After the service is stopped, rollback must not run `npm ci`, `npm install`, or `npm run build`; it may only activate the already prepared code artifacts, restore verified data, and start the service.
 
 `data` and `uploads` are restored through a temporary directory first. The copied files are checked against `checksums.json` by relative path, file size, and SHA-256 before replacing the live directories. Previous live directories are kept until the service passes health checks, then cleaned up.
+
+Daily 60GB server backups use a separate short-term policy documented in
+`docs/SERVER_BACKUP_AND_RESTORE.md`. Those backups include PostgreSQL and
+necessary `data` metadata, but intentionally exclude 24-hour generated media in
+`uploads`, temporary uploads, caches, and ordinary logs. Local backup retention
+is intentionally small and should be paired with off-host storage, cloud disk
+snapshots, or another machine.
+
+Commands:
+
+```powershell
+npm run ops:backup:dry-run
+npm run ops:backup:apply
+npm run ops:backup:prune:dry-run
+npm run ops:backup:prune:apply
+npm run ops:restore:verify -- --backup <server-backup-dir>
+```
+
+Restore apply is not automatic. It requires explicit confirmation that writes
+are stopped and, for production, explicit production restore approval. Code
+rollback and data restore are separate operations; a Git rollback must not
+overwrite user data.
 
 ## Release Reliability Checks
 

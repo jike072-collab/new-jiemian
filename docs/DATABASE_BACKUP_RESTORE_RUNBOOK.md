@@ -4,6 +4,12 @@ This runbook documents the backup requirements before any future database releas
 
 ## PostgreSQL Backup
 
+For the 60GB single-server production lane, use the server backup script
+documented in `docs/SERVER_BACKUP_AND_RESTORE.md`. It defaults to dry-run,
+uses `pg_dump --format=custom` when PostgreSQL is configured, writes artifacts
+to a temporary directory first, verifies checksums, then atomically renames the
+completed backup directory.
+
 Before a future authorized production migration:
 
 1. Confirm the exact production commit, PID, service port, and runtime identity.
@@ -19,6 +25,11 @@ Before a future authorized production migration:
    - created timestamp
 
 Do not commit database dumps, backup folders, restore artifacts, or raw connection strings.
+
+The backup manifest must not contain passwords, tokens, keys, cookies, or the
+full database URL. It may contain database name, host category, port, username
+hash, checksums, source commit, package version, schema/migration metadata, and
+file counts.
 
 ## Restore Verification
 
@@ -37,15 +48,21 @@ For full drills, restore into a throwaway database first and verify:
 - schema migrations are present
 - application identity checks pass
 
-## Data And Uploads Snapshot
+## Data Metadata And Media Policy
 
-Database changes can reference file objects. Before any future production cutover:
+Database changes can reference file objects. For deployment rollback backups,
+`data` and `uploads` may be snapshotted together for the rollback window.
 
-1. Snapshot `data`.
-2. Snapshot `uploads`.
-3. Record count, size, and sha256 manifest.
-4. Store snapshots outside Git.
-5. Verify snapshots are readable.
+For default daily server backups after the 24-hour media retention policy:
+
+1. Snapshot necessary `data` metadata.
+2. Do not include expiring generated images and videos from `uploads` as
+   long-term backup material.
+3. Do not include temporary uploads, caches, temporary provider files, or
+   ordinary logs.
+4. Record count, size, and sha256 manifest.
+5. Store snapshots outside Git and outside release directories.
+6. Verify snapshots are readable.
 
 Do not commit `data`, `uploads`, `data-staging`, `uploads-staging`, backups, dumps, or manifests that contain real user data.
 
@@ -58,6 +75,11 @@ For a future release rollback:
 3. Restore `data` and `uploads` snapshots that match the database backup.
 4. Restart only the authorized service.
 5. Verify health, identity, and data checksums.
+
+For server backup restore, default to verification only. Actual production
+restore requires explicit confirmation that writes are stopped and explicit
+production restore approval. Restore PostgreSQL first, then restore necessary
+metadata, then repair permissions and run acceptance checks.
 
 3106 must never be stopped, restarted, or published unless the user explicitly authorizes a production release or rollback.
 

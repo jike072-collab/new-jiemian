@@ -37,6 +37,8 @@ Server deployment is outside the automated module work. The release flow remains
 | `MEDIA_IMAGE_UPLOAD_LIMIT_MIB` | Lowers image upload limit. | No | Optional | Optional | `10` | Integer `1..10` in production | upload guard, env check |
 | `MEDIA_VIDEO_UPLOAD_LIMIT_MIB` | Lowers video upload limit. | No | Optional | Optional | `200` | Integer `1..200` in production; hard cap 256 | upload guard, env check |
 | `MEDIA_RETENTION_HOURS` | Generated media retention. | No | Optional | Optional | `24` | Integer `1..168` | media retention cleanup, UI |
+| `SERVER_BACKUP_ROOT` | Short-term server backup root. | No | Optional | Recommended | sibling `backups` near data root | Absolute path outside release, data, uploads, and runtime roots | server backup ops |
+| `SERVER_BACKUP_RETENTION_COUNT` | Local backup count to retain. | No | Optional | Optional | `5` | Integer `3..7`; invalid values use default | server backup prune |
 | `STORAGE_WARNING_PERCENT` | Disk warning threshold. | No | Optional | Optional | `70` | Lowerable, must stay increasing | storage capacity policy |
 | `STORAGE_CRITICAL_PERCENT` | Disk critical threshold. | No | Optional | Optional | `80` | Lowerable, must stay increasing | storage capacity policy |
 | `STORAGE_VIDEO_BLOCK_PERCENT` | Blocks new video writes. | No | Optional | Optional | `85` | Lowerable, must stay increasing | storage capacity policy |
