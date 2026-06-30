@@ -71,6 +71,7 @@ export function redactSensitiveText(value: unknown): string {
     .replace(/(Cookie\s*[:=]\s*)[^;\n\r]+/gi, "$1[redacted]")
     .replace(/HMAC-SHA256\s+Credential=[^\s,;}]+/gi, "HMAC-SHA256 Credential=[redacted]")
     .replace(/\b(Signature|SignedHeaders|Credential)\s*=\s*[^,\s;}]+/gi, "$1=[redacted]")
+    .replace(/\b([A-Za-z0-9_-]*(?:api[-_]?key|access[-_]?key|secret|token|password|credential|signature)[A-Za-z0-9_-]*)\b\s*[:=]\s*["']?[^"',\s;}]+/gi, "$1=[redacted]")
     .replace(/\b(sk|ak|pk|key|token|secret|password)[-_A-Za-z0-9]*\b\s*[:=]\s*["']?[^"',\s;}]+/gi, "$1=[redacted]")
     .replace(/(APP_DATABASE_URL|ADMIN_PASSWORD)\s*[:=]\s*["']?[^"',\s;}]+/gi, "$1=[redacted]")
     .replace(/postgres(?:ql)?:\/\/[^\s"')]+/gi, "postgresql://[redacted]")
