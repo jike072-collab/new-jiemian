@@ -26,10 +26,14 @@ npm run dev
 
 ## 3106 正式端口与 3107 测试端口
 
-- 3106 是正式端口。
-- 3107 是测试端口。
-- 新功能先在 3107 验证。
-- 通过后再考虑合并并发布到 3106。
+- 3106 是服务器正式环境，服务器最终只运行 3106。
+- 3107 只在当前开发电脑运行，用于代码优化、自动测试和人工验收。
+- 3107 不部署到服务器，也不需要服务器 systemd、Nginx 或数据目录。
+- 新功能和服务器准备改动先在 3107 验证。
+- `main` 代表允许进入正式发布流程的代码，但 Codex 不得自动合并 `main`。
+- 服务器准备改动统一在 `chore/server-production-prep` 完成，每个模块独立 commit 并立即 push。
+- 最终流程是：模块分支开发 -> 本地 3107 测试 -> push GitHub -> 代码审查 -> 合并 `main` -> 服务器部署 3106。
+- 服务器部署不属于 Codex 自动任务。
 - 详细流程见 `docs/PORT_RELEASE_WORKFLOW.md`。
 - 手动测试见 `docs/3107_MANUAL_TEST_CHECKLIST.md`。
 - 部署和数据规划见 `docs/DEPLOYMENT_AND_DATA_PLAN.md`。

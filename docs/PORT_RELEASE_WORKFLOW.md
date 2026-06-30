@@ -11,16 +11,17 @@ Use the hardened operations commands for service work:
 - Deploy staging: `npm run deploy:staging`
 - Deploy production: `npm run deploy:production -- --target <origin-main-merge-commit>`
 
-Production deploy must run only after staging has passed on 3107 and the PR has been merged to `main`.
+Production deploy must run only after local 3107 acceptance has passed and the reviewed change has been merged to `main`.
 
-本流程用于保证所有改动先经过 3107 测试，再考虑进入 `main` 和 3106。它只定义流程，不改变业务功能，不新增部署依赖。
+本流程用于保证所有服务器准备改动先经过本机 3107 测试，再考虑进入 `main` 和 3106。它只定义流程，不改变业务功能，不新增部署依赖。服务器部署不属于本次 Codex 自动任务。
 
 ## 1. 端口职责
 
-- 3106 是正式端口，面向稳定使用。
-- 3107 是测试端口，承接所有新功能、新结构和新修复。
-- 禁止直接改动、重启、覆盖 3106。
-- 3107 测试通过后，才能考虑合并到 `main`，再发布到 3106。
+- 3106 是服务器正式环境，服务器最终只运行 3106。
+- 3107 只在当前开发电脑运行，用于代码优化、自动测试和人工验收。
+- 3107 不部署到服务器，也不需要服务器 systemd、Nginx 或数据目录。
+- 禁止直接改动、重启、部署或覆盖 3106。
+- 3107 测试通过后，才能考虑合并到 `main`，再由人工发布到 3106。
 - 不清楚服务器部署方式时，只新增文档，不随意改服务器脚本。
 
 ## 2. 阶段顺序
@@ -39,9 +40,9 @@ Production deploy must run only after staging has passed on 3107 and the PR has 
 
 ## 3. 推荐分支流程
 
-1. 从 `main` 拉最新代码。
-2. 新建功能分支。
-3. 在功能分支开发。
+1. 从最新 `origin/main` 创建或更新 `chore/server-production-prep`。
+2. 在 `chore/server-production-prep` 完成服务器准备模块。
+3. 每个模块只做一个主题明确的改动。
 4. 本地运行检查：
 
 ```bash
@@ -50,15 +51,17 @@ npm run typecheck
 npm run build
 ```
 
-5. 推送 GitHub 分支。
-6. 部署或运行到 3107。
-7. 人工测试 3107。
-8. 测试通过后，再考虑合并到 `main`。
-9. `main` 稳定后，再由人工发布或重启 3106。
+5. 每个模块制作一个独立 commit。
+6. 立即 push 到 GitHub。
+7. 在当前开发电脑运行或检查 3107。
+8. 人工测试 3107。
+9. 代码审查通过后，再由人工合并到 `main`。
+10. `main` 稳定后，再由人工部署或重启服务器 3106。
 
-## 4. 3107 测试环境建议
+## 4. 3107 本机测试环境建议
 
-- 3107 使用独立 `.env` 文件，例如 `.env.staging` 或服务器环境变量。
+- 3107 只在当前开发电脑运行，不作为服务器 staging 环境。
+- 3107 使用本机独立 `.env` 文件，例如 `.env.staging`，不得依赖服务器环境变量。
 - 设置 `PORT=3107`。
 - 设置 `DATA_DIR=data-staging`。
 - 设置 `UPLOADS_DIR=uploads-staging`。
@@ -73,6 +76,7 @@ npm run build
 ## 5. 3106 正式环境建议
 
 - 设置 `PORT=3106`。
+- 服务器最终只运行 3106，不运行 3107。
 - `ADMIN_PASSWORD` 必填。
 - `.env.local` 不进 Git。
 - `DATA_DIR` 和 `UPLOADS_DIR` 未设置时默认使用 `data/` 和 `uploads/`。
@@ -136,7 +140,10 @@ npm run test:staging-smoke
 ## 9. 禁止事项
 
 - 禁止直接 push `main`。
-- 禁止直接修改、重启、覆盖 3106。
+- 禁止直接修改、重启、部署或覆盖 3106。
+- 禁止把 3107 部署到服务器。
+- 禁止自动合并 `main`。
+- 禁止使用 `git reset --hard`、强制推送或改写公共历史。
 - 禁止把 3107 的测试数据覆盖到 3106。
 - 禁止提交 `.env.local`。
 - 禁止提交 API Key。
