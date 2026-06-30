@@ -51,8 +51,9 @@ Passed locally:
 - `npm run database:boundary`
 - `npm audit --audit-level=high`
 
-The local build completed successfully with the existing Turbopack NFT warning
-from `src/lib/server/local-upscale.ts`.
+The local build completed successfully. Earlier Turbopack NFT warnings from the
+retired legacy local upscale path are historical; current高清增强 code is in
+`src/lib/server/volcengine-upscale.ts`.
 
 `npm audit --audit-level=high` reported `0` vulnerabilities.
 
@@ -140,8 +141,9 @@ Local checks rerun on 2026-06-19:
 
 - `npm run typecheck`: passed.
 - `npm run lint`: passed.
-- `npm run build`: passed with the existing Turbopack NFT warning from
-  `src/lib/server/local-upscale.ts`.
+- `npm run build`: passed. Earlier Turbopack NFT warnings from the retired
+  legacy local upscale path are historical; current高清增强 code is in
+  `src/lib/server/volcengine-upscale.ts`.
 - `node scripts/test-auth-session.mjs`: passed, 17 tests.
 - `node scripts/test-quota-usage.mjs`: passed, 28 tests and 2 PostgreSQL-mode
   skips because this workstation has no application database DSN.
@@ -468,8 +470,9 @@ Local checks rerun after the fixes:
 
 - `npm run typecheck`: passed.
 - `npm run lint`: passed.
-- `npm run build`: passed with the existing Turbopack NFT warning from
-  `src/lib/server/local-upscale.ts`.
+- `npm run build`: passed. Earlier Turbopack NFT warnings from the retired
+  legacy local upscale path are historical; current高清增强 code is in
+  `src/lib/server/volcengine-upscale.ts`.
 - `node scripts/test-new-api-bff.mjs`: passed, including the new
   `/api/user/manage` quota endpoint assertion.
 - `node scripts/test-quota-usage.mjs`: passed.

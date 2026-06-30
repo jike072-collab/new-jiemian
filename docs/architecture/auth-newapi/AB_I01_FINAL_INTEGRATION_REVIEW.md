@@ -57,7 +57,7 @@ Local verification completed:
 
 - `npm run typecheck` passed.
 - `npm run lint` passed.
-- `npm run build` passed with one Turbopack trace warning from A-side local upscale code.
+- `npm run build` passed. Earlier A-side legacy local upscale trace warnings are historical; current高清增强 code is in `src/lib/server/volcengine-upscale.ts`.
 - `node scripts/test-auth-session.mjs` passed 17 tests.
 - `node scripts/test-quota-usage.mjs` passed 22 tests and skipped 2 local PostgreSQL integration cases.
 - `node scripts/test-billing-sandbox.mjs` passed 21 tests and skipped 2 local PostgreSQL integration cases.
@@ -73,7 +73,7 @@ Local verification completed:
 
 ## Risks And Follow-Up
 
-- `npm run build` reports a Turbopack NFT trace warning involving `src/lib/server/local-upscale.ts` and `src/app/api/upscale/video/route.ts`. Build succeeds, but production packaging should review whether dynamic filesystem probing should be further constrained.
+- Historical note: this review once recorded a Turbopack NFT trace warning from the retired legacy local upscale path. Current高清增强 production review should focus on `src/lib/server/volcengine-upscale.ts`.
 - Local PostgreSQL integration tests are skipped on this workstation because no `APP_DATABASE_URL` is configured. Remote database CI must remain green before integration review proceeds.
 
 ## Conclusion

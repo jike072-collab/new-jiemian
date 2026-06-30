@@ -66,11 +66,14 @@ export function redactSensitiveText(value: unknown): string {
     .replace(/Bearer\s+[A-Za-z0-9._~+/=-]+/gi, "Bearer [redacted]")
     .replace(/(Authorization\s*[:=]\s*)[^\s,;}]+/gi, "$1[redacted]")
     .replace(/(Cookie\s*[:=]\s*)[^;\n\r]+/gi, "$1[redacted]")
+    .replace(/HMAC-SHA256\s+Credential=[^\s,;}]+/gi, "HMAC-SHA256 Credential=[redacted]")
+    .replace(/\b(Signature|SignedHeaders|Credential)\s*=\s*[^,\s;}]+/gi, "$1=[redacted]")
     .replace(/\b(sk|ak|pk|key|token|secret|password)[-_A-Za-z0-9]*\b\s*[:=]\s*["']?[^"',\s;}]+/gi, "$1=[redacted]")
     .replace(/(APP_DATABASE_URL|ADMIN_PASSWORD)\s*[:=]\s*["']?[^"',\s;}]+/gi, "$1=[redacted]")
     .replace(/postgres(?:ql)?:\/\/[^\s"')]+/gi, "postgresql://[redacted]")
     .replace(/([?&](?:token|key|secret|password|api_key)=)[^&\s"')]+/gi, "$1[redacted]")
     .replace(/[A-Za-z0-9_-]{24,}\.[A-Za-z0-9_-]{16,}\.[A-Za-z0-9_-]{16,}/g, "[redacted.jwt]")
+    .replace(/[A-Za-z]:[\\/][^\s"',;}]+/g, "[redacted.path]")
     .slice(0, 500);
 }
 
@@ -82,7 +85,7 @@ export function redactDiagnosticPayload(value: unknown): unknown {
   if (typeof value !== "object") return redactSensitiveText(value);
   const out: Record<string, unknown> = {};
   for (const [key, item] of Object.entries(value as Record<string, unknown>)) {
-    if (/authorization|cookie|api[-_]?key|secret|password|token|database[-_]?url/i.test(key)) {
+    if (/authorization|cookie|api[-_]?key|secret|password|token|database[-_]?url|signature|credential|path|response/i.test(key)) {
       out[key] = "[redacted]";
       continue;
     }

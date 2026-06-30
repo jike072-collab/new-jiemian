@@ -281,17 +281,17 @@ function videoConfig(provider: ProviderConfig | null) {
 }
 
 function providerReady(provider: ProviderConfig | null, kind: "image" | "video") {
-  if (!provider?.enabled) return { ready: false, detail: kind === "image" ? "图片高清供应商未启用。" : "视频高清供应商未启用。" };
+  if (!provider?.enabled) return { ready: false, detail: kind === "image" ? "图片高清增强供应商未启用。" : "视频高清增强供应商未启用。" };
   if (kind === "image") {
     const config = imageConfig(provider);
-    if (!config.credential) return { ready: false, detail: "图片高清缺少火山 AK/SK，请在后台 API Key 填 AK:SK。" };
-    if (!config.serviceId) return { ready: false, detail: "图片高清缺少 ImageX ServiceId，请填在模型字段或 VOLCENGINE_IMAGEX_SERVICE_ID。" };
-    return { ready: true, detail: "火山 ImageX 图片高清已配置。" };
+    if (!config.credential) return { ready: false, detail: "图片高清增强缺少火山 AK/SK，请在后台 API Key 填 AK:SK。" };
+    if (!config.serviceId) return { ready: false, detail: "图片高清增强缺少 ImageX ServiceId，请填在模型字段或 VOLCENGINE_IMAGEX_SERVICE_ID。" };
+    return { ready: true, detail: "火山 ImageX 图片高清增强已配置。" };
   }
   const config = videoConfig(provider);
-  if (!config.credential) return { ready: false, detail: "视频高清缺少火山 AK/SK，请在后台 API Key 填 AK:SK。" };
-  if (!config.spaceName) return { ready: false, detail: "视频高清缺少 VOD SpaceName，请填在模型字段或 VOLCENGINE_VOD_SPACE_NAME。" };
-  return { ready: true, detail: "火山 VOD 视频高清已配置。" };
+  if (!config.credential) return { ready: false, detail: "视频高清增强缺少火山 AK/SK，请在后台 API Key 填 AK:SK。" };
+  if (!config.spaceName) return { ready: false, detail: "视频高清增强缺少 VOD SpaceName，请填在模型字段或 VOLCENGINE_VOD_SPACE_NAME。" };
+  return { ready: true, detail: "火山 VOD 视频高清增强已配置。" };
 }
 
 export async function readUpscaleStatus() {
@@ -497,7 +497,7 @@ export async function upscaleImage(file: UploadedUpscaleFile, scale: TargetScale
     ownerLocalUserId: ownerLocalUserId || null,
     type: "image",
     mode: "image-upscale",
-    title: `图片高清 ${targetLabel(scale)}`,
+    title: `图片高清增强 ${targetLabel(scale)}`,
     prompt: file.fileName,
     providerId: provider.id,
     model: provider.model,
@@ -625,12 +625,12 @@ export async function submitVideoUpscale(file: UploadedUpscaleFile, scale: Targe
     },
   });
   const runId = start.Result?.RunId;
-  if (!runId) throw new Error("火山 VOD 未返回视频高清任务 RunId。");
+  if (!runId) throw new Error("火山 VOD 未返回视频高清增强任务 RunId。");
   const item = await addLibraryItem({
     ownerLocalUserId: ownerLocalUserId || null,
     type: "video",
     mode: "video-upscale",
-    title: `视频高清 ${targetLabel(scale)}`,
+    title: `视频高清增强 ${targetLabel(scale)}`,
     prompt: file.fileName,
     providerId: provider.id,
     model: provider.model,
@@ -742,7 +742,7 @@ export async function refreshVideoUpscaleJob(jobId: string, localUserId?: string
     const output = findVideoOutputFile(result);
     const outputUrl = output?.url || fileUrlFromStoreUri(output?.storeUri || "", config.outputDomain);
     if (!outputUrl) {
-      const message = "视频高清已完成，但缺少可下载结果地址。请配置 VOLCENGINE_VOD_OUTPUT_DOMAIN 或使用 VOD 播放地址接口。";
+      const message = "视频高清增强已完成，但缺少可下载结果地址。请配置 VOLCENGINE_VOD_OUTPUT_DOMAIN 或使用 VOD 播放地址接口。";
       await updateLibraryItem(job.libraryItemId, { status: "failed", error: message });
       return await updateJob(job.id, { status: "failed", error: message }) || job;
     }
@@ -764,7 +764,7 @@ export async function refreshVideoUpscaleJob(jobId: string, localUserId?: string
     return await updateJob(job.id, { status: "done", sourceUrl: outputUrl }) || job;
   }
   if (status === "failed") {
-    const message = firstString(result.Code, asRecord(result).Message) || "视频高清任务失败。";
+    const message = firstString(result.Code, asRecord(result).Message) || "视频高清增强任务失败。";
     await updateLibraryItem(job.libraryItemId, { status: "failed", error: message });
     return await updateJob(job.id, { status: "failed", error: message }) || job;
   }

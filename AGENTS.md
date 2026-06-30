@@ -30,7 +30,7 @@
 - Keep the app as a local-first AI tool studio.
 - Do not reintroduce the old Shoe Ad Studio five-step ad workflow.
 - API keys must never be committed. Keep runtime secrets in `.env.local` or local `data/` files only.
-- Image upscale uses the local Upscayl CLI, and video upscale uses the local Video2X CLI. Keep both integrations local-first and API-key-free.
+- Image upscale uses Volcengine ImageX, and video upscale uses Volcengine VOD. Do not reintroduce local executable upscale providers or local GPU upscale configuration.
 
 ## Module 3 Recovery Rules
 

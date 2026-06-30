@@ -148,6 +148,54 @@ test("redaction removes secrets from text and nested payloads", () => {
   assert.deepEqual(payload.body.nested, ["password=[redacted]"]);
 });
 
+test("upscale diagnostics do not expose Volcengine secrets, signatures, paths, or full provider responses", () => {
+  const diagnostic = createErrorDiagnostic(new GenerationDiagnosticError({
+    code: "PROVIDER_BAD_RESPONSE",
+    message: [
+      "Authorization: HMAC-SHA256 Credential=AKLT_SECRET_ACCESS/20260701/cn-north-1/vod/request, SignedHeaders=host;x-date, Signature=abcdef1234567890",
+      "VOLCENGINE_SECRET_ACCESS_KEY=super-secret-sk",
+      "C:/Users/Admin/tools/upscayl-bin.exe",
+      JSON.stringify({ ResponseMetadata: { Error: { Message: "raw upstream response with secret token=volc-secret-token" } } }),
+    ].join(" "),
+    upstreamStatus: 502,
+    providerId: "video-upscale",
+    model: "vod-space",
+    safeDetails: {
+      Authorization: "HMAC-SHA256 Credential=AKLT_SECRET_ACCESS/20260701/cn-north-1/vod/request, Signature=abcdef1234567890",
+      Signature: "abcdef1234567890",
+      internalPath: "C:/Users/Admin/tools/video2x.exe",
+      response: {
+        ResponseMetadata: {
+          Error: {
+            Message: "secret access token=volc-secret-token",
+          },
+        },
+      },
+    },
+  }), {
+    requestId: "req-upscale-redaction",
+    tool: "video-upscale",
+    operation: "upscale-video",
+  });
+
+  const serialized = JSON.stringify(diagnostic);
+  for (const forbidden of [
+    "AKLT_SECRET_ACCESS",
+    "super-secret-sk",
+    "abcdef1234567890",
+    "volc-secret-token",
+    "C:/Users/Admin",
+    "upscayl-bin.exe",
+    "video2x.exe",
+    "HMAC-SHA256 Credential=",
+  ]) {
+    assert.equal(serialized.includes(forbidden), false, `diagnostic leaked ${forbidden}`);
+  }
+  assert.equal(diagnostic.providerId, "video-upscale");
+  assert.equal(diagnostic.safeDetails.tool, "video-upscale");
+  assert.equal(diagnostic.safeDetails.operation, "upscale-video");
+});
+
 test("unknown errors produce a traceable fallback diagnostic", () => {
   const diagnostic = createErrorDiagnostic("boom", {
     requestId: "req-unknown",

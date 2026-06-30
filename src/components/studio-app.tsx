@@ -212,15 +212,15 @@ function createVideoWorkspaceFiles(files: File[]) {
 
 function createImageUpscaleFile(files: File[]) {
   if (files.length > 1) {
-    throw new Error("图片高清一次只能上传 1 张图片。");
+    throw new Error("图片高清增强一次只能上传 1 张图片。");
   }
   const [file] = files;
   if (!file) return null;
   if (!allowedReferenceImageTypes.has(file.type)) {
-    throw new Error("图片高清仅支持 PNG、JPEG 和 WebP。");
+    throw new Error("图片高清增强仅支持 PNG、JPEG 和 WebP。");
   }
   if (file.size > maxImageUpscaleSize) {
-    throw new Error("图片高清文件不能超过 25MB。");
+    throw new Error("图片高清增强文件不能超过 25MB。");
   }
   return {
     file,
@@ -230,15 +230,15 @@ function createImageUpscaleFile(files: File[]) {
 
 function createVideoUpscaleFile(files: File[]) {
   if (files.length > 1) {
-    throw new Error("视频高清一次只能上传 1 个视频。");
+    throw new Error("视频高清增强一次只能上传 1 个视频。");
   }
   const [file] = files;
   if (!file) return null;
   if (!allowedUpscaleVideoTypes.has(file.type)) {
-    throw new Error("视频高清仅支持 MP4、WebM 和 MOV。");
+    throw new Error("视频高清增强仅支持 MP4、WebM 和 MOV。");
   }
   if (file.size > maxVideoUpscaleSize) {
-    throw new Error("视频高清文件不能超过 1GB。");
+    throw new Error("视频高清增强文件不能超过 1GB。");
   }
   return {
     file,
@@ -1450,10 +1450,10 @@ export function StudioApp() {
         method: "POST",
         body: form,
       });
-      setOutputs((prev) => ({ ...prev, "image-upscale": { item: data.item, job: data.job, title: "图片高清结果", tool: "image-upscale" } }));
+      setOutputs((prev) => ({ ...prev, "image-upscale": { item: data.item, job: data.job, title: "图片高清增强结果", tool: "image-upscale" } }));
       await refreshLibrary();
     } catch (error) {
-      const text = error instanceof Error ? error.message : "图片高清处理失败。";
+      const text = error instanceof Error ? error.message : "图片高清增强处理失败。";
       updateImageUpscaleWorkspace({ submitError: text, submitDiagnostic: diagnosticFromError(error) });
       setMessage(text);
     } finally {
@@ -1570,10 +1570,10 @@ export function StudioApp() {
         body: form,
       });
       updateVideoUpscaleWorkspace({ job: data.job });
-      setOutputs((prev) => ({ ...prev, "video-upscale": { item: data.item, job: data.job, title: "视频高清结果", tool: "video-upscale" } }));
+      setOutputs((prev) => ({ ...prev, "video-upscale": { item: data.item, job: data.job, title: "视频高清增强结果", tool: "video-upscale" } }));
       await refreshLibrary();
     } catch (error) {
-      const text = error instanceof Error ? error.message : "视频高清处理失败。";
+      const text = error instanceof Error ? error.message : "视频高清增强处理失败。";
       updateVideoUpscaleWorkspace({ submitError: text, submitDiagnostic: diagnosticFromError(error) });
       setMessage(text);
     } finally {
@@ -1611,14 +1611,14 @@ export function StudioApp() {
         const file = await fileFromLibraryOutput(item, ".png");
         replaceImageUpscaleFile([file]);
         setActiveWorkspaceToolId("image-upscale");
-        setMessage("已带入图片高清，请选择倍数后开始增强。");
+        setMessage("已带入图片高清增强，请选择倍数后开始增强。");
         return;
       }
 
       const file = await fileFromLibraryOutput(item, ".mp4");
       replaceVideoUpscaleFile([file]);
       setActiveWorkspaceToolId("video-upscale");
-      setMessage("已带入视频高清，请选择倍数后开始增强。");
+      setMessage("已带入视频高清增强，请选择倍数后开始增强。");
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "高清素材准备失败。");
     }
@@ -1637,15 +1637,15 @@ export function StudioApp() {
         if (updatedItem) {
           setOutputs((prev) => ({
             ...prev,
-            "video-upscale": { item: updatedItem, job: nextJob, title: "视频高清结果", tool: "video-upscale" },
+            "video-upscale": { item: updatedItem, job: nextJob, title: "视频高清增强结果", tool: "video-upscale" },
           }));
           if (updatedItem.status === "failed") {
-            updateVideoUpscaleWorkspace({ submitError: updatedItem.error || nextJob.error || "视频高清处理失败。" });
+            updateVideoUpscaleWorkspace({ submitError: updatedItem.error || nextJob.error || "视频高清增强处理失败。" });
           }
         }
         await refreshLibrary();
       } catch (error) {
-        const text = error instanceof Error ? error.message : "视频高清任务查询失败。";
+        const text = error instanceof Error ? error.message : "视频高清增强任务查询失败。";
         updateVideoUpscaleWorkspace({ submitError: text, submitDiagnostic: diagnosticFromError(error) });
         setMessage(text);
       }
@@ -2918,8 +2918,8 @@ function usageOperationLabel(operation: UsageLogEntry["operation"]) {
   const labels: Record<UsageLogEntry["operation"], string> = {
     cloud_image_generation: "AI 图像生成器",
     cloud_video_generation: "AI 视频生成器",
-    cloud_image_upscale: "图片高清",
-    cloud_video_upscale: "视频高清",
+    cloud_image_upscale: "图片高清增强",
+    cloud_video_upscale: "视频高清增强",
   };
   return labels[operation] || "AI 工具";
 }
@@ -2928,8 +2928,8 @@ function usageDescription(entry: UsageLogEntry) {
   const descriptions: Record<UsageLogEntry["operation"], string> = {
     cloud_image_generation: "生成图片",
     cloud_video_generation: "生成视频",
-    cloud_image_upscale: "图片高清处理",
-    cloud_video_upscale: "视频高清处理",
+    cloud_image_upscale: "图片高清增强处理",
+    cloud_video_upscale: "视频高清增强处理",
   };
   if (entry.status === "failed") return `${descriptions[entry.operation] || "工具处理"}失败`;
   if (entry.status === "refunded") return `${descriptions[entry.operation] || "工具处理"}已退回额度`;

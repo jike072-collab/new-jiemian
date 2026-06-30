@@ -63,9 +63,11 @@ Codex must not automatically merge `main`, deploy 3106, deploy 3107, operate ser
 ## Upscale State
 
 - Current upscale API routes import `src/lib/server/volcengine-upscale.ts`.
+- Image upscale uses Volcengine ImageX.
+- Video upscale uses Volcengine VOD.
 - Image upload validation allows PNG, JPEG, and WebP up to 10 MB.
 - Video upload validation allows MP4, WebM, and QuickTime up to 1 GB.
-- README still contains older local Upscayl/Video2X setup text, so the production documentation must be reconciled with the current Volcengine upscale implementation before release.
+- Old local executable upscale provider values are compatible only when reading legacy provider configuration and are normalized to the current Volcengine endpoint types.
 - This baseline module does not change upscale code, upload limits, cleanup logic, or deployment scripts.
 
 ## Existing Test Commands
@@ -98,7 +100,7 @@ npm run test:rollback-drill
 
 ## Pre-Launch Issues To Resolve
 
-- Old upscale documentation: README still describes local Upscayl/Video2X while current upscale routes use Volcengine integration.
+- Old upscale documentation: historical local executable upscale notes must stay archived and must not describe the current implementation.
 - 1 GB video memory risk: current video upscale upload parsing can buffer up to 1 GB in process memory.
 - 24-hour media cleanup: stale temporary cleanup exists for `*.tmp`, but production media retention and 24-hour cleanup policy still need explicit release rules.
 - Disk protection: production needs explicit capacity checks, upload growth controls, and safe handling for large media outputs.

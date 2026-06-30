@@ -15,7 +15,7 @@ export async function POST(request: NextRequest) {
     const form = await request.formData();
     const requestedScale = Number(form.get("scale"));
     if (requestedScale !== 1 && requestedScale !== 2 && requestedScale !== 4) {
-      throw new Error("图片高清仅支持 1K、2K 或 4K。");
+      throw new Error("图片高清增强仅支持 1K、2K 或 4K。");
     }
     const scale = requestedScale;
     const file = await uploadedUpscaleFile(form, "image");
@@ -26,7 +26,7 @@ export async function POST(request: NextRequest) {
   } catch (error) {
     return diagnosticErrorResponse(error, {
       requestId: request.headers.get("x-request-id"),
-      fallbackMessage: "图片高清处理失败。",
+      fallbackMessage: "图片高清增强处理失败。",
       tool: "image-upscale",
       operation: "upscale-image",
       defaultCode: "UNKNOWN_ERROR",

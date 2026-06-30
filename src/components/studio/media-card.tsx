@@ -133,8 +133,8 @@ function libraryModeLabel(item: LibraryItem) {
   if (item.mode === "image-to-image") return "图片编辑";
   if (item.mode === "text-to-video") return "视频生成";
   if (item.mode === "image-to-video") return "图像生成视频";
-  if (item.mode === "image-upscale") return "图片高清";
-  if (item.mode === "video-upscale") return "视频高清";
+  if (item.mode === "image-upscale") return "图片高清增强";
+  if (item.mode === "video-upscale") return "视频高清增强";
   return item.type === "image" ? "图片作品" : "视频作品";
 }
 

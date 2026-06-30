@@ -17,8 +17,8 @@ export const studioModeRoutes = [
   { tool: "image", label: "图片生成" },
   { tool: "image-editor", label: "图片编辑" },
   { tool: "video", label: "视频生成" },
-  { tool: "image-upscale", label: "图片高清" },
-  { tool: "video-upscale", label: "视频高清" },
+  { tool: "image-upscale", label: "图片高清增强" },
+  { tool: "video-upscale", label: "视频高清增强" },
   { tool: "library", label: "作品库" },
 ];
 

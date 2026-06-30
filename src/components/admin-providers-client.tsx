@@ -102,8 +102,8 @@ const endpointOptions: Array<{ value: EndpointType; label: string }> = [
   { value: "images-edits", label: "OpenAI-compatible images/edits (multipart)" },
   { value: "chat-completions", label: "OpenAI-compatible chat/completions" },
   { value: "videos-generations", label: "OpenAI-compatible videos/generations" },
-  { value: "volcengine-imagex-upscale", label: "火山 ImageX（图片高清）" },
-  { value: "volcengine-vod-upscale", label: "火山 VOD（视频高清）" },
+  { value: "volcengine-imagex-upscale", label: "火山 ImageX（图片高清增强）" },
+  { value: "volcengine-vod-upscale", label: "火山 VOD（视频高清增强）" },
 ];
 
 function endpointOptionsFor(provider: EditableProvider) {
@@ -148,8 +148,8 @@ const modelLabels: Record<ModelKind, string> = {
   image: "图片生成",
   imageEdit: "图片编辑",
   video: "视频生成",
-  imageUpscale: "图片高清",
-  videoUpscale: "视频高清",
+  imageUpscale: "图片高清增强",
+  videoUpscale: "视频高清增强",
 };
 
 function healthStatusLabel(status: HealthStatus) {

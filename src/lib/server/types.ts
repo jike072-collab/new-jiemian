@@ -7,8 +7,7 @@ export type EndpointType =
   | "videos-generations"
   | "grok-videos"
   | "volcengine-imagex-upscale"
-  | "volcengine-vod-upscale"
-  | "upscale-placeholder";
+  | "volcengine-vod-upscale";
 
 export type ProviderConfig = {
   id: string;
