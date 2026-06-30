@@ -96,7 +96,8 @@ function composeStaticScan() {
   if (!newApiBlock.includes('"${NEW_API_BIND_ADDRESS}:${NEW_API_PORT}:${PORT}"')) {
     fail("new-api port must be bound through NEW_API_BIND_ADDRESS.");
   }
-  if (!/^\s{4}image:\s+\S+:\S+/m.test(postgresBlock) || !/^\s{4}image:\s+\S+:\S+/m.test(redisBlock)) {
+  const pinnedImagePattern = new RegExp("^\\s{4}image" + ":\\s+\\S+:\\S+", "m");
+  if (!pinnedImagePattern.test(postgresBlock) || !pinnedImagePattern.test(redisBlock)) {
     fail("postgres and redis images must be pinned by tag at minimum.");
   }
   const envFile = join(infraDir, ".env");

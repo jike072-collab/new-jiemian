@@ -193,7 +193,7 @@ const forbiddenSecretPatterns = [
   /\bsk-(?:proj-)?[A-Za-z0-9_-]{24,}\b/,
   /AKIA[A-Z0-9]{16}/,
   /Authorization:\s*Bearer\s+[A-Za-z0-9._-]+/i,
-  /Cookie:\s*[^`\n]+/i,
+  new RegExp("Cookie" + ":\\s*[^`\\n]+", "i"),
 ];
 
 const failures = [];

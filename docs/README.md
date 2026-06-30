@@ -12,6 +12,7 @@ development computer and is not deployed to the server.
 - [PORT_RELEASE_WORKFLOW.md](PORT_RELEASE_WORKFLOW.md): 3107-to-3106 release boundary.
 - [ENVIRONMENT_VARIABLES.md](ENVIRONMENT_VARIABLES.md): active environment variable contract.
 - [SERVER_PREPARATION_BASELINE.md](SERVER_PREPARATION_BASELINE.md): server-preparation branch baseline.
+- [SERVER_PREPARATION_FINAL_AUDIT.md](SERVER_PREPARATION_FINAL_AUDIT.md): final repository audit before local 3107 validation.
 - [STUDIO_REGRESSION_GUARDS.md](STUDIO_REGRESSION_GUARDS.md): provider-safe UI/API regression guardrails.
 - [PROVIDER_HEALTH_CHECKS.md](PROVIDER_HEALTH_CHECKS.md): provider health behavior and redaction boundary.
 - [ERROR_DIAGNOSTICS.md](ERROR_DIAGNOSTICS.md): safe error diagnostics.
@@ -32,6 +33,7 @@ development computer and is not deployed to the server.
 - [SERVER_BACKUP_AND_RESTORE.md](SERVER_BACKUP_AND_RESTORE.md): 60GB single-server backup and restore policy.
 - [PROTECTED_DEPLOY_3106_RUNBOOK.md](PROTECTED_DEPLOY_3106_RUNBOOK.md): no-touch protected deployment planning.
 - [SERVER_PREPARATION_BASELINE.md](SERVER_PREPARATION_BASELINE.md): current production-preparation baseline.
+- [SERVER_PREPARATION_FINAL_AUDIT.md](SERVER_PREPARATION_FINAL_AUDIT.md): final audit status before local 3107 and server gates.
 
 ## MIGRATION
 

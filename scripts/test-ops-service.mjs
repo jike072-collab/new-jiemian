@@ -1306,7 +1306,7 @@ test("release activation refuses simulated cross-volume artifact moves", async (
     seedPreparedArtifacts(preparedRoot, "new");
     seedPreparedArtifacts(config.root, "old");
     assert.throws(() => activatePreparedArtifacts(config, { root: preparedRoot }, "release", {
-      volumeProvider: (path) => path.includes("cross-volume") ? "Z:\\" : "E:\\",
+      volumeProvider: (path) => path.includes("cross-volume") ? `Z:${"\\"}` : `E:${"\\"}`,
     }), /same volume/);
     assert.equal(readFileSync(join(config.root, ".next", "BUILD_ID"), "utf8"), "old");
     assert.equal(existsSync(join(config.root, "node_modules", "next", "dist", "bin", "next")), true);

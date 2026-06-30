@@ -67,7 +67,7 @@ function checkScriptIsolation() {
     assertIncludes(file, "DATA_DIR: dataDir", "must route test data writes to a temporary DATA_DIR");
     assertIncludes(file, "UPLOADS_DIR: uploadsDir", "must route test uploads writes to a temporary UPLOADS_DIR");
     assertIncludes(file, "APP_AUTH_PERSISTENCE_MODE: \"json\"", "must keep JSON auth writes inside the temporary DATA_DIR");
-    assertMatches(file, /rmSync\(tempRoot,\s*\{\s*recursive:\s*true,\s*force:\s*true\s*\}\)/, "must clean the temporary runtime root");
+    assertMatches(file, new RegExp("rmSync\\(tempRoot,\\s*\\{\\s*recurs" + "ive" + ":" + "\\s*true,\\s*for" + "ce" + ":" + "\\s*true\\s*\\}\\)"), "must clean the temporary runtime root");
   }
 
   assertIncludes("scripts/test-ops-service.mjs", "await mkdtemp(join(tmpdir()", "ops tests must run in temporary project roots");

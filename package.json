@@ -84,6 +84,7 @@
     "check:studio-api-contracts": "node scripts/check-studio-api-contracts.mjs",
     "test:ops": "node scripts/test-ops-service.mjs && node scripts/test-active-release-atomic.mjs && node scripts/test-storage-capacity.mjs",
     "test:rollback-drill": "node scripts/test-full-rollback-drill.mjs",
+    "test:local-production-readiness": "node scripts/test-local-production-readiness.mjs",
     "service:status": "node scripts/ops/service-status.mjs",
     "service:health": "node scripts/ops/health-check.mjs",
     "service:start:staging": "node scripts/ops/start-service.mjs staging",

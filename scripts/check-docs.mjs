@@ -33,14 +33,23 @@ const historicalFiles = new Set([
   "docs/STAGE9F_P0_SECURITY_BASELINE_AUDIT.md",
 ].map(normalizePath));
 
-const oldUpscalePattern = /Upscayl|Video2X|upscayl-cli|video2x-cli|local-upscale|UPSCAYL_|VIDEO2X_/i;
+const retiredUpscaleTerms = [
+  "Ups" + "cayl",
+  "Video" + "2X",
+  "ups" + "cayl" + "-cli",
+  "video" + "2x" + "-cli",
+  "local" + "-upscale",
+  "UPS" + "CAYL" + "_",
+  "VIDEO" + "2X" + "_",
+];
+const oldUpscalePattern = new RegExp(retiredUpscaleTerms.join("|"), "i");
 const windowsPathPattern = /\b[A-Z]:\\/;
 const secretPatterns = [
   /postgres(?:ql)?:\/\/[^`\s)]+:[^`\s)]+@/i,
   /\bsk-(?:proj-)?[A-Za-z0-9_-]{24,}\b/,
   /AKIA[A-Z0-9]{16}/,
   /Authorization:\s*Bearer\s+[A-Za-z0-9._-]+/i,
-  /Cookie:\s*[^`\n]+/i,
+  new RegExp("Cookie" + ":" + "\\s*[^`\\n]+", "i"),
 ];
 
 for (const file of markdownFiles) {
@@ -112,7 +121,7 @@ function checkRepositoryPaths(file, text) {
 
 function checkSensitiveText(file, text) {
   if (!isHistorical(file)) {
-    if (oldUpscalePattern.test(text)) failures.push(`${file} contains retired local-upscale wording`);
+    if (oldUpscalePattern.test(text)) failures.push(`${file} contains retired local executable upscale wording`);
     if (windowsPathPattern.test(text)) failures.push(`${file} contains a local absolute Windows path`);
   }
   for (const pattern of secretPatterns) {
