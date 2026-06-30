@@ -56,9 +56,13 @@ export function MediaCard({
   onMediaMissing?: () => void;
 }) {
   const media = item.output;
-  const hasMediaUrl = Boolean(media?.url) && !mediaMissing;
+  const mediaExpired = Boolean(item.expired);
+  const unavailable = mediaMissing || mediaExpired;
+  const hasMediaUrl = Boolean(media?.url) && !unavailable;
   const typeLabel = libraryModeLabel(item);
   const createdAt = formatDateTime(item.createdAt);
+  const expiresAt = item.expiredAt || item.expiresAt;
+  const expiryText = expiresAt ? `${mediaExpired ? "已过期" : "过期"} ${formatDateTime(expiresAt)}` : "";
   const dimensionText = libraryDimensions(item);
   const scaleText = typeof item.params.scale === "number" || typeof item.params.scale === "string"
     ? `${item.params.scale}x`
@@ -69,7 +73,7 @@ export function MediaCard({
   const showActions = large && !compact;
   const showMediaControls = large;
   const showBody = !compact;
-  const statusBadge = mediaMissing ? "文件失效" : libraryStatusBadgeLabel(item.status);
+  const statusBadge = mediaExpired ? "已过期" : mediaMissing ? "文件失效" : libraryStatusBadgeLabel(item.status);
   return (
     <article className={cn("studio-media-card", compact && "is-compact")}>
       <div className={cn("studio-media-card__frame", large && "is-large")}>
@@ -80,9 +84,9 @@ export function MediaCard({
           <video src={media.url} controls={showMediaControls} preload="metadata" onError={onMediaMissing} />
         ) : null}
         {!hasMediaUrl ? (
-          <div className={cn("studio-media-card__missing", mediaMissing && "is-missing")}>
+          <div className={cn("studio-media-card__missing", unavailable && "is-missing")}>
             <AlertTriangle className="size-5" aria-hidden="true" />
-            <span>{mediaMissing ? "文件失效" : libraryStatusLabel(item.status)}</span>
+            <span>{mediaExpired ? "文件已过期" : mediaMissing ? "文件失效" : libraryStatusLabel(item.status)}</span>
           </div>
         ) : null}
         {!large && item.type === "video" && hasMediaUrl ? (
@@ -106,10 +110,12 @@ export function MediaCard({
           {scaleText ? <span>{scaleText}</span> : null}
           {dimensionText ? <span>{dimensionText}</span> : null}
           {fileSizeText ? <span>{fileSizeText}</span> : null}
+          {expiryText ? <span>{expiryText}</span> : null}
         </div>
         {large && item.error ? <p>{item.error}</p> : null}
-        {mediaMissing ? <p className="studio-inline-error" role="alert">结果文件不存在，作品记录仍保留，可刷新或删除。</p> : null}
-        {showActions && media?.url && !mediaMissing ? (
+        {mediaExpired ? <p className="studio-inline-error" role="alert">文件已超过保存期限，作品记录仍保留，可删除记录。</p> : null}
+        {!mediaExpired && mediaMissing ? <p className="studio-inline-error" role="alert">结果文件不存在，作品记录仍保留，可刷新或删除。</p> : null}
+        {showActions && media?.url && !unavailable ? (
           <div className="studio-media-card__actions">
             <a href={media.url} target="_blank" rel="noreferrer">
               <ExternalLink className="size-4" aria-hidden="true" />

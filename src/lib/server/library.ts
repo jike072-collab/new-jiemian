@@ -22,6 +22,7 @@ import {
 } from "./database/stage9cb-flags";
 import type { RemoteMediaKind } from "../upload-limits";
 import { assertBufferLengthAllowed, assertContentLengthAllowed } from "./media-upload-guard";
+import { attachMediaRetentionMetadata } from "../media-retention";
 
 const libraryPath = join(dataRoot, "library.json");
 const jobsPath = join(dataRoot, "jobs.json");
@@ -106,18 +107,46 @@ function isOwnedBy(item: LibraryItem, ownerLocalUserId: string) {
   return item.ownerLocalUserId === ownerLocalUserId;
 }
 
+function withRetentionMetadata(item: LibraryItem) {
+  return attachMediaRetentionMetadata(item);
+}
+
+function applyLibraryItemPatch(item: LibraryItem, patch: Partial<LibraryItem>, updatedAt: string) {
+  const completedAt = patch.status === "done" && item.status !== "done" && !patch.completedAt && !item.completedAt
+    ? updatedAt
+    : patch.completedAt;
+  return {
+    ...item,
+    ...patch,
+    ...(completedAt ? { completedAt } : {}),
+    updatedAt,
+  };
+}
+
+async function updateLibraryItemFile(id: string, patch: Partial<LibraryItem>, updatedAt = new Date().toISOString()) {
+  return serializeWrite("library", async () => {
+    const items = await readLibraryFile();
+    const next = items.map((item) => (
+      item.id === id ? applyLibraryItemPatch(item, patch, updatedAt) : item
+    ));
+    await saveLibrary(next);
+    return next.find((item) => item.id === id) || null;
+  });
+}
+
 export async function readLibrary() {
   const flags = getStage9cbDatabaseIntegrationFlags();
   if (shouldReadLibraryFromDatabase(flags)) {
-    return getDatabaseAdapter().readLibrary();
+    return (await getDatabaseAdapter().readLibrary()).map(withRetentionMetadata);
   }
 
   const items = await readLibraryFile();
   const withFileState = await Promise.all(items.map(async (item) => {
-    if (!item.output?.storedName) return item;
+    const withRetention = withRetentionMetadata(item);
+    if (!withRetention.output?.storedName) return withRetention;
     return {
-      ...item,
-      fileAvailable: await storedFileExists(item.output.storedName),
+      ...withRetention,
+      fileAvailable: await storedFileExists(withRetention.output.storedName),
     };
   }));
   return withFileState.sort((a, b) => b.createdAt.localeCompare(a.createdAt));
@@ -138,6 +167,7 @@ export async function addLibraryItem(input: Omit<LibraryItem, "id" | "createdAt"
     id: randomUUID(),
     createdAt: now,
     updatedAt: now,
+    ...(input.status === "done" && !input.completedAt ? { completedAt: now } : {}),
   };
   await serializeWrite("library", async () => {
     const items = await readLibraryFile();
@@ -150,23 +180,41 @@ export async function addLibraryItem(input: Omit<LibraryItem, "id" | "createdAt"
 }
 
 export async function updateLibraryItem(id: string, patch: Partial<LibraryItem>) {
-  return serializeWrite("library", async () => {
-    const items = await readLibraryFile();
-    const next = items.map((item) => (
-      item.id === id ? { ...item, ...patch, updatedAt: new Date().toISOString() } : item
-    ));
-    await saveLibrary(next);
-    const updated = next.find((item) => item.id === id) || null;
-    if (updated && shouldWriteLibraryToDatabase(getStage9cbDatabaseIntegrationFlags())) {
-      void scheduleLibraryShadowWrite({
-        operation: "updateLibraryItem",
-        id,
-        patch,
-        nextItem: updated,
-      }, { adapter: getDatabaseAdapter() });
+  const updated = await updateLibraryItemFile(id, patch);
+  if (updated && shouldWriteLibraryToDatabase(getStage9cbDatabaseIntegrationFlags())) {
+    void scheduleLibraryShadowWrite({
+      operation: "updateLibraryItem",
+      id,
+      patch,
+      nextItem: updated,
+    }, { adapter: getDatabaseAdapter() });
+  }
+  return updated;
+}
+
+export async function expireLibraryItemMedia(item: LibraryItem, expiredAt: string) {
+  const patch: Partial<LibraryItem> = {
+    output: undefined,
+    expired: true,
+    expiredAt,
+    expiresAt: expiredAt,
+    fileAvailable: false,
+  };
+  const nextItem: LibraryItem = {
+    ...item,
+    ...patch,
+    updatedAt: expiredAt,
+  };
+  const updated = await updateLibraryItemFile(item.id, patch, expiredAt);
+  const persisted = updated || nextItem;
+  const flags = getStage9cbDatabaseIntegrationFlags();
+  if (shouldWriteLibraryToDatabase(flags)) {
+    const databaseUpdated = await getDatabaseAdapter().updateLibraryItem(item.id, patch, persisted);
+    if (!databaseUpdated) {
+      throw new LibraryOperationError(500, "作品过期状态同步失败。");
     }
-    return updated;
-  });
+  }
+  return persisted;
 }
 
 export async function deleteLibraryItem(id: string) {

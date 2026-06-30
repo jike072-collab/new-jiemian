@@ -84,6 +84,10 @@ export type LibraryItem = {
   status: "done" | "queued" | "generating" | "failed";
   createdAt: string;
   updatedAt: string;
+  completedAt?: string;
+  expiresAt?: string;
+  expired?: boolean;
+  expiredAt?: string;
   output?: LibraryOutput;
   params: Record<string, string | number | boolean>;
   error?: string;
