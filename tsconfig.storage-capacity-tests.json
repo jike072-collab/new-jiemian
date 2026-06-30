@@ -1,0 +1,23 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "noEmit": false,
+    "outDir": "dist/storage-capacity-tests",
+    "module": "NodeNext",
+    "moduleResolution": "NodeNext",
+    "target": "ES2022",
+    "lib": ["ES2022", "DOM", "DOM.Iterable"],
+    "types": ["node"],
+    "incremental": false,
+    "isolatedModules": false
+  },
+  "include": [
+    "src/lib/storage-capacity-policy.ts",
+    "src/lib/error-diagnostic-catalog.ts",
+    "src/lib/server/error-diagnostics.ts",
+    "src/lib/server/runtime-paths.ts",
+    "src/lib/server/paths.ts",
+    "src/lib/server/storage-capacity.ts",
+    "src/lib/server/__tests__/storage-capacity.test.ts"
+  ]
+}

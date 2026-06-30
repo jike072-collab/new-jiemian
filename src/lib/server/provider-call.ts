@@ -13,6 +13,7 @@ import {
   assertFileFormatAllowed,
   assertFileSizeAllowed,
 } from "./media-upload-guard";
+import { assertStorageAllows, isStorageCapacityError } from "./storage-capacity";
 import { getTaskBillingService } from "./quota";
 import { jimengVideoOptionsForModel, providerById } from "./providers";
 import { type JobRecord, type LibraryItem, type ProviderConfig } from "./types";
@@ -366,6 +367,7 @@ async function outputToLibraryFromAuthenticatedUrl(provider: ProviderConfig, url
   if (!response.ok) throw new Error(`下载视频结果失败：HTTP ${response.status}`);
   const mimeType = response.headers.get("content-type") || "video/mp4";
   assertContentLengthAllowed(response.headers.get("content-length"), "video");
+  await assertStorageAllows("video-media-write", { fresh: true });
   const bytes = Buffer.from(await response.arrayBuffer());
   assertBufferLengthAllowed(bytes.length, "video");
   return storeBytes(bytes, mimeType, prefix);
@@ -523,6 +525,7 @@ async function callImageProvider({
 }
 
 async function outputToLibrary(output: ProviderOutput, type: "image" | "video", prefix: string) {
+  await assertStorageAllows(type === "video" ? "video-media-write" : "image-media-write", { fresh: true });
   if (output.base64) {
     const stored = await storeBytes(
       Buffer.from(output.base64.replace(/^data:[^;]+;base64,/i, ""), "base64"),
@@ -535,7 +538,8 @@ async function outputToLibrary(output: ProviderOutput, type: "image" | "video", 
   if (output.url.startsWith("data:")) return storeDataUrl(output.url, prefix);
   try {
     return await storeRemoteUrl(output.url, prefix, output.mimeType || (type === "image" ? "image/png" : "video/mp4"));
-  } catch {
+  } catch (error) {
+    if (isStorageCapacityError(error)) throw error;
     return {
       url: output.url,
       mimeType: output.mimeType || (type === "image" ? "image/png" : "video/mp4"),
@@ -679,6 +683,7 @@ export async function generateImage(input: {
     estimatedQuotaUnits,
   });
   try {
+    await assertStorageAllows("image-generation");
     const readyProvider = assertProviderReady(provider, "image", "MODEL_MISSING_IMAGE");
     if (!input.prompt.trim()) throw new GenerationDiagnosticError({ code: "INPUT_MISSING_PROMPT", providerId: readyProvider.id, model: readyProvider.model });
     if (input.mode === "image-to-image" && !input.files.length) {
@@ -790,6 +795,7 @@ export async function submitVideo(input: {
     estimatedQuotaUnits,
   });
   try {
+    await assertStorageAllows("video-generation", { fresh: true });
     if (!input.prompt.trim()) throw new GenerationDiagnosticError({ code: "INPUT_MISSING_PROMPT", providerId: provider?.id, model: provider?.model });
     if (input.mode === "text-to-video" && input.files.length) {
       throw new GenerationDiagnosticError({ code: "INPUT_INVALID_PARAMETERS", providerId: provider?.id, model: provider?.model });
@@ -1094,9 +1100,16 @@ export async function refreshVideoJob(jobId: string, localUserId?: string | null
   });
 }
 
-export async function uploadedMediaFromForm(form: FormData, fieldName = "files") {
+export async function uploadedMediaFromForm(
+  form: FormData,
+  fieldName = "files",
+  operation: "reference-image-upload" | "video-generation-upload" = "reference-image-upload",
+) {
   const files = form.getAll(fieldName).filter((value): value is File => value instanceof File && value.size > 0);
   if (files.length > 10) throw new Error("最多上传 10 张参考图片。");
+  if (operation === "video-generation-upload" && files.length) {
+    await assertStorageAllows("video-upload", { fresh: true });
+  }
   for (const file of files) {
     assertFileSizeAllowed(file, "reference-image");
     await assertFileFormatAllowed(file, "reference-image");

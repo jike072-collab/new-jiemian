@@ -13,6 +13,7 @@ import {
 import { codeForUpstreamStatus, GenerationDiagnosticError } from "./error-diagnostics";
 import { assertFileFormatAllowed, assertFileSizeAllowed, publicUploadLimits } from "./media-upload-guard";
 import { providerById } from "./providers";
+import { assertStorageAllows } from "./storage-capacity";
 import { type JobRecord, type ProviderConfig } from "./types";
 
 export type UploadedUpscaleFile = {
@@ -449,6 +450,7 @@ async function imageResourceUrl(objectKey: string, config: ReturnType<typeof ima
 }
 
 export async function upscaleImage(file: UploadedUpscaleFile, scale: TargetScale, ownerLocalUserId?: string | null) {
+  await assertStorageAllows("image-upscale");
   const provider = await providerById("image-upscale");
   const status = providerReady(provider, "image");
   if (!provider) throw new GenerationDiagnosticError({ code: "PROVIDER_NOT_CONFIGURED" });
@@ -585,6 +587,7 @@ async function uploadVideoToVod(file: UploadedUpscaleFile, config: ReturnType<ty
 }
 
 export async function submitVideoUpscale(file: UploadedUpscaleFile, scale: TargetScale, ownerLocalUserId?: string | null) {
+  await assertStorageAllows("video-upscale", { fresh: true });
   const provider = await providerById("video-upscale");
   const status = providerReady(provider, "video");
   if (!provider) throw new GenerationDiagnosticError({ code: "PROVIDER_NOT_CONFIGURED" });
@@ -785,6 +788,9 @@ export async function uploadedUpscaleFile(
   if (!(value instanceof File) || value.size === 0) throw new GenerationDiagnosticError({ code: "UPLOAD_NOT_FOUND" });
   const uploadKind = kind === "image" ? "image-upscale" : "video-upscale";
   assertFileSizeAllowed(value, uploadKind);
+  if (kind === "video") {
+    await assertStorageAllows("video-upload", { fresh: true });
+  }
   const mimeType = await assertFileFormatAllowed(value, uploadKind);
   return {
     bytes: Buffer.from(await value.arrayBuffer()),

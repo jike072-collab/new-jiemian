@@ -23,6 +23,7 @@ import {
 import type { RemoteMediaKind } from "../upload-limits";
 import { assertBufferLengthAllowed, assertContentLengthAllowed } from "./media-upload-guard";
 import { attachMediaRetentionMetadata } from "../media-retention";
+import { assertStorageAllows } from "./storage-capacity";
 
 const libraryPath = join(dataRoot, "library.json");
 const jobsPath = join(dataRoot, "jobs.json");
@@ -320,6 +321,8 @@ export function extensionForMime(mimeType: string, fallback = ".bin") {
 
 export async function storeBytes(bytes: Buffer, mimeType: string, prefix: string) {
   await ensureRuntimeDirs();
+  const kind = remoteMediaKind(mimeType, prefix);
+  await assertStorageAllows(kind === "video" ? "video-media-write" : "image-media-write", { fresh: true });
   const storedName = safeStoredName(`${prefix}-${randomUUID()}${extensionForMime(mimeType)}`);
   const target = resolveUploadPath(storedName);
   await writeFile(target, bytes);
@@ -334,15 +337,19 @@ export async function storeBytes(bytes: Buffer, mimeType: string, prefix: string
 export async function storeDataUrl(dataUrl: string, prefix: string) {
   const match = dataUrl.match(/^data:([^;]+);base64,([\s\S]+)$/i);
   if (!match) throw new Error("供应商返回了无效的 data URL。");
+  await assertStorageAllows(remoteMediaKind(match[1], prefix) === "video" ? "video-media-write" : "image-media-write", { fresh: true });
   return storeBytes(Buffer.from(match[2], "base64"), match[1], prefix);
 }
 
 export async function storeRemoteUrl(url: string, prefix: string, fallbackMime: string) {
+  const initialKind = remoteMediaKind(fallbackMime, prefix);
+  await assertStorageAllows(initialKind === "video" ? "video-media-write" : "image-media-write", { fresh: true });
   const response = await fetch(url, { signal: AbortSignal.timeout(180000) });
   if (!response.ok) throw new Error(`下载生成结果失败：HTTP ${response.status}`);
   const mimeType = response.headers.get("content-type") || fallbackMime;
   const kind = remoteMediaKind(mimeType, prefix);
   assertContentLengthAllowed(response.headers.get("content-length"), kind);
+  await assertStorageAllows(kind === "video" ? "video-media-write" : "image-media-write", { fresh: true });
   const bytes = Buffer.from(await response.arrayBuffer());
   assertBufferLengthAllowed(bytes.length, kind);
   return storeBytes(bytes, mimeType, prefix);

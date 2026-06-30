@@ -27,7 +27,7 @@ export async function POST(request: NextRequest) {
       prompt: String(form.get("prompt") || ""),
       ratio: String(form.get("ratio") || "16:9"),
       duration: Number.isFinite(duration) ? duration : 5,
-      files: await uploadedMediaFromForm(form),
+      files: await uploadedMediaFromForm(form, "files", "video-generation-upload"),
       billingLocalUserId: session.user.local_user_id,
       billingTaskId: String(form.get("taskId") || form.get("billingTaskId") || ""),
       billingIdempotencyKey: String(form.get("idempotencyKey") || form.get("billingIdempotencyKey") || ""),
