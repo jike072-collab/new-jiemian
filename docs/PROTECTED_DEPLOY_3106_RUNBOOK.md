@@ -208,7 +208,7 @@ Pre-gate:
 Allowed to continue:
 
 - Disk and inode thresholds pass.
-- App, Nginx, PM2/systemd, and backup logs have rotation.
+- App, Nginx, systemd journal, and backup logs have rotation.
 - Alert owner and alert path are known.
 
 Stop if:

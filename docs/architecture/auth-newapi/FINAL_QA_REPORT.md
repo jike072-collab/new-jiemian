@@ -455,7 +455,7 @@ Image validation:
 
 - Original configured image endpoint returned Provider HTTP `524`.
 - The test Provider key was then checked against
-  `https://api.manxiaobai.online/v1/models`; it only returned
+  `https://provider.example.invalid/v1/models`; it only returned
   `grok-video-1.0` and `grok-video-1.5`.
 - A real image attempt against `gpt-image-2` returned
   `This token has no access to model gpt-image-2`.

@@ -66,9 +66,10 @@ Codex must not automatically merge `main`, deploy 3106, deploy 3107, operate ser
 - Image upscale uses Volcengine ImageX.
 - Video upscale uses Volcengine VOD.
 - Image upload validation allows PNG, JPEG, and WebP up to 10 MB.
-- Video upload validation allows MP4, WebM, and QuickTime up to 1 GB.
-- Old local executable upscale provider values are compatible only when reading legacy provider configuration and are normalized to the current Volcengine endpoint types.
-- This baseline module does not change upscale code, upload limits, cleanup logic, or deployment scripts.
+- Video upload validation allows MP4, WebM, and QuickTime up to 200 MiB by default.
+- Retired local executable upscale provider values are compatible only when
+  reading legacy provider configuration and are normalized to the current
+  Volcengine endpoint types.
 
 ## Existing Test Commands
 
@@ -98,14 +99,22 @@ npm run test:ops
 npm run test:rollback-drill
 ```
 
-## Pre-Launch Issues To Resolve
+## Baseline Issues And Current Status
 
-- Old upscale documentation: historical local executable upscale notes must stay archived and must not describe the current implementation.
-- 1 GB video memory risk: current video upscale upload parsing can buffer up to 1 GB in process memory.
-- 24-hour media cleanup: stale temporary cleanup exists for `*.tmp`, but production media retention and 24-hour cleanup policy still need explicit release rules.
-- Disk protection: production needs explicit capacity checks, upload growth controls, and safe handling for large media outputs.
-- Production environment variables: production `ADMIN_PASSWORD`, database settings, provider secrets, storage roots, and release flags must be specified without committing or logging real values.
-- Linux deployment files: server 3106 systemd, Nginx, working directory, artifact path, and restart steps need explicit reviewed files or runbooks.
-- Rate limiting: auth and quota rate-limit paths exist, but production-wide request limits and proxy limits need verification.
-- Backup and restore: PostgreSQL, `data/`, and `uploads/` backup and restore drills must be verified before production deployment.
-- Outdated documentation: docs still mix older local-first, staging, deployment, and upscale wording; release-facing docs need a pass before server work.
+- Old upscale documentation: historical local executable upscale notes are
+  archived and current docs describe Volcengine ImageX/VOD.
+- Video memory risk: the video upload default is now 200 MiB with a 256 MiB
+  hard cap.
+- 24-hour media cleanup: generated media retention defaults to 24 hours and is
+  handled by a separate cleanup task.
+- Disk protection: storage checks now use 70/80/85/90/95 percent thresholds.
+- Production environment variables: production checks validate 3106, loopback
+  binding, strong admin secrets, storage paths, upload limits, retention, disk
+  thresholds, database mode, and enabled provider requirements.
+- Linux deployment files: reviewed templates live under `deploy/linux/`.
+- Rate limiting: single-instance workload and auth/admin rate limits are
+  centralized and documented as in-memory.
+- Backup and restore: the 60GB single-server policy is documented in
+  `docs/SERVER_BACKUP_AND_RESTORE.md`.
+- Outdated documentation: current entry docs now route historical Windows-local
+  notes into `docs/archive/windows-local-environment/`.

@@ -23,7 +23,7 @@ State-changing requests must send:
 
 ```http
 X-CSRF-Token: <token returned by /api/auth/csrf>
-Cookie: aohuang_csrf=<same token>; aohuang_session=<session when present>
+Cookie header: CSRF cookie and optional session cookie
 Content-Type: application/json
 ```
 

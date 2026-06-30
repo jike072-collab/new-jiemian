@@ -1,3 +1,5 @@
+> Historical audit snapshot. This file is retained for cleanup history and does not describe the current 3106 server deployment.
+
 # Cleanup Audit
 
 Date: 2026-06-20

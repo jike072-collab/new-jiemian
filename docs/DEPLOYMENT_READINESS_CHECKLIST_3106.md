@@ -11,9 +11,10 @@ providers, merging PRs, or printing secrets.
 - Documentation branch base: `origin/main`
 - Existing local lane convention:
   - 3106 is the production lane.
-  - 3107 is the staging/test lane.
+  - 3107 is the local development/test lane only.
+  - The server runs only 3106 and must not run 3107.
   - 3106 uses production `data` and `uploads`.
-  - 3107 uses isolated `data-staging` and `uploads-staging`.
+  - local 3107 uses isolated `data-staging` and `uploads-staging`.
 - Existing safe health script calls only:
   - `/`
   - `/login`
@@ -39,6 +40,8 @@ providers, merging PRs, or printing secrets.
 - [ ] Upload body limit is explicitly sized for the product. It must be at
   least the app video upload limit from `src/lib/upload-limits.ts` (`200m` by
   default) and must not silently undercut the app-level validation.
+- [ ] Nginx `client_max_body_size` is slightly above 200MiB and remains below
+  the application hard-cap design.
 - [ ] Long request timeouts are reviewed, but smoke tests still avoid generation
   and provider paths.
 - [ ] Static asset caching does not cache `/api/health/backend` or auth/session
@@ -78,6 +81,11 @@ providers, merging PRs, or printing secrets.
 - [ ] `PORT=3106` is the production port.
 - [ ] `DATA_DIR` and `UPLOADS_DIR` point to approved production paths.
 - [ ] Production and staging storage paths do not overlap.
+- [ ] `MEDIA_VIDEO_UPLOAD_LIMIT_MIB` is `200` or lower.
+- [ ] `MEDIA_RETENTION_HOURS` is `24` unless a separately approved shorter or
+  longer safe value is configured.
+- [ ] Storage thresholds preserve the default order 70/80/85/90/95 or a stricter
+  increasing order.
 - [ ] `APP_DATABASE_URL` and `APP_DATABASE_EXPECTED_NAME` are either both
   production-approved or database-backed mode is not enabled.
 - [ ] `APP_AUTH_PERSISTENCE_MODE`, `APP_BILLING_PERSISTENCE_MODE`, and
@@ -88,22 +96,21 @@ providers, merging PRs, or printing secrets.
 
 ## Process Manager Gate
 
-- [ ] The server uses exactly one primary service manager path.
-- [ ] If systemd is used, the unit file path, user, working directory,
-  environment file, restart policy, and journal/log policy are known.
-- [ ] If PM2 is used, the ecosystem file, app name, interpreter, env file,
-  startup integration, and log paths are known.
-- [ ] systemd and PM2 do not both independently restart the same Node process.
+- [ ] The server uses systemd as the single service manager path.
+- [ ] The unit file path, low-privilege user, working directory, environment
+  file, restart policy, and journal/log policy are known.
+- [ ] No PM2, Docker, WordPress, PHP, full LNMP stack, or Baota process manager
+  starts this app.
 - [ ] The actual 3106 command line is known to the human operator.
 - [ ] No service restart is performed during this documentation phase.
 
 ## Logs And Rotation Gate
 
 - [ ] App log path is known.
-- [ ] Existing repo local production log path is `.runtime/3106-production.log`.
+- [ ] App journal or file log path is known.
 - [ ] Nginx access log path is known.
 - [ ] Nginx error log path is known.
-- [ ] PM2 or systemd journal retention is known.
+- [ ] systemd journal retention is known.
 - [ ] logrotate covers Nginx logs and app logs when file-based logs are used.
 - [ ] Logs are checked for classes of sensitive findings only; do not paste
   secret values.
@@ -116,7 +123,9 @@ providers, merging PRs, or printing secrets.
 - [ ] Backup retention policy is known.
 - [ ] Backup encryption or storage access policy is known.
 - [ ] Backup job owner and schedule are known.
-- [ ] Cron or timer config is reviewed by a human operator.
+- [ ] Backup cron or timer config is reviewed by a human operator.
+- [ ] The hourly media cleanup timer is installed and calls the retention script
+  rather than deleting all media blindly.
 - [ ] Backup success/failure alerting is known.
 - [ ] Restore owner is known.
 - [ ] Restore rehearsal evidence exists or release is stopped.

@@ -1,3 +1,5 @@
+> Historical planning snapshot. This file records earlier 3107 database planning and does not describe the current 3106 server deployment.
+
 # Stage 9E Batch C Dual-Write Canary Rollback Plan
 
 Stage 9E Batch C is planning only. It prepares authorization boundaries for dual-write shadow mode, read-path canary planning, and rollback rehearsal planning.
@@ -32,7 +34,7 @@ Every command in this document is a placeholder. Replace placeholders only in an
 
 Before any Batch C sub-stage is authorized, re-confirm:
 
-- [ ] worktree is `E:\codex工作台\p003\new-jiemian-3107`
+- [ ] worktree is `<local-3107-worktree>`
 - [ ] current branch is the approved execution branch or `main` as specified by the authorization
 - [ ] `main` and `origin/main` are aligned with the latest approved commit
 - [ ] worktree is clean

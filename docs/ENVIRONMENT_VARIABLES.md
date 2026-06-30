@@ -103,4 +103,5 @@ Provider variables are optional until their key is configured or the matching pr
 | `PAYMENT_PRODUCTION_ENABLED` | Production payment gate. | No | Optional | Optional disabled by default | `false` | Boolean | billing config |
 | `PAYMENT_PRODUCTION_WEBHOOK_SECRET` | Production payment webhook secret. | Yes | Optional | Required only if production payment is separately enabled | Empty | Non-empty | billing config |
 
-Deprecated local upscale variables such as `UPSCAYL_*`, `VIDEO2X_*`, `upscayl-cli`, and `video2x-cli` are historical only and must not appear in active runtime config.
+Retired local executable upscale variables are historical only and must not
+appear in active runtime config.

@@ -1,95 +1,90 @@
-# 奥皇 AI
+# Aohuang AI
 
-奥皇 AI 是一个本地优先的图片与视频生成工作台。第一版包含图片生成、视频生成、火山 ImageX/VOD 高清增强和作品库，并提供内置供应商配置后台。
+Aohuang AI is a single-instance image and video generation studio. The current
+implementation includes image generation, image editing, video generation,
+Volcengine ImageX image upscale, Volcengine VOD video upscale, a local media
+library, provider administration, login/session support, quota and billing
+support, and PostgreSQL-ready persistence foundations.
 
-## 功能
+## Runtime Shape
 
-- 图片生成：文生图、图生图/图片编辑
-- 视频生成：文生视频、图生视频
-- 作品库：本地保存、预览、下载、删除生成结果
-- 供应商后台：配置 API 地址、模型、密钥和启用状态
-- 图片高清增强：调用火山 ImageX 进行高清增强
-- 视频高清增强：调用火山 VOD 进行高清增强
+- Node.js 24 is required.
+- Next.js 16 App Router, React 19, TypeScript strict mode, and Tailwind CSS v4.
+- Local 3107 runs only on the development computer for optimization, automated
+  tests, and manual acceptance.
+- 3107 is not deployed to the server and does not need server systemd, Nginx, or
+  server data directories.
+- The Ubuntu production server runs only one 3106 instance behind Nginx.
+- The current workload and rate limits are in-process and are suitable for one
+  app instance, not a multi-instance deployment.
 
-## 本地启动
+## Local 3107
+
+Use the local staging lane for development acceptance:
 
 ```bash
 npm install
-npm run dev
+npm run dev:staging
 ```
 
-访问：
-
-- 前台：`http://localhost:3000`
-- 供应商后台：`http://localhost:3000/admin/providers`
-- 客户登录入口：`http://localhost:3000/login`
-
-## 3106 正式端口与 3107 测试端口
-
-- 3106 是服务器正式环境，服务器最终只运行 3106。
-- 3107 只在当前开发电脑运行，用于代码优化、自动测试和人工验收。
-- 3107 不部署到服务器，也不需要服务器 systemd、Nginx 或数据目录。
-- 新功能和服务器准备改动先在 3107 验证。
-- `main` 代表允许进入正式发布流程的代码，但 Codex 不得自动合并 `main`。
-- 服务器准备改动统一在 `chore/server-production-prep` 完成，每个模块独立 commit 并立即 push。
-- 最终流程是：模块分支开发 -> 本地 3107 测试 -> push GitHub -> 代码审查 -> 合并 `main` -> 服务器部署 3106。
-- 服务器部署不属于 Codex 自动任务。
-- 详细流程见 `docs/PORT_RELEASE_WORKFLOW.md`。
-- 手动测试见 `docs/3107_MANUAL_TEST_CHECKLIST.md`。
-- 部署和数据规划见 `docs/DEPLOYMENT_AND_DATA_PLAN.md`。
-
-## 环境变量
-
-复制 `.env.example` 为 `.env.local`，按需填写。真实 API Key 不要提交到 Git。
-
-```bash
-cp .env.example .env.local
-```
-
-生成结果默认保存到本地 `data/` 和 `uploads/`，这两个目录已被 `.gitignore` 忽略。
-
-运行 3107 测试环境时，建议显式隔离数据目录，避免写入 3106 正式数据：
+The staging example is `.env.example`. It uses:
 
 ```dotenv
 PORT=3107
 DATA_DIR=data-staging
 UPLOADS_DIR=uploads-staging
+RUNTIME_STORAGE_ISOLATION=strict
 ```
 
-3107 启动会强制校验隔离目录；缺少 `DATA_DIR` / `UPLOADS_DIR`，或指向默认 `data/`、`uploads/` 时会拒绝启动。
+Manual acceptance notes live in [3107_MANUAL_TEST_CHECKLIST.md](docs/3107_MANUAL_TEST_CHECKLIST.md).
 
-```bash
-npm run dev:staging
-npm run start:staging
+## Server 3106
+
+Production uses Ubuntu, systemd, Nginx, Node.js 24, and one Next.js service on
+`127.0.0.1:3106`. The server does not run 3107.
+
+Server deployment templates are in [deploy/linux/README.md](deploy/linux/README.md).
+Production environment placeholders are in [.env.production.example](.env.production.example)
+and [deploy/linux/production.env.example](deploy/linux/production.env.example).
+The full variable index is [ENVIRONMENT_VARIABLES.md](docs/ENVIRONMENT_VARIABLES.md).
+
+Deployment is not part of automated Codex module work. The release flow is:
+
+```text
+module branch development -> local 3107 tests -> push GitHub -> code review -> merge main -> manual server deploy to 3106
 ```
 
-未设置 `DATA_DIR` / `UPLOADS_DIR` 时，默认仍使用 `data/` 和 `uploads/`。
+## Data Storage
 
-### Environment references
+- Runtime JSON and metadata default to `DATA_DIR`.
+- Generated and uploaded media files live under `UPLOADS_DIR`.
+- PostgreSQL support exists for application data and release checks, but current
+  library and generation job defaults remain JSON/file-system backed unless the
+  explicit database flags and runtime guard are enabled.
+- Generated media is retained for 24 hours by default and then cleaned by the
+  separate media retention task.
+- Video uploads default to 200MiB; image uploads default to 10MiB.
+- Disk protection defaults to 70/80/85/90/95 percent thresholds.
 
-Current local examples live in `.env.example`. Production placeholders live in
-`.env.production.example`. The complete variable index is
-`docs/ENVIRONMENT_VARIABLES.md`.
+## Upscale Providers
 
-Only variables read by the current application are kept in active templates.
-Old unused project presets and retired local upscale variables are not part of
-the active environment contract.
+Current upscale is cloud-provider based:
 
-## 高清增强配置
+- Image upscale: Volcengine ImageX, endpoint type `volcengine-imagex-upscale`.
+- Video upscale: Volcengine VOD, endpoint type `volcengine-vod-upscale`.
 
-当前图片高清增强使用火山 ImageX，视频高清增强使用火山 VOD。供应商后台中的高清增强配置只接受当前火山 endpoint 类型：
+Retired local executable upscale providers are historical only. Current UI,
+provider saves, and API responses must not write retired local endpoint types.
 
-- 图片高清增强：`volcengine-imagex-upscale`
-- 视频高清增强：`volcengine-vod-upscale`
+## Checks
 
-在 `.env.local` 或供应商后台中按需配置火山 AK/SK、ImageX ServiceId、VOD SpaceName 和输出域名。真实密钥只保存在本地环境或服务端配置中，不提交到 Git，不输出到日志。
-
-旧的本地高清配置只在读取旧 `data/providers.json` 时做一次兼容映射；当前后台保存结果、API 返回和前端选项不会继续写入旧本地类型。
-
-## 检查
+Common local checks:
 
 ```bash
+npm run check:docs
 npm run lint
 npm run typecheck
 npm run build
 ```
+
+For the current documentation map, start with [docs/README.md](docs/README.md).
