@@ -16,6 +16,7 @@ import { type JobRecord, type LibraryItem } from "../types";
 const JOB_REF_PREFIX = "stage9cb-job-ref:";
 const FALLBACK_ASSET_PREFIX = "stage9cb-library-metadata:";
 const EXPIRED_ASSET_PREFIX = "stage9cb-library-expired:";
+const EXPIRATION_PENDING_ASSET_PREFIX = "stage9cb-library-expiration-pending:";
 const UPLOADS_ASSET_PREFIX = "uploads";
 const DB_ID_NAMESPACE = "8b7f2345-3a2a-4b6b-a0a8-111111111111";
 
@@ -107,6 +108,14 @@ function sourceFromLibraryItem(item: LibraryItem) {
 }
 
 function pathOrUrlFromLibraryItem(item: LibraryItem) {
+  if (item.expirationPending) {
+    const payload = Buffer.from(JSON.stringify({
+      id: item.id,
+      storedName: item.expirationPendingStoredName || item.output?.storedName || null,
+      at: item.expirationPendingAt || item.updatedAt,
+    }), "utf8").toString("base64url");
+    return `${EXPIRATION_PENDING_ASSET_PREFIX}${payload}`;
+  }
   if (item.output?.storedName) return [UPLOADS_ASSET_PREFIX, item.output.storedName].join("/");
   if (item.output?.sourceUrl) return item.output.sourceUrl;
   if (item.output?.url) return item.output.url;
@@ -118,6 +127,7 @@ function pathOrUrlFromLibraryItem(item: LibraryItem) {
 }
 
 function assetIdForLibraryItem(item: LibraryItem) {
+  if (item.expirationPending) return uuidFromStableText(`asset:expiration-pending:${item.id}:${item.expirationPendingAt || item.updatedAt}`);
   if (item.output?.storedName) return uuidFromStableText(`asset:stored:${item.output.storedName}`);
   if (item.expired) return uuidFromStableText(`asset:expired:${item.id}:${item.expiredAt || item.updatedAt}`);
   return uuidFromStableText(`asset:library:${item.id}`);
@@ -137,6 +147,7 @@ function outputFromAsset(asset: DatabaseMvpAsset | null): LibraryItem["output"] 
     asset.path_or_url.startsWith(JOB_REF_PREFIX)
     || asset.path_or_url.startsWith(FALLBACK_ASSET_PREFIX)
     || asset.path_or_url.startsWith(EXPIRED_ASSET_PREFIX)
+    || asset.path_or_url.startsWith(EXPIRATION_PENDING_ASSET_PREFIX)
   ) return undefined;
   const storedPrefix = `${UPLOADS_ASSET_PREFIX}/`;
   const storedName = asset.path_or_url.startsWith(storedPrefix) ? asset.path_or_url.slice(storedPrefix.length) : undefined;
@@ -163,9 +174,30 @@ function expiredFromAsset(asset: DatabaseMvpAsset | null) {
   }
 }
 
+function expirationPendingFromAsset(
+  asset: DatabaseMvpAsset | null,
+): Pick<LibraryItem, "expirationPending" | "expirationPendingAt" | "expirationPendingStoredName"> | Record<string, never> {
+  if (!asset?.path_or_url.startsWith(EXPIRATION_PENDING_ASSET_PREFIX)) return {};
+  const encoded = asset.path_or_url.slice(EXPIRATION_PENDING_ASSET_PREFIX.length);
+  try {
+    const parsed = JSON.parse(Buffer.from(encoded, "base64url").toString("utf8")) as {
+      storedName?: unknown;
+      at?: unknown;
+    };
+    return {
+      expirationPending: true as const,
+      ...(typeof parsed.at === "string" ? { expirationPendingAt: parsed.at } : {}),
+      ...(typeof parsed.storedName === "string" ? { expirationPendingStoredName: parsed.storedName } : {}),
+    };
+  } catch {
+    return { expirationPending: true as const };
+  }
+}
+
 function libraryItemFromDatabase(row: DatabaseMvpLibraryItem, asset: DatabaseMvpAsset | null, job: DatabaseMvpGenerationJob | null): LibraryItem {
   const output = outputFromAsset(asset);
   const expired = expiredFromAsset(asset);
+  const expirationPending = expirationPendingFromAsset(asset);
   return {
     id: row.id,
     type: row.kind.includes("video") ? "video" : "image",
@@ -182,7 +214,8 @@ function libraryItemFromDatabase(row: DatabaseMvpLibraryItem, asset: DatabaseMvp
     params: {},
     ...(job?.user_visible_error ? { error: job.user_visible_error } : {}),
     ...expired,
-    fileAvailable: expired.expired ? false : Boolean(output?.storedName || output?.sourceUrl || output?.url),
+    ...expirationPending,
+    fileAvailable: expired.expired || expirationPending.expirationPending ? false : Boolean(output?.storedName || output?.sourceUrl || output?.url),
   };
 }
 

@@ -298,6 +298,42 @@ test("database library adapter can expire local media while preserving audit row
   assert.equal(job.output_asset_id, null);
 });
 
+test("database library adapter represents expiration pending as a non-active media record", async () => {
+  const memory = createMemoryRepository();
+  const adapter = createStage9cbLibraryDatabaseAdapter(memory.repository);
+  const initial = libraryItem({
+    output: {
+      url: "/api/files/result.png",
+      storedName: "result.png",
+      mimeType: "image/png",
+      size: 123,
+    },
+  });
+  const pendingAt = "2026-06-29T00:00:00.000Z";
+  const pending: LibraryItem = {
+    ...initial,
+    expirationPending: true,
+    expirationPendingAt: pendingAt,
+    expirationPendingStoredName: "result.png",
+    fileAvailable: false,
+    updatedAt: pendingAt,
+  };
+
+  await adapter.addLibraryItem(initial);
+  await adapter.updateLibraryItem(initial.id, {
+    expirationPending: true,
+    expirationPendingAt: pendingAt,
+    expirationPendingStoredName: "result.png",
+    fileAvailable: false,
+  }, pending);
+  const [fromDb] = await adapter.readLibrary();
+
+  assert.equal(fromDb.output, undefined);
+  assert.equal(fromDb.expirationPending, true);
+  assert.equal(fromDb.expirationPendingStoredName, "result.png");
+  assert.equal(fromDb.fileAvailable, false);
+});
+
 test("database jobs adapter maps JSON job status to database status and back", async () => {
   const memory = createMemoryRepository();
   const adapter = createStage9cbLibraryDatabaseAdapter(memory.repository);

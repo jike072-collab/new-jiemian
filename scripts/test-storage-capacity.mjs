@@ -58,16 +58,20 @@ try {
 
   const sources = {
     library: read("src/lib/server/library.ts"),
+    remoteMediaDownload: read("src/lib/server/remote-media-download.ts"),
     providerCall: read("src/lib/server/provider-call.ts"),
     volcengineUpscale: read("src/lib/server/volcengine-upscale.ts"),
     health: read("src/lib/server/security/health.ts"),
     packageJson: read("package.json"),
   };
   assert(sources.packageJson.includes("\"ops:storage:check\""), "package scripts must expose ops:storage:check");
-  assertSequence("storeRemoteUrl capacity before remote Buffer allocation", sources.library, [
+  assertSequence("storeRemoteUrl delegates to streamed remote media storage", sources.library, [
+    "storeRemoteUrlStreamed(url, { prefix, fallbackMime })",
+  ]);
+  assertSequence("streamed remote media checks storage before writing", sources.remoteMediaDownload, [
     "assertContentLengthAllowed(response.headers.get(\"content-length\"), kind)",
     "await assertStorageAllows(kind === \"video\" ? \"video-media-write\" : \"image-media-write\", { fresh: true })",
-    "Buffer.from(await response.arrayBuffer())",
+    "writeRemoteResponseToUploads(response, mimeType, kind, options.prefix)",
   ]);
   assertSequence("video generation upload capacity before Buffer allocation", sources.providerCall, [
     "await assertStorageAllows(\"video-upload\", { fresh: true })",

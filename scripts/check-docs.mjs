@@ -51,6 +51,8 @@ const secretPatterns = [
   /Authorization:\s*Bearer\s+[A-Za-z0-9._-]+/i,
   new RegExp("Cookie" + ":" + "\\s*[^`\\n]+", "i"),
 ];
+const legacyProductionPathPattern = /\/srv\/aohuang-ai\/new-jiemian/;
+const nginxHourlyRatePattern = /rate=\d+r\/h\b/;
 
 for (const file of markdownFiles) {
   const text = readFileSync(join(root, file), "utf8");
@@ -58,7 +60,20 @@ for (const file of markdownFiles) {
   checkPackageScripts(file, text);
   checkRepositoryPaths(file, text);
   checkSensitiveText(file, text);
+  checkProductionTemplateConsistency(file, text);
 }
+
+for (const file of [
+  ".env.production.example",
+  "deploy/linux/production.env.example",
+  "deploy/linux/aohuang-ai.service.example",
+  "deploy/linux/aohuang-media-cleanup.service.example",
+  "deploy/linux/nginx-site.conf.example",
+]) {
+  const text = readFileSync(join(root, file), "utf8");
+  checkProductionTemplateConsistency(file, text);
+}
+checkNginxLimitTemplate();
 
 if (failures.length > 0) {
   console.error(JSON.stringify({ ok: false, failures }, null, 2));
@@ -126,6 +141,27 @@ function checkSensitiveText(file, text) {
   }
   for (const pattern of secretPatterns) {
     if (pattern.test(text)) failures.push(`${file} contains a forbidden secret-shaped value`);
+  }
+}
+
+function checkProductionTemplateConsistency(file, text) {
+  if (isHistorical(file)) return;
+  if (legacyProductionPathPattern.test(text)) {
+    failures.push(`${file} contains retired /srv production directory layout`);
+  }
+  if (nginxHourlyRatePattern.test(text)) {
+    failures.push(`${file} contains unsupported nginx hourly rate syntax`);
+  }
+}
+
+function checkNginxLimitTemplate() {
+  const file = "deploy/linux/nginx-site.conf.example";
+  const text = readFileSync(join(root, file), "utf8");
+  const zonePattern = /limit_req_zone\s+\S+\s+zone=([A-Za-z0-9_-]+):\S+\s+rate=\d+r\/[sm]\b/g;
+  const zones = new Set([...text.matchAll(zonePattern)].map((match) => match[1]));
+  const referenced = [...text.matchAll(/limit_req\s+zone=([A-Za-z0-9_-]+)\b/g)].map((match) => match[1]);
+  for (const zone of referenced) {
+    if (!zones.has(zone)) failures.push(`${file} references undefined nginx limit_req zone: ${zone}`);
   }
 }
 

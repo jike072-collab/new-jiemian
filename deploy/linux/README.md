@@ -112,7 +112,13 @@ The Nginx template:
 - keeps API responses uncached
 - caches hashed Next.js static assets
 - blocks dotfiles, `.env`, data, uploads, runtime, and backup paths
-- documents login, admin, and generation rate-limit zones
+- documents login, registration, admin, and generation rate-limit zones with
+  legal `r/m` or `r/s` rates only
+
+Nginx rate limiting is only a coarse IP-based second layer. Keep registration
+near `1r/m` at Nginx and rely on the application limit for the exact 3-per-hour
+rule. The application remains the source of truth for per-user concurrency,
+login failures, registration attempts, and administrator password failures.
 
 Enable HSTS only after HTTPS is confirmed working. The template intentionally
 does not add an aggressive CSP because that can break Next.js resources and blob

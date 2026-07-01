@@ -38,9 +38,9 @@ const productionEnv: EnvPatch = {
   PORT: "3106",
   APP_BIND_HOST: "127.0.0.1",
   ADMIN_PASSWORD: "StrongAdmin#2026",
-  DATA_DIR: "/srv/aohuang-ai/new-jiemian/data",
-  UPLOADS_DIR: "/srv/aohuang-ai/new-jiemian/uploads",
-  RUNTIME_DIR: "/srv/aohuang-ai/new-jiemian/.runtime",
+  DATA_DIR: "/var/lib/aohuang-ai/data",
+  UPLOADS_DIR: "/var/lib/aohuang-ai/uploads",
+  RUNTIME_DIR: "/var/lib/aohuang-ai/runtime",
   AUTH_SESSION_SECRET: "release-test-auth-session-secret-32-chars",
   APP_DATABASE_URL: "postgresql://release_user:release_pass@127.0.0.1:5432/aohuang_app",
   APP_DATABASE_EXPECTED_NAME: "aohuang_app",
@@ -118,7 +118,14 @@ test("production env check rejects wrong production port and public bind address
 test("production env check rejects Windows and temporary production storage paths", () => {
   expectProductionIssue({ DATA_DIR: "C:\\srv\\new-jiemian\\data" }, "DATA_DIR");
   expectProductionIssue({ DATA_DIR: "/tmp/new-jiemian/data" }, "DATA_DIR");
-  expectProductionIssue({ UPLOADS_DIR: "/srv/aohuang-ai/new-jiemian/data/uploads" }, "DATA_DIR/UPLOADS_DIR");
+  expectProductionIssue({ UPLOADS_DIR: "/var/lib/aohuang-ai/data/uploads" }, "DATA_DIR/UPLOADS_DIR");
+});
+
+test("production env check rejects database library read mode until owner mapping is complete", () => {
+  expectProductionIssue({
+    LIBRARY_STORAGE_BACKEND: "database",
+    DATABASE_LIBRARY_READ_ENABLED: "true",
+  }, "DATABASE_LIBRARY_READ_ENABLED");
 });
 
 test("production env check rejects invalid upload caps and media retention", () => {
@@ -308,9 +315,9 @@ test("release preflight rejects missing production configuration", () => {
       PORT: "3106",
       APP_BIND_HOST: "127.0.0.1",
       ADMIN_PASSWORD: "",
-      DATA_DIR: "/srv/aohuang-ai/new-jiemian/data",
-      UPLOADS_DIR: "/srv/aohuang-ai/new-jiemian/uploads",
-      RUNTIME_DIR: "/srv/aohuang-ai/new-jiemian/.runtime",
+      DATA_DIR: "/var/lib/aohuang-ai/data",
+      UPLOADS_DIR: "/var/lib/aohuang-ai/uploads",
+      RUNTIME_DIR: "/var/lib/aohuang-ai/runtime",
       AUTH_SESSION_SECRET: "",
       SESSION_SECRET: "",
       APP_DATABASE_URL: "",

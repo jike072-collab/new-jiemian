@@ -201,15 +201,12 @@ assertSequence("generation image upload validation before Buffer allocation", pr
   "await assertFileFormatAllowed(file, \"reference-image\")",
   "Buffer.from(await file.arrayBuffer())",
 ]);
-assertSequence("authenticated video download bounds before allocation", providerCall, [
-  "assertContentLengthAllowed(response.headers.get(\"content-length\"), \"video\")",
-  "Buffer.from(await response.arrayBuffer())",
-  "assertBufferLengthAllowed(bytes.length, \"video\")",
+assertSequence("authenticated video download delegates to streamed bounded storage", providerCall, [
+  "storeRemoteUrlStreamed(url,",
+  "headers: authHeaders(provider)",
 ]);
-assertSequence("remote library download content-length before allocation", library, [
-  "assertContentLengthAllowed(response.headers.get(\"content-length\"), kind)",
-  "Buffer.from(await response.arrayBuffer())",
-  "assertBufferLengthAllowed(bytes.length, kind)",
+assertSequence("remote library download delegates to streamed bounded storage", library, [
+  "return storeRemoteUrlStreamed(url, { prefix, fallbackMime })",
 ]);
 
 const forbiddenCiBypass = read(".github/workflows/ci.yml");

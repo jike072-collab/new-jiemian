@@ -88,6 +88,9 @@ export type LibraryItem = {
   expiresAt?: string;
   expired?: boolean;
   expiredAt?: string;
+  expirationPending?: boolean;
+  expirationPendingAt?: string;
+  expirationPendingStoredName?: string;
   output?: LibraryOutput;
   params: Record<string, string | number | boolean>;
   error?: string;

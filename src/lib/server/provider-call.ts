@@ -8,12 +8,11 @@ import {
 import { addJob, addLibraryItem, storeBytes, storeDataUrl, storeRemoteUrl, updateJob, updateLibraryItem } from "./library";
 import { codeForUpstreamStatus, GenerationDiagnosticError } from "./error-diagnostics";
 import {
-  assertBufferLengthAllowed,
-  assertContentLengthAllowed,
   assertFileFormatAllowed,
   assertFileSizeAllowed,
 } from "./media-upload-guard";
 import { assertStorageAllows, isStorageCapacityError } from "./storage-capacity";
+import { storeRemoteUrlStreamed } from "./remote-media-download";
 import { getTaskBillingService } from "./quota";
 import { jimengVideoOptionsForModel, providerById } from "./providers";
 import { type JobRecord, type LibraryItem, type ProviderConfig } from "./types";
@@ -359,18 +358,11 @@ async function callGrokVideoProvider(provider: ProviderConfig, input: {
 }
 
 async function outputToLibraryFromAuthenticatedUrl(provider: ProviderConfig, url: string, prefix: string) {
-  const response = await fetch(url, {
-    method: "GET",
+  return storeRemoteUrlStreamed(url, {
+    prefix,
+    fallbackMime: "video/mp4",
     headers: authHeaders(provider),
-    signal: AbortSignal.timeout(180000),
   });
-  if (!response.ok) throw new Error(`下载视频结果失败：HTTP ${response.status}`);
-  const mimeType = response.headers.get("content-type") || "video/mp4";
-  assertContentLengthAllowed(response.headers.get("content-length"), "video");
-  await assertStorageAllows("video-media-write", { fresh: true });
-  const bytes = Buffer.from(await response.arrayBuffer());
-  assertBufferLengthAllowed(bytes.length, "video");
-  return storeBytes(bytes, mimeType, prefix);
 }
 
 function imageEndpoint(provider: ProviderConfig, useEdits: boolean) {

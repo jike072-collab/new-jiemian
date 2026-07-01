@@ -1,9 +1,15 @@
-import { lstat, realpath, stat, unlink } from "node:fs/promises";
-import { basename, relative, resolve, sep } from "node:path";
+import { mkdir, lstat, readdir, realpath, rename, stat, unlink } from "node:fs/promises";
+import { basename, dirname, relative, resolve, sep } from "node:path";
 
 import { mediaCompletedAt, mediaExpiresAt, resolveMediaRetentionHours } from "../media-retention";
 import { ensureRuntimeDirs, resolveUploadPath, safeStoredName, uploadsRoot } from "./paths";
-import { expireLibraryItemMedia, readJobs, readLibrary } from "./library";
+import {
+  clearLibraryItemExpirationPending,
+  expireLibraryItemMedia,
+  markLibraryItemExpirationPending,
+  readJobs,
+  readLibrary,
+} from "./library";
 import type { JobRecord, LibraryItem } from "./types";
 
 type CleanupMode = "dry-run" | "apply";
@@ -46,6 +52,7 @@ type LocalMediaTarget =
   | { ok: false; reason: string; relativePath?: string };
 
 const processingStatuses = new Set(["queued", "generating", "uploading", "running", "processing"]);
+const quarantineDirName = ".retention-quarantine";
 
 export async function cleanupExpiredMedia(options: ExpiredMediaCleanupOptions = {}): Promise<ExpiredMediaCleanupResult> {
   const mode = options.mode || "dry-run";
@@ -95,19 +102,115 @@ export async function cleanupExpiredMedia(options: ExpiredMediaCleanupOptions = 
     if (mode === "dry-run") continue;
 
     try {
-      if (target.exists) {
-        await unlink(target.path);
-        result.deletedFiles += 1;
-      }
-      await expireLibraryItemMedia(item, now.toISOString());
+      const outcome = await expireMediaCandidate(item, target, uploadsRootReal, now.toISOString());
+      result.deletedFiles += outcome.deletedFiles;
       result.expiredItems += 1;
     } catch {
       result.ok = false;
       result.errors.push({ id: item.id, code: "expire_media_failed" });
+      break;
     }
   }
 
   return result;
+}
+
+async function expireMediaCandidate(
+  item: LibraryItem,
+  target: Extract<LocalMediaTarget, { ok: true }>,
+  uploadsRootReal: string,
+  expiredAt: string,
+) {
+  if (!target.exists) {
+    const quarantined = await findQuarantinedMediaFile(item, target, uploadsRootReal);
+    await expireLibraryItemMedia(item, expiredAt);
+    if (quarantined) {
+      await unlink(quarantined);
+      return { deletedFiles: 1 };
+    }
+    return { deletedFiles: 0 };
+  }
+
+  const quarantinePath = await quarantineMediaFile(item, target, uploadsRootReal, expiredAt);
+  let pendingItem: LibraryItem | null = null;
+  try {
+    pendingItem = await markLibraryItemExpirationPending(item, expiredAt, item.output?.storedName || basename(target.path));
+  } catch (error) {
+    await restoreQuarantinedFile(quarantinePath, target.path);
+    throw error;
+  }
+
+  try {
+    const expiredItem = await expireLibraryItemMedia(pendingItem, expiredAt);
+    await unlink(quarantinePath);
+    return { deletedFiles: 1, expiredItem };
+  } catch (error) {
+    const restored = await restoreQuarantinedFile(quarantinePath, target.path);
+    if (pendingItem && restored) {
+      await clearLibraryItemExpirationPending(pendingItem, expiredAt).catch(() => undefined);
+    }
+    throw error;
+  }
+}
+
+async function quarantineMediaFile(
+  item: LibraryItem,
+  target: Extract<LocalMediaTarget, { ok: true }>,
+  uploadsRootReal: string,
+  expiredAt: string,
+) {
+  const safeId = safeStoredName(item.id) || "item";
+  const quarantineRoot = resolve(uploadsRoot, quarantineDirName);
+  await mkdir(quarantineRoot, { recursive: true });
+  const quarantineRootReal = await realpath(quarantineRoot);
+  if (!isSameOrChildPath(quarantineRootReal, uploadsRootReal)) {
+    throw new Error("retention quarantine root escaped uploads root");
+  }
+  const quarantinePath = resolve(quarantineRoot, `${safeId}-${Date.parse(expiredAt) || Date.now()}-${basename(target.path)}`);
+  if (!isSameOrChildPath(quarantinePath, quarantineRoot)) {
+    throw new Error("retention quarantine target escaped quarantine root");
+  }
+  if (dirname(quarantinePath) !== quarantineRoot) {
+    throw new Error("retention quarantine target must stay directly under quarantine root");
+  }
+  await rename(target.path, quarantinePath);
+  return quarantinePath;
+}
+
+async function findQuarantinedMediaFile(
+  item: LibraryItem,
+  target: Extract<LocalMediaTarget, { ok: true }>,
+  uploadsRootReal: string,
+) {
+  if (!item.expirationPending && !item.expirationPendingStoredName) return null;
+  const quarantineRoot = resolve(uploadsRoot, quarantineDirName);
+  let quarantineRootReal;
+  try {
+    quarantineRootReal = await realpath(quarantineRoot);
+  } catch {
+    return null;
+  }
+  if (!isSameOrChildPath(quarantineRootReal, uploadsRootReal)) return null;
+  const safeId = safeStoredName(item.id) || "item";
+  const suffix = `-${basename(target.path)}`;
+  const entries = await readdir(quarantineRoot, { withFileTypes: true }).catch(() => []);
+  for (const entry of entries) {
+    if (!entry.isFile()) continue;
+    if (!entry.name.startsWith(`${safeId}-`) || !entry.name.endsWith(suffix)) continue;
+    const candidate = resolve(quarantineRoot, entry.name);
+    if (!isSameOrChildPath(candidate, quarantineRoot)) continue;
+    return candidate;
+  }
+  return null;
+}
+
+async function restoreQuarantinedFile(quarantinePath: string, originalPath: string) {
+  try {
+    await rename(quarantinePath, originalPath);
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 function isProcessingJob(job: JobRecord) {
@@ -123,7 +226,7 @@ function isExpiredLocalMediaCandidate(
   if (item.expired) return false;
   if (item.status !== "done") return false;
   if (processingItemIds.has(item.id)) return false;
-  if (!item.output?.storedName) return false;
+  if (!item.output?.storedName && !item.expirationPendingStoredName) return false;
   const completedAt = new Date(mediaCompletedAt(item));
   if (Number.isNaN(completedAt.getTime())) return false;
   const expiresAt = mediaExpiresAt(item, retentionHours);
@@ -132,7 +235,7 @@ function isExpiredLocalMediaCandidate(
 }
 
 async function resolveLocalMediaTarget(item: LibraryItem, uploadsRootReal: string): Promise<LocalMediaTarget> {
-  const storedName = item.output?.storedName || "";
+  const storedName = item.output?.storedName || item.expirationPendingStoredName || "";
   const safeName = safeStoredName(storedName);
   const relativePath = safeName ? `UPLOADS_DIR:${sanitizeRelativePath(safeName)}` : undefined;
   if (!safeName || safeName !== storedName) return { ok: false, reason: "invalid_stored_name", relativePath };

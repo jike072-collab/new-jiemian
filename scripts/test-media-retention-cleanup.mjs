@@ -4,13 +4,15 @@ import { spawnSync } from "node:child_process";
 import {
   existsSync,
   mkdtempSync,
+  readdirSync,
+  renameSync,
   readFileSync,
   rmSync,
   symlinkSync,
   writeFileSync,
 } from "node:fs";
 import { mkdir } from "node:fs/promises";
-import { join, resolve } from "node:path";
+import { basename, join, resolve } from "node:path";
 import { tmpdir } from "node:os";
 
 const root = process.cwd();
@@ -27,6 +29,9 @@ try {
   await mkdir(outsideDir, { recursive: true });
 
   writeFileSync(join(uploadsDir, "expired-video.mp4"), "expired-video");
+  writeFileSync(join(uploadsDir, "json-fail.mp4"), "json-fail");
+  writeFileSync(join(uploadsDir, "db-fail.mp4"), "db-fail");
+  writeFileSync(join(uploadsDir, "pending-retry.mp4"), "pending-retry");
   writeFileSync(join(uploadsDir, "fresh-image.png"), "fresh-image");
   writeFileSync(join(uploadsDir, "generating-video.mp4"), "generating-video");
   writeFileSync(join(outsideDir, "outside.mp4"), "outside");
@@ -47,6 +52,24 @@ try {
       type: "image",
       completedAt: hoursAgo(23.9),
       output: output("fresh-image.png", "image/png", 11),
+    }),
+    libraryItem("json-fail", {
+      type: "video",
+      completedAt: hoursAgo(24.2),
+      output: output("json-fail.mp4", "video/mp4", 9),
+    }),
+    libraryItem("db-fail", {
+      type: "video",
+      completedAt: hoursAgo(24.2),
+      output: output("db-fail.mp4", "video/mp4", 7),
+    }),
+    libraryItem("pending-retry", {
+      type: "video",
+      completedAt: hoursAgo(24.2),
+      output: undefined,
+      expirationPending: true,
+      expirationPendingAt: hoursAgo(24.1),
+      expirationPendingStoredName: "pending-retry.mp4",
     }),
     libraryItem("generating-video", {
       type: "video",
@@ -116,6 +139,32 @@ try {
   assertSanitizedOutput(dryRun.stdout + dryRun.stderr);
   assert.equal(existsSync(join(uploadsDir, "expired-video.mp4")), true, "dry-run must not delete expired media");
 
+  const jsonFailure = runCleanup(["--apply", "--confirm-apply"], { AOHUANG_TEST_FAIL_LIBRARY_UPDATE_ID: "json-fail" });
+  assert.notEqual(jsonFailure.status, 0, "JSON update failure must fail cleanup");
+  const jsonFailureOutput = parseJson(jsonFailure.stdout);
+  assert.equal(existsSync(join(uploadsDir, "json-fail.mp4")), true, "JSON failure must restore file to original location");
+  assertActivePointsToExistingFile(readLibrary(), uploadsDir);
+  assertNoQuarantineFiles(uploadsDir, "json-fail");
+  assertExpired(readLibrary(), "expired-video");
+  markUnexpired("json-fail");
+
+  const dbFailure = runCleanup(["--apply", "--confirm-apply"], {
+    LIBRARY_STORAGE_BACKEND: "database",
+    DATABASE_LIBRARY_DUAL_WRITE: "true",
+    AOHUANG_TEST_FAIL_EXPIRATION_PENDING_DATABASE: "db-fail",
+  });
+  assert.notEqual(dbFailure.status, 0, "database failure must fail cleanup");
+  assert.equal(existsSync(join(uploadsDir, "db-fail.mp4")), true, "database failure must restore file to original location");
+  assertActivePointsToExistingFile(readLibrary(), uploadsDir);
+  assertNoQuarantineFiles(uploadsDir, "db-fail");
+  markUnexpired("db-fail");
+
+  const pendingOriginal = join(uploadsDir, "pending-retry.mp4");
+  const quarantineDir = join(uploadsDir, ".retention-quarantine");
+  await mkdir(quarantineDir, { recursive: true });
+  const pendingQuarantine = join(quarantineDir, `pending-retry-${Date.now()}-pending-retry.mp4`);
+  renameSync(pendingOriginal, pendingQuarantine);
+
   const missingConfirm = runCleanup(["--apply"]);
   assert.notEqual(missingConfirm.status, 0, "apply without confirmation must fail");
   assert.match(missingConfirm.stderr, /apply_requires_confirmation/);
@@ -124,8 +173,16 @@ try {
   assert.equal(apply.status, 0, outputMessage(apply));
   const applyOutput = parseJson(apply.stdout);
   assert.equal(applyOutput.mode, "apply");
-  assert.equal(applyOutput.deletedFiles, 1, "only the existing expired regular file should be deleted");
-  assert.equal(applyOutput.expiredItems, 2, "expired existing and missing files should converge to expired records");
+  assert.equal(
+    jsonFailureOutput.deletedFiles + applyOutput.deletedFiles,
+    2,
+    "expired existing and pending retry files should be deleted across failed and resumed cleanup runs",
+  );
+  assert.equal(
+    jsonFailureOutput.expiredItems + applyOutput.expiredItems,
+    3,
+    "expired existing, pending retry, and missing files should converge to expired records across cleanup runs",
+  );
   assert.equal(existsSync(join(uploadsDir, "expired-video.mp4")), false);
   assert.equal(existsSync(join(uploadsDir, "fresh-image.png")), true);
   assert.equal(existsSync(join(uploadsDir, "generating-video.mp4")), true);
@@ -135,6 +192,7 @@ try {
   const afterApply = readLibrary();
   assertExpired(afterApply, "expired-video");
   assertExpired(afterApply, "missing-file");
+  assertExpired(afterApply, "pending-retry");
   assertStillAvailable(afterApply, "fresh-image", "fresh-image.png");
   assertStillAvailable(afterApply, "generating-video", "generating-video.mp4");
   assert.equal(afterApply.find((item) => item.id === "external-url")?.output?.url, "https://cdn.example.invalid/result.png");
@@ -164,6 +222,9 @@ try {
     pathEscapeRefused: true,
     symlinkEscapeRefused: symlinkCreated,
     repeatedApplySafe: true,
+    jsonFailureRestored: true,
+    databaseFailureRestored: true,
+    pendingRetryConverged: true,
     invalidRetentionDefaulted: true,
     realRuntimeAccessed: false,
   }, null, 2));
@@ -187,6 +248,7 @@ function libraryItem(id, overrides = {}) {
     updatedAt: overrides.updatedAt || createdAt,
     ...(overrides.completedAt === undefined ? {} : { completedAt: overrides.completedAt }),
     output: overrides.output,
+    ...overrides,
     params: {},
   };
 }
@@ -240,6 +302,22 @@ function readLibrary() {
   return JSON.parse(readFileSync(join(dataDir, "library.json"), "utf8"));
 }
 
+function writeLibrary(items) {
+  writeFileSync(join(dataDir, "library.json"), JSON.stringify(items, null, 2));
+}
+
+function markUnexpired(id) {
+  writeLibrary(readLibrary().map((item) => (
+    item.id === id
+      ? {
+          ...item,
+          completedAt: hoursAgo(23.5),
+          expiresAt: undefined,
+        }
+      : item
+  )));
+}
+
 function assertExpired(items, id) {
   const item = items.find((candidate) => candidate.id === id);
   assert(item, `missing library item ${id}`);
@@ -253,6 +331,24 @@ function assertStillAvailable(items, id, storedName) {
   assert(item, `missing library item ${id}`);
   assert.equal(item.expired, undefined, `${id} should not be marked expired`);
   assert.equal(item.output?.storedName, storedName, `${id} output should be preserved`);
+}
+
+function assertActivePointsToExistingFile(items, uploadsDir) {
+  for (const item of items) {
+    if (item.expired || item.expirationPending) continue;
+    if (item.id === "missing-file") continue;
+    const storedName = item.output?.storedName;
+    if (!storedName) continue;
+    if (storedName !== basename(storedName)) continue;
+    assert.equal(existsSync(join(uploadsDir, storedName)), true, `${item.id} active record points to a missing file`);
+  }
+}
+
+function assertNoQuarantineFiles(uploadsDir, token) {
+  const quarantineDir = join(uploadsDir, ".retention-quarantine");
+  if (!existsSync(quarantineDir)) return;
+  const leftovers = readdirSync(quarantineDir).filter((name) => name.includes(token));
+  assert.deepEqual(leftovers, [], `quarantine still contains files for ${token}`);
 }
 
 function assertSanitizedOutput(outputText) {

@@ -11,7 +11,7 @@
 | Node.js版本 | `v24.16.0` |
 | npm版本 | `11.13.0` |
 | 执行日期 | 2026-07-01 |
-| 最终总体状态 | `COMPLETE_AND_READY_FOR_REVIEW` |
+| 最终总体状态 | `COMPLETE_WITH_KNOWN_ISSUES` |
 
 Evidence was collected before creating this handoff document. The handoff
 document itself is committed afterward as a documentation-only commit.
@@ -567,11 +567,14 @@ Safety confirmations:
 
 ### BLOCKER
 
-None. No repository-level blocker is known for code review.
+No unresolved repository-level blocker is known after the external review
+remediation pass. This is not a server validation result.
 
 ### HIGH
 
-None known before local 3107 manual validation.
+No unresolved HIGH issue is known in the repository after the external review
+remediation pass. Database-backed library reads remain deliberately disabled in
+production and are listed as DEFERRED below.
 
 ### SERVER-GATE
 
@@ -598,6 +601,7 @@ None known before local 3107 manual validation.
 | 分布式限流 | 当前早期用户规模不需要。 | 多实例前 |
 | 消息队列 | 当前任务仍可由单实例流程承载。 | 后续可靠性增强 |
 | 流式大视频上传 | 当前仍为完整Buffer，但已有安全硬限制和并发限制。 | 需要更大视频或更高并发时 |
+| 数据库作品读取 | `DATABASE_LIBRARY_READ_ENABLED=true` 在生产校验中会失败；用户所有权映射尚未完成，不适合多用户生产读取。 | 完成schema和迁移设计后 |
 
 ## 13. 本地3107人工测试清单
 
@@ -712,9 +716,48 @@ npm run env:check:production
 npm run release:preflight
 ```
 
+## 16A. External Review Remediation
+
+This section records the production-readiness issues found by external review
+after the original module 11 handoff.
+
+| Review item | Remediation | Current behavior |
+| --- | --- | --- |
+| Invalid Nginx hourly rates | `deploy/linux/nginx-site.conf.example` no longer uses `r/h`; registration uses coarse `1r/m`. | Nginx is documented as a second IP-protection layer. Exact 3-per-hour registration limits remain in the app. |
+| Conflicting production directories | `.env.production.example`, deploy templates, docs checks, and security release checks use `/var/lib/aohuang-ai/{data,uploads,runtime,backups}`. | Windows local 3107 paths are unchanged. Current docs check rejects the retired production layout outside archives. |
+| Media cleanup unlink-before-metadata risk | Expired local files are moved into `UPLOADS_DIR/.retention-quarantine`, the library item is marked `expirationPending`, then metadata is expired and the quarantined file is deleted. | If JSON or database persistence fails, the cleanup attempts to restore the file and clear pending state; cleanup stops the current apply run after the failure and can be retried. |
+| JSON/PostgreSQL inconsistency risk | Library update helpers roll JSON state back when database dual-write fails or returns no updated record. | Pending media is represented as a non-active database asset; active records should not point to files deleted by cleanup. |
+| Remote media download memory/SSRF risk | `storeRemoteUrl` and authenticated provider downloads now use streamed bounded storage through `storeRemoteUrlStreamed`. | Initial URLs and redirects are restricted to HTTP(S), resolved through DNS, checked against local/private/reserved networks, capped by redirect count, and written to temp files before atomic rename. |
+| Database library reads unsafe for production ownership | Production environment validation rejects `DATABASE_LIBRARY_READ_ENABLED=true`. | `LIBRARY_STORAGE_BACKEND=json` with `DATABASE_LIBRARY_READ_ENABLED=false` remains allowed. Database-backed library reads are DEFERRED until owner mapping is complete. |
+
+Remote media download status: streamed with byte counting and cleanup on failure,
+not full `response.arrayBuffer()` buffering.
+
+Additional remediation checks already run in this pass:
+
+```text
+npm run check:studio-api-contracts        PASS
+npm run test:ops                          PASS
+npm run test:database-library-integration PASS
+npm run test:generation-jobs-db-integration PASS
+npm run test:security-release             PASS
+npm run test:upload-temp-cleanup          PASS
+node scripts/test-upload-limits.mjs       PASS
+npm run check:docs                        PASS
+npm run lint                              PASS
+npm run typecheck                         PASS
+npm run build                             PASS
+npm run check                             PASS
+git diff --check                          PASS
+rg -n "rate=[0-9]+r/h" deploy docs        PASS, no results
+retired production path search in .env.production.example, deploy, and docs PASS, no results
+rg -n "response\.arrayBuffer\(\)" src/lib/server PASS, no results
+nginx -t                                  NOT_RUN, nginx was not found on this Windows workstation
+```
+
 ## 17. 最终结论
 
-最终状态：`COMPLETE_AND_READY_FOR_REVIEW`
+最终状态：`COMPLETE_WITH_KNOWN_ISSUES`
 
 当前分支：`chore/server-production-prep`
 
@@ -730,7 +773,7 @@ documentation commit.
 
 是否需要人工3107测试：是
 
-是否存在BLOCKER：否
+是否存在BLOCKER：否，在仓库层面未发现未解决阻塞；真实服务器仍需SERVER-GATE。
 
 是否建议现在创建PR：是，建议创建代码审查PR；合并前仍需仓库所有者完成本地3107人工验收，服务器部署前仍需完成SERVER-GATE。
 

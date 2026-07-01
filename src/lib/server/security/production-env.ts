@@ -259,6 +259,9 @@ function checkDatabaseFeatureFlags(issues: RuntimeEnvironmentIssue[], env: Runti
   if (value(env, "DATABASE_IMPORT_DRY_RUN_ONLY").toLowerCase() === "false") {
     issue(issues, "DATABASE_IMPORT_DRY_RUN_ONLY", "must remain true unless a separate production import is approved.");
   }
+  if (trueValues.has(value(env, "DATABASE_LIBRARY_READ_ENABLED").toLowerCase())) {
+    issue(issues, "DATABASE_LIBRARY_READ_ENABLED", "database library reads are not production-ready because user ownership mapping is incomplete.");
+  }
   if (libraryBackend === "database" || jobsBackend === "database") {
     checkPostgresUrl(issues, env);
   }

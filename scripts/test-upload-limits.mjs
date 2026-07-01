@@ -20,12 +20,17 @@ try {
   if (compile.status !== 0) {
     status = compile.status ?? 1;
   } else {
-    const testFile = [
+    const mediaUploadGuardTestFile = [
       "dist/upload-limits-tests/src/lib/server/__tests__/media-upload-guard.test.js",
       "dist/upload-limits-tests/server/__tests__/media-upload-guard.test.js",
     ].find((candidate) => existsSync(join(root, candidate)));
-    assert(testFile, "compiled upload limit test file must exist");
-    const run = spawnSync("node", ["--conditions=react-server", "--test", testFile], {
+    const remoteMediaDownloadTestFile = [
+      "dist/upload-limits-tests/src/lib/server/__tests__/remote-media-download.test.js",
+      "dist/upload-limits-tests/server/__tests__/remote-media-download.test.js",
+    ].find((candidate) => existsSync(join(root, candidate)));
+    assert(mediaUploadGuardTestFile, "compiled upload limit test file must exist");
+    assert(remoteMediaDownloadTestFile, "compiled remote media download test file must exist");
+    const run = spawnSync("node", ["--conditions=react-server", "--test", mediaUploadGuardTestFile, remoteMediaDownloadTestFile], {
       cwd: root,
       env: {
         ...process.env,
@@ -34,6 +39,7 @@ try {
         RUNTIME_STORAGE_ISOLATION: "strict",
         DATA_DIR: join(tempRoot, "data"),
         UPLOADS_DIR: join(tempRoot, "uploads"),
+        MEDIA_IMAGE_UPLOAD_LIMIT_MIB: "1",
       },
       stdio: "inherit",
       shell: process.platform === "win32",

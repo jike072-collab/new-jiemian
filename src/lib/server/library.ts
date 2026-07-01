@@ -21,9 +21,9 @@ import {
   shouldWriteLibraryToDatabase,
 } from "./database/stage9cb-flags";
 import type { RemoteMediaKind } from "../upload-limits";
-import { assertBufferLengthAllowed, assertContentLengthAllowed } from "./media-upload-guard";
 import { attachMediaRetentionMetadata } from "../media-retention";
 import { assertStorageAllows } from "./storage-capacity";
+import { storeRemoteUrlStreamed } from "./remote-media-download";
 
 const libraryPath = join(dataRoot, "library.json");
 const jobsPath = join(dataRoot, "jobs.json");
@@ -125,6 +125,9 @@ function applyLibraryItemPatch(item: LibraryItem, patch: Partial<LibraryItem>, u
 }
 
 async function updateLibraryItemFile(id: string, patch: Partial<LibraryItem>, updatedAt = new Date().toISOString()) {
+  if (testFailureInjectionAllowed() && process.env.AOHUANG_TEST_FAIL_LIBRARY_UPDATE_ID === id) {
+    throw new LibraryOperationError(500, "Simulated library update failure.");
+  }
   return serializeWrite("library", async () => {
     const items = await readLibraryFile();
     const next = items.map((item) => (
@@ -199,6 +202,9 @@ export async function expireLibraryItemMedia(item: LibraryItem, expiredAt: strin
     expired: true,
     expiredAt,
     expiresAt: expiredAt,
+    expirationPending: undefined,
+    expirationPendingAt: undefined,
+    expirationPendingStoredName: undefined,
     fileAvailable: false,
   };
   const nextItem: LibraryItem = {
@@ -210,9 +216,136 @@ export async function expireLibraryItemMedia(item: LibraryItem, expiredAt: strin
   const persisted = updated || nextItem;
   const flags = getStage9cbDatabaseIntegrationFlags();
   if (shouldWriteLibraryToDatabase(flags)) {
+    if (shouldSimulateExpirationPendingDatabaseFailure(item.id)) {
+      await updateLibraryItemFile(item.id, {
+        output: item.output,
+        expired: item.expired,
+        expiredAt: item.expiredAt,
+        expiresAt: item.expiresAt,
+        expirationPending: item.expirationPending,
+        expirationPendingAt: item.expirationPendingAt,
+        expirationPendingStoredName: item.expirationPendingStoredName,
+        fileAvailable: item.fileAvailable,
+      }, item.updatedAt);
+      throw new LibraryOperationError(500, "Simulated expiration pending database failure.");
+    }
+    const databaseUpdated = await getDatabaseAdapter().updateLibraryItem(item.id, patch, persisted).catch(async (error) => {
+      await updateLibraryItemFile(item.id, {
+        output: item.output,
+        expired: item.expired,
+        expiredAt: item.expiredAt,
+        expiresAt: item.expiresAt,
+        expirationPending: item.expirationPending,
+        expirationPendingAt: item.expirationPendingAt,
+        expirationPendingStoredName: item.expirationPendingStoredName,
+        fileAvailable: item.fileAvailable,
+      }, item.updatedAt);
+      throw error;
+    });
+    if (!databaseUpdated) {
+      await updateLibraryItemFile(item.id, {
+        output: item.output,
+        expired: item.expired,
+        expiredAt: item.expiredAt,
+        expiresAt: item.expiresAt,
+        expirationPending: item.expirationPending,
+        expirationPendingAt: item.expirationPendingAt,
+        expirationPendingStoredName: item.expirationPendingStoredName,
+        fileAvailable: item.fileAvailable,
+      }, item.updatedAt);
+      throw new LibraryOperationError(500, "作品过期状态同步失败。");
+    }
+  }
+  return persisted;
+}
+
+function testFailureInjectionAllowed() {
+  return process.env.NODE_ENV === "test"
+    || (
+      process.env.PORT === "3107"
+      && process.env.RUNTIME_STORAGE_ISOLATION === "strict"
+      && process.env.AOHUANG_ALLOW_RUNTIME_DIR_OVERRIDE === "1"
+    );
+}
+
+function shouldSimulateExpirationPendingDatabaseFailure(itemId: string) {
+  if (!testFailureInjectionAllowed()) return false;
+  const target = process.env.AOHUANG_TEST_FAIL_EXPIRATION_PENDING_DATABASE;
+  return target === itemId || target === "*" || target === "__all__";
+}
+
+export async function markLibraryItemExpirationPending(item: LibraryItem, pendingAt: string, storedName: string) {
+  const patch: Partial<LibraryItem> = {
+    expirationPending: true,
+    expirationPendingAt: pendingAt,
+    expirationPendingStoredName: storedName,
+    fileAvailable: false,
+  };
+  const nextItem: LibraryItem = {
+    ...item,
+    ...patch,
+    updatedAt: pendingAt,
+  };
+  const updated = await updateLibraryItemFile(item.id, patch, pendingAt);
+  const persisted = updated || nextItem;
+  const flags = getStage9cbDatabaseIntegrationFlags();
+  if (shouldWriteLibraryToDatabase(flags)) {
+    if (shouldSimulateExpirationPendingDatabaseFailure(item.id)) {
+      await updateLibraryItemFile(item.id, {
+        expirationPending: item.expirationPending,
+        expirationPendingAt: item.expirationPendingAt,
+        expirationPendingStoredName: item.expirationPendingStoredName,
+        fileAvailable: item.fileAvailable,
+      }, item.updatedAt);
+      throw new LibraryOperationError(500, "Simulated expiration pending database failure.");
+    }
+    const databaseUpdated = await getDatabaseAdapter().updateLibraryItem(item.id, patch, persisted).catch(async (error) => {
+      await updateLibraryItemFile(item.id, {
+        expirationPending: item.expirationPending,
+        expirationPendingAt: item.expirationPendingAt,
+        expirationPendingStoredName: item.expirationPendingStoredName,
+        fileAvailable: item.fileAvailable,
+      }, item.updatedAt);
+      throw error;
+    });
+    if (!databaseUpdated) {
+      await updateLibraryItemFile(item.id, {
+        expirationPending: item.expirationPending,
+        expirationPendingAt: item.expirationPendingAt,
+        expirationPendingStoredName: item.expirationPendingStoredName,
+        fileAvailable: item.fileAvailable,
+      }, item.updatedAt);
+      throw new LibraryOperationError(500, "作品过期待处理状态同步失败。");
+    }
+  }
+  return persisted;
+}
+
+export async function clearLibraryItemExpirationPending(item: LibraryItem, restoredAt: string) {
+  const patch: Partial<LibraryItem> = {
+    expirationPending: undefined,
+    expirationPendingAt: undefined,
+    expirationPendingStoredName: undefined,
+    fileAvailable: Boolean(item.output?.storedName),
+  };
+  const nextItem: LibraryItem = {
+    ...item,
+    ...patch,
+    updatedAt: restoredAt,
+  };
+  const updated = await updateLibraryItemFile(item.id, patch, restoredAt);
+  const persisted = updated || nextItem;
+  const flags = getStage9cbDatabaseIntegrationFlags();
+  if (shouldWriteLibraryToDatabase(flags)) {
     const databaseUpdated = await getDatabaseAdapter().updateLibraryItem(item.id, patch, persisted);
     if (!databaseUpdated) {
-      throw new LibraryOperationError(500, "作品过期状态同步失败。");
+      await updateLibraryItemFile(item.id, {
+        expirationPending: item.expirationPending,
+        expirationPendingAt: item.expirationPendingAt,
+        expirationPendingStoredName: item.expirationPendingStoredName,
+        fileAvailable: item.fileAvailable,
+      }, item.updatedAt);
+      throw new LibraryOperationError(500, "作品过期待处理状态恢复失败。");
     }
   }
   return persisted;
@@ -342,20 +475,10 @@ export async function storeDataUrl(dataUrl: string, prefix: string) {
 }
 
 export async function storeRemoteUrl(url: string, prefix: string, fallbackMime: string) {
-  const initialKind = remoteMediaKind(fallbackMime, prefix);
-  await assertStorageAllows(initialKind === "video" ? "video-media-write" : "image-media-write", { fresh: true });
-  const response = await fetch(url, { signal: AbortSignal.timeout(180000) });
-  if (!response.ok) throw new Error(`下载生成结果失败：HTTP ${response.status}`);
-  const mimeType = response.headers.get("content-type") || fallbackMime;
-  const kind = remoteMediaKind(mimeType, prefix);
-  assertContentLengthAllowed(response.headers.get("content-length"), kind);
-  await assertStorageAllows(kind === "video" ? "video-media-write" : "image-media-write", { fresh: true });
-  const bytes = Buffer.from(await response.arrayBuffer());
-  assertBufferLengthAllowed(bytes.length, kind);
-  return storeBytes(bytes, mimeType, prefix);
+  return storeRemoteUrlStreamed(url, { prefix, fallbackMime });
 }
 
-function remoteMediaKind(mimeType: string, prefix: string): RemoteMediaKind {
+export function remoteMediaKind(mimeType: string, prefix: string): RemoteMediaKind {
   return mimeType.toLowerCase().includes("video") || prefix.toLowerCase().includes("video") ? "video" : "image";
 }
 
