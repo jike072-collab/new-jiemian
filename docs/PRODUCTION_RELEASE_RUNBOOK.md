@@ -1,194 +1,68 @@
 # Production Release Runbook
 
-This runbook covers the local production lane after Stage 5.5.
+This is the current high-level release runbook for the Ubuntu 3106 server.
+Older Windows-local release notes were archived under
+[archive/windows-local-environment/PRODUCTION_RELEASE_RUNBOOK.md](archive/windows-local-environment/PRODUCTION_RELEASE_RUNBOOK.md).
 
-## Lanes
-
-- `3106` is production. It uses `DATA_DIR=<production-root>/data` and `UPLOADS_DIR=<production-root>/uploads`.
-- `3107` is staging. It uses `DATA_DIR=<staging-root>/data-staging` and `UPLOADS_DIR=<staging-root>/uploads-staging`.
-- Staging data must never be copied into production.
-- Production data must never be copied into staging unless a separate approved data-seeding task says so.
-
-Current production root:
+## Release Flow
 
 ```text
-E:\codex工作台\p003\new-jiemian
+module branch development -> local 3107 tests -> push GitHub -> code review -> merge main -> manual server deploy to 3106
 ```
 
-Current staging root:
+Codex must not automatically merge `main`, deploy the server, restart 3106, or
+operate server systemd/Nginx unless a later task explicitly authorizes an
+execution phase.
 
-```text
-E:\codex工作台\p003\new-jiemian-3107
-```
-
-## Release Preconditions
+## Preconditions
 
 Before a production release:
 
-1. Confirm the PR has been merged to `main`.
-2. Confirm `origin/main` is the intended release commit.
-3. Confirm the target commit is explicit, not implicit.
-4. Confirm the production worktree is clean.
-5. Confirm `.env`, `.env.local`, `data`, `uploads`, `.runtime`, logs, PID files, backups, screenshots, videos, and test artifacts are not tracked by Git.
-6. Confirm `3107` has already run the target code and passed the acceptance checks.
-7. Record production PID, commit, command line, `data` snapshot, and `uploads` snapshot.
-8. Record staging PID, commit, `data-staging` snapshot, and `uploads-staging` snapshot.
+1. The reviewed change is merged to `main`.
+2. The target commit is explicit.
+3. Local 3107 acceptance has passed on the development computer.
+4. `npm run check:docs`, `npm run lint`, `npm run typecheck`, and `npm run build`
+   pass on the release code.
+5. Production environment checks pass with placeholder-free private server
+   values and no secret output.
+6. Backup and restore verification exists for PostgreSQL and required `data`
+   metadata.
+7. Disk status is below the configured protection thresholds.
+8. The media cleanup timer and Nginx upload limit match the application limits.
 
-Use a stable directory snapshot for data checks:
+## Production Invariants
 
-- sorted file list
-- relative file path
-- file content SHA-256
-- file size
-- no directory mtime in the hash
+- `NODE_ENV=production`.
+- `PORT=3106`.
+- `APP_BIND_HOST=127.0.0.1`.
+- One 3106 instance only.
+- Nginx proxies public HTTPS traffic to `127.0.0.1:3106`.
+- 3107 is not present on the server.
+- `DATA_DIR`, `UPLOADS_DIR`, and `RUNTIME_DIR` are persistent Linux paths under
+  the approved data layout.
 
-## Protected Production Deploy
+## Uploads, Retention, And Disk Protection
 
-Production deploys must use the protected script:
+- Image upload default: 10MiB.
+- Video upload default: 200MiB.
+- Upload hard cap: 256MiB.
+- Nginx `client_max_body_size` should be slightly above 200MiB and below the
+  application hard-cap design.
+- Generated media retention default: 24 hours.
+- The hourly media cleanup timer calls the retention script; it does not delete
+  all media every hour.
+- Disk thresholds default to 70 percent warning, 80 percent critical warning,
+  85 percent video-write block, 90 percent all-media-write block, and 95 percent
+  emergency read/cleanup-only mode.
 
-```powershell
-npm run deploy:production -- --target <origin-main-merge-commit>
-```
+## Safe Acceptance
 
-The script must:
+Post-release smoke checks must stay provider-safe:
 
-- require an explicit `--target`
-- fetch `origin`
-- resolve the target commit
-- reject production deploy when target does not match `origin/main`
-- reject a dirty worktree
-- run production validation before stopping the old process
-- create a backup
-- verify the backup manifest and checksums
-- write rollback material
-- activate the immutable release artifact
-- restart only `3106`
-- run service preflight and health checks
-- avoid image generation, image edit, video generation, upscale, and NewAPI generation calls
+- load `/`, `/login`, `/admin/providers`, `/api/health/backend`, and
+  `/api/library`;
+- verify static assets and expected auth redirects;
+- avoid generation, upscale, New API generation, uploads, billing order
+  creation, migrations, cleanup apply, and library deletion.
 
-Do not deploy production with:
-
-```powershell
-npm run deploy:production
-```
-
-## Automated Checks
-
-The release gate should include:
-
-```powershell
-npm ci
-npm run lint
-npm run typecheck
-npm run test:runtime-isolation
-npm run check:runtime-paths
-npm run test:security-release
-npm run test:staging-smoke
-npm run test:stage2-ui-acceptance
-npm run test:stage3-studio-regression
-npm run check:studio-api-contracts
-npm run test:stage4-provider-health
-npm run test:release-artifact-cleanliness
-npm run test:stage5-error-diagnostics
-npm run test:ops
-npm run check:release-test-artifact-isolation
-npm run build
-npm run check
-git diff --check
-```
-
-`npm run check` must include `check:release-test-artifact-isolation`.
-
-CI must run the release test artifact isolation check in both `quality` and `windows-quality`.
-
-## HTTP Acceptance
-
-After deploying only the intended target service, verify:
-
-- `/` returns `200`
-- `/login` returns `200`
-- `/admin/providers` returns the current unauthenticated access design, normally a redirect or auth failure
-- `/api/health/backend` returns `200`
-- `/api/library` returns `200`
-- `/api/admin/provider-health` is protected when unauthenticated
-- all Studio preview/tool routes return `200`
-- watchdog returns `action=none`, `identity=owned`, and `ok=true`
-- health reports `newApiCalled=false`
-
-These checks must not call generation endpoints or NewAPI generation endpoints.
-
-## Data And Upload Acceptance
-
-After release:
-
-1. Recompute the production `data` snapshot.
-2. Recompute the production `uploads` snapshot.
-3. Confirm the snapshots match the pre-release baseline unless the release explicitly included an approved data migration.
-4. Confirm `3107` `data-staging` and `uploads-staging` are unchanged.
-5. Confirm `data/auth-store.json` was not created by release tests in production.
-
-Stage 5.5 baseline:
-
-```text
-data sha256: aa788abb2067d9cab1a6996c00e58b172865a589a9a608c0b5ab963d5e69ac1c
-uploads sha256: db55e210ea69bfeb4a0a0685f80b46ee134c0be6739f03dc6cfdda39c907924e
-```
-
-## Test Artifact Isolation
-
-Tests that need runtime persistence must use temporary `DATA_DIR` and `UPLOADS_DIR`.
-
-Required safeguards:
-
-- `test:stage4-provider-health` uses a temporary runtime root.
-- `test:stage5-error-diagnostics` uses a temporary runtime root.
-- ops tests use temporary project roots.
-- release preflight writes compile output under the system temp directory.
-- temporary roots are deleted at the end of each script.
-- production `data/auth-store.json` is treated as a test artifact unless an approved data task says otherwise.
-
-Run:
-
-```powershell
-npm run check:release-test-artifact-isolation
-```
-
-## Logs And Cost Safety
-
-Log review must confirm no:
-
-- `500`
-- runtime exception loop
-- database error
-- provider configuration error
-- API key leak
-- Authorization header leak
-- Cookie leak
-- prompt or base64 leak
-- upstream raw response body leak
-- stack trace leak to user responses
-- NewAPI generation call
-- real generation task trigger
-
-Safe health, watchdog, staging smoke, and stage tests must not call generation APIs.
-
-## When To Roll Back Immediately
-
-Prepare rollback before doing any business fix when:
-
-- production health fails after deploy
-- production watchdog is not `owned`
-- production data or uploads checksum changes unexpectedly
-- a secret appears in logs or user-facing diagnostics
-- a generation endpoint or NewAPI generation endpoint is called by a release check
-- `3107` data is copied into `3106`
-- `3106` data is copied into `3107`
-- the active release commit is not the intended target
-
-Rollback verification is documented in `docs/ROLLBACK_RUNBOOK.md`.
-
-## Operator Responsibility
-
-The user does not need to run technical tests. The release operator must run and report automated checks, 3107 validation, production release checks, and rollback material validation.
-
-Do not use user-run technical testing as a release gate or blocker.
+Rollback verification is documented in [ROLLBACK_RUNBOOK.md](ROLLBACK_RUNBOOK.md).

@@ -6,6 +6,11 @@ import { test } from "node:test";
 
 import { publicPaymentChannels } from "../../billing/config";
 import { backendHealthHttpReport, backendLivenessReport, backendReadinessReport } from "../health";
+import {
+  formatRuntimeEnvironmentReport,
+  validateLocalStagingRuntimeEnv,
+  validateProductionRuntimeEnv,
+} from "../production-env";
 import { runBackendReleaseChecks } from "../release-check";
 
 type EnvPatch = Record<string, string | undefined>;
@@ -30,12 +35,19 @@ async function withEnv<T>(patch: EnvPatch, callback: () => T | Promise<T>) {
 
 const productionEnv: EnvPatch = {
   NODE_ENV: "production",
+  PORT: "3106",
+  APP_BIND_HOST: "127.0.0.1",
+  ADMIN_PASSWORD: "StrongAdmin#2026",
+  DATA_DIR: "/var/lib/aohuang-ai/data",
+  UPLOADS_DIR: "/var/lib/aohuang-ai/uploads",
+  RUNTIME_DIR: "/var/lib/aohuang-ai/runtime",
   AUTH_SESSION_SECRET: "release-test-auth-session-secret-32-chars",
   APP_DATABASE_URL: "postgresql://release_user:release_pass@127.0.0.1:5432/aohuang_app",
   APP_DATABASE_EXPECTED_NAME: "aohuang_app",
   APP_AUTH_PERSISTENCE_MODE: "postgres",
   APP_BILLING_PERSISTENCE_MODE: "postgres",
   APP_TASK_BILLING_PERSISTENCE_MODE: "postgres",
+  REMOTE_MEDIA_ALLOWED_HOSTS: "media.allowed.example,*.cdn.allowed.example",
   NEW_API_ENABLED: "true",
   NEW_API_BASE_URL: "https://new-api.example.test",
   NEW_API_ENVIRONMENT: "production",
@@ -44,6 +56,17 @@ const productionEnv: EnvPatch = {
   PAYMENT_PRODUCTION_ENABLED: undefined,
   PAYMENT_PRODUCTION_WEBHOOK_SECRET: undefined,
 };
+
+function expectProductionIssue(patch: EnvPatch, variable: string) {
+  const report = validateProductionRuntimeEnv({ ...productionEnv, ...patch }, { nodeVersion: "24.16.0" });
+  assert.equal(report.ok, false);
+  assert(report.issues.some((entry) => entry.variable.includes(variable)), `${variable} issue missing`);
+  const serialized = formatRuntimeEnvironmentReport(report);
+  assert(!serialized.includes("release-test-admin-token"));
+  assert(!serialized.includes("release_pass"));
+  assert(!serialized.includes("postgresql://"));
+  return report;
+}
 
 test("production release checks fail closed when required configuration is missing", async () => {
   await withEnv({
@@ -79,6 +102,105 @@ test("production release checks pass with explicit backend configuration and pro
       assert.equal(serialized.includes(leaked), false, `release report leaked ${leaked}`);
     }
   });
+});
+
+test("production env check rejects missing and weak admin passwords", () => {
+  expectProductionIssue({ ADMIN_PASSWORD: undefined }, "ADMIN_PASSWORD");
+  expectProductionIssue({ ADMIN_PASSWORD: "admin" }, "ADMIN_PASSWORD");
+  expectProductionIssue({ ADMIN_PASSWORD: "CHANGE_ME" }, "ADMIN_PASSWORD");
+});
+
+test("production env check rejects wrong production port and public bind address", () => {
+  expectProductionIssue({ PORT: "3107" }, "PORT");
+  expectProductionIssue({ APP_BIND_HOST: "0.0.0.0" }, "APP_BIND_HOST");
+  expectProductionIssue({ HOST: "0.0.0.0" }, "HOST");
+});
+
+test("production env check rejects Windows and temporary production storage paths", () => {
+  expectProductionIssue({ DATA_DIR: "C:\\srv\\new-jiemian\\data" }, "DATA_DIR");
+  expectProductionIssue({ DATA_DIR: "/tmp/new-jiemian/data" }, "DATA_DIR");
+  expectProductionIssue({ UPLOADS_DIR: "/var/lib/aohuang-ai/data/uploads" }, "DATA_DIR/UPLOADS_DIR");
+});
+
+test("production env check rejects database library read mode until owner mapping is complete", () => {
+  expectProductionIssue({
+    LIBRARY_STORAGE_BACKEND: "database",
+    DATABASE_LIBRARY_READ_ENABLED: "true",
+  }, "DATABASE_LIBRARY_READ_ENABLED");
+});
+
+test("production env check rejects invalid upload caps and media retention", () => {
+  expectProductionIssue({ MEDIA_VIDEO_UPLOAD_LIMIT_MIB: "300" }, "MEDIA_VIDEO_UPLOAD_LIMIT_MIB");
+  expectProductionIssue({ MEDIA_IMAGE_UPLOAD_LIMIT_MIB: "11" }, "MEDIA_IMAGE_UPLOAD_LIMIT_MIB");
+  expectProductionIssue({ MEDIA_RETENTION_HOURS: "999" }, "MEDIA_RETENTION_HOURS");
+});
+
+test("production env check rejects invalid storage threshold order", () => {
+  expectProductionIssue({
+    STORAGE_WARNING_PERCENT: "70",
+    STORAGE_CRITICAL_PERCENT: "69",
+  }, "STORAGE_WARNING_PERCENT");
+});
+
+test("production env check rejects missing or placeholder remote media allowlists", () => {
+  expectProductionIssue({ REMOTE_MEDIA_ALLOWED_HOSTS: undefined }, "REMOTE_MEDIA_ALLOWED_HOSTS");
+  expectProductionIssue({ REMOTE_MEDIA_ALLOWED_HOSTS: "media.example.invalid,*.media.example.invalid" }, "REMOTE_MEDIA_ALLOWED_HOSTS");
+  expectProductionIssue({ REMOTE_MEDIA_ALLOWED_HOSTS: "*" }, "REMOTE_MEDIA_ALLOWED_HOSTS");
+  expectProductionIssue({ REMOTE_MEDIA_ALLOWED_HOSTS: "127.0.0.1" }, "REMOTE_MEDIA_ALLOWED_HOSTS");
+});
+
+test("production env check does not require disabled providers", () => {
+  const report = validateProductionRuntimeEnv({
+    ...productionEnv,
+    IMAGE_MODEL_API_KEY: undefined,
+    IMG2_IMAGE_API_KEY: undefined,
+    VIDEO_MODEL_API_KEY: undefined,
+    GROK_VIDEO_API_KEY: undefined,
+    PROMPT_OPTIMIZER_API_KEY: undefined,
+    DEEPSEEK_API_KEY: undefined,
+    VOLCENGINE_ACCESS_KEY_PAIR: undefined,
+    VOLCENGINE_ACCESS_KEY_ID: undefined,
+    VOLCENGINE_SECRET_ACCESS_KEY: undefined,
+    VOLCENGINE_IMAGEX_SERVICE_ID: undefined,
+    VOLCENGINE_VOD_SPACE_NAME: undefined,
+  }, { nodeVersion: "24.16.0" });
+  assert.equal(report.ok, true);
+});
+
+test("production env check validates ImageX and VOD separately when Volcengine is configured", () => {
+  const report = validateProductionRuntimeEnv({
+    ...productionEnv,
+    VOLCENGINE_ACCESS_KEY_ID: "fake-ak-for-test",
+    VOLCENGINE_SECRET_ACCESS_KEY: "fake-sk-for-test",
+    VOLCENGINE_IMAGEX_SERVICE_ID: "imagex-service",
+    VOLCENGINE_IMAGEX_OUTPUT_DOMAIN: "imagex.example.test",
+    VOLCENGINE_VOD_SPACE_NAME: undefined,
+    VOLCENGINE_VOD_OUTPUT_DOMAIN: undefined,
+  }, { nodeVersion: "24.16.0" });
+  assert.equal(report.ok, false);
+  assert(report.issues.some((entry) => entry.variable === "VOLCENGINE_VOD_SPACE_NAME"));
+  assert(report.issues.some((entry) => entry.variable === "VOLCENGINE_VOD_OUTPUT_DOMAIN"));
+  const serialized = formatRuntimeEnvironmentReport(report);
+  assert(!serialized.includes("fake-ak-for-test"));
+  assert(!serialized.includes("fake-sk-for-test"));
+});
+
+test("local staging env check requires 3107 and isolated staging dirs only", () => {
+  const report = validateLocalStagingRuntimeEnv({
+    PORT: "3107",
+    DATA_DIR: "data-staging",
+    UPLOADS_DIR: "uploads-staging",
+  }, { nodeVersion: "24.16.0" });
+  assert.equal(report.ok, true);
+  const failed = validateLocalStagingRuntimeEnv({
+    PORT: "3106",
+    DATA_DIR: "data",
+    UPLOADS_DIR: "uploads",
+  }, { nodeVersion: "24.16.0" });
+  assert.equal(failed.ok, false);
+  assert(failed.issues.some((entry) => entry.variable === "PORT"));
+  assert(failed.issues.some((entry) => entry.variable === "DATA_DIR"));
+  assert(failed.issues.some((entry) => entry.variable === "UPLOADS_DIR"));
 });
 
 test("production release checks reject json and dual persistence modes", async () => {
@@ -198,6 +320,12 @@ test("release preflight rejects missing production configuration", () => {
     env: {
       ...process.env,
       NODE_ENV: "production",
+      PORT: "3106",
+      APP_BIND_HOST: "127.0.0.1",
+      ADMIN_PASSWORD: "",
+      DATA_DIR: "/var/lib/aohuang-ai/data",
+      UPLOADS_DIR: "/var/lib/aohuang-ai/uploads",
+      RUNTIME_DIR: "/var/lib/aohuang-ai/runtime",
       AUTH_SESSION_SECRET: "",
       SESSION_SECRET: "",
       APP_DATABASE_URL: "",

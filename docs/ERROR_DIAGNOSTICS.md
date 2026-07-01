@@ -13,7 +13,7 @@ Failure responses still include the legacy top-level `error` string. New clients
     "code": "PROVIDER_AUTH_FAILED",
     "category": "upstream",
     "message": "供应商认证失败。",
-    "technicalMessage": "Authorization: Bearer [redacted]",
+    "technicalMessage": "authorization header redacted",
     "retryable": false,
     "requestId": "req-example",
     "occurredAt": "2026-06-27T00:00:00.000Z",

@@ -26,6 +26,7 @@ type ResponseContext = DiagnosticContext & {
 
 export class GenerationDiagnosticError extends Error {
   readonly code: ErrorDiagnosticCode;
+  readonly publicMessage?: string;
   readonly status?: number;
   readonly upstreamStatus?: number;
   readonly providerId?: string;
@@ -35,6 +36,7 @@ export class GenerationDiagnosticError extends Error {
   constructor(input: {
     code: ErrorDiagnosticCode;
     message?: string;
+    publicMessage?: string;
     status?: number;
     upstreamStatus?: number;
     providerId?: string | null;
@@ -45,6 +47,7 @@ export class GenerationDiagnosticError extends Error {
     super(input.message || errorDiagnosticMeta(input.code).message);
     this.name = "GenerationDiagnosticError";
     this.code = input.code;
+    this.publicMessage = input.publicMessage;
     this.status = input.status;
     this.upstreamStatus = input.upstreamStatus;
     this.providerId = input.providerId || undefined;
@@ -66,11 +69,15 @@ export function redactSensitiveText(value: unknown): string {
     .replace(/Bearer\s+[A-Za-z0-9._~+/=-]+/gi, "Bearer [redacted]")
     .replace(/(Authorization\s*[:=]\s*)[^\s,;}]+/gi, "$1[redacted]")
     .replace(/(Cookie\s*[:=]\s*)[^;\n\r]+/gi, "$1[redacted]")
+    .replace(/HMAC-SHA256\s+Credential=[^\s,;}]+/gi, "HMAC-SHA256 Credential=[redacted]")
+    .replace(/\b(Signature|SignedHeaders|Credential)\s*=\s*[^,\s;}]+/gi, "$1=[redacted]")
+    .replace(/\b([A-Za-z0-9_-]*(?:api[-_]?key|access[-_]?key|secret|token|password|credential|signature)[A-Za-z0-9_-]*)\b\s*[:=]\s*["']?[^"',\s;}]+/gi, "$1=[redacted]")
     .replace(/\b(sk|ak|pk|key|token|secret|password)[-_A-Za-z0-9]*\b\s*[:=]\s*["']?[^"',\s;}]+/gi, "$1=[redacted]")
     .replace(/(APP_DATABASE_URL|ADMIN_PASSWORD)\s*[:=]\s*["']?[^"',\s;}]+/gi, "$1=[redacted]")
     .replace(/postgres(?:ql)?:\/\/[^\s"')]+/gi, "postgresql://[redacted]")
     .replace(/([?&](?:token|key|secret|password|api_key)=)[^&\s"')]+/gi, "$1[redacted]")
     .replace(/[A-Za-z0-9_-]{24,}\.[A-Za-z0-9_-]{16,}\.[A-Za-z0-9_-]{16,}/g, "[redacted.jwt]")
+    .replace(/[A-Za-z]:[\\/][^\s"',;}]+/g, "[redacted.path]")
     .slice(0, 500);
 }
 
@@ -82,7 +89,7 @@ export function redactDiagnosticPayload(value: unknown): unknown {
   if (typeof value !== "object") return redactSensitiveText(value);
   const out: Record<string, unknown> = {};
   for (const [key, item] of Object.entries(value as Record<string, unknown>)) {
-    if (/authorization|cookie|api[-_]?key|secret|password|token|database[-_]?url/i.test(key)) {
+    if (/authorization|cookie|api[-_]?key|secret|password|token|database[-_]?url|signature|credential|path|response/i.test(key)) {
       out[key] = "[redacted]";
       continue;
     }
@@ -116,9 +123,9 @@ export function codeForThrownError(error: unknown, fallback: ErrorDiagnosticCode
   if (/403|forbidden|权限|拒绝/i.test(message)) return "PROVIDER_FORBIDDEN";
   if (/429|rate limit|too many/i.test(message)) return "PROVIDER_RATE_LIMITED";
   if (/prompt|提示词/i.test(message)) return "INPUT_MISSING_PROMPT";
-  if (/超过|too large|1GB|10MB|25MB/i.test(message)) return "INPUT_FILE_TOO_LARGE";
+  if (/超过|too large|\d+(?:\.\d+)?\s*(?:GB|MB|MiB)/i.test(message)) return "INPUT_FILE_TOO_LARGE";
   if (/上传|图片|image|首帧|file/i.test(message)) {
-    if (/超过|too large|1GB|10MB|25MB/i.test(message)) return "INPUT_FILE_TOO_LARGE";
+    if (/超过|too large|\d+(?:\.\d+)?\s*(?:GB|MB|MiB)/i.test(message)) return "INPUT_FILE_TOO_LARGE";
     if (/PNG|JPEG|WebP|MP4|WebM|MOV|格式|format/i.test(message)) return "INPUT_UNSUPPORTED_FORMAT";
     if (/读取|read/i.test(message)) return "UPLOAD_READ_FAILED";
     return "INPUT_MISSING_IMAGE";
@@ -147,7 +154,7 @@ export function createErrorDiagnostic(error: unknown, context: DiagnosticContext
   return {
     code,
     category: meta.category,
-    message: meta.message,
+    message: diagnosticError?.publicMessage || meta.message,
     technicalMessage,
     retryable: meta.retryable,
     requestId: createRequestId(context.requestId),

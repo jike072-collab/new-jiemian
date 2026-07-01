@@ -113,12 +113,22 @@ Restore rehearsal must not point to production.
 
 ## data/uploads Backup Strategy
 
-`data` and `uploads` are part of the application state today and must be backed
-up together with the database.
+Deployment rollback backups may include both `data` and `uploads` when the goal
+is to recover from a release failure inside the rollback window.
+
+Daily 60GB server backups follow the expiring-media policy:
+
+- back up PostgreSQL and necessary `data` metadata.
+- back up provider config with restricted file permissions.
+- back up migration files and PostgreSQL migration state.
+- do not retain generated images and videos that are explicitly limited to 24
+  hours.
+- do not retain temporary uploads, caches, temporary provider files, or ordinary
+  logs.
 
 Required manifest fields:
 
-- path role: data or uploads
+- path role: database, data metadata, or migrations
 - file count
 - total size
 - latest modified time
@@ -126,6 +136,7 @@ Required manifest fields:
 - backup time
 - source commit
 - service name
+- whether `uploads` were intentionally excluded
 
 For object storage later, store:
 
@@ -182,6 +193,7 @@ Never include:
 Recommended storage:
 
 - local short-term rollback backup
+- local short-term database and metadata backup
 - off-host backup for production
 - encrypted storage for database dumps
 - access restricted to release operators
@@ -189,11 +201,15 @@ Recommended storage:
 Suggested retention:
 
 - release rollback backups: keep through the rollback window
-- daily database backups: 7 to 14 days
+- daily database backups: keep only a small local count on the 60GB server, then
+  sync off-host
 - weekly backups: 4 to 8 weeks
 - monthly backups: according to business/legal requirements
 
 The exact policy should be finalized before real paid usage.
+
+The current server backup script keeps 3 to 7 local backups and defaults to 5.
+Local disk copies are not a disaster-recovery strategy by themselves.
 
 ## Git Safety
 

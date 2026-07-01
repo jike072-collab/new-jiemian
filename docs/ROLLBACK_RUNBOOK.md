@@ -1,166 +1,56 @@
 # Rollback Runbook
 
-This runbook covers rollback material validation and rollback decision rules for the local 3106/3107 lanes.
+This is the current rollback entry for the Ubuntu 3106 production shape. Older
+Windows-local rollback paths were archived under
+[archive/windows-local-environment/ROLLBACK_RUNBOOK.md](archive/windows-local-environment/ROLLBACK_RUNBOOK.md).
 
-## Current Preferred Clean Rollback Point
+## Rollback Principles
 
-The preferred clean rollback backup from Stage 5.5 is:
+- Prefer `git revert` for a bad independent module commit before it reaches a
+  production release.
+- Code rollback and data restore are separate decisions.
+- A Git rollback must not overwrite user data.
+- Restore operations require explicit production approval and stopped writes.
+- 3107 is local-only and must not be treated as a server rollback target.
 
-```text
-E:\codex工作台\p003\_rollback_backups\3106-production-20260627-014440
-```
+## Code Rollback
 
-Expected source commit:
+Use code-only rollback when the incident is limited to application code and the
+database, `data`, and uploads are still valid. The rollback target must be an
+explicit reviewed commit or release artifact. Run release checks before
+switching service traffic.
 
-```text
-32f4319d9dc16ca57c6383d40779b010bd7e75af
-```
+## Data Restore
 
-Expected database type:
+Use data restore only when data, PostgreSQL rows, or required metadata are part
+of the incident.
 
-```text
-postgres
-```
+Restore flow:
 
-This backup is preferred because it was created from the clean pre-release production state.
+1. Stop new writes and generation submissions.
+2. Verify the backup manifest.
+3. Verify checksums and `pg_restore --list` when PostgreSQL is present.
+4. Confirm the target database identity.
+5. Restore PostgreSQL from the verified dump.
+6. Restore required `data` metadata files.
+7. Repair permissions.
+8. Start 3106.
+9. Run provider-safe health checks and functional acceptance.
 
-The automatic deploy backup below is validatable but is not the preferred rollback target:
+Default daily backups intentionally exclude 24-hour generated media. See
+[SERVER_BACKUP_AND_RESTORE.md](SERVER_BACKUP_AND_RESTORE.md) for backup and
+restore commands.
 
-```text
-E:\codex工作台\p003\_rollback_backups\3106-production-20260627-015414
-```
+## Stop Conditions
 
-Reason: it contains a snapshot taken after a pre-release test artifact had created `data/auth-store.json`. That artifact was later removed and the final production `data` checksum returned to the pre-release baseline.
+Stop rollback if:
 
-Do not delete either backup during validation.
-
-## Static Backup Validation
-
-Before rollback, validate the chosen backup without restoring it:
-
-1. Confirm the backup directory exists.
-2. Confirm `backup-manifest.json` exists.
-3. Confirm `checksums.json` exists.
-4. Confirm `rollback-production.ps1` exists.
-5. Verify checksum entries.
-6. Confirm `sourceCommit`.
-7. Confirm `databaseType`.
-8. Record file count and total size.
-9. Confirm the backup service is `production`.
-10. Confirm the backup data and uploads snapshots match the intended rollback baseline.
-
-This validation must not overwrite current `3106`, must not restore files, and must not delete backups.
-
-## Rollback Modes
-
-Rollback supports two modes:
-
-- `code-only`: restore code and restart the service without restoring `data`, `uploads`, or database content.
-- `full`: restore code, verified `data`, verified `uploads`, and database backup artifacts before restart.
-
-Use `full` only when the incident affects data or when a release explicitly changed data and must be reverted.
-
-## Dry-Run Or Static Verification
-
-For a no-change check, use the repository backup validation helper from code or an equivalent read-only script. The check should call `verifyBackupManifest` and inspect `checksums.json`.
-
-Do not run a rollback command unless rollback has been selected as the active recovery action.
-
-## Rollback Execution Rules
-
-When rollback is required:
-
-1. Stop only the target service.
-2. Do not touch the other lane.
-3. Use only the selected backup directory.
-4. Use the selected rollback commit.
-5. For PostgreSQL full rollback, require the deployment-scoped rollback authorization file.
-6. Activate prepared code artifacts only after preflight passes.
-7. Restore `data` and `uploads` through temporary directories first.
-8. Verify restored directories by relative path, size, and SHA-256 before replacing live directories.
-9. Start the service.
-10. Run health checks.
-11. Keep previous live directories until service health passes.
-
-Rollback must not run `npm ci`, `npm install`, or `npm run build` while the live service is stopped. Rollback code is prepared before stopping the live service.
-
-## Post-Rollback Production Acceptance
-
-After rollback, verify `3106`:
-
-- PID changed only because rollback restarted production
-- running commit equals the rollback commit
-- `/` returns `200`
-- `/login` returns `200`
-- `/admin/providers` returns the current unauthenticated access design
-- `/api/health/backend` returns `200`
-- `/api/library` returns `200`
-- `/api/admin/provider-health` is protected when unauthenticated
-- watchdog returns `action=none`, `identity=owned`, and `ok=true`
-- health reports `newApiCalled=false`
-- production `data` snapshot matches the selected backup or the expected post-rollback baseline
-- production `uploads` snapshot matches the selected backup or the expected post-rollback baseline
-
-## Post-Rollback Staging Acceptance
-
-After rollback, verify `3107`:
-
-- PID did not change unless staging rollback was the explicit target
-- running commit did not change unless staging rollback was the explicit target
-- health endpoint still returns `200`
-- `data-staging` snapshot did not change
-- `uploads-staging` snapshot did not change
-- staging did not read production `data`
-- staging did not read production `uploads`
-
-## NewAPI And Cost Safety
-
-Rollback validation must not call:
-
-- image generation
-- image edit submit
-- video generation
-- image upscale
-- video upscale
-- NewAPI generation
-
-Health and watchdog checks are safe endpoints only. A valid rollback report must state that no generation call, no NewAPI generation call, and no cost-producing request occurred.
-
-## Log Review
-
-Review the recent target service log after rollback. Report only classes of sensitive findings; never copy a secret.
-
-Confirm no:
-
-- `500`
-- runtime exception loop
-- database error
-- provider configuration error
-- API key leak
-- Authorization header leak
-- Cookie leak
-- prompt or base64 leak
-- upstream raw response body leak
-- stack trace leak to user responses
-- NewAPI generation call
-
-## Test Artifacts
-
-If `data/auth-store.json` appears in production after a test run, treat it as a release test artifact until proven otherwise.
-
-Required response:
-
-1. Identify which test wrote it.
-2. Confirm whether it contains users, sessions, or audit-only test data.
-3. Compare production `data` snapshot against the baseline.
-4. Clean only the explicitly identified test artifact when approved by the active release procedure.
-5. Strengthen the test so future runs use temporary `DATA_DIR` and `UPLOADS_DIR`.
-6. Re-run `npm run check:release-test-artifact-isolation`.
-
-Do not hide a test artifact in the report.
-
-## Operator Responsibility
-
-The user does not need to run technical rollback tests. The release operator must validate the backup, run the automated checks, execute rollback if required, and report the result.
-
-Do not use user-run technical testing as a rollback gate or blocker.
+- the backup manifest fails verification;
+- checksums fail;
+- `pg_restore --list` fails;
+- restore target identity is unclear;
+- writes have not been stopped;
+- a secret-shaped value appears in output;
+- production approval is missing;
+- the proposed smoke test would call generation, upscale, providers, New API
+  generation, billing writes, migrations, or cleanup apply.

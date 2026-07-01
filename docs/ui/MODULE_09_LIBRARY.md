@@ -26,8 +26,8 @@ The library reuses the existing local data path:
 | Images and videos | `uploads/<storedName>` through `/api/files/[name]` | Reused for preview and download. |
 | Image generation | `addLibraryItem()` in provider flow | Successful real outputs appear in the library. |
 | Video generation | `addLibraryItem()` and job refresh | Done or failed job records remain visible. |
-| Image upscale | Upscayl output item | Real output dimensions and scale are shown when available. |
-| Video upscale | Video2X output item | Real output dimensions, duration, and scale are shown when available. |
+| Image upscale | ImageX 图片高清增强 item | Real output dimensions and scale are shown when available. |
+| Video upscale | VOD 视频高清增强 item | Real output dimensions, duration, and scale are shown when available. |
 
 No second library data store was created.
 
@@ -39,7 +39,7 @@ No second library data store was created.
 | Real works | Cards render only items from `data/library.json`. |
 | Empty state | Empty library and filtered-empty states are explicit and do not show sample works. |
 | Type filters | The parameter panel keeps `全部 / 图片 / 视频`. |
-| Type labels | Cards distinguish `文生图`, `图生图`, `文生视频`, `图生视频`, `图片高清`, and `视频高清` by item mode. |
+| Type labels | Cards distinguish `文生图`, `图生图`, `文生视频`, `图生视频`, `图片高清增强`, and `视频高清增强` by item mode. |
 | Preview | Images render with `<img>` and videos render with native controls. |
 | Download | Download links are shown only for stored local files with `storedName`. |
 | Delete | Delete requires confirmation, shows deleting state, removes the real output file before metadata, refreshes after success, and preserves the card if deletion fails. |

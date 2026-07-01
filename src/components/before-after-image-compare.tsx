@@ -215,7 +215,7 @@ export function BeforeAfterImageCompare({
       style={{ "--compare-position": `${position}%` } as CSSProperties}
       role="slider"
       tabIndex={0}
-      aria-label={mediaType === "video" ? "视频高清前后对比" : "图片高清前后对比"}
+      aria-label={mediaType === "video" ? "视频高清增强前后对比" : "图片高清增强前后对比"}
       aria-valuemin={3}
       aria-valuemax={97}
       aria-valuenow={Math.round(position)}

@@ -87,26 +87,26 @@
 - Module 7 must not proceed to module 8 until it is manually approved.
 - A-side module 7 must not modify B-side New API, authentication, quota, payment, Docker, database, Redis, BFF, callback, reconciliation, or port configuration.
 - Module 7 must not modify video upscale business while repairing image upscale.
-- Image upscale remains a local processing capability and must not be converted into a New API model call.
-- The local Upscayl dependency must be truly detected before the UI marks image upscale as available.
-- Final module 7 acceptance must include real local Upscayl 2x and 4x output dimensions, not only dependency detection.
-- When the local dependency is missing, the UI must show a real dependency-missing state and must not fake processing or success.
+- Image upscale remains a dedicated高清增强 capability and must not be converted into a New API model call.
+- Image upscale must use the current Volcengine ImageX provider configuration.
+- Final module 7 acceptance must include real ImageX output records and dimensions when provider credentials are available.
+- When ImageX configuration is incomplete, the UI must show a real unavailable state and must not fake processing or success.
 - No static sample image may be used as an accepted image-upscale result.
-- Download actions must point only to real stored output files created by the local process.
-- Normal workspace errors must not expose local absolute executable paths, model paths, command lines, secrets, or full stack traces.
+- Download actions must point only to real stored output files created by the高清增强 provider flow.
+- Normal workspace errors must not expose provider secrets, internal paths, signed headers, raw upstream responses, or full stack traces.
 - Module 7 must keep the module 5 visual foundation and must not redesign Header, Sidebar, upload controls, primary action, preview shell, or scrollbar behavior.
 
 ## Module 8 Gate
 
 - Module 8 must not proceed to module 9 until it is manually approved.
 - A-side module 8 must not modify B-side New API, authentication, quota, payment, Docker, database, Redis, BFF, callback, reconciliation, or port configuration.
-- Video upscale must use the real local Video2X command-line workflow and must not automate the desktop UI.
-- Video2X and FFmpeg runtime availability must be truly detected before the UI marks video upscale as available.
-- Final module 8 acceptance must include real Video2X 2x and 4x output dimensions, not only dependency detection.
-- When Video2X or FFmpeg is missing, the UI must show a real dependency-missing state and must not fake processing or success.
+- Video upscale must use the current Volcengine VOD高清增强 provider flow and must not automate a desktop UI.
+- VOD provider configuration must be truly detected before the UI marks video upscale as available.
+- Final module 8 acceptance must include real VOD output records and dimensions/duration when provider credentials are available.
+- When VOD configuration is incomplete, the UI must show a real unavailable state and must not fake processing or success.
 - No static sample video may be used as an accepted video-upscale result.
-- Download actions must point only to real stored output files created by the local process.
-- Normal workspace errors must not expose local absolute executable paths, command lines, secrets, or full stack traces.
+- Download actions must point only to real stored output files created by the高清增强 provider flow.
+- Normal workspace errors must not expose provider secrets, internal paths, signed headers, raw upstream responses, or full stack traces.
 - Module 8 must keep the module 5 visual foundation and must not redesign Header, Sidebar, upload controls, primary action, preview shell, or scrollbar behavior.
 
 ## Module 9 Gate
@@ -114,7 +114,7 @@
 - Module 9 must not proceed to module 10 until it is manually approved.
 - A-side module 9 must not modify B-side New API, authentication, quota, payment, Docker, database, Redis, BFF, callback, reconciliation, or port configuration.
 - The works library must display real records from the existing library data source and must not use static sample works as user data.
-- Generated image/video results and local upscale results must reuse the existing `addLibraryItem()` flow instead of creating a second library store.
+- Generated image/video results and高清增强 results must reuse the existing `addLibraryItem()` flow instead of creating a second library store.
 - Download actions must point only to allowed stored output files.
 - Delete actions must delete only the selected library item's allowed file and metadata.
 - Delete actions must remove the real file before metadata; file deletion failure must preserve the work record.

@@ -31,7 +31,7 @@ This review focuses on the official New API backend, not on this project's futur
 - Session store: `cookie.NewStore([]byte(common.SessionSecret))`
 - Cookie flags: `HttpOnly=true`, `Secure=false`, `SameSiteStrictMode`
 - Session lifetime: 30 days
-- Access-token auth: `Authorization: Bearer ...` or `sk-...`
+- Access-token auth: bearer-style or API-key-style token headers.
 - User id binding: `New-Api-User` header must match the authenticated user
 
 ## Empty Secret Behavior

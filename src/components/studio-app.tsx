@@ -22,16 +22,15 @@ import {
   allowedReferenceImageTypes,
   allowedUpscaleVideoTypes,
   defaultVideoDurations,
+  defaultUploadLimits,
   formatQuotaUnits,
   grokVideo10Ratios,
   grokVideo15Ratios,
   grokVideoDurations,
   jimengVideoRatios,
-  maxImageUpscaleSize,
   maxReferenceImageCount,
   maxReferenceImageSize,
   maxVideoFirstFrameCount,
-  maxVideoUpscaleSize,
   promptOptimizationTargetPlatform,
   ratios,
   upscaleUnavailableMessage,
@@ -90,6 +89,7 @@ import {
   workspaceToolById,
   workspaceToolEntries,
 } from "@/lib/workspace-registry";
+import type { PublicUploadLimit } from "@/lib/upload-limits";
 
 type AuthSessionResponse =
   | { ok: true; user: PublicAuthUser; mappingStatus: string | null }
@@ -172,6 +172,24 @@ function withPreviewParam(href: string, previewMode: boolean) {
   return `${href}${href.includes("?") ? "&" : "?"}preview=1`;
 }
 
+function fileExtensionFromName(name: string) {
+  const baseName = name.split(/[\\/]/).pop() || "";
+  const dotIndex = baseName.lastIndexOf(".");
+  return dotIndex >= 0 ? baseName.slice(dotIndex).toLowerCase() : "";
+}
+
+function ensureImageFileName(file: File, message = "图像仅支持 PNG、JPEG 和 WebP。") {
+  if (![".png", ".jpg", ".jpeg", ".webp"].includes(fileExtensionFromName(file.name))) {
+    throw new Error(message);
+  }
+}
+
+function ensureVideoFileName(file: File, message = "视频高清增强仅支持 MP4、WebM 和 MOV。") {
+  if (![".mp4", ".webm", ".mov"].includes(fileExtensionFromName(file.name))) {
+    throw new Error(message);
+  }
+}
+
 function createImageWorkspaceFiles(files: File[]) {
   const nextFiles = files.slice(0, maxReferenceImageCount);
   if (files.length > maxReferenceImageCount) {
@@ -181,8 +199,9 @@ function createImageWorkspaceFiles(files: File[]) {
     if (!allowedReferenceImageTypes.has(file.type)) {
       throw new Error("图像仅支持 PNG、JPEG 和 WebP。");
     }
+    ensureImageFileName(file);
     if (file.size > maxReferenceImageSize) {
-      throw new Error("单张图像不能超过 10MB。");
+      throw new Error(`单张图像不能超过 ${defaultUploadLimits.referenceImage.label}。`);
     }
   }
   return nextFiles.map((file) => ({
@@ -201,8 +220,9 @@ function createVideoWorkspaceFiles(files: File[]) {
   if (!allowedReferenceImageTypes.has(file.type)) {
     throw new Error("图像仅支持 PNG、JPEG 和 WebP。");
   }
+  ensureImageFileName(file);
   if (file.size > maxReferenceImageSize) {
-    throw new Error("图像不能超过 10MB。");
+    throw new Error(`图像不能超过 ${defaultUploadLimits.referenceImage.label}。`);
   }
   return [{
     file,
@@ -210,17 +230,18 @@ function createVideoWorkspaceFiles(files: File[]) {
   }];
 }
 
-function createImageUpscaleFile(files: File[]) {
+function createImageUpscaleFile(files: File[], limit: PublicUploadLimit = defaultUploadLimits.imageUpscale) {
   if (files.length > 1) {
-    throw new Error("图片高清一次只能上传 1 张图片。");
+    throw new Error("图片高清增强一次只能上传 1 张图片。");
   }
   const [file] = files;
   if (!file) return null;
   if (!allowedReferenceImageTypes.has(file.type)) {
-    throw new Error("图片高清仅支持 PNG、JPEG 和 WebP。");
+    throw new Error("图片高清增强仅支持 PNG、JPEG 和 WebP。");
   }
-  if (file.size > maxImageUpscaleSize) {
-    throw new Error("图片高清文件不能超过 25MB。");
+  ensureImageFileName(file, "图片高清增强仅支持 PNG、JPEG 和 WebP。");
+  if (file.size > limit.bytes) {
+    throw new Error(`图片高清增强文件不能超过 ${limit.label}。`);
   }
   return {
     file,
@@ -228,17 +249,18 @@ function createImageUpscaleFile(files: File[]) {
   };
 }
 
-function createVideoUpscaleFile(files: File[]) {
+function createVideoUpscaleFile(files: File[], limit: PublicUploadLimit = defaultUploadLimits.videoUpscale) {
   if (files.length > 1) {
-    throw new Error("视频高清一次只能上传 1 个视频。");
+    throw new Error("视频高清增强一次只能上传 1 个视频。");
   }
   const [file] = files;
   if (!file) return null;
   if (!allowedUpscaleVideoTypes.has(file.type)) {
-    throw new Error("视频高清仅支持 MP4、WebM 和 MOV。");
+    throw new Error("视频高清增强仅支持 MP4、WebM 和 MOV。");
   }
-  if (file.size > maxVideoUpscaleSize) {
-    throw new Error("视频高清文件不能超过 1GB。");
+  ensureVideoFileName(file);
+  if (file.size > limit.bytes) {
+    throw new Error(`视频高清增强文件不能超过 ${limit.label}。`);
   }
   return {
     file,
@@ -256,14 +278,24 @@ function extensionFromMimeType(mimeType: string, fallback: string) {
   return fallback;
 }
 
-async function fileFromLibraryOutput(item: LibraryItem, fallbackExtension: string) {
+async function fileFromLibraryOutput(item: LibraryItem, fallbackExtension: string, limit: PublicUploadLimit) {
   const output = item.output;
   if (!output?.url) throw new Error("结果文件暂不可用。");
+  if (output.size && output.size > limit.bytes) {
+    throw new Error(`结果文件不能超过 ${limit.label}。`);
+  }
 
   const response = await fetch(output.url);
   if (!response.ok) throw new Error("结果文件读取失败。");
+  const contentLength = Number(response.headers.get("content-length") || 0);
+  if (Number.isFinite(contentLength) && contentLength > limit.bytes) {
+    throw new Error(`结果文件不能超过 ${limit.label}。`);
+  }
 
   const blob = await response.blob();
+  if (blob.size > limit.bytes) {
+    throw new Error(`结果文件不能超过 ${limit.label}。`);
+  }
   const mimeType = blob.type || output.mimeType;
   const extension = extensionFromMimeType(mimeType, fallbackExtension);
   const rawName = output.storedName || `${item.id}${extension}`;
@@ -344,6 +376,7 @@ export function StudioApp() {
   const [outputs, setOutputs] = useState<Partial<Record<BusinessToolId, OutputState>>>({});
   const [mobileAction, setMobileAction] = useState<MobileActionState>(null);
   const [mobilePreviewSignal, setMobilePreviewSignal] = useState(0);
+  const [uploadLimits, setUploadLimits] = useState(defaultUploadLimits);
   const [libraryFilter, setLibraryFilter] = useState<LibraryFilter>("image");
   const [librarySort, setLibrarySort] = useState<LibrarySort>("recent");
   const [librarySearch, setLibrarySearch] = useState("");
@@ -1370,6 +1403,7 @@ export function StudioApp() {
     updateImageUpscaleWorkspace({ statusLoading: true, statusError: "", checked: true });
     try {
       const data = await jsonFetch<UpscaleStatusResponse>("/api/upscale/status");
+      if (data.uploadLimits) setUploadLimits((prev) => ({ ...prev, ...data.uploadLimits }));
       updateImageUpscaleWorkspace({ availability: data.image, statusLoading: false });
     } catch (error) {
       updateImageUpscaleWorkspace({
@@ -1387,7 +1421,7 @@ export function StudioApp() {
   const replaceImageUpscaleFile = useCallback((files: File[]) => {
     const previous = imageUpscaleFileRef.current;
     try {
-      const nextFile = createImageUpscaleFile(files);
+      const nextFile = createImageUpscaleFile(files, uploadLimits.imageUpscale);
       if (previous) URL.revokeObjectURL(previous.previewUrl);
       imageUpscaleFileRef.current = nextFile;
       updateImageUpscaleWorkspace({
@@ -1406,7 +1440,7 @@ export function StudioApp() {
       });
       setOutputs((prev) => ({ ...prev, "image-upscale": null }));
     }
-  }, [updateImageUpscaleWorkspace]);
+  }, [updateImageUpscaleWorkspace, uploadLimits.imageUpscale]);
 
   const removeImageUpscaleFile = useCallback(() => {
     if (imageUpscaleFileRef.current) {
@@ -1450,10 +1484,10 @@ export function StudioApp() {
         method: "POST",
         body: form,
       });
-      setOutputs((prev) => ({ ...prev, "image-upscale": { item: data.item, job: data.job, title: "图片高清结果", tool: "image-upscale" } }));
+      setOutputs((prev) => ({ ...prev, "image-upscale": { item: data.item, job: data.job, title: "图片高清增强结果", tool: "image-upscale" } }));
       await refreshLibrary();
     } catch (error) {
-      const text = error instanceof Error ? error.message : "图片高清处理失败。";
+      const text = error instanceof Error ? error.message : "图片高清增强处理失败。";
       updateImageUpscaleWorkspace({ submitError: text, submitDiagnostic: diagnosticFromError(error) });
       setMessage(text);
     } finally {
@@ -1478,6 +1512,7 @@ export function StudioApp() {
     updateVideoUpscaleWorkspace({ statusLoading: true, statusError: "", checked: true });
     try {
       const data = await jsonFetch<UpscaleStatusResponse>("/api/upscale/status");
+      if (data.uploadLimits) setUploadLimits((prev) => ({ ...prev, ...data.uploadLimits }));
       updateVideoUpscaleWorkspace({ availability: data.video, statusLoading: false });
     } catch (error) {
       updateVideoUpscaleWorkspace({
@@ -1501,7 +1536,7 @@ export function StudioApp() {
   const replaceVideoUpscaleFile = useCallback((files: File[]) => {
     const previous = videoUpscaleFileRef.current;
     try {
-      const nextFile = createVideoUpscaleFile(files);
+      const nextFile = createVideoUpscaleFile(files, uploadLimits.videoUpscale);
       if (previous) URL.revokeObjectURL(previous.previewUrl);
       videoUpscaleFileRef.current = nextFile;
       updateVideoUpscaleWorkspace({
@@ -1520,7 +1555,7 @@ export function StudioApp() {
       });
       setOutputs((prev) => ({ ...prev, "video-upscale": null }));
     }
-  }, [updateVideoUpscaleWorkspace]);
+  }, [updateVideoUpscaleWorkspace, uploadLimits.videoUpscale]);
 
   const removeVideoUpscaleFile = useCallback(() => {
     if (videoUpscaleFileRef.current) {
@@ -1570,10 +1605,10 @@ export function StudioApp() {
         body: form,
       });
       updateVideoUpscaleWorkspace({ job: data.job });
-      setOutputs((prev) => ({ ...prev, "video-upscale": { item: data.item, job: data.job, title: "视频高清结果", tool: "video-upscale" } }));
+      setOutputs((prev) => ({ ...prev, "video-upscale": { item: data.item, job: data.job, title: "视频高清增强结果", tool: "video-upscale" } }));
       await refreshLibrary();
     } catch (error) {
-      const text = error instanceof Error ? error.message : "视频高清处理失败。";
+      const text = error instanceof Error ? error.message : "视频高清增强处理失败。";
       updateVideoUpscaleWorkspace({ submitError: text, submitDiagnostic: diagnosticFromError(error) });
       setMessage(text);
     } finally {
@@ -1608,21 +1643,21 @@ export function StudioApp() {
     setMessage("正在准备高清素材。");
     try {
       if (item.type === "image") {
-        const file = await fileFromLibraryOutput(item, ".png");
+        const file = await fileFromLibraryOutput(item, ".png", uploadLimits.imageUpscale);
         replaceImageUpscaleFile([file]);
         setActiveWorkspaceToolId("image-upscale");
-        setMessage("已带入图片高清，请选择倍数后开始增强。");
+        setMessage("已带入图片高清增强，请选择倍数后开始增强。");
         return;
       }
 
-      const file = await fileFromLibraryOutput(item, ".mp4");
+      const file = await fileFromLibraryOutput(item, ".mp4", uploadLimits.videoUpscale);
       replaceVideoUpscaleFile([file]);
       setActiveWorkspaceToolId("video-upscale");
-      setMessage("已带入视频高清，请选择倍数后开始增强。");
+      setMessage("已带入视频高清增强，请选择倍数后开始增强。");
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "高清素材准备失败。");
     }
-  }, [replaceImageUpscaleFile, replaceVideoUpscaleFile, setMessage]);
+  }, [replaceImageUpscaleFile, replaceVideoUpscaleFile, setMessage, uploadLimits.imageUpscale, uploadLimits.videoUpscale]);
 
   useEffect(() => {
     const job = videoUpscaleWorkspace.job;
@@ -1637,15 +1672,15 @@ export function StudioApp() {
         if (updatedItem) {
           setOutputs((prev) => ({
             ...prev,
-            "video-upscale": { item: updatedItem, job: nextJob, title: "视频高清结果", tool: "video-upscale" },
+            "video-upscale": { item: updatedItem, job: nextJob, title: "视频高清增强结果", tool: "video-upscale" },
           }));
           if (updatedItem.status === "failed") {
-            updateVideoUpscaleWorkspace({ submitError: updatedItem.error || nextJob.error || "视频高清处理失败。" });
+            updateVideoUpscaleWorkspace({ submitError: updatedItem.error || nextJob.error || "视频高清增强处理失败。" });
           }
         }
         await refreshLibrary();
       } catch (error) {
-        const text = error instanceof Error ? error.message : "视频高清任务查询失败。";
+        const text = error instanceof Error ? error.message : "视频高清增强任务查询失败。";
         updateVideoUpscaleWorkspace({ submitError: text, submitDiagnostic: diagnosticFromError(error) });
         setMessage(text);
       }
@@ -2918,8 +2953,8 @@ function usageOperationLabel(operation: UsageLogEntry["operation"]) {
   const labels: Record<UsageLogEntry["operation"], string> = {
     cloud_image_generation: "AI 图像生成器",
     cloud_video_generation: "AI 视频生成器",
-    cloud_image_upscale: "图片高清",
-    cloud_video_upscale: "视频高清",
+    cloud_image_upscale: "图片高清增强",
+    cloud_video_upscale: "视频高清增强",
   };
   return labels[operation] || "AI 工具";
 }
@@ -2928,8 +2963,8 @@ function usageDescription(entry: UsageLogEntry) {
   const descriptions: Record<UsageLogEntry["operation"], string> = {
     cloud_image_generation: "生成图片",
     cloud_video_generation: "生成视频",
-    cloud_image_upscale: "图片高清处理",
-    cloud_video_upscale: "视频高清处理",
+    cloud_image_upscale: "图片高清增强处理",
+    cloud_video_upscale: "视频高清增强处理",
   };
   if (entry.status === "failed") return `${descriptions[entry.operation] || "工具处理"}失败`;
   if (entry.status === "refunded") return `${descriptions[entry.operation] || "工具处理"}已退回额度`;

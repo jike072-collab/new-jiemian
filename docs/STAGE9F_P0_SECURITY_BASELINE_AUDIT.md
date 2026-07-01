@@ -1,3 +1,5 @@
+> Historical audit snapshot. This file records an earlier 3107 security review and does not describe the current 3106 server deployment.
+
 # Stage 9F-0 P0 Security Baseline Audit
 
 Stage 9F-0 is a read-only audit and planning pass. It does not authorize or execute formal Batch C implementation, dual-write, read-path cutover, feature-flag change, rollback, migration, staging business writes, production DB access, production DB writes, real uploads import, provider or NewAPI calls, generation, cost, or any 3106 action.
@@ -28,15 +30,7 @@ This document does not include:
 
 ### Worktree
 
-- worktree: `E:\codex工作台\p003\new-jiemian-3107`
-- branch: `codex/stage9f-p0-security-baseline-audit`
-- HEAD: `a263e000f34f2b7620f57157e9ef404255d8024a`
-- origin/main: `a263e000f34f2b7620f57157e9ef404255d8024a`
-- worktree clean: `yes`
-
-### 3107 Runtime
-
-- runtime root: `E:\codex工作台\p003\new-jiemian-3107`
+- worktree: `<local-3107-worktree>`
 - runtime commit: `a263e000f34f2b7620f57157e9ef404255d8024a`
 - 3107 health: `ok`
 - `newApiCalled=false`

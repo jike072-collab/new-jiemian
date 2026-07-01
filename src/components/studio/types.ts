@@ -1,12 +1,15 @@
 import type { FrontendProvider, JobRecord, LibraryItem } from "@/lib/server/types";
 import type { ErrorDiagnostic } from "@/lib/error-diagnostic-catalog";
+import type { PublicUploadLimits } from "@/lib/upload-limits";
 
 export type BusinessToolId = "image" | "video" | "image-upscale" | "video-upscale" | "library";
 export type LibraryFilter = "image" | "video";
 export type LibrarySort = "recent" | "title";
 export type UpscaleKind = "image" | "video";
 export type UpscaleAvailability = { ready: boolean; detail: string };
-export type UpscaleStatusResponse = Record<UpscaleKind, UpscaleAvailability>;
+export type UpscaleStatusResponse = Record<UpscaleKind, UpscaleAvailability> & {
+  uploadLimits?: Pick<PublicUploadLimits, "imageUpscale" | "videoUpscale">;
+};
 
 export type EnabledProviders = {
   image: FrontendProvider[];

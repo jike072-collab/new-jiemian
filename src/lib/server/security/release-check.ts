@@ -10,6 +10,7 @@ import { getApplicationDatabaseConfig } from "../database/config";
 import { getNewApiConfig } from "../integrations/new-api/config";
 import { getTaskBillingPersistenceMode } from "../quota/task-billing-persistence";
 import { getBillingPersistenceMode } from "../billing/persistence";
+import { validateReleaseRuntimeEnv } from "./production-env";
 
 export type ReleaseCheckStatus = "pass" | "warn" | "fail";
 
@@ -130,11 +131,24 @@ function checkNewApiInfraConfig() {
   return item("new_api.infra", "pass", "New API deployment files are present; run the Docker exposure checks before release.");
 }
 
+function checkRuntimeEnvironment() {
+  const report = validateReleaseRuntimeEnv();
+  if (report.ok) {
+    return item("runtime.environment", "pass", `${report.target} runtime environment is valid.`);
+  }
+  return item(
+    "runtime.environment",
+    "fail",
+    report.issues.map((entry) => `${entry.variable}: ${entry.reason}`).join("; "),
+  );
+}
+
 export function runBackendReleaseChecks(now = new Date()): ReleaseCheckReport {
   const environment = process.env.NODE_ENV === "production" || process.env.NODE_ENV === "test"
     ? process.env.NODE_ENV
     : "development";
   const items = [
+    checkRuntimeEnvironment(),
     checkNoDefaultAuthSecret(),
     checkDatabaseConfig(),
     ...checkPersistenceModes(),

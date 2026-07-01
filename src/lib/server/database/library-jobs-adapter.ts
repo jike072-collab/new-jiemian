@@ -15,6 +15,8 @@ import { type JobRecord, type LibraryItem } from "../types";
 
 const JOB_REF_PREFIX = "stage9cb-job-ref:";
 const FALLBACK_ASSET_PREFIX = "stage9cb-library-metadata:";
+const EXPIRED_ASSET_PREFIX = "stage9cb-library-expired:";
+const EXPIRATION_PENDING_ASSET_PREFIX = "stage9cb-library-expiration-pending:";
 const UPLOADS_ASSET_PREFIX = "uploads";
 const DB_ID_NAMESPACE = "8b7f2345-3a2a-4b6b-a0a8-111111111111";
 
@@ -106,14 +108,39 @@ function sourceFromLibraryItem(item: LibraryItem) {
 }
 
 function pathOrUrlFromLibraryItem(item: LibraryItem) {
+  if (item.expirationPending) {
+    const payload = Buffer.from(JSON.stringify({
+      id: item.id,
+      stage: item.expirationStage || "pending",
+      storedName: item.expirationPendingStoredName || item.output?.storedName || null,
+      quarantineName: item.expirationQuarantineName || null,
+      at: item.expirationPendingAt || item.updatedAt,
+    }), "utf8").toString("base64url");
+    return `${EXPIRATION_PENDING_ASSET_PREFIX}${payload}`;
+  }
   if (item.output?.storedName) return [UPLOADS_ASSET_PREFIX, item.output.storedName].join("/");
   if (item.output?.sourceUrl) return item.output.sourceUrl;
   if (item.output?.url) return item.output.url;
+  if (item.expired) {
+    const expiredAt = Buffer.from(item.expiredAt || item.updatedAt, "utf8").toString("base64url");
+    return `${EXPIRED_ASSET_PREFIX}${item.id}:${expiredAt}`;
+  }
   return `${FALLBACK_ASSET_PREFIX}${item.id}`;
 }
 
 function assetIdForLibraryItem(item: LibraryItem) {
+  if (item.expirationPending) {
+    return uuidFromStableText([
+      "asset:expiration-pending",
+      item.id,
+      item.expirationStage || "pending",
+      item.expirationPendingAt || item.updatedAt,
+      item.expirationPendingStoredName || item.output?.storedName || "",
+      item.expirationQuarantineName || "",
+    ].join(":"));
+  }
   if (item.output?.storedName) return uuidFromStableText(`asset:stored:${item.output.storedName}`);
+  if (item.expired) return uuidFromStableText(`asset:expired:${item.id}:${item.expiredAt || item.updatedAt}`);
   return uuidFromStableText(`asset:library:${item.id}`);
 }
 
@@ -127,7 +154,12 @@ function jobRefAssetId(jobId: string) {
 
 function outputFromAsset(asset: DatabaseMvpAsset | null): LibraryItem["output"] | undefined {
   if (!asset) return undefined;
-  if (asset.path_or_url.startsWith(JOB_REF_PREFIX) || asset.path_or_url.startsWith(FALLBACK_ASSET_PREFIX)) return undefined;
+  if (
+    asset.path_or_url.startsWith(JOB_REF_PREFIX)
+    || asset.path_or_url.startsWith(FALLBACK_ASSET_PREFIX)
+    || asset.path_or_url.startsWith(EXPIRED_ASSET_PREFIX)
+    || asset.path_or_url.startsWith(EXPIRATION_PENDING_ASSET_PREFIX)
+  ) return undefined;
   const storedPrefix = `${UPLOADS_ASSET_PREFIX}/`;
   const storedName = asset.path_or_url.startsWith(storedPrefix) ? asset.path_or_url.slice(storedPrefix.length) : undefined;
   return {
@@ -139,8 +171,52 @@ function outputFromAsset(asset: DatabaseMvpAsset | null): LibraryItem["output"] 
   };
 }
 
+function expiredFromAsset(asset: DatabaseMvpAsset | null) {
+  if (!asset?.path_or_url.startsWith(EXPIRED_ASSET_PREFIX)) return {};
+  const [, encoded] = asset.path_or_url.slice(EXPIRED_ASSET_PREFIX.length).split(":");
+  if (!encoded) return { expired: true as const };
+  try {
+    return {
+      expired: true as const,
+      expiredAt: Buffer.from(encoded, "base64url").toString("utf8"),
+    };
+  } catch {
+    return { expired: true as const };
+  }
+}
+
+function expirationPendingFromAsset(
+  asset: DatabaseMvpAsset | null,
+): Pick<LibraryItem, "expirationPending" | "expirationStage" | "expirationPendingAt" | "expirationPendingStoredName" | "expirationQuarantineName"> | Record<string, never> {
+  if (!asset?.path_or_url.startsWith(EXPIRATION_PENDING_ASSET_PREFIX)) return {};
+  const encoded = asset.path_or_url.slice(EXPIRATION_PENDING_ASSET_PREFIX.length);
+  try {
+    const parsed = JSON.parse(Buffer.from(encoded, "base64url").toString("utf8")) as {
+      stage?: unknown;
+      storedName?: unknown;
+      quarantineName?: unknown;
+      at?: unknown;
+    };
+    return {
+      expirationPending: true as const,
+      ...(isExpirationStage(parsed.stage) ? { expirationStage: parsed.stage } : {}),
+      ...(typeof parsed.at === "string" ? { expirationPendingAt: parsed.at } : {}),
+      ...(typeof parsed.storedName === "string" ? { expirationPendingStoredName: parsed.storedName } : {}),
+      ...(typeof parsed.quarantineName === "string" ? { expirationQuarantineName: parsed.quarantineName } : {}),
+    };
+  } catch {
+    return { expirationPending: true as const };
+  }
+}
+
+function isExpirationStage(value: unknown): value is LibraryItem["expirationStage"] {
+  return value === "pending" || value === "quarantined" || value === "fileDeleted";
+}
+
 function libraryItemFromDatabase(row: DatabaseMvpLibraryItem, asset: DatabaseMvpAsset | null, job: DatabaseMvpGenerationJob | null): LibraryItem {
   const output = outputFromAsset(asset);
+  const expired = expiredFromAsset(asset);
+  const expirationPending = expirationPendingFromAsset(asset);
   return {
     id: row.id,
     type: row.kind.includes("video") ? "video" : "image",
@@ -152,10 +228,13 @@ function libraryItemFromDatabase(row: DatabaseMvpLibraryItem, asset: DatabaseMvp
     status: job ? databaseStatusToJson(job.status) : "done",
     createdAt: row.created_at,
     updatedAt: row.updated_at,
+    ...(job?.completed_at ? { completedAt: job.completed_at } : {}),
     ...(output ? { output } : {}),
     params: {},
     ...(job?.user_visible_error ? { error: job.user_visible_error } : {}),
-    fileAvailable: Boolean(output?.storedName || output?.sourceUrl || output?.url),
+    ...expired,
+    ...expirationPending,
+    fileAvailable: expired.expired || expirationPending.expirationPending ? false : Boolean(output?.storedName || output?.sourceUrl || output?.url),
   };
 }
 
@@ -231,7 +310,7 @@ export function createStage9cbLibraryDatabaseAdapter(repository: Stage9cbDatabas
           internal_error_masked: item.error || null,
           created_at: item.createdAt,
           updated_at: item.updatedAt,
-          completed_at: item.status === "done" || item.status === "failed" ? item.updatedAt : null,
+          completed_at: item.status === "done" || item.status === "failed" ? item.completedAt || item.updatedAt : null,
         });
       }
       const existing = await repository.getLibraryItem(item.id);
@@ -266,19 +345,19 @@ export function createStage9cbLibraryDatabaseAdapter(repository: Stage9cbDatabas
       const current = await repository.getLibraryItem(id);
       if (!current) return null;
       let assetId = current.asset_id;
-      if (nextItem?.output) {
+      if (nextItem) {
         const asset = await upsertAsset(repository, nextItem);
         assetId = asset.id;
       }
       if (current.generation_job_id) {
         await repository.updateGenerationJob(current.generation_job_id, {
           status: jsonStatusToDatabase(nextItem?.status || patch.status || "queued"),
-          output_asset_id: nextItem?.output ? assetId : undefined,
+          output_asset_id: nextItem ? (nextItem.output ? assetId : null) : undefined,
           provider: nextItem?.providerId,
           provider_model: nextItem?.model,
           user_visible_error: nextItem?.error || patch.error || null,
           internal_error_masked: nextItem?.error || patch.error || null,
-          completed_at: nextItem?.status === "done" || nextItem?.status === "failed" ? nextItem.updatedAt : undefined,
+          completed_at: nextItem?.status === "done" || nextItem?.status === "failed" ? nextItem.completedAt || nextItem.updatedAt : undefined,
           updated_at: nextItem?.updatedAt,
         });
       }

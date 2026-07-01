@@ -3,10 +3,16 @@ import { randomUUID } from "node:crypto";
 import {
   estimateGenerationQuota,
   generationBillingFingerprint,
-} from "@/lib/generation-quota";
+} from "../generation-quota";
 
-import { addJob, addLibraryItem, storeBytes, storeDataUrl, storeRemoteUrl, updateJob, updateLibraryItem } from "./library";
+import { addJob, addLibraryItem, storeDataUrl, storeRemoteUrl, updateJob, updateLibraryItem } from "./library";
 import { codeForUpstreamStatus, GenerationDiagnosticError } from "./error-diagnostics";
+import {
+  assertFileFormatAllowed,
+  assertFileSizeAllowed,
+} from "./media-upload-guard";
+import { assertStorageAllows } from "./storage-capacity";
+import { storeRemoteUrlStreamed } from "./remote-media-download";
 import { getTaskBillingService } from "./quota";
 import { jimengVideoOptionsForModel, providerById } from "./providers";
 import { type JobRecord, type LibraryItem, type ProviderConfig } from "./types";
@@ -352,14 +358,43 @@ async function callGrokVideoProvider(provider: ProviderConfig, input: {
 }
 
 async function outputToLibraryFromAuthenticatedUrl(provider: ProviderConfig, url: string, prefix: string) {
-  const response = await fetch(url, {
-    method: "GET",
+  return storeRemoteUrlStreamed(url, {
+    prefix,
+    fallbackMime: "video/mp4",
     headers: authHeaders(provider),
-    signal: AbortSignal.timeout(180000),
   });
-  if (!response.ok) throw new Error(`下载视频结果失败：HTTP ${response.status}`);
-  const mimeType = response.headers.get("content-type") || "video/mp4";
-  return storeBytes(Buffer.from(await response.arrayBuffer()), mimeType, prefix);
+}
+
+const providerJsonDefaultLimitBytes = 16 * 1024 * 1024;
+const providerJsonErrorLimitBytes = 1 * 1024 * 1024;
+const providerJsonHardLimitBytes = 64 * 1024 * 1024;
+
+async function readBoundedText(response: Response, limitBytes: number) {
+  if (!response.body) return "";
+  const reader = response.body.getReader();
+  let totalBytes = 0;
+  const chunks: Uint8Array[] = [];
+  try {
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      totalBytes += value.byteLength;
+      if (totalBytes > limitBytes) {
+        throw new Error("Provider JSON response exceeded the safe size limit.");
+      }
+      chunks.push(value);
+    }
+    const merged = new Uint8Array(totalBytes);
+    let offset = 0;
+    for (const chunk of chunks) {
+      merged.set(chunk, offset);
+      offset += chunk.byteLength;
+    }
+    return new TextDecoder().decode(merged);
+  } finally {
+    await reader.cancel().catch(() => undefined);
+    reader.releaseLock();
+  }
 }
 
 function imageEndpoint(provider: ProviderConfig, useEdits: boolean) {
@@ -375,7 +410,49 @@ function imageEndpoint(provider: ProviderConfig, useEdits: boolean) {
 }
 
 async function readProviderJson(response: Response, provider?: ProviderConfig) {
-  const text = await response.text().catch(() => "");
+  const contentLength = response.headers.get("content-length");
+  const declaredLength = contentLength ? Number(contentLength) : NaN;
+  const limitBytes = response.ok ? providerJsonDefaultLimitBytes : providerJsonErrorLimitBytes;
+  if (Number.isFinite(declaredLength) && declaredLength > providerJsonHardLimitBytes) {
+    throw new GenerationDiagnosticError({
+      code: "PROVIDER_BAD_RESPONSE",
+      providerId: provider?.id,
+      model: provider?.model,
+      upstreamStatus: response.status,
+      safeDetails: { upstreamStatus: response.status, contentLength: "exceeded-hard-limit" },
+    });
+  }
+  if (Number.isFinite(declaredLength) && declaredLength > limitBytes) {
+    throw new GenerationDiagnosticError({
+      code: "PROVIDER_BAD_RESPONSE",
+      providerId: provider?.id,
+      model: provider?.model,
+      upstreamStatus: response.status,
+      safeDetails: {
+        upstreamStatus: response.status,
+        contentType: response.headers.get("content-type") || "",
+        responseLimitBytes: limitBytes,
+        contentLength: "exceeded-limit",
+      },
+    });
+  }
+  let text = "";
+  try {
+    text = await readBoundedText(response, limitBytes);
+  } catch (error) {
+    throw new GenerationDiagnosticError({
+      code: "PROVIDER_BAD_RESPONSE",
+      providerId: provider?.id,
+      model: provider?.model,
+      upstreamStatus: response.status,
+      safeDetails: {
+        upstreamStatus: response.status,
+        contentType: response.headers.get("content-type") || "",
+        responseLimitBytes: limitBytes,
+      },
+      cause: error,
+    });
+  }
   if (!response.ok) {
     if (!text.trim()) {
       throw new GenerationDiagnosticError({
@@ -430,6 +507,57 @@ async function readProviderJson(response: Response, provider?: ProviderConfig) {
     });
   }
   return payload;
+}
+
+type ProviderOutputStoragePlan =
+  | { mode: "data-url"; dataUrl: string }
+  | { mode: "remote-url"; url: string; fallbackMime: string };
+
+function unsupportedVideoBase64Error(output: ProviderOutput, type: "image" | "video") {
+  return new GenerationDiagnosticError({
+    code: "PROVIDER_BAD_RESPONSE",
+    message: "供应商返回了不受支持的视频 Base64 结果。",
+    safeDetails: {
+      outputType: type,
+      responseFormat: output.base64 ? "video-base64" : "video-data-url",
+      mimeType: output.mimeType || "video/mp4",
+    },
+  });
+}
+
+function planProviderOutputStorage(output: ProviderOutput, type: "image" | "video"): ProviderOutputStoragePlan {
+  const fallbackMime = output.mimeType || (type === "image" ? "image/png" : "video/mp4");
+  if (type === "video") {
+    if (output.url) {
+      if (output.url.startsWith("data:")) throw unsupportedVideoBase64Error(output, type);
+      return {
+        mode: "remote-url",
+        url: output.url,
+        fallbackMime,
+      };
+    }
+    if (output.base64) throw unsupportedVideoBase64Error(output, type);
+  }
+  if (output.base64) {
+    return {
+      mode: "data-url",
+      dataUrl: /^data:/i.test(output.base64)
+        ? output.base64
+        : `data:${fallbackMime};base64,${output.base64}`,
+    };
+  }
+  if (!output.url) throw new Error("供应商没有返回可识别的生成结果。");
+  if (output.url.startsWith("data:")) {
+    return {
+      mode: "data-url",
+      dataUrl: output.url,
+    };
+  }
+  return {
+    mode: "remote-url",
+    url: output.url,
+    fallbackMime,
+  };
 }
 
 async function callImageProvider({
@@ -514,25 +642,10 @@ async function callImageProvider({
 }
 
 async function outputToLibrary(output: ProviderOutput, type: "image" | "video", prefix: string) {
-  if (output.base64) {
-    const stored = await storeBytes(
-      Buffer.from(output.base64.replace(/^data:[^;]+;base64,/i, ""), "base64"),
-      type === "image" ? "image/png" : "video/mp4",
-      prefix,
-    );
-    return stored;
-  }
-  if (!output.url) throw new Error("供应商没有返回可识别的生成结果。");
-  if (output.url.startsWith("data:")) return storeDataUrl(output.url, prefix);
-  try {
-    return await storeRemoteUrl(output.url, prefix, output.mimeType || (type === "image" ? "image/png" : "video/mp4"));
-  } catch {
-    return {
-      url: output.url,
-      mimeType: output.mimeType || (type === "image" ? "image/png" : "video/mp4"),
-      sourceUrl: output.url,
-    };
-  }
+  await assertStorageAllows(type === "video" ? "video-media-write" : "image-media-write", { fresh: true });
+  const plan = planProviderOutputStorage(output, type);
+  if (plan.mode === "data-url") return storeDataUrl(plan.dataUrl, prefix);
+  return storeRemoteUrl(plan.url, prefix, plan.fallbackMime);
 }
 
 async function settleGeneratedTaskBilling(input: {
@@ -670,6 +783,7 @@ export async function generateImage(input: {
     estimatedQuotaUnits,
   });
   try {
+    await assertStorageAllows("image-generation");
     const readyProvider = assertProviderReady(provider, "image", "MODEL_MISSING_IMAGE");
     if (!input.prompt.trim()) throw new GenerationDiagnosticError({ code: "INPUT_MISSING_PROMPT", providerId: readyProvider.id, model: readyProvider.model });
     if (input.mode === "image-to-image" && !input.files.length) {
@@ -781,6 +895,7 @@ export async function submitVideo(input: {
     estimatedQuotaUnits,
   });
   try {
+    await assertStorageAllows("video-generation", { fresh: true });
     if (!input.prompt.trim()) throw new GenerationDiagnosticError({ code: "INPUT_MISSING_PROMPT", providerId: provider?.id, model: provider?.model });
     if (input.mode === "text-to-video" && input.files.length) {
       throw new GenerationDiagnosticError({ code: "INPUT_INVALID_PARAMETERS", providerId: provider?.id, model: provider?.model });
@@ -972,7 +1087,7 @@ async function reconcileFinalizedVideoJob(job: JobRecord, localUserId?: string |
 
 export async function refreshVideoJob(jobId: string, localUserId?: string | null) {
   const { readJobs } = await import("./library");
-  const job = (await readJobs()).find((item) => item.id === jobId);
+  const job = (await readJobs()).find((item: JobRecord) => item.id === jobId);
   if (!job) throw new Error("任务不存在。");
   const jobOwner = job.ownerLocalUserId || job.billing_local_user_id || null;
   if (localUserId && jobOwner && jobOwner !== localUserId) {
@@ -1010,7 +1125,6 @@ export async function refreshVideoJob(jobId: string, localUserId?: string | null
     } satisfies Partial<LibraryItem>);
     const updated = await updateJob(job.id, {
       status: "done",
-      sourceUrl: outputUrl,
       billing_state: job.billing_task_id ? "settled" : job.billing_state,
       billing_last_error: null,
     });
@@ -1041,7 +1155,6 @@ export async function refreshVideoJob(jobId: string, localUserId?: string | null
     } satisfies Partial<LibraryItem>);
     const updated = await updateJob(job.id, {
       status: "done",
-      sourceUrl: contentUrl,
       billing_state: job.billing_task_id ? "settled" : job.billing_state,
       billing_last_error: null,
     });
@@ -1085,13 +1198,19 @@ export async function refreshVideoJob(jobId: string, localUserId?: string | null
   });
 }
 
-export async function uploadedMediaFromForm(form: FormData, fieldName = "files") {
+export async function uploadedMediaFromForm(
+  form: FormData,
+  fieldName = "files",
+  operation: "reference-image-upload" | "video-generation-upload" = "reference-image-upload",
+) {
   const files = form.getAll(fieldName).filter((value): value is File => value instanceof File && value.size > 0);
   if (files.length > 10) throw new Error("最多上传 10 张参考图片。");
-  const allowedTypes = new Set(["image/png", "image/jpeg", "image/webp"]);
+  if (operation === "video-generation-upload" && files.length) {
+    await assertStorageAllows("video-upload", { fresh: true });
+  }
   for (const file of files) {
-    if (!allowedTypes.has(file.type)) throw new Error("参考图片只支持 PNG、JPEG 和 WebP。");
-    if (file.size > 10 * 1024 * 1024) throw new Error("单张参考图片不能超过 10MB。");
+    assertFileSizeAllowed(file, "reference-image");
+    await assertFileFormatAllowed(file, "reference-image");
   }
   return Promise.all(files.map(async (file) => ({
     bytes: Buffer.from(await file.arrayBuffer()),
@@ -1099,3 +1218,13 @@ export async function uploadedMediaFromForm(form: FormData, fieldName = "files")
     fileName: file.name || "reference.png",
   })));
 }
+
+export const providerCallInternalsForTests = {
+  parseProviderOutput,
+  planProviderOutputStorage,
+  readProviderJson,
+  outputToLibrary,
+  providerJsonDefaultLimitBytes,
+  providerJsonErrorLimitBytes,
+  providerJsonHardLimitBytes,
+};

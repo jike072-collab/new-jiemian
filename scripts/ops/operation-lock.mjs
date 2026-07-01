@@ -5,7 +5,7 @@ import { classifyServiceProcess } from "./process-identity.mjs";
 import { getProcessInfo } from "./process-utils.mjs";
 
 const DEFAULT_STALE_MS = 30 * 60 * 1000;
-const knownOperations = new Set(["deploy", "rollback", "deploy_failed", "rollback_failed"]);
+const knownOperations = new Set(["backup", "deploy", "rollback", "backup_failed", "deploy_failed", "rollback_failed"]);
 
 export async function acquireServiceOperationLock(config, operation, details = {}, options = {}) {
   mkdirSync(config.runtimeDir, { recursive: true });
@@ -99,7 +99,7 @@ export async function classifyOperationLock(config, lockFile = lockPath(config),
     if (!knownOperations.has(details.operation)) {
       return { status: "unknown", reason: "unknown-operation", details, lockFile };
     }
-    if (details.operation === "rollback_failed" || details.operation === "deploy_failed") {
+    if (details.operation === "backup_failed" || details.operation === "rollback_failed" || details.operation === "deploy_failed") {
       return { status: "failed", reason: details.operation, details, lockFile };
     }
     const updatedAt = Date.parse(details.updatedAt || details.createdAt || "");

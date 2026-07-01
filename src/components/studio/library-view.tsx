@@ -64,6 +64,7 @@ export function LibraryWorkspace({
       <header className="studio-library-page__header">
         <div>
           <h2>作品库</h2>
+          <p>作品仅保存24小时，请及时下载。</p>
         </div>
         <span className="studio-library-page__count">共 {totalCount} 件作品</span>
       </header>

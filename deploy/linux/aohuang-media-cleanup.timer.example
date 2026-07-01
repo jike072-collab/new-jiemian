@@ -1,0 +1,12 @@
+[Unit]
+Description=Run Aohuang AI expired media cleanup hourly
+Documentation=https://github.com/jike072-collab/new-jiemian
+
+[Timer]
+OnCalendar=hourly
+RandomizedDelaySec=5m
+Persistent=true
+Unit=aohuang-media-cleanup.service
+
+[Install]
+WantedBy=timers.target

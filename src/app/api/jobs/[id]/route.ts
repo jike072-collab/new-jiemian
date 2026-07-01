@@ -14,7 +14,10 @@ export async function GET(
     const session = await requireAuthSession(request);
     if (!session.ok) return authResultResponse(request, session);
     const { id } = await context.params;
-    return NextResponse.json({ job: await refreshVideoJob(id, session.user.local_user_id) });
+    const job = await refreshVideoJob(id, session.user.local_user_id);
+    return NextResponse.json({
+      job: job ? { ...job, sourceUrl: undefined } : job,
+    });
   } catch (error) {
     return diagnosticErrorResponse(error, {
       requestId: request.headers.get("x-request-id"),

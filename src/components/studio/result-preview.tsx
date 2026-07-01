@@ -188,7 +188,7 @@ const toolTutorials: Record<ToolTutorialKind, {
     ],
   },
   "image-upscale": {
-    title: "图片高清快速教程",
+    title: "图片高清增强快速教程",
     description: "上传图片，选择倍数，再下载高清结果。",
     sections: [
       {
@@ -197,7 +197,7 @@ const toolTutorials: Record<ToolTutorialKind, {
         mediaSide: "left",
         visualClassName: "is-upload-stack",
         layers: [
-          { src: "/tutorials/image-upscale/upload.svg", alt: "图片高清上传框", className: "is-upload-base" },
+          { src: "/tutorials/image-upscale/upload.svg", alt: "图片高清增强上传框", className: "is-upload-base" },
           { src: "/tutorials/image-upscale/source.svg", alt: "待高清处理原图", className: "is-upload-front is-tilt-left" },
         ],
       },
@@ -207,7 +207,7 @@ const toolTutorials: Record<ToolTutorialKind, {
         mediaSide: "right",
         visualClassName: "is-detail",
         layers: [
-          { src: "/tutorials/image-upscale/main.svg", alt: "图片高清主图", className: "is-main" },
+          { src: "/tutorials/image-upscale/main.svg", alt: "图片高清增强主图", className: "is-main" },
           { src: "/tutorials/image-upscale/detail-low.svg", alt: "原始细节示意", className: "is-detail-left is-tilt-soft-left" },
           { src: "/tutorials/image-upscale/detail-high.svg", alt: "高清细节示意", className: "is-detail-right is-tilt-soft-right" },
         ],
@@ -229,7 +229,7 @@ const toolTutorials: Record<ToolTutorialKind, {
     ],
   },
   "video-upscale": {
-    title: "视频高清快速教程",
+    title: "视频高清增强快速教程",
     description: "上传视频，选择规格，再播放和下载高清结果。",
     sections: [
       {
@@ -238,7 +238,7 @@ const toolTutorials: Record<ToolTutorialKind, {
         mediaSide: "left",
         visualClassName: "is-upload-stack",
         layers: [
-          { src: "/tutorials/video-upscale/upload.svg", alt: "视频高清上传框", className: "is-upload-base" },
+          { src: "/tutorials/video-upscale/upload.svg", alt: "视频高清增强上传框", className: "is-upload-base" },
           { src: "/tutorials/video-upscale/cover.svg", alt: "待处理视频封面", className: "is-upload-front is-tilt-left" },
         ],
         tags: [{ text: "播放", className: "is-action-left" }],
@@ -992,7 +992,7 @@ export function ImageUpscalePreviewPanel({
             <img src={output.item.output.url} alt={output.item.title} />
           </figure>
         )}
-        <dl className="studio-upscale-stats" aria-label="图片高清结果信息">
+        <dl className="studio-upscale-stats" aria-label="图片高清增强结果信息">
           <div>
             <dt>原图尺寸</dt>
             <dd>{sourceSize}</dd>
@@ -1077,7 +1077,7 @@ export function VideoUpscalePreviewPanel({
             <video src={output.item.output.url} controls />
           </figure>
         )}
-        <dl className="studio-upscale-stats" aria-label="视频高清结果信息">
+        <dl className="studio-upscale-stats" aria-label="视频高清增强结果信息">
           <div>
             <dt>原视频分辨率</dt>
             <dd>{sourceSize}</dd>
@@ -1403,13 +1403,13 @@ const previewContent: Record<
     notes: ["填写视频描述", "选择比例和时长", "轮询任务后展示结果"],
   },
   "image-upscale": {
-    title: "图片高清",
+    title: "图片高清增强",
     desc: "上传图像后选择倍数，结果会在这里显示。",
     image: "/images/reference/sample-2.png",
     notes: ["上传图像", "选择 1K / 2K / 4K", "处理后进入作品库"],
   },
   "video-upscale": {
-    title: "视频高清",
+    title: "视频高清增强",
     desc: "上传视频后选择倍数，结果会在这里播放。",
     image: "/images/reference/sample-3.png",
     notes: ["上传视频", "选择 1K / 2K / 4K", "处理后刷新作品库"],

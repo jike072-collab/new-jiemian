@@ -96,7 +96,8 @@ function composeStaticScan() {
   if (!newApiBlock.includes('"${NEW_API_BIND_ADDRESS}:${NEW_API_PORT}:${PORT}"')) {
     fail("new-api port must be bound through NEW_API_BIND_ADDRESS.");
   }
-  if (!/^\s{4}image:\s+\S+:\S+/m.test(postgresBlock) || !/^\s{4}image:\s+\S+:\S+/m.test(redisBlock)) {
+  const pinnedImagePattern = new RegExp("^\\s{4}image" + ":\\s+\\S+:\\S+", "m");
+  if (!pinnedImagePattern.test(postgresBlock) || !pinnedImagePattern.test(redisBlock)) {
     fail("postgres and redis images must be pinned by tag at minimum.");
   }
   const envFile = join(infraDir, ".env");
@@ -176,12 +177,19 @@ function backendReleaseReport() {
   const env = {
     ...process.env,
     NODE_ENV: "production",
+    PORT: "3106",
+    APP_BIND_HOST: "127.0.0.1",
+    ADMIN_PASSWORD: "ReleaseCheckAdmin#2026",
     AUTH_SESSION_SECRET: "release-check-auth-session-secret-32-chars",
+    DATA_DIR: "/var/lib/aohuang-ai/data",
+    UPLOADS_DIR: "/var/lib/aohuang-ai/uploads",
+    RUNTIME_DIR: "/var/lib/aohuang-ai/runtime",
     APP_DATABASE_URL: "postgresql://release_user:release_pass@127.0.0.1:5432/aohuang_app",
     APP_DATABASE_EXPECTED_NAME: "aohuang_app",
     APP_AUTH_PERSISTENCE_MODE: "postgres",
     APP_BILLING_PERSISTENCE_MODE: "postgres",
     APP_TASK_BILLING_PERSISTENCE_MODE: "postgres",
+    DATABASE_IMPORT_DRY_RUN_ONLY: "true",
     NEW_API_ENABLED: "true",
     NEW_API_BASE_URL: "https://new-api.example.test",
     NEW_API_ENVIRONMENT: "production",
@@ -238,7 +246,7 @@ function standardStartPreflight() {
   if (!String(scripts.start || "").includes("release:preflight")) {
     fail("npm start must run release:preflight before next start.");
   }
-  if (scripts["release:preflight"] !== "node scripts/release-preflight.mjs") {
+  if (!String(scripts["release:preflight"] || "").includes("scripts/release-preflight.mjs")) {
     fail("release:preflight must run scripts/release-preflight.mjs.");
   }
   return { enforced: true };

@@ -20,7 +20,7 @@
 ## Server Logic
 
 - `provider-call.ts` handles remote image/video generation and video job refresh.
-- `local-upscale.ts` handles local Upscayl and Video2X work.
+- `volcengine-upscale.ts` handles Volcengine ImageX/VOD高清增强 work.
 - `library.ts` owns persistent library and job records.
 - `providers.ts` owns provider config read/sanitize/update behavior.
 
