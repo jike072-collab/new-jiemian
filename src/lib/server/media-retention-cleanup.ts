@@ -4,9 +4,9 @@ import { basename, dirname, relative, resolve, sep } from "node:path";
 import { mediaCompletedAt, mediaExpiresAt, resolveMediaRetentionHours } from "../media-retention";
 import { ensureRuntimeDirs, resolveUploadPath, safeStoredName, uploadsRoot } from "./paths";
 import {
-  clearLibraryItemExpirationPending,
   expireLibraryItemMedia,
   markLibraryItemExpirationPending,
+  markLibraryItemExpirationStage,
   readJobs,
   readLibrary,
 } from "./library";
@@ -51,6 +51,11 @@ type LocalMediaTarget =
   | { ok: true; path: string; relativePath: string; exists: boolean; size: number }
   | { ok: false; reason: string; relativePath?: string };
 
+type ExpireOutcome = {
+  deletedFiles: number;
+  expiredItems: number;
+};
+
 const processingStatuses = new Set(["queued", "generating", "uploading", "running", "processing"]);
 const quarantineDirName = ".retention-quarantine";
 
@@ -85,8 +90,29 @@ export async function cleanupExpiredMedia(options: ExpiredMediaCleanupOptions = 
       .filter((job) => isProcessingJob(job))
       .map((job) => job.libraryItemId),
   );
+  const recoveredIds = new Set<string>();
+
+  if (mode === "apply") {
+    await scanRecordBackedQuarantineOrphans(items, uploadsRootReal);
+    for (const item of items) {
+      if (!hasRecoverableExpiration(item)) continue;
+      recoveredIds.add(item.id);
+      result.candidates += 1;
+      addRecoverySummary(result, item);
+      try {
+        const outcome = await recoverMediaExpiration(item, uploadsRootReal, now.toISOString());
+        result.deletedFiles += outcome.deletedFiles;
+        result.expiredItems += outcome.expiredItems;
+      } catch {
+        result.ok = false;
+        result.errors.push({ id: item.id, code: "recover_media_expiration_failed" });
+        return result;
+      }
+    }
+  }
 
   for (const item of items) {
+    if (recoveredIds.has(item.id)) continue;
     if (!isExpiredLocalMediaCandidate(item, processingItemIds, now, retentionHours)) continue;
     result.candidates += 1;
     const target = await resolveLocalMediaTarget(item, uploadsRootReal);
@@ -104,7 +130,7 @@ export async function cleanupExpiredMedia(options: ExpiredMediaCleanupOptions = 
     try {
       const outcome = await expireMediaCandidate(item, target, uploadsRootReal, now.toISOString());
       result.deletedFiles += outcome.deletedFiles;
-      result.expiredItems += 1;
+      result.expiredItems += outcome.expiredItems;
     } catch {
       result.ok = false;
       result.errors.push({ id: item.id, code: "expire_media_failed" });
@@ -120,97 +146,215 @@ async function expireMediaCandidate(
   target: Extract<LocalMediaTarget, { ok: true }>,
   uploadsRootReal: string,
   expiredAt: string,
-) {
-  if (!target.exists) {
-    const quarantined = await findQuarantinedMediaFile(item, target, uploadsRootReal);
-    await expireLibraryItemMedia(item, expiredAt);
-    if (quarantined) {
-      await unlink(quarantined);
-      return { deletedFiles: 1 };
-    }
-    return { deletedFiles: 0 };
-  }
-
-  const quarantinePath = await quarantineMediaFile(item, target, uploadsRootReal, expiredAt);
-  let pendingItem: LibraryItem | null = null;
-  try {
-    pendingItem = await markLibraryItemExpirationPending(item, expiredAt, item.output?.storedName || basename(target.path));
-  } catch (error) {
-    await restoreQuarantinedFile(quarantinePath, target.path);
-    throw error;
-  }
-
-  try {
-    const expiredItem = await expireLibraryItemMedia(pendingItem, expiredAt);
-    await unlink(quarantinePath);
-    return { deletedFiles: 1, expiredItem };
-  } catch (error) {
-    const restored = await restoreQuarantinedFile(quarantinePath, target.path);
-    if (pendingItem && restored) {
-      await clearLibraryItemExpirationPending(pendingItem, expiredAt).catch(() => undefined);
-    }
-    throw error;
-  }
+): Promise<ExpireOutcome> {
+  const storedName = item.output?.storedName || item.expirationPendingStoredName || basename(target.path);
+  const pendingItem = item.expirationPending
+    ? item
+    : await markLibraryItemExpirationPending(item, expiredAt, storedName);
+  await maybeFail("AOHUANG_TEST_FAIL_MEDIA_EXPIRATION_AFTER_PENDING", item.id);
+  return advanceExpirationState(pendingItem, target, uploadsRootReal, expiredAt);
 }
 
-async function quarantineMediaFile(
+async function recoverMediaExpiration(
+  item: LibraryItem,
+  uploadsRootReal: string,
+  expiredAt: string,
+): Promise<ExpireOutcome> {
+  if (item.expired && item.expirationQuarantineName) {
+    const quarantine = await resolveQuarantineTarget(item, uploadsRootReal);
+    if (quarantine.ok && await fileExists(quarantine.path)) {
+      await unlinkQuarantineFile(quarantine.path, item.id);
+      await expireLibraryItemMedia(item, item.expiredAt || expiredAt);
+      return { deletedFiles: 1, expiredItems: 0 };
+    }
+    await expireLibraryItemMedia(item, item.expiredAt || expiredAt);
+    return { deletedFiles: 0, expiredItems: 0 };
+  }
+
+  const target = await resolveLocalMediaTarget(item, uploadsRootReal);
+  if (!target.ok) {
+    if (item.expirationStage === "fileDeleted") {
+      await expireLibraryItemMedia(item, expiredAt);
+      return { deletedFiles: 0, expiredItems: 1 };
+    }
+    throw new Error("recoverable media target is invalid");
+  }
+  return advanceExpirationState(item, target, uploadsRootReal, expiredAt);
+}
+
+async function advanceExpirationState(
+  item: LibraryItem,
+  target: Extract<LocalMediaTarget, { ok: true }>,
+  uploadsRootReal: string,
+  expiredAt: string,
+): Promise<ExpireOutcome> {
+  let current = item;
+  let deletedFiles = 0;
+  let stage = current.expirationStage || (current.expirationPending ? "pending" : undefined);
+
+  if (!stage) {
+    current = await markLibraryItemExpirationPending(
+      current,
+      expiredAt,
+      current.output?.storedName || current.expirationPendingStoredName || basename(target.path),
+    );
+    await maybeFail("AOHUANG_TEST_FAIL_MEDIA_EXPIRATION_AFTER_PENDING", current.id);
+    stage = "pending";
+  }
+
+  if (stage === "pending") {
+    const quarantine = await ensureQuarantineTarget(current, target, uploadsRootReal, expiredAt);
+    const originalExists = await fileExists(target.path);
+    const quarantineExists = await fileExists(quarantine.path);
+    if (originalExists) {
+      if (quarantineExists) {
+        await unlinkQuarantineFile(quarantine.path, current.id);
+      }
+      await rename(target.path, quarantine.path);
+      await maybeFail("AOHUANG_TEST_FAIL_MEDIA_EXPIRATION_AFTER_RENAME", current.id);
+      current = await markLibraryItemExpirationStage(current, "quarantined", expiredAt);
+    } else if (quarantineExists) {
+      current = await markLibraryItemExpirationStage(current, "quarantined", expiredAt);
+    } else {
+      current = await markLibraryItemExpirationStage(current, "fileDeleted", expiredAt);
+    }
+    stage = current.expirationStage || "quarantined";
+  }
+
+  if (stage === "quarantined") {
+    const quarantine = await resolveQuarantineTarget(current, uploadsRootReal);
+    if (quarantine.ok && await fileExists(quarantine.path)) {
+      await unlinkQuarantineFile(quarantine.path, current.id);
+      deletedFiles += 1;
+    }
+    current = await markLibraryItemExpirationStage(current, "fileDeleted", expiredAt);
+    await maybeFail("AOHUANG_TEST_FAIL_MEDIA_EXPIRATION_AFTER_FILE_DELETED", current.id);
+    stage = "fileDeleted";
+  }
+
+  if (stage === "fileDeleted") {
+    await expireLibraryItemMedia(current, expiredAt);
+    return { deletedFiles, expiredItems: current.expired ? 0 : 1 };
+  }
+
+  throw new Error("unknown media expiration stage");
+}
+
+async function ensureQuarantineTarget(
   item: LibraryItem,
   target: Extract<LocalMediaTarget, { ok: true }>,
   uploadsRootReal: string,
   expiredAt: string,
 ) {
-  const safeId = safeStoredName(item.id) || "item";
+  if (!item.expirationQuarantineName) {
+    const refreshed = await markLibraryItemExpirationPending(
+      item,
+      item.expirationPendingAt || expiredAt,
+      item.expirationPendingStoredName || item.output?.storedName || basename(target.path),
+    );
+    return ensureQuarantineTarget(refreshed, target, uploadsRootReal, expiredAt);
+  }
+  const quarantine = await resolveQuarantineTarget(item, uploadsRootReal);
+  if (!quarantine.ok) throw new Error(quarantine.reason);
+  return quarantine;
+}
+
+async function resolveQuarantineTarget(item: LibraryItem, uploadsRootReal: string): Promise<LocalMediaTarget> {
+  const quarantineName = safeStoredName(item.expirationQuarantineName || "");
+  const relativePath = quarantineName ? `UPLOADS_DIR:${quarantineDirName}/${sanitizeRelativeName(quarantineName)}` : undefined;
+  if (!quarantineName || quarantineName !== item.expirationQuarantineName) {
+    return { ok: false, reason: "invalid_quarantine_name", relativePath };
+  }
+
+  const quarantineRoot = await ensureQuarantineRoot(uploadsRootReal);
+  const path = resolve(quarantineRoot, quarantineName);
+  if (!isSameOrChildPath(path, quarantineRoot) || dirname(path) !== quarantineRoot) {
+    return { ok: false, reason: "quarantine_path_outside_root", relativePath };
+  }
+  const exists = await fileExists(path);
+  const size = exists ? await stat(path).then((value) => value.size).catch(() => 0) : 0;
+  return {
+    ok: true,
+    path,
+    relativePath: relativePath || `UPLOADS_DIR:${quarantineDirName}/${basename(path)}`,
+    exists,
+    size,
+  };
+}
+
+async function ensureQuarantineRoot(uploadsRootReal: string) {
   const quarantineRoot = resolve(uploadsRoot, quarantineDirName);
   await mkdir(quarantineRoot, { recursive: true });
   const quarantineRootReal = await realpath(quarantineRoot);
   if (!isSameOrChildPath(quarantineRootReal, uploadsRootReal)) {
     throw new Error("retention quarantine root escaped uploads root");
   }
-  const quarantinePath = resolve(quarantineRoot, `${safeId}-${Date.parse(expiredAt) || Date.now()}-${basename(target.path)}`);
-  if (!isSameOrChildPath(quarantinePath, quarantineRoot)) {
-    throw new Error("retention quarantine target escaped quarantine root");
-  }
-  if (dirname(quarantinePath) !== quarantineRoot) {
-    throw new Error("retention quarantine target must stay directly under quarantine root");
-  }
-  await rename(target.path, quarantinePath);
-  return quarantinePath;
+  return quarantineRoot;
 }
 
-async function findQuarantinedMediaFile(
-  item: LibraryItem,
-  target: Extract<LocalMediaTarget, { ok: true }>,
-  uploadsRootReal: string,
-) {
-  if (!item.expirationPending && !item.expirationPendingStoredName) return null;
-  const quarantineRoot = resolve(uploadsRoot, quarantineDirName);
-  let quarantineRootReal;
-  try {
-    quarantineRootReal = await realpath(quarantineRoot);
-  } catch {
-    return null;
-  }
-  if (!isSameOrChildPath(quarantineRootReal, uploadsRootReal)) return null;
-  const safeId = safeStoredName(item.id) || "item";
-  const suffix = `-${basename(target.path)}`;
+async function scanRecordBackedQuarantineOrphans(items: LibraryItem[], uploadsRootReal: string) {
+  const proofNames = new Set(
+    items
+      .map((item) => item.expirationQuarantineName)
+      .filter((name): name is string => Boolean(name && safeStoredName(name) === name)),
+  );
+  if (proofNames.size === 0) return [];
+  const quarantineRoot = await ensureQuarantineRoot(uploadsRootReal);
   const entries = await readdir(quarantineRoot, { withFileTypes: true }).catch(() => []);
-  for (const entry of entries) {
-    if (!entry.isFile()) continue;
-    if (!entry.name.startsWith(`${safeId}-`) || !entry.name.endsWith(suffix)) continue;
-    const candidate = resolve(quarantineRoot, entry.name);
-    if (!isSameOrChildPath(candidate, quarantineRoot)) continue;
-    return candidate;
-  }
-  return null;
+  return entries
+    .filter((entry) => entry.isFile() && proofNames.has(entry.name))
+    .map((entry) => resolve(quarantineRoot, entry.name))
+    .filter((path) => isSameOrChildPath(path, quarantineRoot) && dirname(path) === quarantineRoot);
 }
 
-async function restoreQuarantinedFile(quarantinePath: string, originalPath: string) {
+async function unlinkQuarantineFile(path: string, itemId: string) {
+  const simulatedCode = simulatedUnlinkErrorCode(itemId);
+  if (simulatedCode) {
+    const error = new Error(`Simulated quarantine unlink failure: ${simulatedCode}`) as NodeJS.ErrnoException;
+    error.code = simulatedCode;
+    throw error;
+  }
+  await unlink(path);
+}
+
+function simulatedUnlinkErrorCode(itemId: string) {
+  if (!testFailureInjectionAllowed()) return null;
+  const raw = process.env.AOHUANG_TEST_FAIL_MEDIA_EXPIRATION_UNLINK;
+  if (!raw) return null;
+  const [target, code] = raw.includes(":") ? raw.split(":", 2) : ["*", raw];
+  if (target !== "*" && target !== "__all__" && target !== itemId) return null;
+  return code === "EACCES" || code === "EBUSY" ? code : "EACCES";
+}
+
+async function maybeFail(envName: string, itemId: string) {
+  if (!testFailureInjectionAllowed()) return;
+  const target = process.env[envName];
+  if (!target) return;
+  if (target === "*" || target === "__all__" || target === itemId) {
+    throw new Error(`Simulated media expiration failure: ${envName}`);
+  }
+}
+
+function testFailureInjectionAllowed() {
+  return process.env.NODE_ENV === "test"
+    || (
+      process.env.PORT === "3107"
+      && process.env.RUNTIME_STORAGE_ISOLATION === "strict"
+      && process.env.AOHUANG_ALLOW_RUNTIME_DIR_OVERRIDE === "1"
+    );
+}
+
+async function fileExists(path: string) {
   try {
-    await rename(quarantinePath, originalPath);
-    return true;
+    const value = await lstat(path);
+    return value.isFile();
   } catch {
     return false;
   }
+}
+
+function hasRecoverableExpiration(item: LibraryItem) {
+  return Boolean(item.expirationPending || item.expirationStage || item.expirationQuarantineName);
 }
 
 function isProcessingJob(job: JobRecord) {
@@ -223,7 +367,7 @@ function isExpiredLocalMediaCandidate(
   now: Date,
   retentionHours: number,
 ) {
-  if (item.expired) return false;
+  if (item.expired && !item.expirationQuarantineName) return false;
   if (item.status !== "done") return false;
   if (processingItemIds.has(item.id)) return false;
   if (!item.output?.storedName && !item.expirationPendingStoredName) return false;
@@ -288,6 +432,18 @@ async function resolveLocalMediaTarget(item: LibraryItem, uploadsRootReal: strin
   };
 }
 
+function addRecoverySummary(result: ExpiredMediaCleanupResult, item: LibraryItem) {
+  const storedName = item.expirationPendingStoredName || item.output?.storedName || item.expirationQuarantineName;
+  const relativePath = item.expirationQuarantineName
+    ? `UPLOADS_DIR:${quarantineDirName}/${sanitizeRelativeName(item.expirationQuarantineName)}`
+    : storedName
+      ? `UPLOADS_DIR:${sanitizeRelativeName(storedName)}`
+      : "UPLOADS_DIR:pending-expiration";
+  const summary = { id: item.id, relativePath, size: safeSize(item.output?.size) };
+  result.items.push(summary);
+  result.totalBytes += summary.size;
+}
+
 function addSkipped(result: ExpiredMediaCleanupResult, id: string, reason: string, relativePath?: string) {
   result.skipped += 1;
   result.skippedItems.push({ id, reason, ...(relativePath ? { relativePath } : {}) });
@@ -312,5 +468,9 @@ function isSameOrChildPath(candidate: string, parent: string) {
 function sanitizeRelativePath(storedName: string) {
   const rel = relative(uploadsRoot, resolveUploadPath(storedName)).split(sep).join("/");
   const safeRel = !rel || rel.startsWith("../") || rel === ".." ? basename(storedName) : rel;
-  return safeRel.replace(/[^\w./-]/g, "_");
+  return sanitizeRelativeName(safeRel);
+}
+
+function sanitizeRelativeName(value: string) {
+  return value.replace(/[^\w./-]/g, "_");
 }

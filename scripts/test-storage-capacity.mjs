@@ -68,10 +68,16 @@ try {
   assertSequence("storeRemoteUrl delegates to streamed remote media storage", sources.library, [
     "storeRemoteUrlStreamed(url, { prefix, fallbackMime })",
   ]);
+  assertSequence("provider base64 output uses guarded data URL storage", sources.providerCall, [
+    "if (output.base64) {",
+    "const fallbackMime = output.mimeType || (type === \"image\" ? \"image/png\" : \"video/mp4\")",
+    "const dataUrl = /^data:/i.test(output.base64)",
+    "return storeDataUrl(dataUrl, prefix)",
+  ]);
   assertSequence("streamed remote media checks storage before writing", sources.remoteMediaDownload, [
     "assertContentLengthAllowed(response.headers.get(\"content-length\"), kind)",
     "await assertStorageAllows(kind === \"video\" ? \"video-media-write\" : \"image-media-write\", { fresh: true })",
-    "writeRemoteResponseToUploads(response, mimeType, kind, options.prefix)",
+    "writeRemoteResponseToUploads(response, mimeType, kind, options.prefix, {",
   ]);
   assertSequence("video generation upload capacity before Buffer allocation", sources.providerCall, [
     "await assertStorageAllows(\"video-upload\", { fresh: true })",

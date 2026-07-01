@@ -68,6 +68,7 @@ for (const file of [
   "deploy/linux/production.env.example",
   "deploy/linux/aohuang-ai.service.example",
   "deploy/linux/aohuang-media-cleanup.service.example",
+  "deploy/linux/nginx-limits.conf.example",
   "deploy/linux/nginx-site.conf.example",
 ]) {
   const text = readFileSync(join(root, file), "utf8");
@@ -155,13 +156,16 @@ function checkProductionTemplateConsistency(file, text) {
 }
 
 function checkNginxLimitTemplate() {
-  const file = "deploy/linux/nginx-site.conf.example";
-  const text = readFileSync(join(root, file), "utf8");
+  const limitsFile = "deploy/linux/nginx-limits.conf.example";
+  const siteFile = "deploy/linux/nginx-site.conf.example";
+  const limitsText = readFileSync(join(root, limitsFile), "utf8");
+  const siteText = readFileSync(join(root, siteFile), "utf8");
   const zonePattern = /limit_req_zone\s+\S+\s+zone=([A-Za-z0-9_-]+):\S+\s+rate=\d+r\/[sm]\b/g;
-  const zones = new Set([...text.matchAll(zonePattern)].map((match) => match[1]));
-  const referenced = [...text.matchAll(/limit_req\s+zone=([A-Za-z0-9_-]+)\b/g)].map((match) => match[1]);
+  const zones = new Set([...limitsText.matchAll(zonePattern)].map((match) => match[1]));
+  const referenced = [...siteText.matchAll(/limit_req\s+zone=([A-Za-z0-9_-]+)\b/g)].map((match) => match[1]);
+  if (zones.size === 0) failures.push(`${limitsFile} does not define any nginx limit_req_zone entries`);
   for (const zone of referenced) {
-    if (!zones.has(zone)) failures.push(`${file} references undefined nginx limit_req zone: ${zone}`);
+    if (!zones.has(zone)) failures.push(`${siteFile} references undefined nginx limit_req zone: ${zone}`);
   }
 }
 

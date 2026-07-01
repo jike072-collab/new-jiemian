@@ -30,6 +30,7 @@ restart, or deploy the real server.
 | `aohuang-ai.service.example` | systemd unit for the single 3106 Next.js instance. |
 | `aohuang-media-cleanup.service.example` | systemd one-shot unit that runs the media retention cleanup in apply mode. |
 | `aohuang-media-cleanup.timer.example` | systemd timer that triggers the cleanup service hourly. |
+| `nginx-limits.conf.example` | Nginx `http`-context rate-limit zones referenced by the site config. |
 | `nginx-site.conf.example` | Nginx HTTPS reverse proxy template for `127.0.0.1:3106`. |
 | `production.env.example` | Production environment placeholder file with no real secrets. |
 | `deploy-preflight.sh` | Read-only preflight checks for the server before installing or switching a release. |
@@ -71,6 +72,8 @@ Production invariants:
 - persistent storage under `/var/lib/aohuang-ai`
 - `MEDIA_VIDEO_UPLOAD_LIMIT_MIB=200`
 - `MEDIA_RETENTION_HOURS=24`
+- `REMOTE_MEDIA_ALLOWED_HOSTS` must be configured before production remote media downloads are allowed
+- `DATABASE_LIBRARY_READ_ENABLED=false` until library owner mapping is production-ready
 
 Run the application validation on the server environment before switching a
 release:
@@ -114,6 +117,13 @@ The Nginx template:
 - blocks dotfiles, `.env`, data, uploads, runtime, and backup paths
 - documents login, registration, admin, and generation rate-limit zones with
   legal `r/m` or `r/s` rates only
+
+Install the Nginx templates as two files:
+
+```text
+/etc/nginx/conf.d/aohuang-ai-limits.conf        <- from nginx-limits.conf.example
+/etc/nginx/sites-available/aohuang-ai.conf      <- from nginx-site.conf.example
+```
 
 Nginx rate limiting is only a coarse IP-based second layer. Keep registration
 near `1r/m` at Nginx and rely on the application limit for the exact 3-per-hour

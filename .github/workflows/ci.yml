@@ -147,6 +147,29 @@ jobs:
       - name: Build
         run: npm run build
 
+      - name: Install Nginx
+        run: sudo apt-get update && sudo apt-get install -y nginx openssl
+
+      - name: Nginx template syntax check
+        run: |
+          mkdir -p .tmp/nginx-test/conf.d .tmp/nginx-test/certs .tmp/nginx-test/www
+          openssl req -x509 -nodes -newkey rsa:2048 -days 1 \
+            -keyout .tmp/nginx-test/certs/key.pem \
+            -out .tmp/nginx-test/certs/cert.pem \
+            -subj "/CN=aohuang.example.com"
+          sed "s#/etc/letsencrypt/live/aohuang.example.com/fullchain.pem#$(pwd)/.tmp/nginx-test/certs/cert.pem#g; s#/etc/letsencrypt/live/aohuang.example.com/privkey.pem#$(pwd)/.tmp/nginx-test/certs/key.pem#g" deploy/linux/nginx-site.conf.example > .tmp/nginx-test/site.conf
+          cat > .tmp/nginx-test/nginx.conf <<'EOF'
+          events {}
+          http {
+              include mime.types;
+              default_type application/octet-stream;
+              include __ROOT__/deploy/linux/nginx-limits.conf.example;
+              include __ROOT__/.tmp/nginx-test/site.conf;
+          }
+          EOF
+          sed -i "s#__ROOT__#$(pwd)#g" .tmp/nginx-test/nginx.conf
+          nginx -t -p "$(pwd)/.tmp/nginx-test" -c "$(pwd)/.tmp/nginx-test/nginx.conf"
+
       - name: Staging smoke
         run: npm run test:staging-smoke
         env:

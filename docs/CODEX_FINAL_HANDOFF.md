@@ -7,7 +7,7 @@
 | 仓库名称 | `jike072-collab/new-jiemian` |
 | 当前分支 | `chore/server-production-prep` |
 | 基准分支 | `origin/main` |
-| 当前HEAD commit | `6ea0911a60ba4c16db9cad283ddd6ace7477b94a` at handoff evidence collection time |
+| 当前HEAD commit | `2b31cd7c455ed9df47e12e0d33a8b8f4e67e41ee` before the external review remediation commit |
 | Node.js版本 | `v24.16.0` |
 | npm版本 | `11.13.0` |
 | 执行日期 | 2026-07-01 |
@@ -26,7 +26,7 @@ git branch --show-current
 chore/server-production-prep
 
 git rev-parse HEAD
-6ea0911a60ba4c16db9cad283ddd6ace7477b94a
+2b31cd7c455ed9df47e12e0d33a8b8f4e67e41ee
 
 node -v
 v24.16.0
@@ -81,7 +81,7 @@ stale terms outside archives and compatibility tests.
 Collected `git log --oneline --decorate origin/main..HEAD`:
 
 ```text
-6ea0911 (HEAD -> chore/server-production-prep, origin/chore/server-production-prep) chore: finalize local production-readiness validation
+6ea0911 chore: finalize local production-readiness validation
 4d965d4 fix: redact credential-shaped diagnostic fields
 8582b44 docs: align project documentation with production architecture
 1340f0c ops: align backup policy with expiring media storage
@@ -223,6 +223,7 @@ The handoff document adds one more documentation file.
 | `deploy/linux/aohuang-ai.service.example` | 3106 systemd unit模板。 | No | systemd template |
 | `deploy/linux/aohuang-media-cleanup.service.example` | 媒体清理一次性service。 | No | systemd template |
 | `deploy/linux/aohuang-media-cleanup.timer.example` | 每小时触发清理timer。 | No | systemd timer |
+| `deploy/linux/nginx-limits.conf.example` | Nginx `http` 上下文限流 zone 模板。 | No | Nginx template |
 | `deploy/linux/nginx-site.conf.example` | 80到443、443反代127.0.0.1:3106模板。 | No | Nginx template |
 | `deploy/linux/production.env.example` | 生产环境文件模板，无真实密钥。 | No | Env template |
 | `deploy/linux/deploy-preflight.sh` | 只读部署前检查脚本。 | No | Shell preflight |
@@ -761,22 +762,125 @@ nginx -t                                  NOT_RUN, nginx was not found on this W
 
 当前分支：`chore/server-production-prep`
 
-当前HEAD：`6ea0911a60ba4c16db9cad283ddd6ace7477b94a` before the final handoff
-documentation commit.
+当前HEAD：`2b31cd7c455ed9df47e12e0d33a8b8f4e67e41ee` before the external review remediation commit
 
-是否已push：module commits were pushed; this handoff document must be pushed as
-`docs: add final codex review handoff`.
+## External Review Remediation
 
-是否已合并main：否
+Status for this section remains `COMPLETE_WITH_KNOWN_ISSUES` until all local
+verification commands in the remediation module pass and the branch is pushed.
 
-是否已部署3106：否
+### Media Expiration State Machine
 
-是否需要人工3107测试：是
+Current local-media expiration now converges through persistent stages:
 
-是否存在BLOCKER：否，在仓库层面未发现未解决阻塞；真实服务器仍需SERVER-GATE。
+```text
+active -> pending -> quarantined -> fileDeleted -> expired
+```
 
-是否建议现在创建PR：是，建议创建代码审查PR；合并前仍需仓库所有者完成本地3107人工验收，服务器部署前仍需完成SERVER-GATE。
+- `pending`: metadata is written first and stores the original `storedName` plus
+  the exact quarantine filename before any file rename happens.
+- `quarantined`: the file has been atomically moved into
+  `UPLOADS_DIR/.retention-quarantine` and can still be retried or restored.
+- `fileDeleted`: the quarantined file has already been unlinked, so cleanup must
+  never restore the record to active media; retries only finish the metadata
+  convergence to `expired`.
+- `expired`: local output references are cleared and temporary expiration fields
+  are removed.
 
-下一步建议：reviewer should inspect the branch diff, rerun `npm ci` and
-`npm run check`, perform local 3107 manual validation, then decide whether to
-approve merge to `main`. Server deployment remains a separate future action.
+Recovery behavior on the next cleanup run:
+
+- `pending` with original file still present: rename to quarantine and continue.
+- `pending` with file already in quarantine: mark `quarantined` and continue.
+- `quarantined` with file still present: unlink and move to `fileDeleted`.
+- `fileDeleted`: finish metadata convergence to `expired`.
+- `expired` with a record-backed quarantine file: delete the quarantine file and
+  keep the item expired.
+
+No fuzzy quarantine filename matching remains. Only exact
+`expirationQuarantineName` values recorded on a library item are eligible for
+deletion or recovery. This avoids deleting unknown files from the quarantine
+directory.
+
+### Remote Download Reliability
+
+Remote media download now uses one controller across:
+
+1. initial request
+2. redirects
+3. full response body streaming
+4. final size check
+5. atomic rename into uploads
+
+The total timeout is cleared only after the final rename completes. A separate
+idle timeout resets on every body chunk and aborts stalled transfers. On abort
+or failure the reader is cancelled, the file stream is destroyed, and temporary
+or partial files are deleted.
+
+### Data URL and Byte Storage Bounds
+
+- `storeDataUrl` accepts only the current image/video MIME allowlist.
+- Base64 size is estimated before `Buffer.from(..., "base64")`.
+- Oversized data URLs are rejected before decoding.
+- Decoded buffers are checked again through the same server-side byte cap guard.
+- `storeBytes` now checks MIME and size defensively, writes to a `0600` temp
+  file, then atomically renames into the final uploads location.
+- Provider `output.base64` results now route through `storeDataUrl`, so provider
+  responses no longer bypass the MIME and pre-decode size guards.
+
+### SSRF Boundary
+
+- Production remote media download is fail-closed unless
+  `REMOTE_MEDIA_ALLOWED_HOSTS` is configured.
+- Exact hosts and explicit subdomain rules like `*.example.test` are supported.
+- Suffix tricks like `example.test.evil.test` are rejected.
+- Initial URLs and every redirect target must satisfy the allowlist.
+- DNS answers are still checked against loopback, RFC1918, link-local, metadata,
+  reserved ranges, and IPv4-mapped IPv6 private addresses.
+- The default production path now connects to the resolved address directly and
+  keeps the original host in `Host` and `servername`, which closes the
+  validation-versus-connect DNS rebinding gap when arbitrary `fetch` is not in
+  use.
+
+### Nginx Assets
+
+- Added `deploy/linux/nginx-limits.conf.example` for the real
+  `limit_req_zone` definitions in the `http` context.
+- `deploy/linux/nginx-site.conf.example` now only references the four zones:
+  `aohuang_login`, `aohuang_register`, `aohuang_admin`, `aohuang_generate`.
+- `scripts/check-docs.mjs` now validates that every `limit_req zone=` used by
+  the site template is defined in the limits template and still rejects `r/h`.
+- `.github/workflows/ci.yml` now installs Nginx on Ubuntu and runs `nginx -t`
+  against a synthetic config that includes both templates and a temporary
+  self-signed certificate.
+
+### Added or Expanded Tests
+
+- `scripts/test-media-retention-cleanup.mjs`
+  - pending crash before rename
+  - rename crash before `quarantined`
+  - final JSON failure after `fileDeleted`
+  - final database failure after `fileDeleted`
+  - unlink `EACCES`
+  - unlink `EBUSY`
+  - restart recovery
+  - record-backed quarantine orphan convergence
+  - idempotent repeat run
+- `src/lib/server/__tests__/remote-media-download.test.ts`
+  - total timeout
+  - idle timeout
+  - connection close on abort
+  - production allowlist fail-closed
+  - exact host and explicit subdomain allowlist
+  - suffix bypass reject
+  - redirect to unlisted host reject
+  - IPv4-mapped IPv6 private range reject
+  - data URL pre-decode size rejection
+  - temp-file cleanup for streamed and local writes
+Current status for this remediation section:
+
+- branch push: pending until the remediation commit is created
+- merge to `main`: not done
+- deploy to server 3106: not done
+- local 3107 manual validation: still required
+- repository blocker state: no repository-local blocker is recorded here, but server acceptance remains a `SERVER-GATE`
+- review recommendation: rerun `npm ci` and `npm run check`, review the branch diff, complete local 3107 manual validation, then decide whether to approve merge to `main`

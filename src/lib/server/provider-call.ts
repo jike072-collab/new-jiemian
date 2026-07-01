@@ -5,7 +5,7 @@ import {
   generationBillingFingerprint,
 } from "@/lib/generation-quota";
 
-import { addJob, addLibraryItem, storeBytes, storeDataUrl, storeRemoteUrl, updateJob, updateLibraryItem } from "./library";
+import { addJob, addLibraryItem, storeDataUrl, storeRemoteUrl, updateJob, updateLibraryItem } from "./library";
 import { codeForUpstreamStatus, GenerationDiagnosticError } from "./error-diagnostics";
 import {
   assertFileFormatAllowed,
@@ -519,12 +519,11 @@ async function callImageProvider({
 async function outputToLibrary(output: ProviderOutput, type: "image" | "video", prefix: string) {
   await assertStorageAllows(type === "video" ? "video-media-write" : "image-media-write", { fresh: true });
   if (output.base64) {
-    const stored = await storeBytes(
-      Buffer.from(output.base64.replace(/^data:[^;]+;base64,/i, ""), "base64"),
-      type === "image" ? "image/png" : "video/mp4",
-      prefix,
-    );
-    return stored;
+    const fallbackMime = output.mimeType || (type === "image" ? "image/png" : "video/mp4");
+    const dataUrl = /^data:/i.test(output.base64)
+      ? output.base64
+      : `data:${fallbackMime};base64,${output.base64}`;
+    return storeDataUrl(dataUrl, prefix);
   }
   if (!output.url) throw new Error("供应商没有返回可识别的生成结果。");
   if (output.url.startsWith("data:")) return storeDataUrl(output.url, prefix);

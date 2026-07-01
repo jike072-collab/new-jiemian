@@ -72,6 +72,8 @@ export type LibraryOutput = {
   sourceUrl?: string;
 };
 
+export type MediaExpirationStage = "pending" | "quarantined" | "fileDeleted";
+
 export type LibraryItem = {
   id: string;
   ownerLocalUserId?: string | null;
@@ -89,8 +91,10 @@ export type LibraryItem = {
   expired?: boolean;
   expiredAt?: string;
   expirationPending?: boolean;
+  expirationStage?: MediaExpirationStage;
   expirationPendingAt?: string;
   expirationPendingStoredName?: string;
+  expirationQuarantineName?: string;
   output?: LibraryOutput;
   params: Record<string, string | number | boolean>;
   error?: string;

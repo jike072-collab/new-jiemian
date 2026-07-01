@@ -111,7 +111,9 @@ function pathOrUrlFromLibraryItem(item: LibraryItem) {
   if (item.expirationPending) {
     const payload = Buffer.from(JSON.stringify({
       id: item.id,
+      stage: item.expirationStage || "pending",
       storedName: item.expirationPendingStoredName || item.output?.storedName || null,
+      quarantineName: item.expirationQuarantineName || null,
       at: item.expirationPendingAt || item.updatedAt,
     }), "utf8").toString("base64url");
     return `${EXPIRATION_PENDING_ASSET_PREFIX}${payload}`;
@@ -127,7 +129,16 @@ function pathOrUrlFromLibraryItem(item: LibraryItem) {
 }
 
 function assetIdForLibraryItem(item: LibraryItem) {
-  if (item.expirationPending) return uuidFromStableText(`asset:expiration-pending:${item.id}:${item.expirationPendingAt || item.updatedAt}`);
+  if (item.expirationPending) {
+    return uuidFromStableText([
+      "asset:expiration-pending",
+      item.id,
+      item.expirationStage || "pending",
+      item.expirationPendingAt || item.updatedAt,
+      item.expirationPendingStoredName || item.output?.storedName || "",
+      item.expirationQuarantineName || "",
+    ].join(":"));
+  }
   if (item.output?.storedName) return uuidFromStableText(`asset:stored:${item.output.storedName}`);
   if (item.expired) return uuidFromStableText(`asset:expired:${item.id}:${item.expiredAt || item.updatedAt}`);
   return uuidFromStableText(`asset:library:${item.id}`);
@@ -176,22 +187,30 @@ function expiredFromAsset(asset: DatabaseMvpAsset | null) {
 
 function expirationPendingFromAsset(
   asset: DatabaseMvpAsset | null,
-): Pick<LibraryItem, "expirationPending" | "expirationPendingAt" | "expirationPendingStoredName"> | Record<string, never> {
+): Pick<LibraryItem, "expirationPending" | "expirationStage" | "expirationPendingAt" | "expirationPendingStoredName" | "expirationQuarantineName"> | Record<string, never> {
   if (!asset?.path_or_url.startsWith(EXPIRATION_PENDING_ASSET_PREFIX)) return {};
   const encoded = asset.path_or_url.slice(EXPIRATION_PENDING_ASSET_PREFIX.length);
   try {
     const parsed = JSON.parse(Buffer.from(encoded, "base64url").toString("utf8")) as {
+      stage?: unknown;
       storedName?: unknown;
+      quarantineName?: unknown;
       at?: unknown;
     };
     return {
       expirationPending: true as const,
+      ...(isExpirationStage(parsed.stage) ? { expirationStage: parsed.stage } : {}),
       ...(typeof parsed.at === "string" ? { expirationPendingAt: parsed.at } : {}),
       ...(typeof parsed.storedName === "string" ? { expirationPendingStoredName: parsed.storedName } : {}),
+      ...(typeof parsed.quarantineName === "string" ? { expirationQuarantineName: parsed.quarantineName } : {}),
     };
   } catch {
     return { expirationPending: true as const };
   }
+}
+
+function isExpirationStage(value: unknown): value is LibraryItem["expirationStage"] {
+  return value === "pending" || value === "quarantined" || value === "fileDeleted";
 }
 
 function libraryItemFromDatabase(row: DatabaseMvpLibraryItem, asset: DatabaseMvpAsset | null, job: DatabaseMvpGenerationJob | null): LibraryItem {

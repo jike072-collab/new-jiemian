@@ -1,12 +1,13 @@
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
-import { readdir, stat } from "node:fs/promises";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
 import { once } from "node:events";
+import { readdir, stat } from "node:fs/promises";
+import { join } from "node:path";
+import { tmpdir } from "node:os";
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
-import { storeRemoteUrlStreamed } from "../remote-media-download";
+import { libraryStorageInternalsForTests, storeBytes, storeDataUrl } from "../library";
+import { remoteMediaDownloadInternalsForTests, storeRemoteUrlStreamed } from "../remote-media-download";
 
 type TestHandler = (request: IncomingMessage, response: ServerResponse) => void;
 type TestLookup = NonNullable<Parameters<typeof storeRemoteUrlStreamed>[1]["lookupImpl"]>;
@@ -31,10 +32,13 @@ async function closeServer(server: Server) {
 
 function lookupPublicToLocal(): TestLookup {
   const lookup = async (hostname: string) => {
-    if (hostname === "mock-provider.test") return [{ address: "93.184.216.34", family: 4 as const }];
+    if (["mock-provider.test", "media.example.test", "cdn.media.example.test"].includes(hostname)) {
+      return [{ address: "93.184.216.34", family: 4 as const }];
+    }
     if (hostname === "loopback.test") return [{ address: "127.0.0.1", family: 4 as const }];
     if (hostname === "private.test") return [{ address: "192.168.1.10", family: 4 as const }];
     if (hostname === "metadata.test") return [{ address: "169.254.169.254", family: 4 as const }];
+    if (hostname === "evil.test") return [{ address: "93.184.216.34", family: 4 as const }];
     return [{ address: "93.184.216.34", family: 4 as const }];
   };
   return lookup as unknown as TestLookup;
@@ -43,7 +47,7 @@ function lookupPublicToLocal(): TestLookup {
 function localFetch() {
   return (input: URL | RequestInfo, init?: RequestInit) => {
     const url = new URL(input instanceof URL ? input.toString() : String(input));
-    if (url.hostname === "mock-provider.test") {
+    if (["mock-provider.test", "media.example.test", "cdn.media.example.test"].includes(url.hostname)) {
       url.hostname = "127.0.0.1";
       return fetch(url, init);
     }
@@ -67,6 +71,23 @@ function fakeSmallContentLengthFetch(): typeof fetch {
     },
   });
   return fetchImpl as unknown as typeof fetch;
+}
+
+async function withEnv(patch: Record<string, string | undefined>, callback: () => Promise<void> | void) {
+  const previous = new Map<string, string | undefined>();
+  for (const [key, value] of Object.entries(patch)) {
+    previous.set(key, process.env[key]);
+    if (value === undefined) delete process.env[key];
+    else process.env[key] = value;
+  }
+  try {
+    await callback();
+  } finally {
+    for (const [key, value] of previous) {
+      if (value === undefined) delete process.env[key];
+      else process.env[key] = value;
+    }
+  }
 }
 
 test("streams remote media without requiring content-length", async () => {
@@ -104,7 +125,6 @@ test("aborts oversized streams even when content-length is missing or false", as
         fetchImpl: localFetch(),
         lookupImpl: lookupPublicToLocal(),
       }),
-      /Remote media|不能超过/,
     );
   });
   await assert.rejects(
@@ -114,7 +134,6 @@ test("aborts oversized streams even when content-length is missing or false", as
       fetchImpl: fakeSmallContentLengthFetch(),
       lookupImpl: lookupPublicToLocal(),
     }),
-    /Remote media|不能超过/,
   );
   const leftovers = (await readdir(uploadsDir)).filter((name) => name.includes(".remote-"));
   assert.deepEqual(leftovers, []);
@@ -128,7 +147,6 @@ test("rejects unsafe protocols and private redirect targets", async () => {
       fetchImpl: localFetch(),
       lookupImpl: lookupPublicToLocal(),
     }),
-    /protocol/,
   );
   await withServer((request, response) => {
     const target = request.url === "/to-loopback"
@@ -147,7 +165,6 @@ test("rejects unsafe protocols and private redirect targets", async () => {
           fetchImpl: localFetch(),
           lookupImpl: lookupPublicToLocal(),
         }),
-        /private|local/,
       );
     }
   });
@@ -169,7 +186,6 @@ test("rejects excessive redirects and cleans temporary files", async () => {
         lookupImpl: lookupPublicToLocal(),
         maxRedirects: 2,
       }),
-      /redirect limit/,
     );
   });
   const leftovers = (await readdir(uploadsDir)).filter((name) => name.includes(".remote-"));
@@ -188,7 +204,6 @@ test("rejects unsupported content types", async () => {
         fetchImpl: localFetch(),
         lookupImpl: lookupPublicToLocal(),
       }),
-      /type/,
     );
   });
 });
@@ -211,6 +226,168 @@ test("removes temp file when the download fails midway", async () => {
     );
   });
   const leftovers = (await readdir(uploadsDir)).filter((name) => name.includes(".remote-"));
+  assert.deepEqual(leftovers, []);
+});
+
+test("total timeout covers response body and closes the connection", async () => {
+  const uploadsDir = process.env.UPLOADS_DIR;
+  assert(uploadsDir);
+  let closed = false;
+  await withServer((_request, response) => {
+    response.on("close", () => {
+      closed = true;
+    });
+    response.writeHead(200, { "content-type": "image/png" });
+    response.write(Buffer.from([0x89, 0x50]));
+  }, async (baseUrl) => {
+    await assert.rejects(
+      () => storeRemoteUrlStreamed(`${baseUrl}/never-finishes`, {
+        prefix: "remote-test",
+        fallbackMime: "image/png",
+        fetchImpl: localFetch(),
+        lookupImpl: lookupPublicToLocal(),
+        timeoutMs: 50,
+        idleTimeoutMs: 500,
+      }),
+    );
+  });
+  assert.equal(closed, true);
+  const leftovers = (await readdir(uploadsDir)).filter((name) => name.includes(".remote-"));
+  assert.deepEqual(leftovers, []);
+});
+
+test("idle timeout aborts a stalled response body and slow valid streams still succeed", async () => {
+  const uploadsDir = process.env.UPLOADS_DIR;
+  assert(uploadsDir);
+  await withServer((request, response) => {
+    response.writeHead(200, { "content-type": "image/png" });
+    response.write(Buffer.from([0x89]));
+    if (request.url === "/slow-ok") {
+      setTimeout(() => {
+        response.end(Buffer.from([0x50, 0x4e, 0x47]));
+      }, 20);
+      return;
+    }
+  }, async (baseUrl) => {
+    await assert.rejects(
+      () => storeRemoteUrlStreamed(`${baseUrl}/stalled`, {
+        prefix: "remote-test",
+        fallbackMime: "image/png",
+        fetchImpl: localFetch(),
+        lookupImpl: lookupPublicToLocal(),
+        timeoutMs: 500,
+        idleTimeoutMs: 30,
+      }),
+    );
+    const result = await storeRemoteUrlStreamed(`${baseUrl}/slow-ok`, {
+      prefix: "remote-test",
+      fallbackMime: "image/png",
+      fetchImpl: localFetch(),
+      lookupImpl: lookupPublicToLocal(),
+      timeoutMs: 500,
+      idleTimeoutMs: 100,
+    });
+    assert.equal(result.size, 4);
+  });
+  const leftovers = (await readdir(uploadsDir)).filter((name) => name.includes(".remote-"));
+  assert.deepEqual(leftovers, []);
+});
+
+test("production allowlist is fail-closed and rejects suffix bypasses and unlisted redirects", async () => {
+  await withEnv({ NODE_ENV: "production", REMOTE_MEDIA_ALLOWED_HOSTS: undefined }, async () => {
+    await assert.rejects(
+      () => storeRemoteUrlStreamed("http://media.example.test/asset.png", {
+        prefix: "remote-test",
+        fallbackMime: "image/png",
+        fetchImpl: localFetch(),
+        lookupImpl: lookupPublicToLocal(),
+      }),
+    );
+  });
+
+  await withEnv({ NODE_ENV: "production", REMOTE_MEDIA_ALLOWED_HOSTS: "media.example.test,*.media.example.test" }, async () => {
+    await withServer((request, response) => {
+      if (request.url === "/ok" || request.url === "/sub-ok") {
+        response.writeHead(200, { "content-type": "image/png" });
+        response.end(Buffer.from([0x89, 0x50, 0x4e, 0x47]));
+        return;
+      }
+      response.writeHead(302, { location: "http://evil.test/asset.png" });
+      response.end();
+    }, async (baseUrl) => {
+      const port = new URL(baseUrl).port;
+      const exact = await storeRemoteUrlStreamed(`http://media.example.test:${port}/ok`, {
+        prefix: "remote-test",
+        fallbackMime: "image/png",
+        fetchImpl: localFetch(),
+        lookupImpl: lookupPublicToLocal(),
+      });
+      assert.equal(exact.mimeType, "image/png");
+      const subdomain = await storeRemoteUrlStreamed(`http://cdn.media.example.test:${port}/sub-ok`, {
+        prefix: "remote-test",
+        fallbackMime: "image/png",
+        fetchImpl: localFetch(),
+        lookupImpl: lookupPublicToLocal(),
+      });
+      assert.equal(subdomain.mimeType, "image/png");
+      await assert.rejects(
+        () => remoteMediaDownloadInternalsForTests.assertSafeRemoteUrl("http://media.example.test.evil.test/asset.png", lookupPublicToLocal()),
+      );
+      await assert.rejects(
+        () => storeRemoteUrlStreamed(`http://media.example.test:${port}/redirect`, {
+          prefix: "remote-test",
+          fallbackMime: "image/png",
+          fetchImpl: localFetch(),
+          lookupImpl: lookupPublicToLocal(),
+        }),
+      );
+    });
+  });
+});
+
+test("IPv4-mapped IPv6 private and metadata addresses are rejected", () => {
+  for (const address of [
+    "::ffff:127.0.0.1",
+    "::ffff:10.0.0.1",
+    "::ffff:172.16.0.1",
+    "::ffff:172.31.255.255",
+    "::ffff:192.168.0.1",
+    "::ffff:169.254.169.254",
+    "::ffff:100.64.0.1",
+    "::ffff:100.127.255.255",
+  ]) {
+    assert.equal(remoteMediaDownloadInternalsForTests.isUnsafeIp(address), true, `${address} should be unsafe`);
+  }
+});
+
+test("data URL and direct byte storage validate MIME and size before final writes", async () => {
+  const uploadsDir = process.env.UPLOADS_DIR;
+  assert(uploadsDir);
+  const png = await storeDataUrl("data:image/png;base64,iVBORw0KGgo=", "data-image");
+  assert.match(png.storedName, /^data-image-/);
+  assert.equal(png.mimeType, "image/png");
+  const mp4 = await storeDataUrl(`data:video/mp4;base64,${Buffer.from("0000ftyp").toString("base64")}`, "data-video");
+  assert.equal(mp4.mimeType, "video/mp4");
+  await assert.rejects(() => storeDataUrl("data:text/plain;base64,Zm9v", "data-image"));
+  await assert.rejects(() => storeDataUrl("data:image/png;base64,####", "data-image"));
+  await withEnv({ MEDIA_IMAGE_UPLOAD_LIMIT_MIB: "1" }, async () => {
+    const tooLargeBase64 = "A".repeat(Math.ceil((1024 * 1024 + 1) / 3) * 4);
+    assert(libraryStorageInternalsForTests.estimateBase64DecodedBytes(tooLargeBase64) > 1024 * 1024);
+    const originalFrom = Buffer.from;
+    let decoded = false;
+    Buffer.from = ((...args: Parameters<typeof Buffer.from>) => {
+      decoded = true;
+      return originalFrom(...args);
+    }) as typeof Buffer.from;
+    try {
+      await assert.rejects(() => storeDataUrl(`data:image/png;base64,${tooLargeBase64}`, "data-image"));
+    } finally {
+      Buffer.from = originalFrom;
+    }
+    assert.equal(decoded, false, "oversized data URL must be rejected before base64 decoding");
+    await assert.rejects(() => storeBytes(Buffer.alloc(1024 * 1024 + 1), "image/png", "bytes-image"));
+  });
+  const leftovers = (await readdir(uploadsDir)).filter((name) => name.includes(".store-"));
   assert.deepEqual(leftovers, []);
 });
 

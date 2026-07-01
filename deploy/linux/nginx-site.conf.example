@@ -2,15 +2,11 @@
 # Replace aohuang.example.com and certificate paths before enabling.
 # 3106 must not listen on a public interface; Nginx proxies only to 127.0.0.1.
 
-# Rate-limit zones must be defined once in the nginx http context, for example
-# in /etc/nginx/conf.d/aohuang-ai-limits.conf, not inside a server block.
+# Rate-limit zones live in deploy/linux/nginx-limits.conf.example and should be
+# installed into the nginx http context, for example at
+# /etc/nginx/conf.d/aohuang-ai-limits.conf.
 # Nginx is a coarse second layer of IP protection; the app still enforces exact
 # per-user and hourly limits.
-#
-# limit_req_zone $binary_remote_addr zone=aohuang_login:10m rate=5r/m;
-# limit_req_zone $binary_remote_addr zone=aohuang_register:10m rate=1r/m;
-# limit_req_zone $binary_remote_addr zone=aohuang_admin:10m rate=3r/m;
-# limit_req_zone $binary_remote_addr zone=aohuang_generate:10m rate=30r/m;
 
 upstream aohuang_ai_3106 {
     server 127.0.0.1:3106;
