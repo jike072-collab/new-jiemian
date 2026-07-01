@@ -98,32 +98,40 @@ export async function storeRemoteUrlStreamed(url: string, options: RemoteMediaDo
 
 async function fetchWithSafeRedirects(initial: SafeRemoteUrl, options: RemoteMediaDownloadOptions, signal: AbortSignal) {
   let current = initial;
+  let previousOrigin: string | null = null;
   const maxRedirects = options.maxRedirects ?? defaultMaxRedirects;
   for (let redirect = 0; redirect <= maxRedirects; redirect += 1) {
-    const response = await fetchSafeRemote(current, options, signal);
+    const requestHeaders = requestHeadersForRemoteFetch(options.headers, previousOrigin, current.url.origin);
+    const response = await fetchSafeRemote(current, requestHeaders, options.fetchImpl, signal);
     if (!isRedirect(response.status)) return response;
     await response.body?.cancel().catch(() => undefined);
     if (redirect === maxRedirects) throw new Error("Remote media download exceeded redirect limit.");
     const location = response.headers.get("location");
     if (!location) throw new Error("Remote media redirect is missing a location.");
+    previousOrigin = current.url.origin;
     current = await assertSafeRemoteUrl(new URL(location, current.url).toString(), options.lookupImpl);
   }
   throw new Error("Remote media download exceeded redirect limit.");
 }
 
-async function fetchSafeRemote(safeUrl: SafeRemoteUrl, options: RemoteMediaDownloadOptions, signal: AbortSignal) {
-  if (options.fetchImpl) {
-    return options.fetchImpl(safeUrl.url, {
+async function fetchSafeRemote(
+  safeUrl: SafeRemoteUrl,
+  headers: Headers,
+  fetchImpl: typeof fetch | undefined,
+  signal: AbortSignal,
+) {
+  if (fetchImpl) {
+    return fetchImpl(safeUrl.url, {
       method: "GET",
-      headers: options.headers,
+      headers,
       redirect: "manual",
       signal,
     });
   }
-  return fetchPinnedRemote(safeUrl, options.headers, signal);
+  return fetchPinnedRemote(safeUrl, headers, signal);
 }
 
-async function fetchPinnedRemote(safeUrl: SafeRemoteUrl, headers: HeadersInit | undefined, signal: AbortSignal): Promise<Response> {
+async function fetchPinnedRemote(safeUrl: SafeRemoteUrl, headers: Headers, signal: AbortSignal): Promise<Response> {
   const url = safeUrl.url;
   const target = safeUrl.addresses[0];
   if (!target) throw new Error("Remote media URL could not be resolved.");
@@ -252,7 +260,7 @@ function currentRemoteLimitBytes(kind: RemoteMediaKind) {
 }
 
 function remoteLimitMessage(kind: RemoteMediaKind) {
-  return `${kind === "video" ? "瑙嗛" : "鍥剧墖"}涓嶈兘瓒呰繃${formatByteLimit(currentRemoteLimitBytes(kind))}`;
+  return `${kind === "video" ? "视频" : "图片"}不能超过${formatByteLimit(currentRemoteLimitBytes(kind))}`;
 }
 
 function assertAllowedRemoteMime(kind: RemoteMediaKind, mimeType: string) {
@@ -294,6 +302,24 @@ function parseHttpUrl(raw: string) {
 
 function isRedirect(status: number) {
   return [301, 302, 303, 307, 308].includes(status);
+}
+
+function requestHeadersForRemoteFetch(baseHeaders: HeadersInit | undefined, previousOrigin: string | null, nextOrigin: string) {
+  const requestHeaders = new Headers(baseHeaders);
+  requestHeaders.delete("host");
+  if (previousOrigin && previousOrigin !== nextOrigin && hasSensitiveRemoteHeaders(requestHeaders)) {
+    throw new Error("Remote media redirect changed origin while authenticated headers were present.");
+  }
+  return requestHeaders;
+}
+
+function hasSensitiveRemoteHeaders(headers: Headers) {
+  for (const [name] of headers.entries()) {
+    if (/^(authorization|proxy-authorization|cookie|x-api-key|api-key|x-auth-token|x-access-token|x-amz-security-token)$/i.test(name)) {
+      return true;
+    }
+  }
+  return false;
 }
 
 function assertAllowedRemoteHost(hostname: string) {

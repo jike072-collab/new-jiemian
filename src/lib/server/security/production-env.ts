@@ -54,6 +54,17 @@ const endpointTypes = new Set([
 
 const trueValues = new Set(["1", "true", "yes", "on"]);
 const falseValues = new Set(["0", "false", "no", "off"]);
+const remoteMediaPlaceholderHosts = new Set([
+  "required",
+  "change_me",
+  "change-me",
+  "example.com",
+  "example.invalid",
+  "media.example.invalid",
+  "*.media.example.invalid",
+  "media.example.test",
+  "*.media.example.test",
+]);
 
 function value(env: RuntimeEnv, name: string) {
   return String(env[name] || "").trim();
@@ -285,6 +296,41 @@ function checkEndpointTypeIfConfigured(issues: RuntimeEnvironmentIssue[], env: R
   }
 }
 
+function checkRemoteMediaAllowedHosts(issues: RuntimeEnvironmentIssue[], env: RuntimeEnv) {
+  const raw = value(env, "REMOTE_MEDIA_ALLOWED_HOSTS");
+  if (!raw) {
+    issue(issues, "REMOTE_MEDIA_ALLOWED_HOSTS", "must list explicit production remote media hosts.");
+    return;
+  }
+  const entries = raw
+    .split(",")
+    .map((entry) => entry.trim().toLowerCase())
+    .filter(Boolean);
+  if (entries.length === 0) {
+    issue(issues, "REMOTE_MEDIA_ALLOWED_HOSTS", "must list explicit production remote media hosts.");
+    return;
+  }
+  for (const entry of entries) {
+    if (entry === "*" || entry === "*.*" || entry.endsWith(".*")) {
+      issue(issues, "REMOTE_MEDIA_ALLOWED_HOSTS", "must not use broad wildcard hosts.");
+      return;
+    }
+    if (remoteMediaPlaceholderHosts.has(entry) || entry.endsWith(".invalid")) {
+      issue(issues, "REMOTE_MEDIA_ALLOWED_HOSTS", "must not use placeholder hosts in production.");
+      return;
+    }
+    const host = entry.startsWith("*.") ? entry.slice(2) : entry;
+    if (!host || !host.includes(".")) {
+      issue(issues, "REMOTE_MEDIA_ALLOWED_HOSTS", "must use exact hosts or explicit subdomain rules.");
+      return;
+    }
+    if (/^(localhost|127\.|0\.0\.0\.0|169\.254\.169\.254|10\.|192\.168\.|172\.(1[6-9]|2\d|3[0-1])\.|::1|fc|fd|fe80:)/i.test(host)) {
+      issue(issues, "REMOTE_MEDIA_ALLOWED_HOSTS", "must not include localhost, metadata, or private-network targets.");
+      return;
+    }
+  }
+}
+
 function checkProviderIfKeyConfigured(
   issues: RuntimeEnvironmentIssue[],
   env: RuntimeEnv,
@@ -405,6 +451,7 @@ function checkProductionBasics(issues: RuntimeEnvironmentIssue[], env: RuntimeEn
     }
   }
   checkAdminPassword(issues, env);
+  checkRemoteMediaAllowedHosts(issues, env);
 }
 
 export function validateProductionRuntimeEnv(

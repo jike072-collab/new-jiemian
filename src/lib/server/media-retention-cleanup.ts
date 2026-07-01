@@ -1,4 +1,4 @@
-import { mkdir, lstat, readdir, realpath, rename, stat, unlink } from "node:fs/promises";
+import { mkdir, lstat, realpath, rename, stat, unlink } from "node:fs/promises";
 import { basename, dirname, relative, resolve, sep } from "node:path";
 
 import { mediaCompletedAt, mediaExpiresAt, resolveMediaRetentionHours } from "../media-retention";
@@ -93,7 +93,6 @@ export async function cleanupExpiredMedia(options: ExpiredMediaCleanupOptions = 
   const recoveredIds = new Set<string>();
 
   if (mode === "apply") {
-    await scanRecordBackedQuarantineOrphans(items, uploadsRootReal);
     for (const item of items) {
       if (!hasRecoverableExpiration(item)) continue;
       recoveredIds.add(item.id);
@@ -290,21 +289,6 @@ async function ensureQuarantineRoot(uploadsRootReal: string) {
     throw new Error("retention quarantine root escaped uploads root");
   }
   return quarantineRoot;
-}
-
-async function scanRecordBackedQuarantineOrphans(items: LibraryItem[], uploadsRootReal: string) {
-  const proofNames = new Set(
-    items
-      .map((item) => item.expirationQuarantineName)
-      .filter((name): name is string => Boolean(name && safeStoredName(name) === name)),
-  );
-  if (proofNames.size === 0) return [];
-  const quarantineRoot = await ensureQuarantineRoot(uploadsRootReal);
-  const entries = await readdir(quarantineRoot, { withFileTypes: true }).catch(() => []);
-  return entries
-    .filter((entry) => entry.isFile() && proofNames.has(entry.name))
-    .map((entry) => resolve(quarantineRoot, entry.name))
-    .filter((path) => isSameOrChildPath(path, quarantineRoot) && dirname(path) === quarantineRoot);
 }
 
 async function unlinkQuarantineFile(path: string, itemId: string) {

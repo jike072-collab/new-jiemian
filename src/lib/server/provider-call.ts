@@ -11,7 +11,7 @@ import {
   assertFileFormatAllowed,
   assertFileSizeAllowed,
 } from "./media-upload-guard";
-import { assertStorageAllows, isStorageCapacityError } from "./storage-capacity";
+import { assertStorageAllows } from "./storage-capacity";
 import { storeRemoteUrlStreamed } from "./remote-media-download";
 import { getTaskBillingService } from "./quota";
 import { jimengVideoOptionsForModel, providerById } from "./providers";
@@ -365,6 +365,34 @@ async function outputToLibraryFromAuthenticatedUrl(provider: ProviderConfig, url
   });
 }
 
+const providerJsonDefaultLimitBytes = 2 * 1024 * 1024;
+const providerJsonErrorLimitBytes = 1 * 1024 * 1024;
+const providerJsonHardLimitBytes = 64 * 1024 * 1024;
+
+async function readBoundedText(response: Response, limitBytes: number) {
+  if (!response.body) return "";
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder();
+  let totalBytes = 0;
+  let text = "";
+  try {
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      totalBytes += value.byteLength;
+      if (totalBytes > limitBytes) {
+        throw new Error("Provider JSON response exceeded the safe size limit.");
+      }
+      text += decoder.decode(value, { stream: true });
+    }
+    text += decoder.decode();
+    return text;
+  } finally {
+    await reader.cancel().catch(() => undefined);
+    reader.releaseLock();
+  }
+}
+
 function imageEndpoint(provider: ProviderConfig, useEdits: boolean) {
   const target = useEdits ? "edits" : "generations";
   if (/\/images\/(?:edits|generations)\/?$/i.test(provider.apiUrl)) {
@@ -378,7 +406,35 @@ function imageEndpoint(provider: ProviderConfig, useEdits: boolean) {
 }
 
 async function readProviderJson(response: Response, provider?: ProviderConfig) {
-  const text = await response.text().catch(() => "");
+  const contentLength = response.headers.get("content-length");
+  const declaredLength = contentLength ? Number(contentLength) : NaN;
+  const limitBytes = response.ok ? providerJsonDefaultLimitBytes : providerJsonErrorLimitBytes;
+  if (Number.isFinite(declaredLength) && declaredLength > providerJsonHardLimitBytes) {
+    throw new GenerationDiagnosticError({
+      code: "PROVIDER_BAD_RESPONSE",
+      providerId: provider?.id,
+      model: provider?.model,
+      upstreamStatus: response.status,
+      safeDetails: { upstreamStatus: response.status, contentLength: "exceeded-hard-limit" },
+    });
+  }
+  let text = "";
+  try {
+    text = await readBoundedText(response, limitBytes);
+  } catch (error) {
+    throw new GenerationDiagnosticError({
+      code: "PROVIDER_BAD_RESPONSE",
+      providerId: provider?.id,
+      model: provider?.model,
+      upstreamStatus: response.status,
+      safeDetails: {
+        upstreamStatus: response.status,
+        contentType: response.headers.get("content-type") || "",
+        responseLimitBytes: limitBytes,
+      },
+      cause: error,
+    });
+  }
   if (!response.ok) {
     if (!text.trim()) {
       throw new GenerationDiagnosticError({
@@ -527,16 +583,7 @@ async function outputToLibrary(output: ProviderOutput, type: "image" | "video", 
   }
   if (!output.url) throw new Error("供应商没有返回可识别的生成结果。");
   if (output.url.startsWith("data:")) return storeDataUrl(output.url, prefix);
-  try {
-    return await storeRemoteUrl(output.url, prefix, output.mimeType || (type === "image" ? "image/png" : "video/mp4"));
-  } catch (error) {
-    if (isStorageCapacityError(error)) throw error;
-    return {
-      url: output.url,
-      mimeType: output.mimeType || (type === "image" ? "image/png" : "video/mp4"),
-      sourceUrl: output.url,
-    };
-  }
+  return storeRemoteUrl(output.url, prefix, output.mimeType || (type === "image" ? "image/png" : "video/mp4"));
 }
 
 async function settleGeneratedTaskBilling(input: {
@@ -1016,7 +1063,6 @@ export async function refreshVideoJob(jobId: string, localUserId?: string | null
     } satisfies Partial<LibraryItem>);
     const updated = await updateJob(job.id, {
       status: "done",
-      sourceUrl: outputUrl,
       billing_state: job.billing_task_id ? "settled" : job.billing_state,
       billing_last_error: null,
     });
@@ -1047,7 +1093,6 @@ export async function refreshVideoJob(jobId: string, localUserId?: string | null
     } satisfies Partial<LibraryItem>);
     const updated = await updateJob(job.id, {
       status: "done",
-      sourceUrl: contentUrl,
       billing_state: job.billing_task_id ? "settled" : job.billing_state,
       billing_last_error: null,
     });

@@ -345,6 +345,52 @@ test("production allowlist is fail-closed and rejects suffix bypasses and unlist
   });
 });
 
+test("same-origin redirects keep auth headers but cross-origin redirects reject them", async () => {
+  const authHeader = "Bearer test-token";
+  await withEnv({ NODE_ENV: "production", REMOTE_MEDIA_ALLOWED_HOSTS: "media.example.test,*.media.example.test" }, async () => {
+    await withServer((request, response) => {
+      if (request.url === "/start") {
+        response.writeHead(302, { location: "/same-origin" });
+        response.end();
+        return;
+      }
+      if (request.url === "/same-origin") {
+        assert.equal(request.headers.authorization, authHeader);
+        response.writeHead(200, { "content-type": "image/png" });
+        response.end(Buffer.from([0x89, 0x50, 0x4e, 0x47]));
+        return;
+      }
+      if (request.url === "/cross-origin") {
+        response.writeHead(302, { location: "http://cdn.media.example.test/asset.png" });
+        response.end();
+        return;
+      }
+      response.writeHead(404);
+      response.end();
+    }, async (baseUrl) => {
+      const port = new URL(baseUrl).port;
+      const sameOrigin = await storeRemoteUrlStreamed(`http://media.example.test:${port}/start`, {
+        prefix: "remote-test",
+        fallbackMime: "image/png",
+        headers: { Authorization: authHeader },
+        fetchImpl: localFetch(),
+        lookupImpl: lookupPublicToLocal(),
+      });
+      assert.equal(sameOrigin.mimeType, "image/png");
+      await assert.rejects(
+        () => storeRemoteUrlStreamed(`http://media.example.test:${port}/cross-origin`, {
+          prefix: "remote-test",
+          fallbackMime: "image/png",
+          headers: { Authorization: authHeader },
+          fetchImpl: localFetch(),
+          lookupImpl: lookupPublicToLocal(),
+        }),
+        /changed origin/i,
+      );
+    });
+  });
+});
+
 test("IPv4-mapped IPv6 private and metadata addresses are rejected", () => {
   for (const address of [
     "::ffff:127.0.0.1",

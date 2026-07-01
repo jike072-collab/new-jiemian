@@ -208,6 +208,9 @@ assertSequence("authenticated video download delegates to streamed bounded stora
 assertSequence("remote library download delegates to streamed bounded storage", library, [
   "return storeRemoteUrlStreamed(url, { prefix, fallbackMime })",
 ]);
+assert(!providerCall.includes("sourceUrl: output.url"), "provider-call must not fall back to raw provider output URLs");
+assert(!providerCall.includes("sourceUrl: outputUrl"), "provider-call must not expose provider output URLs through completed jobs");
+assert(!providerCall.includes("sourceUrl: contentUrl"), "provider-call must not expose provider content URLs through completed jobs");
 
 const forbiddenCiBypass = read(".github/workflows/ci.yml");
 assert(!forbiddenCiBypass.includes("continue-on-error: true"), "CI must not hide Stage 3 failures with continue-on-error.");

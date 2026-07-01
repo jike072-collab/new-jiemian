@@ -587,7 +587,7 @@ export async function storeDataUrl(dataUrl: string, prefix: string) {
   const estimatedBytes = estimateBase64DecodedBytes(base64);
   const limit = currentRemoteMediaLimitBytes(kind);
   if (estimatedBytes > limit) {
-    throw new Error(`${kind === "video" ? "瑙嗛" : "鍥剧墖"}涓嶈兘瓒呰繃${formatByteLimit(limit)}`);
+    throw new Error(`${kind === "video" ? "视频" : "图片"}不能超过${formatByteLimit(limit)}`);
   }
   await assertStorageAllows(kind === "video" ? "video-media-write" : "image-media-write", { fresh: true });
   const bytes = Buffer.from(base64, "base64");

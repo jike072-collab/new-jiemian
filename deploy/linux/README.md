@@ -72,7 +72,7 @@ Production invariants:
 - persistent storage under `/var/lib/aohuang-ai`
 - `MEDIA_VIDEO_UPLOAD_LIMIT_MIB=200`
 - `MEDIA_RETENTION_HOURS=24`
-- `REMOTE_MEDIA_ALLOWED_HOSTS` must be configured before production remote media downloads are allowed
+- `REMOTE_MEDIA_ALLOWED_HOSTS` must be configured with explicit production hosts before remote media downloads are allowed
 - `DATABASE_LIBRARY_READ_ENABLED=false` until library owner mapping is production-ready
 
 Run the application validation on the server environment before switching a

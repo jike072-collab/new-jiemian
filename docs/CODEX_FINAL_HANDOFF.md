@@ -7,7 +7,7 @@
 | 仓库名称 | `jike072-collab/new-jiemian` |
 | 当前分支 | `chore/server-production-prep` |
 | 基准分支 | `origin/main` |
-| 当前HEAD commit | `2b31cd7c455ed9df47e12e0d33a8b8f4e67e41ee` before the external review remediation commit |
+| 当前HEAD commit | `dabde60965384c03866cc890b26db2e6901c01e5` before the external review remediation commit |
 | Node.js版本 | `v24.16.0` |
 | npm版本 | `11.13.0` |
 | 执行日期 | 2026-07-01 |
@@ -568,14 +568,14 @@ Safety confirmations:
 
 ### BLOCKER
 
-No unresolved repository-level blocker is known after the external review
-remediation pass. This is not a server validation result.
+None currently recorded at the repository-validation layer after the external
+review remediation pass. This is not a server acceptance result.
 
 ### HIGH
 
-No unresolved HIGH issue is known in the repository after the external review
-remediation pass. Database-backed library reads remain deliberately disabled in
-production and are listed as DEFERRED below.
+None currently recorded after the local remediation validation pass. Database
+library reads remain deliberately disabled in production and are listed as
+DEFERRED below.
 
 ### SERVER-GATE
 
@@ -762,12 +762,53 @@ nginx -t                                  NOT_RUN, nginx was not found on this W
 
 当前分支：`chore/server-production-prep`
 
-当前HEAD：`2b31cd7c455ed9df47e12e0d33a8b8f4e67e41ee` before the external review remediation commit
+当前HEAD：`dabde60965384c03866cc890b26db2e6901c01e5` before the external review remediation commit
 
 ## External Review Remediation
 
-Status for this section remains `COMPLETE_WITH_KNOWN_ISSUES` until all local
-verification commands in the remediation module pass and the branch is pushed.
+Status for this section remains `COMPLETE_WITH_KNOWN_ISSUES` after local
+verification passed. It still requires branch push, local 3107 manual
+validation, and future server-gate checks before any real production rollout.
+
+### Final Security Boundary Remediation
+
+This remediation pass completed the final repository-side fixes requested by the
+external review:
+
+- remote provider JSON reads are bounded and no longer buffer arbitrary
+  `response.text()` payloads in `src/lib/server/provider-call.ts`
+- completed jobs no longer persist or return raw upstream `sourceUrl` values
+- remote media allowlists are fail-closed in production through
+  `REMOTE_MEDIA_ALLOWED_HOSTS`
+- same-origin authenticated redirects remain allowed, but cross-origin redirects
+  carrying sensitive auth headers are rejected
+- remote media downloads, local byte storage, and data URL storage all keep the
+  current size caps and safe MIME guards without leaking provider secrets
+
+### Windows Database Test Isolation Fix
+
+The `EPERM` failure on Windows was an artifact-isolation bug, not a database
+assertion failure. Database test wrappers used a shared compiled output
+directory `dist/database-tests` and deleted it immediately before each run,
+which could race with lingering file handles on this workstation.
+
+The current fix introduces `scripts/database/compiled-test-runner.mjs`:
+
+- each database test run compiles into its own
+  `dist/database-test-runs/run-<pid>-<timestamp>-<random>` directory
+- the test runner overrides both `--outDir` and `--tsBuildInfoFile`
+- cleanup removes only that unique run directory
+- cleanup retries Windows transient lock failures with bounded retry/delay
+- a cleanup failure now reports a safe relative path and non-zero exit status
+
+Validated on this workstation with:
+
+```text
+npm run test:database-mvp                         PASS
+npm run test:database-library-integration         PASS
+npm run test:generation-jobs-db-integration      PASS
+npm run test:generation-jobs-db-integration      PASS (repeat run)
+```
 
 ### Media Expiration State Machine
 
@@ -883,4 +924,24 @@ Current status for this remediation section:
 - deploy to server 3106: not done
 - local 3107 manual validation: still required
 - repository blocker state: no repository-local blocker is recorded here, but server acceptance remains a `SERVER-GATE`
-- review recommendation: rerun `npm ci` and `npm run check`, review the branch diff, complete local 3107 manual validation, then decide whether to approve merge to `main`
+- local verification completed:
+  - `npm run check:docs` PASS
+  - `npm run lint` PASS
+  - `npx eslint . --max-warnings=0` PASS
+  - `npm run typecheck` PASS
+  - `npm run test:security-release` PASS
+  - `npm run check:studio-api-contracts` PASS
+  - `npm run test:database-library-integration` PASS
+  - `npm run test:generation-jobs-db-integration` PASS
+  - `npm run test:upload-temp-cleanup` PASS
+  - `npm run test:ops` PASS
+  - `npm run build` PASS
+  - `git diff --check` PASS
+  - `npm run check` PASS
+- git checkout state at validation time:
+  - branch `chore/server-production-prep`
+  - HEAD `dabde60965384c03866cc890b26db2e6901c01e5`
+- GitHub CI: NOT_RUN in this local remediation pass
+- nginx -t on this workstation: NOT_RUN (nginx not installed)
+- review recommendation: review the branch diff, complete local 3107 manual
+  validation, then decide whether to approve merge to `main`

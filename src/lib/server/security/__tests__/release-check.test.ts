@@ -47,6 +47,7 @@ const productionEnv: EnvPatch = {
   APP_AUTH_PERSISTENCE_MODE: "postgres",
   APP_BILLING_PERSISTENCE_MODE: "postgres",
   APP_TASK_BILLING_PERSISTENCE_MODE: "postgres",
+  REMOTE_MEDIA_ALLOWED_HOSTS: "media.allowed.example,*.cdn.allowed.example",
   NEW_API_ENABLED: "true",
   NEW_API_BASE_URL: "https://new-api.example.test",
   NEW_API_ENVIRONMENT: "production",
@@ -139,6 +140,13 @@ test("production env check rejects invalid storage threshold order", () => {
     STORAGE_WARNING_PERCENT: "70",
     STORAGE_CRITICAL_PERCENT: "69",
   }, "STORAGE_WARNING_PERCENT");
+});
+
+test("production env check rejects missing or placeholder remote media allowlists", () => {
+  expectProductionIssue({ REMOTE_MEDIA_ALLOWED_HOSTS: undefined }, "REMOTE_MEDIA_ALLOWED_HOSTS");
+  expectProductionIssue({ REMOTE_MEDIA_ALLOWED_HOSTS: "media.example.invalid,*.media.example.invalid" }, "REMOTE_MEDIA_ALLOWED_HOSTS");
+  expectProductionIssue({ REMOTE_MEDIA_ALLOWED_HOSTS: "*" }, "REMOTE_MEDIA_ALLOWED_HOSTS");
+  expectProductionIssue({ REMOTE_MEDIA_ALLOWED_HOSTS: "127.0.0.1" }, "REMOTE_MEDIA_ALLOWED_HOSTS");
 });
 
 test("production env check does not require disabled providers", () => {
