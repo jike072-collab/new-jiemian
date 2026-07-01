@@ -3,7 +3,7 @@ import { randomUUID } from "node:crypto";
 import {
   estimateGenerationQuota,
   generationBillingFingerprint,
-} from "@/lib/generation-quota";
+} from "../generation-quota";
 
 import { addJob, addLibraryItem, storeDataUrl, storeRemoteUrl, updateJob, updateLibraryItem } from "./library";
 import { codeForUpstreamStatus, GenerationDiagnosticError } from "./error-diagnostics";
@@ -365,16 +365,15 @@ async function outputToLibraryFromAuthenticatedUrl(provider: ProviderConfig, url
   });
 }
 
-const providerJsonDefaultLimitBytes = 2 * 1024 * 1024;
+const providerJsonDefaultLimitBytes = 16 * 1024 * 1024;
 const providerJsonErrorLimitBytes = 1 * 1024 * 1024;
 const providerJsonHardLimitBytes = 64 * 1024 * 1024;
 
 async function readBoundedText(response: Response, limitBytes: number) {
   if (!response.body) return "";
   const reader = response.body.getReader();
-  const decoder = new TextDecoder();
   let totalBytes = 0;
-  let text = "";
+  const chunks: Uint8Array[] = [];
   try {
     for (;;) {
       const { done, value } = await reader.read();
@@ -383,10 +382,15 @@ async function readBoundedText(response: Response, limitBytes: number) {
       if (totalBytes > limitBytes) {
         throw new Error("Provider JSON response exceeded the safe size limit.");
       }
-      text += decoder.decode(value, { stream: true });
+      chunks.push(value);
     }
-    text += decoder.decode();
-    return text;
+    const merged = new Uint8Array(totalBytes);
+    let offset = 0;
+    for (const chunk of chunks) {
+      merged.set(chunk, offset);
+      offset += chunk.byteLength;
+    }
+    return new TextDecoder().decode(merged);
   } finally {
     await reader.cancel().catch(() => undefined);
     reader.releaseLock();
@@ -416,6 +420,20 @@ async function readProviderJson(response: Response, provider?: ProviderConfig) {
       model: provider?.model,
       upstreamStatus: response.status,
       safeDetails: { upstreamStatus: response.status, contentLength: "exceeded-hard-limit" },
+    });
+  }
+  if (Number.isFinite(declaredLength) && declaredLength > limitBytes) {
+    throw new GenerationDiagnosticError({
+      code: "PROVIDER_BAD_RESPONSE",
+      providerId: provider?.id,
+      model: provider?.model,
+      upstreamStatus: response.status,
+      safeDetails: {
+        upstreamStatus: response.status,
+        contentType: response.headers.get("content-type") || "",
+        responseLimitBytes: limitBytes,
+        contentLength: "exceeded-limit",
+      },
     });
   }
   let text = "";
@@ -489,6 +507,57 @@ async function readProviderJson(response: Response, provider?: ProviderConfig) {
     });
   }
   return payload;
+}
+
+type ProviderOutputStoragePlan =
+  | { mode: "data-url"; dataUrl: string }
+  | { mode: "remote-url"; url: string; fallbackMime: string };
+
+function unsupportedVideoBase64Error(output: ProviderOutput, type: "image" | "video") {
+  return new GenerationDiagnosticError({
+    code: "PROVIDER_BAD_RESPONSE",
+    message: "供应商返回了不受支持的视频 Base64 结果。",
+    safeDetails: {
+      outputType: type,
+      responseFormat: output.base64 ? "video-base64" : "video-data-url",
+      mimeType: output.mimeType || "video/mp4",
+    },
+  });
+}
+
+function planProviderOutputStorage(output: ProviderOutput, type: "image" | "video"): ProviderOutputStoragePlan {
+  const fallbackMime = output.mimeType || (type === "image" ? "image/png" : "video/mp4");
+  if (type === "video") {
+    if (output.url) {
+      if (output.url.startsWith("data:")) throw unsupportedVideoBase64Error(output, type);
+      return {
+        mode: "remote-url",
+        url: output.url,
+        fallbackMime,
+      };
+    }
+    if (output.base64) throw unsupportedVideoBase64Error(output, type);
+  }
+  if (output.base64) {
+    return {
+      mode: "data-url",
+      dataUrl: /^data:/i.test(output.base64)
+        ? output.base64
+        : `data:${fallbackMime};base64,${output.base64}`,
+    };
+  }
+  if (!output.url) throw new Error("供应商没有返回可识别的生成结果。");
+  if (output.url.startsWith("data:")) {
+    return {
+      mode: "data-url",
+      dataUrl: output.url,
+    };
+  }
+  return {
+    mode: "remote-url",
+    url: output.url,
+    fallbackMime,
+  };
 }
 
 async function callImageProvider({
@@ -574,16 +643,9 @@ async function callImageProvider({
 
 async function outputToLibrary(output: ProviderOutput, type: "image" | "video", prefix: string) {
   await assertStorageAllows(type === "video" ? "video-media-write" : "image-media-write", { fresh: true });
-  if (output.base64) {
-    const fallbackMime = output.mimeType || (type === "image" ? "image/png" : "video/mp4");
-    const dataUrl = /^data:/i.test(output.base64)
-      ? output.base64
-      : `data:${fallbackMime};base64,${output.base64}`;
-    return storeDataUrl(dataUrl, prefix);
-  }
-  if (!output.url) throw new Error("供应商没有返回可识别的生成结果。");
-  if (output.url.startsWith("data:")) return storeDataUrl(output.url, prefix);
-  return storeRemoteUrl(output.url, prefix, output.mimeType || (type === "image" ? "image/png" : "video/mp4"));
+  const plan = planProviderOutputStorage(output, type);
+  if (plan.mode === "data-url") return storeDataUrl(plan.dataUrl, prefix);
+  return storeRemoteUrl(plan.url, prefix, plan.fallbackMime);
 }
 
 async function settleGeneratedTaskBilling(input: {
@@ -1025,7 +1087,7 @@ async function reconcileFinalizedVideoJob(job: JobRecord, localUserId?: string |
 
 export async function refreshVideoJob(jobId: string, localUserId?: string | null) {
   const { readJobs } = await import("./library");
-  const job = (await readJobs()).find((item) => item.id === jobId);
+  const job = (await readJobs()).find((item: JobRecord) => item.id === jobId);
   if (!job) throw new Error("任务不存在。");
   const jobOwner = job.ownerLocalUserId || job.billing_local_user_id || null;
   if (localUserId && jobOwner && jobOwner !== localUserId) {
@@ -1156,3 +1218,13 @@ export async function uploadedMediaFromForm(
     fileName: file.name || "reference.png",
   })));
 }
+
+export const providerCallInternalsForTests = {
+  parseProviderOutput,
+  planProviderOutputStorage,
+  readProviderJson,
+  outputToLibrary,
+  providerJsonDefaultLimitBytes,
+  providerJsonErrorLimitBytes,
+  providerJsonHardLimitBytes,
+};

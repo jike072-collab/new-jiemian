@@ -28,9 +28,14 @@ try {
       "dist/upload-limits-tests/src/lib/server/__tests__/remote-media-download.test.js",
       "dist/upload-limits-tests/server/__tests__/remote-media-download.test.js",
     ].find((candidate) => existsSync(join(root, candidate)));
+    const providerCallTestFile = [
+      "dist/upload-limits-tests/src/lib/server/__tests__/provider-call.test.js",
+      "dist/upload-limits-tests/server/__tests__/provider-call.test.js",
+    ].find((candidate) => existsSync(join(root, candidate)));
     assert(mediaUploadGuardTestFile, "compiled upload limit test file must exist");
     assert(remoteMediaDownloadTestFile, "compiled remote media download test file must exist");
-    const run = spawnSync("node", ["--conditions=react-server", "--test", mediaUploadGuardTestFile, remoteMediaDownloadTestFile], {
+    assert(providerCallTestFile, "compiled provider call test file must exist");
+    const run = spawnSync("node", ["--conditions=react-server", "--test", mediaUploadGuardTestFile, remoteMediaDownloadTestFile, providerCallTestFile], {
       cwd: root,
       env: {
         ...process.env,

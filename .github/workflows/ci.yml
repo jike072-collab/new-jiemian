@@ -161,7 +161,7 @@ jobs:
           cat > .tmp/nginx-test/nginx.conf <<'EOF'
           events {}
           http {
-              include mime.types;
+              include /etc/nginx/mime.types;
               default_type application/octet-stream;
               include __ROOT__/deploy/linux/nginx-limits.conf.example;
               include __ROOT__/.tmp/nginx-test/site.conf;

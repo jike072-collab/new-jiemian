@@ -69,10 +69,12 @@ try {
     "storeRemoteUrlStreamed(url, { prefix, fallbackMime })",
   ]);
   assertSequence("provider base64 output uses guarded data URL storage", sources.providerCall, [
+    "if (type === \"video\") {",
+    "if (output.url) {",
+    "if (output.base64) throw unsupportedVideoBase64Error(output, type)",
     "if (output.base64) {",
-    "const fallbackMime = output.mimeType || (type === \"image\" ? \"image/png\" : \"video/mp4\")",
-    "const dataUrl = /^data:/i.test(output.base64)",
-    "return storeDataUrl(dataUrl, prefix)",
+    "mode: \"data-url\"",
+    "return storeDataUrl(plan.dataUrl, prefix)",
   ]);
   assertSequence("streamed remote media checks storage before writing", sources.remoteMediaDownload, [
     "assertContentLengthAllowed(response.headers.get(\"content-length\"), kind)",

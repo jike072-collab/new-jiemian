@@ -722,6 +722,56 @@ npm run release:preflight
 This section records the production-readiness issues found by external review
 after the original module 11 handoff.
 
+### PR #99 CI Follow-up
+
+PR `#99 Prepare single-instance production deployment` first reported:
+
+- `windows-quality`: PASS
+- `quality`: FAIL
+- failing step: `Nginx template syntax check`
+
+Root cause:
+
+- `.github/workflows/ci.yml` generated a temporary `nginx.conf` with
+  `include mime.types;`
+- the same step ran `nginx -t -p "$(pwd)/.tmp/nginx-test" ...`
+- under that prefix Nginx resolved the relative include to
+  `.tmp/nginx-test/mime.types`, which does not exist on the Ubuntu runner
+
+Current repository remediation:
+
+- the temporary workflow config now uses `include /etc/nginx/mime.types;`
+- the `nginx -t` syntax check remains enabled and still validates:
+  - `deploy/linux/nginx-limits.conf.example`
+  - `deploy/linux/nginx-site.conf.example`
+  - temporary TLS certificate wiring
+  - referenced `limit_req` zones
+- the quality job must still fail if Nginx emits a real syntax or include error
+
+Provider JSON response bounds were also adjusted in this remediation pass:
+
+- success soft limit: `16 MiB`
+- error soft limit: `1 MiB`
+- hard cap: `64 MiB`
+
+Reason:
+
+- the project still allows generated images up to the current media byte cap
+- a valid image payload encoded as Base64 can exceed `13 MiB`
+- the old `2 MiB` success limit could reject valid image results before the
+  actual media byte guard ran
+
+Current provider output rule:
+
+- image URL and image Base64 responses remain supported
+- video URL responses remain supported
+- video Base64 or video data URL provider responses are rejected explicitly, so
+  large video payloads do not expand inside provider JSON memory
+
+CI rerun state for this follow-up must remain pending until a new GitHub Actions
+run completes. Until then this handoff stays at
+`COMPLETE_WITH_KNOWN_ISSUES`.
+
 | Review item | Remediation | Current behavior |
 | --- | --- | --- |
 | Invalid Nginx hourly rates | `deploy/linux/nginx-site.conf.example` no longer uses `r/h`; registration uses coarse `1r/m`. | Nginx is documented as a second IP-protection layer. Exact 3-per-hour registration limits remain in the app. |
@@ -922,7 +972,7 @@ Current status for this remediation section:
 - branch push: pending until the remediation commit is created
 - merge to `main`: not done
 - deploy to server 3106: not done
-- local 3107 manual validation: still required
+- local 3107 manual validation: `NOT_RUN`
 - repository blocker state: no repository-local blocker is recorded here, but server acceptance remains a `SERVER-GATE`
 - local verification completed:
   - `npm run check:docs` PASS
