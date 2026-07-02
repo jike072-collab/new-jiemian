@@ -90,6 +90,7 @@ export function buildRuntimeEnv(service, options = {}) {
     DATA_DIR: allowRuntimeDirOverride && env.DATA_DIR ? resolve(env.DATA_DIR) : config.dataDir,
     UPLOADS_DIR: allowRuntimeDirOverride && env.UPLOADS_DIR ? resolve(env.UPLOADS_DIR) : config.uploadsDir,
     RUNTIME_DIR: config.runtimeDir,
+    AOHUANG_RUNTIME_STORAGE_PLATFORM: process.platform === "win32" ? "win32" : "linux",
     NEXT_TELEMETRY_DISABLED: env.NEXT_TELEMETRY_DISABLED || "1",
   };
   applyValues(env, enforced, "service-invariant", sources);

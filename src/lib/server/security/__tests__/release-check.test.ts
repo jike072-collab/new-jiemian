@@ -57,8 +57,12 @@ const productionEnv: EnvPatch = {
   PAYMENT_PRODUCTION_WEBHOOK_SECRET: undefined,
 };
 
-function expectProductionIssue(patch: EnvPatch, variable: string) {
-  const report = validateProductionRuntimeEnv({ ...productionEnv, ...patch }, { nodeVersion: "24.16.0" });
+function expectProductionIssue(
+  patch: EnvPatch,
+  variable: string,
+  options: Parameters<typeof validateProductionRuntimeEnv>[1] = {},
+) {
+  const report = validateProductionRuntimeEnv({ ...productionEnv, ...patch }, { nodeVersion: "24.16.0", ...options });
   assert.equal(report.ok, false);
   assert(report.issues.some((entry) => entry.variable.includes(variable)), `${variable} issue missing`);
   const serialized = formatRuntimeEnvironmentReport(report);
@@ -120,6 +124,43 @@ test("production env check rejects Windows and temporary production storage path
   expectProductionIssue({ DATA_DIR: "C:\\srv\\new-jiemian\\data" }, "DATA_DIR");
   expectProductionIssue({ DATA_DIR: "/tmp/new-jiemian/data" }, "DATA_DIR");
   expectProductionIssue({ UPLOADS_DIR: "/var/lib/aohuang-ai/data/uploads" }, "DATA_DIR/UPLOADS_DIR");
+});
+
+test("production env check accepts Windows service storage when explicitly selected", () => {
+  const report = validateProductionRuntimeEnv({
+    ...productionEnv,
+    AOHUANG_RUNTIME_STORAGE_PLATFORM: "win32",
+    DATA_DIR: "C:\\srv\\aohuang-ai\\data",
+    UPLOADS_DIR: "C:\\srv\\aohuang-ai\\uploads",
+    RUNTIME_DIR: "C:\\srv\\aohuang-ai\\runtime",
+  }, { nodeVersion: "24.16.0" });
+  assert.equal(report.ok, true);
+});
+
+test("production env check rejects unsafe Windows service storage", () => {
+  expectProductionIssue({
+    AOHUANG_RUNTIME_STORAGE_PLATFORM: "win32",
+    DATA_DIR: "relative\\data",
+    UPLOADS_DIR: "C:\\srv\\aohuang-ai\\uploads",
+    RUNTIME_DIR: "C:\\srv\\aohuang-ai\\runtime",
+  }, "DATA_DIR");
+
+  expectProductionIssue({
+    AOHUANG_RUNTIME_STORAGE_PLATFORM: "win32",
+    DATA_DIR: "C:\\Users\\Administrator\\AppData\\Local\\Temp\\aohuang\\data",
+    UPLOADS_DIR: "C:\\srv\\aohuang-ai\\uploads",
+    RUNTIME_DIR: "C:\\srv\\aohuang-ai\\runtime",
+  }, "DATA_DIR");
+
+  const nested = validateProductionRuntimeEnv({
+    ...productionEnv,
+    AOHUANG_RUNTIME_STORAGE_PLATFORM: "win32",
+    DATA_DIR: "C:\\srv\\aohuang-ai\\data",
+    UPLOADS_DIR: "C:\\srv\\aohuang-ai\\data\\uploads",
+    RUNTIME_DIR: "C:\\srv\\aohuang-ai\\runtime",
+  }, { nodeVersion: "24.16.0" });
+  assert.equal(nested.ok, false);
+  assert(nested.issues.some((entry) => entry.variable === "DATA_DIR/UPLOADS_DIR"));
 });
 
 test("production env check rejects database library read mode until owner mapping is complete", () => {
