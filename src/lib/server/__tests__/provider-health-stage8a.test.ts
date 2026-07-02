@@ -60,8 +60,8 @@ test("Stage 8A provider health report exposes only read-only model health fields
       provider({
         id: "stage8a-image-upscale",
         kind: "image-upscale",
-        title: "图片高清",
-        role: "图片高清",
+        title: "图片高清增强",
+        role: "图片高清增强",
         endpointType: "volcengine-imagex-upscale",
         apiUrl: "https://imagex.volcengineapi.com",
         model: "imagex-service-id",
@@ -77,6 +77,7 @@ test("Stage 8A provider health report exposes only read-only model health fields
   assert.equal(report.modelHealth.imageEdit.configured, 1);
   assert.equal(report.modelHealth.video.missing, 1);
   assert.equal(report.modelHealth.imageUpscale.configured, 1);
+  assert.equal(report.modelHealth.videoUpscale.missing, 0);
 
   const image = report.providers.find((item) => item.providerId === "stage8a-image");
   assert(image);
@@ -93,6 +94,7 @@ test("Stage 8A provider health report exposes only read-only model health fields
   assert.equal(video.configured, false);
   assert.equal(video.modelsConfigured, false);
   assert.equal(video.errors.some((issue) => issue.code === "MODEL_MISSING_VIDEO"), true);
+  assert.equal(report.providers.some((item) => /upscayl|video2x|local-upscale|placeholder/i.test(item.endpointType)), false);
   assertNoSecretLeak(report);
 });
 

@@ -243,6 +243,97 @@ test("database library adapter uses soft delete and does not remove files", asyn
   assert.equal(memory.calls.includes("softDeleteLibraryItem"), true);
 });
 
+test("database library adapter can expire local media while preserving audit rows", async () => {
+  const memory = createMemoryRepository();
+  const adapter = createStage9cbLibraryDatabaseAdapter(memory.repository);
+  const initial = libraryItem({
+    type: "video",
+    mode: "text-to-video",
+    status: "generating",
+    output: undefined,
+  });
+  const completed = libraryItem({
+    type: "video",
+    mode: "text-to-video",
+    status: "done",
+    completedAt: later,
+    updatedAt: later,
+    output: {
+      url: "/api/files/result.mp4",
+      storedName: "result.mp4",
+      mimeType: "video/mp4",
+      size: 456,
+    },
+  });
+  const expiredAt = "2026-06-29T00:00:00.000Z";
+  const expired: LibraryItem = {
+    ...completed,
+    output: undefined,
+    expired: true,
+    expiredAt,
+    expiresAt: expiredAt,
+    fileAvailable: false,
+    updatedAt: expiredAt,
+  };
+
+  await adapter.addLibraryItem(initial);
+  await adapter.updateLibraryItem(initial.id, { status: "done", output: completed.output, completedAt: later }, completed);
+  await adapter.updateLibraryItem(initial.id, {
+    output: undefined,
+    expired: true,
+    expiredAt,
+    expiresAt: expiredAt,
+    fileAvailable: false,
+  }, expired);
+  const [fromDb] = await adapter.readLibrary();
+  const [job] = [...memory.jobs.values()];
+
+  assert.equal(fromDb.output, undefined);
+  assert.equal(fromDb.expired, true);
+  assert.equal(fromDb.expiredAt, expiredAt);
+  assert.equal(fromDb.fileAvailable, false);
+  assert.equal(memory.libraryItems.size, 1);
+  assert.equal(memory.jobs.size, 1);
+  assert.equal(job.status, "succeeded");
+  assert.equal(job.output_asset_id, null);
+});
+
+test("database library adapter represents expiration pending as a non-active media record", async () => {
+  const memory = createMemoryRepository();
+  const adapter = createStage9cbLibraryDatabaseAdapter(memory.repository);
+  const initial = libraryItem({
+    output: {
+      url: "/api/files/result.png",
+      storedName: "result.png",
+      mimeType: "image/png",
+      size: 123,
+    },
+  });
+  const pendingAt = "2026-06-29T00:00:00.000Z";
+  const pending: LibraryItem = {
+    ...initial,
+    expirationPending: true,
+    expirationPendingAt: pendingAt,
+    expirationPendingStoredName: "result.png",
+    fileAvailable: false,
+    updatedAt: pendingAt,
+  };
+
+  await adapter.addLibraryItem(initial);
+  await adapter.updateLibraryItem(initial.id, {
+    expirationPending: true,
+    expirationPendingAt: pendingAt,
+    expirationPendingStoredName: "result.png",
+    fileAvailable: false,
+  }, pending);
+  const [fromDb] = await adapter.readLibrary();
+
+  assert.equal(fromDb.output, undefined);
+  assert.equal(fromDb.expirationPending, true);
+  assert.equal(fromDb.expirationPendingStoredName, "result.png");
+  assert.equal(fromDb.fileAvailable, false);
+});
+
 test("database jobs adapter maps JSON job status to database status and back", async () => {
   const memory = createMemoryRepository();
   const adapter = createStage9cbLibraryDatabaseAdapter(memory.repository);

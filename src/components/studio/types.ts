@@ -1,12 +1,15 @@
 import type { FrontendProvider, JobRecord, LibraryItem } from "@/lib/server/types";
 import type { ErrorDiagnostic } from "@/lib/error-diagnostic-catalog";
+import type { PublicUploadLimits } from "@/lib/upload-limits";
 
 export type BusinessToolId = "image" | "video" | "image-upscale" | "video-upscale" | "library";
 export type LibraryFilter = "image" | "video";
 export type LibrarySort = "recent" | "title";
 export type UpscaleKind = "image" | "video";
 export type UpscaleAvailability = { ready: boolean; detail: string };
-export type UpscaleStatusResponse = Record<UpscaleKind, UpscaleAvailability>;
+export type UpscaleStatusResponse = Record<UpscaleKind, UpscaleAvailability> & {
+  uploadLimits?: Pick<PublicUploadLimits, "imageUpscale" | "videoUpscale">;
+};
 
 export type EnabledProviders = {
   image: FrontendProvider[];
@@ -71,6 +74,7 @@ export type ImageWorkspaceState = {
   fileError: string;
   submitError: string;
   submitDiagnostic?: StudioErrorDiagnostic | null;
+  inFlightCount: number;
   loading: boolean;
 };
 
@@ -92,18 +96,22 @@ export type VideoWorkspaceState = {
   fileError: string;
   submitError: string;
   submitDiagnostic?: StudioErrorDiagnostic | null;
+  inFlightCount: number;
   loading: boolean;
   job: JobRecord | null;
 };
 
-export type ImageGenerationProgressState = {
+export type ImageGenerationProgressItem = {
+  id: string;
   status: "running" | "done" | "failed";
   current: number;
   total: number;
   startedAt: number;
   completedAt?: number;
   message?: string;
-} | null;
+};
+
+export type ImageGenerationProgressState = ImageGenerationProgressItem[];
 
 export type ImageUpscaleWorkspaceFile = {
   file: File;

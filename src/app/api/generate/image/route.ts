@@ -3,6 +3,7 @@ import { type NextRequest, NextResponse } from "next/server";
 import { authResultResponse, csrfFailure, requireAuthSession, requireCsrf } from "@/lib/server/auth";
 import { diagnosticErrorResponse } from "@/lib/server/error-diagnostics";
 import { generateImage, uploadedMediaFromForm } from "@/lib/server/provider-call";
+import { WorkloadLimitError, withUserImageWorkload, workloadLimitResponse } from "@/lib/server/workload-guard";
 
 export const runtime = "nodejs";
 
@@ -12,7 +13,7 @@ export async function POST(request: NextRequest) {
     const session = await requireAuthSession(request);
     if (!session.ok) return authResultResponse(request, session);
     const form = await request.formData();
-    const item = await generateImage({
+    const item = await withUserImageWorkload(session.user.local_user_id, async () => generateImage({
       providerId: String(form.get("providerId") || ""),
       mode: String(form.get("mode") || "text-to-image") === "image-to-image" ? "image-to-image" : "text-to-image",
       prompt: String(form.get("prompt") || ""),
@@ -23,9 +24,10 @@ export async function POST(request: NextRequest) {
       billingTaskId: String(form.get("taskId") || form.get("billingTaskId") || ""),
       billingIdempotencyKey: String(form.get("idempotencyKey") || form.get("billingIdempotencyKey") || ""),
       billingEstimatedQuotaUnits: Number(form.get("estimatedQuotaUnits") || form.get("billingEstimatedQuotaUnits") || Number.NaN),
-    });
+    }));
     return NextResponse.json({ item });
   } catch (error) {
+    if (error instanceof WorkloadLimitError) return workloadLimitResponse(error);
     return diagnosticErrorResponse(error, {
       requestId: request.headers.get("x-request-id"),
       fallbackMessage: "图片生成失败。",

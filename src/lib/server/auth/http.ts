@@ -48,13 +48,16 @@ export async function readJsonBody(request: NextRequest): Promise<JsonBody> {
 }
 
 function failureResponse(result: AuthFailure) {
+  const headers = result.retryAfterSeconds
+    ? { "Retry-After": String(result.retryAfterSeconds) }
+    : undefined;
   return NextResponse.json({
     ok: false,
     code: result.code,
     uiState: result.uiState,
     message: result.message,
     retryAfterSeconds: result.retryAfterSeconds,
-  }, { status: result.status });
+  }, { status: result.status, headers });
 }
 
 export function authResultResponse(request: NextRequest, result: AuthResult) {

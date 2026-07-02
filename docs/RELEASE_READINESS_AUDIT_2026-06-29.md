@@ -1,3 +1,5 @@
+> Historical audit snapshot. This file is retained for release-hardening history and does not describe the current 3106 server deployment.
+
 # P1 Abuse Guard And Temp Cleanup Audit
 
 This main-based P1 hardening note covers only the abuse-guard contract audit

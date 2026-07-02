@@ -21,7 +21,7 @@ export const requiredRuntimeKeys = [
 const runtimeSummaryCategories = [
   { key: "runtimeMode", label: "runtimeModeConfigured", keys: ["NODE_ENV"] },
   { key: "runtimePort", label: "runtimePortConfigured", keys: ["PORT"] },
-  { key: "runtimeStorage", label: "runtimeStorageConfigured", keys: ["DATA_DIR", "UPLOADS_DIR"] },
+  { key: "runtimeStorage", label: "runtimeStorageConfigured", keys: ["DATA_DIR", "UPLOADS_DIR", "RUNTIME_DIR"] },
   { key: "adminAuth", label: "adminAuthConfigured", keys: ["AUTH_SESSION_SECRET", "SESSION_SECRET"], any: true },
   { key: "database", label: "databaseConfigured", keys: ["APP_DATABASE_URL", "APP_DATABASE_EXPECTED_NAME"] },
   {
@@ -89,6 +89,7 @@ export function buildRuntimeEnv(service, options = {}) {
     PORT: config.port,
     DATA_DIR: allowRuntimeDirOverride && env.DATA_DIR ? resolve(env.DATA_DIR) : config.dataDir,
     UPLOADS_DIR: allowRuntimeDirOverride && env.UPLOADS_DIR ? resolve(env.UPLOADS_DIR) : config.uploadsDir,
+    RUNTIME_DIR: config.runtimeDir,
     NEXT_TELEMETRY_DISABLED: env.NEXT_TELEMETRY_DISABLED || "1",
   };
   applyValues(env, enforced, "service-invariant", sources);
@@ -116,6 +117,7 @@ export function summarizeRuntimeEnv(env, sources = {}, files = []) {
     "PORT",
     "DATA_DIR",
     "UPLOADS_DIR",
+    "RUNTIME_DIR",
     "AUTH_SESSION_SECRET",
     "SESSION_SECRET",
     ...requiredRuntimeKeys,

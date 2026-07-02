@@ -38,6 +38,7 @@ export function VideoGenerator({
   state,
   canSubmit,
   estimatedQuotaUnits,
+  costLabel,
   onProviderChange,
   onRatioChange,
   onDurationChange,
@@ -45,6 +46,7 @@ export function VideoGenerator({
   onPromptChange,
   onPromptOptimize,
   onPromptOptimizeUndo,
+  promptOptimizeCostLabel,
   onFilesChange,
   onFileRemove,
   onFilesClear,
@@ -64,6 +66,7 @@ export function VideoGenerator({
   state: VideoWorkspaceState;
   canSubmit: boolean;
   estimatedQuotaUnits: number;
+  costLabel?: string;
   onProviderChange: (value: string) => void;
   onRatioChange: (value: string) => void;
   onDurationChange: (value: number) => void;
@@ -71,6 +74,7 @@ export function VideoGenerator({
   onPromptChange: (value: string) => void;
   onPromptOptimize: () => void;
   onPromptOptimizeUndo: () => void;
+  promptOptimizeCostLabel?: string;
   onFilesChange: (files: File[]) => void;
   onFileRemove: (index: number) => void;
   onFilesClear: () => void;
@@ -86,13 +90,13 @@ export function VideoGenerator({
   useEffect(() => {
     registerMobileAction({
       label: state.loading ? meta.loadingLabel : meta.submitLabel,
-      costLabel: formatQuotaSymbolLabel(estimatedQuotaUnits),
+      costLabel: costLabel || formatQuotaSymbolLabel(estimatedQuotaUnits),
       loading: state.loading,
       disabled: !canSubmit,
       onClick: onSubmit,
     });
     return () => registerMobileAction(null);
-  }, [canSubmit, estimatedQuotaUnits, meta.loadingLabel, meta.submitLabel, onSubmit, registerMobileAction, state.loading]);
+  }, [canSubmit, costLabel, estimatedQuotaUnits, meta.loadingLabel, meta.submitLabel, onSubmit, registerMobileAction, state.loading]);
 
   return (
     <FormPanel>
@@ -145,7 +149,7 @@ export function VideoGenerator({
         label={meta.promptLabel}
         value={state.prompt}
         onChange={onPromptChange}
-        optimizeCostLabel={promptOptimizationCostLabel}
+        optimizeCostLabel={promptOptimizeCostLabel || promptOptimizationCostLabel}
         optimizing={state.promptOptimizing}
         optimizeError={state.promptOptimizeError}
         canUndoOptimize={Boolean(state.promptOptimizeUndo)}
@@ -160,7 +164,7 @@ export function VideoGenerator({
           disabled={!canSubmit}
           loading={state.loading}
           loadingLabel={meta.loadingLabel}
-          costLabel={formatQuotaSymbolLabel(estimatedQuotaUnits)}
+          costLabel={costLabel || formatQuotaSymbolLabel(estimatedQuotaUnits)}
           onClick={onSubmit}
         >
           {meta.submitLabel}

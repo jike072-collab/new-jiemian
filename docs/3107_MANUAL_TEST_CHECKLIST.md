@@ -1,91 +1,86 @@
-# 3107 人工测试清单
+# 3107 Manual Test Checklist
 
-## 一、基础页面测试
+Use this checklist on the development computer only. Port 3107 is for local
+optimization, automated checks, and manual acceptance. Do not deploy 3107 to the
+server. The server production runtime remains 3106 only.
 
-- 打开 3107 首页。
-- 打开 3107 供应商后台。
-- 检查页面中文显示正常。
-- 检查控制台没有明显红色报错。
-- 检查页面刷新后状态正常。
+## Setup
 
-## 二、NewAPI 配置测试
+- Confirm the branch under test is `chore/server-production-prep` or the reviewed
+  branch produced from it.
+- Start local staging on port 3107 with isolated `DATA_DIR` and `UPLOADS_DIR`
+  such as `data-staging` and `uploads-staging`.
+- Confirm no real production secrets are displayed in the terminal, browser, or
+  admin UI.
+- Confirm 3106 server deployment is not started or modified during this test.
 
-- 检查图片供应商是否已配置。
-- 检查视频供应商是否已配置。
-- 检查 API URL 是否指向 NewAPI。
-- 检查模型名是否正确。
-- 检查 API Key 是否没有暴露在前端页面。
-- 检查 NewAPI 后台是否能看到调用日志。
-- 检查 401、403、404、429、500 等错误是否有清楚提示。
+## Account And Session
 
-## 三、图片生成测试
+- Register a new local test account.
+- Log in with the new test account.
+- Refresh the page and confirm the session remains active.
+- Log out and confirm protected pages or APIs require login again.
 
-- 选择图片模型。
-- 输入提示词。
-- 选择比例。
-- 选择清晰度。
-- 提交生成。
-- 检查生成结果能显示。
-- 检查生成结果能保存到 3107 测试作品库。
-- 检查生成结果能下载。
-- 检查 NewAPI 后台调用记录。
+## Studio Workflows
 
-## 四、视频生成测试
+- Generate an image and confirm the result renders in the workspace.
+- Generate a video and confirm task status updates until completion or a safe
+  failure message appears.
+- Edit an image with at least one uploaded reference image.
+- Run image upscale through the current image high-definition workflow.
+- Run video upscale through the current video high-definition workflow.
+- Confirm the UI labels use "image high-definition enhancement", "video
+  high-definition enhancement", or "high-definition enhancement" wording and do
+  not show retired local executable provider labels.
 
-- 选择视频模型。
-- 输入提示词。
-- 选择比例。
-- 选择时长。
-- 提交生成。
-- 检查任务状态是否能刷新。
-- 检查成功后视频能显示。
-- 检查视频能保存到 3107 测试作品库。
-- 检查视频能下载。
-- 检查 NewAPI 后台调用记录。
+## Library And Media
 
-## 五、作品库测试
+- Open the library and confirm generated image, generated video, edited image,
+  image upscale, and video upscale records are visible to the owning user.
+- Download a generated image and a generated video.
+- Delete a work manually and confirm it disappears immediately.
+- Confirm manual deletion does not affect another user's library.
+- Confirm each work clearly shows the 24-hour retention notice.
+- Confirm work cards or details show an expected expiration time without a
+  per-second countdown.
 
-- 作品库能打开。
-- 图片作品能显示。
-- 视频作品能显示。
-- 作品能下载。
-- 删除作品前必须有确认提示。
-- 取消删除时不应该删除。
-- 确认删除时只删除 3107 测试作品。
-- 3107 删除作品不能影响 3106 正式作品。
+## Upload Limits
 
-## 六、本地高清测试
+- Select a video file over the configured local video limit and confirm the
+  client rejects it before submission.
+- Confirm the message matches the application limit, for example "video cannot
+  exceed 200MB" when the default 200 MiB limit is active.
+- Try an unsupported media type and confirm the client or server rejects it with
+  a clear safe message.
 
-- 图片高清状态能显示。
-- 视频高清状态能显示。
-- 如果本地依赖不存在，要有清楚提示。
-- 不应该导致页面崩溃。
+## Billing And Recovery
 
-## 七、数据隔离测试
+- Confirm credits are deducted for successful billable tasks according to the
+  existing pricing.
+- Force or observe a safe provider failure and confirm credits are not left in an
+  inconsistent deducted state.
+- Confirm failed task messages do not expose provider raw responses, keys, stack
+  traces, or local file paths.
 
-- 3107 使用测试环境变量。
-- 3107 启动环境包含 `PORT=3107`。
-- 3107 启动环境包含 `DATA_DIR=data-staging`。
-- 3107 启动环境包含 `UPLOADS_DIR=uploads-staging`。
-- 自动化验证 `PORT=3107` 缺少隔离目录会拒绝启动。
-- 自动化验证默认 `data/`、`uploads/` 不能被 3107 使用。
-- 自动化冒烟测试不调用真实生成接口，不消耗 NewAPI 额度。
-- 3107 不直接写入 3106 的 `data`。
-- 3107 不直接写入 3106 的 `uploads`。
-- 3107 生成文件不能出现在 3106 正式作品库。
-- 3107 删除文件不能影响 3106。
-- 检查 Git 没有跟踪 `data`、`uploads`、`data-staging`、`uploads-staging`。
+## Admin
 
-## 八、合并前确认
+- Open the admin provider page while unauthorized and confirm access is rejected.
+- Log in as an authorized admin and confirm provider rows load.
+- Confirm ImageX and VOD upscale providers are represented as current Volcengine
+  configuration, not retired local executable configuration.
+- Confirm provider health checks do not trigger generation or paid provider calls.
 
-- `npm run lint` 通过。
-- `npm run typecheck` 通过。
-- `npm run build` 通过。
-- GitHub 分支存在。
-- commit hash 已记录。
-- 没有提交 `.env.local`。
-- 没有提交 API Key。
-- 没有提交 `data`。
-- 没有提交 `uploads`。
-- 没有提交生成媒体文件。
-- 3107 人工测试通过后，才允许考虑合并到 `main`。
+## Layout
+
+- Check the main studio on a desktop-width viewport.
+- Check login, register, studio, library, and admin basics on a phone-width
+  viewport.
+- Confirm text does not overlap buttons, cards, or media previews.
+
+## Final Owner Signoff
+
+- Record the tested commit hash.
+- Record whether real provider test calls were intentionally made by the owner.
+- Record any failed item before merge review.
+- Do not merge to `main` until local 3107 manual acceptance is complete and code
+  review has approved the branch.

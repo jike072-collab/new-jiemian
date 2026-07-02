@@ -3,10 +3,10 @@ import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
-import { existsSync, mkdirSync, readFileSync, renameSync, unlinkSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, readdirSync, renameSync, unlinkSync, writeFileSync } from "node:fs";
 import http from "node:http";
 import { tmpdir } from "node:os";
-import { join, resolve } from "node:path";
+import { basename, dirname, join, resolve } from "node:path";
 import net from "node:net";
 import { buildRuntimeEnv, formatRuntimeEnvSummary } from "./ops/load-runtime-env.mjs";
 import { getKnownServiceRoot, getServiceConfig } from "./ops/service-config.mjs";
@@ -28,6 +28,8 @@ import {
   waitForStoppedServiceArtifacts,
 } from "./ops/deploy-service.mjs";
 import { cleanupStaleServiceOperationLock, classifyOperationLock } from "./ops/operation-lock.mjs";
+import { createServerBackup, pruneServerBackups, verifyServerBackupManifest } from "./ops/server-backup.mjs";
+import { restoreServerBackup } from "./ops/server-restore.mjs";
 
 const tests = [];
 let passed = 0;
@@ -79,7 +81,23 @@ async function withTempProject(fn) {
     return await fn(root);
   } finally {
     await rm(root, { recursive: true, force: true });
+    await rm(serverBackupRoot(root), { recursive: true, force: true });
   }
+}
+
+function serverBackupRoot(root) {
+  return join(dirname(root), `${basename(root)}-server-backups`);
+}
+
+function fakeServerBackupDatabaseUrl() {
+  return [
+    "postgres",
+    "ql://",
+    "backup_user",
+    ":",
+    "backup_pass",
+    "@127.0.0.1:5432/backup_db",
+  ].join("");
 }
 
 function withProcessEnv(patch, fn) {
@@ -315,6 +333,194 @@ test("backup and rollback script are generated without touching data", async () 
     assert.equal(readFileSync(rollback, "utf8").includes("abc123"), true);
     const after = snapshotDirectory(config.dataDir);
     assert.deepEqual(after, before);
+  });
+});
+
+test("server backup dry-run plans database and metadata without writing backup artifacts", async () => {
+  await withTempProject(async (root) => {
+    await writeFile(join(root, "data", "providers.json"), JSON.stringify([{ id: "provider-1", apiKey: "masked-in-real-store" }]));
+    await writeFile(join(root, "uploads", "generated.png"), "expiring media");
+    const backupRoot = serverBackupRoot(root);
+    const result = await createServerBackup("production", {
+      root,
+      backupRoot,
+      env: {
+        APP_DATABASE_URL: fakeServerBackupDatabaseUrl(),
+        MEDIA_RETENTION_HOURS: "24",
+      },
+    });
+    assert.equal(result.mode, "dry-run");
+    assert.equal(result.database.type, "postgres");
+    assert.equal(result.dataMetadataFiles, 1);
+    assert.equal(result.uploadsBackedUp, false);
+    assert.equal(existsSync(backupRoot), false);
+  });
+});
+
+test("server backup apply writes manifest last, verifies checksums, and excludes expiring uploads", async () => {
+  await withTempProject(async (root) => {
+    const bin = join(root, "fake-bin");
+    mkdirSync(bin, { recursive: true });
+    const fakeDump = join(bin, "server-pg-dump.mjs");
+    const fakeRestore = join(bin, "server-pg-restore.mjs");
+    await writeFile(fakeDump, [
+      "import { writeFileSync } from 'node:fs';",
+      "if (process.argv.includes('--version')) { console.log('pg_dump (PostgreSQL) 16.14'); process.exit(0); }",
+      "const fileIndex = process.argv.indexOf('--file');",
+      "writeFileSync(process.argv[fileIndex + 1], 'fake server backup dump');",
+      "",
+    ].join("\n"));
+    await writeFile(fakeRestore, [
+      "if (process.argv.includes('--version')) { console.log('pg_restore (PostgreSQL) 16.14'); process.exit(0); }",
+      "if (process.argv.includes('--list')) { console.log('fake restore list'); process.exit(0); }",
+      "process.exit(2);",
+      "",
+    ].join("\n"));
+    await writeFile(join(root, "data", "providers.json"), JSON.stringify([{ id: "provider-1", secret: "provider-secret-value" }]));
+    await writeFile(join(root, "data", "library.json"), JSON.stringify([{ id: "library-1" }]));
+    await writeFile(join(root, "data", "library.json.tmp"), "temporary write");
+    mkdirSync(join(root, "uploads"), { recursive: true });
+    await writeFile(join(root, "uploads", "generated.mp4"), "expiring media should not be copied");
+    const backupRoot = serverBackupRoot(root);
+    const env = {
+      APP_DATABASE_URL: fakeServerBackupDatabaseUrl(),
+      MEDIA_RETENTION_HOURS: "24",
+      SERVER_BACKUP_RETENTION_COUNT: "5",
+    };
+    const result = await createServerBackup("production", {
+      root,
+      backupRoot,
+      apply: true,
+      env,
+      databaseOptions: {
+        pgDumpCommand: [process.execPath, fakeDump],
+        pgRestoreCommand: [process.execPath, fakeRestore],
+      },
+    });
+    assert.equal(result.mode, "apply");
+    assert.equal(result.uploadsBackedUp, false);
+    assert.equal(existsSync(join(result.backupDir, "uploads", "generated.mp4")), false);
+    assert.equal(existsSync(join(result.backupDir, "data", "providers.json")), true);
+    assert.equal(existsSync(join(result.backupDir, "data", "library.json.tmp")), false);
+    assert.equal(existsSync(join(result.backupDir, "database", "production-postgres.dump")), true);
+    const { manifest, checksums } = verifyServerBackupManifest(result.backupDir, { expectedService: "production" });
+    const manifestText = JSON.stringify(manifest);
+    assert.equal(manifest.scope.includesUploads, false);
+    assert.equal(manifest.scope.excludesExpiringGeneratedMedia, true);
+    assert.equal(manifest.databaseBackup.usernameHash.length, 64);
+    assert(!manifestText.includes("backup_pass"));
+    assert(!manifestText.includes("postgresql://"));
+    assert(checksums.some((entry) => entry.path === "data/providers.json"));
+    assert(checksums.some((entry) => entry.path === "database/production-postgres.dump"));
+  });
+});
+
+test("server backup cleans temporary output and keeps failure unmarked", async () => {
+  await withTempProject(async (root) => {
+    const bin = join(root, "fake-bin");
+    mkdirSync(bin, { recursive: true });
+    const fakeDump = join(bin, "failing-pg-dump.mjs");
+    await writeFile(fakeDump, [
+      "if (process.argv.includes('--version')) { console.log('pg_dump (PostgreSQL) 16.14'); process.exit(0); }",
+      "console.error('simulated dump failure');",
+      "process.exit(3);",
+      "",
+    ].join("\n"));
+    const fakeRestore = join(bin, "pg-restore.mjs");
+    await writeFile(fakeRestore, "console.log('pg_restore (PostgreSQL) 16.14');\n");
+    await writeFile(join(root, "data", "providers.json"), "[]");
+    const backupRoot = serverBackupRoot(root);
+    await assertRejectsAsync(() => createServerBackup("production", {
+      root,
+      backupRoot,
+      apply: true,
+      env: {
+        APP_DATABASE_URL: fakeServerBackupDatabaseUrl(),
+      },
+      databaseOptions: {
+        pgDumpCommand: [process.execPath, fakeDump],
+        pgRestoreCommand: [process.execPath, fakeRestore],
+      },
+    }), /simulated dump failure/);
+    const entries = existsSync(backupRoot) ? readdirSync(backupRoot) : [];
+    assert.equal(entries.some((name) => name.includes(".tmp-")), false);
+    assert.equal(entries.some((name) => name.startsWith("server-production-")), false);
+  });
+});
+
+test("server backup refuses production without a database unless explicitly allowed", async () => {
+  await withTempProject(async (root) => {
+    await assertRejectsAsync(() => createServerBackup("production", {
+      root,
+      backupRoot: serverBackupRoot(root),
+      apply: true,
+      env: {},
+    }), /APP_DATABASE_URL is required/);
+    const allowed = await createServerBackup("production", {
+      root,
+      backupRoot: serverBackupRoot(root),
+      apply: true,
+      allowNoDatabase: true,
+      env: {},
+    });
+    assert.equal(allowed.ok, true);
+  });
+});
+
+test("server backup prunes only controlled old backup directories", async () => {
+  await withTempProject(async (root) => {
+    const backupRoot = serverBackupRoot(root);
+    const env = { SERVER_BACKUP_RETENTION_COUNT: "3" };
+    for (let index = 0; index < 5; index += 1) {
+      const result = await createServerBackup("production", {
+        root,
+        backupRoot,
+        apply: true,
+        allowNoDatabase: true,
+        env,
+      });
+      const manifestPath = join(result.backupDir, "server-backup-manifest.json");
+      const manifest = JSON.parse(readFileSync(manifestPath, "utf8"));
+      manifest.createdAt = new Date(Date.UTC(2026, 0, index + 1)).toISOString();
+      writeFileSync(manifestPath, JSON.stringify(manifest, null, 2));
+    }
+    mkdirSync(join(backupRoot, "manual-do-not-delete"), { recursive: true });
+    const dryRun = pruneServerBackups("production", { root, backupRoot, env });
+    assert.equal(dryRun.mode, "dry-run");
+    assert.equal(dryRun.candidates.length, 2);
+    assert.equal(existsSync(join(backupRoot, "manual-do-not-delete")), true);
+    const applied = pruneServerBackups("production", { root, backupRoot, apply: true, env });
+    assert.equal(applied.deleted, 2);
+    assert.equal(readdirSync(backupRoot).filter((name) => name.startsWith("server-production-")).length, 3);
+    assert.equal(existsSync(join(backupRoot, "manual-do-not-delete")), true);
+  });
+});
+
+test("server restore verifies by default and requires explicit production confirmations for apply", async () => {
+  await withTempProject(async (root) => {
+    await writeFile(join(root, "data", "providers.json"), "[]");
+    const backup = await createServerBackup("production", {
+      root,
+      backupRoot: serverBackupRoot(root),
+      apply: true,
+      allowNoDatabase: true,
+      env: {},
+    });
+    const verified = restoreServerBackup("production", { root, backupDir: backup.backupDir });
+    assert.equal(verified.mode, "verify");
+    assert.equal(verified.uploadsBackedUp, false);
+    assert.throws(() => restoreServerBackup("production", {
+      root,
+      backupDir: backup.backupDir,
+      apply: true,
+    }), /confirm-restore/);
+    assert.throws(() => restoreServerBackup("production", {
+      root,
+      backupDir: backup.backupDir,
+      apply: true,
+      confirmRestore: true,
+      confirmWritesStopped: true,
+    }), /allow-production-restore/);
   });
 });
 
@@ -1100,7 +1306,7 @@ test("release activation refuses simulated cross-volume artifact moves", async (
     seedPreparedArtifacts(preparedRoot, "new");
     seedPreparedArtifacts(config.root, "old");
     assert.throws(() => activatePreparedArtifacts(config, { root: preparedRoot }, "release", {
-      volumeProvider: (path) => path.includes("cross-volume") ? "Z:\\" : "E:\\",
+      volumeProvider: (path) => path.includes("cross-volume") ? `Z:${"\\"}` : `E:${"\\"}`,
     }), /same volume/);
     assert.equal(readFileSync(join(config.root, ".next", "BUILD_ID"), "utf8"), "old");
     assert.equal(existsSync(join(config.root, "node_modules", "next", "dist", "bin", "next")), true);

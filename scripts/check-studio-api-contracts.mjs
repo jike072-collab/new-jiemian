@@ -12,6 +12,12 @@ const upscaleForm = read("src/components/studio/upscale-form.tsx");
 const resultPreview = read("src/components/studio/result-preview.tsx");
 const types = read("src/components/studio/types.ts");
 const constants = read("src/components/studio/constants.ts");
+const clientApi = read("src/lib/client/api.ts");
+const uploadLimits = read("src/lib/upload-limits.ts");
+const mediaUploadGuard = read("src/lib/server/media-upload-guard.ts");
+const providerCall = read("src/lib/server/provider-call.ts");
+const volcengineUpscale = read("src/lib/server/volcengine-upscale.ts");
+const library = read("src/lib/server/library.ts");
 
 const contracts = [
   {
@@ -31,7 +37,7 @@ const contracts = [
       "method: \"DELETE\"",
       "headers: { \"Content-Type\": \"application/json\" }",
       "body: JSON.stringify({ id })",
-      "await refreshLibrary()",
+      "await refreshLibraryAfterMutation()",
     ],
   },
   {
@@ -42,15 +48,15 @@ const contracts = [
       "operation: \"cloud_image_generation\"",
       "\"/api/generate/image\"",
       "method: \"POST\"",
-      "form.set(\"providerId\", selectedImageProvider.id)",
-      "form.set(\"mode\", activeImageMode)",
-      "form.set(\"ratio\", imageWorkspace.ratio)",
-      "form.set(\"quality\", imageWorkspace.quality)",
-      "form.set(\"prompt\", imageWorkspace.prompt)",
+      "form.set(\"providerId\", snapshot.providerId)",
+      "form.set(\"mode\", snapshot.mode)",
+      "form.set(\"ratio\", snapshot.ratio)",
+      "form.set(\"quality\", snapshot.quality)",
+      "form.set(\"prompt\", snapshot.prompt)",
       "form.set(\"taskId\", taskId)",
       "form.set(\"idempotencyKey\", taskId)",
-      "form.set(\"estimatedQuotaUnits\", String(estimatedQuotaUnitsPerImage))",
-      "form.append(\"files\", attachment.file)",
+      "form.set(\"estimatedQuotaUnits\", String(snapshot.estimatedQuotaUnitsPerImage))",
+      "snapshot.files.forEach((file) => form.append(\"files\", file))",
       "handleImageResult(data.item)",
     ],
   },
@@ -61,15 +67,15 @@ const contracts = [
       "operation: \"cloud_video_generation\"",
       "\"/api/generate/video\"",
       "method: \"POST\"",
-      "form.set(\"providerId\", selectedVideoProvider.id)",
-      "form.set(\"mode\", activeVideoMode)",
-      "form.set(\"ratio\", videoWorkspace.ratio)",
-      "form.set(\"duration\", String(videoWorkspace.duration))",
-      "form.set(\"prompt\", videoWorkspace.prompt)",
+      "form.set(\"providerId\", snapshot.providerId)",
+      "form.set(\"mode\", snapshot.mode)",
+      "form.set(\"ratio\", snapshot.ratio)",
+      "form.set(\"duration\", String(snapshot.duration))",
+      "form.set(\"prompt\", snapshot.prompt)",
       "form.set(\"taskId\", taskId)",
       "form.set(\"idempotencyKey\", taskId)",
-      "form.set(\"estimatedQuotaUnits\", String(estimatedQuotaUnits))",
-      "form.append(\"files\", attachment.file)",
+      "form.set(\"estimatedQuotaUnits\", String(snapshot.estimatedQuotaUnits))",
+      "snapshot.files.forEach((file) => form.append(\"files\", file))",
       "handleVideoResult(data.item, data.job)",
     ],
   },
@@ -83,7 +89,7 @@ const contracts = [
       "form.set(\"file\", currentFile.file)",
       "form.set(\"scale\", imageUpscaleWorkspace.scale)",
       "{ item: LibraryItem; job: JobRecord | null }",
-      "await refreshLibrary()",
+      "await refreshLibraryAfterMutation()",
     ],
   },
   {
@@ -95,7 +101,7 @@ const contracts = [
       "form.set(\"file\", currentFile.file)",
       "form.set(\"scale\", videoUpscaleWorkspace.scale)",
       "updateVideoUpscaleWorkspace({ job: data.job })",
-      "await refreshLibrary()",
+      "await refreshLibraryAfterMutation()",
     ],
   },
   {
@@ -162,6 +168,49 @@ const uiContracts = [
 for (const [source, token] of uiContracts) {
   assert(source.includes(token), `Studio UI contract missing token: ${token}`);
 }
+
+for (const [sourceName, source] of [
+  ["studio app", studioApp],
+  ["studio constants", constants],
+  ["provider call", providerCall],
+  ["volcengine upscale", volcengineUpscale],
+]) {
+  assert(!source.includes("1024 * 1024 * 1024"), `${sourceName} must not keep a 1GB upload magic number`);
+  assert(!source.includes("25 * 1024 * 1024"), `${sourceName} must not keep the old 25MiB image upscale limit`);
+}
+
+assert(uploadLimits.includes("videoUploadDefaultMiB = 200"), "video upload default must be centralized at 200MiB");
+assert(uploadLimits.includes("uploadHardCapMiB = 256"), "upload hard cap must be centralized at 256MiB");
+assert(uploadLimits.includes("recommendedNginxClientMaxBodySize"), "upload limits must expose a Nginx body-size reference");
+assert(constants.includes("defaultPublicUploadLimits"), "client upload limits must import shared defaults");
+assert(clientApi.includes("record.message || record.error || record.detail"), "client must surface server public diagnostic messages");
+assert(studioApp.includes("setUploadLimits"), "client must accept server-reported lowered upload limits");
+assert(studioApp.includes("createVideoUpscaleFile(files, uploadLimits.videoUpscale)"), "video upscale file chooser must use the current shared limit");
+assert(studioApp.includes("视频高清增强文件不能超过 ${limit.label}"), "video upscale client error must use the shared limit label");
+assert(types.includes("uploadLimits?: Pick<PublicUploadLimits"), "upscale status response must carry public upload limits");
+assert(volcengineUpscale.includes("uploadLimits: {"), "upscale status route must return app upload limits");
+assert(mediaUploadGuard.includes("MEDIA_VIDEO_UPLOAD_LIMIT_MIB"), "server must allow lowering the video upload cap via safe env");
+assert(uploadLimits.includes("candidate > policy.hardCapBytes"), "server env limit above hard cap must not take effect");
+assertSequence("upscale upload validation before Buffer allocation", volcengineUpscale, [
+  "assertFileSizeAllowed(value, uploadKind)",
+  "await assertFileFormatAllowed(value, uploadKind)",
+  "Buffer.from(await value.arrayBuffer())",
+]);
+assertSequence("generation image upload validation before Buffer allocation", providerCall, [
+  "assertFileSizeAllowed(file, \"reference-image\")",
+  "await assertFileFormatAllowed(file, \"reference-image\")",
+  "Buffer.from(await file.arrayBuffer())",
+]);
+assertSequence("authenticated video download delegates to streamed bounded storage", providerCall, [
+  "storeRemoteUrlStreamed(url,",
+  "headers: authHeaders(provider)",
+]);
+assertSequence("remote library download delegates to streamed bounded storage", library, [
+  "return storeRemoteUrlStreamed(url, { prefix, fallbackMime })",
+]);
+assert(!providerCall.includes("sourceUrl: output.url"), "provider-call must not fall back to raw provider output URLs");
+assert(!providerCall.includes("sourceUrl: outputUrl"), "provider-call must not expose provider output URLs through completed jobs");
+assert(!providerCall.includes("sourceUrl: contentUrl"), "provider-call must not expose provider content URLs through completed jobs");
 
 const forbiddenCiBypass = read(".github/workflows/ci.yml");
 assert(!forbiddenCiBypass.includes("continue-on-error: true"), "CI must not hide Stage 3 failures with continue-on-error.");

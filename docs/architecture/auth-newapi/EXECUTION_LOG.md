@@ -1,3 +1,5 @@
+> Historical audit snapshot. This file records earlier local verification and does not describe the current 3106 server deployment.
+
 # Parallel Line B Execution Log
 
 ## B01 - Isolated Workspace And Git Baseline
@@ -14,12 +16,7 @@ Pull request: `#4`
 
 ## Initial Baseline
 
-- Original checkout: `E:\codex工作台\p003\new-jiemian`
-- Original branch: `feature/03-multi-device-shell`
-- Original checkout has uncommitted main line A work. B01 did not clean, reset, or overwrite it.
-- Remote: `https://github.com/jike072-collab/new-jiemian.git`
-- Integration branch was created from `origin/develop` because the remote branch did not exist.
-- Isolated worktree: `E:\codex工作台\p003\new-jiemian-auth-newapi`
+- Original checkout: `<local-new-jiemian-worktree>-auth-newapi`
 
 ## B01 Scope
 

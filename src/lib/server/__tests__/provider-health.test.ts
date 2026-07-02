@@ -381,8 +381,8 @@ test("admin provider health frontend contains safe states and no generation call
   assert(source.includes("图片生成"));
   assert(source.includes("图片编辑"));
   assert(source.includes("视频生成"));
-  assert(source.includes("图片高清"));
-  assert(source.includes("视频高清"));
+  assert(source.includes("图片高清增强"));
+  assert(source.includes("视频高清增强"));
   assert(source.includes("Loader2"));
   assert(source.includes("/api/admin/provider-health"));
   assert.equal(source.includes("/api/generate/"), false);

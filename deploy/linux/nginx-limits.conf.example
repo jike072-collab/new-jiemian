@@ -1,0 +1,11 @@
+# Aohuang AI Nginx rate-limit zones.
+# Copy to /etc/nginx/conf.d/aohuang-ai-limits.conf so the zones are loaded
+# once in the global http context before the site config includes them.
+#
+# These limits are coarse IP-based protection only. The application still
+# enforces exact per-user, per-hour, and admin-specific limits.
+
+limit_req_zone $binary_remote_addr zone=aohuang_login:10m rate=5r/m;
+limit_req_zone $binary_remote_addr zone=aohuang_register:10m rate=1r/m;
+limit_req_zone $binary_remote_addr zone=aohuang_admin:10m rate=3r/m;
+limit_req_zone $binary_remote_addr zone=aohuang_generate:10m rate=30r/m;

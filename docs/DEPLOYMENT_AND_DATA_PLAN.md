@@ -1,162 +1,66 @@
-# 部署与数据规划
+# Deployment And Data Plan
 
-## 一、当前运行约定
+This is the current deployment and data summary. Older Windows-local deployment
+notes were archived under
+[archive/windows-local-environment/DEPLOYMENT_AND_DATA_PLAN.md](archive/windows-local-environment/DEPLOYMENT_AND_DATA_PLAN.md).
 
-- 3106 是正式端口。
-- 3107 是测试端口。
-- 3107 用于验证新功能。
-- 3106 只运行稳定版本。
-- NewAPI 是后端模型网关。
-- 浏览器不应该直接请求 NewAPI。
-- 浏览器请求本项目 API，本项目服务端再请求 NewAPI。
+## Current Boundaries
 
-## 二、本地测试版和服务器部署版区别
+- Local 3107 runs only on the development computer for optimization, automated
+  tests, and manual acceptance.
+- 3107 is not deployed to the server.
+- The Ubuntu server runs only the 3106 production instance.
+- Production is a single Next.js process on `127.0.0.1:3106` behind Nginx.
+- The current rate-limit and workload guards are in-memory and fit a single
+  instance. Do not run multiple 3106 instances until those counters move to a
+  shared store.
 
-### 本地测试版
+## Server Runtime
 
-- 可以使用本地 `data`。
-- 可以使用本地 `uploads`。
-- 单管理员使用。
-- 手动备份。
-- 适合功能验证。
+The supported server template is:
 
-### 服务器部署版
+- Ubuntu 22.04 LTS.
+- Node.js 24.
+- systemd for the one application process.
+- Nginx for public HTTP/HTTPS.
+- Public ports limited to 22, 80, and 443.
+- Application bind address `127.0.0.1`.
+- Application port `3106`.
+- Persistent data, uploads, runtime, and backups under `/var/lib/aohuang-ai`.
 
-- 需要域名。
-- 需要 HTTPS。
-- 需要进程管理。
-- 需要环境变量管理。
-- 需要数据备份。
-- 需要日志。
-- 需要磁盘容量监控。
-- 需要 API Key 安全。
-- 需要限制正式环境误操作。
+Deployment templates and read-only checks live in
+[deploy/linux/README.md](../deploy/linux/README.md).
 
-## 三、3106 正式环境建议
+## Data And Media
 
-- `PORT=3106`。
-- `ADMIN_PASSWORD` 必填。
-- 使用正式 NewAPI Key。
-- 使用正式 `data` 目录，或通过 `DATA_DIR` 显式指定正式数据目录。
-- 使用正式 `uploads` 目录，或通过 `UPLOADS_DIR` 显式指定正式上传目录。
-- 定期备份 `data` 和 `uploads`。
-- 不直接运行未验证分支。
-- 不把测试数据覆盖到正式环境。
+- `DATA_DIR` contains runtime JSON metadata and fallback stores.
+- `UPLOADS_DIR` contains local media files.
+- PostgreSQL is required for production auth, billing, task billing, and related
+  business data when production persistence modes are enabled.
+- Library and generation-job storage default to JSON/file-system mode:
+  `LIBRARY_STORAGE_BACKEND=json`, `GENERATION_JOBS_BACKEND=existing`,
+  `DATABASE_LIBRARY_DUAL_WRITE=false`, `DATABASE_LIBRARY_READ_ENABLED=false`,
+  and `DATABASE_JOBS_WRITE_ENABLED=false`.
+- PostgreSQL library/job paths are guarded by explicit flags and runtime checks.
+- No object storage adapter or multi-instance worker system is implemented in
+  the current production shape.
 
-## 四、3107 测试环境建议
+## Operational Limits
 
-- `PORT=3107`。
-- 使用独立 `ADMIN_PASSWORD`。
-- 使用测试 NewAPI Key，或使用正式 Key 但控制调用频率。
-- 设置 `DATA_DIR=data-staging`。
-- 设置 `UPLOADS_DIR=uploads-staging`。
-- 确认 `data-staging` 和 `uploads-staging` 不指向 3106 正式目录。
-- 允许从 3106 复制一份数据做测试，但必须先备份。
-- 禁止把 3107 数据反向覆盖到 3106。
+- Image upload default: 10MiB.
+- Video upload default: 200MiB.
+- Upload hard cap: 256MiB.
+- Generated media retention default: 24 hours.
+- Media cleanup timer: hourly systemd timer that calls
+  `npm run ops:cleanup-media:apply`.
+- Disk protection thresholds: 70 percent warning, 80 percent critical warning,
+  85 percent video-write block, 90 percent all-media-write block, 95 percent
+  emergency read/cleanup-only mode.
 
-## 五、未来服务器部署要考虑
+## Backup Policy
 
-- 域名解析。
-- HTTPS 证书。
-- Nginx 或其他反向代理。
-- Node 服务启动方式。
-- PM2、systemd、Docker 三种方式都可以作为候选，但不要在当前阶段强行确定。
-- 日志保存位置。
-- NewAPI Key 保护。
-- 生成文件访问权限。
-- 文件大小限制。
-- 视频生成和高清处理的 CPU、GPU、磁盘压力。
-- 定期备份。
-- 异常恢复。
-- 磁盘满了怎么办。
-- NewAPI 上游失败怎么办。
-
-## 六、数据分层规划
-
-### 配置数据
-
-- 供应商配置。
-- 模型配置。
-- 管理员配置。
-- 系统设置。
-
-### 业务数据
-
-- 作品库。
-- 任务记录。
-- 生成状态。
-- 失败记录。
-
-### 文件数据
-
-- 生成图片。
-- 生成视频。
-- 上传参考图。
-- 缩略图。
-- 临时文件。
-
-### 日志数据
-
-- 应用错误。
-- NewAPI 错误。
-- 生成失败。
-- 删除记录。
-- 管理员操作记录，未来可加。
-
-### 未来用户数据
-
-- 用户账号。
-- 用户额度。
-- 订单。
-- 支付记录。
-- 权限。
-
-## 七、存储演进路线
-
-### 阶段 1：当前测试版
-
-- 本地 JSON。
-- 本地 uploads。
-- 适合单人测试。
-
-### 阶段 2：3106 / 3107 隔离版
-
-- `data` 和 `uploads` 按环境隔离。
-- 生产和测试互不覆盖。
-- 增加手动测试清单。
-- 增加错误日志。
-
-### 阶段 3：小范围服务器版
-
-- SQLite。
-- 本地 uploads。
-- 定期备份。
-- 任务状态更清楚。
-- 作品库支持搜索和筛选。
-
-### 阶段 4：多用户产品版
-
-- PostgreSQL。
-- 对象存储，例如 S3、R2、OSS、COS。
-- 用户登录。
-- 用户额度。
-- 支付。
-- 任务队列。
-- 成本统计。
-- 管理后台。
-
-## 八、不能提交到 GitHub 的内容
-
-- `.env.local`
-- `.env.*.local`
-- API Key
-- `data/`
-- `data-staging/`
-- `uploads/`
-- `uploads-staging/`
-- 生成图片
-- 生成视频
-- 用户上传文件
-- NewAPI 真实令牌
-- 服务器密码
-- 域名证书私钥
+Short-term local backups for a 60GB single server are documented in
+[SERVER_BACKUP_AND_RESTORE.md](SERVER_BACKUP_AND_RESTORE.md). Daily server
+backups include PostgreSQL and necessary `data` metadata. They do not treat
+24-hour generated media, temporary uploads, caches, or ordinary logs as
+long-term backup material.

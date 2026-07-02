@@ -51,8 +51,9 @@ Passed locally:
 - `npm run database:boundary`
 - `npm audit --audit-level=high`
 
-The local build completed successfully with the existing Turbopack NFT warning
-from `src/lib/server/local-upscale.ts`.
+The local build completed successfully. Earlier Turbopack NFT warnings from the
+retired legacy local upscale path are historical; current高清增强 code is in
+`src/lib/server/volcengine-upscale.ts`.
 
 `npm audit --audit-level=high` reported `0` vulnerabilities.
 
@@ -140,8 +141,9 @@ Local checks rerun on 2026-06-19:
 
 - `npm run typecheck`: passed.
 - `npm run lint`: passed.
-- `npm run build`: passed with the existing Turbopack NFT warning from
-  `src/lib/server/local-upscale.ts`.
+- `npm run build`: passed. Earlier Turbopack NFT warnings from the retired
+  legacy local upscale path are historical; current高清增强 code is in
+  `src/lib/server/volcengine-upscale.ts`.
 - `node scripts/test-auth-session.mjs`: passed, 17 tests.
 - `node scripts/test-quota-usage.mjs`: passed, 28 tests and 2 PostgreSQL-mode
   skips because this workstation has no application database DSN.
@@ -453,7 +455,7 @@ Image validation:
 
 - Original configured image endpoint returned Provider HTTP `524`.
 - The test Provider key was then checked against
-  `https://api.manxiaobai.online/v1/models`; it only returned
+  `https://provider.example.invalid/v1/models`; it only returned
   `grok-video-1.0` and `grok-video-1.5`.
 - A real image attempt against `gpt-image-2` returned
   `This token has no access to model gpt-image-2`.
@@ -468,8 +470,9 @@ Local checks rerun after the fixes:
 
 - `npm run typecheck`: passed.
 - `npm run lint`: passed.
-- `npm run build`: passed with the existing Turbopack NFT warning from
-  `src/lib/server/local-upscale.ts`.
+- `npm run build`: passed. Earlier Turbopack NFT warnings from the retired
+  legacy local upscale path are historical; current高清增强 code is in
+  `src/lib/server/volcengine-upscale.ts`.
 - `node scripts/test-new-api-bff.mjs`: passed, including the new
   `/api/user/manage` quota endpoint assertion.
 - `node scripts/test-quota-usage.mjs`: passed.

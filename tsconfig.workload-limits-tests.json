@@ -1,0 +1,22 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "allowImportingTsExtensions": false,
+    "declaration": false,
+    "emitDeclarationOnly": false,
+    "incremental": false,
+    "module": "NodeNext",
+    "moduleResolution": "NodeNext",
+    "noEmit": false,
+    "outDir": "dist/workload-limits-tests",
+    "rootDir": ".",
+    "target": "ES2022",
+    "tsBuildInfoFile": "dist/workload-limits-tests.tsbuildinfo"
+  },
+  "include": [
+    "src/lib/server/workload-guard.ts",
+    "src/lib/server/workload-limits.ts",
+    "src/lib/server/__tests__/workload-guard.test.ts"
+  ]
+}
+

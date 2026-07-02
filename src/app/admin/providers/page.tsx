@@ -17,7 +17,7 @@ export default async function AdminProvidersPage() {
   } catch {
     canAccessAdmin = false;
   }
-  if (!canAccessAdmin) redirect("/?preview=1");
 
-  return <AdminProvidersClient />;
+  if (canAccessAdmin) return <AdminProvidersClient />;
+  redirect("/?preview=1");
 }

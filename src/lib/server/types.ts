@@ -7,8 +7,7 @@ export type EndpointType =
   | "videos-generations"
   | "grok-videos"
   | "volcengine-imagex-upscale"
-  | "volcengine-vod-upscale"
-  | "upscale-placeholder";
+  | "volcengine-vod-upscale";
 
 export type ProviderConfig = {
   id: string;
@@ -73,6 +72,8 @@ export type LibraryOutput = {
   sourceUrl?: string;
 };
 
+export type MediaExpirationStage = "pending" | "quarantined" | "fileDeleted";
+
 export type LibraryItem = {
   id: string;
   ownerLocalUserId?: string | null;
@@ -85,6 +86,15 @@ export type LibraryItem = {
   status: "done" | "queued" | "generating" | "failed";
   createdAt: string;
   updatedAt: string;
+  completedAt?: string;
+  expiresAt?: string;
+  expired?: boolean;
+  expiredAt?: string;
+  expirationPending?: boolean;
+  expirationStage?: MediaExpirationStage;
+  expirationPendingAt?: string;
+  expirationPendingStoredName?: string;
+  expirationQuarantineName?: string;
   output?: LibraryOutput;
   params: Record<string, string | number | boolean>;
   error?: string;

@@ -3,6 +3,7 @@ import { randomBytes, randomUUID } from "node:crypto";
 import { createNewApiUserSyncService, type NewApiUserMappingRepository, type NewApiUserSyncService } from "../integrations/new-api";
 import { hashPassword, validatePasswordStrength, verifyPassword } from "./password";
 import { InMemoryRateLimiter } from "./rate-limit";
+import { getWorkloadLimits } from "../workload-limits";
 import {
   AuthRepositoryError,
   type AuthRepository,
@@ -55,6 +56,7 @@ export type AuthServiceDependencies = {
   mappingRepository?: NewApiUserMappingRepository;
   userSyncService?: Pick<NewApiUserSyncService, "ensureMapped">;
   loginLimiter?: InMemoryRateLimiter;
+  adminPasswordLimiter?: InMemoryRateLimiter;
   registerLimiter?: InMemoryRateLimiter;
   now?: () => Date;
 };
@@ -88,8 +90,8 @@ function contextHash(value?: string) {
   return value ? sha256(value) : null;
 }
 
-function rateLimitKey(action: string, identifier: string, context: AuthRequestContext) {
-  return `${action}:${context.ip || "unknown"}:${normalizeIdentifier(identifier || "anonymous")}`;
+function ipRateLimitKey(action: string, context: AuthRequestContext) {
+  return `${action}:${context.ip || "unknown"}`;
 }
 
 function success(input: Omit<AuthSuccess, "ok">): AuthSuccess {
@@ -101,6 +103,7 @@ export class AuthService {
   private readonly mappingRepository: NewApiUserMappingRepository;
   private readonly userSyncService: Pick<NewApiUserSyncService, "ensureMapped">;
   private readonly loginLimiter: InMemoryRateLimiter;
+  private readonly adminPasswordLimiter: InMemoryRateLimiter;
   private readonly registerLimiter: InMemoryRateLimiter;
   private readonly now: () => Date;
 
@@ -117,8 +120,13 @@ export class AuthService {
     this.userSyncService = dependencies.userSyncService || createNewApiUserSyncService({
       repository: this.mappingRepository,
     });
-    this.loginLimiter = dependencies.loginLimiter || new InMemoryRateLimiter(5, 10 * 60 * 1000);
-    this.registerLimiter = dependencies.registerLimiter || new InMemoryRateLimiter(3, 60 * 60 * 1000);
+    const limits = getWorkloadLimits();
+    this.loginLimiter = dependencies.loginLimiter || new InMemoryRateLimiter(limits.failedLoginPerIp, limits.failedLoginWindowMs);
+    this.adminPasswordLimiter = dependencies.adminPasswordLimiter || new InMemoryRateLimiter(
+      limits.failedAdminPasswordPerIp,
+      limits.failedAdminPasswordWindowMs,
+    );
+    this.registerLimiter = dependencies.registerLimiter || new InMemoryRateLimiter(limits.registerPerIp, limits.registerWindowMs);
     this.now = dependencies.now || (() => new Date());
   }
 
@@ -129,7 +137,7 @@ export class AuthService {
       : `${usernameFromEmail(email)}-${sha256(email).slice(0, 6)}`.slice(0, 32);
     const displayName = publicSafeString(input.displayName || normalizedUsername, 80);
     const redirectTo = safeRedirectPath(input.redirectTo);
-    const limitKey = rateLimitKey("register", email || normalizedUsername, context);
+    const limitKey = ipRateLimitKey("register", context);
     const rate = this.registerLimiter.consume(limitKey, this.now());
     if (!rate.allowed) {
       return failure({
@@ -220,22 +228,32 @@ export class AuthService {
   async login(input: LoginInput, context: AuthRequestContext = {}): Promise<AuthResult> {
     const identifier = normalizeIdentifier(input.identifier || "");
     const redirectTo = safeRedirectPath(input.redirectTo);
-    const limitKey = rateLimitKey("login", identifier, context);
-    const rate = this.loginLimiter.consume(limitKey, this.now());
-    if (!rate.allowed) {
-      return failure({
-        status: 429,
-        code: "AUTH_RATE_LIMITED",
-        uiState: "rate_limited",
-        message: "Too many login attempts.",
-        retryAfterSeconds: rate.retryAfterSeconds,
-      });
-    }
-
     const user = await this.repository.getUserByIdentifier(identifier);
     const passwordOk = await verifyPassword(input.password || "", user?.password_hash);
     if (!user || !passwordOk) {
       await this.audit("auth.login.failed", user?.local_user_id || null, context, { reason: "invalid_credentials" });
+      if (user?.role === "admin") {
+        const adminRate = this.adminPasswordLimiter.consume(ipRateLimitKey("admin-password", context), this.now());
+        if (!adminRate.allowed) {
+          return failure({
+            status: 429,
+            code: "AUTH_RATE_LIMITED",
+            uiState: "rate_limited",
+            message: "Too many administrator password attempts.",
+            retryAfterSeconds: adminRate.retryAfterSeconds,
+          });
+        }
+      }
+      const rate = this.loginLimiter.consume(ipRateLimitKey("login-failed", context), this.now());
+      if (!rate.allowed) {
+        return failure({
+          status: 429,
+          code: "AUTH_RATE_LIMITED",
+          uiState: "rate_limited",
+          message: "Too many login attempts.",
+          retryAfterSeconds: rate.retryAfterSeconds,
+        });
+      }
       return failure({
         status: 401,
         code: "AUTH_INVALID_CREDENTIALS",
@@ -273,7 +291,6 @@ export class AuthService {
       this.now(),
     );
     const session = await this.createSession(updatedUser, context);
-    this.loginLimiter.reset(limitKey);
     await this.audit("auth.login.success", user.local_user_id, context, {});
 
     return success({

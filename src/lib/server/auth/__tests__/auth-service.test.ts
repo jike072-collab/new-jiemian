@@ -3,7 +3,7 @@ import { test } from "node:test";
 
 import { createMemoryNewApiUserMappingRepository, type NewApiUserSyncProfile, type NewApiUserSyncResult } from "../../integrations/new-api";
 import { createCsrfToken, verifyCsrfToken } from "../csrf";
-import { validatePasswordStrength, verifyPassword } from "../password";
+import { hashPassword, validatePasswordStrength, verifyPassword } from "../password";
 import { InMemoryRateLimiter } from "../rate-limit";
 import { createMemoryAuthRepository, type AuthRepository } from "../repository";
 import { AuthService } from "../service";
@@ -54,6 +54,7 @@ function service(overrides: {
   sync?: (localUserId: string) => NewApiUserSyncResult | Promise<NewApiUserSyncResult>;
   now?: () => Date;
   loginLimiter?: InMemoryRateLimiter;
+  adminPasswordLimiter?: InMemoryRateLimiter;
   registerLimiter?: InMemoryRateLimiter;
 } = {}) {
   const repository = overrides.repository || createMemoryAuthRepository();
@@ -65,6 +66,7 @@ function service(overrides: {
       repository,
       mappingRepository,
       loginLimiter: overrides.loginLimiter,
+      adminPasswordLimiter: overrides.adminPasswordLimiter,
       registerLimiter: overrides.registerLimiter,
       now: overrides.now,
       userSyncService: {
@@ -296,6 +298,73 @@ test("rate limits login attempts", async () => {
   if (second.ok) return;
   assert.equal(second.status, 429);
   assert.equal(second.uiState, "rate_limited");
+});
+
+test("rate limits failed login attempts by IP, not identifier", async () => {
+  const harness = service({ loginLimiter: new InMemoryRateLimiter(1, 60_000) });
+  const first = await harness.service.login({
+    identifier: "missing-one@example.com",
+    password: "WrongPass123",
+  }, { ip: "192.0.2.44" });
+  const second = await harness.service.login({
+    identifier: "missing-two@example.com",
+    password: "WrongPass123",
+  }, { ip: "192.0.2.44" });
+
+  assert.equal(first.ok, false);
+  assert.equal(second.ok, false);
+  if (second.ok) return;
+  assert.equal(second.status, 429);
+  assert.equal(second.retryAfterSeconds, 60);
+});
+
+test("successful login does not consume failed-login budget", async () => {
+  const harness = service({ loginLimiter: new InMemoryRateLimiter(1, 60_000) });
+  await registerActiveAccount(harness.service);
+
+  const success = await harness.service.login({
+    identifier: "customer@example.com",
+    password: "StrongPass123",
+  }, { ip: "192.0.2.45" });
+  const failure = await harness.service.login({
+    identifier: "missing@example.com",
+    password: "WrongPass123",
+  }, { ip: "192.0.2.45" });
+
+  assert.equal(success.ok, true);
+  assert.equal(failure.ok, false);
+  if (failure.ok) return;
+  assert.equal(failure.status, 401);
+});
+
+test("administrator password failures use the stricter limiter", async () => {
+  const harness = service({
+    adminPasswordLimiter: new InMemoryRateLimiter(1, 60_000),
+    loginLimiter: new InMemoryRateLimiter(5, 60_000),
+  });
+  await harness.repository.createUser({
+    email: "admin@example.com",
+    username: "admin",
+    displayName: "Admin",
+    passwordHash: await hashPassword("StrongPass123"),
+    status: "active",
+    role: "admin",
+  });
+
+  const first = await harness.service.login({
+    identifier: "admin@example.com",
+    password: "WrongPass123",
+  }, { ip: "192.0.2.46" });
+  const second = await harness.service.login({
+    identifier: "admin@example.com",
+    password: "WrongPass123",
+  }, { ip: "192.0.2.46" });
+
+  assert.equal(first.ok, false);
+  assert.equal(second.ok, false);
+  if (second.ok) return;
+  assert.equal(second.status, 429);
+  assert.equal(second.message, "Too many administrator password attempts.");
 });
 
 test("expires sessions by idle timeout and logs out server side", async () => {

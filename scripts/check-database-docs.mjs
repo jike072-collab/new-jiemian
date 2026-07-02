@@ -12,6 +12,7 @@ const requiredDocs = [
   "docs/DATABASE_MVP_FOUNDATION.md",
   "docs/DATABASE_MIGRATION_RUNBOOK.md",
   "docs/DATABASE_BACKUP_RESTORE_RUNBOOK.md",
+  "docs/SERVER_BACKUP_AND_RESTORE.md",
   "docs/DATABASE_MULTI_USER_CLOUD_READINESS.md",
   "docs/DATABASE_STAGE9CB_INTEGRATION.md",
   "docs/LIBRARY_DATABASE_BACKEND.md",
@@ -95,6 +96,16 @@ const requiredTerms = new Map([
     "data",
     "uploads",
     "Do not commit",
+  ]],
+  ["docs/SERVER_BACKUP_AND_RESTORE.md", [
+    "ops:backup:dry-run",
+    "ops:backup:apply",
+    "ops:restore:verify",
+    "pg_dump --format=custom",
+    "pg_restore --list",
+    "uploadsBackedUp: false",
+    "SERVER_BACKUP_RETENTION_COUNT",
+    "Code rollback and data restore are separate decisions",
   ]],
   ["docs/DATABASE_MULTI_USER_CLOUD_READINESS.md", [
     "user_id",
@@ -182,7 +193,7 @@ const forbiddenSecretPatterns = [
   /\bsk-(?:proj-)?[A-Za-z0-9_-]{24,}\b/,
   /AKIA[A-Z0-9]{16}/,
   /Authorization:\s*Bearer\s+[A-Za-z0-9._-]+/i,
-  /Cookie:\s*[^`\n]+/i,
+  new RegExp("Cookie" + ":\\s*[^`\\n]+", "i"),
 ];
 
 const failures = [];
@@ -213,6 +224,11 @@ for (const script of [
   "db:consistency:check",
   "db:rollback:check",
   "check:stage9d",
+  "ops:backup:dry-run",
+  "ops:backup:apply",
+  "ops:backup:prune:dry-run",
+  "ops:backup:prune:apply",
+  "ops:restore:verify",
 ]) {
   if (!pkg.scripts?.[script]) failures.push(`package.json missing script: ${script}`);
 }

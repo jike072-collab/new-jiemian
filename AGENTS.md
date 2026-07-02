@@ -30,7 +30,7 @@
 - Keep the app as a local-first AI tool studio.
 - Do not reintroduce the old Shoe Ad Studio five-step ad workflow.
 - API keys must never be committed. Keep runtime secrets in `.env.local` or local `data/` files only.
-- Image upscale uses the local Upscayl CLI, and video upscale uses the local Video2X CLI. Keep both integrations local-first and API-key-free.
+- Image upscale uses Volcengine ImageX, and video upscale uses Volcengine VOD. Do not reintroduce local executable upscale providers or local GPU upscale configuration.
 
 ## Module 3 Recovery Rules
 
@@ -70,9 +70,16 @@
 
 ## Codex Workflow Rules
 
-- 3106 is the formal port. 3107 is the staging/test port.
-- All changes must be tested on 3107 before they are considered for `main` or 3106.
-- Do not directly modify, restart, or overwrite 3106.
+- 3106 is the server production environment. The server ultimately runs only 3106.
+- 3107 runs only on the current development computer for optimization, automated tests, and manual acceptance.
+- 3107 must not be deployed to the server and does not need server systemd, Nginx, or data directories.
+- All server preparation changes must be made on `chore/server-production-prep`; never commit or push this work directly to `main`.
+- `main` represents code allowed to enter the formal release process, but Codex must not automatically merge `main`.
+- Each server preparation module must have one clear commit, must run its required checks, and must be pushed immediately after the checks pass.
+- If a pushed module has to be backed out, prefer `git revert` of that independent commit. Do not use `git reset --hard`, force push, rewrite public history, or overwrite unknown changes.
+- The final flow is: module branch development -> local 3107 testing -> push GitHub -> code review -> merge `main` -> server deploy to 3106.
+- Server deployment is outside Codex automated work unless a later task explicitly authorizes it.
+- Do not directly modify, restart, deploy, or overwrite 3106.
 - Do not push directly to `main`.
 - Do not commit `.env.local`, API keys, `data`, `uploads`, generated media, or user uploads.
 - Before coding, check whether the request is needed now, whether existing helpers/components/APIs/data structures already cover it, whether platform or installed dependencies are enough, and whether one small local edit can solve it.

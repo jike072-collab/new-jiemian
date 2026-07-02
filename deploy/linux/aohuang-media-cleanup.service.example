@@ -1,0 +1,31 @@
+[Unit]
+Description=Aohuang AI expired media cleanup
+Documentation=https://github.com/jike072-collab/new-jiemian
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=aohuang-ai
+Group=aohuang-ai
+WorkingDirectory=/opt/aohuang-ai/current
+
+EnvironmentFile=/etc/aohuang-ai/production.env
+Environment=NODE_ENV=production
+Environment=PORT=3106
+Environment=APP_BIND_HOST=127.0.0.1
+Environment=NEXT_TELEMETRY_DISABLED=1
+Environment=NPM_CONFIG_CACHE=/var/lib/aohuang-ai/runtime/npm-cache
+
+# Apply mode is explicit. The application script still checks each completed
+# media record against MEDIA_RETENTION_HOURS before deleting local files.
+ExecStart=/usr/bin/npm run ops:cleanup-media:apply
+
+UMask=0077
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/lib/aohuang-ai/data
+ReadWritePaths=/var/lib/aohuang-ai/uploads
+ReadWritePaths=/var/lib/aohuang-ai/runtime

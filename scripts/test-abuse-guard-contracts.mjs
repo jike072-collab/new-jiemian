@@ -48,6 +48,9 @@ const source = {
   adminHttp: read("src/lib/server/admin/http.ts"),
   authHttp: read("src/lib/server/auth/http.ts"),
   authService: read("src/lib/server/auth/service.ts"),
+  workloadGuard: read("src/lib/server/workload-guard.ts"),
+  workloadLimits: read("src/lib/server/workload-limits.ts"),
+  workloadGuardTest: read("src/lib/server/__tests__/workload-guard.test.ts"),
   promptHttp: read("src/lib/server/prompts/http.ts"),
   tunneltestLimits: readOptional("src/lib/server/tunneltest-limits.ts"),
   packageJson: read("package.json"),
@@ -247,16 +250,69 @@ function checkWriteCsrf() {
 
 function checkExistingAbuseGuards() {
   assert(source.authService.includes("loginLimiter?: InMemoryRateLimiter"), "auth service must support a login rate limiter");
+  assert(source.authService.includes("adminPasswordLimiter?: InMemoryRateLimiter"), "auth service must support a stricter admin password limiter");
   assert(source.authService.includes("registerLimiter?: InMemoryRateLimiter"), "auth service must support a register rate limiter");
-  assert(source.authService.includes("this.loginLimiter = dependencies.loginLimiter || new InMemoryRateLimiter(5, 10 * 60 * 1000)"), "auth login limiter defaults must remain wired");
-  assert(source.authService.includes("this.registerLimiter = dependencies.registerLimiter || new InMemoryRateLimiter(3, 60 * 60 * 1000)"), "auth register limiter defaults must remain wired");
-  assertFunctionIncludes(source.authService, "login", "const rate = this.loginLimiter.consume(limitKey, this.now())", "login must consume the login limiter");
+  assert(source.authService.includes("const limits = getWorkloadLimits()"), "auth limiter defaults must use centralized workload limits");
+  assert(source.authService.includes("new InMemoryRateLimiter(limits.failedLoginPerIp, limits.failedLoginWindowMs)"), "auth login failed limiter defaults must be 5/min by centralized config");
+  assert(source.authService.includes("new InMemoryRateLimiter(limits.registerPerIp, limits.registerWindowMs)"), "auth register limiter defaults must be 3/hour by centralized config");
+  assertFunctionIncludes(source.authService, "login", "this.adminPasswordLimiter.consume(ipRateLimitKey(\"admin-password\", context), this.now())", "admin password failures must consume a stricter limiter");
+  assertFunctionIncludes(source.authService, "login", "this.loginLimiter.consume(ipRateLimitKey(\"login-failed\", context), this.now())", "failed login must consume the IP limiter");
   assertFunctionIncludes(source.authService, "register", "const rate = this.registerLimiter.consume(limitKey, this.now())", "register must consume the register limiter");
   assert(source.authService.includes("status: 429"), "auth limiter failures must return 429");
+  assert(source.authHttp.includes("\"Retry-After\": String(result.retryAfterSeconds)"), "auth limiter failures must set Retry-After when available");
 
   assert(source.promptHttp.includes("const limiter = new InMemoryRateLimiter"), "prompt optimizer limiter must remain wired");
   assertFunctionIncludes(source.promptHttp, "optimizePromptResponse", "const rate = limiter.consume(rateKey)", "prompt optimizer must consume limiter");
   assertFunctionIncludes(source.promptHttp, "optimizePromptResponse", "status: 429", "prompt optimizer limiter must return 429");
+
+  assert(source.workloadLimits.includes("userImageTasks: 2"), "workload defaults must allow two concurrent image tasks per user");
+  assert(source.workloadLimits.includes("userVideoTasks: 1"), "workload defaults must allow one concurrent video task per user");
+  assert(source.workloadLimits.includes("userLargeUploads: 1"), "workload defaults must allow one large upload per user");
+  assert(source.workloadLimits.includes("processLargeVideoIo: 1"), "workload defaults must allow one process-wide large video IO operation");
+  assert(source.workloadLimits.includes("siteVideoUploadPhase: 2"), "workload defaults must allow two site-wide video upload phases");
+  assert(source.workloadLimits.includes("failedLoginPerIp: 5"), "login failed IP limit must default to 5/min");
+  assert(source.workloadLimits.includes("registerPerIp: 3"), "register IP limit must default to 3/hour");
+  assert(source.workloadLimits.includes("candidate < 1 || candidate > defaultValue"), "workload env limits must be lower-only safe config");
+  assert(source.workloadGuard.includes("class InMemoryConcurrencyLimiter"), "workload guard must use a single in-memory concurrency limiter");
+  assert(source.workloadGuard.includes("finally"), "workload slots must release in finally paths");
+  assert(source.workloadGuard.includes("\"Retry-After\": String(error.retryAfterSeconds)"), "workload 429 responses must set Retry-After");
+  assert(source.workloadGuard.includes("expiresAt"), "workload slots must have TTL cleanup for leaked in-process leases");
+  assert(source.workloadGuardTest.includes("expires leaked slots with a controllable clock"), "workload tests must cover TTL without real waits");
+  assert(source.workloadGuardTest.includes("releases slots on success and thrown errors"), "workload tests must cover release on error");
+
+  assertSequence("image generation workload limit before provider call", source.generateImageRoute, [
+    "const form = await request.formData()",
+    "withUserImageWorkload(session.user.local_user_id",
+    "generateImage({",
+  ]);
+  assertSequence("video generation workload limit before upload read and billing provider call", source.generateVideoRoute, [
+    "const form = await request.formData()",
+    "withUserVideoWorkload(session.user.local_user_id",
+    "withVideoUploadPhase(",
+    "uploadedMediaFromForm(form, \"files\", \"video-generation-upload\")",
+    "submitVideo({",
+  ]);
+  assertSequence("image upscale workload limit before upload read", source.upscaleImageRoute, [
+    "withUserImageWorkload(session.user.local_user_id",
+    "uploadedUpscaleFile(form, \"image\")",
+    "runUpscaleImage(file, scale, session.user.local_user_id)",
+  ]);
+  assertSequence("video upscale workload limit before large read and provider upload", source.upscaleVideoRoute, [
+    "withUserVideoWorkload(session.user.local_user_id",
+    "withVideoProviderUpload(session.user.local_user_id",
+    "uploadedUpscaleFile(form, \"video\")",
+    "runSubmitVideoUpscale(file, scale, session.user.local_user_id)",
+  ]);
+  for (const [name, route] of [
+    ["library", source.libraryRoute],
+    ["jobs", source.jobsRoute],
+    ["quota", source.quotaRoute],
+    ["usage", source.usageRoute],
+  ]) {
+    assert(!route.includes("withUserImageWorkload"), `${name} reads must not be limited by generation image workload slots`);
+    assert(!route.includes("withUserVideoWorkload"), `${name} reads must not be limited by generation video workload slots`);
+    assert(!route.includes("withVideoProviderUpload"), `${name} reads must not be limited by upload workload slots`);
+  }
 
   if (source.tunneltestLimits) {
     for (const [name, route, operation] of [
@@ -329,6 +385,8 @@ function checkSelfIsStaticOnly() {
   }
   assert(source.packageJson.includes("\"test:abuse-guard-contracts\""), "package.json must expose test:abuse-guard-contracts");
   assert(source.packageJson.includes("npm run test:abuse-guard-contracts"), "npm run check must include test:abuse-guard-contracts");
+  assert(source.packageJson.includes("node scripts/test-workload-limits.mjs"), "abuse guard tests must include workload limiter tests");
+  assert(source.packageJson.includes("node scripts/test-auth-session.mjs"), "abuse guard tests must include auth limiter behavior tests");
 }
 
 function read(file) {

@@ -2,7 +2,7 @@
 
 /* eslint-disable @next/next/no-img-element */
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { AlertTriangle, Check, Loader2, UploadCloud, X } from "lucide-react";
 
 import { BeforeAfterImageCompare } from "@/components/before-after-image-compare";
@@ -1110,6 +1110,7 @@ export function ImagePreviewPanel({
   mode,
   output,
   loading,
+  canSubmit,
   submitError,
   submitDiagnostic,
   isEditor,
@@ -1123,6 +1124,7 @@ export function ImagePreviewPanel({
   mode: WorkspaceImageMode;
   output: OutputState;
   loading: boolean;
+  canSubmit: boolean;
   submitError: string;
   submitDiagnostic?: StudioErrorDiagnostic | null;
   isEditor: boolean;
@@ -1133,13 +1135,13 @@ export function ImagePreviewPanel({
   onReloadProviders: () => Promise<void>;
   onUpscale: (item: LibraryItem) => void;
 }) {
-  const canRetry = hasProvider && promptFilled && (mode === "text-to-image" || hasFiles) && !loading;
+  const canRetry = canSubmit && hasProvider && promptFilled && (mode === "text-to-image" || hasFiles);
 
-  if (loading) {
+  if (loading && !output) {
     return <ProcessingPreview label="正在生成图片" />;
   }
 
-  if (submitError) {
+  if (submitError && !output) {
     return (
       <ErrorPreview
         canRetry={canRetry}
@@ -1190,6 +1192,7 @@ export function VideoPreviewPanel({
   mode,
   output,
   loading,
+  canSubmit,
   submitError,
   submitDiagnostic,
   promptFilled,
@@ -1202,6 +1205,7 @@ export function VideoPreviewPanel({
   mode: WorkspaceVideoMode;
   output: OutputState;
   loading: boolean;
+  canSubmit: boolean;
   submitError: string;
   submitDiagnostic?: StudioErrorDiagnostic | null;
   promptFilled: boolean;
@@ -1211,13 +1215,13 @@ export function VideoPreviewPanel({
   onReloadProviders: () => Promise<void>;
   onUpscale: (item: LibraryItem) => void;
 }) {
-  const canRetry = hasProvider && promptFilled && (mode === "text-to-video" || hasFiles) && !loading;
+  const canRetry = canSubmit && hasProvider && promptFilled && (mode === "text-to-video" || hasFiles);
 
-  if (loading) {
+  if (loading && !output) {
     return <ProcessingPreview label="正在生成视频" />;
   }
 
-  if (submitError) {
+  if (submitError && !output) {
     return (
       <ErrorPreview
         canRetry={canRetry}
@@ -1303,68 +1307,76 @@ export function ImageGenerationProgressToast({
   stacked,
   onClose,
 }: {
-  progress: NonNullable<ImageGenerationProgressState>;
+  progress: ImageGenerationProgressState;
   tick: number;
   stacked?: boolean;
-  onClose: () => void;
+  onClose: (id: string) => void;
 }) {
-  useEffect(() => {
-    if (progress.status === "running") return undefined;
-    const timer = window.setTimeout(onClose, 5200);
-    return () => window.clearTimeout(timer);
-  }, [onClose, progress.status]);
-
-  const total = Math.max(progress.total, 1);
-  const completed = Math.min(Math.max(progress.current, 0), total);
-  const activeIndex = progress.status === "running" ? Math.min(completed + 1, total) : completed;
-  const elapsedMs = (progress.completedAt ?? tick) - progress.startedAt;
-  const progressRatio = progress.status === "done"
-    ? 1
-    : Math.min(Math.max(completed / total, 0), 1);
-  const title = progress.status === "done"
-    ? "生成已完成"
-    : progress.status === "failed"
-      ? "生成失败"
-      : "图片生成中";
-  const statusText = progress.status === "running"
-    ? `第 ${activeIndex} / ${total} 张`
-    : progress.status === "done"
-      ? `已完成 ${total} 张`
-      : `已完成 ${completed} / ${total} 张`;
-
-  return (
-    <div
-      className={cn(
-        "image-generation-progress",
-        `is-${progress.status}`,
-        stacked && "is-stacked",
-      )}
-      role="status"
-      aria-live="polite"
-    >
-      <span className="image-generation-progress__icon" aria-hidden="true">
-        {progress.status === "done" ? <Check className="size-4" /> : null}
-        {progress.status === "failed" ? <AlertTriangle className="size-4" /> : null}
-        {progress.status === "running" ? <Loader2 className="size-4" /> : null}
-      </span>
-      <span className="image-generation-progress__body">
-        <span className="image-generation-progress__head">
-          <strong>{title}</strong>
-          <button type="button" aria-label="关闭生成进度" onClick={onClose}>
-            <X className="size-3.5" aria-hidden="true" />
-          </button>
-        </span>
-        <small>{progress.message || statusText}</small>
-        <span className="image-generation-progress__meta">
-          <span>{statusText}</span>
-          <span>用时 {formatElapsedClock(elapsedMs)}</span>
-        </span>
-        <span className="image-generation-progress__track" aria-hidden="true">
-          <span style={{ width: `${Math.round(progressRatio * 100)}%` }} />
-        </span>
-      </span>
-    </div>
+  const visibleProgress = useMemo(
+    () => [...progress].sort((a, b) => b.startedAt - a.startedAt).slice(0, 2),
+    [progress],
   );
+
+  useEffect(() => {
+    const timers = visibleProgress
+      .filter((item) => item.status !== "running")
+      .map((item) => window.setTimeout(() => onClose(item.id), 5200));
+    return () => timers.forEach((timer) => window.clearTimeout(timer));
+  }, [onClose, visibleProgress]);
+
+  const baseBottom = stacked ? 122 : 26;
+
+  return visibleProgress.map((item, index) => {
+    const total = Math.max(item.total, 1);
+    const completed = Math.min(Math.max(item.current, 0), total);
+    const activeIndex = item.status === "running" ? Math.min(completed + 1, total) : completed;
+    const elapsedMs = (item.completedAt ?? tick) - item.startedAt;
+    const progressRatio = item.status === "done"
+      ? 1
+      : Math.min(Math.max(completed / total, 0), 1);
+    const title = item.status === "done"
+      ? "生成已完成"
+      : item.status === "failed"
+        ? "生成失败"
+        : "图片生成中";
+    const statusText = item.status === "running"
+      ? `第 ${activeIndex} / ${total} 张`
+      : item.status === "done"
+        ? `已完成 ${total} 张`
+        : `已完成 ${completed} / ${total} 张`;
+
+    return (
+      <div
+        key={item.id}
+        className={cn("image-generation-progress", `is-${item.status}`)}
+        role="status"
+        aria-live="polite"
+        style={{ bottom: `${baseBottom + index * 116}px` }}
+      >
+        <span className="image-generation-progress__icon" aria-hidden="true">
+          {item.status === "done" ? <Check className="size-4" /> : null}
+          {item.status === "failed" ? <AlertTriangle className="size-4" /> : null}
+          {item.status === "running" ? <Loader2 className="size-4" /> : null}
+        </span>
+        <span className="image-generation-progress__body">
+          <span className="image-generation-progress__head">
+            <strong>{title}</strong>
+            <button type="button" aria-label="关闭生成进度" onClick={() => onClose(item.id)}>
+              <X className="size-3.5" aria-hidden="true" />
+            </button>
+          </span>
+          <small>{item.message || statusText}</small>
+          <span className="image-generation-progress__meta">
+            <span>{statusText}</span>
+            <span>用时 {formatElapsedClock(elapsedMs)}</span>
+          </span>
+          <span className="image-generation-progress__track" aria-hidden="true">
+            <span style={{ width: `${Math.round(progressRatio * 100)}%` }} />
+          </span>
+        </span>
+      </div>
+    );
+  });
 }
 
 export function Toast({ message, onClose }: { message: string; onClose: () => void }) {

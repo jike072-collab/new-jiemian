@@ -1,0 +1,29 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "noEmit": false,
+    "outDir": "dist/upload-limits-tests",
+    "module": "CommonJS",
+    "moduleResolution": "Node",
+    "target": "ES2022",
+    "lib": ["ES2022", "DOM", "DOM.Iterable"],
+    "types": ["node"],
+    "incremental": false,
+    "isolatedModules": false
+  },
+  "include": [
+    "src/lib/upload-limits.ts",
+    "src/lib/error-diagnostic-catalog.ts",
+    "src/lib/server/error-diagnostics.ts",
+    "src/lib/server/runtime-paths.ts",
+    "src/lib/server/paths.ts",
+    "src/lib/server/media-upload-guard.ts",
+    "src/lib/storage-capacity-policy.ts",
+    "src/lib/server/storage-capacity.ts",
+    "src/lib/server/remote-media-download.ts",
+    "src/lib/server/provider-call.ts",
+    "src/lib/server/__tests__/media-upload-guard.test.ts",
+    "src/lib/server/__tests__/remote-media-download.test.ts",
+    "src/lib/server/__tests__/provider-call.test.ts"
+  ]
+}

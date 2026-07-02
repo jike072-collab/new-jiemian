@@ -1,3 +1,5 @@
+> 历史资料，不代表当前实现。当前高清增强以火山 ImageX/VOD 为准。
+
 # Module 08 Video Upscale
 
 ## Scope

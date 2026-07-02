@@ -3,11 +3,12 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import { ArrowLeft, CalendarCheck, Check, Crown, CreditCard, ExternalLink, History, Sparkles, WalletCards } from "lucide-react";
 import { useRouter, useSearchParams } from "next/navigation";
+import dynamic from "next/dynamic";
 
+import { FormPanelLoadingFallback, LibraryWorkspaceLoadingFallback, PreviewPanelLoadingFallback } from "@/components/workbench-loading";
 import { WorkbenchShell } from "@/components/workbench-shell";
 import { ImageGenerator } from "@/components/studio/image-generator";
 import { jsonFetch } from "@/components/studio/json-fetch";
-import { LibraryDeleteConfirmDialog, LibraryWorkspace } from "@/components/studio/library-view";
 import {
   ImageGenerationProgressToast,
   ImagePreviewPanel,
@@ -22,16 +23,17 @@ import {
   allowedReferenceImageTypes,
   allowedUpscaleVideoTypes,
   defaultVideoDurations,
+  defaultUploadLimits,
+  formatQuotaSymbolLabel,
   formatQuotaUnits,
   grokVideo10Ratios,
   grokVideo15Ratios,
   grokVideoDurations,
   jimengVideoRatios,
-  maxImageUpscaleSize,
   maxReferenceImageCount,
   maxReferenceImageSize,
   maxVideoFirstFrameCount,
-  maxVideoUpscaleSize,
+  promptOptimizationCostLabel,
   promptOptimizationTargetPlatform,
   ratios,
   upscaleUnavailableMessage,
@@ -57,9 +59,6 @@ import type {
   WorkspacePublicProvider,
   StudioErrorDiagnostic,
 } from "@/components/studio/types";
-import { ImageUpscaleForm, VideoUpscaleForm } from "@/components/studio/upscale-form";
-import { VideoGenerator } from "@/components/studio/video-generator";
-import { WorkspaceAccountPanel } from "@/components/workspace-account-panel";
 import {
   getCheckInStatusDisplay,
   getPlanStatusDisplay,
@@ -68,6 +67,7 @@ import {
 } from "@/lib/account-status";
 import { ApiError, fetchJson, fetchJsonWithCsrf } from "@/lib/client/api";
 import {
+  estimateUpscaleQuota,
   estimateImageGenerationQuota,
   estimateVideoGenerationQuota,
   generationBillingFingerprint,
@@ -90,6 +90,7 @@ import {
   workspaceToolById,
   workspaceToolEntries,
 } from "@/lib/workspace-registry";
+import type { PublicUploadLimit } from "@/lib/upload-limits";
 
 type AuthSessionResponse =
   | { ok: true; user: PublicAuthUser; mappingStatus: string | null }
@@ -155,6 +156,33 @@ const CUSTOM_RECHARGE_MIN_AMOUNT = 1;
 const PLAN_PERIOD_LABEL = "按月";
 const PLAN_PERIOD_UNIT_LABEL = "月";
 const PAYMENT_FLOW_AVAILABLE: boolean = false;
+const CLIENT_IMAGE_SUBMISSION_LIMIT = 2;
+const CLIENT_VIDEO_SUBMISSION_LIMIT = 1;
+
+const LibraryPane = dynamic(
+  () => import("@/components/studio/library-pane").then((module) => ({ default: module.LibraryPane })),
+  { loading: () => <LibraryWorkspaceLoadingFallback /> },
+);
+
+const VideoGenerator = dynamic(
+  () => import("@/components/studio/video-generator").then((module) => ({ default: module.VideoGenerator })),
+  { loading: () => <FormPanelLoadingFallback compact /> },
+);
+
+const ImageUpscaleForm = dynamic(
+  () => import("@/components/studio/upscale-form").then((module) => ({ default: module.ImageUpscaleForm })),
+  { loading: () => <FormPanelLoadingFallback compact /> },
+);
+
+const VideoUpscaleForm = dynamic(
+  () => import("@/components/studio/upscale-form").then((module) => ({ default: module.VideoUpscaleForm })),
+  { loading: () => <FormPanelLoadingFallback compact /> },
+);
+
+const WorkspaceAccountPanel = dynamic(
+  () => import("@/components/workspace-account-panel").then((module) => ({ default: module.WorkspaceAccountPanel })),
+  { loading: () => <PreviewPanelLoadingFallback title="账户概览" /> },
+);
 
 function accountViewTitle(view: AccountView) {
   if (view === "recharge") return "充值中心";
@@ -172,6 +200,24 @@ function withPreviewParam(href: string, previewMode: boolean) {
   return `${href}${href.includes("?") ? "&" : "?"}preview=1`;
 }
 
+function fileExtensionFromName(name: string) {
+  const baseName = name.split(/[\\/]/).pop() || "";
+  const dotIndex = baseName.lastIndexOf(".");
+  return dotIndex >= 0 ? baseName.slice(dotIndex).toLowerCase() : "";
+}
+
+function ensureImageFileName(file: File, message = "图像仅支持 PNG、JPEG 和 WebP。") {
+  if (![".png", ".jpg", ".jpeg", ".webp"].includes(fileExtensionFromName(file.name))) {
+    throw new Error(message);
+  }
+}
+
+function ensureVideoFileName(file: File, message = "视频高清增强仅支持 MP4、WebM 和 MOV。") {
+  if (![".mp4", ".webm", ".mov"].includes(fileExtensionFromName(file.name))) {
+    throw new Error(message);
+  }
+}
+
 function createImageWorkspaceFiles(files: File[]) {
   const nextFiles = files.slice(0, maxReferenceImageCount);
   if (files.length > maxReferenceImageCount) {
@@ -181,8 +227,9 @@ function createImageWorkspaceFiles(files: File[]) {
     if (!allowedReferenceImageTypes.has(file.type)) {
       throw new Error("图像仅支持 PNG、JPEG 和 WebP。");
     }
+    ensureImageFileName(file);
     if (file.size > maxReferenceImageSize) {
-      throw new Error("单张图像不能超过 10MB。");
+      throw new Error(`单张图像不能超过 ${defaultUploadLimits.referenceImage.label}。`);
     }
   }
   return nextFiles.map((file) => ({
@@ -201,8 +248,9 @@ function createVideoWorkspaceFiles(files: File[]) {
   if (!allowedReferenceImageTypes.has(file.type)) {
     throw new Error("图像仅支持 PNG、JPEG 和 WebP。");
   }
+  ensureImageFileName(file);
   if (file.size > maxReferenceImageSize) {
-    throw new Error("图像不能超过 10MB。");
+    throw new Error(`图像不能超过 ${defaultUploadLimits.referenceImage.label}。`);
   }
   return [{
     file,
@@ -210,17 +258,18 @@ function createVideoWorkspaceFiles(files: File[]) {
   }];
 }
 
-function createImageUpscaleFile(files: File[]) {
+function createImageUpscaleFile(files: File[], limit: PublicUploadLimit = defaultUploadLimits.imageUpscale) {
   if (files.length > 1) {
-    throw new Error("图片高清一次只能上传 1 张图片。");
+    throw new Error("图片高清增强一次只能上传 1 张图片。");
   }
   const [file] = files;
   if (!file) return null;
   if (!allowedReferenceImageTypes.has(file.type)) {
-    throw new Error("图片高清仅支持 PNG、JPEG 和 WebP。");
+    throw new Error("图片高清增强仅支持 PNG、JPEG 和 WebP。");
   }
-  if (file.size > maxImageUpscaleSize) {
-    throw new Error("图片高清文件不能超过 25MB。");
+  ensureImageFileName(file, "图片高清增强仅支持 PNG、JPEG 和 WebP。");
+  if (file.size > limit.bytes) {
+    throw new Error(`图片高清增强文件不能超过 ${limit.label}。`);
   }
   return {
     file,
@@ -228,17 +277,18 @@ function createImageUpscaleFile(files: File[]) {
   };
 }
 
-function createVideoUpscaleFile(files: File[]) {
+function createVideoUpscaleFile(files: File[], limit: PublicUploadLimit = defaultUploadLimits.videoUpscale) {
   if (files.length > 1) {
-    throw new Error("视频高清一次只能上传 1 个视频。");
+    throw new Error("视频高清增强一次只能上传 1 个视频。");
   }
   const [file] = files;
   if (!file) return null;
   if (!allowedUpscaleVideoTypes.has(file.type)) {
-    throw new Error("视频高清仅支持 MP4、WebM 和 MOV。");
+    throw new Error("视频高清增强仅支持 MP4、WebM 和 MOV。");
   }
-  if (file.size > maxVideoUpscaleSize) {
-    throw new Error("视频高清文件不能超过 1GB。");
+  ensureVideoFileName(file);
+  if (file.size > limit.bytes) {
+    throw new Error(`视频高清增强文件不能超过 ${limit.label}。`);
   }
   return {
     file,
@@ -256,14 +306,24 @@ function extensionFromMimeType(mimeType: string, fallback: string) {
   return fallback;
 }
 
-async function fileFromLibraryOutput(item: LibraryItem, fallbackExtension: string) {
+async function fileFromLibraryOutput(item: LibraryItem, fallbackExtension: string, limit: PublicUploadLimit) {
   const output = item.output;
   if (!output?.url) throw new Error("结果文件暂不可用。");
+  if (output.size && output.size > limit.bytes) {
+    throw new Error(`结果文件不能超过 ${limit.label}。`);
+  }
 
   const response = await fetch(output.url);
   if (!response.ok) throw new Error("结果文件读取失败。");
+  const contentLength = Number(response.headers.get("content-length") || 0);
+  if (Number.isFinite(contentLength) && contentLength > limit.bytes) {
+    throw new Error(`结果文件不能超过 ${limit.label}。`);
+  }
 
   const blob = await response.blob();
+  if (blob.size > limit.bytes) {
+    throw new Error(`结果文件不能超过 ${limit.label}。`);
+  }
   const mimeType = blob.type || output.mimeType;
   const extension = extensionFromMimeType(mimeType, fallbackExtension);
   const rawName = output.storedName || `${item.id}${extension}`;
@@ -325,7 +385,9 @@ export function StudioApp() {
   const [providersLoading, setProvidersLoading] = useState(true);
   const [providersError, setProvidersError] = useState("");
   const [library, setLibrary] = useState<LibraryItem[]>([]);
-  const [libraryLoading, setLibraryLoading] = useState(true);
+  const [libraryLoading, setLibraryLoading] = useState(false);
+  const [libraryLoaded, setLibraryLoaded] = useState(false);
+  const [libraryNeedsRefresh, setLibraryNeedsRefresh] = useState(false);
   const [libraryError, setLibraryError] = useState("");
   const [sessionUser, setSessionUser] = useState<PublicAuthUser | null>(null);
   const [sessionLoading, setSessionLoading] = useState(true);
@@ -333,17 +395,23 @@ export function StudioApp() {
   const [quotaSnapshot, setQuotaSnapshot] = useState<QuotaSnapshot | null>(null);
   const [usagePage, setUsagePage] = useState<UsagePage | null>(null);
   const [billingOrders, setBillingOrders] = useState<BillingOrder[]>([]);
-  const [accountLoading, setAccountLoading] = useState(true);
+  const [accountSummaryLoading, setAccountSummaryLoading] = useState(false);
+  const [accountUsageLoading, setAccountUsageLoading] = useState(false);
+  const [accountOrdersLoading, setAccountOrdersLoading] = useState(false);
+  const [accountSummaryLoaded, setAccountSummaryLoaded] = useState(false);
+  const [accountUsageLoaded, setAccountUsageLoaded] = useState(false);
+  const [accountOrdersLoaded, setAccountOrdersLoaded] = useState(false);
   const [accountDataError, setAccountDataError] = useState("");
   const [accountCenterOpen, setAccountCenterOpen] = useState(false);
   const [accountView, setAccountView] = useState<AccountView>("center");
   const [accountCloseSignal, setAccountCloseSignal] = useState(0);
   const [message, setMessage] = useState("");
-  const [imageGenerationProgress, setImageGenerationProgress] = useState<ImageGenerationProgressState>(null);
+  const [imageGenerationProgress, setImageGenerationProgress] = useState<ImageGenerationProgressState>([]);
   const [generationProgressTick, setGenerationProgressTick] = useState(() => Date.now());
   const [outputs, setOutputs] = useState<Partial<Record<BusinessToolId, OutputState>>>({});
   const [mobileAction, setMobileAction] = useState<MobileActionState>(null);
   const [mobilePreviewSignal, setMobilePreviewSignal] = useState(0);
+  const [uploadLimits, setUploadLimits] = useState(defaultUploadLimits);
   const [libraryFilter, setLibraryFilter] = useState<LibraryFilter>("image");
   const [librarySort, setLibrarySort] = useState<LibrarySort>("recent");
   const [librarySearch, setLibrarySearch] = useState("");
@@ -366,6 +434,7 @@ export function StudioApp() {
     fileError: "",
     submitError: "",
     submitDiagnostic: null,
+    inFlightCount: 0,
     loading: false,
   });
   const [videoWorkspace, setVideoWorkspace] = useState<VideoWorkspaceState>({
@@ -381,6 +450,7 @@ export function StudioApp() {
     fileError: "",
     submitError: "",
     submitDiagnostic: null,
+    inFlightCount: 0,
     loading: false,
     job: null,
   });
@@ -414,64 +484,136 @@ export function StudioApp() {
   const imageUpscaleFileRef = useRef<ImageUpscaleWorkspaceFile | null>(null);
   const videoUpscaleFileRef = useRef<VideoUpscaleWorkspaceFile | null>(null);
   const appliedTemplateIdRef = useRef<string | null>(null);
+  const imageInFlightCountRef = useRef(0);
+  const videoInFlightCountRef = useRef(0);
   const accountPlanStatus = useMemo<PlanStatus>(() => {
-    if (sessionLoading) return { status: "loading" };
+    if (sessionLoading || accountSummaryLoading) return { status: "loading" };
     return { status: "unavailable" };
-  }, [sessionLoading]);
+  }, [accountSummaryLoading, sessionLoading]);
   const accountCheckInStatus = useMemo<CheckInStatus>(() => {
-    if (sessionLoading) return "loading";
+    if (sessionLoading || accountSummaryLoading) return "loading";
     return "unavailable";
-  }, [sessionLoading]);
+  }, [accountSummaryLoading, sessionLoading]);
+  const resetLibraryState = useCallback(() => {
+    setLibrary([]);
+    setLibraryLoading(false);
+    setLibraryLoaded(false);
+    setLibraryNeedsRefresh(false);
+    setLibraryError("");
+    setMissingLibraryMediaIds(new Set());
+  }, []);
+  const resetAccountState = useCallback(() => {
+    setQuotaSnapshot(null);
+    setUsagePage(null);
+    setBillingOrders([]);
+    setAccountDataError("");
+    setAccountSummaryLoading(false);
+    setAccountUsageLoading(false);
+    setAccountOrdersLoading(false);
+    setAccountSummaryLoaded(false);
+    setAccountUsageLoaded(false);
+    setAccountOrdersLoaded(false);
+  }, []);
 
-  const refreshAccountData = useCallback(async (userId?: string | null) => {
+  const refreshQuotaSnapshot = useCallback(async (userId?: string | null) => {
     if (!userId) {
-      setQuotaSnapshot(null);
-      setUsagePage(null);
-      setBillingOrders([]);
-      setAccountDataError("");
-      setAccountLoading(false);
+      resetAccountState();
       return;
     }
 
-    setAccountLoading(true);
+    setAccountSummaryLoading(true);
     try {
-      const [quotaResult, usageResult, ordersResult] = await Promise.allSettled([
-        fetchJson<{ ok: true; quota: QuotaSnapshot }>("/api/quota"),
-        fetchJson<{ ok: true; usage: UsagePage }>("/api/usage?page=1&pageSize=10"),
-        fetchJson<BillingOrdersResponse>("/api/billing/orders?page=1&pageSize=8"),
-      ]);
-
-      if (quotaResult.status === "fulfilled") {
-        setQuotaSnapshot(quotaResult.value.quota);
-      } else {
-        setQuotaSnapshot(null);
-      }
-
-      if (usageResult.status === "fulfilled") {
-        setUsagePage(usageResult.value.usage);
-      } else {
-        setUsagePage(null);
-      }
-
-      if (ordersResult.status === "fulfilled") {
-        setBillingOrders(ordersResult.value.orders);
-      } else {
-        setBillingOrders([]);
-      }
-
-      const failures = [quotaResult, usageResult, ordersResult].filter((result) => result.status === "rejected");
-      if (failures.length) {
-        if (process.env.NODE_ENV !== "production") {
-          console.debug("[account] Failed to load account data", failures);
-        }
-        setAccountDataError("account-data-unavailable");
-      } else {
-        setAccountDataError("");
+      const quotaResult = await fetchJson<{ ok: true; quota: QuotaSnapshot }>("/api/quota");
+      setQuotaSnapshot(quotaResult.quota);
+      setAccountSummaryLoaded(true);
+      setAccountDataError("");
+    } catch (error) {
+      setQuotaSnapshot(null);
+      setAccountDataError("account-data-unavailable");
+      if (process.env.NODE_ENV !== "production") {
+        console.debug("[account] Failed to load quota snapshot", error);
       }
     } finally {
-      setAccountLoading(false);
+      setAccountSummaryLoading(false);
+    }
+  }, [resetAccountState]);
+
+  const refreshUsageSnapshot = useCallback(async (userId?: string | null) => {
+    if (!userId) {
+      setUsagePage(null);
+      setAccountUsageLoaded(false);
+      return;
+    }
+
+    setAccountUsageLoading(true);
+    try {
+      const usageResult = await fetchJson<{ ok: true; usage: UsagePage }>("/api/usage?page=1&pageSize=10");
+      setUsagePage(usageResult.usage);
+      setAccountUsageLoaded(true);
+    } catch (error) {
+      setUsagePage(null);
+      if (process.env.NODE_ENV !== "production") {
+        console.debug("[account] Failed to load usage snapshot", error);
+      }
+    } finally {
+      setAccountUsageLoading(false);
     }
   }, []);
+
+  const refreshBillingOrdersSnapshot = useCallback(async (userId?: string | null) => {
+    if (!userId) {
+      setBillingOrders([]);
+      setAccountOrdersLoaded(false);
+      return;
+    }
+
+    setAccountOrdersLoading(true);
+    try {
+      const ordersResult = await fetchJson<BillingOrdersResponse>("/api/billing/orders?page=1&pageSize=8");
+      setBillingOrders(ordersResult.orders);
+      setAccountOrdersLoaded(true);
+    } catch (error) {
+      setBillingOrders([]);
+      if (process.env.NODE_ENV !== "production") {
+        console.debug("[account] Failed to load billing orders", error);
+      }
+    } finally {
+      setAccountOrdersLoading(false);
+    }
+  }, []);
+
+  const ensureAccountViewData = useCallback(async (
+    view: AccountView,
+    userId?: string | null,
+    options?: { force?: boolean },
+  ) => {
+    if (!userId) {
+      resetAccountState();
+      return;
+    }
+
+    const tasks: Array<Promise<void>> = [];
+    if (options?.force || !accountSummaryLoaded) {
+      tasks.push(refreshQuotaSnapshot(userId));
+    }
+    if (view !== "recharge" && (options?.force || !accountUsageLoaded)) {
+      tasks.push(refreshUsageSnapshot(userId));
+    }
+    if (view === "usage" && (options?.force || !accountOrdersLoaded)) {
+      tasks.push(refreshBillingOrdersSnapshot(userId));
+    }
+    if (tasks.length) {
+      await Promise.all(tasks);
+    }
+  }, [
+    accountOrdersLoaded,
+    accountSummaryLoaded,
+    accountUsageLoaded,
+    refreshBillingOrdersSnapshot,
+    refreshQuotaSnapshot,
+    refreshUsageSnapshot,
+    resetAccountState,
+  ]);
 
   const handleLogout = useCallback(async () => {
     if (!sessionUser) return;
@@ -481,12 +623,14 @@ export function StudioApp() {
       setMessage(error instanceof Error ? error.message : "退出失败。");
     } finally {
       setSessionUser(null);
-      setQuotaSnapshot(null);
-      setUsagePage(null);
-      setBillingOrders([]);
+      resetAccountState();
+      resetLibraryState();
+      imageInFlightCountRef.current = 0;
+      videoInFlightCountRef.current = 0;
+      setImageGenerationProgress([]);
       router.replace("/login");
     }
-  }, [router, sessionUser]);
+  }, [resetAccountState, resetLibraryState, router, sessionUser]);
 
   const refreshSession = useCallback(async () => {
     setSessionLoading(true);
@@ -495,21 +639,18 @@ export function StudioApp() {
       const result = await fetchJson<AuthSessionResponse>("/api/auth/session");
       if ("ok" in result && result.ok) {
         setSessionUser(result.user);
-        await refreshAccountData(result.user.local_user_id);
         return;
       }
       setSessionUser(null);
-      setQuotaSnapshot(null);
-      setUsagePage(null);
-      setBillingOrders([]);
-      setAccountDataError("");
+      resetAccountState();
+      resetLibraryState();
+      setImageGenerationProgress([]);
     } catch (error) {
       if (error instanceof ApiError && error.status === 401) {
         setSessionUser(null);
-        setQuotaSnapshot(null);
-        setUsagePage(null);
-        setBillingOrders([]);
-        setAccountDataError("");
+        resetAccountState();
+        resetLibraryState();
+        setImageGenerationProgress([]);
       } else {
         const text = error instanceof Error ? error.message : "会话加载失败。";
         setSessionError(text);
@@ -518,19 +659,27 @@ export function StudioApp() {
     } finally {
       setSessionLoading(false);
     }
-  }, [refreshAccountData]);
+  }, [resetAccountState, resetLibraryState]);
 
   const refreshAccountSnapshot = useCallback(async () => {
-    await refreshSession();
-  }, [refreshSession]);
+    await ensureAccountViewData(accountView, sessionUser?.local_user_id || null, { force: true });
+  }, [accountView, ensureAccountViewData, sessionUser?.local_user_id]);
 
-  const refreshLibrary = useCallback(async () => {
+  const refreshLibrary = useCallback(async (options?: { force?: boolean }) => {
+    if (!sessionUser?.local_user_id) {
+      resetLibraryState();
+      return;
+    }
+    if (!options?.force && libraryLoaded && !libraryNeedsRefresh) return;
+
     setLibraryLoading(true);
     setLibraryError("");
     try {
       const data = await jsonFetch<{ items: LibraryItem[] }>("/api/library");
       setLibrary(data.items);
       setMissingLibraryMediaIds(new Set());
+      setLibraryLoaded(true);
+      setLibraryNeedsRefresh(false);
     } catch (error) {
       const text = error instanceof Error ? error.message : "作品库加载失败。";
       setLibraryError(text);
@@ -538,7 +687,36 @@ export function StudioApp() {
     } finally {
       setLibraryLoading(false);
     }
-  }, []);
+  }, [libraryLoaded, libraryNeedsRefresh, resetLibraryState, sessionUser?.local_user_id]);
+
+  const refreshLibraryAfterMutation = useCallback(async () => {
+    if (!sessionUser?.local_user_id) return;
+    if (libraryLoaded) {
+      await refreshLibrary({ force: true });
+      return;
+    }
+    setLibraryNeedsRefresh(true);
+  }, [libraryLoaded, refreshLibrary, sessionUser?.local_user_id]);
+
+  const refreshAccountAfterGeneration = useCallback(async () => {
+    const userId = sessionUser?.local_user_id || null;
+    await refreshQuotaSnapshot(userId);
+    if (accountCenterOpen || accountUsageLoaded) {
+      await refreshUsageSnapshot(userId);
+    }
+    if (accountView === "usage" && accountOrdersLoaded) {
+      await refreshBillingOrdersSnapshot(userId);
+    }
+  }, [
+    accountCenterOpen,
+    accountOrdersLoaded,
+    accountUsageLoaded,
+    accountView,
+    refreshBillingOrdersSnapshot,
+    refreshQuotaSnapshot,
+    refreshUsageSnapshot,
+    sessionUser?.local_user_id,
+  ]);
 
   const refreshProviders = useCallback(async () => {
     setProvidersLoading(true);
@@ -561,27 +739,19 @@ export function StudioApp() {
     void (async () => {
       try {
         setProvidersLoading(true);
-        setLibraryLoading(true);
-        const [providersData, libraryData] = await Promise.all([
-          jsonFetch<{ providers: EnabledProviders }>("/api/providers/enabled"),
-          jsonFetch<{ items: LibraryItem[] }>("/api/library"),
-        ]);
+        const providersData = await jsonFetch<{ providers: EnabledProviders }>("/api/providers/enabled");
         if (cancelled) return;
         setProviders(providersData.providers);
-        setLibrary(libraryData.items);
         setProvidersError("");
-        setLibraryError("");
       } catch (error) {
         if (!cancelled) {
           const text = error instanceof Error ? error.message : "加载失败。";
           setProvidersError(text);
-          setLibraryError(text);
           setMessage(text);
         }
       } finally {
         if (!cancelled) {
           setProvidersLoading(false);
-          setLibraryLoading(false);
         }
       }
     })();
@@ -661,6 +831,42 @@ export function StudioApp() {
     () => withPreviewParam(templateTabHref("video"), previewMode),
     [previewMode],
   );
+
+  useEffect(() => {
+    if (activeBusinessTool !== "library") return;
+    if (sessionLoading) return;
+    if (!sessionUser?.local_user_id) {
+      resetLibraryState();
+      return;
+    }
+    if (libraryLoaded && !libraryNeedsRefresh) return;
+    void refreshLibrary({ force: libraryNeedsRefresh });
+  }, [
+    activeBusinessTool,
+    libraryLoaded,
+    libraryNeedsRefresh,
+    refreshLibrary,
+    resetLibraryState,
+    sessionLoading,
+    sessionUser?.local_user_id,
+  ]);
+
+  useEffect(() => {
+    if (!accountCenterOpen) return;
+    if (sessionLoading) return;
+    if (!sessionUser?.local_user_id) {
+      resetAccountState();
+      return;
+    }
+    void ensureAccountViewData(accountView, sessionUser.local_user_id);
+  }, [
+    accountCenterOpen,
+    accountView,
+    ensureAccountViewData,
+    resetAccountState,
+    sessionLoading,
+    sessionUser?.local_user_id,
+  ]);
 
   const applyTemplatePreset = useCallback((templateId: string) => {
     const template = templateById(templateId);
@@ -807,7 +1013,7 @@ export function StudioApp() {
       if (!prefersReducedMotion) {
         await new Promise((resolve) => window.setTimeout(resolve, 220));
       }
-      await refreshLibrary();
+      await refreshLibraryAfterMutation();
     } catch (error) {
       const text = error instanceof Error ? error.message : "删除失败。";
       setLibraryError(text);
@@ -816,7 +1022,7 @@ export function StudioApp() {
       setDeletingLibraryItemId(null);
       setRemovingLibraryItemId(null);
     }
-  }, [deletingLibraryItemId, libraryDeleteConfirmItemId, prefersReducedMotion, refreshLibrary]);
+  }, [deletingLibraryItemId, libraryDeleteConfirmItemId, prefersReducedMotion, refreshLibraryAfterMutation]);
 
   const libraryCounts = useMemo(() => ({
     all: library.length,
@@ -827,12 +1033,23 @@ export function StudioApp() {
     () => library.find((item) => item.id === libraryDeleteConfirmItemId) || null,
     [library, libraryDeleteConfirmItemId],
   );
+  const accountSummaryBusy = sessionLoading || accountSummaryLoading;
+  const accountViewLoading = sessionLoading
+    || (accountView === "usage"
+      ? accountSummaryLoading || accountUsageLoading || accountOrdersLoading
+      : accountView === "center"
+        ? accountSummaryLoading || accountUsageLoading
+        : accountSummaryLoading);
+  const libraryPanelLoading = activeBusinessTool === "library"
+    && (sessionLoading || (Boolean(sessionUser) && !libraryLoaded))
+    ? true
+    : libraryLoading;
 
   const accountHeaderSlot = (
     <div className="workspace-account-chip hidden items-center gap-2 rounded-full border border-white/10 bg-white/[0.03] px-3 py-2 text-xs text-white/68 md:flex">
       <span>{sessionUser ? sessionUser.display_name : "未登录"}</span>
       <span className="text-white/38">/</span>
-      <strong className="text-white">{sessionLoading || accountLoading ? "加载中" : quotaSnapshot ? `${formatQuotaUnits(quotaSnapshot.quota_units)} ✦` : "—"}</strong>
+      <strong className="text-white">{accountSummaryBusy ? "加载中" : quotaSnapshot ? `${formatQuotaUnits(quotaSnapshot.quota_units)} ✦` : "—"}</strong>
     </div>
   );
 
@@ -841,7 +1058,7 @@ export function StudioApp() {
   }, []);
 
   useEffect(() => {
-    if (!imageGenerationProgress || imageGenerationProgress.status !== "running") return undefined;
+    if (!imageGenerationProgress.some((progress) => progress.status === "running")) return undefined;
 
     const timer = window.setInterval(() => setGenerationProgressTick(Date.now()), 1000);
     return () => window.clearInterval(timer);
@@ -862,9 +1079,10 @@ export function StudioApp() {
     quality: imageWorkspace.quality,
     referenceImages: imageWorkspace.files.length,
   }) * imageGenerationCount;
+  const imageGenerationCostLabel = formatQuotaSymbolLabel(imageEstimatedQuotaUnits);
   const imageWorkspaceCanSubmit = Boolean(selectedImageProvider)
     && !providersLoading
-    && !imageWorkspace.loading
+    && imageWorkspace.inFlightCount < CLIENT_IMAGE_SUBMISSION_LIMIT
     && Boolean(imageWorkspacePrompt)
     && (!imageWorkspaceRequiresFile || imageWorkspaceHasFiles);
 
@@ -874,6 +1092,36 @@ export function StudioApp() {
       ...patch,
       ...("submitError" in patch && !("submitDiagnostic" in patch) ? { submitDiagnostic: null } : {}),
     }));
+  }, []);
+
+  const updateImageInFlightState = useCallback((nextCount: number) => {
+    imageInFlightCountRef.current = Math.max(0, nextCount);
+    setImageWorkspace((prev) => ({
+      ...prev,
+      inFlightCount: imageInFlightCountRef.current,
+      loading: imageInFlightCountRef.current > 0,
+    }));
+  }, []);
+
+  const updateVideoInFlightState = useCallback((nextCount: number) => {
+    videoInFlightCountRef.current = Math.max(0, nextCount);
+    setVideoWorkspace((prev) => ({
+      ...prev,
+      inFlightCount: videoInFlightCountRef.current,
+    }));
+  }, []);
+
+  const updateImageGenerationProgress = useCallback((
+    progressId: string,
+    updater: (current: ImageGenerationProgressState[number]) => ImageGenerationProgressState[number],
+  ) => {
+    setImageGenerationProgress((prev) => prev.map((progress) => (
+      progress.id === progressId ? updater(progress) : progress
+    )));
+  }, []);
+
+  const closeImageGenerationProgress = useCallback((progressId: string) => {
+    setImageGenerationProgress((prev) => prev.filter((progress) => progress.id !== progressId));
   }, []);
 
   const applyImagePromptTemplate = useCallback((templateId: string) => {
@@ -1025,7 +1273,16 @@ export function StudioApp() {
       }));
       return;
     }
-    if (imageWorkspace.loading) return;
+    if (imageInFlightCountRef.current >= CLIENT_IMAGE_SUBMISSION_LIMIT) {
+      const text = `当前最多同时进行 ${CLIENT_IMAGE_SUBMISSION_LIMIT} 个图片任务，请稍后再试。`;
+      setImageWorkspace((prev) => ({
+        ...prev,
+        submitError: text,
+        submitDiagnostic: null,
+      }));
+      setMessage(text);
+      return;
+    }
     if (imageWorkspaceRequiresFile && !imageWorkspaceHasFiles) {
       setImageWorkspace((prev) => ({
         ...prev,
@@ -1040,10 +1297,21 @@ export function StudioApp() {
       quality: imageWorkspace.quality,
       referenceImages: imageWorkspace.files.length,
     });
+    const progressId = createTaskId("image-progress");
+    const snapshot = {
+      providerId: selectedImageProvider.id,
+      mode: activeImageMode,
+      ratio: imageWorkspace.ratio,
+      quality: imageWorkspace.quality,
+      prompt: imageWorkspace.prompt,
+      files: imageWorkspace.files.map((attachment) => attachment.file),
+      estimatedQuotaUnitsPerImage,
+      totalCount,
+    };
 
+    updateImageInFlightState(imageInFlightCountRef.current + 1);
     setImageWorkspace((prev) => ({
       ...prev,
-      loading: true,
       submitError: "",
       submitDiagnostic: null,
       fileError: "",
@@ -1052,33 +1320,34 @@ export function StudioApp() {
     setMessage("");
     const startedAt = Date.now();
     setGenerationProgressTick(startedAt);
-    setImageGenerationProgress({
+    setImageGenerationProgress((prev) => [...prev, {
+      id: progressId,
       status: "running",
       current: 0,
       total: totalCount,
       startedAt,
       message: totalCount > 1 ? `正在生成第 1 / ${totalCount} 张` : "正在生成图片",
-    });
+    }]);
     try {
       for (let index = 0; index < totalCount; index += 1) {
         const taskId = createTaskId(`image-${index + 1}`);
         const requestFingerprint = generationBillingFingerprint({
           kind: "image",
-          providerId: selectedImageProvider.id,
-          mode: activeImageMode,
-          ratio: imageWorkspace.ratio,
-          quality: imageWorkspace.quality,
-          referenceImages: imageWorkspace.files.length,
+          providerId: snapshot.providerId,
+          mode: snapshot.mode,
+          ratio: snapshot.ratio,
+          quality: snapshot.quality,
+          referenceImages: snapshot.files.length,
           taskId,
-          estimatedQuotaUnits: estimatedQuotaUnitsPerImage,
+          estimatedQuotaUnits: snapshot.estimatedQuotaUnitsPerImage,
         });
 
-        setImageGenerationProgress((current) => current ? {
+        updateImageGenerationProgress(progressId, (current) => ({
           ...current,
           status: "running",
           current: index,
           message: totalCount > 1 ? `正在生成第 ${index + 1} / ${totalCount} 张` : "正在生成图片",
-        } : current);
+        }));
 
         try {
           await fetchJsonWithCsrf("/api/quota/precheck", {
@@ -1087,47 +1356,47 @@ export function StudioApp() {
               operation: "cloud_image_generation",
               taskId,
               idempotencyKey: taskId,
-              estimatedQuotaUnits: estimatedQuotaUnitsPerImage,
+              estimatedQuotaUnits: snapshot.estimatedQuotaUnitsPerImage,
               requestFingerprint,
             }),
           });
         } catch (error) {
           const text = error instanceof Error ? error.message : "额度预检失败。";
           setImageWorkspace((prev) => ({ ...prev, submitError: text, submitDiagnostic: diagnosticFromError(error) }));
-          throw new Error(text);
+          throw error;
         }
 
         const form = new FormData();
-        form.set("providerId", selectedImageProvider.id);
-        form.set("mode", activeImageMode);
-        form.set("ratio", imageWorkspace.ratio);
-        form.set("quality", imageWorkspace.quality);
-        form.set("prompt", imageWorkspace.prompt);
+        form.set("providerId", snapshot.providerId);
+        form.set("mode", snapshot.mode);
+        form.set("ratio", snapshot.ratio);
+        form.set("quality", snapshot.quality);
+        form.set("prompt", snapshot.prompt);
         form.set("taskId", taskId);
         form.set("idempotencyKey", taskId);
-        form.set("estimatedQuotaUnits", String(estimatedQuotaUnitsPerImage));
-        imageWorkspace.files.forEach((attachment) => form.append("files", attachment.file));
+        form.set("estimatedQuotaUnits", String(snapshot.estimatedQuotaUnitsPerImage));
+        snapshot.files.forEach((file) => form.append("files", file));
         const data = await fetchJsonWithCsrf<{ item: LibraryItem }>("/api/generate/image", {
           method: "POST",
           body: form,
         });
         handleImageResult(data.item);
-        setImageGenerationProgress((current) => current ? {
+        updateImageGenerationProgress(progressId, (current) => ({
           ...current,
           current: index + 1,
           message: totalCount > 1 ? `已完成 ${index + 1} / ${totalCount} 张` : "图片已生成",
-        } : current);
+        }));
       }
 
-      await refreshLibrary();
-      await refreshAccountData(sessionUser?.local_user_id || null);
-      setImageGenerationProgress((current) => current ? {
+      await refreshLibraryAfterMutation();
+      await refreshAccountAfterGeneration();
+      updateImageGenerationProgress(progressId, (current) => ({
         ...current,
         status: "done",
         current: totalCount,
         completedAt: Date.now(),
         message: totalCount > 1 ? `${totalCount} 张图片已生成` : "图片已生成",
-      } : current);
+      }));
     } catch (error) {
       const text = error instanceof Error ? error.message : "图片生成失败。";
       setImageWorkspace((prev) => ({
@@ -1135,36 +1404,33 @@ export function StudioApp() {
         submitError: text,
         submitDiagnostic: diagnosticFromError(error),
       }));
-      setImageGenerationProgress((current) => current ? {
+      updateImageGenerationProgress(progressId, (current) => ({
         ...current,
         status: "failed",
         completedAt: Date.now(),
         message: text,
-      } : current);
+      }));
       setMessage(text);
     } finally {
-      setImageWorkspace((prev) => ({
-        ...prev,
-        loading: false,
-      }));
+      updateImageInFlightState(imageInFlightCountRef.current - 1);
     }
   }, [
     activeImageMode,
     handleImageResult,
     imageWorkspace.files,
-    imageWorkspace.loading,
     imageWorkspace.quality,
     imageWorkspace.ratio,
     imageWorkspace.prompt,
     imageGenerationCount,
     imageWorkspacePrompt,
-    refreshAccountData,
     imageWorkspaceHasFiles,
     imageWorkspaceRequiresFile,
-    refreshLibrary,
-    sessionUser?.local_user_id,
+    refreshAccountAfterGeneration,
+    refreshLibraryAfterMutation,
     selectedImageProvider,
     setMessage,
+    updateImageGenerationProgress,
+    updateImageInFlightState,
   ]);
 
   const handleVideoResult = useCallback((item: LibraryItem, job?: JobRecord | null) => {
@@ -1189,9 +1455,10 @@ export function StudioApp() {
     durationSeconds: videoWorkspace.duration,
     referenceImages: videoWorkspace.files.length,
   });
+  const videoGenerationCostLabel = formatQuotaSymbolLabel(videoEstimatedQuotaUnits);
   const videoWorkspaceCanSubmit = Boolean(selectedVideoProvider)
     && !providersLoading
-    && !videoWorkspace.loading
+    && videoWorkspace.inFlightCount < CLIENT_VIDEO_SUBMISSION_LIMIT
     && Boolean(videoWorkspacePrompt)
     && (!videoWorkspaceNeedsFile || videoWorkspaceHasFiles)
     && (!videoWorkspaceRequiresFile || videoWorkspaceHasFiles)
@@ -1370,6 +1637,7 @@ export function StudioApp() {
     updateImageUpscaleWorkspace({ statusLoading: true, statusError: "", checked: true });
     try {
       const data = await jsonFetch<UpscaleStatusResponse>("/api/upscale/status");
+      if (data.uploadLimits) setUploadLimits((prev) => ({ ...prev, ...data.uploadLimits }));
       updateImageUpscaleWorkspace({ availability: data.image, statusLoading: false });
     } catch (error) {
       updateImageUpscaleWorkspace({
@@ -1381,13 +1649,21 @@ export function StudioApp() {
   }, [updateImageUpscaleWorkspace]);
 
   useEffect(() => {
+    if (activeBusinessTool !== "image-upscale") return;
+    if (imageUpscaleWorkspace.checked && (imageUpscaleWorkspace.availability || imageUpscaleWorkspace.statusError)) return;
     void checkImageUpscaleAvailability();
-  }, [checkImageUpscaleAvailability]);
+  }, [
+    activeBusinessTool,
+    checkImageUpscaleAvailability,
+    imageUpscaleWorkspace.availability,
+    imageUpscaleWorkspace.checked,
+    imageUpscaleWorkspace.statusError,
+  ]);
 
   const replaceImageUpscaleFile = useCallback((files: File[]) => {
     const previous = imageUpscaleFileRef.current;
     try {
-      const nextFile = createImageUpscaleFile(files);
+      const nextFile = createImageUpscaleFile(files, uploadLimits.imageUpscale);
       if (previous) URL.revokeObjectURL(previous.previewUrl);
       imageUpscaleFileRef.current = nextFile;
       updateImageUpscaleWorkspace({
@@ -1406,7 +1682,7 @@ export function StudioApp() {
       });
       setOutputs((prev) => ({ ...prev, "image-upscale": null }));
     }
-  }, [updateImageUpscaleWorkspace]);
+  }, [updateImageUpscaleWorkspace, uploadLimits.imageUpscale]);
 
   const removeImageUpscaleFile = useCallback(() => {
     if (imageUpscaleFileRef.current) {
@@ -1450,21 +1726,25 @@ export function StudioApp() {
         method: "POST",
         body: form,
       });
-      setOutputs((prev) => ({ ...prev, "image-upscale": { item: data.item, job: data.job, title: "图片高清结果", tool: "image-upscale" } }));
-      await refreshLibrary();
+      setOutputs((prev) => ({ ...prev, "image-upscale": { item: data.item, job: data.job, title: "图片高清增强结果", tool: "image-upscale" } }));
+      await refreshLibraryAfterMutation();
     } catch (error) {
-      const text = error instanceof Error ? error.message : "图片高清处理失败。";
+      const text = error instanceof Error ? error.message : "图片高清增强处理失败。";
       updateImageUpscaleWorkspace({ submitError: text, submitDiagnostic: diagnosticFromError(error) });
       setMessage(text);
     } finally {
       updateImageUpscaleWorkspace({ loading: false });
     }
-  }, [imageUpscaleWorkspace.availability?.ready, imageUpscaleWorkspace.file, imageUpscaleWorkspace.loading, imageUpscaleWorkspace.scale, refreshLibrary, setMessage, updateImageUpscaleWorkspace]);
+  }, [imageUpscaleWorkspace.availability?.ready, imageUpscaleWorkspace.file, imageUpscaleWorkspace.loading, imageUpscaleWorkspace.scale, refreshLibraryAfterMutation, setMessage, updateImageUpscaleWorkspace]);
 
   const imageUpscaleCanSubmit = Boolean(imageUpscaleWorkspace.file)
     && Boolean(imageUpscaleWorkspace.availability?.ready)
     && !imageUpscaleWorkspace.loading
     && !imageUpscaleWorkspace.statusLoading;
+  const imageUpscaleCostLabel = formatQuotaSymbolLabel(estimateUpscaleQuota({
+    kind: "image",
+    scale: imageUpscaleWorkspace.scale,
+  }));
 
   const updateVideoUpscaleWorkspace = useCallback((patch: Partial<VideoUpscaleWorkspaceState>) => {
     setVideoUpscaleWorkspace((prev) => ({
@@ -1478,6 +1758,7 @@ export function StudioApp() {
     updateVideoUpscaleWorkspace({ statusLoading: true, statusError: "", checked: true });
     try {
       const data = await jsonFetch<UpscaleStatusResponse>("/api/upscale/status");
+      if (data.uploadLimits) setUploadLimits((prev) => ({ ...prev, ...data.uploadLimits }));
       updateVideoUpscaleWorkspace({ availability: data.video, statusLoading: false });
     } catch (error) {
       updateVideoUpscaleWorkspace({
@@ -1489,8 +1770,16 @@ export function StudioApp() {
   }, [updateVideoUpscaleWorkspace]);
 
   useEffect(() => {
+    if (activeBusinessTool !== "video-upscale") return;
+    if (videoUpscaleWorkspace.checked && (videoUpscaleWorkspace.availability || videoUpscaleWorkspace.statusError)) return;
     void checkVideoUpscaleAvailability();
-  }, [checkVideoUpscaleAvailability]);
+  }, [
+    activeBusinessTool,
+    checkVideoUpscaleAvailability,
+    videoUpscaleWorkspace.availability,
+    videoUpscaleWorkspace.checked,
+    videoUpscaleWorkspace.statusError,
+  ]);
 
   useEffect(() => {
     if (!previewMode && !sessionLoading && !sessionUser && !sessionError) {
@@ -1501,7 +1790,7 @@ export function StudioApp() {
   const replaceVideoUpscaleFile = useCallback((files: File[]) => {
     const previous = videoUpscaleFileRef.current;
     try {
-      const nextFile = createVideoUpscaleFile(files);
+      const nextFile = createVideoUpscaleFile(files, uploadLimits.videoUpscale);
       if (previous) URL.revokeObjectURL(previous.previewUrl);
       videoUpscaleFileRef.current = nextFile;
       updateVideoUpscaleWorkspace({
@@ -1520,7 +1809,7 @@ export function StudioApp() {
       });
       setOutputs((prev) => ({ ...prev, "video-upscale": null }));
     }
-  }, [updateVideoUpscaleWorkspace]);
+  }, [updateVideoUpscaleWorkspace, uploadLimits.videoUpscale]);
 
   const removeVideoUpscaleFile = useCallback(() => {
     if (videoUpscaleFileRef.current) {
@@ -1570,17 +1859,17 @@ export function StudioApp() {
         body: form,
       });
       updateVideoUpscaleWorkspace({ job: data.job });
-      setOutputs((prev) => ({ ...prev, "video-upscale": { item: data.item, job: data.job, title: "视频高清结果", tool: "video-upscale" } }));
-      await refreshLibrary();
+      setOutputs((prev) => ({ ...prev, "video-upscale": { item: data.item, job: data.job, title: "视频高清增强结果", tool: "video-upscale" } }));
+      await refreshLibraryAfterMutation();
     } catch (error) {
-      const text = error instanceof Error ? error.message : "视频高清处理失败。";
+      const text = error instanceof Error ? error.message : "视频高清增强处理失败。";
       updateVideoUpscaleWorkspace({ submitError: text, submitDiagnostic: diagnosticFromError(error) });
       setMessage(text);
     } finally {
       updateVideoUpscaleWorkspace({ loading: false });
     }
   }, [
-    refreshLibrary,
+    refreshLibraryAfterMutation,
     setMessage,
     updateVideoUpscaleWorkspace,
     videoUpscaleWorkspace.availability?.ready,
@@ -1598,6 +1887,10 @@ export function StudioApp() {
     && !videoUpscaleWorkspace.loading
     && !videoUpscaleWorkspace.statusLoading
     && !videoUpscaleProcessing;
+  const videoUpscaleCostLabel = formatQuotaSymbolLabel(estimateUpscaleQuota({
+    kind: "video",
+    scale: videoUpscaleWorkspace.scale,
+  }));
 
   const sendResultToUpscale = useCallback(async (item: LibraryItem) => {
     if (!item.output?.url) {
@@ -1608,21 +1901,21 @@ export function StudioApp() {
     setMessage("正在准备高清素材。");
     try {
       if (item.type === "image") {
-        const file = await fileFromLibraryOutput(item, ".png");
+        const file = await fileFromLibraryOutput(item, ".png", uploadLimits.imageUpscale);
         replaceImageUpscaleFile([file]);
         setActiveWorkspaceToolId("image-upscale");
-        setMessage("已带入图片高清，请选择倍数后开始增强。");
+        setMessage("已带入图片高清增强，请选择倍数后开始增强。");
         return;
       }
 
-      const file = await fileFromLibraryOutput(item, ".mp4");
+      const file = await fileFromLibraryOutput(item, ".mp4", uploadLimits.videoUpscale);
       replaceVideoUpscaleFile([file]);
       setActiveWorkspaceToolId("video-upscale");
-      setMessage("已带入视频高清，请选择倍数后开始增强。");
+      setMessage("已带入视频高清增强，请选择倍数后开始增强。");
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "高清素材准备失败。");
     }
-  }, [replaceImageUpscaleFile, replaceVideoUpscaleFile, setMessage]);
+  }, [replaceImageUpscaleFile, replaceVideoUpscaleFile, setMessage, uploadLimits.imageUpscale, uploadLimits.videoUpscale]);
 
   useEffect(() => {
     const job = videoUpscaleWorkspace.job;
@@ -1637,21 +1930,21 @@ export function StudioApp() {
         if (updatedItem) {
           setOutputs((prev) => ({
             ...prev,
-            "video-upscale": { item: updatedItem, job: nextJob, title: "视频高清结果", tool: "video-upscale" },
+            "video-upscale": { item: updatedItem, job: nextJob, title: "视频高清增强结果", tool: "video-upscale" },
           }));
           if (updatedItem.status === "failed") {
-            updateVideoUpscaleWorkspace({ submitError: updatedItem.error || nextJob.error || "视频高清处理失败。" });
+            updateVideoUpscaleWorkspace({ submitError: updatedItem.error || nextJob.error || "视频高清增强处理失败。" });
           }
         }
-        await refreshLibrary();
+        await refreshLibraryAfterMutation();
       } catch (error) {
-        const text = error instanceof Error ? error.message : "视频高清任务查询失败。";
+        const text = error instanceof Error ? error.message : "视频高清增强任务查询失败。";
         updateVideoUpscaleWorkspace({ submitError: text, submitDiagnostic: diagnosticFromError(error) });
         setMessage(text);
       }
     }, 5000);
     return () => window.clearInterval(timer);
-  }, [refreshLibrary, setMessage, updateVideoUpscaleWorkspace, videoUpscaleWorkspace.job]);
+  }, [refreshLibraryAfterMutation, setMessage, updateVideoUpscaleWorkspace, videoUpscaleWorkspace.job]);
 
   useEffect(() => {
     const job = videoWorkspace.job;
@@ -1659,11 +1952,15 @@ export function StudioApp() {
     const timer = window.setInterval(async () => {
       try {
         const data = await jsonFetch<{ job: JobRecord | null }>(`/api/jobs/${job.id}`);
+        const nextJob = data.job || job;
         if (data.job) updateVideoWorkspace({ job: data.job });
         const libraryData = await jsonFetch<{ items: LibraryItem[] }>("/api/library");
         const updatedItem = libraryData.items.find((item) => item.id === job.libraryItemId);
-        if (updatedItem) handleVideoResult(updatedItem, data.job || job);
-        await refreshLibrary();
+        if (updatedItem) handleVideoResult(updatedItem, nextJob);
+        if (nextJob.status === "done" || nextJob.status === "failed") {
+          updateVideoInFlightState(0);
+        }
+        await refreshLibraryAfterMutation();
       } catch (error) {
         const text = error instanceof Error ? error.message : "视频任务查询失败。";
         updateVideoWorkspace({ submitError: text, submitDiagnostic: diagnosticFromError(error) });
@@ -1671,7 +1968,7 @@ export function StudioApp() {
       }
     }, 5000);
     return () => window.clearInterval(timer);
-  }, [handleVideoResult, refreshLibrary, setMessage, updateVideoWorkspace, videoWorkspace.job]);
+  }, [handleVideoResult, refreshLibraryAfterMutation, setMessage, updateVideoInFlightState, updateVideoWorkspace, videoWorkspace.job]);
 
   const submitVideoWorkspace = useCallback(async () => {
     if (!selectedVideoProvider) {
@@ -1694,7 +1991,12 @@ export function StudioApp() {
       updateVideoWorkspace({ fileError: text, submitError: text });
       return;
     }
-    if (videoWorkspace.loading) return;
+    if (videoInFlightCountRef.current >= CLIENT_VIDEO_SUBMISSION_LIMIT) {
+      const text = `当前最多同时进行 ${CLIENT_VIDEO_SUBMISSION_LIMIT} 个视频任务，请稍后再试。`;
+      updateVideoWorkspace({ submitError: text });
+      setMessage(text);
+      return;
+    }
     if ((videoWorkspaceRequiresFile || videoWorkspaceNeedsFile || selectedVideoModelRequiresFile) && !videoWorkspaceHasFiles) {
       setVideoWorkspace((prev) => ({
         ...prev,
@@ -1704,20 +2006,28 @@ export function StudioApp() {
     }
 
     const taskId = createTaskId("video");
-    const estimatedQuotaUnits = estimateVideoGenerationQuota({
-      mode: activeVideoMode,
-      durationSeconds: videoWorkspace.duration,
-      referenceImages: videoWorkspace.files.length,
-    });
-    const requestFingerprint = generationBillingFingerprint({
-      kind: "video",
+    const snapshot = {
       providerId: selectedVideoProvider.id,
       mode: activeVideoMode,
       ratio: videoWorkspace.ratio,
-      durationSeconds: videoWorkspace.duration,
-      referenceImages: videoWorkspace.files.length,
+      duration: videoWorkspace.duration,
+      prompt: videoWorkspace.prompt,
+      files: videoWorkspace.files.map((attachment) => attachment.file),
+      estimatedQuotaUnits: estimateVideoGenerationQuota({
+        mode: activeVideoMode,
+        durationSeconds: videoWorkspace.duration,
+        referenceImages: videoWorkspace.files.length,
+      }),
+    };
+    const requestFingerprint = generationBillingFingerprint({
+      kind: "video",
+      providerId: snapshot.providerId,
+      mode: snapshot.mode,
+      ratio: snapshot.ratio,
+      durationSeconds: snapshot.duration,
+      referenceImages: snapshot.files.length,
       taskId,
-      estimatedQuotaUnits,
+      estimatedQuotaUnits: snapshot.estimatedQuotaUnits,
     });
 
     try {
@@ -1727,7 +2037,7 @@ export function StudioApp() {
           operation: "cloud_video_generation",
           taskId,
           idempotencyKey: taskId,
-          estimatedQuotaUnits,
+          estimatedQuotaUnits: snapshot.estimatedQuotaUnits,
           requestFingerprint,
         }),
       });
@@ -1738,6 +2048,7 @@ export function StudioApp() {
       return;
     }
 
+    updateVideoInFlightState(videoInFlightCountRef.current + 1);
     updateVideoWorkspace({
       loading: true,
       submitError: "",
@@ -1745,47 +2056,50 @@ export function StudioApp() {
     });
     setMobilePreviewSignal((value) => value + 1);
     setMessage("");
+    let keepVideoSlotOccupied = false;
     try {
       const form = new FormData();
-      form.set("providerId", selectedVideoProvider.id);
-      form.set("mode", activeVideoMode);
-      form.set("ratio", videoWorkspace.ratio);
-      form.set("duration", String(videoWorkspace.duration));
-      form.set("prompt", videoWorkspace.prompt);
+      form.set("providerId", snapshot.providerId);
+      form.set("mode", snapshot.mode);
+      form.set("ratio", snapshot.ratio);
+      form.set("duration", String(snapshot.duration));
+      form.set("prompt", snapshot.prompt);
       form.set("taskId", taskId);
       form.set("idempotencyKey", taskId);
-      form.set("estimatedQuotaUnits", String(estimatedQuotaUnits));
-      if (activeVideoMode === "image-to-video") {
-        videoWorkspace.files.forEach((attachment) => form.append("files", attachment.file));
+      form.set("estimatedQuotaUnits", String(snapshot.estimatedQuotaUnits));
+      if (snapshot.mode === "image-to-video") {
+        snapshot.files.forEach((file) => form.append("files", file));
       }
       const data = await fetchJsonWithCsrf<{ item: LibraryItem; job: JobRecord | null }>("/api/generate/video", {
         method: "POST",
         body: form,
       });
+      keepVideoSlotOccupied = Boolean(data.job && data.job.status !== "done" && data.job.status !== "failed");
       updateVideoWorkspace({ job: data.job });
       handleVideoResult(data.item, data.job);
-      await refreshLibrary();
-      await refreshAccountData(sessionUser?.local_user_id || null);
+      await refreshLibraryAfterMutation();
+      await refreshAccountAfterGeneration();
+      updateVideoInFlightState(keepVideoSlotOccupied ? CLIENT_VIDEO_SUBMISSION_LIMIT : videoInFlightCountRef.current - 1);
     } catch (error) {
       const text = error instanceof Error ? error.message : "视频生成失败。";
       updateVideoWorkspace({ submitError: text, submitDiagnostic: diagnosticFromError(error) });
       setMessage(text);
+      updateVideoInFlightState(videoInFlightCountRef.current - 1);
     } finally {
       updateVideoWorkspace({ loading: false });
     }
   }, [
     activeVideoMode,
     handleVideoResult,
-    refreshAccountData,
-    refreshLibrary,
+    refreshAccountAfterGeneration,
+    refreshLibraryAfterMutation,
     selectedVideoProvider,
     selectedVideoModelRequiresFile,
     setMessage,
+    updateVideoInFlightState,
     updateVideoWorkspace,
-    sessionUser?.local_user_id,
     videoWorkspace.duration,
     videoWorkspace.files,
-    videoWorkspace.loading,
     videoWorkspace.prompt,
     videoWorkspace.ratio,
     videoWorkspaceHasFiles,
@@ -1808,6 +2122,7 @@ export function StudioApp() {
           state={imageWorkspace}
           canSubmit={imageWorkspaceCanSubmit}
           estimatedQuotaUnits={imageEstimatedQuotaUnits}
+          costLabel={imageGenerationCostLabel}
           onProviderChange={(value) => updateImageWorkspace({ providerId: value })}
           onRatioChange={(value) => updateImageWorkspace({ ratio: value })}
           onQualityChange={(value) => updateImageWorkspace({ quality: value })}
@@ -1816,6 +2131,7 @@ export function StudioApp() {
           onPromptChange={(value) => updateImageWorkspace({ prompt: value, promptOptimizeError: "", submitError: "" })}
           onPromptOptimize={optimizeImagePrompt}
           onPromptOptimizeUndo={undoImagePromptOptimization}
+          promptOptimizeCostLabel={promptOptimizationCostLabel}
           onFilesChange={replaceImageWorkspaceFiles}
           onFileRemove={removeImageWorkspaceFile}
           onFilesClear={clearImageWorkspaceFiles}
@@ -1835,6 +2151,7 @@ export function StudioApp() {
           state={videoWorkspace}
           canSubmit={videoWorkspaceCanSubmit}
           estimatedQuotaUnits={videoEstimatedQuotaUnits}
+          costLabel={videoGenerationCostLabel}
           onProviderChange={(value) => updateVideoWorkspace({ providerId: value, submitError: "" })}
           onRatioChange={(value) => updateVideoWorkspace({ ratio: value })}
           onDurationChange={(value) => updateVideoWorkspace({ duration: value })}
@@ -1842,6 +2159,7 @@ export function StudioApp() {
           onPromptChange={(value) => updateVideoWorkspace({ prompt: value, promptOptimizeError: "", submitError: "" })}
           onPromptOptimize={optimizeVideoPrompt}
           onPromptOptimizeUndo={undoVideoPromptOptimization}
+          promptOptimizeCostLabel={promptOptimizationCostLabel}
           onFilesChange={replaceVideoWorkspaceFiles}
           onFileRemove={removeVideoWorkspaceFile}
           onFilesClear={clearVideoWorkspaceFiles}
@@ -1857,6 +2175,7 @@ export function StudioApp() {
         <ImageUpscaleForm
           state={imageUpscaleWorkspace}
           canSubmit={imageUpscaleCanSubmit}
+          costLabel={imageUpscaleCostLabel}
           onScaleChange={(value) => updateImageUpscaleWorkspace({ scale: value as "1" | "2" | "4", submitError: "" })}
           onFilesChange={replaceImageUpscaleFile}
           onFileRemove={removeImageUpscaleFile}
@@ -1869,6 +2188,7 @@ export function StudioApp() {
         <VideoUpscaleForm
           state={videoUpscaleWorkspace}
           canSubmit={videoUpscaleCanSubmit}
+          costLabel={videoUpscaleCostLabel}
           onScaleChange={(value) => updateVideoUpscaleWorkspace({ scale: value as "1" | "2" | "4", submitError: "" })}
           onFilesChange={replaceVideoUpscaleFile}
           onFileRemove={removeVideoUpscaleFile}
@@ -1888,7 +2208,7 @@ export function StudioApp() {
         isAuthenticated={Boolean(sessionUser)}
         canAccessAdmin={sessionUser?.role === "admin"}
         accountName={sessionUser?.display_name || sessionUser?.username || null}
-        accountPointsLabel={sessionLoading || accountLoading ? "加载中" : quotaSnapshot ? `${formatQuotaUnits(quotaSnapshot.quota_units)} ✦` : "—"}
+        accountPointsLabel={accountSummaryBusy ? "加载中" : quotaSnapshot ? `${formatQuotaUnits(quotaSnapshot.quota_units)} ✦` : "—"}
         headerRightSlot={accountHeaderSlot}
         accountCloseSignal={accountCloseSignal}
         onOpenAccountCenter={handleOpenAccountCenter}
@@ -1897,7 +2217,7 @@ export function StudioApp() {
           <WorkspaceAccountPanel
             user={sessionUser}
             quota={quotaSnapshot}
-            loading={sessionLoading || accountLoading}
+            loading={accountSummaryBusy}
             accountError={accountDataError}
             accountView={accountCenterOpen ? accountView : undefined}
             planStatus={accountPlanStatus}
@@ -1919,7 +2239,7 @@ export function StudioApp() {
               user={sessionUser}
               quota={quotaSnapshot}
               usage={usagePage}
-              loading={sessionLoading || accountLoading}
+              loading={accountViewLoading}
               billingOrders={billingOrders}
               accountView={accountView}
               planStatus={accountPlanStatus}
@@ -1929,12 +2249,12 @@ export function StudioApp() {
               onCheckInUnavailable={handleCheckInUnavailable}
             />
           ) : activeBusinessTool === "library" ? (
-            <LibraryWorkspace
+            <LibraryPane
               items={currentLibraryItems}
               totalCount={library.length}
               count={libraryCounts}
               selectedItem={selectedLibraryItem}
-              loading={libraryLoading}
+              loading={libraryPanelLoading}
               error={libraryError}
               isAuthenticated={Boolean(sessionUser)}
               filter={libraryFilter}
@@ -1943,15 +2263,18 @@ export function StudioApp() {
               deletingItemId={deletingLibraryItemId}
               removingItemId={removingLibraryItemId}
               missingMediaIds={missingLibraryMediaIds}
+              deleteConfirmItem={libraryDeleteConfirmItem}
               onFilterChange={setLibraryFilter}
               onSortChange={setLibrarySort}
               onSearchChange={setLibrarySearch}
               onSelectItem={setSelectedLibraryItemId}
               onDelete={handleRequestDeleteLibraryItem}
-              onRefresh={refreshLibrary}
+              onRefresh={() => refreshLibrary({ force: true })}
               onMediaMissing={markLibraryMediaMissing}
               onLogin={() => router.push("/login")}
               onStartCreate={() => setActiveWorkspaceToolId("image")}
+              onCancelDelete={handleCancelDeleteLibraryItem}
+              onConfirmDelete={() => void handleConfirmDeleteLibraryItem()}
             />
           ) : (
             activeBusinessTool === "image" ? (
@@ -1959,6 +2282,7 @@ export function StudioApp() {
                 mode={activeImageMode}
                 output={activeOutput}
                 loading={imageWorkspace.loading}
+                canSubmit={imageWorkspaceCanSubmit}
                 submitError={imageWorkspace.submitError}
                 submitDiagnostic={imageWorkspace.submitDiagnostic}
                 isEditor={activeWorkspaceToolId === "image-editor"}
@@ -1974,6 +2298,7 @@ export function StudioApp() {
                 mode={activeVideoMode}
                 output={activeOutput}
                 loading={videoWorkspace.loading}
+                canSubmit={videoWorkspaceCanSubmit}
                 submitError={videoWorkspace.submitError}
                 submitDiagnostic={videoWorkspace.submitDiagnostic}
                 promptFilled={Boolean(videoWorkspacePrompt)}
@@ -2004,18 +2329,12 @@ export function StudioApp() {
         }
         mobileActionSlot={mobileAction ? <MobileActionBar {...mobileAction} /> : null}
       />
-      <LibraryDeleteConfirmDialog
-        item={libraryDeleteConfirmItem}
-        deleting={Boolean(libraryDeleteConfirmItem && deletingLibraryItemId === libraryDeleteConfirmItem.id)}
-        onCancel={handleCancelDeleteLibraryItem}
-        onConfirm={() => void handleConfirmDeleteLibraryItem()}
-      />
-      {imageGenerationProgress ? (
+      {imageGenerationProgress.length ? (
         <ImageGenerationProgressToast
           progress={imageGenerationProgress}
           tick={generationProgressTick}
           stacked={Boolean(message)}
-          onClose={() => setImageGenerationProgress(null)}
+          onClose={closeImageGenerationProgress}
         />
       ) : null}
       {message ? <Toast message={message} onClose={() => setMessage("")} /> : null}
@@ -2918,8 +3237,8 @@ function usageOperationLabel(operation: UsageLogEntry["operation"]) {
   const labels: Record<UsageLogEntry["operation"], string> = {
     cloud_image_generation: "AI 图像生成器",
     cloud_video_generation: "AI 视频生成器",
-    cloud_image_upscale: "图片高清",
-    cloud_video_upscale: "视频高清",
+    cloud_image_upscale: "图片高清增强",
+    cloud_video_upscale: "视频高清增强",
   };
   return labels[operation] || "AI 工具";
 }
@@ -2928,8 +3247,8 @@ function usageDescription(entry: UsageLogEntry) {
   const descriptions: Record<UsageLogEntry["operation"], string> = {
     cloud_image_generation: "生成图片",
     cloud_video_generation: "生成视频",
-    cloud_image_upscale: "图片高清处理",
-    cloud_video_upscale: "视频高清处理",
+    cloud_image_upscale: "图片高清增强处理",
+    cloud_video_upscale: "视频高清增强处理",
   };
   if (entry.status === "failed") return `${descriptions[entry.operation] || "工具处理"}失败`;
   if (entry.status === "refunded") return `${descriptions[entry.operation] || "工具处理"}已退回额度`;

@@ -11,7 +11,9 @@ import {
   updateLibraryItem,
 } from "./library";
 import { codeForUpstreamStatus, GenerationDiagnosticError } from "./error-diagnostics";
+import { assertFileFormatAllowed, assertFileSizeAllowed, publicUploadLimits } from "./media-upload-guard";
 import { providerById } from "./providers";
+import { assertStorageAllows } from "./storage-capacity";
 import { type JobRecord, type ProviderConfig } from "./types";
 
 export type UploadedUpscaleFile = {
@@ -281,17 +283,17 @@ function videoConfig(provider: ProviderConfig | null) {
 }
 
 function providerReady(provider: ProviderConfig | null, kind: "image" | "video") {
-  if (!provider?.enabled) return { ready: false, detail: kind === "image" ? "图片高清供应商未启用。" : "视频高清供应商未启用。" };
+  if (!provider?.enabled) return { ready: false, detail: kind === "image" ? "图片高清增强供应商未启用。" : "视频高清增强供应商未启用。" };
   if (kind === "image") {
     const config = imageConfig(provider);
-    if (!config.credential) return { ready: false, detail: "图片高清缺少火山 AK/SK，请在后台 API Key 填 AK:SK。" };
-    if (!config.serviceId) return { ready: false, detail: "图片高清缺少 ImageX ServiceId，请填在模型字段或 VOLCENGINE_IMAGEX_SERVICE_ID。" };
-    return { ready: true, detail: "火山 ImageX 图片高清已配置。" };
+    if (!config.credential) return { ready: false, detail: "图片高清增强缺少火山 AK/SK，请在后台 API Key 填 AK:SK。" };
+    if (!config.serviceId) return { ready: false, detail: "图片高清增强缺少 ImageX ServiceId，请填在模型字段或 VOLCENGINE_IMAGEX_SERVICE_ID。" };
+    return { ready: true, detail: "火山 ImageX 图片高清增强已配置。" };
   }
   const config = videoConfig(provider);
-  if (!config.credential) return { ready: false, detail: "视频高清缺少火山 AK/SK，请在后台 API Key 填 AK:SK。" };
-  if (!config.spaceName) return { ready: false, detail: "视频高清缺少 VOD SpaceName，请填在模型字段或 VOLCENGINE_VOD_SPACE_NAME。" };
-  return { ready: true, detail: "火山 VOD 视频高清已配置。" };
+  if (!config.credential) return { ready: false, detail: "视频高清增强缺少火山 AK/SK，请在后台 API Key 填 AK:SK。" };
+  if (!config.spaceName) return { ready: false, detail: "视频高清增强缺少 VOD SpaceName，请填在模型字段或 VOLCENGINE_VOD_SPACE_NAME。" };
+  return { ready: true, detail: "火山 VOD 视频高清增强已配置。" };
 }
 
 export async function readUpscaleStatus() {
@@ -302,6 +304,10 @@ export async function readUpscaleStatus() {
   return {
     image: providerReady(imageProvider, "image"),
     video: providerReady(videoProvider, "video"),
+    uploadLimits: {
+      imageUpscale: publicUploadLimits().imageUpscale,
+      videoUpscale: publicUploadLimits().videoUpscale,
+    },
   };
 }
 
@@ -444,6 +450,7 @@ async function imageResourceUrl(objectKey: string, config: ReturnType<typeof ima
 }
 
 export async function upscaleImage(file: UploadedUpscaleFile, scale: TargetScale, ownerLocalUserId?: string | null) {
+  await assertStorageAllows("image-upscale");
   const provider = await providerById("image-upscale");
   const status = providerReady(provider, "image");
   if (!provider) throw new GenerationDiagnosticError({ code: "PROVIDER_NOT_CONFIGURED" });
@@ -497,7 +504,7 @@ export async function upscaleImage(file: UploadedUpscaleFile, scale: TargetScale
     ownerLocalUserId: ownerLocalUserId || null,
     type: "image",
     mode: "image-upscale",
-    title: `图片高清 ${targetLabel(scale)}`,
+    title: `图片高清增强 ${targetLabel(scale)}`,
     prompt: file.fileName,
     providerId: provider.id,
     model: provider.model,
@@ -580,6 +587,7 @@ async function uploadVideoToVod(file: UploadedUpscaleFile, config: ReturnType<ty
 }
 
 export async function submitVideoUpscale(file: UploadedUpscaleFile, scale: TargetScale, ownerLocalUserId?: string | null) {
+  await assertStorageAllows("video-upscale", { fresh: true });
   const provider = await providerById("video-upscale");
   const status = providerReady(provider, "video");
   if (!provider) throw new GenerationDiagnosticError({ code: "PROVIDER_NOT_CONFIGURED" });
@@ -625,12 +633,12 @@ export async function submitVideoUpscale(file: UploadedUpscaleFile, scale: Targe
     },
   });
   const runId = start.Result?.RunId;
-  if (!runId) throw new Error("火山 VOD 未返回视频高清任务 RunId。");
+  if (!runId) throw new Error("火山 VOD 未返回视频高清增强任务 RunId。");
   const item = await addLibraryItem({
     ownerLocalUserId: ownerLocalUserId || null,
     type: "video",
     mode: "video-upscale",
-    title: `视频高清 ${targetLabel(scale)}`,
+    title: `视频高清增强 ${targetLabel(scale)}`,
     prompt: file.fileName,
     providerId: provider.id,
     model: provider.model,
@@ -742,7 +750,7 @@ export async function refreshVideoUpscaleJob(jobId: string, localUserId?: string
     const output = findVideoOutputFile(result);
     const outputUrl = output?.url || fileUrlFromStoreUri(output?.storeUri || "", config.outputDomain);
     if (!outputUrl) {
-      const message = "视频高清已完成，但缺少可下载结果地址。请配置 VOLCENGINE_VOD_OUTPUT_DOMAIN 或使用 VOD 播放地址接口。";
+      const message = "视频高清增强已完成，但缺少可下载结果地址。请配置 VOLCENGINE_VOD_OUTPUT_DOMAIN 或使用 VOD 播放地址接口。";
       await updateLibraryItem(job.libraryItemId, { status: "failed", error: message });
       return await updateJob(job.id, { status: "failed", error: message }) || job;
     }
@@ -764,7 +772,7 @@ export async function refreshVideoUpscaleJob(jobId: string, localUserId?: string
     return await updateJob(job.id, { status: "done", sourceUrl: outputUrl }) || job;
   }
   if (status === "failed") {
-    const message = firstString(result.Code, asRecord(result).Message) || "视频高清任务失败。";
+    const message = firstString(result.Code, asRecord(result).Message) || "视频高清增强任务失败。";
     await updateLibraryItem(job.libraryItemId, { status: "failed", error: message });
     return await updateJob(job.id, { status: "failed", error: message }) || job;
   }
@@ -778,25 +786,15 @@ export async function uploadedUpscaleFile(
 ): Promise<UploadedUpscaleFile> {
   const value = form.get("file");
   if (!(value instanceof File) || value.size === 0) throw new GenerationDiagnosticError({ code: "UPLOAD_NOT_FOUND" });
-  const allowed = kind === "image"
-    ? new Set(["image/png", "image/jpeg", "image/webp"])
-    : new Set(["video/mp4", "video/webm", "video/quicktime"]);
-  if (!allowed.has(value.type)) {
-    throw new GenerationDiagnosticError({
-      code: "INPUT_UNSUPPORTED_FORMAT",
-      safeDetails: { kind, mimeType: value.type },
-    });
+  const uploadKind = kind === "image" ? "image-upscale" : "video-upscale";
+  assertFileSizeAllowed(value, uploadKind);
+  if (kind === "video") {
+    await assertStorageAllows("video-upload", { fresh: true });
   }
-  const limit = kind === "image" ? 10 * 1024 * 1024 : 1024 * 1024 * 1024;
-  if (value.size > limit) {
-    throw new GenerationDiagnosticError({
-      code: "INPUT_FILE_TOO_LARGE",
-      safeDetails: { kind, size: value.size, limit },
-    });
-  }
+  const mimeType = await assertFileFormatAllowed(value, uploadKind);
   return {
     bytes: Buffer.from(await value.arrayBuffer()),
-    mimeType: value.type,
+    mimeType,
     fileName: value.name || (kind === "image" ? "image.png" : "video.mp4"),
   };
 }

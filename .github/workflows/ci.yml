@@ -147,6 +147,32 @@ jobs:
       - name: Build
         run: npm run build
 
+      - name: Install Nginx
+        run: sudo apt-get update && sudo apt-get install -y nginx openssl
+
+      - name: Nginx template syntax check
+        run: |
+          mkdir -p .tmp/nginx-test/conf.d .tmp/nginx-test/certs .tmp/nginx-test/www
+          openssl req -x509 -nodes -newkey rsa:2048 -days 1 \
+            -keyout .tmp/nginx-test/certs/key.pem \
+            -out .tmp/nginx-test/certs/cert.pem \
+            -subj "/CN=aohuang.example.com"
+          sed "s#/etc/letsencrypt/live/aohuang.example.com/fullchain.pem#$(pwd)/.tmp/nginx-test/certs/cert.pem#g; s#/etc/letsencrypt/live/aohuang.example.com/privkey.pem#$(pwd)/.tmp/nginx-test/certs/key.pem#g; s#listen 80;#listen 18080;#g; s#listen \\[::\\]:80;#listen [::]:18080;#g; s#listen 443 ssl http2;#listen 18443 ssl http2;#g; s#listen \\[::\\]:443 ssl http2;#listen [::]:18443 ssl http2;#g" deploy/linux/nginx-site.conf.example > .tmp/nginx-test/site.conf
+          cat > .tmp/nginx-test/nginx.conf <<'EOF'
+          pid __ROOT__/.tmp/nginx-test/nginx.pid;
+          error_log stderr notice;
+          events {}
+          http {
+              include /etc/nginx/mime.types;
+              default_type application/octet-stream;
+              access_log __ROOT__/.tmp/nginx-test/access.log;
+              include __ROOT__/deploy/linux/nginx-limits.conf.example;
+              include __ROOT__/.tmp/nginx-test/site.conf;
+          }
+          EOF
+          sed -i "s#__ROOT__#$(pwd)#g" .tmp/nginx-test/nginx.conf
+          nginx -t -p "$(pwd)/.tmp/nginx-test" -c "$(pwd)/.tmp/nginx-test/nginx.conf"
+
       - name: Staging smoke
         run: npm run test:staging-smoke
         env:

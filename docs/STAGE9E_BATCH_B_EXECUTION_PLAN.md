@@ -1,3 +1,5 @@
+> Historical planning snapshot. This file records earlier 3107 database planning and does not describe the current 3106 server deployment.
+
 # Stage 9E Batch B Execution Plan
 
 Stage 9E Batch B is a planning and gated execution lane for staging-only backup, restore verification, migration, real uploads inventory dry-run, and DB/file consistency checks.
@@ -29,7 +31,7 @@ Every execution command in this document is a placeholder. Replace placeholders 
 
 Before any Batch B sub-stage is authorized, re-confirm:
 
-- [ ] worktree is `E:\codex工作台\p003\new-jiemian-3107`
+- [ ] worktree is `<local-3107-worktree>`
 - [ ] current branch is the approved execution branch or `main` as specified by the authorization
 - [ ] `main` and `origin/main` are aligned with the latest approved commit
 - [ ] worktree is clean
