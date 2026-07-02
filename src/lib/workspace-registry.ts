@@ -109,7 +109,7 @@ export const workspaceToolEntries: WorkspaceToolEntry[] = [
   },
   {
     id: "image-upscale",
-    label: "图片高清",
+    label: "图片高清增强",
     description: "放大图片清晰度",
     icon: ImageIcon,
     secondaryIcon: ImageUp,
@@ -120,7 +120,7 @@ export const workspaceToolEntries: WorkspaceToolEntry[] = [
   },
   {
     id: "video-upscale",
-    label: "视频高清",
+    label: "视频高清增强",
     description: "放大视频清晰度",
     icon: Film,
     secondaryIcon: TrendingUp,

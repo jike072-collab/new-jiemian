@@ -189,6 +189,7 @@ function buildManagedEnv(port, dataDir, uploadsDir) {
     ...process.env,
     PORT: String(port),
     STAGING_PORT: String(port),
+    STAGING_SMOKE_PORT: String(port),
     AOHUANG_ALLOW_RUNTIME_DIR_OVERRIDE: "1",
     RUNTIME_STORAGE_ISOLATION: "strict",
     DATA_DIR: dataDir,

@@ -1,5 +1,7 @@
 #!/usr/bin/env node
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 
 import {
   assertNoForbiddenRequests,
@@ -10,18 +12,22 @@ import {
   withStudioTestTarget,
 } from "./studio-ui-test-utils.mjs";
 
+const root = process.cwd();
 const requiredRuntimeTokens = [
   "reference-image-input",
-  "video-first-frame-input",
-  "image-upscale-input",
-  "video-upscale-input",
-  "library-search",
-  "studio-library-confirm",
   "studio-error-text",
   "studio-preview",
   "studio-primary-action",
   "studio-secondary-button",
-  "studio-danger-button",
+];
+
+const lazyPanelSourceTokens = [
+  ["src/components/studio/video-generator.tsx", "video-first-frame-input"],
+  ["src/components/studio/upscale-form.tsx", "image-upscale-input"],
+  ["src/components/studio/upscale-form.tsx", "video-upscale-input"],
+  ["src/components/studio/library-view.tsx", "library-search"],
+  ["src/components/studio/library-view.tsx", "studio-library-confirm"],
+  ["src/components/studio/library-view.tsx", "studio-danger-button"],
 ];
 
 const allowedAdminStatuses = [200, 302, 303, 307, 308, 401, 403];
@@ -90,6 +96,9 @@ async function runRuntimeRegressionChecks() {
     }
     for (const token of requiredRuntimeTokens) {
       assert(corpus.includes(token), `runtime corpus contains ${token}`);
+    }
+    for (const [file, token] of lazyPanelSourceTokens) {
+      assert(readFileSync(join(root, file), "utf8").includes(token), `lazy panel source contains ${token}`);
     }
 
     assertNoForbiddenRequests(requests);
