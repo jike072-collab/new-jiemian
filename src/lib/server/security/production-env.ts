@@ -493,8 +493,16 @@ export function validateLocalStagingRuntimeEnv(
 ): RuntimeEnvironmentReport {
   const issues: RuntimeEnvironmentIssue[] = [];
   checkNode24(issues, options);
-  if (value(env, "PORT") !== "3107") {
-    issue(issues, "PORT", "must be 3107 for local staging.");
+  const smokePort = value(env, "STAGING_SMOKE_PORT");
+  const expectedPort = smokePort || "3107";
+  if (value(env, "PORT") !== expectedPort) {
+    issue(
+      issues,
+      "PORT",
+      expectedPort === "3107"
+        ? "must be 3107 for local staging."
+        : `must match STAGING_SMOKE_PORT (${expectedPort}) for local staging.`,
+    );
   }
   checkStagingPath(issues, env, "DATA_DIR");
   checkStagingPath(issues, env, "UPLOADS_DIR");
@@ -507,7 +515,9 @@ export function validateLocalStagingRuntimeEnv(
 }
 
 export function releaseRuntimeTarget(env: RuntimeEnv = process.env): RuntimeEnvironmentTarget {
-  return value(env, "PORT") === "3107" ? "local-staging" : "production";
+  const port = value(env, "PORT");
+  const smokePort = value(env, "STAGING_SMOKE_PORT");
+  return port === "3107" || (smokePort && port === smokePort) ? "local-staging" : "production";
 }
 
 export function validateReleaseRuntimeEnv(

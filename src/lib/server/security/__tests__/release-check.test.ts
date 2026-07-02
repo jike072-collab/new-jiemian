@@ -203,6 +203,16 @@ test("local staging env check requires 3107 and isolated staging dirs only", () 
   assert(failed.issues.some((entry) => entry.variable === "UPLOADS_DIR"));
 });
 
+test("local staging env check accepts staging smoke temporary ports", () => {
+  const report = validateLocalStagingRuntimeEnv({
+    PORT: "43107",
+    STAGING_SMOKE_PORT: "43107",
+    DATA_DIR: "data-staging",
+    UPLOADS_DIR: "uploads-staging",
+  }, { nodeVersion: "24.16.0" });
+  assert.equal(report.ok, true);
+});
+
 test("production release checks reject json and dual persistence modes", async () => {
   for (const patch of [
     { APP_AUTH_PERSISTENCE_MODE: "json" },
