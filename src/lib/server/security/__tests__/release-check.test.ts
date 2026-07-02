@@ -163,6 +163,25 @@ test("production env check rejects unsafe Windows service storage", () => {
   assert(nested.issues.some((entry) => entry.variable === "DATA_DIR/UPLOADS_DIR"));
 });
 
+test("production env check allows release validation scratch paths only with internal flag", () => {
+  const validationEnv = {
+    ...productionEnv,
+    AOHUANG_RUNTIME_STORAGE_PLATFORM: "win32",
+    DATA_DIR: "C:\\srv\\new-jiemian\\.runtime\\release-smoke\\candidate\\data",
+    UPLOADS_DIR: "C:\\srv\\new-jiemian\\.runtime\\release-smoke\\candidate\\uploads",
+    RUNTIME_DIR: "C:\\srv\\new-jiemian\\.runtime\\release-worktrees\\candidate\\.runtime",
+  };
+  const withoutFlag = validateProductionRuntimeEnv(validationEnv, { nodeVersion: "24.16.0" });
+  assert.equal(withoutFlag.ok, false);
+  assert(withoutFlag.issues.some((entry) => entry.variable === "DATA_DIR"));
+
+  const withFlag = validateProductionRuntimeEnv({
+    ...validationEnv,
+    AOHUANG_RELEASE_VALIDATION: "1",
+  }, { nodeVersion: "24.16.0" });
+  assert.equal(withFlag.ok, true);
+});
+
 test("production env check rejects database library read mode until owner mapping is complete", () => {
   expectProductionIssue({
     LIBRARY_STORAGE_BACKEND: "database",

@@ -206,6 +206,7 @@ test("candidate verification data and uploads are outside release artifact", asy
 
     assert.equal(env.DATA_DIR, join(scratchRoot, "data"));
     assert.equal(env.UPLOADS_DIR, join(scratchRoot, "uploads"));
+    assert.equal(env.AOHUANG_RELEASE_VALIDATION, "1");
     assert.equal(resolve(env.DATA_DIR).startsWith(resolve(releaseDir)), false);
     assert.equal(resolve(env.UPLOADS_DIR).startsWith(resolve(releaseDir)), false);
   });
@@ -224,6 +225,7 @@ test("non-runtime validation checks do not inherit scratch data overrides", asyn
 
     assert.equal(env.DATA_DIR, undefined);
     assert.equal(env.UPLOADS_DIR, undefined);
+    assert.equal(env.AOHUANG_RELEASE_VALIDATION, undefined);
     assert.equal(env.AOHUANG_ALLOW_RUNTIME_DIR_OVERRIDE, undefined);
     assert.equal(env.RUNTIME_STORAGE_ISOLATION, undefined);
   });

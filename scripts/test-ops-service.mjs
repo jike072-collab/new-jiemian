@@ -1497,6 +1497,7 @@ test("release candidate validation uses scratch data outside the artifact", asyn
     }, scratchRoot, { includeRuntimeConfig: true });
     assert.equal(env.DATA_DIR, join(scratchRoot, "data"));
     assert.equal(env.UPLOADS_DIR, join(scratchRoot, "uploads"));
+    assert.equal(env.AOHUANG_RELEASE_VALIDATION, "1");
     assert.equal(resolve(env.DATA_DIR).startsWith(resolve(candidateRoot)), false);
     assert.equal(resolve(env.UPLOADS_DIR).startsWith(resolve(candidateRoot)), false);
   });

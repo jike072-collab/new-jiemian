@@ -220,6 +220,7 @@ export function buildReleaseCandidateVerificationEnv(baseEnv, scratchRoot, optio
   return {
     ...env,
     AOHUANG_ALLOW_RUNTIME_DIR_OVERRIDE: "1",
+    AOHUANG_RELEASE_VALIDATION: "1",
     RUNTIME_STORAGE_ISOLATION: "strict",
     DATA_DIR: join(scratchRoot, "data"),
     UPLOADS_DIR: join(scratchRoot, "uploads"),
