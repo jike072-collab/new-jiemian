@@ -160,10 +160,12 @@ jobs:
           sed "s#/etc/letsencrypt/live/aohuang.example.com/fullchain.pem#$(pwd)/.tmp/nginx-test/certs/cert.pem#g; s#/etc/letsencrypt/live/aohuang.example.com/privkey.pem#$(pwd)/.tmp/nginx-test/certs/key.pem#g" deploy/linux/nginx-site.conf.example > .tmp/nginx-test/site.conf
           cat > .tmp/nginx-test/nginx.conf <<'EOF'
           pid __ROOT__/.tmp/nginx-test/nginx.pid;
+          error_log stderr notice;
           events {}
           http {
               include /etc/nginx/mime.types;
               default_type application/octet-stream;
+              access_log __ROOT__/.tmp/nginx-test/access.log;
               include __ROOT__/deploy/linux/nginx-limits.conf.example;
               include __ROOT__/.tmp/nginx-test/site.conf;
           }
