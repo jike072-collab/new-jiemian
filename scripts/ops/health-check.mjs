@@ -16,7 +16,8 @@ export async function checkServiceHealth(service, options = {}) {
   const library = await fetchStatus(`http://${host}:${config.port}/api/library`, timeoutMs);
   const admin = await fetchStatus(`http://${host}:${config.port}/admin/providers`, timeoutMs, "manual");
   const failures = checks.filter((status) => status !== 200).length;
-  const ok = failures === 0 && home < 500 && login < 500 && library === 200 && [200, 302, 303, 307, 308, 401, 403].includes(admin);
+  const libraryOk = [200, 401].includes(library);
+  const ok = failures === 0 && home < 500 && login < 500 && libraryOk && [200, 302, 303, 307, 308, 401, 403].includes(admin);
   return {
     service,
     port: config.port,
