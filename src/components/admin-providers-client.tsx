@@ -148,8 +148,8 @@ const modelLabels: Record<ModelKind, string> = {
   image: "图片生成",
   imageEdit: "图片编辑",
   video: "视频生成",
-  imageUpscale: "图片高清",
-  videoUpscale: "视频高清",
+  imageUpscale: "图片高清增强",
+  videoUpscale: "视频高清增强",
 };
 
 function healthStatusLabel(status: HealthStatus) {
