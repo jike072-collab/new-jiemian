@@ -2142,10 +2142,25 @@
       var(--panel);
   }
 
+  .template-center-card__thumb::after {
+    content: "";
+    position: absolute;
+    inset: auto 0 0;
+    z-index: 1;
+    height: 38%;
+    background: linear-gradient(
+      180deg,
+      transparent,
+      color-mix(in srgb, var(--background) 64%, transparent)
+    );
+    pointer-events: none;
+  }
+
   .template-center-card__thumb img {
     width: 100%;
     height: 100%;
-    object-fit: cover;
+    display: block;
+    object-fit: contain;
   }
 
   .template-center-card__ratio {
@@ -2159,11 +2174,12 @@
     line-height: 1;
     padding: 5px 7px;
     backdrop-filter: blur(10px);
+    z-index: 2;
   }
 
   .template-center-card__body {
     display: grid;
-    grid-template-rows: 20px 42px auto;
+    grid-template-rows: 20px 18px auto;
     gap: 6px;
     min-width: 0;
     align-content: start;
@@ -2179,13 +2195,13 @@
   }
 
   .template-center-card__body small {
-    display: -webkit-box;
+    display: block;
     overflow: hidden;
     color: var(--muted);
     font-size: 12px;
     line-height: 1.45;
-    -webkit-box-orient: vertical;
-    -webkit-line-clamp: 2;
+    text-overflow: ellipsis;
+    white-space: nowrap;
   }
 
   .template-center-card__meta {
@@ -2959,7 +2975,7 @@
     }
 
     .shell-root--tool-templates .template-center-card {
-      grid-template-rows: auto minmax(78px, auto) 36px;
+      grid-template-rows: auto minmax(72px, auto) 36px;
       gap: 8px;
       padding: 8px;
     }
@@ -2969,7 +2985,7 @@
     }
 
     .shell-root--tool-templates .template-center-card__body {
-      grid-template-rows: 20px 34px 22px;
+      grid-template-rows: 20px 18px 22px;
       gap: 5px;
     }
 
@@ -3212,7 +3228,7 @@
   }
 
   .shell-root--tool-templates .template-center-card {
-    grid-template-rows: auto minmax(98px, auto) 40px;
+    grid-template-rows: auto minmax(72px, auto) 40px;
     gap: 10px;
     align-self: start;
     height: auto;
@@ -3243,6 +3259,11 @@
     background: #101014;
   }
 
+  .shell-root--tool-templates .template-center-card__thumb::after {
+    height: 36%;
+    background: linear-gradient(180deg, transparent, rgba(8, 8, 12, 0.72));
+  }
+
   .shell-root--tool-templates .template-center-card__thumb img {
     transition:
       transform var(--motion-layout) var(--ease-enter),
@@ -3267,7 +3288,7 @@
   }
 
   .shell-root--tool-templates .template-center-card__body {
-    grid-template-rows: 22px 38px 24px;
+    grid-template-rows: 22px 19px 24px;
     gap: 7px;
   }
 
@@ -9879,7 +9900,7 @@
   }
 
   .shell-panel--mobile-single .template-center-card {
-    grid-template-rows: auto minmax(70px, auto) 34px;
+    grid-template-rows: auto minmax(58px, auto) 34px;
     gap: 8px;
     border-radius: 11px;
     padding: 8px;
@@ -9897,7 +9918,7 @@
   }
 
   .shell-panel--mobile-single .template-center-card__body {
-    grid-template-rows: 19px 34px 22px;
+    grid-template-rows: 19px 16px 22px;
     gap: 5px;
   }
 

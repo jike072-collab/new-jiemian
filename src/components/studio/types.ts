@@ -74,6 +74,7 @@ export type ImageWorkspaceState = {
   fileError: string;
   submitError: string;
   submitDiagnostic?: StudioErrorDiagnostic | null;
+  inFlightCount: number;
   loading: boolean;
 };
 
@@ -95,18 +96,22 @@ export type VideoWorkspaceState = {
   fileError: string;
   submitError: string;
   submitDiagnostic?: StudioErrorDiagnostic | null;
+  inFlightCount: number;
   loading: boolean;
   job: JobRecord | null;
 };
 
-export type ImageGenerationProgressState = {
+export type ImageGenerationProgressItem = {
+  id: string;
   status: "running" | "done" | "failed";
   current: number;
   total: number;
   startedAt: number;
   completedAt?: number;
   message?: string;
-} | null;
+};
+
+export type ImageGenerationProgressState = ImageGenerationProgressItem[];
 
 export type ImageUpscaleWorkspaceFile = {
   file: File;

@@ -22,6 +22,7 @@ import type {
 export function ImageUpscaleForm({
   state,
   canSubmit,
+  costLabel,
   onScaleChange,
   onFilesChange,
   onFileRemove,
@@ -31,6 +32,7 @@ export function ImageUpscaleForm({
 }: {
   state: ImageUpscaleWorkspaceState;
   canSubmit: boolean;
+  costLabel?: string;
   onScaleChange: (value: string) => void;
   onFilesChange: (files: File[]) => void;
   onFileRemove: () => void;
@@ -45,12 +47,13 @@ export function ImageUpscaleForm({
   useEffect(() => {
     registerMobileAction({
       label: state.loading ? "正在增强" : "开始增强",
+      costLabel,
       loading: state.loading,
       disabled: !canSubmit,
       onClick: onSubmit,
     });
     return () => registerMobileAction(null);
-  }, [canSubmit, onSubmit, registerMobileAction, state.loading]);
+  }, [canSubmit, costLabel, onSubmit, registerMobileAction, state.loading]);
 
   return (
     <FormPanel>
@@ -94,7 +97,7 @@ export function ImageUpscaleForm({
       <StudioErrorAlert message={state.submitError} diagnostic={state.submitDiagnostic} />
 
       <StickyPrimaryAction>
-        <SubmitButton disabled={!canSubmit} loading={state.loading} loadingLabel="正在增强" onClick={onSubmit}>
+        <SubmitButton disabled={!canSubmit} loading={state.loading} loadingLabel="正在增强" costLabel={costLabel} onClick={onSubmit}>
           开始增强
         </SubmitButton>
       </StickyPrimaryAction>
@@ -105,6 +108,7 @@ export function ImageUpscaleForm({
 export function VideoUpscaleForm({
   state,
   canSubmit,
+  costLabel,
   onScaleChange,
   onFilesChange,
   onFileRemove,
@@ -114,6 +118,7 @@ export function VideoUpscaleForm({
 }: {
   state: VideoUpscaleWorkspaceState;
   canSubmit: boolean;
+  costLabel?: string;
   onScaleChange: (value: string) => void;
   onFilesChange: (files: File[]) => void;
   onFileRemove: () => void;
@@ -129,12 +134,13 @@ export function VideoUpscaleForm({
   useEffect(() => {
     registerMobileAction({
       label: processing ? "正在增强" : "开始增强",
+      costLabel,
       loading: processing,
       disabled: !canSubmit || processing,
       onClick: onSubmit,
     });
     return () => registerMobileAction(null);
-  }, [canSubmit, onSubmit, processing, registerMobileAction]);
+  }, [canSubmit, costLabel, onSubmit, processing, registerMobileAction]);
 
   return (
     <FormPanel>
@@ -183,7 +189,7 @@ export function VideoUpscaleForm({
       <StudioErrorAlert message={state.submitError} diagnostic={state.submitDiagnostic} />
 
       <StickyPrimaryAction>
-        <SubmitButton disabled={!canSubmit || processing} loading={processing} loadingLabel="正在增强" onClick={onSubmit}>
+        <SubmitButton disabled={!canSubmit || processing} loading={processing} loadingLabel="正在增强" costLabel={costLabel} onClick={onSubmit}>
           开始增强
         </SubmitButton>
       </StickyPrimaryAction>

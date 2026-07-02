@@ -7,7 +7,7 @@ import { AUTH_SESSION_COOKIE, getAuthService } from "@/lib/server/auth";
 export default async function AdminProvidersPage() {
   const sessionToken = (await cookies()).get(AUTH_SESSION_COOKIE)?.value || null;
   if (!sessionToken) {
-    redirect("/?preview=1");
+    redirect("/login");
   }
 
   let canAccessAdmin = false;
@@ -17,7 +17,7 @@ export default async function AdminProvidersPage() {
   } catch {
     canAccessAdmin = false;
   }
-  if (!canAccessAdmin) redirect("/?preview=1");
+  if (!canAccessAdmin) redirect("/login");
 
   return <AdminProvidersClient />;
 }

@@ -2,7 +2,7 @@
 
 /* eslint-disable @next/next/no-img-element */
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { AlertTriangle, Check, Loader2, UploadCloud, X } from "lucide-react";
 
 import { BeforeAfterImageCompare } from "@/components/before-after-image-compare";
@@ -188,7 +188,7 @@ const toolTutorials: Record<ToolTutorialKind, {
     ],
   },
   "image-upscale": {
-    title: "图片高清增强快速教程",
+    title: "图片高清快速教程",
     description: "上传图片，选择倍数，再下载高清结果。",
     sections: [
       {
@@ -197,7 +197,7 @@ const toolTutorials: Record<ToolTutorialKind, {
         mediaSide: "left",
         visualClassName: "is-upload-stack",
         layers: [
-          { src: "/tutorials/image-upscale/upload.svg", alt: "图片高清增强上传框", className: "is-upload-base" },
+          { src: "/tutorials/image-upscale/upload.svg", alt: "图片高清上传框", className: "is-upload-base" },
           { src: "/tutorials/image-upscale/source.svg", alt: "待高清处理原图", className: "is-upload-front is-tilt-left" },
         ],
       },
@@ -207,7 +207,7 @@ const toolTutorials: Record<ToolTutorialKind, {
         mediaSide: "right",
         visualClassName: "is-detail",
         layers: [
-          { src: "/tutorials/image-upscale/main.svg", alt: "图片高清增强主图", className: "is-main" },
+          { src: "/tutorials/image-upscale/main.svg", alt: "图片高清主图", className: "is-main" },
           { src: "/tutorials/image-upscale/detail-low.svg", alt: "原始细节示意", className: "is-detail-left is-tilt-soft-left" },
           { src: "/tutorials/image-upscale/detail-high.svg", alt: "高清细节示意", className: "is-detail-right is-tilt-soft-right" },
         ],
@@ -229,7 +229,7 @@ const toolTutorials: Record<ToolTutorialKind, {
     ],
   },
   "video-upscale": {
-    title: "视频高清增强快速教程",
+    title: "视频高清快速教程",
     description: "上传视频，选择规格，再播放和下载高清结果。",
     sections: [
       {
@@ -238,7 +238,7 @@ const toolTutorials: Record<ToolTutorialKind, {
         mediaSide: "left",
         visualClassName: "is-upload-stack",
         layers: [
-          { src: "/tutorials/video-upscale/upload.svg", alt: "视频高清增强上传框", className: "is-upload-base" },
+          { src: "/tutorials/video-upscale/upload.svg", alt: "视频高清上传框", className: "is-upload-base" },
           { src: "/tutorials/video-upscale/cover.svg", alt: "待处理视频封面", className: "is-upload-front is-tilt-left" },
         ],
         tags: [{ text: "播放", className: "is-action-left" }],
@@ -992,7 +992,7 @@ export function ImageUpscalePreviewPanel({
             <img src={output.item.output.url} alt={output.item.title} />
           </figure>
         )}
-        <dl className="studio-upscale-stats" aria-label="图片高清增强结果信息">
+        <dl className="studio-upscale-stats" aria-label="图片高清结果信息">
           <div>
             <dt>原图尺寸</dt>
             <dd>{sourceSize}</dd>
@@ -1077,7 +1077,7 @@ export function VideoUpscalePreviewPanel({
             <video src={output.item.output.url} controls />
           </figure>
         )}
-        <dl className="studio-upscale-stats" aria-label="视频高清增强结果信息">
+        <dl className="studio-upscale-stats" aria-label="视频高清结果信息">
           <div>
             <dt>原视频分辨率</dt>
             <dd>{sourceSize}</dd>
@@ -1110,6 +1110,7 @@ export function ImagePreviewPanel({
   mode,
   output,
   loading,
+  canSubmit,
   submitError,
   submitDiagnostic,
   isEditor,
@@ -1123,6 +1124,7 @@ export function ImagePreviewPanel({
   mode: WorkspaceImageMode;
   output: OutputState;
   loading: boolean;
+  canSubmit: boolean;
   submitError: string;
   submitDiagnostic?: StudioErrorDiagnostic | null;
   isEditor: boolean;
@@ -1133,13 +1135,13 @@ export function ImagePreviewPanel({
   onReloadProviders: () => Promise<void>;
   onUpscale: (item: LibraryItem) => void;
 }) {
-  const canRetry = hasProvider && promptFilled && (mode === "text-to-image" || hasFiles) && !loading;
+  const canRetry = canSubmit && hasProvider && promptFilled && (mode === "text-to-image" || hasFiles);
 
-  if (loading) {
+  if (loading && !output) {
     return <ProcessingPreview label="正在生成图片" />;
   }
 
-  if (submitError) {
+  if (submitError && !output) {
     return (
       <ErrorPreview
         canRetry={canRetry}
@@ -1190,6 +1192,7 @@ export function VideoPreviewPanel({
   mode,
   output,
   loading,
+  canSubmit,
   submitError,
   submitDiagnostic,
   promptFilled,
@@ -1202,6 +1205,7 @@ export function VideoPreviewPanel({
   mode: WorkspaceVideoMode;
   output: OutputState;
   loading: boolean;
+  canSubmit: boolean;
   submitError: string;
   submitDiagnostic?: StudioErrorDiagnostic | null;
   promptFilled: boolean;
@@ -1211,13 +1215,13 @@ export function VideoPreviewPanel({
   onReloadProviders: () => Promise<void>;
   onUpscale: (item: LibraryItem) => void;
 }) {
-  const canRetry = hasProvider && promptFilled && (mode === "text-to-video" || hasFiles) && !loading;
+  const canRetry = canSubmit && hasProvider && promptFilled && (mode === "text-to-video" || hasFiles);
 
-  if (loading) {
+  if (loading && !output) {
     return <ProcessingPreview label="正在生成视频" />;
   }
 
-  if (submitError) {
+  if (submitError && !output) {
     return (
       <ErrorPreview
         canRetry={canRetry}
@@ -1303,68 +1307,76 @@ export function ImageGenerationProgressToast({
   stacked,
   onClose,
 }: {
-  progress: NonNullable<ImageGenerationProgressState>;
+  progress: ImageGenerationProgressState;
   tick: number;
   stacked?: boolean;
-  onClose: () => void;
+  onClose: (id: string) => void;
 }) {
-  useEffect(() => {
-    if (progress.status === "running") return undefined;
-    const timer = window.setTimeout(onClose, 5200);
-    return () => window.clearTimeout(timer);
-  }, [onClose, progress.status]);
-
-  const total = Math.max(progress.total, 1);
-  const completed = Math.min(Math.max(progress.current, 0), total);
-  const activeIndex = progress.status === "running" ? Math.min(completed + 1, total) : completed;
-  const elapsedMs = (progress.completedAt ?? tick) - progress.startedAt;
-  const progressRatio = progress.status === "done"
-    ? 1
-    : Math.min(Math.max(completed / total, 0), 1);
-  const title = progress.status === "done"
-    ? "生成已完成"
-    : progress.status === "failed"
-      ? "生成失败"
-      : "图片生成中";
-  const statusText = progress.status === "running"
-    ? `第 ${activeIndex} / ${total} 张`
-    : progress.status === "done"
-      ? `已完成 ${total} 张`
-      : `已完成 ${completed} / ${total} 张`;
-
-  return (
-    <div
-      className={cn(
-        "image-generation-progress",
-        `is-${progress.status}`,
-        stacked && "is-stacked",
-      )}
-      role="status"
-      aria-live="polite"
-    >
-      <span className="image-generation-progress__icon" aria-hidden="true">
-        {progress.status === "done" ? <Check className="size-4" /> : null}
-        {progress.status === "failed" ? <AlertTriangle className="size-4" /> : null}
-        {progress.status === "running" ? <Loader2 className="size-4" /> : null}
-      </span>
-      <span className="image-generation-progress__body">
-        <span className="image-generation-progress__head">
-          <strong>{title}</strong>
-          <button type="button" aria-label="关闭生成进度" onClick={onClose}>
-            <X className="size-3.5" aria-hidden="true" />
-          </button>
-        </span>
-        <small>{progress.message || statusText}</small>
-        <span className="image-generation-progress__meta">
-          <span>{statusText}</span>
-          <span>用时 {formatElapsedClock(elapsedMs)}</span>
-        </span>
-        <span className="image-generation-progress__track" aria-hidden="true">
-          <span style={{ width: `${Math.round(progressRatio * 100)}%` }} />
-        </span>
-      </span>
-    </div>
+  const visibleProgress = useMemo(
+    () => [...progress].sort((a, b) => b.startedAt - a.startedAt).slice(0, 2),
+    [progress],
   );
+
+  useEffect(() => {
+    const timers = visibleProgress
+      .filter((item) => item.status !== "running")
+      .map((item) => window.setTimeout(() => onClose(item.id), 5200));
+    return () => timers.forEach((timer) => window.clearTimeout(timer));
+  }, [onClose, visibleProgress]);
+
+  const baseBottom = stacked ? 122 : 26;
+
+  return visibleProgress.map((item, index) => {
+    const total = Math.max(item.total, 1);
+    const completed = Math.min(Math.max(item.current, 0), total);
+    const activeIndex = item.status === "running" ? Math.min(completed + 1, total) : completed;
+    const elapsedMs = (item.completedAt ?? tick) - item.startedAt;
+    const progressRatio = item.status === "done"
+      ? 1
+      : Math.min(Math.max(completed / total, 0), 1);
+    const title = item.status === "done"
+      ? "生成已完成"
+      : item.status === "failed"
+        ? "生成失败"
+        : "图片生成中";
+    const statusText = item.status === "running"
+      ? `第 ${activeIndex} / ${total} 张`
+      : item.status === "done"
+        ? `已完成 ${total} 张`
+        : `已完成 ${completed} / ${total} 张`;
+
+    return (
+      <div
+        key={item.id}
+        className={cn("image-generation-progress", `is-${item.status}`)}
+        role="status"
+        aria-live="polite"
+        style={{ bottom: `${baseBottom + index * 116}px` }}
+      >
+        <span className="image-generation-progress__icon" aria-hidden="true">
+          {item.status === "done" ? <Check className="size-4" /> : null}
+          {item.status === "failed" ? <AlertTriangle className="size-4" /> : null}
+          {item.status === "running" ? <Loader2 className="size-4" /> : null}
+        </span>
+        <span className="image-generation-progress__body">
+          <span className="image-generation-progress__head">
+            <strong>{title}</strong>
+            <button type="button" aria-label="关闭生成进度" onClick={() => onClose(item.id)}>
+              <X className="size-3.5" aria-hidden="true" />
+            </button>
+          </span>
+          <small>{item.message || statusText}</small>
+          <span className="image-generation-progress__meta">
+            <span>{statusText}</span>
+            <span>用时 {formatElapsedClock(elapsedMs)}</span>
+          </span>
+          <span className="image-generation-progress__track" aria-hidden="true">
+            <span style={{ width: `${Math.round(progressRatio * 100)}%` }} />
+          </span>
+        </span>
+      </div>
+    );
+  });
 }
 
 export function Toast({ message, onClose }: { message: string; onClose: () => void }) {
@@ -1403,13 +1415,13 @@ const previewContent: Record<
     notes: ["填写视频描述", "选择比例和时长", "轮询任务后展示结果"],
   },
   "image-upscale": {
-    title: "图片高清增强",
+    title: "图片高清",
     desc: "上传图像后选择倍数，结果会在这里显示。",
     image: "/images/reference/sample-2.png",
     notes: ["上传图像", "选择 1K / 2K / 4K", "处理后进入作品库"],
   },
   "video-upscale": {
-    title: "视频高清增强",
+    title: "视频高清",
     desc: "上传视频后选择倍数，结果会在这里播放。",
     image: "/images/reference/sample-3.png",
     notes: ["上传视频", "选择 1K / 2K / 4K", "处理后刷新作品库"],
