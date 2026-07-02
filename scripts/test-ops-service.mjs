@@ -11,6 +11,7 @@ import net from "node:net";
 import { buildRuntimeEnv, formatRuntimeEnvSummary } from "./ops/load-runtime-env.mjs";
 import { getKnownServiceRoot, getServiceConfig } from "./ops/service-config.mjs";
 import { getServiceStatus } from "./ops/service-status.mjs";
+import { checkServiceHealth } from "./ops/health-check.mjs";
 import { createServiceBackup, restoreDataAndUploads, rollbackRestoredDirectories, snapshotDirectory, verifyBackupManifest, writeRollbackScript } from "./ops/backup-utils.mjs";
 import { createDatabaseBackup, createDatabaseFingerprint } from "./ops/database-backup.mjs";
 import { createDatabaseRestoreAuthorization, prepareDatabaseRestore, restoreDatabaseBackup } from "./ops/database-restore.mjs";
@@ -205,6 +206,34 @@ test("health check failure returns non-zero from CLI", () => {
     },
   });
   assert.notEqual(result.status, 0);
+});
+
+test("health check accepts protected library route", async () => {
+  await withTempProject(async (root) => {
+    const port = await findAvailablePort();
+    const server = http.createServer((request, response) => {
+      if (request.url === "/api/library") {
+        response.writeHead(401);
+        response.end("auth required");
+        return;
+      }
+      if (request.url === "/admin/providers") {
+        response.writeHead(307, { location: "/login" });
+        response.end("redirect");
+        return;
+      }
+      response.writeHead(200);
+      response.end("ok");
+    });
+    await new Promise((resolve) => server.listen(port, "127.0.0.1", resolve));
+    try {
+      const result = await checkServiceHealth("production", { root, port: String(port), repeat: 2 });
+      assert.equal(result.ok, true);
+      assert.equal(result.library, 401);
+    } finally {
+      await new Promise((resolve) => server.close(resolve));
+    }
+  });
 });
 
 test("status command identifies invalid pid as not listening", async () => {
