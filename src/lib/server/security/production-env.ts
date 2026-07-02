@@ -130,7 +130,11 @@ function isSameOrInsideRuntimePath(child: string, parent: string, platform: Runt
   return normalizedChild === normalizedParent || normalizedChild.startsWith(`${normalizedParent}/`);
 }
 
-function isForbiddenPermanentPath(path: string, platform: RuntimeStoragePlatform) {
+function isReleaseValidation(env: RuntimeEnv) {
+  return value(env, "AOHUANG_RELEASE_VALIDATION") === "1";
+}
+
+function isForbiddenPermanentPath(path: string, platform: RuntimeStoragePlatform, env: RuntimeEnv) {
   const normalized = normalizeRuntimePath(path, platform);
   const isTemporaryPath = platform === "win32"
     ? /^[a-z]:\/(?:temp|tmp)(?:\/|$)/.test(normalized)
@@ -140,13 +144,14 @@ function isForbiddenPermanentPath(path: string, platform: RuntimeStoragePlatform
       || normalized.startsWith("/tmp/")
       || normalized === "/var/tmp"
       || normalized.startsWith("/var/tmp/");
+  const isReleaseValidationPath = normalized.includes("/release-smoke/")
+    || normalized.includes("/release-worktrees/");
   return isTemporaryPath
     || normalized.includes("/.next/")
     || normalized.endsWith("/.next")
     || normalized.includes("/node_modules/")
     || normalized.endsWith("/node_modules")
-    || normalized.includes("/release-smoke/")
-    || normalized.includes("/release-worktrees/")
+    || (!isReleaseValidation(env) && isReleaseValidationPath)
     || normalized.includes("/.runtime/releases/");
 }
 
@@ -165,7 +170,7 @@ function checkProductionRuntimePath(
     issue(issues, name, `must be a ${platform === "win32" ? "Windows" : "Linux"} absolute path.`);
     return;
   }
-  if (isForbiddenPermanentPath(raw, platform)) {
+  if (isForbiddenPermanentPath(raw, platform, env)) {
     issue(issues, name, "must not point inside temporary, build, dependency, or release scratch directories.");
   }
 }
