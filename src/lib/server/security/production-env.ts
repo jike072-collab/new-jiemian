@@ -25,9 +25,11 @@ export type RuntimeEnvironmentReport = {
 
 export type RuntimeEnvironmentOptions = {
   nodeVersion?: string;
+  runtimeStoragePlatform?: RuntimeStoragePlatform;
 };
 
 type RuntimeEnv = Record<string, string | undefined>;
+type RuntimeStoragePlatform = "linux" | "win32";
 
 const weakAdminPasswords = new Set([
   "admin",
@@ -102,22 +104,43 @@ function isLinuxAbsolutePath(path: string) {
   return path.startsWith("/") && !/^[A-Za-z]:/.test(path) && !path.includes("\\");
 }
 
-function normalizeLinuxPath(path: string) {
+function isWindowsAbsolutePath(path: string) {
+  return /^[A-Za-z]:[\\/]/.test(path);
+}
+
+function productionStoragePlatform(env: RuntimeEnv, options: RuntimeEnvironmentOptions): RuntimeStoragePlatform {
+  const configured = options.runtimeStoragePlatform || value(env, "AOHUANG_RUNTIME_STORAGE_PLATFORM");
+  return configured === "win32" ? "win32" : "linux";
+}
+
+function isRuntimeAbsolutePath(path: string, platform: RuntimeStoragePlatform) {
+  return platform === "win32" ? isWindowsAbsolutePath(path) : isLinuxAbsolutePath(path);
+}
+
+function normalizeRuntimePath(path: string, platform: RuntimeStoragePlatform) {
+  if (platform === "win32") {
+    return path.replace(/\\/g, "/").replace(/\/+/g, "/").replace(/\/$/, "").toLowerCase();
+  }
   return path.replace(/\/+/g, "/").replace(/\/$/, "") || "/";
 }
 
-function isSameOrInsideLinuxPath(child: string, parent: string) {
-  const normalizedChild = normalizeLinuxPath(child);
-  const normalizedParent = normalizeLinuxPath(parent);
+function isSameOrInsideRuntimePath(child: string, parent: string, platform: RuntimeStoragePlatform) {
+  const normalizedChild = normalizeRuntimePath(child, platform);
+  const normalizedParent = normalizeRuntimePath(parent, platform);
   return normalizedChild === normalizedParent || normalizedChild.startsWith(`${normalizedParent}/`);
 }
 
-function isForbiddenPermanentPath(path: string) {
-  const normalized = normalizeLinuxPath(path);
-  return normalized === "/tmp"
-    || normalized.startsWith("/tmp/")
-    || normalized === "/var/tmp"
-    || normalized.startsWith("/var/tmp/")
+function isForbiddenPermanentPath(path: string, platform: RuntimeStoragePlatform) {
+  const normalized = normalizeRuntimePath(path, platform);
+  const isTemporaryPath = platform === "win32"
+    ? /^[a-z]:\/(?:temp|tmp)(?:\/|$)/.test(normalized)
+      || normalized.includes("/appdata/local/temp/")
+      || normalized.includes("/windows/temp/")
+    : normalized === "/tmp"
+      || normalized.startsWith("/tmp/")
+      || normalized === "/var/tmp"
+      || normalized.startsWith("/var/tmp/");
+  return isTemporaryPath
     || normalized.includes("/.next/")
     || normalized.endsWith("/.next")
     || normalized.includes("/node_modules/")
@@ -127,26 +150,38 @@ function isForbiddenPermanentPath(path: string) {
     || normalized.includes("/.runtime/releases/");
 }
 
-function checkLinuxRuntimePath(issues: RuntimeEnvironmentIssue[], env: RuntimeEnv, name: string) {
+function checkProductionRuntimePath(
+  issues: RuntimeEnvironmentIssue[],
+  env: RuntimeEnv,
+  name: string,
+  platform: RuntimeStoragePlatform,
+) {
   const raw = value(env, name);
   if (!raw) {
     issue(issues, name, "is required for production runtime storage.");
     return;
   }
-  if (!isLinuxAbsolutePath(raw)) {
-    issue(issues, name, "must be a Linux absolute path.");
+  if (!isRuntimeAbsolutePath(raw, platform)) {
+    issue(issues, name, `must be a ${platform === "win32" ? "Windows" : "Linux"} absolute path.`);
     return;
   }
-  if (isForbiddenPermanentPath(raw)) {
+  if (isForbiddenPermanentPath(raw, platform)) {
     issue(issues, name, "must not point inside temporary, build, dependency, or release scratch directories.");
   }
 }
 
-function checkNonOverlappingPaths(issues: RuntimeEnvironmentIssue[], env: RuntimeEnv) {
+function checkNonOverlappingPaths(
+  issues: RuntimeEnvironmentIssue[],
+  env: RuntimeEnv,
+  platform: RuntimeStoragePlatform,
+) {
   const dataDir = value(env, "DATA_DIR");
   const uploadsDir = value(env, "UPLOADS_DIR");
-  if (!isLinuxAbsolutePath(dataDir) || !isLinuxAbsolutePath(uploadsDir)) return;
-  if (isSameOrInsideLinuxPath(dataDir, uploadsDir) || isSameOrInsideLinuxPath(uploadsDir, dataDir)) {
+  if (!isRuntimeAbsolutePath(dataDir, platform) || !isRuntimeAbsolutePath(uploadsDir, platform)) return;
+  if (
+    isSameOrInsideRuntimePath(dataDir, uploadsDir, platform)
+    || isSameOrInsideRuntimePath(uploadsDir, dataDir, platform)
+  ) {
     issue(issues, "DATA_DIR/UPLOADS_DIR", "must not be the same path or nested inside each other.");
   }
 }
@@ -459,11 +494,12 @@ export function validateProductionRuntimeEnv(
   options: RuntimeEnvironmentOptions = {},
 ): RuntimeEnvironmentReport {
   const issues: RuntimeEnvironmentIssue[] = [];
+  const storagePlatform = productionStoragePlatform(env, options);
   checkProductionBasics(issues, env, options);
   for (const name of ["DATA_DIR", "UPLOADS_DIR", "RUNTIME_DIR"]) {
-    checkLinuxRuntimePath(issues, env, name);
+    checkProductionRuntimePath(issues, env, name, storagePlatform);
   }
-  checkNonOverlappingPaths(issues, env);
+  checkNonOverlappingPaths(issues, env, storagePlatform);
   checkProductionUploadLimit(issues, env, "MEDIA_IMAGE_UPLOAD_LIMIT_MIB", imageUploadDefaultMiB);
   checkProductionUploadLimit(issues, env, "MEDIA_VIDEO_UPLOAD_LIMIT_MIB", videoUploadDefaultMiB);
   checkMediaRetention(issues, env);
