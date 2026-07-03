@@ -88,6 +88,10 @@ function publicOrder(order: BillingOrder): BillingOrder {
   return { ...order, webhook_event_ids: order.webhook_event_ids.slice() };
 }
 
+function createBillingOrderId() {
+  return `bo_${randomUUID().replace(/-/g, "").slice(0, 29)}`;
+}
+
 function assertTransition(from: BillingOrderStatus, to: BillingOrderStatus) {
   return from === to || allowedTransitions[from]?.includes(to);
 }
@@ -199,7 +203,7 @@ export class BillingService {
     }
 
     const timestamp = nowIso(this.now());
-    const orderId = `bo_${randomUUID()}`;
+    const orderId = createBillingOrderId();
     const creditedQuota = calculateCreditedQuota(channel, input.requestedAmount);
     const adapter = this.getPaymentAdapter(channel.channel);
     const providerOrder = await adapter.createOrder({
@@ -210,6 +214,8 @@ export class BillingService {
       currency: channel.currency,
       requestedAmount: input.requestedAmount,
       idempotencyKey,
+      clientIp: context.ip,
+      userAgent: context.userAgent,
     });
     if (!providerOrder.ok) {
       await this.repository.appendAudit({
@@ -251,7 +257,13 @@ export class BillingService {
       ok: true,
       status: 201,
       order: publicOrder(order),
-      payment: this.paymentDescriptor(order),
+      payment: {
+        ...this.paymentDescriptor(order),
+        ...(providerOrder.checkoutUrl ? { checkout_url: providerOrder.checkoutUrl } : {}),
+        ...(providerOrder.qrcodeUrl ? { qrcode_url: providerOrder.qrcodeUrl } : {}),
+        ...(providerOrder.qrcodeImageUrl ? { qrcode_image_url: providerOrder.qrcodeImageUrl } : {}),
+        ...(providerOrder.providerTradeNo ? { provider_trade_no: providerOrder.providerTradeNo } : {}),
+      },
     };
   }
 

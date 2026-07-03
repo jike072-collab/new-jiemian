@@ -12,6 +12,7 @@ export { createBillingPersistenceRepository, getBillingPersistenceMode, createDu
 export { createPostgresBillingRepository } from "./postgres-repository";
 export { createJsonBillingDualRepairRepository } from "./dual-repair";
 export { signSandboxWebhook, verifySandboxWebhook } from "./sandbox-provider";
+export { createZpayPaymentAdapter, createZpayPaymentParam, signZpayParams, ZPAY_ZHU_SHENGYONG_CHANNEL_ID } from "./zpay-provider";
 export { createProductionPaymentAdapter, createSandboxPaymentAdapter, getPaymentAdapter } from "./payment-adapters";
 export {
   getRegisteredProductionPaymentProvider,

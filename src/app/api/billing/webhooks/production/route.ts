@@ -7,3 +7,7 @@ export const runtime = "nodejs";
 export async function POST(request: NextRequest) {
   return productionWebhookResponse(request);
 }
+
+export async function GET(request: NextRequest) {
+  return productionWebhookResponse(request);
+}

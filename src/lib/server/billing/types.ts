@@ -128,6 +128,10 @@ export type CreateBillingOrderSuccess = {
     provider: "sandbox" | "production";
     webhook_path: string;
     sandbox_webhook_path?: string;
+    checkout_url?: string;
+    qrcode_url?: string;
+    qrcode_image_url?: string;
+    provider_trade_no?: string;
   };
 };
 

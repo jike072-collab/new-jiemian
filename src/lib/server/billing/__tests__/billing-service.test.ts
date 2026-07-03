@@ -14,6 +14,7 @@ import { createPostgresBillingRepository } from "../postgres-repository";
 import { registerProductionPaymentProvider } from "../payment-provider-registry";
 import { type PaymentAdapter } from "../payment-adapters";
 import { signSandboxWebhook } from "../sandbox-provider";
+import { createZpayPaymentParam, signZpayParams, ZPAY_ZHU_SHENGYONG_CHANNEL_ID } from "../zpay-provider";
 import { BillingService, type CreditQuotaInput, type CreditQuotaResult } from "../service";
 import { type BillingOrder, type BillingWebhookPayload } from "../types";
 
@@ -80,6 +81,39 @@ function withProductionPaymentEnv<T>(input: { enabled?: string; secret?: string 
     else process.env.PAYMENT_PRODUCTION_ENABLED = previousEnabled;
     if (previousSecret === undefined) delete process.env.PAYMENT_PRODUCTION_WEBHOOK_SECRET;
     else process.env.PAYMENT_PRODUCTION_WEBHOOK_SECRET = previousSecret;
+  });
+}
+
+function withZpayEnv<T>(input: Record<string, string | undefined>, callback: () => T | Promise<T>) {
+  const keys = [
+    "ZPAY_PID",
+    "ZPAY_KEY",
+    "ZPAY_CHANNEL_ID",
+    "ZPAY_NOTIFY_URL",
+    "ZPAY_RETURN_URL",
+    "ZPAY_PUBLIC_BASE_URL",
+    "ZPAY_MAPI_URL",
+    "ZPAY_API_URL",
+  ];
+  const previous = new Map(keys.map((key) => [key, process.env[key]]));
+  for (const key of keys) {
+    if (input[key] === undefined) delete process.env[key];
+    else process.env[key] = input[key];
+  }
+  return Promise.resolve(callback()).finally(() => {
+    for (const key of keys) {
+      const value = previous.get(key);
+      if (value === undefined) delete process.env[key];
+      else process.env[key] = value;
+    }
+  });
+}
+
+function withMockedFetch<T>(handler: typeof fetch, callback: () => T | Promise<T>) {
+  const previous = globalThis.fetch;
+  globalThis.fetch = handler;
+  return Promise.resolve(callback()).finally(() => {
+    globalThis.fetch = previous;
   });
 }
 
@@ -355,7 +389,7 @@ test("production payment fails closed without a registered provider even when en
     provider_order_id: "production_bo_prod_no_provider",
     idempotency_key: "prod-no-provider",
   });
-  await withProductionPaymentEnv({ enabled: "true", secret }, async () => {
+  await withZpayEnv({}, () => withProductionPaymentEnv({ enabled: "true", secret }, async () => {
     const channels = harness.billing.listPaymentChannels();
     const production = channels.find((channel) => channel.channel === "production_generic");
     assert.equal(production?.enabled, false);
@@ -406,7 +440,7 @@ test("production payment fails closed without a registered provider even when en
     });
     assert.equal(webhook.ok, false);
     if (!webhook.ok) assert.equal(webhook.code, "payment_channel_unavailable");
-  });
+  }));
   assert.equal(harness.creditCalls.length, 0);
   assert.equal((await harness.repository.getOrder(order.order_id))?.status, "pending");
 });
@@ -464,6 +498,105 @@ test("production adapter supports explicit test create, query, close, and refund
     }
     assert.equal((await harness.repository.getOrder(paidOrder.order_id))?.status, "paid");
   }));
+});
+
+test("zpay production adapter creates orders on Zhu Shengyong channel", async () => {
+  const harness = service();
+  const requests: URLSearchParams[] = [];
+  await withZpayEnv({
+    ZPAY_PID: "zpay-pid-test",
+    ZPAY_KEY: "zpay-key-test",
+    ZPAY_CHANNEL_ID: ZPAY_ZHU_SHENGYONG_CHANNEL_ID,
+    ZPAY_NOTIFY_URL: "https://example.com/api/billing/webhooks/production",
+    ZPAY_RETURN_URL: "https://example.com/",
+  }, () => withProductionPaymentEnv({ enabled: "true", secret }, () => withMockedFetch(async (_url, init) => {
+    assert(init?.body instanceof URLSearchParams);
+    requests.push(init.body);
+    return new Response(JSON.stringify({
+      code: 1,
+      trade_no: "zpay_trade_1",
+      payurl: "https://zpayz.cn/pay/alipay/1",
+      img: "https://zpayz.cn/qrcode/1.jpg",
+    }), { headers: { "content-type": "application/json" } });
+  }, async () => {
+    const created = await harness.billing.createOrder({
+      localUserId: "local-user",
+      channel: "production_generic",
+      currency: "CNY",
+      requestedAmount: 500,
+      idempotencyKey: "zpay-create",
+    }, { ip: "203.0.113.10", userAgent: "Desktop browser" });
+    assert.equal(created.ok, true);
+    if (!created.ok) return;
+    assert.equal(created.order.provider_order_id, "zpay_trade_1");
+    assert.equal(created.order.order_id.length <= 32, true);
+    assert.equal(created.payment.checkout_url, "https://zpayz.cn/pay/alipay/1");
+    assert.equal(created.payment.qrcode_image_url, "https://zpayz.cn/qrcode/1.jpg");
+  })));
+
+  assert.equal(requests.length, 1);
+  const request = requests[0];
+  assert(request);
+  const params = Object.fromEntries(request.entries());
+  assert.equal(request.get("cid"), ZPAY_ZHU_SHENGYONG_CHANNEL_ID);
+  assert.notEqual(request.get("cid"), "19887");
+  assert.equal(request.get("type"), "alipay");
+  const outTradeNo = request.get("out_trade_no");
+  assert(outTradeNo);
+  assert.equal(outTradeNo.length <= 32, true);
+  assert.equal(request.get("sign"), signZpayParams(params, "zpay-key-test"));
+});
+
+test("zpay GET webhook verifies signature and credits quota", async () => {
+  const harness = service();
+  const order = await createProductionOrder(harness, {
+    order_id: "bo_zpay_paid",
+    provider_order_id: "zpay_trade_2",
+    requested_amount: 500,
+    credited_quota: 5000,
+    idempotency_key: "zpay-paid",
+  });
+  const params = {
+    pid: "zpay-pid-test",
+    name: "奥皇AI积分充值",
+    money: "5.00",
+    out_trade_no: order.order_id,
+    trade_no: order.provider_order_id,
+    param: createZpayPaymentParam({
+      localUserId: order.local_user_id,
+      newApiUserId: order.new_api_user_id,
+    }),
+    trade_status: "TRADE_SUCCESS",
+    type: "alipay",
+  };
+  const signed = new URLSearchParams({
+    ...params,
+    sign: signZpayParams(params, "zpay-key-test"),
+    sign_type: "MD5",
+  }).toString();
+
+  await withZpayEnv({
+    ZPAY_PID: "zpay-pid-test",
+    ZPAY_KEY: "zpay-key-test",
+    ZPAY_CHANNEL_ID: ZPAY_ZHU_SHENGYONG_CHANNEL_ID,
+    ZPAY_NOTIFY_URL: "https://example.com/api/billing/webhooks/production",
+    ZPAY_RETURN_URL: "https://example.com/",
+  }, () => withProductionPaymentEnv({ enabled: "true", secret }, async () => {
+    const result = await harness.billing.handleProductionWebhook({
+      rawBody: signed,
+      timestamp: null,
+      signature: null,
+    });
+    assert.equal(result.ok, true);
+    if (!result.ok) return;
+    assert.equal(result.action, "credited");
+    assert.equal(result.order.status, "paid");
+    assert.equal(result.order.paid_amount, 500);
+  }));
+
+  assert.equal(harness.creditCalls.length, 1);
+  assert.equal(harness.creditCalls[0].quotaUnits, 5000);
+  assert.equal((await harness.repository.getOrder(order.order_id))?.status, "paid");
 });
 
 test("creates orders idempotently and rejects invalid amount or inactive mapping", async () => {

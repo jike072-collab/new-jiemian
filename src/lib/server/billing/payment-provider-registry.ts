@@ -1,4 +1,5 @@
 import { type PaymentAdapter } from "./payment-adapters";
+import { createZpayPaymentAdapter, isZpayProductionPaymentConfigured } from "./zpay-provider";
 
 type PaymentAdapterFactory = () => PaymentAdapter;
 
@@ -12,9 +13,10 @@ export function registerProductionPaymentProvider(factory: PaymentAdapterFactory
 }
 
 export function hasProductionPaymentProvider() {
-  return Boolean(productionPaymentProviderFactory);
+  return Boolean(productionPaymentProviderFactory) || isZpayProductionPaymentConfigured();
 }
 
 export function getRegisteredProductionPaymentProvider() {
-  return productionPaymentProviderFactory?.() || null;
+  return productionPaymentProviderFactory?.()
+    || (isZpayProductionPaymentConfigured() ? createZpayPaymentAdapter() : null);
 }

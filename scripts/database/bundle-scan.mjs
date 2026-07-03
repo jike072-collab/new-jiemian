@@ -13,6 +13,8 @@ const patterns = [
   "PAYMENT_SANDBOX_WEBHOOK_SECRET",
   "PAYMENT_PRODUCTION_ENABLED",
   "PAYMENT_PRODUCTION_WEBHOOK_SECRET",
+  "ZPAY_KEY",
+  "ZPAY_PID",
 ];
 
 async function files(dir) {

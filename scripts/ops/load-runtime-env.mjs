@@ -34,7 +34,12 @@ const runtimeSummaryCategories = [
     label: "newApiConfigured",
     keys: ["NEW_API_ENABLED", "NEW_API_BASE_URL", "NEW_API_ENVIRONMENT", "NEW_API_ADMIN_USER_ID", "NEW_API_ADMIN_ACCESS_TOKEN"],
   },
-  { key: "billing", label: "billingConfigured", keys: ["PAYMENT_PRODUCTION_ENABLED", "PAYMENT_PRODUCTION_WEBHOOK_SECRET"], optional: true },
+  {
+    key: "billing",
+    label: "billingConfigured",
+    keys: ["PAYMENT_PRODUCTION_ENABLED", "PAYMENT_PRODUCTION_WEBHOOK_SECRET", "ZPAY_PID", "ZPAY_KEY", "ZPAY_CHANNEL_ID"],
+    optional: true,
+  },
 ];
 
 export function parseEnvFile(filePath) {
@@ -124,6 +129,9 @@ export function summarizeRuntimeEnv(env, sources = {}, files = []) {
     ...requiredRuntimeKeys,
     "PAYMENT_PRODUCTION_ENABLED",
     "PAYMENT_PRODUCTION_WEBHOOK_SECRET",
+    "ZPAY_PID",
+    "ZPAY_KEY",
+    "ZPAY_CHANNEL_ID",
   ];
   return {
     files,

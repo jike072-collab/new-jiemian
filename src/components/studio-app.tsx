@@ -77,7 +77,7 @@ import {
   templateTabHref,
 } from "@/lib/template-catalog";
 import type { PublicAuthUser } from "@/lib/server/auth";
-import type { BillingOrder } from "@/lib/server/billing";
+import type { BillingOrder, PublicPaymentChannelConfig } from "@/lib/server/billing";
 import type { UsageLogEntry, QuotaSnapshot, UsagePage } from "@/lib/server/quota";
 import { cn } from "@/lib/utils";
 import { useReducedMotion } from "@/lib/use-reduced-motion";
@@ -103,6 +103,29 @@ type BillingOrdersResponse = {
   page_size: number;
   total: number;
   has_more: boolean;
+};
+
+type BillingConfigResponse = {
+  ok: true;
+  channels: PublicPaymentChannelConfig[];
+};
+
+type BillingPaymentDescriptor = {
+  channel: string;
+  provider_order_id: string;
+  provider: "sandbox" | "production";
+  webhook_path: string;
+  sandbox_webhook_path?: string;
+  checkout_url?: string;
+  qrcode_url?: string;
+  qrcode_image_url?: string;
+  provider_trade_no?: string;
+};
+
+type CreateBillingOrderResponse = {
+  ok: true;
+  order: BillingOrder;
+  payment: BillingPaymentDescriptor;
 };
 
 type AccountView = "center" | "recharge" | "usage";
@@ -155,7 +178,6 @@ const CREDIT_TOP_UP_BASE_RATE = 10;
 const CUSTOM_RECHARGE_MIN_AMOUNT = 1;
 const PLAN_PERIOD_LABEL = "按月";
 const PLAN_PERIOD_UNIT_LABEL = "月";
-const PAYMENT_FLOW_AVAILABLE: boolean = false;
 const CLIENT_IMAGE_SUBMISSION_LIMIT = 2;
 const CLIENT_VIDEO_SUBMISSION_LIMIT = 1;
 
@@ -2630,12 +2652,25 @@ function RechargeCenterWorkspace({
   const [selectedPlanId, setSelectedPlanId] = useState("standard");
   const [selectedCreditAmount, setSelectedCreditAmount] = useState<number | null>(50);
   const [customAmount, setCustomAmount] = useState("");
+  const [paymentChannels, setPaymentChannels] = useState<PublicPaymentChannelConfig[]>([]);
+  const [selectedPaymentChannel, setSelectedPaymentChannel] = useState("");
+  const [paymentConfigLoading, setPaymentConfigLoading] = useState(false);
+  const [paymentSubmitting, setPaymentSubmitting] = useState(false);
+  const [paymentError, setPaymentError] = useState("");
+  const [latestPayment, setLatestPayment] = useState<CreateBillingOrderResponse | null>(null);
 
   const defaultPlan = planOptions.find((plan) => plan.recommended) || planOptions[0] || null;
   const selectedPlan = planOptions.find((plan) => plan.id === selectedPlanId) || defaultPlan;
   const selectedCredit = selectedCreditAmount === null
     ? null
     : creditTopUpOptions.find((option) => option.amount === selectedCreditAmount) || null;
+  const productionPaymentChannels = useMemo(
+    () => paymentChannels.filter((channel) => channel.enabled && channel.channel.startsWith("production_")),
+    [paymentChannels],
+  );
+  const selectedPaymentChannelConfig = productionPaymentChannels.find((channel) => channel.channel === selectedPaymentChannel)
+    || productionPaymentChannels[0]
+    || null;
   const customAmountValue = Number(customAmount);
   const customAmountEntered = customAmount.trim() !== "";
   const customAmountValid = customAmountEntered && Number.isFinite(customAmountValue) && customAmountValue >= CUSTOM_RECHARGE_MIN_AMOUNT;
@@ -2655,6 +2690,10 @@ function RechargeCenterWorkspace({
   const creditPayableAmount = customRechargeActive && customAmountValid
     ? customAmount
     : selectedCredit?.amount ?? "";
+  const creditPayableMinorAmount = creditPayableAmount === "" ? Number.NaN : rechargeAmountToMinor(creditPayableAmount);
+  const creditAmountAllowed = selectedPaymentChannelConfig
+    ? paymentChannelAllowsAmount(selectedPaymentChannelConfig, creditPayableMinorAmount)
+    : false;
   const planSummaryLines = createPlanSummaryLines(selectedPlan);
   const planSummaryReady = Boolean(selectedPlan);
   const planConfirmState = createRechargeConfirmState({
@@ -2670,8 +2709,95 @@ function RechargeCenterWorkspace({
     customRechargeActive,
     customAmountValid,
     amount: creditPayableAmount,
+    paymentConfigLoading,
+    paymentSubmitting,
+    paymentChannelReady: Boolean(selectedPaymentChannelConfig),
+    paymentAmountAllowed: creditAmountAllowed,
   });
-  const paymentUnavailableNote = "当前仅可核对订单信息，支付功能暂未开放。";
+  const paymentUnavailableNote = "套餐支付暂未开放，当前先支持积分充值。";
+  const creditPaymentNote = paymentError
+    || (latestPayment
+      ? `订单 ${latestPayment.order.status}，如未自动跳转请使用返回的支付链接继续付款。`
+      : selectedPaymentChannelConfig
+        ? "将跳转到 Z-Pay 支付宝收银台，支付成功后积分自动到账。"
+        : paymentConfigLoading
+          ? "正在读取支付通道配置。"
+          : "生产支付通道未配置，暂时无法创建支付订单。");
+
+  useEffect(() => {
+    let cancelled = false;
+    if (!user) {
+      setPaymentChannels([]);
+      setSelectedPaymentChannel("");
+      setPaymentError("");
+      setLatestPayment(null);
+      return () => {
+        cancelled = true;
+      };
+    }
+    setPaymentConfigLoading(true);
+    setPaymentError("");
+    fetchJson<BillingConfigResponse>("/api/billing/config")
+      .then((data) => {
+        if (cancelled) return;
+        const channels = data.channels || [];
+        const productionChannels = channels.filter((channel) => channel.enabled && channel.channel.startsWith("production_"));
+        setPaymentChannels(channels);
+        setSelectedPaymentChannel((current) => (
+          productionChannels.some((channel) => channel.channel === current)
+            ? current
+            : productionChannels[0]?.channel || ""
+        ));
+      })
+      .catch((error) => {
+        if (cancelled) return;
+        setPaymentChannels([]);
+        setSelectedPaymentChannel("");
+        setPaymentError(error instanceof ApiError ? error.message : "支付通道配置读取失败");
+      })
+      .finally(() => {
+        if (!cancelled) setPaymentConfigLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [user]);
+
+  const handleCreditPayment = useCallback(async () => {
+    if (!user || !selectedPaymentChannelConfig || !creditSummaryReady || !creditAmountAllowed || paymentSubmitting) return;
+    setPaymentSubmitting(true);
+    setPaymentError("");
+    setLatestPayment(null);
+    try {
+      const result = await fetchJsonWithCsrf<CreateBillingOrderResponse>("/api/billing/orders", {
+        method: "POST",
+        body: JSON.stringify({
+          channel: selectedPaymentChannelConfig.channel,
+          currency: "CNY",
+          requestedAmount: creditPayableMinorAmount,
+          idempotencyKey: createTaskId("billing-order"),
+        }),
+      });
+      setLatestPayment(result);
+      const checkoutUrl = result.payment.checkout_url || result.payment.qrcode_url || result.payment.qrcode_image_url;
+      if (checkoutUrl) {
+        window.location.assign(checkoutUrl);
+        return;
+      }
+      setPaymentError("支付订单已创建，但 Z-Pay 未返回可跳转的支付链接。");
+    } catch (error) {
+      setPaymentError(error instanceof ApiError ? error.message : "创建支付订单失败");
+    } finally {
+      setPaymentSubmitting(false);
+    }
+  }, [
+    creditAmountAllowed,
+    creditPayableMinorAmount,
+    creditSummaryReady,
+    paymentSubmitting,
+    selectedPaymentChannelConfig,
+    user,
+  ]);
 
   return (
     <section className="user-center-page account-subpage account-subpage--recharge" aria-label="充值中心">
@@ -2870,10 +2996,10 @@ function RechargeCenterWorkspace({
                 icon={<CreditCard className="size-4" aria-hidden="true" />}
                 title="订单确认"
                 lines={creditSummaryLines}
-                note={paymentUnavailableNote}
+                note={creditPaymentNote}
                 buttonLabel={creditConfirmState.label}
                 disabled={creditConfirmState.disabled}
-                onConfirm={onPaymentUnavailable}
+                onConfirm={handleCreditPayment}
               />
             )}
           </aside>
@@ -3106,6 +3232,20 @@ function formatRechargeAmount(amount: number | string) {
   }).format(value);
 }
 
+function rechargeAmountToMinor(amount: number | string) {
+  const value = typeof amount === "number" ? amount : Number(amount);
+  if (!Number.isFinite(value) || value <= 0) return Number.NaN;
+  return Math.round(value * 100);
+}
+
+function paymentChannelAllowsAmount(channel: PublicPaymentChannelConfig, minorAmount: number) {
+  if (!Number.isInteger(minorAmount) || minorAmount <= 0) return false;
+  if (minorAmount < channel.min_amount) return false;
+  if (channel.fixed_amounts.includes(minorAmount)) return true;
+  return minorAmount >= channel.custom_amount_range.min_amount
+    && minorAmount <= channel.custom_amount_range.max_amount;
+}
+
 function createPlanFactItems(plan: PlanOption) {
   return [
     `${PLAN_PERIOD_LABEL}购买`,
@@ -3178,6 +3318,10 @@ function createRechargeConfirmState(input: {
   customRechargeActive?: boolean;
   customAmountValid?: boolean;
   amount?: number | string;
+  paymentConfigLoading?: boolean;
+  paymentSubmitting?: boolean;
+  paymentChannelReady?: boolean;
+  paymentAmountAllowed?: boolean;
 }) {
   if (!input.ready) {
     if (input.mode === "credits" && input.customRechargeActive && !input.customAmountValid) {
@@ -3187,17 +3331,17 @@ function createRechargeConfirmState(input: {
   }
 
   if (!input.user) return { disabled: true, label: "登录后继续" };
-  if (!PAYMENT_FLOW_AVAILABLE) return { disabled: true, label: "支付功能暂未开放" };
-
-  if (input.mode === "plans" && input.selectedPlan) {
-    return { disabled: false, label: `立即购买 ¥${formatRechargeAmount(input.selectedPlan.price)}` };
-  }
+  if (input.mode === "plans") return { disabled: true, label: "套餐支付暂未开放" };
+  if (input.paymentConfigLoading) return { disabled: true, label: "支付配置加载中" };
+  if (input.paymentSubmitting) return { disabled: true, label: "正在创建订单" };
+  if (!input.paymentChannelReady) return { disabled: true, label: "支付通道未配置" };
+  if (!input.paymentAmountAllowed) return { disabled: true, label: "金额不符合支付规则" };
 
   if (input.mode === "credits" && input.amount !== undefined && input.amount !== "") {
     return { disabled: false, label: `立即充值 ¥${formatRechargeAmount(input.amount)}` };
   }
 
-  return { disabled: true, label: input.mode === "plans" ? "请选择套餐" : "请选择充值金额" };
+  return { disabled: true, label: "请选择充值金额" };
 }
 
 function formatSignedQuota(value: number) {

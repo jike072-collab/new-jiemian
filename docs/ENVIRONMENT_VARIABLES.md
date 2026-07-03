@@ -103,6 +103,13 @@ Provider variables are optional until their key is configured or the matching pr
 | `PAYMENT_SANDBOX_WEBHOOK_SECRET` | Sandbox webhook secret for local billing tests. | Yes | Optional | No | Empty | Non-empty for sandbox webhook tests | billing config |
 | `PAYMENT_PRODUCTION_ENABLED` | Production payment gate. | No | Optional | Optional disabled by default | `false` | Boolean | billing config |
 | `PAYMENT_PRODUCTION_WEBHOOK_SECRET` | Production payment webhook secret. | Yes | Optional | Required only if production payment is separately enabled | Empty | Non-empty | billing config |
+| `ZPAY_PID` | Z-Pay merchant id. | Yes | Optional | Required when production payment is enabled | Empty | Non-empty | Z-Pay billing |
+| `ZPAY_KEY` | Z-Pay merchant key for request and callback signatures. | Yes | Optional | Required when production payment is enabled | Empty | Non-empty | Z-Pay billing |
+| `ZPAY_CHANNEL_ID` | Z-Pay payment channel id. | No | Optional | Required value `19932` | `19932` | Must stay `19932` for Zhu Shengyong account | Z-Pay billing |
+| `ZPAY_PUBLIC_BASE_URL` | Public site origin used to build Z-Pay notify and return URLs. | No | Optional | Required unless explicit Z-Pay URLs are set | Empty | Public HTTP(S) origin, no path | Z-Pay billing |
+| `ZPAY_NOTIFY_URL` | Explicit Z-Pay async callback URL. | No | Optional | Optional override | Derived from `ZPAY_PUBLIC_BASE_URL` | Public URL without query string | Z-Pay billing |
+| `ZPAY_RETURN_URL` | Explicit browser return URL after Z-Pay payment. | No | Optional | Optional override | Derived from `ZPAY_PUBLIC_BASE_URL` | Public URL without query string | Z-Pay billing |
+| `ZPAY_MAPI_URL`, `ZPAY_API_URL` | Z-Pay API endpoint overrides. | No | Optional | Optional | Z-Pay production endpoints | HTTP(S) | Z-Pay billing |
 
 Retired local executable upscale variables are historical only and must not
 appear in active runtime config.

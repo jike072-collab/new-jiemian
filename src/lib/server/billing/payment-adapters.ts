@@ -22,6 +22,8 @@ export type PaymentCreateInput = {
   currency: BillingCurrency;
   requestedAmount: number;
   idempotencyKey: string;
+  clientIp?: string;
+  userAgent?: string;
 };
 
 export type PaymentRefundInput = {
@@ -39,7 +41,13 @@ export type PaymentWebhookInput = {
 
 export type PaymentAdapter = {
   kind: PaymentAdapterKind;
-  createOrder(input: PaymentCreateInput): Promise<PaymentAdapterResult<{ providerOrderId: string }>>;
+  createOrder(input: PaymentCreateInput): Promise<PaymentAdapterResult<{
+    providerOrderId: string;
+    checkoutUrl?: string;
+    qrcodeUrl?: string;
+    qrcodeImageUrl?: string;
+    providerTradeNo?: string;
+  }>>;
   queryOrder(order: BillingOrder): Promise<PaymentAdapterResult<{ providerStatus: PaymentProviderStatus }>>;
   closeOrder(order: BillingOrder): Promise<PaymentAdapterResult<{ providerCloseId: string }>>;
   refundOrder(input: PaymentRefundInput): Promise<PaymentAdapterResult<{ providerRefundId: string }>>;

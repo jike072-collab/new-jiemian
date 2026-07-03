@@ -148,16 +148,18 @@ export async function sandboxWebhookResponse(request: NextRequest) {
 
 export async function productionWebhookResponse(request: NextRequest) {
   const rawBody = await request.text();
+  const webhookBody = request.method === "GET"
+    ? new URL(request.url).searchParams.toString()
+    : rawBody;
   const result = await getBillingService().handleProductionWebhook({
-    rawBody,
+    rawBody: webhookBody,
     timestamp: request.headers.get("x-payment-timestamp"),
     signature: request.headers.get("x-payment-signature"),
     context: authRequestContext(request),
   });
   if (!result.ok) return billingErrorResponse(result);
-  return NextResponse.json({
-    ok: true,
-    action: result.action,
-    order: result.order,
-  }, { status: result.status });
+  return new NextResponse("success", {
+    status: 200,
+    headers: { "content-type": "text/plain; charset=utf-8" },
+  });
 }
