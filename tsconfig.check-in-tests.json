@@ -1,0 +1,22 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "allowImportingTsExtensions": false,
+    "declaration": false,
+    "emitDeclarationOnly": false,
+    "incremental": false,
+    "module": "NodeNext",
+    "moduleResolution": "NodeNext",
+    "noEmit": false,
+    "outDir": "dist/check-in-tests",
+    "rootDir": ".",
+    "target": "ES2022",
+    "tsBuildInfoFile": "dist/check-in-tests.tsbuildinfo"
+  },
+  "include": [
+    "src/lib/server/check-in/**/*.ts",
+    "src/lib/server/database/**/*.ts",
+    "src/lib/server/integrations/new-api/**/*.ts",
+    "src/lib/server/quota/**/*.ts"
+  ]
+}

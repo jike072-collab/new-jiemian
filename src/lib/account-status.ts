@@ -72,7 +72,7 @@ export function getCheckInStatusDisplay(checkInStatus: CheckInStatus): AccountSt
   if (checkInStatus === "available") {
     return {
       label: "今日未签到",
-      note: "可签到时将使用真实签到接口。",
+      note: "每日签到可领取 50 积分。",
       actionLabel: "签到",
       actionDisabled: false,
     };
@@ -106,8 +106,8 @@ export function getCheckInStatusDisplay(checkInStatus: CheckInStatus): AccountSt
   }
 
   return {
-    label: "签到功能暂未开放",
-    note: "开放后会在这里显示每日签到状态。",
+    label: "请先登录",
+    note: "登录后可每日签到领取积分。",
     actionLabel: "签到",
     actionDisabled: false,
   };

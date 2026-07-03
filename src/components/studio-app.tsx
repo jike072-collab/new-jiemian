@@ -78,6 +78,7 @@ import {
 } from "@/lib/template-catalog";
 import type { PublicAuthUser } from "@/lib/server/auth";
 import type { BillingOrder, PublicPaymentChannelConfig } from "@/lib/server/billing";
+import type { PublicDailyCheckInRecord, PublicDailyCheckInStatus } from "@/lib/server/check-in";
 import type { UsageLogEntry, QuotaSnapshot, UsagePage } from "@/lib/server/quota";
 import { cn } from "@/lib/utils";
 import { useReducedMotion } from "@/lib/use-reduced-motion";
@@ -108,6 +109,17 @@ type BillingOrdersResponse = {
 type BillingConfigResponse = {
   ok: true;
   channels: PublicPaymentChannelConfig[];
+};
+
+type CheckInResponse = {
+  ok: true;
+  checkIn: PublicDailyCheckInStatus;
+  records: PublicDailyCheckInRecord[];
+};
+
+type ClaimCheckInResponse = CheckInResponse & {
+  action: "credited" | "already_checked";
+  quota_delta: number;
 };
 
 type BillingPaymentDescriptor = {
@@ -411,12 +423,18 @@ export function StudioApp() {
   const [sessionLoading, setSessionLoading] = useState(true);
   const [sessionError, setSessionError] = useState("");
   const [quotaSnapshot, setQuotaSnapshot] = useState<QuotaSnapshot | null>(null);
+  const [checkInSnapshot, setCheckInSnapshot] = useState<PublicDailyCheckInStatus | null>(null);
+  const [checkInRecords, setCheckInRecords] = useState<PublicDailyCheckInRecord[]>([]);
   const [usagePage, setUsagePage] = useState<UsagePage | null>(null);
   const [billingOrders, setBillingOrders] = useState<BillingOrder[]>([]);
   const [accountSummaryLoading, setAccountSummaryLoading] = useState(false);
+  const [checkInLoading, setCheckInLoading] = useState(false);
+  const [checkInSubmitting, setCheckInSubmitting] = useState(false);
   const [accountUsageLoading, setAccountUsageLoading] = useState(false);
   const [accountOrdersLoading, setAccountOrdersLoading] = useState(false);
   const [accountSummaryLoaded, setAccountSummaryLoaded] = useState(false);
+  const [checkInLoaded, setCheckInLoaded] = useState(false);
+  const [checkInError, setCheckInError] = useState("");
   const [accountUsageLoaded, setAccountUsageLoaded] = useState(false);
   const [accountOrdersLoaded, setAccountOrdersLoaded] = useState(false);
   const [accountDataError, setAccountDataError] = useState("");
@@ -509,9 +527,12 @@ export function StudioApp() {
     return { status: "unavailable" };
   }, [accountSummaryLoading, sessionLoading]);
   const accountCheckInStatus = useMemo<CheckInStatus>(() => {
-    if (sessionLoading || accountSummaryLoading) return "loading";
-    return "unavailable";
-  }, [accountSummaryLoading, sessionLoading]);
+    if (!sessionUser) return "unavailable";
+    if (sessionLoading || checkInLoading) return "loading";
+    if (checkInSubmitting) return "submitting";
+    if (checkInError) return "error";
+    return checkInSnapshot?.status === "checked" ? "checked" : "available";
+  }, [checkInError, checkInLoading, checkInSnapshot?.status, checkInSubmitting, sessionLoading, sessionUser]);
   const resetLibraryState = useCallback(() => {
     setLibrary([]);
     setLibraryLoading(false);
@@ -522,13 +543,19 @@ export function StudioApp() {
   }, []);
   const resetAccountState = useCallback(() => {
     setQuotaSnapshot(null);
+    setCheckInSnapshot(null);
+    setCheckInRecords([]);
     setUsagePage(null);
     setBillingOrders([]);
     setAccountDataError("");
+    setCheckInError("");
     setAccountSummaryLoading(false);
+    setCheckInLoading(false);
+    setCheckInSubmitting(false);
     setAccountUsageLoading(false);
     setAccountOrdersLoading(false);
     setAccountSummaryLoaded(false);
+    setCheckInLoaded(false);
     setAccountUsageLoaded(false);
     setAccountOrdersLoaded(false);
   }, []);
@@ -555,6 +582,34 @@ export function StudioApp() {
       setAccountSummaryLoading(false);
     }
   }, [resetAccountState]);
+
+  const refreshCheckInSnapshot = useCallback(async (userId?: string | null) => {
+    if (!userId) {
+      setCheckInSnapshot(null);
+      setCheckInRecords([]);
+      setCheckInLoaded(false);
+      setCheckInError("");
+      return;
+    }
+
+    setCheckInLoading(true);
+    try {
+      const checkInResult = await fetchJson<CheckInResponse>("/api/check-in");
+      setCheckInSnapshot(checkInResult.checkIn);
+      setCheckInRecords(checkInResult.records || []);
+      setCheckInLoaded(true);
+      setCheckInError("");
+    } catch (error) {
+      setCheckInSnapshot(null);
+      setCheckInRecords([]);
+      setCheckInError("check-in-unavailable");
+      if (process.env.NODE_ENV !== "production") {
+        console.debug("[account] Failed to load check-in snapshot", error);
+      }
+    } finally {
+      setCheckInLoading(false);
+    }
+  }, []);
 
   const refreshUsageSnapshot = useCallback(async (userId?: string | null) => {
     if (!userId) {
@@ -614,6 +669,9 @@ export function StudioApp() {
     if (options?.force || !accountSummaryLoaded) {
       tasks.push(refreshQuotaSnapshot(userId));
     }
+    if (options?.force || !checkInLoaded) {
+      tasks.push(refreshCheckInSnapshot(userId));
+    }
     if (view !== "recharge" && (options?.force || !accountUsageLoaded)) {
       tasks.push(refreshUsageSnapshot(userId));
     }
@@ -627,7 +685,9 @@ export function StudioApp() {
     accountOrdersLoaded,
     accountSummaryLoaded,
     accountUsageLoaded,
+    checkInLoaded,
     refreshBillingOrdersSnapshot,
+    refreshCheckInSnapshot,
     refreshQuotaSnapshot,
     refreshUsageSnapshot,
     resetAccountState,
@@ -977,9 +1037,39 @@ export function StudioApp() {
     setMessage(text);
   }, []);
 
-  const handleCheckInUnavailable = useCallback(() => {
-    setMessage("每日签到功能暂未开放。");
-  }, []);
+  const handleCheckIn = useCallback(async () => {
+    const userId = sessionUser?.local_user_id || null;
+    if (!userId || checkInSubmitting) return;
+    setCheckInSubmitting(true);
+    setCheckInError("");
+    try {
+      const result = await fetchJsonWithCsrf<ClaimCheckInResponse>("/api/check-in", { method: "POST" });
+      setCheckInSnapshot(result.checkIn);
+      setCheckInRecords(result.records || []);
+      setCheckInLoaded(true);
+      await Promise.all([
+        refreshQuotaSnapshot(userId),
+        refreshUsageSnapshot(userId),
+      ]);
+      if (accountView === "usage" && accountOrdersLoaded) {
+        await refreshBillingOrdersSnapshot(userId);
+      }
+      setMessage(result.action === "credited" ? `签到成功，已领取 ${result.quota_delta} 积分。` : "今日已签到。");
+    } catch (error) {
+      setCheckInError("check-in-unavailable");
+      setMessage(error instanceof Error ? error.message : "签到失败，请稍后重试。");
+    } finally {
+      setCheckInSubmitting(false);
+    }
+  }, [
+    accountOrdersLoaded,
+    accountView,
+    checkInSubmitting,
+    refreshBillingOrdersSnapshot,
+    refreshQuotaSnapshot,
+    refreshUsageSnapshot,
+    sessionUser?.local_user_id,
+  ]);
 
   const markLibraryMediaMissing = useCallback((id: string) => {
     setMissingLibraryMediaIds((prev) => {
@@ -1054,9 +1144,9 @@ export function StudioApp() {
   const accountSummaryBusy = sessionLoading || accountSummaryLoading;
   const accountViewLoading = sessionLoading
     || (accountView === "usage"
-      ? accountSummaryLoading || accountUsageLoading || accountOrdersLoading
+      ? accountSummaryLoading || checkInLoading || accountUsageLoading || accountOrdersLoading
       : accountView === "center"
-        ? accountSummaryLoading || accountUsageLoading
+        ? accountSummaryLoading || checkInLoading || accountUsageLoading
         : accountSummaryLoading);
   const libraryPanelLoading = activeBusinessTool === "library"
     && (sessionLoading || (Boolean(sessionUser) && !libraryLoaded))
@@ -2243,7 +2333,7 @@ export function StudioApp() {
             onLogout={() => void handleLogout()}
             onOpenCenter={handleOpenAccountCenter}
             onOpenRecharge={handleOpenRechargeCenter}
-            onCheckInUnavailable={handleCheckInUnavailable}
+            onCheckInUnavailable={() => void handleCheckIn()}
           />
         )}
         contentMode={accountCenterOpen ? "account" : "default"}
@@ -2261,9 +2351,10 @@ export function StudioApp() {
               accountView={accountView}
               planStatus={accountPlanStatus}
               checkInStatus={accountCheckInStatus}
+              checkInRecords={checkInRecords}
               onViewChange={setAccountView}
               onPaymentUnavailable={handlePaymentUnavailable}
-              onCheckInUnavailable={handleCheckInUnavailable}
+              onCheckInUnavailable={() => void handleCheckIn()}
             />
           ) : activeBusinessTool === "library" ? (
             <LibraryPane
@@ -2368,6 +2459,7 @@ function UserCenterWorkspace({
   accountView,
   planStatus,
   checkInStatus,
+  checkInRecords,
   onViewChange,
   onPaymentUnavailable,
   onCheckInUnavailable,
@@ -2380,6 +2472,7 @@ function UserCenterWorkspace({
   accountView: AccountView;
   planStatus: PlanStatus;
   checkInStatus: CheckInStatus;
+  checkInRecords: PublicDailyCheckInRecord[];
   onViewChange: (view: AccountView) => void;
   onPaymentUnavailable: (text?: string) => void;
   onCheckInUnavailable: () => void;
@@ -2402,6 +2495,7 @@ function UserCenterWorkspace({
       <UsageRecordsWorkspace
         usage={usage}
         billingOrders={billingOrders}
+        checkInRecords={checkInRecords}
         loading={loading}
         onViewChange={onViewChange}
       />
@@ -2413,6 +2507,8 @@ function UserCenterWorkspace({
       user={user}
       quota={quota}
       usage={usage}
+      billingOrders={billingOrders}
+      checkInRecords={checkInRecords}
       loading={loading}
       planStatus={planStatus}
       checkInStatus={checkInStatus}
@@ -2426,6 +2522,8 @@ function UserCenterOverview({
   user,
   quota,
   usage,
+  billingOrders,
+  checkInRecords,
   loading,
   planStatus,
   checkInStatus,
@@ -2435,13 +2533,18 @@ function UserCenterOverview({
   user: PublicAuthUser | null;
   quota: QuotaSnapshot | null;
   usage: UsagePage | null;
+  billingOrders: BillingOrder[];
+  checkInRecords: PublicDailyCheckInRecord[];
   loading: boolean;
   planStatus: PlanStatus;
   checkInStatus: CheckInStatus;
   onCheckInUnavailable: () => void;
   onViewChange: (view: AccountView) => void;
 }) {
-  const usageEntries = usage?.entries?.slice(0, 6) || [];
+  const recentRecords = useMemo(
+    () => createAccountRecords(usage?.entries || [], billingOrders, checkInRecords).slice(0, 6),
+    [billingOrders, checkInRecords, usage?.entries],
+  );
   const quotaUnits = quota?.quota_units ?? null;
   const quotaValue = loading ? "加载中" : quota ? `${formatQuotaUnits(quota.quota_units)} ✦` : "—";
   const quotaNote = loading
@@ -2520,7 +2623,7 @@ function UserCenterOverview({
                   <strong>{checkInDisplay.label}</strong>
                   <button
                     type="button"
-                    onClick={checkInStatus === "unavailable" ? onCheckInUnavailable : undefined}
+                    onClick={checkInStatus === "checked" || checkInStatus === "loading" || checkInStatus === "submitting" ? undefined : onCheckInUnavailable}
                     disabled={!user || (checkInStatus !== "unavailable" && checkInDisplay.actionDisabled)}
                   >
                     {checkInDisplay.actionLabel}
@@ -2561,7 +2664,7 @@ function UserCenterOverview({
                 <button
                   type="button"
                   className="user-center-mini-card__action"
-                  onClick={checkInStatus === "unavailable" ? onCheckInUnavailable : undefined}
+                  onClick={checkInStatus === "checked" || checkInStatus === "loading" || checkInStatus === "submitting" ? undefined : onCheckInUnavailable}
                   disabled={!user || (checkInStatus !== "unavailable" && checkInDisplay.actionDisabled)}
                 >
                   {checkInDisplay.actionLabel}
@@ -2581,7 +2684,7 @@ function UserCenterOverview({
               </button>
             </div>
 
-            {loading && !usageEntries.length ? (
+            {loading && !recentRecords.length ? (
               <div className="user-center-usage__list">
                 <div className="user-center-usage__row user-center-usage__row--head" aria-hidden="true">
                   <span>时间</span>
@@ -2598,7 +2701,7 @@ function UserCenterOverview({
                   </div>
                 ))}
               </div>
-            ) : usageEntries.length ? (
+            ) : recentRecords.length ? (
               <div className="user-center-usage__list">
                 <div className="user-center-usage__row user-center-usage__row--head" aria-hidden="true">
                   <span>时间</span>
@@ -2606,12 +2709,12 @@ function UserCenterOverview({
                   <span>积分变动</span>
                   <span>描述</span>
                 </div>
-                {usageEntries.map((entry, index) => (
-                  <div key={entry.id} className="user-center-usage__row" style={{ "--usage-row-delay": `${index < 6 ? index * 24 : 0}ms` } as CSSProperties}>
-                    <span>{formatUsageDate(entry.created_at)}</span>
-                    <strong>{usageOperationLabel(entry.operation)}</strong>
-                    <em>-{formatQuotaUnits(entry.actual_quota_units ?? entry.estimated_quota_units)} 分</em>
-                    <span>{usageDescription(entry)}</span>
+                {recentRecords.map((record, index) => (
+                  <div key={record.id} className={cn("user-center-usage__row", `is-${record.kind}`)} style={{ "--usage-row-delay": `${index < 6 ? index * 24 : 0}ms` } as CSSProperties}>
+                    <span>{formatUsageDate(record.createdAt)}</span>
+                    <strong>{record.typeLabel}</strong>
+                    <em>{formatSignedQuota(record.quotaDelta)} 分</em>
+                    <span>{record.description}</span>
                   </div>
                 ))}
               </div>
@@ -3008,16 +3111,18 @@ function RechargeCenterWorkspace({
 function UsageRecordsWorkspace({
   usage,
   billingOrders,
+  checkInRecords,
   loading,
   onViewChange,
 }: {
   usage: UsagePage | null;
   billingOrders: BillingOrder[];
+  checkInRecords: PublicDailyCheckInRecord[];
   loading: boolean;
   onViewChange: (view: AccountView) => void;
 }) {
   const [filter, setFilter] = useState<AccountUsageFilter>("all");
-  const records = useMemo(() => createAccountRecords(usage?.entries || [], billingOrders), [billingOrders, usage?.entries]);
+  const records = useMemo(() => createAccountRecords(usage?.entries || [], billingOrders, checkInRecords), [billingOrders, checkInRecords, usage?.entries]);
   const filteredRecords = filter === "all" ? records : records.filter((record) => record.kind === filter);
 
   return (
@@ -3172,7 +3277,11 @@ function RechargeConfirmPanel({
   );
 }
 
-function createAccountRecords(usageEntries: UsageLogEntry[], billingOrders: BillingOrder[]) {
+function createAccountRecords(
+  usageEntries: UsageLogEntry[],
+  billingOrders: BillingOrder[],
+  checkInRecords: PublicDailyCheckInRecord[] = [],
+) {
   const usageRecords: AccountRecord[] = usageEntries.map((entry) => ({
     id: `usage-${entry.id}`,
     createdAt: entry.created_at,
@@ -3193,7 +3302,18 @@ function createAccountRecords(usageEntries: UsageLogEntry[], billingOrders: Bill
       description: `充值订单已到账，金额 ${formatMinorCurrency(order.paid_amount || order.requested_amount)}`,
     }));
 
-  return [...usageRecords, ...paidOrders].sort((a, b) => Number(new Date(b.createdAt)) - Number(new Date(a.createdAt)));
+  const checkIns: AccountRecord[] = checkInRecords
+    .filter((record) => record.status === "credited" && record.quota_delta > 0)
+    .map((record) => ({
+      id: `checkin-${record.id}`,
+      createdAt: record.created_at,
+      kind: "checkin",
+      typeLabel: "签到",
+      quotaDelta: record.quota_delta,
+      description: `每日签到奖励 ${record.quota_delta} 积分`,
+    }));
+
+  return [...usageRecords, ...paidOrders, ...checkIns].sort((a, b) => Number(new Date(b.createdAt)) - Number(new Date(a.createdAt)));
 }
 
 function getCreditTopUpGift(option: CreditTopUpOption) {

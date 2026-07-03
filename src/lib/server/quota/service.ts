@@ -269,6 +269,10 @@ export class QuotaService {
     return this.usageRepository.record(input);
   }
 
+  invalidateCache(localUserId: string) {
+    this.quotaCache.invalidate(localUserId);
+  }
+
   async listLocalUsage(localUserId: string, page = 1, pageSize = 20) {
     return this.usageRepository.listForUser(localUserId, safePage(page), safePageSize(pageSize));
   }

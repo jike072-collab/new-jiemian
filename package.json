@@ -108,6 +108,7 @@
     "database:boundary": "node scripts/database/test-server-boundary.mjs",
     "db:health": "node scripts/database/migrate.mjs health",
     "test:prompt-optimizer": "node scripts/test-prompt-optimizer.mjs",
+    "test:check-in": "node scripts/test-check-in.mjs",
     "test:security-release": "node scripts/test-security-release.mjs",
     "release:preflight": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON scripts/release-preflight.mjs",
     "security:release-check": "node scripts/security-release-check.mjs",
