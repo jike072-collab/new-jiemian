@@ -52,9 +52,9 @@ export function getPlanStatusDisplay(planStatus: PlanStatus): AccountStatusDispl
   }
 
   return {
-    label: "套餐信息暂不可用",
-    note: "当前仅支持查看可购买套餐。",
-    actionLabel: "查看套餐",
+    label: "暂无套餐",
+    note: "当前暂未开放套餐购买。",
+    actionLabel: "积分充值",
     actionDisabled: false,
   };
 }

@@ -157,11 +157,7 @@ type AccountRecord = {
   description: string;
 };
 
-const planOptions: PlanOption[] = [
-  { id: "basic", name: "基础套餐", price: 19, monthlyCredits: 220, description: "适合偶尔创作" },
-  { id: "standard", name: "标准套餐", price: 49, monthlyCredits: 600, description: "适合日常商品创作", recommended: true },
-  { id: "pro", name: "专业套餐", price: 99, monthlyCredits: 1300, description: "适合高频创作" },
-];
+const planOptions: PlanOption[] = [];
 
 const creditTopUpOptions: CreditTopUpOption[] = [
   { amount: 1, credits: 10, label: "体验充值" },
@@ -2648,7 +2644,7 @@ function RechargeCenterWorkspace({
   onViewChange: (view: AccountView) => void;
   onPaymentUnavailable: (text?: string) => void;
 }) {
-  const [activeTab, setActiveTab] = useState<RechargeTab>("plans");
+  const [activeTab, setActiveTab] = useState<RechargeTab>("credits");
   const [selectedPlanId, setSelectedPlanId] = useState("standard");
   const [selectedCreditAmount, setSelectedCreditAmount] = useState<number | null>(50);
   const [customAmount, setCustomAmount] = useState("");
@@ -2714,7 +2710,7 @@ function RechargeCenterWorkspace({
     paymentChannelReady: Boolean(selectedPaymentChannelConfig),
     paymentAmountAllowed: creditAmountAllowed,
   });
-  const paymentUnavailableNote = "套餐支付暂未开放，当前先支持积分充值。";
+  const paymentUnavailableNote = "暂无套餐，当前先支持积分充值。";
   const creditPaymentNote = paymentError
     || (latestPayment
       ? `订单 ${latestPayment.order.status}，如未自动跳转请使用返回的支付链接继续付款。`
@@ -2863,8 +2859,8 @@ function RechargeCenterWorkspace({
             {activeTab === "plans" ? (
               <div className="recharge-center-panel" role="tabpanel">
                 <div className="recharge-selection-head">
-                  <h3>选择适合你的套餐</h3>
-                  <p>套餐按月展示，每档仅包含当前支持的月度积分额度。</p>
+                  <h3>暂无套餐</h3>
+                  <p>当前暂未开放套餐购买，请使用积分充值。</p>
                 </div>
                 {planOptions.length > 0 ? (
                   <div className="recharge-plan-grid">
@@ -2904,8 +2900,8 @@ function RechargeCenterWorkspace({
                 ) : (
                   <div className="recharge-plan-empty" role="status">
                     <Crown className="size-5" aria-hidden="true" />
-                    <strong>暂无可购买套餐</strong>
-                    <span>当前暂未返回可购买的套餐配置。</span>
+                    <strong>暂无套餐</strong>
+                    <span>当前仅支持积分充值。</span>
                   </div>
                 )}
               </div>
@@ -3256,9 +3252,9 @@ function createPlanFactItems(plan: PlanOption) {
 function createPlanSummaryLines(plan: PlanOption | null): Array<[string, string]> {
   if (!plan) {
     return [
-      ["当前选择", "未选择"],
+      ["当前选择", "暂无套餐"],
       ["套餐周期", "—"],
-      ["每月积分", "请选择套餐"],
+      ["每月积分", "暂无套餐"],
       ["应付金额", "—"],
     ];
   }
@@ -3327,11 +3323,11 @@ function createRechargeConfirmState(input: {
     if (input.mode === "credits" && input.customRechargeActive && !input.customAmountValid) {
       return { disabled: true, label: "请检查充值金额" };
     }
-    return { disabled: true, label: input.mode === "plans" ? "请选择套餐" : "请选择充值金额" };
+    return { disabled: true, label: input.mode === "plans" ? "暂无套餐" : "请选择充值金额" };
   }
 
   if (!input.user) return { disabled: true, label: "登录后继续" };
-  if (input.mode === "plans") return { disabled: true, label: "套餐支付暂未开放" };
+  if (input.mode === "plans") return { disabled: true, label: "暂无套餐" };
   if (input.paymentConfigLoading) return { disabled: true, label: "支付配置加载中" };
   if (input.paymentSubmitting) return { disabled: true, label: "正在创建订单" };
   if (!input.paymentChannelReady) return { disabled: true, label: "支付通道未配置" };
