@@ -1,7 +1,5 @@
 "use client";
 
-/* eslint-disable @next/next/no-img-element */
-
 import Link from "next/link";
 import { ArrowRight, Search, SlidersHorizontal } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type PointerEvent as ReactPointerEvent } from "react";
@@ -34,6 +32,19 @@ type QuotaResponse = {
 
 const templateRailDragThreshold = 12;
 const templateRailLongPressDelay = 180;
+
+function getWebpThumbnail(thumbnail: string) {
+  return thumbnail.endsWith(".png") ? thumbnail.replace(/\.png$/, ".webp") : thumbnail;
+}
+
+function TemplateThumbnail({ template }: { template: TemplatePromptTemplate }) {
+  return (
+    <picture>
+      <source srcSet={getWebpThumbnail(template.thumbnail)} type="image/webp" />
+      <img src={template.thumbnail} alt={template.label} loading="lazy" decoding="async" />
+    </picture>
+  );
+}
 
 type TemplateRailProps = {
   title?: string;
@@ -168,7 +179,7 @@ export function TemplateRail({
               aria-pressed={activeTemplateId === template.id}
             >
               <span className="studio-template-card__thumb">
-                <img src={template.thumbnail} alt={template.label} loading="lazy" />
+                <TemplateThumbnail template={template} />
                 <span className="studio-template-card__fade" aria-hidden="true" />
                 <span className="studio-template-card__badge">{template.category}</span>
                 <span className="studio-template-card__label">{template.label}</span>
@@ -508,7 +519,7 @@ function TemplateBrowserPanel({
             style={{ "--template-card-delay": `${Math.min(index * 20, 220)}ms` } as CSSProperties}
           >
             <span className="template-center-card__thumb">
-              <img src={template.thumbnail} alt={template.label} loading="lazy" />
+              <TemplateThumbnail template={template} />
               <span className="template-center-card__ratio">{template.aspectRatio}</span>
             </span>
             <span className="template-center-card__body">

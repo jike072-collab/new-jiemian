@@ -49,19 +49,19 @@ const showcaseCards = [
   {
     title: "商品主图",
     subtitle: "一键生成精美主图",
-    image: "/auth-showcase/product-main.png",
+    image: "/auth-showcase/product-main.webp",
     className: "auth-showcase-card--left",
   },
   {
     title: "商品场景图",
     subtitle: "生成高质量场景图",
-    image: "/auth-showcase/product-scene.png",
+    image: "/auth-showcase/product-scene.webp",
     className: "auth-showcase-card--main",
   },
   {
     title: "视频生成",
     subtitle: "快速生成商品视频",
-    image: "/auth-showcase/video-cover.png",
+    image: "/auth-showcase/video-cover.webp",
     className: "auth-showcase-card--right",
     kind: "video",
   },
@@ -249,6 +249,7 @@ export function CustomerLogin({ initialMode = "login" }: CustomerLoginProps) {
                   fill
                   sizes="280px"
                   loading="lazy"
+                  decoding="async"
                   className="auth-showcase-card__image"
                 />
                 {card.kind === "video" ? (

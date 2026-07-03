@@ -282,8 +282,9 @@ function ImageGenerationTutorial() {
           <div className="image-tutorial-simple__image-shell">
             <img
               className="image-tutorial-simple__image"
-              src="/tutorials/image-generator/perfume-result.png"
+              src="/tutorials/image-generator/perfume-result.webp"
               alt="新中式香水产品图，粉色牡丹花、香水瓶、大理石台面和中式窗棂背景"
+              decoding="async"
             />
           </div>
           <div className="image-tutorial-simple__overlay image-tutorial-simple__overlay--prompt">
@@ -314,7 +315,7 @@ function ImageEditorTutorial() {
           </svg>
 
           <figure className="image-editor-photo image-editor-photo--input image-editor-photo--single-source">
-            <img src="/tutorials/image-editor/single-source.png" alt="方形粉色香水瓶白底素材" />
+            <img src="/tutorials/image-editor/single-source.webp" alt="方形粉色香水瓶白底素材" loading="lazy" decoding="async" />
           </figure>
           <svg className="image-editor-arrow image-editor-arrow--single" viewBox="0 0 128 74" aria-hidden="true" focusable="false">
             <defs>
@@ -331,14 +332,14 @@ function ImageEditorTutorial() {
             <span>提示词</span>
           </span>
           <figure className="image-editor-photo image-editor-photo--result image-editor-photo--single-result">
-            <img src="/tutorials/image-editor/single-result.png" alt="女性手持同款香水瓶的编辑结果" />
+            <img src="/tutorials/image-editor/single-result.webp" alt="女性手持同款香水瓶的编辑结果" loading="lazy" decoding="async" />
           </figure>
 
           <figure className="image-editor-photo image-editor-photo--input image-editor-photo--merge-product">
-            <img src="/tutorials/image-editor/merge-product.png" alt="椭圆形粉色香水瓶白底素材" />
+            <img src="/tutorials/image-editor/merge-product.webp" alt="椭圆形粉色香水瓶白底素材" loading="lazy" decoding="async" />
           </figure>
           <figure className="image-editor-photo image-editor-photo--input image-editor-photo--merge-scene">
-            <img src="/tutorials/image-editor/merge-scene.png" alt="新中式牡丹场景素材" />
+            <img src="/tutorials/image-editor/merge-scene.webp" alt="新中式牡丹场景素材" loading="lazy" decoding="async" />
           </figure>
           <svg className="image-editor-arrow image-editor-arrow--merge" viewBox="0 0 128 74" aria-hidden="true" focusable="false">
             <defs>
@@ -355,7 +356,7 @@ function ImageEditorTutorial() {
             <span>提示词</span>
           </span>
           <figure className="image-editor-photo image-editor-photo--result image-editor-photo--merge-result">
-            <img src="/tutorials/image-editor/merge-result.png" alt="香水瓶放入新中式牡丹场景后的融合结果" />
+            <img src="/tutorials/image-editor/merge-result.webp" alt="香水瓶放入新中式牡丹场景后的融合结果" loading="lazy" decoding="async" />
           </figure>
         </div>
       </div>
@@ -365,6 +366,8 @@ function ImageEditorTutorial() {
 
 const videoTutorialPromptText = "雨天城市街头，女生撑透明雨伞缓慢向前行走，并自然回头看向镜头。";
 const videoTutorialResultVideoSrc = "/tutorials/video-generator/demo-result.mp4";
+const videoTutorialInputImageSrc = "/tutorials/video-generator/input-person.webp";
+const videoTutorialResultPosterSrc = "/tutorials/video-generator/rain-umbrella.webp";
 
 type VideoTutorialImagePhase = "hidden" | "dragging" | "landed";
 type VideoTutorialPlaybackState =
@@ -452,13 +455,15 @@ function VideoTutorialInputDemo({
       />
 
       <img
-        src="/tutorials/video-generator/input-person.png"
+        src={videoTutorialInputImageSrc}
         alt=""
         className={cn(
           "tutorial-source-image",
           imagePhase === "dragging" && "is-dragging",
           imagePhase === "landed" && "is-visible",
         )}
+        loading="lazy"
+        decoding="async"
       />
 
       <div className={cn("tutorial-prompt-bubble", promptBubbleVisible && "is-visible")}>
@@ -520,7 +525,7 @@ function VideoTutorialResultSlot({
   return (
     <div className="video-tutorial-result-slot">
       <div className="video-tutorial-result-slot__backdrop" aria-hidden="true">
-        <img src="/tutorials/video-generator/input-person.png" alt="" />
+        <img src={videoTutorialInputImageSrc} alt="" loading="lazy" decoding="async" />
       </div>
       <div
         ref={mediaRef}
@@ -536,15 +541,15 @@ function VideoTutorialResultSlot({
           <video
             ref={videoRef}
             src={videoTutorialResultVideoSrc}
-            poster="/tutorials/video-generator/rain-umbrella.png"
+            poster={videoTutorialResultPosterSrc}
             muted
             playsInline
-            preload="auto"
+            preload="metadata"
             onEnded={onPlaybackEnd}
             onError={onPlaybackEnd}
           />
         ) : (
-          <video poster="/tutorials/video-generator/input-person.png" muted playsInline preload="metadata" aria-label="视频结果预留位" />
+          <video poster={videoTutorialInputImageSrc} muted playsInline preload="metadata" aria-label="视频结果预留位" />
         )}
       </div>
     </div>
@@ -561,7 +566,7 @@ function VideoTutorialParameterDemo({
   return (
     <div className={cn("video-tutorial-parameter-demo", showParameters && "is-active")}>
       <div className="video-tutorial-parameter-demo__preview">
-        <img src="/tutorials/video-generator/rain-umbrella.png" alt="" />
+        <img src={videoTutorialResultPosterSrc} alt="" loading="lazy" decoding="async" />
       </div>
       <div className="video-tutorial-parameter-demo__assets" aria-label="示例参数">
         <span className="video-tutorial-parameter-demo__asset" aria-label="5 秒">
