@@ -704,7 +704,6 @@
 
   .auth-password__toggle:focus-visible,
   .auth-submit:focus-visible,
-  .auth-guest-link:focus-visible,
   .auth-switch a:focus-visible {
     outline: 2px solid rgba(255, 10, 108, 0.86);
     outline-offset: 2px;
@@ -784,39 +783,6 @@
 
   .auth-submit:hover:not(:disabled) .auth-submit__icon:not(.animate-spin) {
     transform: translateX(3px);
-  }
-
-  .auth-guest-link {
-    position: relative;
-    z-index: 1;
-    display: inline-flex;
-    width: 100%;
-    height: 50px;
-    align-items: center;
-    justify-content: center;
-    border: 1px solid rgba(178, 155, 205, 0.25);
-    border-radius: 12px;
-    background: rgba(255, 255, 255, 0.035);
-    color: rgba(255, 255, 255, 0.72);
-    font-size: 14px;
-    font-weight: 650;
-    text-decoration: none;
-    transition:
-      border-color var(--motion-fast),
-      background var(--motion-fast),
-      color var(--motion-fast),
-      transform var(--motion-instant);
-  }
-
-  .auth-guest-link:hover {
-    transform: translateY(-1px);
-    border-color: rgba(213, 196, 232, 0.42);
-    background: rgba(255, 255, 255, 0.065);
-    color: #fff;
-  }
-
-  .auth-guest-link:active {
-    transform: scale(0.985);
   }
 
   .auth-switch {
@@ -1254,8 +1220,7 @@
     .auth-input::after,
     .auth-password__toggle,
     .auth-submit,
-    .auth-submit__shine,
-    .auth-guest-link {
+    .auth-submit__shine {
       transition: none !important;
     }
 

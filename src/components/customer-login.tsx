@@ -368,10 +368,6 @@ export function CustomerLogin({ initialMode = "login" }: CustomerLoginProps) {
                 )}
               </button>
 
-              <Link href="/?preview=1" className="auth-guest-link">
-                免登录查看界面
-              </Link>
-
               <p className="auth-switch">
                 {isLogin ? "还没有账号？" : "已有账号？"}
                 <Link
