@@ -59,6 +59,7 @@
     "ops:backup:prune:dry-run": "node scripts/ops/server-backup.mjs --prune --dry-run",
     "ops:backup:prune:apply": "node scripts/ops/server-backup.mjs --prune --apply",
     "ops:restore:verify": "node scripts/ops/server-restore.mjs --verify",
+    "ops:warmup:routes": "node scripts/ops/warm-production-routes.mjs",
     "env:check:production": "node --conditions=react-server scripts/check-production-env.mjs",
     "env:check:local-staging": "node --conditions=react-server scripts/check-local-staging-env.mjs",
     "check:docs": "node scripts/check-docs.mjs",

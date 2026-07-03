@@ -97,11 +97,17 @@ export function CustomerLogin({ initialMode = "login" }: CustomerLoginProps) {
   const [confirmPassword, setConfirmPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
+  const [shaderReady, setShaderReady] = useState(false);
   const [loading, setLoading] = useState(false);
   const [success, setSuccess] = useState(false);
   const [message, setMessage] = useState("");
   const disabled = loading || success;
   const isLogin = mode === "login";
+
+  useEffect(() => {
+    const timer = window.setTimeout(() => setShaderReady(true), 250);
+    return () => window.clearTimeout(timer);
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -207,7 +213,7 @@ export function CustomerLogin({ initialMode = "login" }: CustomerLoginProps) {
 
   return (
     <main className="auth-page">
-      <AuthShaderBackground />
+      {shaderReady ? <AuthShaderBackground /> : null}
       <div className="auth-page__shade" aria-hidden="true" />
       <div className="auth-page__noise" aria-hidden="true" />
 
@@ -242,7 +248,7 @@ export function CustomerLogin({ initialMode = "login" }: CustomerLoginProps) {
                   alt=""
                   fill
                   sizes="280px"
-                  priority
+                  loading="lazy"
                   className="auth-showcase-card__image"
                 />
                 {card.kind === "video" ? (

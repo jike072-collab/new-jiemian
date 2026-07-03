@@ -24,6 +24,7 @@ Environment=NPM_CONFIG_CACHE=/var/lib/aohuang-ai/runtime/npm-cache
 
 ExecStartPre=/usr/bin/npm run release:preflight
 ExecStart=/usr/bin/npm run start:next
+ExecStartPost=/bin/sh -c '/usr/bin/npm run ops:warmup:routes -- --port 3106 || true'
 
 Restart=on-failure
 RestartSec=5s
