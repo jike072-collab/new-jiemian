@@ -62,6 +62,19 @@ export type AuthServiceDependencies = {
 };
 
 const genericInvalidCredentials = "Invalid email, username, or password.";
+const DEFAULT_NEW_USER_INITIAL_CREDITS = 100;
+
+function envNumber(name: string, fallback: number, min: number, max: number) {
+  const value = process.env[name]?.trim();
+  if (!value) return fallback;
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed)) return fallback;
+  return Math.min(Math.max(Math.trunc(parsed), min), max);
+}
+
+function newUserInitialCredits() {
+  return envNumber("NEW_USER_INITIAL_CREDITS", DEFAULT_NEW_USER_INITIAL_CREDITS, 0, 100_000);
+}
 
 function failure(input: Omit<AuthFailure, "ok">): AuthFailure {
   return { ok: false, ...input };
@@ -365,7 +378,7 @@ export class AuthService {
         email: user.email,
         username: user.username,
         displayName: user.display_name,
-        initialQuota: 0,
+        initialQuota: newUserInitialCredits(),
       }, {
         idempotencyKey: `register:${user.local_user_id}`,
         passwordSeed: sha256(`${user.local_user_id}:${passwordSeed}`).slice(0, 16),

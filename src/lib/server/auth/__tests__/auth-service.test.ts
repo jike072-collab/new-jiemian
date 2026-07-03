@@ -52,6 +52,7 @@ function failedMapping(localUserId: string): NewApiUserSyncResult {
 function service(overrides: {
   repository?: AuthRepository;
   sync?: (localUserId: string) => NewApiUserSyncResult | Promise<NewApiUserSyncResult>;
+  profiles?: NewApiUserSyncProfile[];
   now?: () => Date;
   loginLimiter?: InMemoryRateLimiter;
   adminPasswordLimiter?: InMemoryRateLimiter;
@@ -71,6 +72,7 @@ function service(overrides: {
       now: overrides.now,
       userSyncService: {
         ensureMapped: async (profile: NewApiUserSyncProfile) => {
+          overrides.profiles?.push(profile);
           const result = await (overrides.sync || activeMapping)(profile.localUserId);
           if (result.mapping.sync_status === "active" && result.mapping.new_api_user_id) {
             await mappingRepository.createPending({
@@ -126,6 +128,21 @@ test("registers a real local user, hashes password, maps through B08, and create
   assert.notEqual(stored.password_hash, "StrongPass123");
   assert.equal(await verifyPassword("StrongPass123", stored.password_hash), true);
   assert.equal(await verifyPassword("WrongPass123", stored.password_hash), false);
+});
+
+test("register seeds new users with trial credits for New API sync", async () => {
+  const profiles: NewApiUserSyncProfile[] = [];
+  const harness = service({ profiles });
+  const previous = process.env.NEW_USER_INITIAL_CREDITS;
+  process.env.NEW_USER_INITIAL_CREDITS = "";
+  try {
+    const result = await registerActiveAccount(harness.service);
+    assert.equal(result.ok, true);
+    assert.equal(profiles[0]?.initialQuota, 100);
+  } finally {
+    if (previous === undefined) delete process.env.NEW_USER_INITIAL_CREDITS;
+    else process.env.NEW_USER_INITIAL_CREDITS = previous;
+  }
 });
 
 test("rejects duplicate registration without creating another account", async () => {

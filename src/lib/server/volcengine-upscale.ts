@@ -61,6 +61,10 @@ function parseJsonString(value: unknown) {
   }
 }
 
+function asRecordOrJson(value: unknown) {
+  return typeof value === "string" ? parseJsonString(value) : asRecord(value);
+}
+
 function targetLabel(scale: TargetScale) {
   if (scale === 4) return "4K";
   if (scale === 2) return "2K";
@@ -294,7 +298,6 @@ function providerReady(provider: ProviderConfig | null, kind: "image" | "video")
   const config = videoConfig(provider);
   if (!config.credential) return { ready: false, detail: "视频高清增强缺少火山 AK/SK，请在后台 API Key 填 AK:SK。" };
   if (!config.spaceName) return { ready: false, detail: "视频高清增强缺少 VOD SpaceName，请填在模型字段或 VOLCENGINE_VOD_SPACE_NAME。" };
-  if (!config.outputDomain) return { ready: false, detail: "视频高清增强缺少 VOLCENGINE_VOD_OUTPUT_DOMAIN，请先在火山 VOD 绑定播放域名。" };
   return { ready: true, detail: "火山 VOD 视频高清增强已配置。" };
 }
 
@@ -438,12 +441,11 @@ async function imageResourceUrl(objectKey: string, config: ReturnType<typeof ima
     method: "GET",
     query: {
       Action: "GetResourceURL",
-      Version: "2023-05-01",
+      Version: "2018-08-01",
       ServiceId: config.serviceId,
       Domain: config.outputDomain,
       URI: objectKey,
       Proto: "https",
-      Format: "image",
       ...(config.outputTpl ? { Tpl: config.outputTpl } : {}),
     },
   });
@@ -679,26 +681,34 @@ function normalizeVolcStatus(value: unknown): JobRecord["status"] {
 }
 
 function findVideoOutputFile(result: Record<string, unknown>) {
-  const output = asRecord(result.Output);
-  const task = asRecord(output.Task);
-  const enhance = asRecord(task.Enhance);
-  const template = asRecord(output.Template);
-  const templateEnhance = asRecord(template.Enhance);
+  const output = asRecordOrJson(result.Output);
+  const data = asRecordOrJson(output.Data);
+  const task = asRecordOrJson(output.Task || data.Task);
+  const enhance = asRecordOrJson(task.Enhance);
+  const template = asRecordOrJson(output.Template || data.Template);
+  const templateEnhance = asRecordOrJson(template.Enhance);
+  const resultFile = asRecordOrJson(output.Result || data.Result);
   const candidates = [
+    asRecordOrJson(result),
+    output,
+    data,
+    resultFile,
     enhance,
     templateEnhance,
-    asRecord(template.TranscodeVideo),
-    asRecord(template.ByteHD),
-    asRecord(enhance.File),
-    asRecord(templateEnhance.File),
-    asRecord(task.File),
-    asRecord(output.File),
+    asRecordOrJson(template.TranscodeVideo),
+    asRecordOrJson(template.ByteHD),
+    asRecordOrJson(enhance.File),
+    asRecordOrJson(templateEnhance.File),
+    asRecordOrJson(task.File),
+    asRecordOrJson(output.File),
+    asRecordOrJson(data.File),
+    asRecordOrJson(resultFile.File),
   ];
   for (const candidate of candidates) {
     const url = firstString(candidate.URL, candidate.Url, candidate.url, candidate.PlayUrl, candidate.PlayURL, candidate.DownloadUrl, candidate.DownloadURL);
-    const storeUri = firstString(candidate.StoreUri, candidate.StoreURI, candidate.FileName, candidate.fileName);
-    const vid = firstString(candidate.Vid, candidate.vid);
-    const fileId = firstString(candidate.FileId, candidate.fileId);
+    const storeUri = firstString(candidate.StoreUri, candidate.StoreURI, candidate.FileName, candidate.fileName, candidate.FilePath, candidate.filePath);
+    const vid = firstString(candidate.Vid, candidate.vid, candidate.VideoId, candidate.videoId, candidate.MediaId, candidate.mediaId);
+    const fileId = firstString(candidate.FileId, candidate.fileId, candidate.FileID, candidate.fileID);
     const size = Number(candidate.Size);
     const duration = Number(candidate.Duration);
     const videoStream = asRecord(candidate.VideoStreamMeta);
@@ -722,6 +732,83 @@ function fileUrlFromStoreUri(storeUri: string, outputDomain: string) {
   if (!storeUri || !outputDomain) return "";
   if (/^https?:\/\//i.test(storeUri)) return storeUri;
   return `https://${outputDomain.replace(/^https?:\/\//, "").replace(/\/+$/, "")}/${storeUri.replace(/^\/+/, "")}`;
+}
+
+function uniqueStrings(values: string[]) {
+  return Array.from(new Set(values.map((value) => value.trim()).filter(Boolean)));
+}
+
+function playInfoCandidates(result: Record<string, unknown>) {
+  const direct = asRecord(result);
+  const items = Array.isArray(result.PlayInfoList)
+    ? result.PlayInfoList.map(asRecord)
+    : [];
+  const nested = asRecord(result.PlayInfo);
+  const adaptive = asRecord(result.AdaptiveBitrateStreamingInfo);
+  const candidates = [direct, nested, adaptive, ...items];
+  return candidates.sort((left, right) => {
+    const leftDefinition = String(left.Definition || left.definition || "").toLowerCase();
+    const rightDefinition = String(right.Definition || right.definition || "").toLowerCase();
+    return Number(rightDefinition === "oe") - Number(leftDefinition === "oe");
+  });
+}
+
+function findVodPlayInfoUrl(result: Record<string, unknown>) {
+  for (const candidate of playInfoCandidates(result)) {
+    const url = firstString(
+      candidate.MainPlayUrl,
+      candidate.main_play_url,
+      candidate.PlayUrl,
+      candidate.PlayURL,
+      candidate.Url,
+      candidate.URL,
+      candidate.DownloadUrl,
+      candidate.DownloadURL,
+      candidate.BackupPlayUrl,
+      candidate.backup_play_url,
+    );
+    if (url) return url;
+  }
+  return "";
+}
+
+async function publishVodMedia(vid: string, config: ReturnType<typeof videoConfig>) {
+  if (!vid || !config.credential) return;
+  await openapiRequest({
+    endpoint: config.endpoint,
+    service: vodServiceName,
+    region: config.region,
+    credential: config.credential,
+    method: "GET",
+    query: {
+      Action: "UpdateMediaPublishStatus",
+      Version: "2023-01-01",
+      Vid: vid,
+      Status: "Published",
+    },
+  });
+}
+
+async function vodPlayInfoUrl(vid: string, config: ReturnType<typeof videoConfig>) {
+  if (!vid) return "";
+  if (!config.credential) throw new GenerationDiagnosticError({ code: "PROVIDER_MISSING_API_KEY" });
+  await publishVodMedia(vid, config).catch(() => undefined);
+  const response = await openapiRequest<{ Result?: Record<string, unknown> }>({
+    endpoint: config.endpoint,
+    service: vodServiceName,
+    region: config.region,
+    credential: config.credential,
+    method: "GET",
+    query: {
+      Action: "GetPlayInfo",
+      Version: "2023-01-01",
+      Vid: vid,
+      FileType: "video",
+      Format: "mp4",
+      Ssl: "1",
+    },
+  });
+  return findVodPlayInfoUrl(response.Result || {});
 }
 
 export async function refreshVideoUpscaleJob(jobId: string, localUserId?: string | null) {
@@ -750,13 +837,34 @@ export async function refreshVideoUpscaleJob(jobId: string, localUserId?: string
   const status = normalizeVolcStatus(result.Status);
   if (status === "done") {
     const output = findVideoOutputFile(result);
-    const outputUrl = output?.url || fileUrlFromStoreUri(output?.storeUri || "", config.outputDomain);
+    const outputVid = output?.vid || output?.fileId || "";
+    const playInfoUrl = await vodPlayInfoUrl(outputVid, config).catch(() => "");
+    const outputUrls = uniqueStrings([
+      playInfoUrl,
+      output?.url || "",
+      fileUrlFromStoreUri(output?.storeUri || "", config.outputDomain),
+    ]);
+    let outputUrl = "";
+    let stored: Awaited<ReturnType<typeof storeRemoteUrl>> | null = null;
+    for (const candidateUrl of outputUrls) {
+      try {
+        stored = await storeRemoteUrl(candidateUrl, "video-upscale", "video/mp4");
+        outputUrl = candidateUrl;
+        break;
+      } catch {
+        outputUrl = "";
+      }
+    }
     if (!outputUrl) {
       const message = "视频高清增强已完成，但缺少可下载结果地址。请配置 VOLCENGINE_VOD_OUTPUT_DOMAIN 或使用 VOD 播放地址接口。";
       await updateLibraryItem(job.libraryItemId, { status: "failed", error: message });
       return await updateJob(job.id, { status: "failed", error: message }) || job;
     }
-    const stored = await storeRemoteUrl(outputUrl, "video-upscale", "video/mp4");
+    if (!stored) {
+      const message = "Video upscale completed, but result download failed.";
+      await updateLibraryItem(job.libraryItemId, { status: "failed", error: message });
+      return await updateJob(job.id, { status: "failed", error: message }) || job;
+    }
     const currentItem = (await readLibrary()).find((item) => item.id === job.libraryItemId);
     await updateLibraryItem(job.libraryItemId, {
       status: "done",

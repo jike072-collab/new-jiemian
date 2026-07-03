@@ -5,6 +5,7 @@ import { applicationQuery, closeApplicationDatabasePool } from "../../database";
 import {
   NewApiError,
   createMemoryNewApiUserMappingRepository,
+  type NewApiQuotaDisplayConfig,
   type NewApiResponse,
   type NewApiUserMapping,
 } from "../../integrations/new-api";
@@ -47,6 +48,16 @@ function response<T>(data: T, status = 200): NewApiResponse<T> {
   return { data, requestId: "test-request", upstreamStatus: status };
 }
 
+function quotaDisplayConfig(type: NewApiQuotaDisplayConfig["quotaDisplayType"] = "TOKENS"): NewApiQuotaDisplayConfig {
+  return {
+    quotaPerUnit: 500_000,
+    usdExchangeRate: 7.3,
+    quotaDisplayType: type,
+    customCurrencySymbol: "¤",
+    customCurrencyExchangeRate: 1,
+  };
+}
+
 function service(overrides: {
   quota?: number | string;
   usedQuota?: number | string;
@@ -56,6 +67,7 @@ function service(overrides: {
   getNewApiUser?: unknown;
   getNewApiLogs?: unknown;
   quotaCache?: QuotaDisplayCache;
+  getQuotaDisplayConfig?: () => Promise<NewApiQuotaDisplayConfig>;
 } = {}) {
   const mappingRepository = createMemoryNewApiUserMappingRepository(overrides.mappings || mappingSeed());
   const usageRepository = createMemoryUsageLogRepository(overrides.usageSeed || []);
@@ -93,12 +105,13 @@ function service(overrides: {
         total: 1,
       });
     })) as never,
+    getQuotaDisplayConfig: overrides.getQuotaDisplayConfig || (async () => quotaDisplayConfig()),
   });
 
   return { service: quotaService, mappingRepository, usageRepository, quotaCache, calls };
 }
 
-test("reads current quota from New API raw quota units without creating a local balance", async () => {
+test("reads current quota from New API remaining quota without creating a local balance", async () => {
   const harness = service({ quota: 100, usedQuota: 40 });
   const result = await harness.service.getCurrentQuota("local-user");
 
@@ -106,7 +119,7 @@ test("reads current quota from New API raw quota units without creating a local 
   if (!result.ok) return;
   assert.equal(result.snapshot.quota_units, 100);
   assert.equal(result.snapshot.used_quota_units, 40);
-  assert.equal(result.snapshot.available_quota_units, 60);
+  assert.equal(result.snapshot.available_quota_units, 100);
   assert.equal(result.snapshot.display_unit, "credits");
   assert.equal(result.snapshot.source, "new_api");
   assert.equal(result.snapshot.cached, false);
@@ -137,7 +150,22 @@ test("allows large quota values without precision loss for safe integers", async
 
   assert.equal(result.ok, true);
   if (!result.ok) return;
-  assert.equal(result.snapshot.available_quota_units, maxSafe - 1);
+  assert.equal(result.snapshot.available_quota_units, maxSafe);
+});
+
+test("converts CNY-displayed New API quota into frontend credits", async () => {
+  const rawQuota = 1_369_863;
+  const result = await service({
+    quota: rawQuota,
+    usedQuota: 684_932,
+    getQuotaDisplayConfig: async () => quotaDisplayConfig("CNY"),
+  }).service.getCurrentQuota("local-user");
+
+  assert.equal(result.ok, true);
+  if (!result.ok) return;
+  assert.equal(result.snapshot.quota_units, 200);
+  assert.equal(result.snapshot.used_quota_units, 100);
+  assert.equal(result.snapshot.available_quota_units, 200);
 });
 
 test("records successful precheck idempotently and invalidates display cache", async () => {

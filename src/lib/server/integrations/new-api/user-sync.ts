@@ -3,6 +3,11 @@ import { createHash, randomUUID } from "node:crypto";
 import { adminCreateUser, adminGetUsers, adminSearchUsers, type NewApiUserRecord } from "./admin";
 import { isNewApiError } from "./errors";
 import {
+  creditsToNewApiQuota,
+  getNewApiQuotaDisplayConfig,
+  type NewApiQuotaDisplayConfig,
+} from "./quota-display";
+import {
   createJsonNewApiUserMappingRepository,
   NewApiUserMappingError,
   type NewApiUserMapping,
@@ -39,6 +44,7 @@ export type NewApiUserSyncDependencies = {
   createUser?: typeof adminCreateUser;
   listUsers?: typeof adminGetUsers;
   searchUsers?: typeof adminSearchUsers;
+  getQuotaDisplayConfig?: () => Promise<NewApiQuotaDisplayConfig>;
 };
 
 type UpstreamCreateResult =
@@ -48,6 +54,7 @@ type UpstreamCreateResult =
   | { kind: "repair_required"; code: string; message: string };
 
 type UserLookup = (profile: NewApiUserSyncProfile) => ReturnType<typeof adminGetUsers>;
+type QuotaDisplayConfigLoader = () => Promise<NewApiQuotaDisplayConfig>;
 
 const DEFAULT_GROUP = "default";
 const MAX_NEW_API_USER_FIELD_LENGTH = 20;
@@ -156,15 +163,17 @@ async function createOrFindUpstreamUser(
   options: NewApiUserSyncOptions,
   createUser: typeof adminCreateUser,
   lookupUsers: UserLookup,
+  getQuotaDisplayConfig: QuotaDisplayConfigLoader,
 ): Promise<UpstreamCreateResult> {
   try {
+    const quotaDisplayConfig = await getQuotaDisplayConfig();
     const response = await createUser({
       username: normalizeUsername(profile),
       password: generatedPassword(profile, options),
       display_name: normalizeDisplayName(profile),
       email: normalizeEmailForNewApi(profile),
       group: profile.group || DEFAULT_GROUP,
-      quota: profile.initialQuota ?? 0,
+      quota: creditsToNewApiQuota(profile.initialQuota ?? 0, quotaDisplayConfig),
     });
     if (response.data.success === false) {
       return {
@@ -200,6 +209,7 @@ export class NewApiUserSyncService {
   private readonly repository: NewApiUserMappingRepository;
   private readonly createUser: typeof adminCreateUser;
   private readonly lookupUsers: UserLookup;
+  private readonly getQuotaDisplayConfig: QuotaDisplayConfigLoader;
   private readonly inFlight = new Map<string, Promise<NewApiUserSyncResult>>();
 
   constructor(dependencies: NewApiUserSyncDependencies = {}) {
@@ -208,6 +218,7 @@ export class NewApiUserSyncService {
     this.lookupUsers = dependencies.listUsers
       ? () => dependencies.listUsers!()
       : (profile) => (dependencies.searchUsers || adminSearchUsers)(normalizeUsername(profile));
+    this.getQuotaDisplayConfig = dependencies.getQuotaDisplayConfig || getNewApiQuotaDisplayConfig;
   }
 
   async ensureMapped(
@@ -249,7 +260,7 @@ export class NewApiUserSyncService {
           expectedVersion: mapping.version,
         });
 
-    const upstream = await createOrFindUpstreamUser(profile, options, this.createUser, this.lookupUsers);
+    const upstream = await createOrFindUpstreamUser(profile, options, this.createUser, this.lookupUsers, this.getQuotaDisplayConfig);
     if (upstream.kind === "created" || upstream.kind === "duplicate") {
       if (!upstream.user) {
         const repair = await this.repository.markFailed({

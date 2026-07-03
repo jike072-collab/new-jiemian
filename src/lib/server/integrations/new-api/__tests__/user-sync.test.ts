@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 
 import { NewApiError } from "../errors";
+import { type NewApiQuotaDisplayConfig } from "../quota-display";
 import { createMemoryNewApiUserMappingRepository } from "../user-mapping";
 import { NewApiUserSyncService, type NewApiUserSyncProfile } from "../user-sync";
 import { type NewApiResponse } from "../types";
@@ -34,6 +35,16 @@ function user(overrides: Partial<NewApiUserRecord> = {}): NewApiUserRecord {
   };
 }
 
+function quotaDisplayConfig(type: NewApiQuotaDisplayConfig["quotaDisplayType"] = "TOKENS"): NewApiQuotaDisplayConfig {
+  return {
+    quotaPerUnit: 500_000,
+    usdExchangeRate: 7.3,
+    quotaDisplayType: type,
+    customCurrencySymbol: "C",
+    customCurrencyExchangeRate: 1,
+  };
+}
+
 test("creates a pending mapping then activates it after New API user creation", async () => {
   const repository = createMemoryNewApiUserMappingRepository();
   const service = new NewApiUserSyncService({
@@ -58,6 +69,24 @@ test("creates a pending mapping then activates it after New API user creation", 
   assert.equal(result.mapping.sync_status, "active");
   assert.equal(result.mapping.new_api_user_id, "77");
   assert.equal((await repository.getByLocalUserId("local-user-1"))?.idempotency_key, "register:local-user-1");
+});
+
+test("converts initial app credits into New API quota on user creation", async () => {
+  const repository = createMemoryNewApiUserMappingRepository();
+  const service = new NewApiUserSyncService({
+    repository,
+    getQuotaDisplayConfig: async () => quotaDisplayConfig("CNY"),
+    createUser: async (input) => {
+      assert.equal(input.quota, 1_369_863);
+      return response({ success: true, data: user() });
+    },
+    listUsers: async () => response({ data: [] }),
+  });
+
+  const result = await service.ensureMapped(profile({ initialQuota: 200 }));
+
+  assert.equal(result.action, "created_upstream");
+  assert.equal(result.mapping.sync_status, "active");
 });
 
 test("shortens New API username and display name to official field limits", async () => {

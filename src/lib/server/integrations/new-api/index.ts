@@ -4,6 +4,12 @@ export { createNewApiHttpClient, NewApiHttpClient, newApiAdminRequestContext } f
 export { getNewApiConfig, normalizeNewApiBaseUrl } from "./config";
 export { NewApiError, isNewApiError, safeNewApiError } from "./errors";
 export { checkNewApiHealth } from "./health";
+export {
+  creditsToNewApiQuota,
+  getNewApiQuotaDisplayConfig,
+  newApiQuotaToCredits,
+  newApiQuotaToDisplayAmount,
+} from "./quota-display";
 export { adminCreditNewApiUserQuota, adminSetNewApiUserQuota } from "./topup";
 export { adminGetNewApiLogs, adminGetNewApiUser, getNewApiUserLogs, getNewApiUserSelf } from "./user";
 export {
@@ -22,6 +28,10 @@ export type {
   NewApiUserSyncProfile,
   NewApiUserSyncResult,
 } from "./user-sync";
+export type {
+  NewApiQuotaDisplayConfig,
+  NewApiQuotaDisplayType,
+} from "./quota-display";
 export type {
   NewApiLogListPayload,
   NewApiLogRecord,

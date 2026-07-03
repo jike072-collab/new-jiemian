@@ -2,7 +2,10 @@ import { randomUUID } from "node:crypto";
 
 import {
   adminCreditNewApiUserQuota,
+  creditsToNewApiQuota,
+  getNewApiQuotaDisplayConfig,
   type NewApiUserMappingRepository,
+  type NewApiQuotaDisplayConfig,
 } from "../integrations/new-api";
 import { createAuthPersistenceRepositories } from "../auth/persistence";
 import {
@@ -55,6 +58,7 @@ export type BillingServiceDependencies = {
   creditQuota?: (input: CreditQuotaInput) => Promise<CreditQuotaResult>;
   getProviderStatus?: (order: BillingOrder) => Promise<PaymentProviderStatus>;
   getPaymentAdapter?: (channel: string) => PaymentAdapter;
+  getQuotaDisplayConfig?: () => Promise<NewApiQuotaDisplayConfig>;
   now?: () => Date;
 };
 
@@ -115,29 +119,10 @@ function safeDetails(details: Record<string, string | number | boolean | null>) 
   return result;
 }
 
-async function defaultCreditQuota(_input: CreditQuotaInput): Promise<CreditQuotaResult> {
-  try {
-    await adminCreditNewApiUserQuota({
-      newApiUserId: Number(_input.newApiUserId),
-      quotaDelta: _input.quotaUnits,
-    });
-    return {
-      ok: true,
-      providerCreditId: `new-api:${_input.orderId}`,
-    };
-  } catch (error) {
-    return {
-      ok: false,
-      code: error instanceof Error ? error.name : "NEW_API_CREDIT_FAILED",
-      message: "New API quota credit failed.",
-      retryable: true,
-    };
-  }
-}
-
 export class BillingService {
   private readonly repository: BillingRepository;
   private readonly mappingRepository: NewApiUserMappingRepository;
+  private readonly getQuotaDisplayConfig: NonNullable<BillingServiceDependencies["getQuotaDisplayConfig"]>;
   private readonly creditQuota: (input: CreditQuotaInput) => Promise<CreditQuotaResult>;
   private readonly getProviderStatus?: (order: BillingOrder) => Promise<PaymentProviderStatus>;
   private readonly getPaymentAdapter: (channel: string) => PaymentAdapter;
@@ -146,10 +131,32 @@ export class BillingService {
   constructor(dependencies: BillingServiceDependencies = {}) {
     this.repository = dependencies.repository || createBillingPersistenceRepository();
     this.mappingRepository = dependencies.mappingRepository || createAuthPersistenceRepositories().mappingRepository;
-    this.creditQuota = dependencies.creditQuota || defaultCreditQuota;
+    this.getQuotaDisplayConfig = dependencies.getQuotaDisplayConfig || getNewApiQuotaDisplayConfig;
+    this.creditQuota = dependencies.creditQuota || this.defaultCreditQuota.bind(this);
     this.getProviderStatus = dependencies.getProviderStatus;
     this.getPaymentAdapter = dependencies.getPaymentAdapter || getPaymentAdapter;
     this.now = dependencies.now || (() => new Date());
+  }
+
+  private async defaultCreditQuota(input: CreditQuotaInput): Promise<CreditQuotaResult> {
+    try {
+      const quotaDisplayConfig = await this.getQuotaDisplayConfig();
+      await adminCreditNewApiUserQuota({
+        newApiUserId: Number(input.newApiUserId),
+        quotaDelta: creditsToNewApiQuota(input.quotaUnits, quotaDisplayConfig),
+      });
+      return {
+        ok: true,
+        providerCreditId: `new-api:${input.orderId}`,
+      };
+    } catch (error) {
+      return {
+        ok: false,
+        code: error instanceof Error ? error.name : "NEW_API_CREDIT_FAILED",
+        message: "New API quota credit failed.",
+        retryable: true,
+      };
+    }
   }
 
   listPaymentChannels() {

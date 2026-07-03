@@ -2,8 +2,12 @@ import {
   adminCreditNewApiUserQuota,
   adminGetNewApiUser,
   adminSetNewApiUserQuota,
+  creditsToNewApiQuota,
   createJsonNewApiUserMappingRepository,
+  getNewApiQuotaDisplayConfig,
+  newApiQuotaToCredits,
   type NewApiUserSelf,
+  type NewApiQuotaDisplayConfig,
   type NewApiUserMappingRepository,
 } from "../integrations/new-api";
 import { QuotaDisplayCache } from "./cache";
@@ -73,6 +77,7 @@ export type TaskBillingServiceDependencies = {
   getQuotaSnapshot?: (localUserId: string) => Promise<{ ok: true; snapshot: QuotaSnapshot } | TaskBillingFailure>;
   getProviderQuota?: (newApiUserId: string) => Promise<ProviderQuotaResult>;
   adjustQuota?: (input: AdjustQuotaInput) => Promise<AdjustQuotaResult>;
+  getQuotaDisplayConfig?: () => Promise<NewApiQuotaDisplayConfig>;
   now?: () => Date;
 };
 
@@ -165,33 +170,6 @@ function isDispatchStale(record: TaskBillingRecord, now: Date) {
   return Number.isFinite(updatedAt) && now.getTime() - updatedAt > providerDispatchTimeoutMs;
 }
 
-async function defaultAdjustQuota(input: AdjustQuotaInput): Promise<AdjustQuotaResult> {
-  try {
-    if (Number.isInteger(input.targetQuota)) {
-      await adminSetNewApiUserQuota({
-        newApiUserId: Number(input.newApiUserId),
-        quota: input.targetQuota!,
-      });
-    } else {
-      await adminCreditNewApiUserQuota({
-        newApiUserId: Number(input.newApiUserId),
-        quotaDelta: input.quotaDelta,
-      });
-    }
-    return {
-      ok: true,
-      providerAdjustmentId: `new-api:${input.taskId}:${input.idempotencyKey}`,
-    };
-  } catch (error) {
-    return {
-      ok: false,
-      code: error instanceof Error ? error.name : "NEW_API_QUOTA_ADJUST_FAILED",
-      message: "New API quota adjustment failed.",
-      retryable: true,
-    };
-  }
-}
-
 function isNewApiUserSelf(value: unknown): value is NewApiUserSelf {
   return Boolean(value && typeof value === "object" && "id" in value);
 }
@@ -205,35 +183,13 @@ function extractNewApiUserQuota(payload: { data?: NewApiUserSelf; user?: NewApiU
   return Number.isFinite(quota) ? quota : null;
 }
 
-async function defaultGetProviderQuota(newApiUserId: string): Promise<ProviderQuotaResult> {
-  try {
-    const response = await adminGetNewApiUser({ newApiUserId: Number(newApiUserId) });
-    const quota = extractNewApiUserQuota(response.data);
-    if (quota === null) {
-      return {
-        ok: false,
-        code: "NEW_API_QUOTA_READ_INVALID",
-        message: "New API quota read returned an invalid value.",
-        retryable: true,
-      };
-    }
-    return { ok: true, quota };
-  } catch (error) {
-    return {
-      ok: false,
-      code: error instanceof Error ? error.name : "NEW_API_QUOTA_READ_FAILED",
-      message: "New API quota read failed.",
-      retryable: true,
-    };
-  }
-}
-
 export class TaskBillingService {
   private readonly taskRepository: TaskBillingRepository;
   private readonly usageRepository: UsageLogRepository;
   private readonly mappingRepository: NewApiUserMappingRepository;
   private readonly quotaCache: QuotaDisplayCache;
   private readonly getQuotaSnapshot: NonNullable<TaskBillingServiceDependencies["getQuotaSnapshot"]>;
+  private readonly getQuotaDisplayConfig: NonNullable<TaskBillingServiceDependencies["getQuotaDisplayConfig"]>;
   private readonly getProviderQuota: (newApiUserId: string) => Promise<ProviderQuotaResult>;
   private readonly adjustQuota: (input: AdjustQuotaInput) => Promise<AdjustQuotaResult>;
   private readonly now: () => Date;
@@ -248,9 +204,62 @@ export class TaskBillingService {
     this.mappingRepository = dependencies.mappingRepository || persistence!.mappingRepository || createJsonNewApiUserMappingRepository();
     this.quotaCache = dependencies.quotaCache || new QuotaDisplayCache(15_000);
     this.getQuotaSnapshot = dependencies.getQuotaSnapshot || this.defaultQuotaSnapshot.bind(this);
-    this.getProviderQuota = dependencies.getProviderQuota || defaultGetProviderQuota;
-    this.adjustQuota = dependencies.adjustQuota || defaultAdjustQuota;
+    this.getQuotaDisplayConfig = dependencies.getQuotaDisplayConfig || getNewApiQuotaDisplayConfig;
+    this.getProviderQuota = dependencies.getProviderQuota || this.defaultGetProviderQuota.bind(this);
+    this.adjustQuota = dependencies.adjustQuota || this.defaultAdjustQuota.bind(this);
     this.now = dependencies.now || (() => new Date());
+  }
+
+  private async defaultGetProviderQuota(newApiUserId: string): Promise<ProviderQuotaResult> {
+    try {
+      const response = await adminGetNewApiUser({ newApiUserId: Number(newApiUserId) });
+      const quota = extractNewApiUserQuota(response.data);
+      if (quota === null) {
+        return {
+          ok: false,
+          code: "NEW_API_QUOTA_READ_INVALID",
+          message: "New API quota read returned an invalid value.",
+          retryable: true,
+        };
+      }
+      const quotaDisplayConfig = await this.getQuotaDisplayConfig();
+      return { ok: true, quota: newApiQuotaToCredits(quota, quotaDisplayConfig) };
+    } catch (error) {
+      return {
+        ok: false,
+        code: error instanceof Error ? error.name : "NEW_API_QUOTA_READ_FAILED",
+        message: "New API quota read failed.",
+        retryable: true,
+      };
+    }
+  }
+
+  private async defaultAdjustQuota(input: AdjustQuotaInput): Promise<AdjustQuotaResult> {
+    try {
+      const quotaDisplayConfig = await this.getQuotaDisplayConfig();
+      if (Number.isInteger(input.targetQuota)) {
+        await adminSetNewApiUserQuota({
+          newApiUserId: Number(input.newApiUserId),
+          quota: creditsToNewApiQuota(input.targetQuota!, quotaDisplayConfig),
+        });
+      } else {
+        await adminCreditNewApiUserQuota({
+          newApiUserId: Number(input.newApiUserId),
+          quotaDelta: creditsToNewApiQuota(input.quotaDelta, quotaDisplayConfig),
+        });
+      }
+      return {
+        ok: true,
+        providerAdjustmentId: `new-api:${input.taskId}:${input.idempotencyKey}`,
+      };
+    } catch (error) {
+      return {
+        ok: false,
+        code: error instanceof Error ? error.name : "NEW_API_QUOTA_ADJUST_FAILED",
+        message: "New API quota adjustment failed.",
+        retryable: true,
+      };
+    }
   }
 
   async precheck(input: TaskBillingPrecheckInput): Promise<TaskBillingResult> {

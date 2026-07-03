@@ -2,9 +2,12 @@ import {
   adminGetNewApiLogs,
   adminGetNewApiUser,
   createJsonNewApiUserMappingRepository,
+  getNewApiQuotaDisplayConfig,
   isNewApiError,
+  newApiQuotaToCredits,
   type NewApiLogListPayload,
   type NewApiLogRecord,
+  type NewApiQuotaDisplayConfig,
   type NewApiUserMappingRepository,
   type NewApiUserSelf,
 } from "../integrations/new-api";
@@ -29,6 +32,7 @@ export type QuotaServiceDependencies = {
   quotaCache?: QuotaDisplayCache;
   getNewApiUser?: typeof adminGetNewApiUser;
   getNewApiLogs?: typeof adminGetNewApiLogs;
+  getQuotaDisplayConfig?: () => Promise<NewApiQuotaDisplayConfig>;
   now?: () => Date;
 };
 
@@ -128,7 +132,7 @@ function nonBlank(value: string) {
   return value.trim().length > 0;
 }
 
-function usageFromLog(localUserId: string, newApiUserId: string, log: NewApiLogRecord): UsageLogEntry {
+function usageFromLog(localUserId: string, newApiUserId: string, log: NewApiLogRecord, quota: number): UsageLogEntry {
   const logId = String(log.id || log.request_id || log.task_id || `${newApiUserId}:${log.created_at || ""}`);
   const createdAt = typeof log.createdAt === "string"
     ? log.createdAt
@@ -137,7 +141,6 @@ function usageFromLog(localUserId: string, newApiUserId: string, log: NewApiLogR
       : typeof log.created_at === "string"
         ? log.created_at
         : new Date(0).toISOString();
-  const quota = toNumber(log.quota, 0);
   return {
     id: `upstream:${logId}`,
     local_user_id: localUserId,
@@ -165,6 +168,7 @@ export class QuotaService {
   private readonly quotaCache: QuotaDisplayCache;
   private readonly getNewApiUser: typeof adminGetNewApiUser;
   private readonly getNewApiLogs: typeof adminGetNewApiLogs;
+  private readonly getQuotaDisplayConfig: NonNullable<QuotaServiceDependencies["getQuotaDisplayConfig"]>;
   private readonly now: () => Date;
 
   constructor(dependencies: QuotaServiceDependencies = {}) {
@@ -176,6 +180,7 @@ export class QuotaService {
     this.quotaCache = dependencies.quotaCache || new QuotaDisplayCache(QUOTA_CACHE_TTL_MS);
     this.getNewApiUser = dependencies.getNewApiUser || adminGetNewApiUser;
     this.getNewApiLogs = dependencies.getNewApiLogs || adminGetNewApiLogs;
+    this.getQuotaDisplayConfig = dependencies.getQuotaDisplayConfig || getNewApiQuotaDisplayConfig;
     this.now = dependencies.now || (() => new Date());
   }
 
@@ -192,15 +197,16 @@ export class QuotaService {
       const response = await this.getNewApiUser({ newApiUserId: Number(mapping.new_api_user_id) });
       const user = extractUser(response.data);
       if (!user) return quotaFailure("quota_unavailable");
-      const quota = toNumber(user.quota, 0);
+      const quota = Math.max(0, toNumber(user.quota, 0));
       const usedQuota = toNumber(user.used_quota, 0);
+      const quotaDisplayConfig = await this.getQuotaDisplayConfig();
       const now = this.now();
       const snapshot = this.quotaCache.set(localUserId, {
         local_user_id: localUserId,
         new_api_user_id: mapping.new_api_user_id,
-        quota_units: quota,
-        used_quota_units: usedQuota,
-        available_quota_units: Math.max(0, quota - usedQuota),
+        quota_units: newApiQuotaToCredits(quota, quotaDisplayConfig),
+        used_quota_units: newApiQuotaToCredits(usedQuota, quotaDisplayConfig),
+        available_quota_units: newApiQuotaToCredits(quota, quotaDisplayConfig),
         display_unit: "credits",
         source: "new_api",
         fetched_at: nowIso(now),
@@ -286,8 +292,14 @@ export class QuotaService {
         pageSize: normalizedPageSize,
       });
       const extracted = extractLogs(response.data);
+      const quotaDisplayConfig = await this.getQuotaDisplayConfig();
       return {
-        entries: extracted.logs.map((log) => usageFromLog(localUserId, mapping.new_api_user_id!, log)),
+        entries: extracted.logs.map((log) => usageFromLog(
+          localUserId,
+          mapping.new_api_user_id!,
+          log,
+          newApiQuotaToCredits(toNumber(log.quota, 0), quotaDisplayConfig),
+        )),
         page: normalizedPage,
         pageSize: normalizedPageSize,
         total: extracted.total,

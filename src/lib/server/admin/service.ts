@@ -3,6 +3,10 @@ import { randomUUID } from "node:crypto";
 import {
   adminGetNewApiUser,
   adminSetNewApiUserQuota,
+  creditsToNewApiQuota,
+  getNewApiQuotaDisplayConfig,
+  newApiQuotaToCredits,
+  type NewApiQuotaDisplayConfig,
   type NewApiUserMapping,
   type NewApiUserMappingRepository,
   type NewApiUserMappingStatus,
@@ -60,6 +64,7 @@ export type AdminServiceDependencies = {
   billingRepository?: BillingRepository;
   taskRepository?: TaskBillingRepository;
   currentUser?: (sessionToken?: string | null, context?: AuthRequestContext) => Promise<AuthResult>;
+  getQuotaDisplayConfig?: () => Promise<NewApiQuotaDisplayConfig>;
   getProviderQuota?: (newApiUserId: string) => Promise<number>;
   setProviderQuota?: (newApiUserId: string, quota: number) => Promise<void>;
   now?: () => Date;
@@ -167,15 +172,25 @@ function quotaAdjustmentRequestConflicts(
   return conflicts;
 }
 
-async function defaultGetProviderQuota(newApiUserId: string) {
+async function defaultGetProviderQuota(
+  newApiUserId: string,
+  getQuotaDisplayConfig: () => Promise<NewApiQuotaDisplayConfig>,
+) {
   const response = await adminGetNewApiUser({ newApiUserId: Number(newApiUserId) });
   const quota = extractQuota(response.data);
   if (quota === null) throw new Error("New API quota read failed.");
-  return quota;
+  return newApiQuotaToCredits(quota, await getQuotaDisplayConfig());
 }
 
-async function defaultSetProviderQuota(newApiUserId: string, quota: number) {
-  await adminSetNewApiUserQuota({ newApiUserId: Number(newApiUserId), quota });
+async function defaultSetProviderQuota(
+  newApiUserId: string,
+  quota: number,
+  getQuotaDisplayConfig: () => Promise<NewApiQuotaDisplayConfig>,
+) {
+  await adminSetNewApiUserQuota({
+    newApiUserId: Number(newApiUserId),
+    quota: creditsToNewApiQuota(quota, await getQuotaDisplayConfig()),
+  });
 }
 
 export class AdminService {
@@ -184,6 +199,7 @@ export class AdminService {
   private readonly billingRepository: BillingRepository;
   private readonly taskRepository: TaskBillingRepository;
   private readonly currentUser: (sessionToken?: string | null, context?: AuthRequestContext) => Promise<AuthResult>;
+  private readonly getQuotaDisplayConfig: NonNullable<AdminServiceDependencies["getQuotaDisplayConfig"]>;
   private readonly getProviderQuota: (newApiUserId: string) => Promise<number>;
   private readonly setProviderQuota: (newApiUserId: string, quota: number) => Promise<void>;
   private readonly now: () => Date;
@@ -201,8 +217,9 @@ export class AdminService {
     this.billingRepository = dependencies.billingRepository || createBillingPersistenceRepository();
     this.taskRepository = dependencies.taskRepository || createTaskBillingPersistenceRepositories().taskRepository;
     this.currentUser = dependencies.currentUser || ((sessionToken, context) => getAuthService().currentUser(sessionToken, context));
-    this.getProviderQuota = dependencies.getProviderQuota || defaultGetProviderQuota;
-    this.setProviderQuota = dependencies.setProviderQuota || defaultSetProviderQuota;
+    this.getQuotaDisplayConfig = dependencies.getQuotaDisplayConfig || getNewApiQuotaDisplayConfig;
+    this.getProviderQuota = dependencies.getProviderQuota || ((newApiUserId) => defaultGetProviderQuota(newApiUserId, this.getQuotaDisplayConfig));
+    this.setProviderQuota = dependencies.setProviderQuota || ((newApiUserId, quota) => defaultSetProviderQuota(newApiUserId, quota, this.getQuotaDisplayConfig));
     this.now = dependencies.now || (() => new Date());
   }
 

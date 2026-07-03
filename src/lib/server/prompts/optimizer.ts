@@ -1,7 +1,9 @@
 import { NewApiError } from "../integrations/new-api/errors";
 import { NewApiHttpClient, newApiAdminRequestContext } from "../integrations/new-api";
 import { newApiLogger } from "../integrations/new-api/logger";
-import { redactSecret } from "../integrations/new-api/redaction";
+import { redactJson, redactSecret } from "../integrations/new-api/redaction";
+import { providerById } from "../providers";
+import { type ProviderConfig } from "../types";
 
 export type PromptOptimizeTool = "image-generator" | "image-editor" | "video-generator";
 
@@ -66,10 +68,15 @@ type ChatCompletionPayload = {
   };
 };
 
+type PromptProviderLoader = () => Promise<ProviderConfig | null>;
+
 const tools = new Set<PromptOptimizeTool>(["image-generator", "image-editor", "video-generator"]);
 const DEFAULT_MAX_INPUT_CHARS = 2000;
 const DEFAULT_TIMEOUT_MS = 15000;
 const DEFAULT_MODEL = "gpt-4o-mini";
+const PROMPT_OPTIMIZER_PROVIDER_ID = "prompt-optimizer";
+const PROMPT_PROVIDER_RESPONSE_LIMIT_BYTES = 65536;
+const RETRYABLE_PROVIDER_STATUSES = new Set([408, 429, 500, 502, 503, 504]);
 
 const systemPrompt = [
   "将用户的简单要求整理成可直接提交给图片模型的专业提示词。",
@@ -198,7 +205,188 @@ function cleanOptimizedPrompt(value: string) {
   return output;
 }
 
-export function createNewApiPromptModelCaller(client = new NewApiHttpClient()): PromptModelCaller {
+function requestIdFor(input: PromptModelCall) {
+  return input.requestId || PROMPT_OPTIMIZER_PROVIDER_ID;
+}
+
+function mapProviderStatus(status: number) {
+  if (status === 401) return 401;
+  if (status === 403) return 403;
+  if (status === 404) return 404;
+  if (status === 429) return 429;
+  if (status >= 500) return 502;
+  return 502;
+}
+
+function providerRetryable(status: number) {
+  return RETRYABLE_PROVIDER_STATUSES.has(status);
+}
+
+function providerConfigError(input: PromptModelCall, message: string, code: "NEW_API_CONFIG_MISSING" | "NEW_API_CONFIG_INVALID" | "NEW_API_DISABLED" = "NEW_API_CONFIG_MISSING") {
+  return new NewApiError({
+    code,
+    message,
+    status: code === "NEW_API_DISABLED" ? 503 : 500,
+    retryable: false,
+    requestId: requestIdFor(input),
+    safeDetails: { providerId: PROMPT_OPTIMIZER_PROVIDER_ID },
+  });
+}
+
+function assertPromptProviderReady(provider: ProviderConfig | null, input: PromptModelCall) {
+  if (!provider) {
+    throw providerConfigError(input, "Prompt optimizer provider is not configured.");
+  }
+  if (provider.kind !== "prompt" || provider.endpointType !== "chat-completions") {
+    throw providerConfigError(input, "Prompt optimizer provider must use chat completions.", "NEW_API_CONFIG_INVALID");
+  }
+  if (!provider.enabled) {
+    throw providerConfigError(input, "Prompt optimizer provider is disabled.", "NEW_API_DISABLED");
+  }
+  if (!provider.apiUrl.trim() || !provider.apiKey.trim() || !provider.model.trim()) {
+    throw providerConfigError(input, "Prompt optimizer provider is missing endpoint, API key, or model.");
+  }
+  try {
+    const parsed = new URL(provider.apiUrl);
+    if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
+      throw new Error("invalid protocol");
+    }
+  } catch {
+    throw providerConfigError(input, "Prompt optimizer provider endpoint is invalid.", "NEW_API_CONFIG_INVALID");
+  }
+  return provider;
+}
+
+async function readPromptProviderJson(response: Response, input: PromptModelCall) {
+  const requestId = requestIdFor(input);
+  const contentType = response.headers.get("content-type") || "";
+  if (!contentType.toLowerCase().includes("application/json")) {
+    throw new NewApiError({
+      code: "NEW_API_INVALID_CONTENT_TYPE",
+      message: "Prompt optimizer provider returned a non-JSON response.",
+      status: 502,
+      retryable: false,
+      requestId,
+      upstreamStatus: response.status,
+      safeDetails: { providerId: PROMPT_OPTIMIZER_PROVIDER_ID, contentType },
+    });
+  }
+
+  const contentLength = Number(response.headers.get("content-length") || "");
+  if (Number.isFinite(contentLength) && contentLength > PROMPT_PROVIDER_RESPONSE_LIMIT_BYTES) {
+    throw new NewApiError({
+      code: "NEW_API_RESPONSE_TOO_LARGE",
+      message: "Prompt optimizer provider response exceeded the size limit.",
+      status: 502,
+      retryable: false,
+      requestId,
+      upstreamStatus: response.status,
+      safeDetails: { providerId: PROMPT_OPTIMIZER_PROVIDER_ID, maxResponseBytes: PROMPT_PROVIDER_RESPONSE_LIMIT_BYTES },
+    });
+  }
+
+  const textValue = await response.text();
+  if (new TextEncoder().encode(textValue).byteLength > PROMPT_PROVIDER_RESPONSE_LIMIT_BYTES) {
+    throw new NewApiError({
+      code: "NEW_API_RESPONSE_TOO_LARGE",
+      message: "Prompt optimizer provider response exceeded the size limit.",
+      status: 502,
+      retryable: false,
+      requestId,
+      upstreamStatus: response.status,
+      safeDetails: { providerId: PROMPT_OPTIMIZER_PROVIDER_ID, maxResponseBytes: PROMPT_PROVIDER_RESPONSE_LIMIT_BYTES },
+    });
+  }
+
+  try {
+    return textValue ? JSON.parse(textValue) as unknown : null;
+  } catch {
+    throw new NewApiError({
+      code: "NEW_API_INVALID_JSON",
+      message: "Prompt optimizer provider returned invalid JSON.",
+      status: 502,
+      retryable: false,
+      requestId,
+      upstreamStatus: response.status,
+      safeDetails: { providerId: PROMPT_OPTIMIZER_PROVIDER_ID },
+    });
+  }
+}
+
+async function callPromptProvider(provider: ProviderConfig, input: PromptModelCall) {
+  let response: Response;
+  try {
+    response = await fetch(provider.apiUrl, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${provider.apiKey}`,
+      },
+      body: JSON.stringify({
+        model: provider.model,
+        temperature: 0.2,
+        max_tokens: envNumber("PROMPT_OPTIMIZER_MAX_TOKENS", 500, 100, 1200),
+        messages: [
+          { role: "system", content: input.systemPrompt },
+          { role: "user", content: input.userPrompt },
+        ],
+      }),
+      signal: AbortSignal.timeout(input.timeoutMs),
+    });
+  } catch (error) {
+    if ((error as Error).name === "TimeoutError" || (error as Error).name === "AbortError") {
+      throw new NewApiError({
+        code: "NEW_API_TIMEOUT",
+        message: "Prompt optimizer provider request timed out.",
+        status: 504,
+        retryable: true,
+        requestId: requestIdFor(input),
+        safeDetails: { providerId: provider.id },
+      });
+    }
+    throw new NewApiError({
+      code: "NEW_API_NETWORK",
+      message: "Prompt optimizer provider network request failed.",
+      status: 502,
+      retryable: true,
+      requestId: requestIdFor(input),
+      safeDetails: { providerId: provider.id },
+    });
+  }
+
+  const payload = await readPromptProviderJson(response, input);
+  if (!response.ok) {
+    throw new NewApiError({
+      code: "NEW_API_UPSTREAM_ERROR",
+      message: `Prompt optimizer provider rejected the request with HTTP ${response.status}.`,
+      status: mapProviderStatus(response.status),
+      retryable: providerRetryable(response.status),
+      requestId: requestIdFor(input),
+      upstreamStatus: response.status,
+      safeDetails: {
+        providerId: provider.id,
+        upstreamStatus: response.status,
+        body: JSON.stringify(redactJson(payload)).slice(0, 500),
+      },
+    });
+  }
+  return extractChatText(payload as ChatCompletionPayload);
+}
+
+export function createProviderPromptModelCaller(loadProvider: PromptProviderLoader = () => providerById(PROMPT_OPTIMIZER_PROVIDER_ID)): PromptModelCaller {
+  return async (input) => {
+    const provider = assertPromptProviderReady(await loadProvider(), input);
+    return callPromptProvider(provider, input);
+  };
+}
+
+function isProviderConfigFallback(error: unknown) {
+  return error instanceof NewApiError
+    && (error.code === "NEW_API_CONFIG_MISSING" || error.code === "NEW_API_CONFIG_INVALID" || error.code === "NEW_API_DISABLED")
+    && error.safeDetails?.providerId === PROMPT_OPTIMIZER_PROVIDER_ID;
+}
+
+function createNewApiAdminPromptModelCaller(client: NewApiHttpClient): PromptModelCaller {
   return async (input) => {
     const response = await client.request<ChatCompletionPayload>({
       method: "POST",
@@ -218,6 +406,21 @@ export function createNewApiPromptModelCaller(client = new NewApiHttpClient()): 
       },
     });
     return extractChatText(response.data);
+  };
+}
+
+export function createNewApiPromptModelCaller(client?: NewApiHttpClient): PromptModelCaller {
+  const adminCaller = createNewApiAdminPromptModelCaller(client || new NewApiHttpClient());
+  if (client) return adminCaller;
+
+  const providerCaller = createProviderPromptModelCaller();
+  return async (input) => {
+    try {
+      return await providerCaller(input);
+    } catch (error) {
+      if (!isProviderConfigFallback(error)) throw error;
+      return adminCaller(input);
+    }
   };
 }
 

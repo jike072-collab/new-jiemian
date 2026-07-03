@@ -4,8 +4,10 @@ import { after, before, test } from "node:test";
 
 import { NewApiHttpClient } from "../../integrations/new-api/client";
 import { NewApiError } from "../../integrations/new-api/errors";
+import { type ProviderConfig } from "../../types";
 import {
   createNewApiPromptModelCaller,
+  createProviderPromptModelCaller,
   createPromptOptimizeService,
   type PromptModelCall,
   type PromptModelCaller,
@@ -156,6 +158,47 @@ test("returns only optimized prompt text and redacts secret-shaped output", asyn
   assert.equal(result.optimizedPrompt.includes("最终提示词"), false);
   assert.equal(result.optimizedPrompt.includes("sk-test-secret-value"), false);
   assert.equal(result.optimizedPrompt.includes("[REDACTED]"), true);
+});
+
+test("provider caller uses prompt-optimizer provider configuration", async () => {
+  handlers.set("POST /provider/chat/completions", async (request, response) => {
+    assert.equal(request.headers.authorization, "Bearer provider-secret");
+    assert.equal(request.headers["new-api-user"], undefined);
+    const chunks: Buffer[] = [];
+    for await (const chunk of request) chunks.push(Buffer.from(chunk));
+    const body = JSON.parse(Buffer.concat(chunks).toString("utf8"));
+    assert.equal(body.model, "deepseek-v4-pro");
+    assert.equal(body.messages[0].role, "system");
+    assert.equal(body.messages[1].role, "user");
+    json(response, 200, {
+      choices: [
+        { message: { content: "Optimized prompt from provider" } },
+      ],
+    });
+  });
+
+  const provider: ProviderConfig = {
+    id: "prompt-optimizer",
+    kind: "prompt",
+    title: "Prompt optimizer",
+    role: "Prompt optimizer",
+    apiUrl: `${baseUrl}/provider/chat/completions`,
+    model: "deepseek-v4-pro",
+    displayName: "DeepSeek V4 Pro",
+    apiKey: "provider-secret",
+    enabled: true,
+    endpointType: "chat-completions",
+    custom: false,
+  };
+  const caller = createProviderPromptModelCaller(async () => provider);
+  const output = await caller({
+    systemPrompt: "system",
+    userPrompt: "user",
+    requestId: "req-provider-config",
+    timeoutMs: 500,
+  });
+
+  assert.equal(output, "Optimized prompt from provider");
 });
 
 test("New API caller uses chat completions without exposing admin credentials", async () => {
