@@ -70,6 +70,9 @@ function unavailableAuthRepository(): AuthRepository {
     getSessionByTokenHash: async () => fail(),
     touchSession: async () => fail(),
     revokeSession: async () => fail(),
+    createVerificationCode: async () => fail(),
+    getLatestVerificationCode: async () => fail(),
+    touchVerificationCode: async () => fail(),
     appendAudit: async () => fail(),
     listAuditEvents: async () => fail(),
   };
@@ -110,31 +113,64 @@ function repairRepositorySink() {
   };
 }
 
-function serviceWithPostgresMapping() {
-  const repository = createPostgresAuthRepository();
-  const mappingRepository = createPostgresNewApiUserMappingRepository();
-  return new AuthService({
-    repository,
-    mappingRepository,
-    userSyncService: {
-      ensureMapped: async (profile: NewApiUserSyncProfile) => {
-        const result = activeMapping(profile.localUserId);
-        await mappingRepository.createPending({
-          localUserId: result.mapping.local_user_id,
-          idempotencyKey: result.mapping.idempotency_key,
-        });
-        await mappingRepository.markActive({
-          localUserId: result.mapping.local_user_id,
-          newApiUserId: result.mapping.new_api_user_id!,
-        });
-        return result;
-      },
+type SentVerificationCode = { destination: string; purpose: "register" | "password_reset"; code: string };
+
+function captureVerificationCodes() {
+  const sentCodes: SentVerificationCode[] = [];
+  return {
+    sentCodes,
+    verificationSender: async (payload: SentVerificationCode) => {
+      sentCodes.push(payload);
     },
+  };
+}
+
+async function verifiedRegister(
+  auth: AuthService,
+  sentCodes: SentVerificationCode[],
+  input: Parameters<AuthService["register"]>[0],
+) {
+  const requested = await auth.requestVerificationCode({
+    identifier: input.identifier || input.email || "",
+    purpose: "register",
+  });
+  assert.equal(requested.ok, true);
+  return auth.register({
+    ...input,
+    verificationCode: sentCodes.at(-1)?.code || "",
   });
 }
 
+function serviceWithPostgresMapping() {
+  const repository = createPostgresAuthRepository();
+  const mappingRepository = createPostgresNewApiUserMappingRepository();
+  const verification = captureVerificationCodes();
+  return {
+    auth: new AuthService({
+      repository,
+      mappingRepository,
+      verificationSender: verification.verificationSender,
+      userSyncService: {
+        ensureMapped: async (profile: NewApiUserSyncProfile) => {
+          const result = activeMapping(profile.localUserId);
+          await mappingRepository.createPending({
+            localUserId: result.mapping.local_user_id,
+            idempotencyKey: result.mapping.idempotency_key,
+          });
+          await mappingRepository.markActive({
+            localUserId: result.mapping.local_user_id,
+            newApiUserId: result.mapping.new_api_user_id!,
+          });
+          return result;
+        },
+      },
+    }),
+    sentCodes: verification.sentCodes,
+  };
+}
+
 async function resetAuthTables() {
-  await applicationQuery("truncate table audit_events, new_api_user_mappings, auth_sessions, app_users restart identity cascade");
+  await applicationQuery("truncate table audit_events, auth_verification_codes, new_api_user_mappings, auth_sessions, app_users restart identity cascade");
 }
 
 test("production auth persistence mode fails closed when missing or invalid", () => {
@@ -169,11 +205,13 @@ test("dual mode keeps JSON registration and login working when PostgreSQL shadow
     const jsonRepository = createMemoryAuthRepository();
     const jsonMappingRepository = createMemoryNewApiUserMappingRepository();
     const mappingRepository = createDualNewApiUserMappingRepository(jsonMappingRepository, unavailableMappingRepository());
+    const verification = captureVerificationCodes();
     const auth = new AuthService({
       repository: createDualAuthRepository(jsonRepository, unavailableAuthRepository()),
       mappingRepository,
       registerLimiter: new InMemoryRateLimiter(20, 60 * 60 * 1000),
       loginLimiter: new InMemoryRateLimiter(20, 60 * 60 * 1000),
+      verificationSender: verification.verificationSender,
       userSyncService: {
         ensureMapped: async (profile: NewApiUserSyncProfile) => {
           const result = activeMapping(profile.localUserId);
@@ -187,7 +225,7 @@ test("dual mode keeps JSON registration and login working when PostgreSQL shadow
       },
     });
 
-    const registered = await auth.register({
+    const registered = await verifiedRegister(auth, verification.sentCodes, {
       email: "dual-ok@example.com",
       username: "dual-ok",
       password: "StrongPass123",
@@ -235,11 +273,13 @@ test("dual mode keeps JSON auth working when shadow and repair storage both fail
     const jsonRepository = createMemoryAuthRepository();
     const jsonMappingRepository = createMemoryNewApiUserMappingRepository();
     const mappingRepository = createDualNewApiUserMappingRepository(jsonMappingRepository, unavailableMappingRepository());
+    const verification = captureVerificationCodes();
     const auth = new AuthService({
       repository: createDualAuthRepository(jsonRepository, unavailableAuthRepository()),
       mappingRepository,
       registerLimiter: new InMemoryRateLimiter(20, 60 * 60 * 1000),
       loginLimiter: new InMemoryRateLimiter(20, 60 * 60 * 1000),
+      verificationSender: verification.verificationSender,
       userSyncService: {
         ensureMapped: async (profile: NewApiUserSyncProfile) => {
           const result = activeMapping(profile.localUserId);
@@ -253,7 +293,7 @@ test("dual mode keeps JSON auth working when shadow and repair storage both fail
       },
     });
 
-    const registered = await auth.register({
+    const registered = await verifiedRegister(auth, verification.sentCodes, {
       email: "dual-repair-fail@example.com",
       username: "dual-repair-fail",
       password: "StrongPass123",
@@ -419,8 +459,8 @@ dbTest("postgres mapping repository preserves state transitions and optimistic v
 
 dbTest("auth service can register, login, refresh, and logout on postgres repositories", async () => {
   await resetAuthTables();
-  const auth = serviceWithPostgresMapping();
-  const registered = await auth.register({
+  const { auth, sentCodes } = serviceWithPostgresMapping();
+  const registered = await verifiedRegister(auth, sentCodes, {
     email: "service-pg@example.com",
     username: "service-pg",
     password: "StrongPass123",
@@ -449,10 +489,12 @@ dbTest("auth service can register, login, refresh, and logout on postgres reposi
 dbTest("postgres unique constraints serialize concurrent duplicate registration", async () => {
   await resetAuthTables();
   const mappingRepository = createMemoryNewApiUserMappingRepository();
+  const verification = captureVerificationCodes();
   const auth = new AuthService({
     repository: createPostgresAuthRepository(),
     mappingRepository,
     registerLimiter: new InMemoryRateLimiter(20, 60 * 60 * 1000),
+    verificationSender: verification.verificationSender,
     userSyncService: {
       ensureMapped: async (profile: NewApiUserSyncProfile) => {
         const result = activeMapping(profile.localUserId);
@@ -463,10 +505,20 @@ dbTest("postgres unique constraints serialize concurrent duplicate registration"
     },
   });
 
-  const results = await Promise.all(Array.from({ length: 5 }, () => auth.register({
+  const codes: string[] = [];
+  for (let index = 0; index < 5; index += 1) {
+    const requested = await auth.requestVerificationCode({
+      identifier: "race-pg@example.com",
+      purpose: "register",
+    });
+    assert.equal(requested.ok, true);
+    codes.push(verification.sentCodes.at(-1)?.code || "");
+  }
+  const results = await Promise.all(codes.map((verificationCode) => auth.register({
     email: "race-pg@example.com",
     username: "race-pg",
     password: "StrongPass123",
+    verificationCode,
   })));
   assert.equal(results.filter((result) => result.ok).length, 1);
   assert.equal(results.filter((result) => !result.ok).length, 4);

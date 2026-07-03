@@ -82,14 +82,20 @@ export function authResultResponse(request: NextRequest, result: AuthResult) {
   return response;
 }
 
-export function authActionResponse(request: NextRequest, result: AuthActionResult) {
+export function authActionResponse(
+  request: NextRequest,
+  result: AuthActionResult,
+  options: { clearSession?: boolean } = { clearSession: true },
+) {
   if (!result.ok) return failureResponse(result);
   const response = NextResponse.json({
     ok: true,
     uiState: result.uiState,
     message: result.message,
   }, { status: result.status });
-  response.cookies.set(AUTH_SESSION_COOKIE, "", clearSessionCookieOptions(request));
+  if (options.clearSession !== false) {
+    response.cookies.set(AUTH_SESSION_COOKIE, "", clearSessionCookieOptions(request));
+  }
   return response;
 }
 

@@ -20,15 +20,21 @@ export type AuthErrorCode =
   | "AUTH_INVALID_CREDENTIALS"
   | "AUTH_ACCOUNT_DISABLED"
   | "AUTH_VERIFICATION_REQUIRED"
+  | "AUTH_VERIFICATION_CODE_INVALID"
+  | "AUTH_VERIFICATION_SEND_UNAVAILABLE"
   | "AUTH_MAPPING_PENDING"
   | "AUTH_RATE_LIMITED"
   | "AUTH_SERVICE_UNAVAILABLE"
   | "AUTH_SESSION_EXPIRED"
   | "AUTH_CSRF_REQUIRED";
 
+export type AuthVerificationChannel = "email" | "phone";
+export type AuthVerificationPurpose = "register" | "password_reset";
+
 export type AuthUser = {
   local_user_id: string;
   email: string;
+  phone?: string | null;
   username: string;
   display_name: string;
   password_hash: string;
@@ -43,10 +49,25 @@ export type AuthUser = {
 export type PublicAuthUser = {
   local_user_id: string;
   email: string;
+  phone?: string | null;
   username: string;
   display_name: string;
   status: AuthUserStatus;
   role: AuthUserRole;
+};
+
+export type AuthVerificationCode = {
+  verification_id: string;
+  destination: string;
+  channel: AuthVerificationChannel;
+  purpose: AuthVerificationPurpose;
+  code_hash: string;
+  expires_at: string;
+  consumed_at: string | null;
+  attempt_count: number;
+  send_count: number;
+  created_at: string;
+  updated_at: string;
 };
 
 export type AuthSession = {
@@ -78,6 +99,7 @@ export type AuthAuditEvent = {
 export type AuthStore = {
   users: AuthUser[];
   sessions: AuthSession[];
+  verificationCodes: AuthVerificationCode[];
   audit: AuthAuditEvent[];
 };
 

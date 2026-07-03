@@ -5,7 +5,7 @@ import { randomUUID } from "node:crypto";
 import { type QueryResultRow } from "pg";
 
 import { applicationQuery, getApplicationDatabaseConfig } from "../database";
-import { nowIso, normalizeEmail, normalizeIdentifier, normalizeUsername } from "./normalize";
+import { nowIso, normalizeAuthIdentifier, normalizeEmail, normalizeIdentifier, normalizePhone, normalizeUsername } from "./normalize";
 import {
   AuthRepositoryError,
   type AuthUserListFilter,
@@ -14,6 +14,9 @@ import {
 } from "./repository";
 import {
   type AuthAuditEvent,
+  type AuthVerificationCode,
+  type AuthVerificationChannel,
+  type AuthVerificationPurpose,
   type AuthSession,
   type AuthUser,
   type AuthUserRole,
@@ -23,6 +26,7 @@ import {
 type UserRow = QueryResultRow & {
   local_user_id: string;
   email: string;
+  phone: string | null;
   username: string;
   display_name: string;
   password_hash: string;
@@ -32,6 +36,20 @@ type UserRow = QueryResultRow & {
   created_at: Date | string;
   updated_at: Date | string;
   last_login_at: Date | string | null;
+};
+
+type VerificationCodeRow = QueryResultRow & {
+  verification_id: string;
+  destination: string;
+  channel: AuthVerificationChannel;
+  purpose: AuthVerificationPurpose;
+  code_hash: string;
+  expires_at: Date | string;
+  consumed_at: Date | string | null;
+  attempt_count: number;
+  send_count: number;
+  created_at: Date | string;
+  updated_at: Date | string;
 };
 
 type SessionRow = QueryResultRow & {
@@ -74,6 +92,7 @@ function userFromRow(row: UserRow): AuthUser {
   return {
     local_user_id: row.local_user_id,
     email: row.email,
+    phone: row.phone,
     username: row.username,
     display_name: row.display_name,
     password_hash: row.password_hash,
@@ -83,6 +102,22 @@ function userFromRow(row: UserRow): AuthUser {
     created_at: iso(row.created_at),
     updated_at: iso(row.updated_at),
     last_login_at: isoOrNull(row.last_login_at),
+  };
+}
+
+function verificationCodeFromRow(row: VerificationCodeRow): AuthVerificationCode {
+  return {
+    verification_id: row.verification_id,
+    destination: row.destination,
+    channel: row.channel,
+    purpose: row.purpose,
+    code_hash: row.code_hash,
+    expires_at: iso(row.expires_at),
+    consumed_at: isoOrNull(row.consumed_at),
+    attempt_count: Number(row.attempt_count),
+    send_count: Number(row.send_count),
+    created_at: iso(row.created_at),
+    updated_at: iso(row.updated_at),
   };
 }
 
@@ -137,9 +172,10 @@ export class PostgresAuthRepository implements AuthRepository {
   }
 
   async getUserByIdentifier(identifier: string) {
-    const normalized = normalizeIdentifier(identifier);
+    const authIdentifier = normalizeAuthIdentifier(identifier);
+    const normalized = authIdentifier?.kind === "phone" ? authIdentifier.value : normalizeIdentifier(identifier);
     const result = await applicationQuery<UserRow>(
-      "select * from app_users where email = $1 or username = $1 limit 1",
+      "select * from app_users where email = $1 or username = $1 or phone = $1 limit 1",
       [normalized],
     );
     return result.rows[0] ? userFromRow(result.rows[0]) : null;
@@ -160,7 +196,7 @@ export class PostgresAuthRepository implements AuthRepository {
     if (query) {
       values.push(`%${query}%`);
       values.push(query);
-      clauses.push(`(email like $${values.length - 1} or username like $${values.length - 1} or local_user_id = $${values.length})`);
+      clauses.push(`(email like $${values.length - 1} or username like $${values.length - 1} or phone like $${values.length - 1} or local_user_id = $${values.length})`);
     }
     const whereClause = clauses.length ? `where ${clauses.join(" and ")}` : "";
     const count = await applicationQuery<{ count: string }>(
@@ -187,18 +223,20 @@ export class PostgresAuthRepository implements AuthRepository {
 
   async createUser(input: CreateAuthUserInput) {
     const email = normalizeEmail(input.email);
+    const phone = input.phone ? normalizePhone(input.phone) : null;
     const username = normalizeUsername(input.username);
     const timestamp = nowIso(input.now);
     try {
       const result = await applicationQuery<UserRow>(`
         insert into app_users(
-          local_user_id, email, username, display_name, password_hash, status, role,
+          local_user_id, email, phone, username, display_name, password_hash, status, role,
           session_version, created_at, updated_at, last_login_at
-        ) values ($1,$2,$3,$4,$5,$6,$7,1,$8,$8,null)
+        ) values ($1,$2,$3,$4,$5,$6,$7,$8,1,$9,$9,null)
         returning *
       `, [
         input.localUserId || randomUUID(),
         email,
+        phone,
         username,
         input.displayName.trim() || username,
         input.passwordHash,
@@ -217,7 +255,7 @@ export class PostgresAuthRepository implements AuthRepository {
 
   async updateUser(
     localUserId: string,
-    patch: Partial<Pick<AuthUser, "status" | "last_login_at" | "session_version" | "display_name">>,
+    patch: Partial<Pick<AuthUser, "status" | "last_login_at" | "session_version" | "display_name" | "password_hash">>,
     now?: Date,
   ) {
     const values: unknown[] = [localUserId];
@@ -231,6 +269,7 @@ export class PostgresAuthRepository implements AuthRepository {
     if (patch.last_login_at !== undefined) add("last_login_at", patch.last_login_at);
     if (patch.session_version !== undefined) add("session_version", patch.session_version);
     if (patch.display_name !== undefined) add("display_name", patch.display_name);
+    if (patch.password_hash !== undefined) add("password_hash", patch.password_hash);
     add("updated_at", nowIso(now));
 
     const result = await applicationQuery<UserRow>(`
@@ -298,6 +337,68 @@ export class PostgresAuthRepository implements AuthRepository {
       returning *
     `, [sessionId, timestamp]);
     return result.rows[0] ? sessionFromRow(result.rows[0]) : null;
+  }
+
+  async createVerificationCode(code: AuthVerificationCode) {
+    const result = await applicationQuery<VerificationCodeRow>(`
+      insert into auth_verification_codes(
+        verification_id, destination, channel, purpose, code_hash, expires_at, consumed_at,
+        attempt_count, send_count, created_at, updated_at
+      ) values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)
+      returning *
+    `, [
+      code.verification_id,
+      code.destination,
+      code.channel,
+      code.purpose,
+      code.code_hash,
+      code.expires_at,
+      code.consumed_at,
+      code.attempt_count,
+      code.send_count,
+      code.created_at,
+      code.updated_at,
+    ]);
+    return verificationCodeFromRow(result.rows[0]);
+  }
+
+  async getLatestVerificationCode(input: Pick<AuthVerificationCode, "destination" | "purpose">) {
+    const result = await applicationQuery<VerificationCodeRow>(`
+      select *
+      from auth_verification_codes
+      where destination = $1
+        and purpose = $2
+        and consumed_at is null
+      order by created_at desc, verification_id desc
+      limit 1
+    `, [input.destination, input.purpose]);
+    return result.rows[0] ? verificationCodeFromRow(result.rows[0]) : null;
+  }
+
+  async touchVerificationCode(
+    verificationId: string,
+    patch: Partial<Pick<AuthVerificationCode, "attempt_count" | "consumed_at" | "updated_at">>,
+  ) {
+    const values: unknown[] = [verificationId];
+    const assignments: string[] = [];
+    const add = (column: string, value: unknown) => {
+      values.push(value);
+      assignments.push(`${column} = $${values.length}`);
+    };
+
+    if (patch.attempt_count !== undefined) add("attempt_count", patch.attempt_count);
+    if (patch.consumed_at !== undefined) add("consumed_at", patch.consumed_at);
+    if (patch.updated_at !== undefined) add("updated_at", patch.updated_at);
+    if (!assignments.length) add("updated_at", nowIso());
+
+    const result = await applicationQuery<VerificationCodeRow>(`
+      update auth_verification_codes
+      set ${assignments.join(", ")}
+      where verification_id = $1
+      returning *
+    `, values);
+    if (!result.rows[0]) throw new AuthRepositoryError("AUTH_NOT_FOUND", "Verification code was not found.");
+    return verificationCodeFromRow(result.rows[0]);
   }
 
   async appendAudit(event: AuthAuditEvent) {

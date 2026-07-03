@@ -15,7 +15,7 @@ const AuthShaderBackground = dynamic(() => import("@/components/auth-shader-back
   ssr: false,
 });
 
-type AuthMode = "login" | "register";
+type AuthMode = "login" | "register" | "reset";
 
 type SessionProbe = {
   ok: true;
@@ -78,7 +78,9 @@ function friendlyAuthError(error: unknown) {
     return "请求失败，请稍后重试";
   }
   if (error.code === "AUTH_INVALID_CREDENTIALS") return "账号或密码不正确";
-  if (error.code === "AUTH_DUPLICATE_ACCOUNT") return "该账号已存在";
+  if (error.code === "AUTH_DUPLICATE_ACCOUNT") return "该手机号或邮箱已注册";
+  if (error.code === "AUTH_VERIFICATION_CODE_INVALID") return "验证码不正确或已过期";
+  if (error.code === "AUTH_VERIFICATION_SEND_UNAVAILABLE") return "验证码发送服务暂不可用";
   if (error.code === "AUTH_RATE_LIMITED") return "操作太频繁，请稍后再试";
   if (error.code === "AUTH_VALIDATION_ERROR") return "请检查账号和密码格式";
   if (error.code === "AUTH_SERVICE_UNAVAILABLE") return "注册暂时不可用，请稍后重试";
@@ -89,25 +91,68 @@ function isValidEmail(value: string) {
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value);
 }
 
+function normalizePhone(value: string) {
+  const compact = value.trim().replace(/[\s().-]+/g, "");
+  if (compact.startsWith("+86")) return compact.slice(3);
+  if (compact.startsWith("86") && compact.length === 13) return compact.slice(2);
+  return compact;
+}
+
+function isValidPhone(value: string) {
+  const phone = normalizePhone(value);
+  return /^1[3-9]\d{9}$/.test(phone) || /^\+\d{8,15}$/.test(phone);
+}
+
+function isValidIdentifier(value: string) {
+  const trimmed = value.trim();
+  return trimmed.includes("@") ? isValidEmail(trimmed) : isValidPhone(trimmed);
+}
+
+function passwordRules(password: string) {
+  return [
+    { key: "length", label: "至少 10 位", passed: password.length >= 10 && password.length <= 128 },
+    { key: "lower", label: "包含小写字母", passed: /[a-z]/.test(password) },
+    { key: "upper", label: "包含大写字母", passed: /[A-Z]/.test(password) },
+    { key: "digit", label: "包含数字", passed: /[0-9]/.test(password) },
+  ];
+}
+
 export function CustomerLogin({ initialMode = "login" }: CustomerLoginProps) {
   const router = useRouter();
   const [mode, setMode] = useState<AuthMode>(initialMode);
   const [identifier, setIdentifier] = useState("");
+  const [verificationCode, setVerificationCode] = useState("");
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
+  const [rememberMe, setRememberMe] = useState(true);
+  const [sendingCode, setSendingCode] = useState(false);
+  const [codeCooldown, setCodeCooldown] = useState(0);
   const [shaderReady, setShaderReady] = useState(false);
   const [loading, setLoading] = useState(false);
   const [success, setSuccess] = useState(false);
   const [message, setMessage] = useState("");
-  const disabled = loading || success;
+  const disabled = loading || success || sendingCode;
   const isLogin = mode === "login";
+  const isRegister = mode === "register";
+  const isReset = mode === "reset";
+  const needsVerificationCode = isRegister || isReset;
+  const rules = passwordRules(password);
+  const passwordMeetsRules = rules.every((rule) => rule.passed);
+  const confirmMismatch = needsVerificationCode && confirmPassword.length > 0 && password !== confirmPassword;
+  const positiveMessage = message === "验证码已发送，请查收" || message === "密码已重置，请使用新密码登录";
 
   useEffect(() => {
     const timer = window.setTimeout(() => setShaderReady(true), 250);
     return () => window.clearTimeout(timer);
   }, []);
+
+  useEffect(() => {
+    if (codeCooldown <= 0) return undefined;
+    const timer = window.setTimeout(() => setCodeCooldown((value) => Math.max(0, value - 1)), 1000);
+    return () => window.clearTimeout(timer);
+  }, [codeCooldown]);
 
   useEffect(() => {
     let cancelled = false;
@@ -129,6 +174,7 @@ export function CustomerLogin({ initialMode = "login" }: CustomerLoginProps) {
       setMode(window.location.pathname === "/register" ? "register" : "login");
       setMessage("");
       setSuccess(false);
+      setVerificationCode("");
     }
 
     window.addEventListener("popstate", handlePopState);
@@ -140,8 +186,10 @@ export function CustomerLogin({ initialMode = "login" }: CustomerLoginProps) {
     setMode(nextMode);
     setMessage("");
     setSuccess(false);
+    setVerificationCode("");
+    setConfirmPassword("");
 
-    const nextPath = nextMode === "login" ? "/login" : "/register";
+    const nextPath = nextMode === "register" ? "/register" : "/login";
     if (window.location.pathname !== nextPath) {
       window.history.pushState(null, "", nextPath);
     }
@@ -150,15 +198,48 @@ export function CustomerLogin({ initialMode = "login" }: CustomerLoginProps) {
   function validateForm() {
     const trimmedIdentifier = identifier.trim();
     if (!trimmedIdentifier || !password) {
-      return "请填写账号和密码";
+      return isLogin ? "请填写账号和密码" : "请填写手机号或邮箱、验证码和密码";
     }
-    if (!isLogin && !isValidEmail(trimmedIdentifier)) {
-      return "请填写有效邮箱";
+    if (needsVerificationCode && !isValidIdentifier(trimmedIdentifier)) {
+      return "请填写有效手机号或邮箱";
     }
-    if (!isLogin && password !== confirmPassword) {
+    if (needsVerificationCode && !/^\d{6}$/.test(verificationCode.trim())) {
+      return "请填写 6 位验证码";
+    }
+    if (needsVerificationCode && !passwordMeetsRules) {
+      return "密码至少 10 位，并包含大小写字母和数字";
+    }
+    if (needsVerificationCode && password !== confirmPassword) {
       return "两次输入的密码不一致";
     }
     return "";
+  }
+
+  async function sendVerificationCode() {
+    if (disabled || codeCooldown > 0) return;
+    const trimmedIdentifier = identifier.trim();
+    if (!isValidIdentifier(trimmedIdentifier)) {
+      setMessage("请先填写有效手机号或邮箱");
+      return;
+    }
+
+    setSendingCode(true);
+    setMessage("");
+    try {
+      await fetchJsonWithCsrf("/api/auth/verification-code", {
+        method: "POST",
+        body: JSON.stringify({
+          identifier: trimmedIdentifier,
+          purpose: isReset ? "password_reset" : "register",
+        }),
+      });
+      setCodeCooldown(60);
+      setMessage("验证码已发送，请查收");
+    } catch (error) {
+      setMessage(friendlyAuthError(error));
+    } finally {
+      setSendingCode(false);
+    }
   }
 
   async function submit(event: FormEvent<HTMLFormElement>) {
@@ -179,18 +260,39 @@ export function CustomerLogin({ initialMode = "login" }: CustomerLoginProps) {
           body: JSON.stringify({
             identifier: identifier.trim(),
             password,
+            rememberMe,
             redirectTo: "/",
           }),
         });
-      } else {
+      } else if (isRegister) {
         await fetchJsonWithCsrf("/api/auth/register", {
           method: "POST",
           body: JSON.stringify({
-            email: identifier.trim(),
+            identifier: identifier.trim(),
+            verificationCode: verificationCode.trim(),
             password,
             redirectTo: "/",
           }),
         });
+      } else {
+        await fetchJsonWithCsrf("/api/auth/password-reset", {
+          method: "POST",
+          body: JSON.stringify({
+            identifier: identifier.trim(),
+            verificationCode: verificationCode.trim(),
+            password,
+          }),
+        });
+        setSuccess(true);
+        setMessage("密码已重置，请使用新密码登录");
+        window.setTimeout(() => {
+          setMode("login");
+          setPassword("");
+          setConfirmPassword("");
+          setVerificationCode("");
+          setSuccess(false);
+        }, motionTokens.duration.slow);
+        return;
       }
       setSuccess(true);
       window.setTimeout(() => {
@@ -217,7 +319,7 @@ export function CustomerLogin({ initialMode = "login" }: CustomerLoginProps) {
       <div className="auth-page__shade" aria-hidden="true" />
       <div className="auth-page__noise" aria-hidden="true" />
 
-      <section className="auth-layout" aria-label={isLogin ? "登录" : "注册"}>
+      <section className="auth-layout" aria-label={isLogin ? "登录" : isReset ? "重置密码" : "注册"}>
         <div className="auth-brand">
           <AuthBrandLockup />
           <div className="auth-brand__copy">
@@ -282,26 +384,56 @@ export function CustomerLogin({ initialMode = "login" }: CustomerLoginProps) {
             <div className="auth-card__spotlight" aria-hidden="true" />
             <div key={mode} className="auth-form-content">
               <div className="auth-card__head">
-                <h2>{isLogin ? "欢迎回来" : "创建账号"}</h2>
-                <p>{isLogin ? "登录后继续你的创作之旅" : "开始你的创作之旅"}</p>
+                <h2>{isLogin ? "欢迎回来" : isReset ? "重置密码" : "创建账号"}</h2>
+                <p>{isLogin ? "登录后继续你的创作之旅" : isReset ? "用验证码设置新密码" : "开始你的创作之旅"}</p>
                 <span aria-hidden="true" />
               </div>
 
               <label className="auth-field">
-                <span>邮箱或账号</span>
+                <span>{isLogin ? "手机号、邮箱或账号" : "手机号或邮箱"}</span>
                 <span className="auth-input">
                   <Mail className="size-5" aria-hidden="true" />
                   <input
-                    type={isLogin ? "text" : "email"}
+                    type="text"
                     value={identifier}
                     onChange={(event) => setIdentifier(event.target.value)}
                     autoComplete={isLogin ? "username" : "email"}
                     disabled={disabled}
                     aria-invalid={Boolean(message && !identifier.trim())}
-                    placeholder={isLogin ? "请输入邮箱或账号" : "请输入邮箱"}
+                    placeholder={isLogin ? "请输入手机号、邮箱或账号" : "请输入手机号或邮箱"}
                   />
                 </span>
               </label>
+
+              {needsVerificationCode ? (
+                <label className="auth-field">
+                  <span>验证码</span>
+                  <span className="auth-code-row">
+                    <span className="auth-input auth-code-input">
+                      <input
+                        type="text"
+                        inputMode="numeric"
+                        pattern="[0-9]*"
+                        maxLength={6}
+                        value={verificationCode}
+                        onChange={(event) => setVerificationCode(event.target.value.replace(/\D/g, "").slice(0, 6))}
+                        autoComplete="one-time-code"
+                        disabled={disabled}
+                        aria-invalid={Boolean(message && !/^\d{6}$/.test(verificationCode.trim()))}
+                        placeholder="6 位验证码"
+                      />
+                    </span>
+                    <button
+                      type="button"
+                      className="auth-code-send"
+                      onClick={() => void sendVerificationCode()}
+                      disabled={disabled || codeCooldown > 0}
+                    >
+                      {sendingCode ? "发送中" : codeCooldown > 0 ? `${codeCooldown}s` : "获取验证码"}
+                    </button>
+                  </span>
+                </label>
+              ) : null}
 
               <label className="auth-field">
                 <span>密码</span>
@@ -313,7 +445,7 @@ export function CustomerLogin({ initialMode = "login" }: CustomerLoginProps) {
                     onChange={(event) => setPassword(event.target.value)}
                     autoComplete={isLogin ? "current-password" : "new-password"}
                     disabled={disabled}
-                    aria-invalid={Boolean(message && !password)}
+                    aria-invalid={Boolean((message && !password) || (needsVerificationCode && password.length > 0 && !passwordMeetsRules))}
                     placeholder="请输入密码"
                   />
                   <button
@@ -329,6 +461,34 @@ export function CustomerLogin({ initialMode = "login" }: CustomerLoginProps) {
                 </span>
               </label>
 
+              {isLogin ? (
+                <div className="auth-login-options">
+                  <label className="auth-checkbox">
+                    <input
+                      type="checkbox"
+                      checked={rememberMe}
+                      onChange={(event) => setRememberMe(event.target.checked)}
+                      disabled={disabled}
+                    />
+                    <span>自动登录</span>
+                  </label>
+                  <button type="button" onClick={() => switchMode("reset")} disabled={disabled}>
+                    忘记密码
+                  </button>
+                </div>
+              ) : null}
+
+              {needsVerificationCode ? (
+                <ul className="auth-password-rules" aria-label="密码要求">
+                  {rules.map((rule) => (
+                    <li key={rule.key} data-passed={rule.passed}>
+                      <Check className="size-3.5" aria-hidden="true" />
+                      {rule.label}
+                    </li>
+                  ))}
+                </ul>
+              ) : null}
+
               {!isLogin ? (
                 <label className="auth-field">
                   <span>确认密码</span>
@@ -340,7 +500,7 @@ export function CustomerLogin({ initialMode = "login" }: CustomerLoginProps) {
                       onChange={(event) => setConfirmPassword(event.target.value)}
                       autoComplete="new-password"
                       disabled={disabled}
-                      aria-invalid={Boolean(message && password !== confirmPassword)}
+                      aria-invalid={Boolean(confirmMismatch || (message && password !== confirmPassword))}
                       placeholder="请再次输入密码"
                     />
                     <button
@@ -357,15 +517,23 @@ export function CustomerLogin({ initialMode = "login" }: CustomerLoginProps) {
                 </label>
               ) : null}
 
+              {confirmMismatch ? (
+                <p className="auth-field-help" role="status">
+                  两次输入的密码不一致
+                </p>
+              ) : null}
+
               {message ? (
-                <p className="auth-error" role="alert">
+                <p className={cn("auth-error", positiveMessage && "auth-error--success")} role={positiveMessage ? "status" : "alert"}>
                   {message}
                 </p>
               ) : null}
 
               <button type="submit" className="auth-submit" disabled={disabled}>
                 <span className="auth-submit__shine" aria-hidden="true" />
-                {loading ? (isLogin ? "正在登录" : "正在注册") : success ? "已完成" : isLogin ? "登录" : "注册"}
+                {loading
+                  ? isLogin ? "正在登录" : isReset ? "正在重置" : "正在注册"
+                  : success ? "已完成" : isLogin ? "登录" : isReset ? "重置密码" : "注册"}
                 {loading ? (
                   <Loader2 className="auth-submit__icon size-4 animate-spin" />
                 ) : success ? (
@@ -376,7 +544,7 @@ export function CustomerLogin({ initialMode = "login" }: CustomerLoginProps) {
               </button>
 
               <p className="auth-switch">
-                {isLogin ? "还没有账号？" : "已有账号？"}
+                {isLogin ? "还没有账号？" : isReset ? "想起密码？" : "已有账号？"}
                 <Link
                   href={isLogin ? "/register" : "/login"}
                   onClick={(event) => {

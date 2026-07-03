@@ -7,7 +7,7 @@ import { hashPassword, validatePasswordStrength, verifyPassword } from "../passw
 import { InMemoryRateLimiter } from "../rate-limit";
 import { createMemoryAuthRepository, type AuthRepository } from "../repository";
 import { AuthService } from "../service";
-import { type AuthUser } from "../types";
+import { AUTH_SESSION_TTL_SECONDS, type AuthUser } from "../types";
 
 function activeMapping(localUserId: string): NewApiUserSyncResult {
   const now = new Date().toISOString();
@@ -57,18 +57,25 @@ function service(overrides: {
   loginLimiter?: InMemoryRateLimiter;
   adminPasswordLimiter?: InMemoryRateLimiter;
   registerLimiter?: InMemoryRateLimiter;
+  verificationLimiter?: InMemoryRateLimiter;
 } = {}) {
   const repository = overrides.repository || createMemoryAuthRepository();
   const mappingRepository = createMemoryNewApiUserMappingRepository();
+  const sentCodes: Array<{ destination: string; purpose: "register" | "password_reset"; code: string }> = [];
   return {
     repository,
     mappingRepository,
+    sentCodes,
     service: new AuthService({
       repository,
       mappingRepository,
       loginLimiter: overrides.loginLimiter,
       adminPasswordLimiter: overrides.adminPasswordLimiter,
       registerLimiter: overrides.registerLimiter,
+      verificationLimiter: overrides.verificationLimiter,
+      verificationSender: async (payload) => {
+        sentCodes.push(payload);
+      },
       now: overrides.now,
       userSyncService: {
         ensureMapped: async (profile: NewApiUserSyncProfile) => {
@@ -102,18 +109,25 @@ function service(overrides: {
   };
 }
 
-async function registerActiveAccount(auth = service().service) {
-  return auth.register({
+async function registerActiveAccount(harness = service()) {
+  const requested = await harness.service.requestVerificationCode({
+    identifier: "customer@example.com",
+    purpose: "register",
+  }, { ip: "127.0.0.1", userAgent: "test" });
+  assert.equal(requested.ok, true);
+  const verificationCode = harness.sentCodes.at(-1)?.code || "";
+  return harness.service.register({
     email: "customer@example.com",
     username: "customer",
     password: "StrongPass123",
+    verificationCode,
     displayName: "Customer",
   }, { ip: "127.0.0.1", userAgent: "test" });
 }
 
 test("registers a real local user, hashes password, maps through B08, and creates a session", async () => {
   const harness = service();
-  const result = await registerActiveAccount(harness.service);
+  const result = await registerActiveAccount(harness);
 
   assert.equal(result.ok, true);
   assert.equal(result.status, 201);
@@ -136,7 +150,7 @@ test("register seeds new users with trial credits for New API sync", async () =>
   const previous = process.env.NEW_USER_INITIAL_CREDITS;
   process.env.NEW_USER_INITIAL_CREDITS = "";
   try {
-    const result = await registerActiveAccount(harness.service);
+    const result = await registerActiveAccount(harness);
     assert.equal(result.ok, true);
     assert.equal(profiles[0]?.initialQuota, 100);
   } finally {
@@ -147,13 +161,50 @@ test("register seeds new users with trial credits for New API sync", async () =>
 
 test("rejects duplicate registration without creating another account", async () => {
   const harness = service();
-  await registerActiveAccount(harness.service);
-  const duplicate = await registerActiveAccount(harness.service);
+  await registerActiveAccount(harness);
+  const duplicate = await harness.service.register({
+    email: "customer@example.com",
+    username: "customer",
+    password: "StrongPass123",
+    verificationCode: "000000",
+  });
 
   assert.equal(duplicate.ok, false);
   if (duplicate.ok) return;
   assert.equal(duplicate.status, 409);
   assert.equal(duplicate.uiState, "validation_error");
+});
+
+test("registers and logs in with a verified phone number", async () => {
+  const harness = service();
+  const requested = await harness.service.requestVerificationCode({
+    identifier: "13800138000",
+    purpose: "register",
+  });
+  assert.equal(requested.ok, true);
+
+  const registered = await harness.service.register({
+    identifier: "13800138000",
+    password: "StrongPass123",
+    verificationCode: harness.sentCodes.at(-1)?.code || "",
+  });
+  assert.equal(registered.ok, true);
+  if (!registered.ok) return;
+  assert.equal(registered.user.phone, "13800138000");
+
+  const duplicateCode = await harness.service.requestVerificationCode({
+    identifier: "13800138000",
+    purpose: "register",
+  });
+  assert.equal(duplicateCode.ok, false);
+  if (duplicateCode.ok) return;
+  assert.equal(duplicateCode.code, "AUTH_DUPLICATE_ACCOUNT");
+
+  const login = await harness.service.login({
+    identifier: "13800138000",
+    password: "StrongPass123",
+  });
+  assert.equal(login.ok, true);
 });
 
 test("rejects weak password and invalid input", async () => {
@@ -170,20 +221,67 @@ test("rejects weak password and invalid input", async () => {
   assert.equal(result.uiState, "validation_error");
 });
 
+test("resets a password with a verification code and expires old sessions", async () => {
+  const harness = service();
+  const registered = await registerActiveAccount(harness);
+  assert.equal(registered.ok, true);
+  if (!registered.ok) return;
+  const oldToken = registered.session?.token || "";
+
+  const requested = await harness.service.requestVerificationCode({
+    identifier: "customer@example.com",
+    purpose: "password_reset",
+  });
+  assert.equal(requested.ok, true);
+  const reset = await harness.service.resetPassword({
+    identifier: "customer@example.com",
+    verificationCode: harness.sentCodes.at(-1)?.code || "",
+    password: "NewStrongPass123",
+  });
+  assert.equal(reset.ok, true);
+
+  const oldSession = await harness.service.currentUser(oldToken);
+  assert.equal(oldSession.ok, false);
+  const oldLogin = await harness.service.login({
+    identifier: "customer@example.com",
+    password: "StrongPass123",
+  });
+  assert.equal(oldLogin.ok, false);
+  const newLogin = await harness.service.login({
+    identifier: "customer@example.com",
+    password: "NewStrongPass123",
+  });
+  assert.equal(newLogin.ok, true);
+});
+
 test("serializes concurrent duplicate registration to one local account", async () => {
   const harness = service();
-  const results = await Promise.all(Array.from({ length: 3 }, () => registerActiveAccount(harness.service)));
+  const codes: string[] = [];
+  for (let index = 0; index < 3; index += 1) {
+    const requested = await harness.service.requestVerificationCode({
+      identifier: "customer@example.com",
+      purpose: "register",
+    });
+    assert.equal(requested.ok, true);
+    codes.push(harness.sentCodes.at(-1)?.code || "");
+  }
+  const results = await Promise.all(codes.map((verificationCode) => harness.service.register({
+    email: "customer@example.com",
+    username: "customer",
+    password: "StrongPass123",
+    verificationCode,
+  })));
   const successCount = results.filter((result) => result.ok).length;
-  const duplicateCount = results.filter((result) => !result.ok && result.status === 409).length;
+  const failureCount = results.filter((result) => !result.ok).length;
 
   assert.equal(successCount, 1);
-  assert.equal(duplicateCount, 2);
+  assert.equal(failureCount, 2);
   assert(await harness.repository.getUserByIdentifier("customer@example.com"));
 });
 
 test("returns mapping_pending when B08 sync records retryable mapping failure", async () => {
   const harness = service({ sync: failedMapping });
-  const result = await registerActiveAccount(harness.service);
+  const result = await registerActiveAccount(harness);
 
   assert.equal(result.ok, true);
   if (!result.ok) return;
@@ -194,7 +292,7 @@ test("returns mapping_pending when B08 sync records retryable mapping failure", 
 
 test("logs in with email or username and rotates any existing session", async () => {
   const harness = service();
-  const registered = await registerActiveAccount(harness.service);
+  const registered = await registerActiveAccount(harness);
   assert.equal(registered.ok, true);
   if (!registered.ok) return;
 
@@ -216,12 +314,32 @@ test("logs in with email or username and rotates any existing session", async ()
   assert.equal(oldSession.uiState, "session_expired");
 });
 
+test("remember-me login keeps the session cookie for the full session TTL", async () => {
+  const harness = service();
+  await registerActiveAccount(harness);
+  const login = await harness.service.login({
+    identifier: "customer@example.com",
+    password: "StrongPass123",
+    rememberMe: true,
+  });
+
+  assert.equal(login.ok, true);
+  if (!login.ok) return;
+  assert.equal(login.session?.cookieMaxAgeSeconds, AUTH_SESSION_TTL_SECONDS);
+});
+
 test("normalizes unsafe redirects to the app root", async () => {
   const harness = service();
+  const codeRequest = await harness.service.requestVerificationCode({
+    identifier: "redirect@example.com",
+    purpose: "register",
+  });
+  assert.equal(codeRequest.ok, true);
   const registered = await harness.service.register({
     email: "redirect@example.com",
     username: "redirect-user",
     password: "StrongPass123",
+    verificationCode: harness.sentCodes.at(-1)?.code || "",
     redirectTo: "https://evil.example/phish",
   });
   assert.equal(registered.ok, true);
@@ -240,7 +358,7 @@ test("normalizes unsafe redirects to the app root", async () => {
 
 test("uses one generic invalid credentials error for wrong password and missing users", async () => {
   const harness = service();
-  await registerActiveAccount(harness.service);
+  await registerActiveAccount(harness);
 
   const wrongPassword = await harness.service.login({
     identifier: "customer@example.com",
@@ -261,7 +379,7 @@ test("uses one generic invalid credentials error for wrong password and missing 
 
 test("audit records do not store submitted passwords", async () => {
   const harness = service();
-  await registerActiveAccount(harness.service);
+  await registerActiveAccount(harness);
   await harness.service.login({
     identifier: "customer@example.com",
     password: "WrongPass123-DoNotLog",
@@ -277,7 +395,7 @@ test("audit records do not store submitted passwords", async () => {
 
 test("rejects disabled and verification-required users", async () => {
   const harness = service();
-  await registerActiveAccount(harness.service);
+  await registerActiveAccount(harness);
   const user = await harness.repository.getUserByIdentifier("customer@example.com") as AuthUser;
 
   await harness.repository.updateUser(user.local_user_id, { status: "disabled" });
@@ -337,7 +455,7 @@ test("rate limits failed login attempts by IP, not identifier", async () => {
 
 test("successful login does not consume failed-login budget", async () => {
   const harness = service({ loginLimiter: new InMemoryRateLimiter(1, 60_000) });
-  await registerActiveAccount(harness.service);
+  await registerActiveAccount(harness);
 
   const success = await harness.service.login({
     identifier: "customer@example.com",
@@ -387,7 +505,7 @@ test("administrator password failures use the stricter limiter", async () => {
 test("expires sessions by idle timeout and logs out server side", async () => {
   let now = new Date("2026-06-18T00:00:00.000Z");
   const harness = service({ now: () => now });
-  const registered = await registerActiveAccount(harness.service);
+  const registered = await registerActiveAccount(harness);
   assert.equal(registered.ok, true);
   if (!registered.ok) return;
   const token = registered.session?.token || "";
@@ -420,7 +538,7 @@ test("current user session helper acts as route protection", async () => {
   assert.equal(missing.status, 401);
   assert.equal(missing.uiState, "session_expired");
 
-  const registered = await registerActiveAccount(harness.service);
+  const registered = await registerActiveAccount(harness);
   assert.equal(registered.ok, true);
   if (!registered.ok) return;
   const protectedResult = await harness.service.currentUser(registered.session?.token);
@@ -432,7 +550,7 @@ test("current user session helper acts as route protection", async () => {
 test("refresh extends idle expiry without changing the session truth source", async () => {
   let now = new Date("2026-06-18T00:00:00.000Z");
   const harness = service({ now: () => now });
-  const registered = await registerActiveAccount(harness.service);
+  const registered = await registerActiveAccount(harness);
   assert.equal(registered.ok, true);
   if (!registered.ok) return;
   const token = registered.session?.token || "";

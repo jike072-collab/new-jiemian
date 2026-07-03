@@ -2,9 +2,10 @@ import { randomUUID } from "node:crypto";
 import { join } from "node:path";
 
 import { dataRoot, readJsonFile, writeJsonFile } from "../paths";
-import { nowIso, normalizeEmail, normalizeIdentifier, normalizeUsername } from "./normalize";
+import { nowIso, normalizeAuthIdentifier, normalizeEmail, normalizeIdentifier, normalizePhone, normalizeUsername } from "./normalize";
 import {
   type AuthAuditEvent,
+  type AuthVerificationCode,
   type AuthSession,
   type AuthStore,
   type AuthUser,
@@ -20,6 +21,7 @@ type AuthStorage = {
 export type CreateAuthUserInput = {
   localUserId?: string;
   email: string;
+  phone?: string | null;
   username: string;
   displayName: string;
   passwordHash: string;
@@ -33,7 +35,7 @@ export type UserRepository = {
   getUserByIdentifier(identifier: string): Promise<AuthUser | null>;
   listUsersPage(filter?: AuthUserListFilter): Promise<AuthUserListPage>;
   createUser(input: CreateAuthUserInput): Promise<AuthUser>;
-  updateUser(localUserId: string, patch: Partial<Pick<AuthUser, "status" | "last_login_at" | "session_version" | "display_name">>, now?: Date): Promise<AuthUser>;
+  updateUser(localUserId: string, patch: Partial<Pick<AuthUser, "status" | "last_login_at" | "session_version" | "display_name" | "password_hash">>, now?: Date): Promise<AuthUser>;
 };
 
 export type AuthUserListFilter = {
@@ -61,7 +63,13 @@ export type AuthAuditRepository = {
   listAuditEvents(): Promise<AuthAuditEvent[]>;
 };
 
-export type AuthRepository = UserRepository & SessionRepository & AuthAuditRepository;
+export type VerificationCodeRepository = {
+  createVerificationCode(code: AuthVerificationCode): Promise<AuthVerificationCode>;
+  getLatestVerificationCode(input: Pick<AuthVerificationCode, "destination" | "purpose">): Promise<AuthVerificationCode | null>;
+  touchVerificationCode(verificationId: string, patch: Partial<Pick<AuthVerificationCode, "attempt_count" | "consumed_at" | "updated_at">>): Promise<AuthVerificationCode>;
+};
+
+export type AuthRepository = UserRepository & SessionRepository & VerificationCodeRepository & AuthAuditRepository;
 
 export class AuthRepositoryError extends Error {
   constructor(readonly code: "AUTH_DUPLICATE_ACCOUNT" | "AUTH_NOT_FOUND", message: string) {
@@ -76,14 +84,18 @@ function cloneStore(store: AuthStore): AuthStore {
   return {
     users: store.users.map((user) => ({ ...user })),
     sessions: store.sessions.map((session) => ({ ...session })),
+    verificationCodes: store.verificationCodes.map((code) => ({ ...code })),
     audit: store.audit.map((event) => ({ ...event, details: { ...event.details } })),
   };
 }
 
 function normalizeStore(store: Partial<AuthStore> | null): AuthStore {
   return {
-    users: Array.isArray(store?.users) ? store.users : [],
+    users: Array.isArray(store?.users)
+      ? store.users.map((user) => ({ ...user, phone: user.phone ?? null }))
+      : [],
     sessions: Array.isArray(store?.sessions) ? store.sessions : [],
+    verificationCodes: Array.isArray(store?.verificationCodes) ? store.verificationCodes : [],
     audit: Array.isArray(store?.audit) ? store.audit : [],
   };
 }
@@ -123,10 +135,11 @@ class StoreAuthRepository implements AuthRepository {
   }
 
   async getUserByIdentifier(identifier: string) {
-    const normalized = normalizeIdentifier(identifier);
+    const authIdentifier = normalizeAuthIdentifier(identifier);
+    const normalized = authIdentifier?.kind === "phone" ? authIdentifier.value : normalizeIdentifier(identifier);
     const store = await this.storage.read();
     const found = store.users.find((user) => (
-      user.email === normalized || user.username === normalized
+      user.email === normalized || user.username === normalized || user.phone === normalized
     ));
     return found ? { ...found } : null;
   }
@@ -139,7 +152,7 @@ class StoreAuthRepository implements AuthRepository {
     const users = store.users
       .filter((user) => !filter.status || user.status === filter.status)
       .filter((user) => !filter.role || user.role === filter.role)
-      .filter((user) => !query || user.email.includes(query) || user.username.includes(query) || user.local_user_id === query)
+      .filter((user) => !query || user.email.includes(query) || user.username.includes(query) || user.phone?.includes(query) || user.local_user_id === query)
       .sort((a, b) => b.created_at.localeCompare(a.created_at))
       .map((user) => ({ ...user }));
     const start = (page - 1) * pageSize;
@@ -151,11 +164,14 @@ class StoreAuthRepository implements AuthRepository {
 
   async createUser(input: CreateAuthUserInput) {
     const email = normalizeEmail(input.email);
+    const phone = input.phone ? normalizePhone(input.phone) : null;
     const username = normalizeUsername(input.username);
     const timestamp = nowIso(input.now);
 
     return this.mutate((store) => {
-      const duplicate = store.users.find((user) => user.email === email || user.username === username);
+      const duplicate = store.users.find((user) => (
+        user.email === email || user.username === username || Boolean(phone && user.phone === phone)
+      ));
       if (duplicate) {
         throw new AuthRepositoryError("AUTH_DUPLICATE_ACCOUNT", "Account already exists.");
       }
@@ -163,6 +179,7 @@ class StoreAuthRepository implements AuthRepository {
       const user: AuthUser = {
         local_user_id: input.localUserId || randomUUID(),
         email,
+        phone,
         username,
         display_name: input.displayName.trim() || username,
         password_hash: input.passwordHash,
@@ -180,7 +197,7 @@ class StoreAuthRepository implements AuthRepository {
 
   async updateUser(
     localUserId: string,
-    patch: Partial<Pick<AuthUser, "status" | "last_login_at" | "session_version" | "display_name">>,
+    patch: Partial<Pick<AuthUser, "status" | "last_login_at" | "session_version" | "display_name" | "password_hash">>,
     now?: Date,
   ) {
     return this.mutate((store) => {
@@ -230,6 +247,37 @@ class StoreAuthRepository implements AuthRepository {
         updated_at: nowIso(now),
       };
       return { ...store.sessions[index] };
+    });
+  }
+
+  async createVerificationCode(code: AuthVerificationCode) {
+    return this.mutate((store) => {
+      store.verificationCodes.push({ ...code });
+      return { ...code };
+    });
+  }
+
+  async getLatestVerificationCode(input: Pick<AuthVerificationCode, "destination" | "purpose">) {
+    const store = await this.storage.read();
+    const found = store.verificationCodes
+      .filter((code) => (
+        code.destination === input.destination
+        && code.purpose === input.purpose
+        && !code.consumed_at
+      ))
+      .sort((a, b) => b.created_at.localeCompare(a.created_at))[0];
+    return found ? { ...found } : null;
+  }
+
+  async touchVerificationCode(
+    verificationId: string,
+    patch: Partial<Pick<AuthVerificationCode, "attempt_count" | "consumed_at" | "updated_at">>,
+  ) {
+    return this.mutate((store) => {
+      const index = store.verificationCodes.findIndex((code) => code.verification_id === verificationId);
+      if (index < 0) throw new AuthRepositoryError("AUTH_NOT_FOUND", "Verification code was not found.");
+      store.verificationCodes[index] = { ...store.verificationCodes[index], ...patch };
+      return { ...store.verificationCodes[index] };
     });
   }
 

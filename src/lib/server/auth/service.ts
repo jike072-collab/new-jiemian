@@ -1,8 +1,10 @@
-import { randomBytes, randomUUID } from "node:crypto";
+import { randomBytes, randomInt, randomUUID } from "node:crypto";
 
 import { createNewApiUserSyncService, type NewApiUserMappingRepository, type NewApiUserSyncService } from "../integrations/new-api";
 import { hashPassword, validatePasswordStrength, verifyPassword } from "./password";
 import { InMemoryRateLimiter } from "./rate-limit";
+import { hmacSha256, timingSafeStringEqual } from "./secrets";
+import { AuthVerificationSendError, sendAuthVerificationCode, type AuthVerificationSender } from "./verification-sender";
 import { getWorkloadLimits } from "../workload-limits";
 import {
   AuthRepositoryError,
@@ -12,10 +14,12 @@ import { createAuthPersistenceRepositories } from "./persistence";
 import {
   isValidEmail,
   isValidUsername,
+  normalizeAuthIdentifier,
   normalizeEmail,
   normalizeIdentifier,
   normalizeUsername,
   nowIso,
+  placeholderEmailFromPhone,
   publicSafeString,
   safeRedirectPath,
   sha256,
@@ -32,13 +36,17 @@ import {
   type AuthSession,
   type AuthSessionPayload,
   type AuthSuccess,
+  type AuthVerificationChannel,
+  type AuthVerificationPurpose,
   type AuthUser,
   type PublicAuthUser,
 } from "./types";
 
 export type RegisterInput = {
-  email: string;
+  identifier?: string;
+  email?: string;
   password: string;
+  verificationCode?: string;
   username?: string;
   displayName?: string;
   redirectTo?: string;
@@ -47,8 +55,20 @@ export type RegisterInput = {
 export type LoginInput = {
   identifier: string;
   password: string;
+  rememberMe?: boolean;
   existingSessionToken?: string | null;
   redirectTo?: string;
+};
+
+export type VerificationCodeInput = {
+  identifier: string;
+  purpose: AuthVerificationPurpose;
+};
+
+export type PasswordResetInput = {
+  identifier: string;
+  verificationCode: string;
+  password: string;
 };
 
 export type AuthServiceDependencies = {
@@ -58,11 +78,16 @@ export type AuthServiceDependencies = {
   loginLimiter?: InMemoryRateLimiter;
   adminPasswordLimiter?: InMemoryRateLimiter;
   registerLimiter?: InMemoryRateLimiter;
+  verificationLimiter?: InMemoryRateLimiter;
+  verificationSender?: AuthVerificationSender;
   now?: () => Date;
 };
 
 const genericInvalidCredentials = "Invalid email, username, or password.";
 const DEFAULT_NEW_USER_INITIAL_CREDITS = 100;
+const VERIFICATION_CODE_TTL_SECONDS = 10 * 60;
+const VERIFICATION_CODE_MAX_ATTEMPTS = 5;
+const REMEMBER_ME_SECONDS = AUTH_SESSION_TTL_SECONDS;
 
 function envNumber(name: string, fallback: number, min: number, max: number) {
   const value = process.env[name]?.trim();
@@ -84,6 +109,7 @@ function publicUser(user: AuthUser): PublicAuthUser {
   return {
     local_user_id: user.local_user_id,
     email: user.email,
+    phone: user.phone,
     username: user.username,
     display_name: user.display_name,
     status: user.status,
@@ -97,6 +123,22 @@ function tokenHash(token: string) {
 
 function newSessionToken() {
   return randomBytes(32).toString("base64url");
+}
+
+function newVerificationCode() {
+  return String(randomInt(0, 1_000_000)).padStart(6, "0");
+}
+
+function verificationCodeHash(input: {
+  purpose: AuthVerificationPurpose;
+  destination: string;
+  code: string;
+}) {
+  return hmacSha256(`auth-verification:${input.purpose}:${input.destination}:${input.code}`);
+}
+
+function phoneUsername(phone: string) {
+  return `u-${sha256(phone).slice(0, 20)}`;
 }
 
 function contextHash(value?: string) {
@@ -118,6 +160,8 @@ export class AuthService {
   private readonly loginLimiter: InMemoryRateLimiter;
   private readonly adminPasswordLimiter: InMemoryRateLimiter;
   private readonly registerLimiter: InMemoryRateLimiter;
+  private readonly verificationLimiter: InMemoryRateLimiter;
+  private readonly verificationSender: AuthVerificationSender;
   private readonly now: () => Date;
 
   constructor(dependencies: AuthServiceDependencies = {}) {
@@ -140,15 +184,117 @@ export class AuthService {
       limits.failedAdminPasswordWindowMs,
     );
     this.registerLimiter = dependencies.registerLimiter || new InMemoryRateLimiter(limits.registerPerIp, limits.registerWindowMs);
+    this.verificationLimiter = dependencies.verificationLimiter || new InMemoryRateLimiter(5, 10 * 60 * 1000);
+    this.verificationSender = dependencies.verificationSender || sendAuthVerificationCode;
     this.now = dependencies.now || (() => new Date());
   }
 
+  async requestVerificationCode(input: VerificationCodeInput, context: AuthRequestContext = {}): Promise<AuthActionResult> {
+    const purpose = input.purpose;
+    if (purpose !== "register" && purpose !== "password_reset") {
+      return failure({
+        status: 400,
+        code: "AUTH_VALIDATION_ERROR",
+        uiState: "validation_error",
+        message: "Verification purpose is invalid.",
+      });
+    }
+
+    const identifier = normalizeAuthIdentifier(input.identifier || "");
+    if (!identifier) {
+      return failure({
+        status: 400,
+        code: "AUTH_VALIDATION_ERROR",
+        uiState: "validation_error",
+        message: "Verification destination is invalid.",
+      });
+    }
+
+    const destinationHash = sha256(identifier.value);
+    const existingUser = await this.repository.getUserByIdentifier(identifier.value);
+    if (purpose === "register" && existingUser) {
+      await this.audit("auth.verification.duplicate", existingUser.local_user_id, context, { destination: destinationHash });
+      return failure({
+        status: 409,
+        code: "AUTH_DUPLICATE_ACCOUNT",
+        uiState: "validation_error",
+        message: "Account already exists.",
+      });
+    }
+    if (purpose === "password_reset" && !existingUser) {
+      await this.audit("auth.password_reset.missing_user", null, context, { destination: destinationHash });
+      return {
+        ok: true,
+        status: 200,
+        uiState: "success",
+        message: "If the account exists, a verification code will be sent.",
+      };
+    }
+
+    const rate = this.verificationLimiter.consume(
+      `${purpose}:${context.ip || "unknown"}:${destinationHash}`,
+      this.now(),
+    );
+    if (!rate.allowed) {
+      return failure({
+        status: 429,
+        code: "AUTH_RATE_LIMITED",
+        uiState: "rate_limited",
+        message: "Too many verification code requests.",
+        retryAfterSeconds: rate.retryAfterSeconds,
+      });
+    }
+
+    const code = newVerificationCode();
+    try {
+      await this.verificationSender({
+        destination: identifier.value,
+        channel: identifier.kind as AuthVerificationChannel,
+        purpose,
+        code,
+        expiresInSeconds: VERIFICATION_CODE_TTL_SECONDS,
+      });
+    } catch (error) {
+      await this.audit("auth.verification.send_failed", existingUser?.local_user_id || null, context, {
+        destination: destinationHash,
+        reason: error instanceof AuthVerificationSendError ? error.code : "unknown",
+      });
+      return failure({
+        status: 503,
+        code: "AUTH_VERIFICATION_SEND_UNAVAILABLE",
+        uiState: "service_unavailable",
+        message: "Verification sender is unavailable.",
+      });
+    }
+
+    const now = this.now();
+    await this.repository.createVerificationCode({
+      verification_id: randomUUID(),
+      destination: identifier.value,
+      channel: identifier.kind,
+      purpose,
+      code_hash: verificationCodeHash({ purpose, destination: identifier.value, code }),
+      expires_at: nowIso(new Date(now.getTime() + VERIFICATION_CODE_TTL_SECONDS * 1000)),
+      consumed_at: null,
+      attempt_count: 0,
+      send_count: 1,
+      created_at: nowIso(now),
+      updated_at: nowIso(now),
+    });
+    await this.audit("auth.verification.sent", existingUser?.local_user_id || null, context, {
+      destination: destinationHash,
+      purpose,
+    });
+    return {
+      ok: true,
+      status: 200,
+      uiState: "success",
+      message: "Verification code sent.",
+    };
+  }
+
   async register(input: RegisterInput, context: AuthRequestContext = {}): Promise<AuthResult> {
-    const email = normalizeEmail(input.email || "");
-    const normalizedUsername = input.username
-      ? normalizeUsername(input.username)
-      : `${usernameFromEmail(email)}-${sha256(email).slice(0, 6)}`.slice(0, 32);
-    const displayName = publicSafeString(input.displayName || normalizedUsername, 80);
+    const account = normalizeAuthIdentifier(input.identifier || input.email || "");
     const redirectTo = safeRedirectPath(input.redirectTo);
     const limitKey = ipRateLimitKey("register", context);
     const rate = this.registerLimiter.consume(limitKey, this.now());
@@ -162,6 +308,27 @@ export class AuthService {
       });
     }
 
+    if (!account) {
+      return failure({
+        status: 400,
+        code: "AUTH_VALIDATION_ERROR",
+        uiState: "validation_error",
+        message: "Registration input is invalid.",
+      });
+    }
+
+    const email = account.kind === "email" ? normalizeEmail(account.value) : placeholderEmailFromPhone(account.value);
+    const phone = account.kind === "phone" ? account.value : null;
+    const normalizedUsername = input.username
+      ? normalizeUsername(input.username)
+      : account.kind === "email"
+        ? `${usernameFromEmail(email)}-${sha256(email).slice(0, 6)}`.slice(0, 32)
+        : phoneUsername(account.value);
+    const displayName = publicSafeString(
+      input.displayName || (account.kind === "phone" ? `用户${account.value.slice(-4)}` : normalizedUsername),
+      80,
+    );
+
     const passwordErrors = validatePasswordStrength(input.password || "");
     if (!isValidEmail(email) || !isValidUsername(normalizedUsername) || passwordErrors.length > 0) {
       return failure({
@@ -173,10 +340,11 @@ export class AuthService {
     }
 
     if (
-      await this.repository.getUserByIdentifier(email)
+      await this.repository.getUserByIdentifier(account.value)
+      || await this.repository.getUserByIdentifier(email)
       || await this.repository.getUserByIdentifier(normalizedUsername)
     ) {
-      await this.audit("auth.register.duplicate", null, context, { identifier: sha256(email) });
+      await this.audit("auth.register.duplicate", null, context, { identifier: sha256(account.value) });
       return failure({
         status: 409,
         code: "AUTH_DUPLICATE_ACCOUNT",
@@ -185,12 +353,20 @@ export class AuthService {
       });
     }
 
+    const verification = await this.consumeVerificationCode({
+      destination: account.value,
+      purpose: "register",
+      code: input.verificationCode || "",
+    });
+    if (!verification.ok) return verification;
+
     const localUserId = randomUUID();
     let user: AuthUser;
     try {
       user = await this.repository.createUser({
         localUserId,
         email,
+        phone,
         username: normalizedUsername,
         displayName,
         passwordHash: await hashPassword(input.password),
@@ -303,7 +479,7 @@ export class AuthService {
       { last_login_at: nowIso(this.now()) },
       this.now(),
     );
-    const session = await this.createSession(updatedUser, context);
+    const session = await this.createSession(updatedUser, context, Boolean(input.rememberMe));
     await this.audit("auth.login.success", user.local_user_id, context, {});
 
     return success({
@@ -314,6 +490,49 @@ export class AuthService {
       session,
       redirectTo,
     });
+  }
+
+  async resetPassword(input: PasswordResetInput, context: AuthRequestContext = {}): Promise<AuthActionResult> {
+    const account = normalizeAuthIdentifier(input.identifier || "");
+    const passwordErrors = validatePasswordStrength(input.password || "");
+    if (!account || passwordErrors.length > 0) {
+      return failure({
+        status: 400,
+        code: "AUTH_VALIDATION_ERROR",
+        uiState: "validation_error",
+        message: "Password reset input is invalid.",
+      });
+    }
+
+    const user = await this.repository.getUserByIdentifier(account.value);
+    if (!user) {
+      await this.audit("auth.password_reset.failed", null, context, { reason: "missing_user", identifier: sha256(account.value) });
+      return failure({
+        status: 400,
+        code: "AUTH_VERIFICATION_CODE_INVALID",
+        uiState: "validation_error",
+        message: "Verification code is invalid or expired.",
+      });
+    }
+
+    const verification = await this.consumeVerificationCode({
+      destination: account.value,
+      purpose: "password_reset",
+      code: input.verificationCode || "",
+    });
+    if (!verification.ok) return verification;
+
+    await this.repository.updateUser(user.local_user_id, {
+      password_hash: await hashPassword(input.password),
+      session_version: user.session_version + 1,
+    }, this.now());
+    await this.audit("auth.password_reset.success", user.local_user_id, context, {});
+    return {
+      ok: true,
+      status: 200,
+      uiState: "success",
+      message: "Password reset.",
+    };
   }
 
   async currentUser(sessionToken?: string | null, context: AuthRequestContext = {}): Promise<AuthResult> {
@@ -391,9 +610,80 @@ export class AuthService {
     }
   }
 
-  private async createSession(user: AuthUser, context: AuthRequestContext): Promise<AuthSessionPayload> {
+  private async consumeVerificationCode(input: {
+    destination: string;
+    purpose: AuthVerificationPurpose;
+    code: string;
+  }): Promise<AuthActionResult> {
+    const submitted = input.code.trim();
+    if (!/^\d{6}$/.test(submitted)) {
+      return failure({
+        status: 400,
+        code: "AUTH_VERIFICATION_CODE_INVALID",
+        uiState: "validation_error",
+        message: "Verification code is invalid or expired.",
+      });
+    }
+
+    const stored = await this.repository.getLatestVerificationCode({
+      destination: input.destination,
+      purpose: input.purpose,
+    });
+    const now = this.now();
+    const invalid = !stored
+      || Date.parse(stored.expires_at) <= now.getTime()
+      || stored.attempt_count >= VERIFICATION_CODE_MAX_ATTEMPTS;
+
+    if (invalid) {
+      if (stored && !stored.consumed_at) {
+        await this.repository.touchVerificationCode(stored.verification_id, {
+          consumed_at: nowIso(now),
+          updated_at: nowIso(now),
+        });
+      }
+      return failure({
+        status: 400,
+        code: "AUTH_VERIFICATION_CODE_INVALID",
+        uiState: "validation_error",
+        message: "Verification code is invalid or expired.",
+      });
+    }
+
+    const expected = verificationCodeHash({
+      purpose: input.purpose,
+      destination: input.destination,
+      code: submitted,
+    });
+    if (!timingSafeStringEqual(expected, stored.code_hash)) {
+      await this.repository.touchVerificationCode(stored.verification_id, {
+        attempt_count: stored.attempt_count + 1,
+        updated_at: nowIso(now),
+      });
+      return failure({
+        status: 400,
+        code: "AUTH_VERIFICATION_CODE_INVALID",
+        uiState: "validation_error",
+        message: "Verification code is invalid or expired.",
+      });
+    }
+
+    await this.repository.touchVerificationCode(stored.verification_id, {
+      attempt_count: stored.attempt_count + 1,
+      consumed_at: nowIso(now),
+      updated_at: nowIso(now),
+    });
+    return {
+      ok: true,
+      status: 200,
+      uiState: "success",
+      message: "Verification code accepted.",
+    };
+  }
+
+  private async createSession(user: AuthUser, context: AuthRequestContext, rememberMe = false): Promise<AuthSessionPayload> {
     const now = this.now();
     const token = newSessionToken();
+    const idleSeconds = rememberMe ? REMEMBER_ME_SECONDS : AUTH_SESSION_IDLE_SECONDS;
     const session: AuthSession = {
       session_id: randomUUID(),
       local_user_id: user.local_user_id,
@@ -402,7 +692,7 @@ export class AuthService {
       created_at: nowIso(now),
       updated_at: nowIso(now),
       last_seen_at: nowIso(now),
-      idle_expires_at: nowIso(new Date(now.getTime() + AUTH_SESSION_IDLE_SECONDS * 1000)),
+      idle_expires_at: nowIso(new Date(now.getTime() + idleSeconds * 1000)),
       expires_at: nowIso(new Date(now.getTime() + AUTH_SESSION_TTL_SECONDS * 1000)),
       revoked_at: null,
       user_agent_hash: contextHash(context.userAgent),
@@ -411,7 +701,7 @@ export class AuthService {
     return {
       token,
       session: await this.repository.createSession(session),
-      cookieMaxAgeSeconds: AUTH_SESSION_IDLE_SECONDS,
+      cookieMaxAgeSeconds: idleSeconds,
     };
   }
 

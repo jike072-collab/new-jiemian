@@ -100,6 +100,7 @@ function stableComparable(value: unknown) {
   const copy = { ...(value as Record<string, unknown>) };
   delete copy.password_hash;
   delete copy.token_hash;
+  delete copy.code_hash;
   delete copy.last_error_message;
   delete copy.details;
   return copy;
@@ -268,6 +269,40 @@ export function createDualAuthRepository(json: AuthRepository, postgres: AuthRep
           operation: "revokeSession",
           key: () => sessionId,
           mirror: () => postgres.revokeSession(sessionId, now),
+        },
+      );
+    },
+    async createVerificationCode(code) {
+      return mirrorWrite(
+        json.createVerificationCode(code),
+        {
+          scope: "auth_verification_code",
+          operation: "createVerificationCode",
+          key: (created) => created.verification_id,
+          mirror: () => postgres.createVerificationCode(code),
+        },
+      );
+    },
+    async getLatestVerificationCode(input) {
+      const jsonCode = await json.getLatestVerificationCode(input);
+      await compareShadow(
+        "auth_verification_code",
+        "getLatestVerificationCode",
+        `${input.purpose}:${input.destination}`,
+        jsonCode,
+        () => postgres.getLatestVerificationCode(input),
+        (primary, shadow) => primary?.verification_id !== (shadow as Awaited<ReturnType<AuthRepository["getLatestVerificationCode"]>>)?.verification_id,
+      );
+      return jsonCode;
+    },
+    async touchVerificationCode(verificationId, patch) {
+      return mirrorWrite(
+        json.touchVerificationCode(verificationId, patch),
+        {
+          scope: "auth_verification_code",
+          operation: "touchVerificationCode",
+          key: () => verificationId,
+          mirror: () => postgres.touchVerificationCode(verificationId, patch),
         },
       );
     },
