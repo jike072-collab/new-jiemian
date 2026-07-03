@@ -1148,11 +1148,10 @@ export function StudioApp() {
       promptOptimizeUndo: "",
     });
     try {
-      const data = await jsonFetch<{ prompt?: string; optimizedPrompt?: string }>("/api/prompts/optimize", {
+      const data = await fetchJsonWithCsrf<{ prompt?: string; optimizedPrompt?: string }>("/api/prompts/optimize", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          tool: "image-generator",
+          tool: activeWorkspaceToolId === "image-editor" ? "image-editor" : "image-generator",
           templateId: imageWorkspace.templateId,
           prompt: originalPrompt,
           hasImage: imageWorkspaceHasFiles,
@@ -1180,6 +1179,7 @@ export function StudioApp() {
       setMessage(text);
     }
   }, [
+    activeWorkspaceToolId,
     imageWorkspace.prompt,
     imageWorkspace.promptOptimizing,
     imageWorkspace.quality,
@@ -1518,9 +1518,8 @@ export function StudioApp() {
       promptOptimizeUndo: "",
     });
     try {
-      const data = await jsonFetch<{ prompt?: string; optimizedPrompt?: string }>("/api/prompts/optimize", {
+      const data = await fetchJsonWithCsrf<{ prompt?: string; optimizedPrompt?: string }>("/api/prompts/optimize", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           tool: "video-generator",
           templateId: videoWorkspace.templateId,
