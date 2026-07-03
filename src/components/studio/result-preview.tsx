@@ -900,11 +900,11 @@ function ErrorPreview({
   );
 }
 
-function UpscaleUnavailablePreview() {
+function UpscaleUnavailablePreview({ message }: { message?: string }) {
   return (
-    <PreviewState eyebrow="暂不可用" title="高清处理暂时不可用" description="高清处理暂时不可用，请稍后重试" role="alert">
+    <PreviewState eyebrow="暂不可用" title="高清处理暂时不可用" description={message || "高清处理暂时不可用，请稍后重试"} role="alert">
       <div className="studio-preview__empty">
-        <p>请稍后重试。</p>
+        <p>{message || "请稍后重试。"}</p>
       </div>
     </PreviewState>
   );
@@ -968,7 +968,7 @@ export function ImageUpscalePreviewPanel({
   }
 
   if (!state.availability?.ready) {
-    return <UpscaleUnavailablePreview />;
+    return <UpscaleUnavailablePreview message={state.availability?.detail || state.statusError} />;
   }
 
   if (output?.item.output?.url) {
@@ -1052,7 +1052,7 @@ export function VideoUpscalePreviewPanel({
   }
 
   if (!state.availability?.ready) {
-    return <UpscaleUnavailablePreview />;
+    return <UpscaleUnavailablePreview message={state.availability?.detail || state.statusError} />;
   }
 
   if (output?.item.output?.url) {

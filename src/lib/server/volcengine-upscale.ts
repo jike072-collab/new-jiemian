@@ -288,11 +288,13 @@ function providerReady(provider: ProviderConfig | null, kind: "image" | "video")
     const config = imageConfig(provider);
     if (!config.credential) return { ready: false, detail: "图片高清增强缺少火山 AK/SK，请在后台 API Key 填 AK:SK。" };
     if (!config.serviceId) return { ready: false, detail: "图片高清增强缺少 ImageX ServiceId，请填在模型字段或 VOLCENGINE_IMAGEX_SERVICE_ID。" };
+    if (!config.outputDomain) return { ready: false, detail: "图片高清增强缺少 VOLCENGINE_IMAGEX_OUTPUT_DOMAIN，请先在火山 ImageX 绑定输出域名。" };
     return { ready: true, detail: "火山 ImageX 图片高清增强已配置。" };
   }
   const config = videoConfig(provider);
   if (!config.credential) return { ready: false, detail: "视频高清增强缺少火山 AK/SK，请在后台 API Key 填 AK:SK。" };
   if (!config.spaceName) return { ready: false, detail: "视频高清增强缺少 VOD SpaceName，请填在模型字段或 VOLCENGINE_VOD_SPACE_NAME。" };
+  if (!config.outputDomain) return { ready: false, detail: "视频高清增强缺少 VOLCENGINE_VOD_OUTPUT_DOMAIN，请先在火山 VOD 绑定播放域名。" };
   return { ready: true, detail: "火山 VOD 视频高清增强已配置。" };
 }
 
