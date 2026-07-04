@@ -209,7 +209,7 @@ export function defaultProviders(): ProviderConfig[] {
       title: "img2 图片生成",
       role: "支持 1K、2K、4K 图片生成",
       apiUrl: env("IMG2_IMAGE_API_URL", "https://nianhuaapi.com/v1/images/generations"),
-      model: env("IMG2_IMAGE_MODEL", "image4k"),
+      model: env("IMG2_IMAGE_MODEL", "gpt-image-2"),
       displayName: env("IMG2_IMAGE_DISPLAY_NAME", "img2-4K"),
       apiKey: env("IMG2_IMAGE_API_KEY"),
       enabled: hasKey(env("IMG2_IMAGE_API_KEY")),
