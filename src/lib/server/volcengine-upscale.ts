@@ -609,6 +609,7 @@ async function imageResourceUrl(objectKey: string, config: ReturnType<typeof ima
   if (!config.outputDomain) {
     throw new GenerationDiagnosticError({ code: "RESULT_ASSET_MISSING", safeDetails: { missing: "VOLCENGINE_IMAGEX_OUTPUT_DOMAIN" } });
   }
+  const expiresAt = Math.floor(Date.now() / 1000) + 365 * 24 * 60 * 60;
   const response = await openapiRequest<{
     Result?: {
       URL?: string;
@@ -629,7 +630,7 @@ async function imageResourceUrl(objectKey: string, config: ReturnType<typeof ima
       Domain: config.outputDomain,
       URI: objectKey,
       Proto: "http",
-      Timestamp: 365 * 24 * 60 * 60,
+      Timestamp: expiresAt,
       ...(config.outputTpl ? { Tpl: config.outputTpl } : {}),
     },
   });
