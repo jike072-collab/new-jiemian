@@ -72,7 +72,8 @@ test("optimizes common ecommerce image prompt scenarios", async () => {
   const seen: PromptModelCall[] = [];
   const service = serviceWith(async (input) => {
     seen.push(input);
-    return `Professional ecommerce visual prompt for ${seen.length}`;
+    const relatedTerms = ["真丝睡衣", "纯白背景", "透明背景", "文字翻译", "厨房台面", "限时折扣"];
+    return `${relatedTerms[seen.length - 1]}电商商品展示画面提示词 ${seen.length}`;
   });
 
   const cases: Array<Partial<PromptOptimizeInput>> = [
@@ -88,16 +89,16 @@ test("optimizes common ecommerce image prompt scenarios", async () => {
     const result = await service.optimize(baseInput(item), { localUserId: "user-1", requestId: "req-1" });
     assert.equal(result.ok, true);
     if (result.ok) {
-      assert.match(result.optimizedPrompt, /^Professional ecommerce visual prompt/);
+      assert.match(result.optimizedPrompt, /电商商品展示画面提示词/);
       assert.equal(result.billingPolicy, "deferred");
     }
   }
 
   assert.equal(seen.length, cases.length);
-  assert(seen.every((call) => call.systemPrompt.includes("只输出最终提示词")));
-  assert(seen.every((call) => call.systemPrompt.includes("保留商品真实外观")));
+  assert(seen.every((call) => call.systemPrompt.includes("最终输出必须使用简体中文")));
+  assert(seen.every((call) => call.systemPrompt.includes("禁止输出整句英文")));
   assert(seen.every((call) => call.userPrompt.includes("TikTok Shop")));
-  assert(seen.some((call) => call.userPrompt.includes("图片编辑")));
+  assert(seen.some((call) => call.userPrompt.includes("任务类型：图片编辑")));
   assert(seen.some((call) => call.userPrompt.includes("保留项与修改项")));
 });
 
@@ -172,12 +173,13 @@ test("can fall back to a local prompt when optimizer provider fails", async () =
   assert.equal(result.ok, true);
   if (!result.ok) return;
   assert.match(result.optimizedPrompt, /白底商品主图/);
+  assert.match(result.optimizedPrompt, /[\u4e00-\u9fff]/);
   assert.match(result.optimizedPrompt, /TikTok Shop/);
   assert.equal(result.optimizedPrompt.includes("sk-test-secret"), false);
 });
 
 test("returns only optimized prompt text and redacts secret-shaped output", async () => {
-  const service = serviceWith(async () => "```markdown\n最终提示词：Use clean lighting sk-test-secret-value\n```");
+  const service = serviceWith(async () => "```markdown\n最终提示词：白底商品主图，使用干净自然的布光展示商品细节 sk-test-secret-value\n```");
   const result = await service.optimize(baseInput(), { localUserId: "user-1" });
   assert.equal(result.ok, true);
   if (!result.ok) return;
@@ -185,6 +187,40 @@ test("returns only optimized prompt text and redacts secret-shaped output", asyn
   assert.equal(result.optimizedPrompt.includes("最终提示词"), false);
   assert.equal(result.optimizedPrompt.includes("sk-test-secret-value"), false);
   assert.equal(result.optimizedPrompt.includes("[REDACTED]"), true);
+});
+
+test("falls back to local Chinese prompt when provider returns empty or non-Chinese content", async () => {
+  const emptyService = createPromptOptimizeService({
+    caller: async () => "",
+    fallbackOnModelFailure: true,
+  });
+  const emptyResult = await emptyService.optimize(baseInput({ prompt: "白底商品主图，突出杯身材质" }), { localUserId: "user-1" });
+  assert.equal(emptyResult.ok, true);
+  if (!emptyResult.ok) return;
+  assert.match(emptyResult.optimizedPrompt, /[\u4e00-\u9fff]/);
+
+  const englishService = createPromptOptimizeService({
+    caller: async () => "Professional ecommerce lighting prompt",
+    fallbackOnModelFailure: true,
+  });
+  const englishResult = await englishService.optimize(baseInput({ prompt: "白底商品主图，突出杯身材质" }), { localUserId: "user-1" });
+  assert.equal(englishResult.ok, true);
+  if (!englishResult.ok) return;
+  assert.match(englishResult.optimizedPrompt, /[\u4e00-\u9fff]/);
+  assert.equal(englishResult.optimizedPrompt.includes("Professional ecommerce lighting prompt"), false);
+});
+
+test("falls back when provider returns Chinese text unrelated to the original request", async () => {
+  const service = createPromptOptimizeService({
+    caller: async () => "A 是 B 是现代汉语中最常见的判断句式，用于说明分类关系。",
+    fallbackOnModelFailure: true,
+  });
+  const result = await service.optimize(baseInput({ prompt: "白底陶瓷马克杯商品主图，突出杯身釉面质感" }), { localUserId: "user-1" });
+
+  assert.equal(result.ok, true);
+  if (!result.ok) return;
+  assert.match(result.optimizedPrompt, /马克杯|陶瓷|釉面/);
+  assert.equal(result.optimizedPrompt.includes("现代汉语"), false);
 });
 
 test("provider caller uses prompt-optimizer provider configuration", async () => {
@@ -199,7 +235,7 @@ test("provider caller uses prompt-optimizer provider configuration", async () =>
     assert.equal(body.messages[1].role, "user");
     json(response, 200, {
       choices: [
-        { message: { content: "Optimized prompt from provider" } },
+        { message: { content: "来自专用 provider 的中文提示词" } },
       ],
     });
   });
@@ -225,7 +261,7 @@ test("provider caller uses prompt-optimizer provider configuration", async () =>
     timeoutMs: 500,
   });
 
-  assert.equal(output, "Optimized prompt from provider");
+  assert.equal(output, "来自专用 provider 的中文提示词");
 });
 
 test("New API caller uses chat completions without exposing admin credentials", async () => {
@@ -240,7 +276,7 @@ test("New API caller uses chat completions without exposing admin credentials", 
     assert.equal(body.messages[1].role, "user");
     json(response, 200, {
       choices: [
-        { message: { content: "Optimized prompt from New API" } },
+        { message: { content: "来自 New API 的中文提示词" } },
       ],
     });
   });
@@ -263,7 +299,7 @@ test("New API caller uses chat completions without exposing admin credentials", 
       requestId: "req-new-api",
       timeoutMs: 500,
     });
-    assert.equal(output, "Optimized prompt from New API");
+    assert.equal(output, "来自 New API 的中文提示词");
   } finally {
     if (previousModel === undefined) delete process.env.PROMPT_OPTIMIZER_MODEL;
     else process.env.PROMPT_OPTIMIZER_MODEL = previousModel;

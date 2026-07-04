@@ -66,6 +66,13 @@ function env(name: string, fallback = "") {
   return process.env[name] || fallback;
 }
 
+export function defaultImagexOutputDomain(serviceId: string, region: string) {
+  const normalizedServiceId = serviceId.trim();
+  const normalizedRegion = region.trim();
+  if (!normalizedServiceId || !normalizedRegion) return "";
+  return `${normalizedServiceId}.veimagex-pub.${normalizedRegion}.volces.com`;
+}
+
 function asRecord(value: unknown): Record<string, unknown> {
   return value && typeof value === "object" && !Array.isArray(value)
     ? value as Record<string, unknown>
@@ -400,13 +407,14 @@ async function openapiRequest<T>({
 
 function imageConfig(provider: ProviderConfig | null) {
   const credential = parseCredential(provider);
+  const region = env("VOLCENGINE_REGION", defaultRegion);
   const serviceId = provider?.model || env("VOLCENGINE_IMAGEX_SERVICE_ID");
   return {
     credential,
     endpoint: provider?.apiUrl || env("VOLCENGINE_IMAGEX_ENDPOINT", imagexDefaultEndpoint),
-    region: env("VOLCENGINE_REGION", defaultRegion),
+    region,
     serviceId,
-    outputDomain: env("VOLCENGINE_IMAGEX_OUTPUT_DOMAIN"),
+    outputDomain: env("VOLCENGINE_IMAGEX_OUTPUT_DOMAIN") || defaultImagexOutputDomain(serviceId, region),
     outputTpl: env("VOLCENGINE_IMAGEX_OUTPUT_TPL"),
     workflowTemplateId: env("VOLCENGINE_IMAGEX_WORKFLOW_TEMPLATE_ID", "system_workflow_ai_super_resolution"),
     modelId: env("VOLCENGINE_IMAGEX_MODEL_ID", "ai_sr_model_v2"),
@@ -920,9 +928,9 @@ export async function submitVideoUpscale(
 
 function normalizeVolcStatus(value: unknown): JobRecord["status"] {
   const status = String(value || "").toLowerCase();
-  if (status === "success" || status === "done" || status === "completed") return "done";
-  if (status === "failed" || status === "terminated" || status === "error") return "failed";
-  if (status === "running") return "generating";
+  if (["success", "succeeded", "done", "completed", "finished", "finish"].includes(status)) return "done";
+  if (["failed", "failure", "terminated", "error", "errored", "canceled", "cancelled"].includes(status)) return "failed";
+  if (["running", "processing", "executing", "in_progress"].includes(status)) return "generating";
   return "queued";
 }
 
@@ -950,6 +958,21 @@ function findVideoOutputFile(result: Record<string, unknown>) {
     asRecordOrJson(data.File),
     asRecordOrJson(resultFile.File),
   ];
+  const nestedKeys = [
+    "Files",
+    "FileList",
+    "OutputFiles",
+    "OutputFileList",
+    "MediaInfoList",
+    "PlayInfoList",
+    "ResultList",
+  ];
+  for (const source of [output, data, resultFile, enhance, templateEnhance, task]) {
+    for (const key of nestedKeys) {
+      const value = source[key];
+      if (Array.isArray(value)) candidates.push(...value.map(asRecord));
+    }
+  }
   for (const candidate of candidates) {
     const url = firstString(candidate.URL, candidate.Url, candidate.url, candidate.PlayUrl, candidate.PlayURL, candidate.DownloadUrl, candidate.DownloadURL);
     const storeUri = firstString(candidate.StoreUri, candidate.StoreURI, candidate.FileName, candidate.fileName, candidate.FilePath, candidate.filePath);

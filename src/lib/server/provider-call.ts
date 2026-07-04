@@ -167,7 +167,7 @@ function imageUpscaleValue(quality: string) {
 }
 
 function isImg2ImageProvider(provider: ProviderConfig) {
-  return provider.id === "image-img2-4k" || provider.model === "image4k";
+  return provider.model === "image4k";
 }
 
 function img2ImageSize(ratio: string, quality: string) {
@@ -1255,6 +1255,7 @@ export async function uploadedMediaFromForm(
 }
 
 export const providerCallInternalsForTests = {
+  isImg2ImageProvider,
   parseProviderOutput,
   planProviderOutputStorage,
   readProviderJson,

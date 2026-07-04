@@ -7,6 +7,7 @@ import {
   codeForUpstreamStatus,
   createErrorDiagnostic,
   GenerationDiagnosticError,
+  logDiagnosticEvent,
   redactDiagnosticPayload,
   redactSensitiveText,
 } from "../error-diagnostics";
@@ -207,4 +208,33 @@ test("unknown errors produce a traceable fallback diagnostic", () => {
   assert.equal(diagnostic.requestId, "req-unknown");
   assert.ok(diagnostic.occurredAt);
   assert.equal(diagnostic.retryable, true);
+});
+
+test("diagnostic event logging includes redacted technical messages", () => {
+  const diagnostic = createErrorDiagnostic(new GenerationDiagnosticError({
+    code: "PROVIDER_AUTH_FAILED",
+    message: "Authorization: Bearer sk-real-secret",
+    safeDetails: {
+      apiKey: "sk-real-secret",
+    },
+  }), {
+    requestId: "req-log",
+    tool: "image",
+    operation: "generate-image",
+  });
+
+  let logged = "";
+  const original = console.error;
+  console.error = (...args: unknown[]) => {
+    logged += args.map((value) => String(value)).join(" ");
+  };
+  try {
+    logDiagnosticEvent(diagnostic);
+  } finally {
+    console.error = original;
+  }
+
+  assert.equal(logged.includes("\"technicalMessage\":"), true);
+  assert.equal(logged.includes("sk-real-secret"), false);
+  assert.equal(logged.includes("[redacted]"), true);
 });

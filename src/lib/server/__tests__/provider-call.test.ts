@@ -125,6 +125,19 @@ test("image URL and video URL outputs still use normal remote-url flow", () => {
   });
 });
 
+test("img2 special request format is only used for legacy image4k models", () => {
+  assert.equal(providerCallInternalsForTests.isImg2ImageProvider({
+    ...provider,
+    id: "image-img2-4k",
+    model: "gpt-image-2",
+  }), false);
+  assert.equal(providerCallInternalsForTests.isImg2ImageProvider({
+    ...provider,
+    id: "image-img2-4k",
+    model: "image4k",
+  }), true);
+});
+
 test("error logs do not include oversized response bodies or base64 payloads", async () => {
   const bodySnippet = `SECRET-BODY-${createHash("sha256").update("provider-json").digest("hex")}`;
   const { response } = streamingJsonResponse({

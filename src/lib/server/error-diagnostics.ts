@@ -199,6 +199,7 @@ export function logDiagnosticEvent(diagnostic: ErrorDiagnostic) {
     upstreamStatus: diagnostic.upstreamStatus,
     providerId: diagnostic.providerId,
     model: diagnostic.model,
+    technicalMessage: diagnostic.technicalMessage,
     safeDetails: diagnostic.safeDetails,
   };
   console.error(JSON.stringify(redactDiagnosticPayload(event)));

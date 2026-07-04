@@ -78,14 +78,13 @@ const PROMPT_OPTIMIZER_PROVIDER_ID = "prompt-optimizer";
 const PROMPT_PROVIDER_RESPONSE_LIMIT_BYTES = 65536;
 const RETRYABLE_PROVIDER_STATUSES = new Set([408, 429, 500, 502, 503, 504]);
 
-const systemPrompt = [
-  "将用户的简单要求整理成可直接提交给图片模型的专业提示词。",
-  "保留商品真实外观、颜色、材质、结构、品牌和数量。",
-  "补充主体、构图、背景、光线、风格和平台用途。",
-  "不添加用户未要求的文字、品牌、人物或装饰。",
-  "图片编辑场景必须明确保留项和修改项。",
-  "默认面向 TikTok Shop 电商视觉，优化构图、背景、光线和用途。",
-  "只输出最终提示词，不输出解释、Markdown、标题或列表。",
+const strictChineseSystemPrompt = [
+  "请把用户的原始需求整理成可直接提交给生成模型的最终提示词。",
+  "最终输出必须使用简体中文。",
+  "品牌名、平台名、型号名等不可翻译的专有名词可以保留原文，但禁止输出整句英文。",
+  "保留用户已经明确给出的商品、人物、场景、颜色、材质、结构、数量、品牌和动作事实。",
+  "不要臆造用户没有要求的新元素、新文字、新品牌、新人物或新装饰。",
+  "只输出最终提示词，不要解释，不要标题，不要 Markdown，不要列表，不要额外客套话。",
 ].join("\n");
 
 function envNumber(name: string, fallback: number, min: number, max: number) {
@@ -157,35 +156,6 @@ function modelFailure(code: PromptOptimizeErrorCode, status: number, message: st
   return { ok: false, status, code, message, retryable };
 }
 
-function composeUserPrompt(input: PromptOptimizeInput) {
-  const targetPlatform = input.targetPlatform || "TikTok Shop";
-  const scenario = input.tool === "image-editor"
-    ? "图片编辑：基于参考图进行局部修改，必须保留参考图中商品真实外观、颜色、材质、结构、品牌和数量。"
-    : input.tool === "video-generator"
-      ? "视频生成：将用户的简短要求整理成可直接提交给视频模型的镜头、动作、节奏和画面描述，不能改变用户描述的主体事实。"
-      : "图片生成：生成可用于商品展示的电商视觉，不能改变用户描述的商品事实。";
-  const imageInstruction = input.hasImage
-    ? input.tool === "video-generator"
-      ? "参考图：存在。输出中要说明首帧主体、镜头运动、人物或商品动作，并保持参考图主体一致。"
-      : "参考图：存在。输出中要写清保留项与修改项。"
-    : "参考图：不存在。不要声称看到了图片。";
-  const optimizeFocus = input.tool === "video-generator"
-    ? "优化重点：主体清晰、动作自然、镜头运动明确、节奏适合短视频、画面连续稳定、光线和场景细节具体。"
-    : "优化重点：主体清晰、构图适合电商点击、背景干净可信、光线突出材质和细节。";
-
-  return [
-    scenario,
-    imageInstruction,
-    `平台用途：${targetPlatform}`,
-    input.templateId ? `模板：${input.templateId}` : "",
-    input.aspectRatio ? `画幅：${input.aspectRatio}` : "",
-    input.quality ? `质量：${input.quality}` : "",
-    optimizeFocus,
-    "用户原始要求：",
-    input.prompt,
-  ].filter(Boolean).join("\n");
-}
-
 function extractChatText(payload: ChatCompletionPayload) {
   const first = payload.choices?.[0];
   return text(
@@ -205,26 +175,95 @@ function cleanOptimizedPrompt(value: string) {
   return output;
 }
 
-function localOptimizedPrompt(input: PromptOptimizeInput) {
+function containsChineseCharacters(value: string) {
+  return /[\u3400-\u9fff]/u.test(value);
+}
+
+const weakChinesePromptTerms = new Set([
+  "生成",
+  "图片",
+  "视频",
+  "画面",
+  "商品",
+  "展示",
+  "一个",
+  "一张",
+  "进行",
+  "突出",
+  "清晰",
+  "自然",
+  "背景",
+]);
+
+function chineseTerms(value: string) {
+  return Array.from(new Set(value.match(/[\u3400-\u9fff]{2,}/gu) || []))
+    .flatMap((term) => {
+      if (term.length <= 4) return [term];
+      const grams: string[] = [];
+      for (let index = 0; index <= term.length - 2; index += 2) {
+        grams.push(term.slice(index, index + 2));
+      }
+      return grams;
+    })
+    .filter((term) => term.length >= 2 && !weakChinesePromptTerms.has(term));
+}
+
+function looksRelatedToInput(output: string, input: PromptOptimizeInput) {
+  const sourceTerms = chineseTerms(input.prompt);
+  if (!sourceTerms.length) return true;
+  return sourceTerms.some((term) => output.includes(term));
+}
+
+function composeStrictChineseUserPrompt(input: PromptOptimizeInput) {
+  const targetPlatform = input.targetPlatform || "TikTok Shop";
+  const scenario = input.tool === "image-editor"
+    ? "任务类型：图片编辑。基于参考图进行修改，必须明确写出保留项与修改项。"
+    : input.tool === "video-generator"
+      ? "任务类型：视频生成。需要写清主体、镜头、动作、节奏、光线和场景连续性。"
+      : "任务类型：图片生成。需要写清主体、构图、背景、光线、材质和电商展示重点。";
+  const referenceInstruction = input.hasImage
+    ? input.tool === "image-editor"
+      ? "参考图：已提供。必须保留参考图主体事实，只调整用户明确要求修改的部分。"
+      : "参考图：已提供。输出中要强调与参考主体保持一致。"
+    : "参考图：未提供。不要声称看到了参考图。";
+  const qualityInstruction = input.tool === "video-generator"
+    ? "优化重点：主体清晰，动作自然，镜头运动明确，画面稳定，适合短视频传播。"
+    : "优化重点：主体突出，构图干净可信，光线自然，材质细节清晰，适合电商转化。";
+
+  return [
+    scenario,
+    referenceInstruction,
+    `目标平台：${targetPlatform}`,
+    input.templateId ? `模板：${input.templateId}` : "",
+    input.aspectRatio ? `画幅：${input.aspectRatio}` : "",
+    input.quality ? `质量档位：${input.quality}` : "",
+    qualityInstruction,
+    "请直接输出一段可以提交给模型的简体中文提示词。",
+    "用户原始要求：",
+    input.prompt,
+  ].filter(Boolean).join("\n");
+}
+
+function localChineseOptimizedPrompt(input: PromptOptimizeInput) {
   const targetPlatform = input.targetPlatform || "TikTok Shop";
   const scene = input.tool === "image-editor"
-    ? "基于参考图进行商品图片编辑，保留商品真实外观、颜色、材质、结构、品牌和数量"
+    ? "基于参考图进行图片编辑，保留原有主体外观、颜色、材质、结构、品牌和数量，只修改用户明确指定的部分"
     : input.tool === "video-generator"
-      ? "生成短视频镜头，主体清晰，动作自然，画面连续稳定"
-      : "生成电商商品视觉图，主体清晰，构图干净，突出商品材质和细节";
-  const media = input.hasImage
+      ? "生成短视频画面，主体清晰，动作自然，镜头稳定，节奏适合短视频传播"
+      : "生成电商商品展示画面，主体突出，构图干净，背景可信，突出材质与细节";
+  const referenceInstruction = input.hasImage
     ? input.tool === "image-editor"
-      ? "参考图已提供，明确保留项与修改项"
-      : "参考图已提供，保持主体一致"
-    : "无参考图，不声明已看到图片";
+      ? "已提供参考图，输出中明确保留项与修改项"
+      : "已提供参考图，保持主体事实一致"
+    : "未提供参考图，不要描述未给出的图像内容";
   const parts = [
     input.prompt,
     scene,
-    media,
-    `平台用途：${targetPlatform}`,
-    input.aspectRatio ? `画幅：${input.aspectRatio}` : "",
-    input.quality ? `质量：${input.quality}` : "",
-    "真实可信的电商摄影风格，干净背景，自然光线，细节清楚，不添加未要求的文字、品牌、人物或装饰",
+    referenceInstruction,
+    `适用平台：${targetPlatform}`,
+    input.aspectRatio ? `画幅 ${input.aspectRatio}` : "",
+    input.quality ? `质量 ${input.quality}` : "",
+    "使用简体中文表达，画面真实可信，光线自然，细节清晰，不额外添加用户未要求的文字、品牌、人物或装饰",
   ].filter(Boolean);
   return cleanOptimizedPrompt(parts.join("，"));
 }
@@ -471,19 +510,29 @@ export function createPromptOptimizeService(options: {
 
       try {
         const optimizedPrompt = cleanOptimizedPrompt(await caller({
-          systemPrompt,
-          userPrompt: composeUserPrompt(validated),
+          systemPrompt: strictChineseSystemPrompt,
+          userPrompt: composeStrictChineseUserPrompt(validated),
           requestId: context.requestId,
           timeoutMs,
         }));
 
         if (!optimizedPrompt) {
+          if (fallbackOnModelFailure) {
+            return {
+              ok: true,
+              optimizedPrompt: localChineseOptimizedPrompt(validated),
+              billingPolicy: "deferred",
+            };
+          }
           return modelFailure("optimizer_failed", 502, "Prompt optimizer returned an empty response.", true);
         }
 
         return {
           ok: true,
-          optimizedPrompt,
+          optimizedPrompt: containsChineseCharacters(optimizedPrompt)
+            && looksRelatedToInput(optimizedPrompt, validated)
+            ? optimizedPrompt
+            : localChineseOptimizedPrompt(validated),
           billingPolicy: "deferred",
         };
       } catch (error) {
@@ -503,7 +552,7 @@ export function createPromptOptimizeService(options: {
           if (fallbackOnModelFailure) {
             return {
               ok: true,
-              optimizedPrompt: localOptimizedPrompt(validated),
+              optimizedPrompt: localChineseOptimizedPrompt(validated),
               billingPolicy: "deferred",
             };
           }
@@ -521,7 +570,7 @@ export function createPromptOptimizeService(options: {
           if (fallbackOnModelFailure) {
             return {
               ok: true,
-              optimizedPrompt: localOptimizedPrompt(validated),
+              optimizedPrompt: localChineseOptimizedPrompt(validated),
               billingPolicy: "deferred",
             };
           }
@@ -530,7 +579,7 @@ export function createPromptOptimizeService(options: {
         if (fallbackOnModelFailure) {
           return {
             ok: true,
-            optimizedPrompt: localOptimizedPrompt(validated),
+            optimizedPrompt: localChineseOptimizedPrompt(validated),
             billingPolicy: "deferred",
           };
         }
