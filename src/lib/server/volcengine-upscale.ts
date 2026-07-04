@@ -711,7 +711,14 @@ export async function upscaleImage(
     if (!objectKey) throw new GenerationDiagnosticError({ code: "PROVIDER_BAD_RESPONSE", providerId: provider.id, model: provider.model });
     const outputUris = uniqueStrings([objectKey, objectKey.replace(/^tos-[^/]+\//, "")]);
     const outputUrls = uniqueStrings((await Promise.all(outputUris.map(async (uri) => [
-      await imageResourceUrl(uri, config).catch(() => ""),
+      await imageResourceUrl(uri, config).catch((error) => {
+        console.warn(JSON.stringify({
+          event: "imagex_resource_url_failed",
+          uriKind: uri === objectKey ? "raw" : "compact",
+          error: error instanceof Error ? error.message : "unknown",
+        }));
+        return "";
+      }),
       imagexPublicResourceUrl(uri, config),
     ]))).flat());
     let outputUrl = "";
