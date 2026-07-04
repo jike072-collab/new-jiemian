@@ -25,12 +25,14 @@ export type WorkspacePublicProvider = FrontendProvider & {
   videoOptions?: WorkspaceVideoOptions;
 };
 
-export type OutputState = {
+export type OutputItemState = {
   item: LibraryItem;
   job?: JobRecord | null;
   title: string;
   tool: BusinessToolId;
-} | null;
+};
+
+export type OutputState = OutputItemState | null;
 
 export type StudioErrorDiagnostic = ErrorDiagnostic;
 

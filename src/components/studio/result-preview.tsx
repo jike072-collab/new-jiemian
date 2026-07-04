@@ -3,14 +3,14 @@
 /* eslint-disable @next/next/no-img-element */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { AlertTriangle, Check, Loader2, UploadCloud, X } from "lucide-react";
+import { AlertTriangle, Check, Download, ImageUp, Loader2, RefreshCw, UploadCloud, Video, Wand2, X } from "lucide-react";
 
 import { BeforeAfterImageCompare } from "@/components/before-after-image-compare";
 import { ResultReveal } from "@/components/motion";
 import { upscaleTargetLabel, videoUpscaleScaleLabel } from "@/components/studio/constants";
 import { MediaCard, libraryStatusBadgeLabel } from "@/components/studio/media-card";
 import { PreviewState, StudioErrorAlert } from "@/components/studio/shared";
-import type { BusinessToolId, ImageGenerationProgressState, ImageUpscaleWorkspaceState, OutputState, StudioErrorDiagnostic, VideoUpscaleWorkspaceState } from "@/components/studio/types";
+import type { BusinessToolId, ImageGenerationProgressState, ImageUpscaleWorkspaceState, OutputItemState, OutputState, StudioErrorDiagnostic, VideoUpscaleWorkspaceState } from "@/components/studio/types";
 import type { LibraryItem } from "@/lib/server/types";
 import { cn } from "@/lib/utils";
 import { useReducedMotion } from "@/lib/use-reduced-motion";
@@ -853,16 +853,32 @@ function ToolTutorial({ kind, paused = false }: { kind: ToolTutorialKind; paused
   );
 }
 
-function ProcessingPreview({ label }: { label: string }) {
+function ProcessingPreview({ label, detail = "系统正在处理你的任务，可以继续准备其他创作。", progress = 62 }: { label: string; detail?: string; progress?: number }) {
+  const [startedAt] = useState(() => Date.now());
+  const [now, setNow] = useState(() => Date.now());
+  const progressValue = Math.min(94, Math.max(8, progress));
+  const elapsedText = formatElapsedClock(now - startedAt);
+
+  useEffect(() => {
+    const timer = window.setInterval(() => setNow(Date.now()), 1000);
+    return () => window.clearInterval(timer);
+  }, []);
+
   return (
-    <PreviewState eyebrow="处理中" title={label} role="status" live>
+    <PreviewState eyebrow="处理中" title={label} description={detail} role="status" live>
       <div className="studio-processing-state">
         <div className="studio-processing-orbit" aria-hidden="true">
           <span />
           <span />
           <Loader2 className="size-6" />
         </div>
-        <p>{label}</p>
+        <div className="studio-processing-state__copy">
+          <p>{label}</p>
+          <small>已等待 {elapsedText}</small>
+        </div>
+        <div className="studio-processing-state__track" aria-hidden="true">
+          <span style={{ width: `${progressValue}%` }} />
+        </div>
       </div>
     </PreviewState>
   );
@@ -956,7 +972,7 @@ export function ImageUpscalePreviewPanel({
   const source = state.file;
 
   if (state.loading) {
-    return <ProcessingPreview label="正在处理" />;
+    return <ProcessingPreview label="正在处理" detail="高清增强正在处理，完成后会显示对比和下载入口。" progress={54} />;
   }
 
   if (state.submitError) {
@@ -964,7 +980,7 @@ export function ImageUpscalePreviewPanel({
   }
 
   if (!state.checked || state.statusLoading || (!state.availability?.ready && !state.statusError)) {
-    return state.statusLoading ? <ProcessingPreview label="正在处理" /> : <ImageUpscaleCompareTutorial />;
+    return state.statusLoading ? <ProcessingPreview label="正在检查高清服务" detail="正在确认当前高清增强服务是否可用。" progress={34} /> : <ImageUpscaleCompareTutorial />;
   }
 
   if (!state.availability?.ready) {
@@ -1040,7 +1056,7 @@ export function VideoUpscalePreviewPanel({
   const source = state.file;
 
   if (state.loading || state.job?.status === "generating" || state.job?.status === "queued") {
-    return <ProcessingPreview label="正在处理" />;
+    return <ProcessingPreview label="正在处理视频" detail="视频高清增强需要排队处理，完成后会自动刷新结果。" progress={42} />;
   }
 
   if (state.submitError) {
@@ -1048,7 +1064,7 @@ export function VideoUpscalePreviewPanel({
   }
 
   if (!state.checked || state.statusLoading || (!state.availability?.ready && !state.statusError)) {
-    return state.statusLoading ? <ProcessingPreview label="正在处理" /> : <VideoUpscaleCompareTutorial />;
+    return state.statusLoading ? <ProcessingPreview label="正在检查高清服务" detail="正在确认当前视频高清服务是否可用。" progress={34} /> : <VideoUpscaleCompareTutorial />;
   }
 
   if (!state.availability?.ready) {
@@ -1114,6 +1130,7 @@ export function VideoUpscalePreviewPanel({
 export function ImagePreviewPanel({
   mode,
   output,
+  outputs = output ? [output] : [],
   loading,
   canSubmit,
   submitError,
@@ -1125,9 +1142,12 @@ export function ImagePreviewPanel({
   onSubmit,
   onReloadProviders,
   onUpscale,
+  onCreateVideo,
+  onEdit,
 }: {
   mode: WorkspaceImageMode;
   output: OutputState;
+  outputs?: OutputItemState[];
   loading: boolean;
   canSubmit: boolean;
   submitError: string;
@@ -1139,14 +1159,17 @@ export function ImagePreviewPanel({
   onSubmit: () => void;
   onReloadProviders: () => Promise<void>;
   onUpscale: (item: LibraryItem) => void;
+  onCreateVideo: (item: LibraryItem) => void;
+  onEdit: (item: LibraryItem) => void;
 }) {
   const canRetry = canSubmit && hasProvider && promptFilled && (mode === "text-to-image" || hasFiles);
+  const resultOutputs = outputs.length ? outputs : output ? [output] : [];
 
-  if (loading && !output) {
-    return <ProcessingPreview label="正在生成图片" />;
+  if (loading && !resultOutputs.length) {
+    return <ProcessingPreview label="正在生成图片" detail="生成多张图片时会逐张完成，完成的结果会先出现在这里。" progress={48} />;
   }
 
-  if (submitError && !output) {
+  if (submitError && !resultOutputs.length) {
     return (
       <ErrorPreview
         canRetry={canRetry}
@@ -1158,39 +1181,101 @@ export function ImagePreviewPanel({
     );
   }
 
-  if (output) {
+  if (resultOutputs.length) {
     const resultContent = (
-      <>
-        <MediaCard item={output.item} large compact />
-        <div className="studio-actions studio-actions--result">
-          {output.item.output?.url ? (
-            <a className="studio-secondary-button" href={output.item.output.url} download>
-              下载图片
-            </a>
-          ) : null}
-          <button
-            type="button"
-            className="studio-secondary-button"
-            onClick={onSubmit}
-            disabled={!canRetry}
-          >
-            再次生成
-          </button>
-          <button type="button" className="studio-secondary-button studio-secondary-button--accent" onClick={() => onUpscale(output.item)}>
-            放大
-          </button>
-        </div>
-      </>
+      <ImageResultGrid
+        outputs={resultOutputs}
+        canRetry={canRetry}
+        loading={loading}
+        onSubmit={onSubmit}
+        onUpscale={onUpscale}
+        onCreateVideo={onCreateVideo}
+        onEdit={onEdit}
+      />
     );
 
     return (
-      <PreviewState eyebrow="结果" title="结果" badge={libraryStatusBadgeLabel(output.item.status)} role="status" live>
+      <PreviewState
+        eyebrow="结果"
+        title={resultOutputs.length > 1 ? `本次生成 ${resultOutputs.length} 张` : "结果"}
+        description={loading ? "还有图片在生成中，已完成的结果可以先操作。" : undefined}
+        badge={loading ? "生成中" : libraryStatusBadgeLabel(resultOutputs[resultOutputs.length - 1].item.status)}
+        role="status"
+        live
+      >
         {isEditor ? resultContent : <ResultReveal className="studio-result-reveal">{resultContent}</ResultReveal>}
       </PreviewState>
     );
   }
 
   return <ToolTutorial kind={isEditor ? "image-editor" : "image"} />;
+}
+
+function ImageResultGrid({
+  outputs,
+  canRetry,
+  loading,
+  onSubmit,
+  onUpscale,
+  onCreateVideo,
+  onEdit,
+}: {
+  outputs: OutputItemState[];
+  canRetry: boolean;
+  loading: boolean;
+  onSubmit: () => void;
+  onUpscale: (item: LibraryItem) => void;
+  onCreateVideo: (item: LibraryItem) => void;
+  onEdit: (item: LibraryItem) => void;
+}) {
+  return (
+    <div className={cn("studio-image-results", `is-count-${Math.min(outputs.length, 4)}`)}>
+      {outputs.map((output, index) => (
+        <article key={output.item.id} className="studio-image-result-card">
+          <div className="studio-image-result-card__head">
+            <span>图片 {index + 1}</span>
+            {libraryStatusBadgeLabel(output.item.status) ? <strong>{libraryStatusBadgeLabel(output.item.status)}</strong> : null}
+          </div>
+          <MediaCard item={output.item} large compact />
+          <div className="studio-image-result-card__actions">
+            <button type="button" className="studio-secondary-button" onClick={onSubmit} disabled={!canRetry || loading}>
+              <RefreshCw className="size-4" aria-hidden="true" />
+              重新生成
+            </button>
+            <button type="button" className="studio-secondary-button studio-secondary-button--accent" onClick={() => onUpscale(output.item)}>
+              <ImageUp className="size-4" aria-hidden="true" />
+              放大
+            </button>
+            <button type="button" className="studio-secondary-button" onClick={() => onCreateVideo(output.item)}>
+              <Video className="size-4" aria-hidden="true" />
+              生成视频
+            </button>
+            <button type="button" className="studio-secondary-button" onClick={() => onEdit(output.item)}>
+              <Wand2 className="size-4" aria-hidden="true" />
+              图片编辑
+            </button>
+            {output.item.output?.url ? (
+              <a className="studio-secondary-button" href={output.item.output.url} download>
+                <Download className="size-4" aria-hidden="true" />
+                下载
+              </a>
+            ) : null}
+          </div>
+        </article>
+      ))}
+      {loading ? (
+        <article className="studio-image-result-card studio-image-result-card--pending" aria-live="polite">
+          <div className="studio-processing-orbit" aria-hidden="true">
+            <span />
+            <span />
+            <Loader2 className="size-5" />
+          </div>
+          <p>剩余图片生成中</p>
+          <small>完成后会自动补到这里。</small>
+        </article>
+      ) : null}
+    </div>
+  );
 }
 
 export function VideoPreviewPanel({
@@ -1223,7 +1308,7 @@ export function VideoPreviewPanel({
   const canRetry = canSubmit && hasProvider && promptFilled && (mode === "text-to-video" || hasFiles);
 
   if (loading && !output) {
-    return <ProcessingPreview label="正在生成视频" />;
+    return <ProcessingPreview label="正在生成视频" detail="视频任务通常需要更久，生成期间可以切回图片工具继续创作。" progress={38} />;
   }
 
   if (submitError && !output) {

@@ -2,7 +2,7 @@
 
 /* eslint-disable @next/next/no-img-element */
 
-import { AlertTriangle, Download, ExternalLink, Eye, Loader2, Play, Trash2 } from "lucide-react";
+import { AlertTriangle, Download, ExternalLink, ImageUp, Loader2, Play, RefreshCw, Trash2, Video, Wand2 } from "lucide-react";
 
 import type { LibraryItem } from "@/lib/server/types";
 import { cn } from "@/lib/utils";
@@ -11,34 +11,63 @@ export function LibraryCardActions({
   item,
   mediaMissing,
   deleting,
-  onPreview,
   onDelete,
+  onRegenerate,
+  onUpscale,
+  onCreateVideo,
+  onEditImage,
 }: {
   item: LibraryItem;
   mediaMissing: boolean;
   deleting: boolean;
-  onPreview: () => void;
   onDelete: () => void;
+  onRegenerate: () => void;
+  onUpscale: () => void;
+  onCreateVideo: () => void;
+  onEditImage: () => void;
 }) {
   const canDownloadStoredFile = Boolean(item.output?.url && item.output.storedName && !mediaMissing);
+  const canUseOutput = Boolean(item.output?.url && !mediaMissing && !item.expired);
 
   return (
-    <div className="studio-library-tile__actions" aria-label="作品操作">
-      <button type="button" onClick={onPreview}>
-        <Eye className="size-4" aria-hidden="true" />
-        预览
-      </button>
-      {canDownloadStoredFile ? (
-        <a href={item.output?.url} download>
-          <Download className="size-4" aria-hidden="true" />
-          下载
-        </a>
-      ) : null}
-      <button type="button" onClick={onDelete} disabled={deleting}>
+    <>
+      <button type="button" className="studio-library-tile__delete" onClick={onDelete} disabled={deleting} aria-label="删除作品">
         {deleting ? <Loader2 className="size-4 animate-spin" aria-hidden="true" /> : <Trash2 className="size-4" aria-hidden="true" />}
-        {deleting ? "删除中" : "删除"}
       </button>
-    </div>
+      <div className="studio-library-tile__actions" aria-label="作品操作">
+        <button type="button" onClick={onRegenerate}>
+          <RefreshCw className="size-4" aria-hidden="true" />
+          重新生成
+        </button>
+        {item.type === "image" ? (
+          <>
+            <button type="button" onClick={onUpscale} disabled={!canUseOutput}>
+              <ImageUp className="size-4" aria-hidden="true" />
+              放大
+            </button>
+            <button type="button" onClick={onCreateVideo} disabled={!canUseOutput}>
+              <Video className="size-4" aria-hidden="true" />
+              生成视频
+            </button>
+            <button type="button" onClick={onEditImage} disabled={!canUseOutput}>
+              <Wand2 className="size-4" aria-hidden="true" />
+              图片编辑
+            </button>
+          </>
+        ) : (
+          <button type="button" onClick={onUpscale} disabled={!canUseOutput}>
+            <ImageUp className="size-4" aria-hidden="true" />
+            视频放大
+          </button>
+        )}
+        {canDownloadStoredFile ? (
+          <a href={item.output?.url} download>
+            <Download className="size-4" aria-hidden="true" />
+            下载
+          </a>
+        ) : null}
+      </div>
+    </>
   );
 }
 

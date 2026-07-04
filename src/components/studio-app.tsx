@@ -50,6 +50,7 @@ import type {
   LibraryFilter,
   LibrarySort,
   MobileActionState,
+  OutputItemState,
   OutputState,
   UpscaleStatusResponse,
   VideoUpscaleWorkspaceFile,
@@ -475,6 +476,7 @@ export function StudioApp() {
   const [imageGenerationProgress, setImageGenerationProgress] = useState<ImageGenerationProgressState>([]);
   const [generationProgressTick, setGenerationProgressTick] = useState(() => Date.now());
   const [outputs, setOutputs] = useState<Partial<Record<BusinessToolId, OutputState>>>({});
+  const [imageOutputs, setImageOutputs] = useState<OutputItemState[]>([]);
   const [mobileAction, setMobileAction] = useState<MobileActionState>(null);
   const [mobilePreviewSignal, setMobilePreviewSignal] = useState(0);
   const [uploadLimits, setUploadLimits] = useState(defaultUploadLimits);
@@ -1206,8 +1208,14 @@ export function StudioApp() {
     </div>
   );
 
-  const handleImageResult = useCallback((item: LibraryItem) => {
-    setOutputs((prev) => ({ ...prev, image: { item, title: "图片结果", tool: "image" } }));
+  const handleImageResult = useCallback((item: LibraryItem, options?: { append?: boolean }) => {
+    const nextOutput: OutputItemState = { item, title: "图片结果", tool: "image" };
+    setOutputs((prev) => ({ ...prev, image: nextOutput }));
+    setImageOutputs((prev) => {
+      if (!options?.append) return [nextOutput];
+      const withoutDuplicate = prev.filter((output) => output.item.id !== item.id);
+      return [...withoutDuplicate, nextOutput];
+    });
   }, []);
 
   useEffect(() => {
@@ -1463,6 +1471,8 @@ export function StudioApp() {
     };
 
     updateImageInFlightState(imageInFlightCountRef.current + 1);
+    setImageOutputs([]);
+    setOutputs((prev) => ({ ...prev, image: null }));
     setImageWorkspace((prev) => ({
       ...prev,
       submitError: "",
@@ -1533,7 +1543,7 @@ export function StudioApp() {
           method: "POST",
           body: form,
         });
-        handleImageResult(data.item);
+        handleImageResult(data.item, { append: true });
         updateImageGenerationProgress(progressId, (current) => ({
           ...current,
           current: index + 1,
@@ -2118,6 +2128,86 @@ export function StudioApp() {
     }
   }, [replaceImageUpscaleFile, replaceVideoUpscaleFile, setMessage, uploadLimits.imageUpscale, uploadLimits.videoUpscale]);
 
+  const sendImageResultToVideo = useCallback(async (item: LibraryItem) => {
+    if (item.type !== "image") return;
+    try {
+      setMessage("正在准备图生视频素材。");
+      const file = await fileFromLibraryOutput(item, ".png", defaultUploadLimits.referenceImage);
+      replaceVideoWorkspaceFiles([file]);
+      setVideoWorkspace((prev) => ({
+        ...prev,
+        prompt: item.prompt || prev.prompt,
+        ratio: typeof item.params.ratio === "string" ? item.params.ratio : prev.ratio,
+        submitError: "",
+        submitDiagnostic: null,
+      }));
+      setOutputs((prev) => ({ ...prev, video: null }));
+      setActiveWorkspaceToolId("video");
+      setMessage("已带入图生视频，请补充运动和镜头描述后生成。");
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "图生视频素材准备失败。");
+    }
+  }, [replaceVideoWorkspaceFiles]);
+
+  const sendImageResultToEditor = useCallback(async (item: LibraryItem) => {
+    if (item.type !== "image") return;
+    try {
+      setMessage("正在准备图片编辑素材。");
+      const file = await fileFromLibraryOutput(item, ".png", defaultUploadLimits.referenceImage);
+      replaceImageWorkspaceFiles([file]);
+      setImageWorkspace((prev) => ({
+        ...prev,
+        prompt: item.prompt || prev.prompt,
+        ratio: typeof item.params.ratio === "string" ? item.params.ratio : prev.ratio,
+        quality: typeof item.params.quality === "string" ? item.params.quality : prev.quality,
+        count: 1,
+        submitError: "",
+        submitDiagnostic: null,
+      }));
+      setImageOutputs([]);
+      setOutputs((prev) => ({ ...prev, image: null }));
+      setActiveWorkspaceToolId("image-editor");
+      setMessage("已带入图片编辑，请写清楚要修改的内容。");
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "图片编辑素材准备失败。");
+    }
+  }, [replaceImageWorkspaceFiles]);
+
+  const reuseLibraryItemParameters = useCallback((item: LibraryItem) => {
+    setMessage("已复用上次的文案和参数。");
+    if (item.type === "video") {
+      setVideoWorkspace((prev) => ({
+        ...prev,
+        providerId: item.providerId || prev.providerId,
+        prompt: item.prompt || prev.prompt,
+        ratio: typeof item.params.ratio === "string" ? item.params.ratio : prev.ratio,
+        duration: typeof item.params.duration === "number"
+          ? item.params.duration
+          : typeof item.params.durationSeconds === "number"
+            ? item.params.durationSeconds
+            : prev.duration,
+        templateId: "",
+        submitError: "",
+        submitDiagnostic: null,
+      }));
+      setActiveWorkspaceToolId("video");
+      return;
+    }
+
+    setImageWorkspace((prev) => ({
+      ...prev,
+      providerId: item.providerId || prev.providerId,
+      prompt: item.prompt || prev.prompt,
+      ratio: typeof item.params.ratio === "string" ? item.params.ratio : prev.ratio,
+      quality: typeof item.params.quality === "string" ? item.params.quality : prev.quality,
+      count: 1,
+      templateId: "",
+      submitError: "",
+      submitDiagnostic: null,
+    }));
+    setActiveWorkspaceToolId(item.mode === "image-to-image" ? "image-editor" : "image");
+  }, []);
+
   useEffect(() => {
     const job = videoUpscaleWorkspace.job;
     if (!job || job.status === "done" || job.status === "failed") return;
@@ -2471,6 +2561,10 @@ export function StudioApp() {
               onSearchChange={setLibrarySearch}
               onSelectItem={setSelectedLibraryItemId}
               onDelete={handleRequestDeleteLibraryItem}
+              onRegenerate={reuseLibraryItemParameters}
+              onUpscale={sendResultToUpscale}
+              onCreateVideo={sendImageResultToVideo}
+              onEditImage={sendImageResultToEditor}
               onRefresh={() => refreshLibrary({ force: true })}
               onMediaMissing={markLibraryMediaMissing}
               onLogin={() => router.push("/login")}
@@ -2483,6 +2577,7 @@ export function StudioApp() {
               <ImagePreviewPanel
                 mode={activeImageMode}
                 output={activeOutput}
+                outputs={imageOutputs}
                 loading={imageWorkspace.loading}
                 canSubmit={imageWorkspaceCanSubmit}
                 submitError={imageWorkspace.submitError}
@@ -2494,6 +2589,8 @@ export function StudioApp() {
                 onSubmit={submitImageWorkspace}
                 onReloadProviders={refreshProviders}
                 onUpscale={sendResultToUpscale}
+                onCreateVideo={sendImageResultToVideo}
+                onEdit={sendImageResultToEditor}
               />
             ) : activeBusinessTool === "video" ? (
               <VideoPreviewPanel

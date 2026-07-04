@@ -24,6 +24,10 @@ export function LibraryPane({
   onSearchChange,
   onSelectItem,
   onDelete,
+  onRegenerate,
+  onUpscale,
+  onCreateVideo,
+  onEditImage,
   onRefresh,
   onMediaMissing,
   onLogin,
@@ -50,6 +54,10 @@ export function LibraryPane({
   onSearchChange: (value: string) => void;
   onSelectItem: (id: string | null) => void;
   onDelete: (id: string) => Promise<void>;
+  onRegenerate: (item: LibraryItem) => void;
+  onUpscale: (item: LibraryItem) => void;
+  onCreateVideo: (item: LibraryItem) => void;
+  onEditImage: (item: LibraryItem) => void;
   onRefresh: () => Promise<void>;
   onMediaMissing: (id: string) => void;
   onLogin: () => void;
@@ -78,6 +86,10 @@ export function LibraryPane({
         onSearchChange={onSearchChange}
         onSelectItem={onSelectItem}
         onDelete={onDelete}
+        onRegenerate={onRegenerate}
+        onUpscale={onUpscale}
+        onCreateVideo={onCreateVideo}
+        onEditImage={onEditImage}
         onRefresh={onRefresh}
         onMediaMissing={onMediaMissing}
         onLogin={onLogin}

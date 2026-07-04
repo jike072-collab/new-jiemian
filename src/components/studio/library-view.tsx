@@ -28,6 +28,10 @@ export function LibraryWorkspace({
   onSearchChange,
   onSelectItem,
   onDelete,
+  onRegenerate,
+  onUpscale,
+  onCreateVideo,
+  onEditImage,
   onRefresh,
   onMediaMissing,
   onLogin,
@@ -51,6 +55,10 @@ export function LibraryWorkspace({
   onSearchChange: (value: string) => void;
   onSelectItem: (id: string | null) => void;
   onDelete: (id: string) => Promise<void>;
+  onRegenerate: (item: LibraryItem) => void;
+  onUpscale: (item: LibraryItem) => void;
+  onCreateVideo: (item: LibraryItem) => void;
+  onEditImage: (item: LibraryItem) => void;
   onRefresh: () => Promise<void>;
   onMediaMissing: (id: string) => void;
   onLogin: () => void;
@@ -64,6 +72,7 @@ export function LibraryWorkspace({
       <header className="studio-library-page__header">
         <div>
           <h2>作品库</h2>
+          <p>作品文件仅保存 24 小时，请及时下载保存。</p>
         </div>
         <span className="studio-library-page__count">共 {totalCount} 件作品</span>
       </header>
@@ -156,8 +165,11 @@ export function LibraryWorkspace({
                 item={item}
                 mediaMissing={missingMediaIds.has(item.id) || item.fileAvailable === false}
                 deleting={deletingItemId === item.id}
-                onPreview={() => onSelectItem(item.id)}
                 onDelete={() => void onDelete(item.id)}
+                onRegenerate={() => onRegenerate(item)}
+                onUpscale={() => onUpscale(item)}
+                onCreateVideo={() => onCreateVideo(item)}
+                onEditImage={() => onEditImage(item)}
               />
             </div>
           ))}
