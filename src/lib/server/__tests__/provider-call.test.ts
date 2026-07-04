@@ -29,6 +29,7 @@ test("small valid provider JSON passes", async () => {
 
 test("provider output prefers explicit video result URLs over generic status URLs", async () => {
   const response = jsonResponse({
+    data: [{ url: "https://api.example.test/generated/item-status" }],
     url: "https://api.example.test/generated/status-page",
     video_url: "https://video.example.test/result.mp4",
   });
