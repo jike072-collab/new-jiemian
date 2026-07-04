@@ -5751,6 +5751,70 @@
     line-height: 1.5;
   }
 
+  .recharge-payment-qr {
+    display: grid;
+    gap: 10px;
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: 10px;
+    background: rgba(255, 255, 255, 0.035);
+    padding: 12px;
+  }
+
+  .recharge-payment-qr__image {
+    display: grid;
+    min-height: 168px;
+    place-items: center;
+    border-radius: 8px;
+    background: #fff;
+    padding: 10px;
+    color: rgba(15, 15, 20, 0.72);
+    font-size: 13px;
+    text-align: center;
+  }
+
+  .recharge-payment-qr__image img {
+    display: block;
+    width: min(100%, 180px);
+    aspect-ratio: 1;
+    object-fit: contain;
+  }
+
+  .recharge-payment-qr__copy {
+    display: grid;
+    gap: 3px;
+  }
+
+  .recharge-payment-qr__copy strong {
+    color: rgba(255, 255, 255, 0.9);
+    font-size: 13px;
+  }
+
+  .recharge-payment-qr__copy span {
+    color: rgba(255, 255, 255, 0.5);
+    font-size: 12px;
+    line-height: 1.45;
+  }
+
+  .recharge-payment-qr__link {
+    display: inline-flex;
+    min-height: 32px;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    border: 1px solid rgba(255, 255, 255, 0.11);
+    border-radius: 8px;
+    background: rgba(255, 255, 255, 0.055);
+    color: rgba(255, 255, 255, 0.82);
+    font-size: 12.5px;
+    font-weight: 650;
+    text-decoration: none;
+  }
+
+  .recharge-payment-qr__link:hover {
+    border-color: rgba(255, 43, 136, 0.25);
+    color: #fff;
+  }
+
   .recharge-confirm-button {
     display: inline-flex;
     min-height: 40px;

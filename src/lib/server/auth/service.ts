@@ -95,7 +95,8 @@ function envNumber(name: string, fallback: number, min: number, max: number) {
 }
 
 function newUserInitialCredits() {
-  return envNumber("NEW_USER_INITIAL_CREDITS", DEFAULT_NEW_USER_INITIAL_CREDITS, 0, 100_000);
+  const configured = envNumber("NEW_USER_INITIAL_CREDITS", DEFAULT_NEW_USER_INITIAL_CREDITS, 0, 100_000);
+  return configured > 0 ? configured : DEFAULT_NEW_USER_INITIAL_CREDITS;
 }
 
 function failure(input: Omit<AuthFailure, "ok">): AuthFailure {

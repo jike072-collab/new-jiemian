@@ -140,6 +140,11 @@ type CreateBillingOrderResponse = {
   payment: BillingPaymentDescriptor;
 };
 
+type PaymentDisplay = {
+  qrImageUrl: string;
+  paymentUrl: string;
+};
+
 type AccountView = "center" | "recharge" | "usage";
 type RechargeTab = "plans" | "credits";
 type AccountRecordKind = "spend" | "recharge" | "checkin";
@@ -742,6 +747,21 @@ export function StudioApp() {
   const refreshAccountSnapshot = useCallback(async () => {
     await ensureAccountViewData(accountView, sessionUser?.local_user_id || null, { force: true });
   }, [accountView, ensureAccountViewData, sessionUser?.local_user_id]);
+
+  useEffect(() => {
+    if (sessionLoading) return;
+    const userId = sessionUser?.local_user_id || null;
+    if (!userId) {
+      resetAccountState();
+      return;
+    }
+    void refreshQuotaSnapshot(userId);
+  }, [
+    refreshQuotaSnapshot,
+    resetAccountState,
+    sessionLoading,
+    sessionUser?.local_user_id,
+  ]);
 
   const refreshLibrary = useCallback(async (options?: { force?: boolean }) => {
     if (!sessionUser?.local_user_id) {
@@ -2813,12 +2833,13 @@ function RechargeCenterWorkspace({
     paymentChannelReady: Boolean(selectedPaymentChannelConfig),
     paymentAmountAllowed: creditAmountAllowed,
   });
+  const latestPaymentDisplay = latestPayment ? createPaymentDisplay(latestPayment.payment) : null;
   const paymentUnavailableNote = "暂无套餐，当前先支持积分充值。";
   const creditPaymentNote = paymentError
     || (latestPayment
-      ? `订单 ${latestPayment.order.status}，如未自动跳转请使用返回的支付链接继续付款。`
+      ? "订单已创建，请用支付宝扫码完成支付。支付成功后积分会自动到账。"
       : selectedPaymentChannelConfig
-        ? "将跳转到 Z-Pay 支付宝收银台，支付成功后积分自动到账。"
+        ? "将创建 Z-Pay 支付宝订单，支付成功后积分自动到账。"
         : paymentConfigLoading
           ? "正在读取支付通道配置。"
           : "生产支付通道未配置，暂时无法创建支付订单。");
@@ -2878,12 +2899,10 @@ function RechargeCenterWorkspace({
         }),
       });
       setLatestPayment(result);
-      const checkoutUrl = result.payment.checkout_url || result.payment.qrcode_url || result.payment.qrcode_image_url;
-      if (checkoutUrl) {
-        window.location.assign(checkoutUrl);
-        return;
+      const display = createPaymentDisplay(result.payment);
+      if (!display.qrImageUrl && !display.paymentUrl) {
+        setPaymentError("支付订单已创建，但 Z-Pay 未返回二维码或支付链接。");
       }
-      setPaymentError("支付订单已创建，但 Z-Pay 未返回可跳转的支付链接。");
     } catch (error) {
       setPaymentError(error instanceof ApiError ? error.message : "创建支付订单失败");
     } finally {
@@ -3027,6 +3046,8 @@ function RechargeCenterWorkspace({
                         onClick={() => {
                           setSelectedCreditAmount(option.amount);
                           setCustomAmount("");
+                          setPaymentError("");
+                          setLatestPayment(null);
                         }}
                         aria-pressed={selected}
                       >
@@ -3062,6 +3083,8 @@ function RechargeCenterWorkspace({
                         onChange={(event) => {
                           setCustomAmount(sanitizeRechargeAmount(event.target.value));
                           setSelectedCreditAmount(null);
+                          setPaymentError("");
+                          setLatestPayment(null);
                         }}
                         aria-describedby={customAmountError ? `${customAmountHelpId} ${customAmountErrorId}` : customAmountHelpId}
                         aria-invalid={customAmountError ? "true" : "false"}
@@ -3099,6 +3122,7 @@ function RechargeCenterWorkspace({
                 buttonLabel={creditConfirmState.label}
                 disabled={creditConfirmState.disabled}
                 onConfirm={handleCreditPayment}
+                extra={latestPaymentDisplay ? <PaymentQrPanel display={latestPaymentDisplay} /> : null}
               />
             )}
           </aside>
@@ -3246,6 +3270,7 @@ function RechargeConfirmPanel({
   buttonLabel,
   disabled,
   onConfirm,
+  extra,
 }: {
   icon: React.ReactNode;
   title: string;
@@ -3254,6 +3279,7 @@ function RechargeConfirmPanel({
   buttonLabel: string;
   disabled: boolean;
   onConfirm: (text?: string) => void;
+  extra?: React.ReactNode;
 }) {
   return (
     <section className="recharge-confirm-panel" aria-label={title}>
@@ -3270,10 +3296,73 @@ function RechargeConfirmPanel({
         ))}
       </div>
       {note ? <p className="recharge-confirm-panel__note">{note}</p> : null}
+      {extra}
       <button type="button" className="recharge-confirm-button" onClick={() => onConfirm()} disabled={disabled}>
         {buttonLabel}
       </button>
     </section>
+  );
+}
+
+function cleanPaymentUrl(value?: string) {
+  return value?.trim() || "";
+}
+
+function publicPaymentUrl(value?: string) {
+  const clean = cleanPaymentUrl(value);
+  if (!clean) return "";
+  try {
+    const url = new URL(clean);
+    return url.protocol === "https:" || url.protocol === "http:" ? clean : "";
+  } catch {
+    return "";
+  }
+}
+
+function paymentImageUrl(value?: string) {
+  const clean = cleanPaymentUrl(value);
+  if (clean.startsWith("data:image/")) return clean;
+  return publicPaymentUrl(clean);
+}
+
+function createPaymentDisplay(payment: BillingPaymentDescriptor): PaymentDisplay {
+  return {
+    qrImageUrl: paymentImageUrl(payment.qrcode_image_url) || paymentImageUrl(payment.qrcode_url),
+    paymentUrl: publicPaymentUrl(payment.checkout_url) || publicPaymentUrl(payment.qrcode_url) || publicPaymentUrl(payment.qrcode_image_url),
+  };
+}
+
+function PaymentQrPanel({ display }: { display: PaymentDisplay }) {
+  const [failedImageUrl, setFailedImageUrl] = useState("");
+
+  const showImage = Boolean(display.qrImageUrl && failedImageUrl !== display.qrImageUrl);
+  const linkLabel = showImage ? "打开支付链接" : "二维码图片不可用，打开支付链接";
+
+  return (
+    <div className="recharge-payment-qr" role="status" aria-label="支付二维码">
+      <div className="recharge-payment-qr__image">
+        {showImage ? (
+          // eslint-disable-next-line @next/next/no-img-element -- Z-Pay returns a runtime QR image URL outside Next image config.
+          <img
+            src={display.qrImageUrl}
+            alt="支付宝支付二维码"
+            onError={() => setFailedImageUrl(display.qrImageUrl)}
+          />
+        ) : (
+          <span>请打开支付链接后完成付款</span>
+        )}
+      </div>
+      <div className="recharge-payment-qr__copy">
+        <strong>支付宝扫码支付</strong>
+        <span>请勿重复创建订单，付款后等待积分自动到账。</span>
+      </div>
+      {display.paymentUrl ? (
+        <a className="recharge-payment-qr__link" href={display.paymentUrl} target="_blank" rel="noreferrer">
+          <ExternalLink className="size-3.5" aria-hidden="true" />
+          {linkLabel}
+        </a>
+      ) : null}
+    </div>
   );
 }
 

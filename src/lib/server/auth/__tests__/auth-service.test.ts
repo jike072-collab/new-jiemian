@@ -159,6 +159,21 @@ test("register seeds new users with trial credits for New API sync", async () =>
   }
 });
 
+test("register keeps the 100 credit signup grant when env is set to zero", async () => {
+  const profiles: NewApiUserSyncProfile[] = [];
+  const harness = service({ profiles });
+  const previous = process.env.NEW_USER_INITIAL_CREDITS;
+  process.env.NEW_USER_INITIAL_CREDITS = "0";
+  try {
+    const result = await registerActiveAccount(harness);
+    assert.equal(result.ok, true);
+    assert.equal(profiles[0]?.initialQuota, 100);
+  } finally {
+    if (previous === undefined) delete process.env.NEW_USER_INITIAL_CREDITS;
+    else process.env.NEW_USER_INITIAL_CREDITS = previous;
+  }
+});
+
 test("rejects duplicate registration without creating another account", async () => {
   const harness = service();
   await registerActiveAccount(harness);
