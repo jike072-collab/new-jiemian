@@ -380,7 +380,7 @@ async function callOpenAiCompatibleGrokVideoProvider(provider: ProviderConfig, i
   duration: number;
   files: UploadedMedia[];
 }) {
-  const payload: Record<string, string | number | string[]> = {
+  const payload: Record<string, string | number> = {
     model: provider.model,
     prompt: input.prompt,
     duration: String(input.duration),
@@ -390,7 +390,8 @@ async function callOpenAiCompatibleGrokVideoProvider(provider: ProviderConfig, i
     response_format: "url",
   };
   if (input.files.length) {
-    payload.image = input.files.map((file) => `data:${file.mimeType};base64,${file.bytes.toString("base64")}`);
+    const [file] = input.files;
+    payload.image = `data:${file.mimeType};base64,${file.bytes.toString("base64")}`;
   }
 
   const response = await fetch(grokVideosEndpoint(provider.apiUrl), {

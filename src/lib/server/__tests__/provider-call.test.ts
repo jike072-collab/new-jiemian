@@ -171,8 +171,8 @@ test("local Grok video provider sends reference images through the NewAPI videos
     assert.equal(requestedBody.prompt, "test prompt");
     assert.equal(requestedBody.seconds, "4");
     assert.equal(requestedBody.aspect_ratio, "16:9");
-    assert.equal(Array.isArray(requestedBody.image), true);
-    assert.match((requestedBody.image as string[])[0], /^data:image\/png;base64,/);
+    assert.equal(typeof requestedBody.image, "string");
+    assert.match(requestedBody.image as string, /^data:image\/png;base64,/);
     assert.equal(output.url, "https://cdn.example.test/video.mp4");
   } finally {
     globalThis.fetch = originalFetch;
