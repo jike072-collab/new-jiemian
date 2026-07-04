@@ -689,10 +689,11 @@ export async function upscaleImage(
     const output = parseJsonString(processed.Result?.Output);
     const objectKey = firstString(output.ObjectKey, output.objectKey, output.URI, output.Uri);
     if (!objectKey) throw new GenerationDiagnosticError({ code: "PROVIDER_BAD_RESPONSE", providerId: provider.id, model: provider.model });
-    const outputUrls = uniqueStrings([
-      await imageResourceUrl(objectKey, config).catch(() => ""),
-      imagexPublicResourceUrl(objectKey, config),
-    ]);
+    const outputUris = uniqueStrings([objectKey, objectKey.replace(/^tos-[^/]+\//, "")]);
+    const outputUrls = uniqueStrings((await Promise.all(outputUris.map(async (uri) => [
+      await imageResourceUrl(uri, config).catch(() => ""),
+      imagexPublicResourceUrl(uri, config),
+    ]))).flat());
     let outputUrl = "";
     let stored: Awaited<ReturnType<typeof storeRemoteUrl>> | null = null;
     let lastStoreError: unknown = null;
