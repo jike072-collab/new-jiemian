@@ -1193,7 +1193,7 @@ export async function refreshVideoUpscaleJob(jobId: string, localUserId?: string
   const status = normalizeVolcStatus(result.Status);
   if (status === "done") {
     const output = findVideoOutputFile(result);
-    const outputVid = output?.vid || output?.fileId || job.sourceUrl || "";
+    const outputVid = output?.vid || "";
     const playInfoUrl = await vodPlayInfoUrl(outputVid, config).catch(() => "");
     const outputUrls = uniqueStrings([
       playInfoUrl,
