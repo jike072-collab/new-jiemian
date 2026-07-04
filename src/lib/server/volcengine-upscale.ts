@@ -709,7 +709,8 @@ export async function upscaleImage(
     const output = parseJsonString(processed.Result?.Output);
     const objectKey = firstString(output.ObjectKey, output.objectKey, output.URI, output.Uri);
     if (!objectKey) throw new GenerationDiagnosticError({ code: "PROVIDER_BAD_RESPONSE", providerId: provider.id, model: provider.model });
-    const outputUris = uniqueStrings([objectKey, objectKey.replace(/^tos-[^/]+\//, "")]);
+    const fullObjectKey = objectKey.startsWith("tos-") ? objectKey : `tos-cn-i-${config.serviceId}/${objectKey}`;
+    const outputUris = uniqueStrings([fullObjectKey, objectKey, objectKey.replace(/^tos-[^/]+\//, "")]);
     const outputUrls = uniqueStrings((await Promise.all(outputUris.map(async (uri) => [
       await imageResourceUrl(uri, config).catch((error) => {
         console.warn(JSON.stringify({
