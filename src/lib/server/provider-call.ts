@@ -46,7 +46,7 @@ class BillingDispatchRejectedError extends Error {
   }
 }
 
-const grokVideoDurations = new Set([4, 5, 6, 8, 10, 12, 15]);
+const grokVideoDurations = new Set([4, 6, 8, 10, 12, 15]);
 const grokVideo10Ratios = new Set(["1:1", "16:9", "9:16", "4:3", "3:4", "3:2", "2:3"]);
 const grokVideo15Ratios = new Set(["16:9", "9:16"]);
 const defaultVideoRatios = new Set(["1:1", "16:9", "9:16", "4:3", "3:4", "3:2", "2:3"]);
