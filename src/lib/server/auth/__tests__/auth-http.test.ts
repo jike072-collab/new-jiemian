@@ -42,6 +42,7 @@ test("verification sender uses Resend email API when configured", async () => {
   const keys = [
     "RESEND_API_KEY",
     "RESEND_FROM_EMAIL",
+    "RESEND_FROM_NAME",
     "AUTH_VERIFICATION_WEBHOOK_URL",
     "AUTH_VERIFICATION_SEND_URL",
     "AUTH_VERIFICATION_WEBHOOK_TOKEN",
@@ -52,6 +53,7 @@ test("verification sender uses Resend email API when configured", async () => {
 
   process.env.RESEND_API_KEY = "re_test_key";
   process.env.RESEND_FROM_EMAIL = "noreply@example.com";
+  delete process.env.RESEND_FROM_NAME;
   delete process.env.AUTH_VERIFICATION_WEBHOOK_URL;
   delete process.env.AUTH_VERIFICATION_SEND_URL;
   delete process.env.AUTH_VERIFICATION_WEBHOOK_TOKEN;
@@ -78,7 +80,7 @@ test("verification sender uses Resend email API when configured", async () => {
     assert.equal(headers.Authorization, "Bearer re_test_key");
     assert.equal(headers["User-Agent"], "aohuang-ai/1.0");
     const body = JSON.parse(String(request.init?.body));
-    assert.equal(body.from, "noreply@example.com");
+    assert.equal(body.from, "\"奥皇 AI\" <noreply@example.com>");
     assert.deepEqual(body.to, ["customer@example.com"]);
     assert.equal(body.subject, "奥皇 AI 注册验证码");
     assert.equal(body.html.includes("123456"), true);
@@ -92,6 +94,7 @@ test("verification sender reports unconfigured when no provider exists", async (
   const keys = [
     "RESEND_API_KEY",
     "RESEND_FROM_EMAIL",
+    "RESEND_FROM_NAME",
     "AUTH_VERIFICATION_WEBHOOK_URL",
     "AUTH_VERIFICATION_SEND_URL",
   ];

@@ -39,6 +39,17 @@ function resendFromEmail() {
   return process.env.RESEND_FROM_EMAIL?.trim() || "";
 }
 
+function resendFromName() {
+  return process.env.RESEND_FROM_NAME?.trim() || "奥皇 AI";
+}
+
+function resendFromHeader() {
+  const email = resendFromEmail();
+  if (!email || email.includes("<")) return email;
+  const name = resendFromName().replace(/["\\]/g, "");
+  return name ? `"${name}" <${email}>` : email;
+}
+
 function verificationSubject(purpose: AuthVerificationPurpose) {
   return purpose === "password_reset" ? "奥皇 AI 重置密码验证码" : "奥皇 AI 注册验证码";
 }
@@ -57,7 +68,7 @@ function verificationHtml(payload: AuthVerificationSenderPayload) {
 
 async function sendWithResend(payload: AuthVerificationSenderPayload, signal: AbortSignal) {
   const apiKey = resendApiKey();
-  const from = resendFromEmail();
+  const from = resendFromHeader();
   if (!apiKey || !from || payload.channel !== "email") return false;
 
   const response = await fetch("https://api.resend.com/emails", {
