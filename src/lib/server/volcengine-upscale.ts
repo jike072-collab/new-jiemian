@@ -609,7 +609,7 @@ async function imageResourceUrl(objectKey: string, config: ReturnType<typeof ima
     method: "GET",
     query: {
       Action: "GetResourceURL",
-      Version: "2018-08-01",
+      Version: "2023-05-01",
       ServiceId: config.serviceId,
       Domain: config.outputDomain,
       URI: objectKey,
@@ -619,6 +619,12 @@ async function imageResourceUrl(objectKey: string, config: ReturnType<typeof ima
   });
   const result = response.Result || {};
   return firstString(result.URL, result.url, result.ObjURL, result.obj_url);
+}
+
+function imagexPublicResourceUrl(objectKey: string, config: ReturnType<typeof imageConfig>) {
+  if (!config.outputDomain || !config.serviceId || !objectKey) return "";
+  const tpl = config.outputTpl || `tplv-${config.serviceId}-image.image`;
+  return `https://${config.outputDomain}/${objectKey}~${tpl}`;
 }
 
 export async function upscaleImage(
@@ -682,7 +688,7 @@ export async function upscaleImage(
     const output = parseJsonString(processed.Result?.Output);
     const objectKey = firstString(output.ObjectKey, output.objectKey, output.URI, output.Uri);
     if (!objectKey) throw new GenerationDiagnosticError({ code: "PROVIDER_BAD_RESPONSE", providerId: provider.id, model: provider.model });
-    const outputUrl = await imageResourceUrl(objectKey, config);
+    const outputUrl = await imageResourceUrl(objectKey, config).catch(() => "") || imagexPublicResourceUrl(objectKey, config);
     if (!outputUrl) throw new GenerationDiagnosticError({ code: "RESULT_ASSET_MISSING", providerId: provider.id, model: provider.model });
     const stored = await storeRemoteUrl(outputUrl, "image-upscale", "image/png");
     const sourceDimensions = readImageDimensions(file.bytes);
