@@ -613,7 +613,8 @@ async function imageResourceUrl(objectKey: string, config: ReturnType<typeof ima
       ServiceId: config.serviceId,
       Domain: config.outputDomain,
       URI: objectKey,
-      Proto: "https",
+      Proto: "http",
+      Timestamp: 365 * 24 * 60 * 60,
       ...(config.outputTpl ? { Tpl: config.outputTpl } : {}),
     },
   });
@@ -625,7 +626,7 @@ function imagexPublicResourceUrl(objectKey: string, config: ReturnType<typeof im
   if (!config.outputDomain || !config.serviceId || !objectKey) return "";
   const tpl = config.outputTpl || `tplv-${config.serviceId}-image`;
   const suffix = tpl.endsWith(".image") ? tpl : `${tpl}.image`;
-  return `https://${config.outputDomain}/${objectKey}~${suffix}`;
+  return `http://${config.outputDomain}/${objectKey}~${suffix}`;
 }
 
 export async function upscaleImage(
