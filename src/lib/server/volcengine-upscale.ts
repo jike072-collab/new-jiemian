@@ -724,6 +724,14 @@ export async function upscaleImage(
         break;
       } catch (error) {
         lastStoreError = error;
+        const parsed = new URL(candidateUrl);
+        console.warn(JSON.stringify({
+          event: "imagex_resource_download_failed",
+          host: parsed.host,
+          hasSign: parsed.searchParams.has("sign"),
+          hasTosPrefix: parsed.pathname.includes("/tos-cn-"),
+          error: error instanceof Error ? error.message : "unknown",
+        }));
       }
     }
     if (!stored && lastStoreError) throw lastStoreError;
