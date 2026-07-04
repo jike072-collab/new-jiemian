@@ -1073,7 +1073,8 @@ function findVideoOutputFile(result: Record<string, unknown>) {
 function fileUrlFromStoreUri(storeUri: string, outputDomain: string) {
   if (!storeUri || !outputDomain) return "";
   if (/^https?:\/\//i.test(storeUri)) return storeUri;
-  return `https://${outputDomain.replace(/^https?:\/\//, "").replace(/\/+$/, "")}/${storeUri.replace(/^\/+/, "")}`;
+  const proto = env("VOLCENGINE_VOD_OUTPUT_PROTO", "http").toLowerCase() === "https" ? "https" : "http";
+  return `${proto}://${outputDomain.replace(/^https?:\/\//, "").replace(/\/+$/, "")}/${storeUri.replace(/^\/+/, "")}`;
 }
 
 function uniqueStrings(values: string[]) {
@@ -1147,7 +1148,7 @@ async function vodPlayInfoUrl(vid: string, config: ReturnType<typeof videoConfig
       Vid: vid,
       FileType: "video",
       Format: "mp4",
-      Ssl: "1",
+      Ssl: env("VOLCENGINE_VOD_OUTPUT_PROTO", "http").toLowerCase() === "https" ? "1" : "0",
     },
   });
   return findVodPlayInfoUrl(response.Result || {});
