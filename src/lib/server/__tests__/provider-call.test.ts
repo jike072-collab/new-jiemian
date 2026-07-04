@@ -38,6 +38,34 @@ test("provider output prefers explicit video result URLs over generic status URL
   assert.equal(output.url, "https://video.example.test/result.mp4");
 });
 
+test("provider output prefers nested video media URL over nested proxy result URL", async () => {
+  const response = jsonResponse({
+    status: "completed",
+    data: {
+      data: {
+        result_url: "https://api.example.test/generated/proxy-result.mp4",
+      },
+      video_url: "https://video.example.test/direct-result.mp4",
+    },
+  });
+  const payload = await providerCallInternalsForTests.readProviderJson(response, provider);
+  const output = providerCallInternalsForTests.parseProviderOutput(payload);
+  assert.equal(output.url, "https://video.example.test/direct-result.mp4");
+});
+
+test("provider output does not treat status_url as media output", async () => {
+  const response = jsonResponse({
+    status_url: "https://provider.example.test/tasks/task-id",
+    data: {
+      image_url: "https://cdn.example.test/result.png",
+    },
+  });
+  const payload = await providerCallInternalsForTests.readProviderJson(response, provider);
+  const output = providerCallInternalsForTests.parseProviderOutput(payload);
+  assert.equal(output.url, "https://cdn.example.test/result.png");
+  assert.equal(output.statusUrl, "https://provider.example.test/tasks/task-id");
+});
+
 test("legal image base64 JSON above 2MiB and within 16MiB is accepted", async () => {
   const base64 = Buffer.alloc(Math.floor(2.5 * 1024 * 1024), 0xaa).toString("base64");
   const response = jsonResponse({

@@ -64,13 +64,80 @@ function firstString(...values: unknown[]) {
   return "";
 }
 
+type OutputUrlCandidate = {
+  url: string;
+  field: string;
+  path: string;
+  index: number;
+};
+
+const outputUrlFieldPriority: Record<string, number> = {
+  video_url: 120,
+  image_url: 115,
+  download_url: 110,
+  file_url: 105,
+  result_url: 100,
+  output_url: 90,
+  content_url: 80,
+  url: 50,
+};
+
+function normalizeOutputUrlField(field: string) {
+  return field
+    .replace(/([a-z0-9])([A-Z])/g, "$1_$2")
+    .replace(/[\s-]+/g, "_")
+    .toLowerCase();
+}
+
+function collectOutputUrlCandidates(value: unknown, path = "root", candidates: OutputUrlCandidate[] = []) {
+  if (!value || typeof value !== "object") return candidates;
+  if (Array.isArray(value)) {
+    value.forEach((item, index) => collectOutputUrlCandidates(item, `${path}[${index}]`, candidates));
+    return candidates;
+  }
+  for (const [field, child] of Object.entries(value as Record<string, unknown>)) {
+    const childPath = `${path}.${field}`;
+    const normalizedField = normalizeOutputUrlField(field);
+    if (
+      typeof child === "string"
+      && /^https?:\/\//i.test(child.trim())
+      && outputUrlFieldPriority[normalizedField] !== undefined
+    ) {
+      candidates.push({
+        url: child.trim(),
+        field: normalizedField,
+        path: childPath,
+        index: candidates.length,
+      });
+    }
+    collectOutputUrlCandidates(child, childPath, candidates);
+  }
+  return candidates;
+}
+
+function outputUrlCandidateScore(candidate: OutputUrlCandidate) {
+  let score = outputUrlFieldPriority[candidate.field] ?? 0;
+  if (/\.(?:mp4|webm|mov)(?:[?#]|$)/i.test(candidate.url)) score += 30;
+  if (/\.(?:png|jpe?g|webp|gif)(?:[?#]|$)/i.test(candidate.url)) score += 20;
+  if (/(?:^|[._])status(?:[._]|$)/i.test(candidate.path)) score -= 50;
+  score -= Math.min(candidate.path.split(/[.\[\]]/).filter(Boolean).length, 12);
+  return score;
+}
+
+function bestOutputUrl(payload: unknown) {
+  return collectOutputUrlCandidates(payload)
+    .map((candidate) => ({ candidate, score: outputUrlCandidateScore(candidate) }))
+    .sort((left, right) => right.score - left.score || left.candidate.index - right.candidate.index)[0]
+    ?.candidate.url || "";
+}
+
 function parseProviderOutput(payload: unknown): ProviderOutput {
   const root = asRecord(payload);
   const data = Array.isArray(root.data) ? root.data : [];
   const metadata = asRecord(root.metadata);
   const first = asRecord(data[0] || root.video || root.result || root.output || payload);
   const firstMetadata = asRecord(first.metadata);
-  const url = firstString(
+  const url = bestOutputUrl(payload) || firstString(
     first.video_url,
     first.download_url,
     first.result_url,

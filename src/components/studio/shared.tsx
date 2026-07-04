@@ -204,6 +204,7 @@ export function CompactDropzone({
   const helpId = `${inputId}-help`;
   const hasFiles = files.length > 0;
   const currentTitle = dragging ? "松开以上传" : hasFiles ? filledTitle : emptyTitle;
+  const fileInputLabel = hasFiles ? "选择替换文件" : "选择上传文件";
 
   const applyFiles = useCallback((fileList: FileList | File[]) => {
     const nextFiles = Array.from(fileList);
@@ -241,7 +242,7 @@ export function CompactDropzone({
           ref={inputRef}
           id={inputId}
           type="file"
-          aria-label={currentTitle}
+          aria-label={fileInputLabel}
           aria-describedby={helpId}
           accept={accept}
           multiple={multiple}
