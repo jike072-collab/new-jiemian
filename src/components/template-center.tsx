@@ -38,11 +38,9 @@ function getWebpThumbnail(thumbnail: string) {
 }
 
 function TemplateThumbnail({ template }: { template: TemplatePromptTemplate }) {
+  const thumbnail = getWebpThumbnail(template.thumbnail);
   return (
-    <picture>
-      <source srcSet={getWebpThumbnail(template.thumbnail)} type="image/webp" />
-      <img src={template.thumbnail} alt={template.label} loading="lazy" decoding="async" />
-    </picture>
+    <img src={thumbnail} alt={template.label} loading="lazy" decoding="async" fetchPriority="low" />
   );
 }
 
@@ -181,7 +179,6 @@ export function TemplateRail({
               <span className="studio-template-card__thumb">
                 <TemplateThumbnail template={template} />
                 <span className="studio-template-card__fade" aria-hidden="true" />
-                <span className="studio-template-card__badge">{template.category}</span>
                 <span className="studio-template-card__label">{template.label}</span>
               </span>
             </button>

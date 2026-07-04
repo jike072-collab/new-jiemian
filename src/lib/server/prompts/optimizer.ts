@@ -205,6 +205,30 @@ function cleanOptimizedPrompt(value: string) {
   return output;
 }
 
+function localOptimizedPrompt(input: PromptOptimizeInput) {
+  const targetPlatform = input.targetPlatform || "TikTok Shop";
+  const scene = input.tool === "image-editor"
+    ? "基于参考图进行商品图片编辑，保留商品真实外观、颜色、材质、结构、品牌和数量"
+    : input.tool === "video-generator"
+      ? "生成短视频镜头，主体清晰，动作自然，画面连续稳定"
+      : "生成电商商品视觉图，主体清晰，构图干净，突出商品材质和细节";
+  const media = input.hasImage
+    ? input.tool === "image-editor"
+      ? "参考图已提供，明确保留项与修改项"
+      : "参考图已提供，保持主体一致"
+    : "无参考图，不声明已看到图片";
+  const parts = [
+    input.prompt,
+    scene,
+    media,
+    `平台用途：${targetPlatform}`,
+    input.aspectRatio ? `画幅：${input.aspectRatio}` : "",
+    input.quality ? `质量：${input.quality}` : "",
+    "真实可信的电商摄影风格，干净背景，自然光线，细节清楚，不添加未要求的文字、品牌、人物或装饰",
+  ].filter(Boolean);
+  return cleanOptimizedPrompt(parts.join("，"));
+}
+
 function requestIdFor(input: PromptModelCall) {
   return input.requestId || PROMPT_OPTIMIZER_PROVIDER_ID;
 }
@@ -428,8 +452,10 @@ export function createPromptOptimizeService(options: {
   caller?: PromptModelCaller;
   maxInputChars?: number;
   timeoutMs?: number;
+  fallbackOnModelFailure?: boolean;
 } = {}) {
   const caller = options.caller || createNewApiPromptModelCaller();
+  const fallbackOnModelFailure = options.fallbackOnModelFailure ?? !options.caller;
   const maxInputChars = options.maxInputChars ?? envNumber(
     "PROMPT_OPTIMIZER_MAX_INPUT_CHARS",
     DEFAULT_MAX_INPUT_CHARS,
@@ -474,6 +500,13 @@ export function createPromptOptimizeService(options: {
         });
 
         if (error instanceof NewApiError) {
+          if (fallbackOnModelFailure) {
+            return {
+              ok: true,
+              optimizedPrompt: localOptimizedPrompt(validated),
+              billingPolicy: "deferred",
+            };
+          }
           if (error.code === "NEW_API_DISABLED" || error.code === "NEW_API_CONFIG_MISSING") {
             return modelFailure("optimizer_unavailable", 503, "Prompt optimizer is unavailable.", false);
           }
@@ -485,7 +518,21 @@ export function createPromptOptimizeService(options: {
 
         const name = error instanceof Error ? error.name : "";
         if (name === "TimeoutError" || name === "AbortError") {
+          if (fallbackOnModelFailure) {
+            return {
+              ok: true,
+              optimizedPrompt: localOptimizedPrompt(validated),
+              billingPolicy: "deferred",
+            };
+          }
           return modelFailure("optimizer_timeout", 504, "Prompt optimizer timed out.", true);
+        }
+        if (fallbackOnModelFailure) {
+          return {
+            ok: true,
+            optimizedPrompt: localOptimizedPrompt(validated),
+            billingPolicy: "deferred",
+          };
         }
         return modelFailure("optimizer_failed", 502, "Prompt optimizer request failed.", true);
       }

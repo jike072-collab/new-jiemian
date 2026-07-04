@@ -111,9 +111,28 @@ export function codeForUpstreamStatus(status: number): ErrorDiagnosticCode {
   return "PROVIDER_BAD_RESPONSE";
 }
 
+function codeForCommonThrownMessage(message: string): ErrorDiagnosticCode | null {
+  if (/scale|duration|ratio|unsupported|not support|only supports|seconds|second|Grok|1K|2K|4K/i.test(message)) {
+    return "INPUT_INVALID_PARAMETERS";
+  }
+  if (
+    message.includes("鍙傛暟")
+    || message.includes("涓嶆敮鎸")
+    || message.includes("鍙敮鎸")
+    || message.includes("蹇呴")
+    || message.includes("姣斾緥")
+    || message.includes("绉")
+  ) {
+    return "INPUT_INVALID_PARAMETERS";
+  }
+  return null;
+}
+
 export function codeForThrownError(error: unknown, fallback: ErrorDiagnosticCode = "UNKNOWN_ERROR"): ErrorDiagnosticCode {
   if (error instanceof GenerationDiagnosticError) return error.code;
   const message = error instanceof Error ? error.message : String(error || "");
+  const commonCode = codeForCommonThrownMessage(message);
+  if (commonCode) return commonCode;
   if (error instanceof DOMException && error.name === "TimeoutError") return "PROVIDER_TIMEOUT";
   if (/abort|timeout|timed out/i.test(message)) return "PROVIDER_TIMEOUT";
   if (/fetch failed|ECONN|ENOTFOUND|EAI_AGAIN|network|socket|TLS|certificate/i.test(message)) return "PROVIDER_NETWORK_ERROR";
@@ -130,7 +149,7 @@ export function codeForThrownError(error: unknown, fallback: ErrorDiagnosticCode
     if (/读取|read/i.test(message)) return "UPLOAD_READ_FAILED";
     return "INPUT_MISSING_IMAGE";
   }
-  if (/参数|scale|duration|ratio|invalid/i.test(message)) return "INPUT_INVALID_PARAMETERS";
+  if (/参数|scale|duration|ratio|invalid|不支持|只能|必须|比例|秒|Grok/i.test(message)) return "INPUT_INVALID_PARAMETERS";
   if (/任务不存在|not found/i.test(message)) return "TASK_POLL_FAILED";
   if (/任务.*失败|task.*failed|failed state/i.test(message)) return "TASK_FAILED";
   if (/保存|store|library|下载生成结果|结果文件/i.test(message)) return "LIBRARY_SAVE_FAILED";

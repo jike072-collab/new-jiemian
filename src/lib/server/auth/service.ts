@@ -21,7 +21,6 @@ import {
   publicSafeString,
   safeRedirectPath,
   sha256,
-  usernameFromEmail,
 } from "./normalize";
 import {
   AUTH_SESSION_IDLE_SECONDS,
@@ -322,10 +321,8 @@ export class AuthService {
       });
     }
 
-    const normalizedUsername = input.username
-      ? normalizeUsername(input.username)
-      : `${usernameFromEmail(email)}-${sha256(email).slice(0, 6)}`.slice(0, 32);
-    const displayName = publicSafeString(input.displayName || normalizedUsername, 80);
+    const normalizedUsername = input.username ? normalizeUsername(input.username) : "";
+    const displayName = publicSafeString(input.displayName || input.username || normalizedUsername, 80);
 
     const passwordErrors = validatePasswordStrength(input.password || "");
     if (!isValidEmail(email) || !isValidUsername(normalizedUsername) || passwordErrors.length > 0) {

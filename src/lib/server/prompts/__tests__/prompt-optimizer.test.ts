@@ -149,6 +149,33 @@ test("maps model timeout and provider failure to safe errors", async () => {
   }
 });
 
+test("can fall back to a local prompt when optimizer provider fails", async () => {
+  const service = createPromptOptimizeService({
+    caller: async () => {
+      throw new NewApiError({
+        code: "NEW_API_UPSTREAM_ERROR",
+        message: "upstream failed sk-test-secret",
+        status: 502,
+        retryable: true,
+        requestId: "req-local-fallback",
+        upstreamStatus: 500,
+      });
+    },
+    fallbackOnModelFailure: true,
+  });
+
+  const result = await service.optimize(baseInput({ prompt: "白底商品主图，突出质感" }), {
+    localUserId: "user-1",
+    requestId: "req-local-fallback",
+  });
+
+  assert.equal(result.ok, true);
+  if (!result.ok) return;
+  assert.match(result.optimizedPrompt, /白底商品主图/);
+  assert.match(result.optimizedPrompt, /TikTok Shop/);
+  assert.equal(result.optimizedPrompt.includes("sk-test-secret"), false);
+});
+
 test("returns only optimized prompt text and redacts secret-shaped output", async () => {
   const service = serviceWith(async () => "```markdown\n最终提示词：Use clean lighting sk-test-secret-value\n```");
   const result = await service.optimize(baseInput(), { localUserId: "user-1" });

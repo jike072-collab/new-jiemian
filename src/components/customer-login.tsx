@@ -5,7 +5,7 @@ import Image from "next/image";
 import Link from "next/link";
 import { type FormEvent, type PointerEvent, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { ArrowRight, Check, Eye, EyeOff, ImageIcon, Loader2, LockKeyhole, Mail, Play, Sparkles, Video } from "lucide-react";
+import { ArrowRight, Check, Eye, EyeOff, ImageIcon, Loader2, LockKeyhole, Mail, Play, Sparkles, UserRound, Video } from "lucide-react";
 
 import { ApiError, fetchJson, fetchJsonWithCsrf } from "@/lib/client/api";
 import { motionTokens } from "@/lib/motion-tokens";
@@ -79,7 +79,7 @@ function friendlyAuthError(error: unknown) {
     return "请求失败，请稍后重试";
   }
   if (error.code === "AUTH_INVALID_CREDENTIALS") return "账号或密码不正确";
-  if (error.code === "AUTH_DUPLICATE_ACCOUNT") return "该邮箱已注册";
+  if (error.code === "AUTH_DUPLICATE_ACCOUNT") return "邮箱或用户名已注册";
   if (error.code === "AUTH_VERIFICATION_CODE_INVALID") return "验证码不正确或已过期";
   if (error.code === "AUTH_VERIFICATION_SEND_UNAVAILABLE") return "验证码发送服务暂不可用";
   if (error.code === "AUTH_RATE_LIMITED") return "操作太频繁，请稍后再试";
@@ -90,6 +90,10 @@ function friendlyAuthError(error: unknown) {
 
 function isValidEmail(value: string) {
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value);
+}
+
+function isValidUsername(value: string) {
+  return /^[a-zA-Z0-9_.-]{3,32}$/.test(value);
 }
 
 function passwordRules(password: string) {
@@ -104,6 +108,7 @@ export function CustomerLogin({ initialMode = "login" }: CustomerLoginProps) {
   const router = useRouter();
   const [mode, setMode] = useState<AuthMode>(initialMode);
   const [identifier, setIdentifier] = useState("");
+  const [username, setUsername] = useState("");
   const [verificationCode, setVerificationCode] = useState("");
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
@@ -158,11 +163,13 @@ export function CustomerLogin({ initialMode = "login" }: CustomerLoginProps) {
 
   useEffect(() => {
     function handlePopState() {
-      setMode(window.location.pathname === "/register" ? "register" : "login");
+      const nextMode = window.location.pathname === "/register" ? "register" : "login";
+      setMode(nextMode);
       setLoginMethod("password");
       setMessage("");
       setSuccess(false);
       setVerificationCode("");
+      if (nextMode !== "register") setUsername("");
     }
 
     window.addEventListener("popstate", handlePopState);
@@ -176,6 +183,7 @@ export function CustomerLogin({ initialMode = "login" }: CustomerLoginProps) {
     setSuccess(false);
     setVerificationCode("");
     setConfirmPassword("");
+    if (nextMode !== "register") setUsername("");
     if (nextMode !== "login") setLoginMethod("password");
 
     const nextPath = nextMode === "register" ? "/register" : "/login";
@@ -194,6 +202,12 @@ export function CustomerLogin({ initialMode = "login" }: CustomerLoginProps) {
     }
     if (needsVerificationCode && !isValidEmail(trimmedIdentifier)) {
       return "请填写有效邮箱";
+    }
+    if (isRegister && !username.trim()) {
+      return "请填写用户名";
+    }
+    if (isRegister && !isValidUsername(username.trim())) {
+      return "用户名需为 3-32 位英文、数字、下划线、点或短横线";
     }
     if (needsVerificationCode && !/^\d{6}$/.test(verificationCode.trim())) {
       return "请填写 6 位验证码";
@@ -263,6 +277,8 @@ export function CustomerLogin({ initialMode = "login" }: CustomerLoginProps) {
           method: "POST",
           body: JSON.stringify({
             identifier: identifier.trim(),
+            username: username.trim(),
+            displayName: username.trim(),
             verificationCode: verificationCode.trim(),
             password,
             redirectTo: "/",
@@ -399,6 +415,24 @@ export function CustomerLogin({ initialMode = "login" }: CustomerLoginProps) {
                   />
                 </span>
               </label>
+
+              {isRegister ? (
+                <label className="auth-field">
+                  <span>用户名</span>
+                  <span className="auth-input">
+                    <UserRound className="size-5" aria-hidden="true" />
+                    <input
+                      type="text"
+                      value={username}
+                      onChange={(event) => setUsername(event.target.value)}
+                      autoComplete="username"
+                      disabled={disabled}
+                      aria-invalid={Boolean(username.trim() && !isValidUsername(username.trim()))}
+                      placeholder="3-32 位英文、数字、._-"
+                    />
+                  </span>
+                </label>
+              ) : null}
 
               {needsVerificationCode ? (
                 <div className="auth-field">

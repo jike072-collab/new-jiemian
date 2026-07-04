@@ -144,6 +144,27 @@ test("registers a real local user, hashes password, maps through B08, and create
   assert.equal(await verifyPassword("WrongPass123", stored.password_hash), false);
 });
 
+test("requires an explicit username during registration", async () => {
+  const harness = service();
+  const requested = await harness.service.requestVerificationCode({
+    identifier: "nousername@example.com",
+    purpose: "register",
+  });
+  assert.equal(requested.ok, true);
+  const verificationCode = harness.sentCodes.at(-1)?.code || "";
+
+  const result = await harness.service.register({
+    email: "nousername@example.com",
+    password: "StrongPass123",
+    verificationCode,
+  });
+
+  assert.equal(result.ok, false);
+  if (result.ok) return;
+  assert.equal(result.status, 400);
+  assert.equal(result.uiState, "validation_error");
+});
+
 test("register seeds new users with trial credits for New API sync", async () => {
   const profiles: NewApiUserSyncProfile[] = [];
   const harness = service({ profiles });

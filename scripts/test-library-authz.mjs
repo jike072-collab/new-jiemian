@@ -60,11 +60,11 @@ for (const unsafeName of ["../x", "..%2Fx", "..%5Cx", "a/b", "a\\b", "C:\\x", "/
 assert(paths.includes("safeStoredName(name: string)"), "safeStoredName remains the file-name gate");
 
 assert(ownerFieldCount(providerCall) >= 3, "all provider-call library item creations must set ownerLocalUserId");
-assert(upscale.includes("upscaleImage(file: UploadedUpscaleFile, scale: TargetScale, ownerLocalUserId?: string | null)"), "image upscale must accept owner");
-assert(upscale.includes("submitVideoUpscale(file: UploadedUpscaleFile, scale: TargetScale, ownerLocalUserId?: string | null)"), "video upscale must accept owner");
+assert(upscale.includes("export async function upscaleImage(") && upscale.includes("ownerLocalUserId?: string | null") && upscale.includes("billing: UpscaleBillingInput = {}"), "image upscale must accept owner and billing context");
+assert(upscale.includes("export async function submitVideoUpscale(") && upscale.includes("ownerLocalUserId?: string | null") && upscale.includes("billing: UpscaleBillingInput = {}"), "video upscale must accept owner and billing context");
 assert(ownerFieldCount(upscale) >= 3, "upscale library/job creations must set ownerLocalUserId");
-assert(upscaleImageRoute.includes("runUpscaleImage(file, scale, session.user.local_user_id)"), "image upscale route must pass current owner");
-assert(upscaleVideoRoute.includes("runSubmitVideoUpscale(file, scale, session.user.local_user_id)"), "video upscale route must pass current owner");
+assert(upscaleImageRoute.includes("runUpscaleImage(file, scale, session.user.local_user_id, billing)"), "image upscale route must pass current owner and billing context");
+assert(upscaleVideoRoute.includes("runSubmitVideoUpscale(file, scale, session.user.local_user_id, billing)"), "video upscale route must pass current owner and billing context");
 
 const self = read("scripts/test-library-authz.mjs");
 for (const token of [

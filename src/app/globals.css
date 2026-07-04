@@ -4938,6 +4938,15 @@
     font-weight: 700;
   }
 
+  .user-center-usage__row.is-spend em {
+    color: #ff8a7a;
+  }
+
+  .user-center-usage__row.is-recharge em,
+  .user-center-usage__row.is-checkin em {
+    color: #6ee7b7;
+  }
+
   .user-center-usage__row span {
     overflow: hidden;
     text-overflow: ellipsis;

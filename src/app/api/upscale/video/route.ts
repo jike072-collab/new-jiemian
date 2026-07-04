@@ -1,7 +1,7 @@
 import { type NextRequest, NextResponse } from "next/server";
 
 import { authResultResponse, csrfFailure, requireAuthSession, requireCsrf } from "@/lib/server/auth";
-import { diagnosticErrorResponse } from "@/lib/server/error-diagnostics";
+import { diagnosticErrorResponse, GenerationDiagnosticError } from "@/lib/server/error-diagnostics";
 import { submitVideoUpscale as runSubmitVideoUpscale, uploadedUpscaleFile } from "@/lib/server/volcengine-upscale";
 import { WorkloadLimitError, withUserVideoWorkload, withVideoProviderUpload, workloadLimitResponse } from "@/lib/server/workload-guard";
 
@@ -15,16 +15,24 @@ export async function POST(request: NextRequest) {
     const form = await request.formData();
     const requestedScale = Number(form.get("scale"));
     if (requestedScale !== 1 && requestedScale !== 2 && requestedScale !== 4) {
-      throw new Error("视频高清增强仅支持 1K、2K 或 4K。");
+      throw new GenerationDiagnosticError({
+        code: "INPUT_INVALID_PARAMETERS",
+        publicMessage: "视频高清增强仅支持 1K、2K 或 4K。",
+      });
     }
     const scale = requestedScale;
+    const billing = {
+      billingLocalUserId: session.user.local_user_id,
+      billingTaskId: String(form.get("taskId") || "").trim(),
+      billingIdempotencyKey: String(form.get("idempotencyKey") || form.get("taskId") || "").trim(),
+    };
     const result = await withUserVideoWorkload(session.user.local_user_id, () => (
       withVideoProviderUpload(session.user.local_user_id, async () => {
         const file = await uploadedUpscaleFile(form, "video");
         const submitVideoUpscale = (
           file: Parameters<typeof runSubmitVideoUpscale>[0],
           scale: Parameters<typeof runSubmitVideoUpscale>[1],
-        ) => runSubmitVideoUpscale(file, scale, session.user.local_user_id);
+        ) => runSubmitVideoUpscale(file, scale, session.user.local_user_id, billing);
         return submitVideoUpscale(file, scale);
       })
     ));

@@ -46,7 +46,7 @@ class BillingDispatchRejectedError extends Error {
   }
 }
 
-const grokVideoDurations = new Set([4, 6, 8, 10, 12, 15]);
+const grokVideoDurations = new Set([4, 5, 6, 8, 10, 12, 15]);
 const grokVideo10Ratios = new Set(["1:1", "16:9", "9:16", "4:3", "3:4", "3:2", "2:3"]);
 const grokVideo15Ratios = new Set(["16:9", "9:16"]);
 const defaultVideoRatios = new Set(["1:1", "16:9", "9:16", "4:3", "3:4", "3:2", "2:3"]);
@@ -242,18 +242,38 @@ function validateGrokVideoInput(provider: ProviderConfig, input: {
   files: UploadedMedia[];
 }) {
   if (!grokVideoDurations.has(input.duration)) {
-    throw new Error("当前 Grok 视频模型只支持 4、6、8、10、12、15 秒。");
+    throw new GenerationDiagnosticError({
+      code: "INPUT_INVALID_PARAMETERS",
+      providerId: provider.id,
+      model: provider.model,
+      publicMessage: "当前 Grok 视频模型只支持 4、5、6、8、10、12、15 秒。",
+    });
   }
   if (!grokVideoRatioOptions(provider).has(input.ratio)) {
-    throw new Error(provider.model === "grok-video-1.5"
-      ? "grok-video-1.5 只支持 16:9 和 9:16。"
-      : "grok-video-1.0 不支持当前比例。");
+    throw new GenerationDiagnosticError({
+      code: "INPUT_INVALID_PARAMETERS",
+      providerId: provider.id,
+      model: provider.model,
+      publicMessage: provider.model === "grok-video-1.5"
+        ? "grok-video-1.5 只支持 16:9 和 9:16。"
+        : "grok-video-1.0 不支持当前比例。",
+    });
   }
   if (provider.model === "grok-video-1.5" && input.files.length !== 1) {
-    throw new Error("grok-video-1.5 必须且只能上传 1 张参考图。");
+    throw new GenerationDiagnosticError({
+      code: "INPUT_INVALID_PARAMETERS",
+      providerId: provider.id,
+      model: provider.model,
+      publicMessage: "grok-video-1.5 必须且只能上传 1 张参考图。",
+    });
   }
   if (provider.model === "grok-video-1.0" && input.files.length > 7) {
-    throw new Error("grok-video-1.0 最多支持 7 张参考图。");
+    throw new GenerationDiagnosticError({
+      code: "INPUT_INVALID_PARAMETERS",
+      providerId: provider.id,
+      model: provider.model,
+      publicMessage: "grok-video-1.0 最多支持 7 张参考图。",
+    });
   }
 }
 
@@ -275,15 +295,30 @@ function validateVideoInput(provider: ProviderConfig, input: {
   const allowedDurations = options?.durations?.length ? new Set(options.durations) : new Set([5, 8, 10, 15]);
   const allowedRatios = options?.ratios?.length ? new Set(options.ratios) : defaultVideoRatios;
   if (!allowedDurations.has(input.duration)) {
-    throw new Error(`当前视频模型不支持 ${input.duration} 秒。`);
+    throw new GenerationDiagnosticError({
+      code: "INPUT_INVALID_PARAMETERS",
+      providerId: provider.id,
+      model: provider.model,
+      publicMessage: `当前视频模型不支持 ${input.duration} 秒。`,
+    });
   }
   if (!allowedRatios.has(input.ratio)) {
-    throw new Error(`当前视频模型不支持 ${input.ratio} 比例。`);
+    throw new GenerationDiagnosticError({
+      code: "INPUT_INVALID_PARAMETERS",
+      providerId: provider.id,
+      model: provider.model,
+      publicMessage: `当前视频模型不支持 ${input.ratio} 比例。`,
+    });
   }
   if (input.mode === "image-to-video") {
     const maxReferenceImages = options?.maxReferenceImages ?? 1;
     if (input.files.length > maxReferenceImages) {
-      throw new Error(`当前视频模型最多支持 ${maxReferenceImages} 张参考图。`);
+      throw new GenerationDiagnosticError({
+        code: "INPUT_INVALID_PARAMETERS",
+        providerId: provider.id,
+        model: provider.model,
+        publicMessage: `当前视频模型最多支持 ${maxReferenceImages} 张参考图。`,
+      });
     }
   }
 }

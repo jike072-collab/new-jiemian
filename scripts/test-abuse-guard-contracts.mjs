@@ -295,13 +295,13 @@ function checkExistingAbuseGuards() {
   assertSequence("image upscale workload limit before upload read", source.upscaleImageRoute, [
     "withUserImageWorkload(session.user.local_user_id",
     "uploadedUpscaleFile(form, \"image\")",
-    "runUpscaleImage(file, scale, session.user.local_user_id)",
+    "runUpscaleImage(file, scale, session.user.local_user_id, billing)",
   ]);
   assertSequence("video upscale workload limit before large read and provider upload", source.upscaleVideoRoute, [
     "withUserVideoWorkload(session.user.local_user_id",
     "withVideoProviderUpload(session.user.local_user_id",
     "uploadedUpscaleFile(form, \"video\")",
-    "runSubmitVideoUpscale(file, scale, session.user.local_user_id)",
+    "runSubmitVideoUpscale(file, scale, session.user.local_user_id, billing)",
   ]);
   for (const [name, route] of [
     ["library", source.libraryRoute],

@@ -87,6 +87,8 @@ test("thrown errors are classified without leaking raw provider details", () => 
   assert.equal(codeForThrownError(new Error("API Key is invalid")), "PROVIDER_AUTH_FAILED");
   assert.equal(codeForThrownError(new Error("请上传参考图片")), "INPUT_MISSING_IMAGE");
   assert.equal(codeForThrownError(new Error("文件不能超过 10MB")), "INPUT_FILE_TOO_LARGE");
+  assert.equal(codeForThrownError(new Error("当前视频模型不支持 5 秒。")), "INPUT_INVALID_PARAMETERS");
+  assert.equal(codeForThrownError(new Error("视频高清增强仅支持 1K、2K 或 4K。")), "INPUT_INVALID_PARAMETERS");
 });
 
 test("explicit diagnostic errors preserve code and safe context", () => {
