@@ -334,6 +334,15 @@ function grokReferenceImageEndpoint(apiUrl: string) {
   }
 }
 
+function isLocalOpenAiCompatibleEndpoint(apiUrl: string) {
+  try {
+    const hostname = new URL(apiUrl).hostname.toLowerCase();
+    return hostname === "127.0.0.1" || hostname === "localhost" || hostname === "::1";
+  } catch {
+    return false;
+  }
+}
+
 function grokStatusUrl(apiUrl: string, jobId: string) {
   if (!jobId) return "";
   try {
@@ -364,6 +373,38 @@ async function uploadGrokReferenceImage(provider: ProviderConfig, file: Uploaded
   return url;
 }
 
+async function callOpenAiCompatibleGrokVideoProvider(provider: ProviderConfig, input: {
+  mode: "text-to-video" | "image-to-video";
+  prompt: string;
+  ratio: string;
+  duration: number;
+  files: UploadedMedia[];
+}) {
+  const payload: Record<string, string | number | string[]> = {
+    model: provider.model,
+    prompt: input.prompt,
+    duration: input.duration,
+    seconds: input.duration,
+    aspect_ratio: input.ratio,
+    resolution: "720p",
+    response_format: "url",
+  };
+  if (input.files.length) {
+    payload.image = input.files.map((file) => `data:${file.mimeType};base64,${file.bytes.toString("base64")}`);
+  }
+
+  const response = await fetch(grokVideosEndpoint(provider.apiUrl), {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      ...authHeaders(provider),
+    },
+    body: JSON.stringify(payload),
+    signal: AbortSignal.timeout(180000),
+  });
+  return parseProviderOutput(await readProviderJson(response, provider));
+}
+
 async function callGrokVideoProvider(provider: ProviderConfig, input: {
   mode: "text-to-video" | "image-to-video";
   prompt: string;
@@ -372,6 +413,10 @@ async function callGrokVideoProvider(provider: ProviderConfig, input: {
   files: UploadedMedia[];
 }) {
   validateGrokVideoInput(provider, input);
+  if (isLocalOpenAiCompatibleEndpoint(provider.apiUrl)) {
+    return callOpenAiCompatibleGrokVideoProvider(provider, input);
+  }
+
   const form = new FormData();
   form.append("model", provider.model);
   form.append("prompt", input.prompt);
@@ -1255,7 +1300,9 @@ export async function uploadedMediaFromForm(
 }
 
 export const providerCallInternalsForTests = {
+  callOpenAiCompatibleGrokVideoProvider,
   isImg2ImageProvider,
+  isLocalOpenAiCompatibleEndpoint,
   parseProviderOutput,
   planProviderOutputStorage,
   readProviderJson,

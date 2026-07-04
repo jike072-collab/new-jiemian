@@ -138,6 +138,46 @@ test("img2 special request format is only used for legacy image4k models", () =>
   }), true);
 });
 
+test("local Grok video provider sends reference images through the NewAPI videos endpoint", async () => {
+  assert.equal(providerCallInternalsForTests.isLocalOpenAiCompatibleEndpoint("http://127.0.0.1:3000/v1/videos"), true);
+  assert.equal(providerCallInternalsForTests.isLocalOpenAiCompatibleEndpoint("https://api.manxiaobai.online/v1/videos"), false);
+
+  const videoProvider = {
+    ...provider,
+    id: "video-grok",
+    kind: "video",
+    apiUrl: "http://127.0.0.1:3000/v1/videos",
+    model: "grok-video-1.5",
+    endpointType: "grok-videos",
+  } as const;
+  const originalFetch = globalThis.fetch;
+  let requestedUrl = "";
+  let requestedBody: Record<string, unknown> = {};
+  globalThis.fetch = (async (url, init) => {
+    requestedUrl = String(url);
+    requestedBody = JSON.parse(String(init?.body || "{}"));
+    return jsonResponse({ data: [{ url: "https://cdn.example.test/video.mp4" }] });
+  }) as typeof fetch;
+  try {
+    const output = await providerCallInternalsForTests.callOpenAiCompatibleGrokVideoProvider(videoProvider, {
+      mode: "image-to-video",
+      prompt: "test prompt",
+      ratio: "16:9",
+      duration: 4,
+      files: [{ bytes: Buffer.from("image-bytes"), mimeType: "image/png", fileName: "首帧.png" }],
+    });
+    assert.equal(requestedUrl, "http://127.0.0.1:3000/v1/videos");
+    assert.equal(requestedBody.model, "grok-video-1.5");
+    assert.equal(requestedBody.prompt, "test prompt");
+    assert.equal(requestedBody.aspect_ratio, "16:9");
+    assert.equal(Array.isArray(requestedBody.image), true);
+    assert.match((requestedBody.image as string[])[0], /^data:image\/png;base64,/);
+    assert.equal(output.url, "https://cdn.example.test/video.mp4");
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
 test("error logs do not include oversized response bodies or base64 payloads", async () => {
   const bodySnippet = `SECRET-BODY-${createHash("sha256").update("provider-json").digest("hex")}`;
   const { response } = streamingJsonResponse({

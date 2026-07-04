@@ -234,6 +234,20 @@ function fileExtension(file: UploadedUpscaleFile) {
   return extension || (file.mimeType.startsWith("video/") ? "mp4" : "jpg");
 }
 
+function contentDispositionFileName(file: UploadedUpscaleFile) {
+  const extension = fileExtension(file);
+  const baseName = file.fileName
+    .replace(/\.[^./\\]+$/, "")
+    .replace(/[^A-Za-z0-9._-]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, 80) || "upload";
+  return `${baseName}.${extension}`;
+}
+
+function contentDispositionHeader(file: UploadedUpscaleFile) {
+  return `attachment; filename="${contentDispositionFileName(file)}"; filename*=UTF-8''${encodeURIComponent(file.fileName)}`;
+}
+
 function parseCredential(provider: ProviderConfig | null): VolcanoCredential | null {
   const combined = (provider?.apiKey || env("VOLCENGINE_ACCESS_KEY_PAIR") || "").trim();
   const split = combined.split(/[:|,\s]+/).map((part) => part.trim()).filter(Boolean);
@@ -471,7 +485,7 @@ async function uploadByAddress(file: UploadedUpscaleFile, uploadHost: string, st
     headers: {
       Authorization: auth,
       "Content-Type": "application/octet-stream",
-      "Content-Disposition": `attachment; filename="${file.fileName.replace(/"/g, "")}"`,
+      "Content-Disposition": contentDispositionHeader(file),
       "Content-Crc32": crc32Hex(file.bytes),
       "Content-Length": String(file.bytes.length),
     },

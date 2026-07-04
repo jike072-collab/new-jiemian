@@ -128,7 +128,7 @@ export function VideoGenerator({
         onRemove={onFileRemove}
         onClear={onFilesClear}
       />
-      {modelRequiresImage && !state.files.length ? (
+      {modelRequiresImage && !state.files.length && !state.fileError ? (
         <p className="studio-help-text">{videoModelReferenceMessage}</p>
       ) : null}
       <StackedControl label="比例" required>
