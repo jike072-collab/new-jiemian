@@ -26,6 +26,7 @@ import { createMemoryAuthRepository, type AuthRepository } from "../repository";
 import { InMemoryRateLimiter } from "../rate-limit";
 import { AuthService } from "../service";
 import { StoreAuthDualRepairRepository, createJsonAuthDualRepairRepository } from "../dual-repair";
+import { type AuthVerificationPurpose } from "../types";
 
 const passwordHash = "scrypt$v=1$n=16384$r=8$p=1$len=64$c2FsdA$0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
 const hasDatabase = Boolean(process.env.APP_DATABASE_URL && process.env.APP_DATABASE_EXPECTED_NAME);
@@ -113,7 +114,7 @@ function repairRepositorySink() {
   };
 }
 
-type SentVerificationCode = { destination: string; purpose: "register" | "password_reset"; code: string };
+type SentVerificationCode = { destination: string; purpose: AuthVerificationPurpose; code: string };
 
 function captureVerificationCodes() {
   const sentCodes: SentVerificationCode[] = [];

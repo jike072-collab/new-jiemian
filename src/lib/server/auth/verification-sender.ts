@@ -51,11 +51,17 @@ function resendFromHeader() {
 }
 
 function verificationSubject(purpose: AuthVerificationPurpose) {
-  return purpose === "password_reset" ? "奥皇 AI 重置密码验证码" : "奥皇 AI 注册验证码";
+  if (purpose === "password_reset") return "奥皇 AI 重置密码验证码";
+  if (purpose === "login") return "奥皇 AI 登录验证码";
+  return "奥皇 AI 注册验证码";
 }
 
 function verificationHtml(payload: AuthVerificationSenderPayload) {
-  const action = payload.purpose === "password_reset" ? "重置密码" : "注册账号";
+  const action = payload.purpose === "password_reset"
+    ? "重置密码"
+    : payload.purpose === "login"
+      ? "登录账号"
+      : "注册账号";
   const minutes = Math.max(1, Math.ceil(payload.expiresInSeconds / 60));
   return `
     <div style="font-family:Arial,'Microsoft YaHei',sans-serif;line-height:1.7;color:#111827">

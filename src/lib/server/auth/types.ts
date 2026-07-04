@@ -29,7 +29,7 @@ export type AuthErrorCode =
   | "AUTH_CSRF_REQUIRED";
 
 export type AuthVerificationChannel = "email" | "phone";
-export type AuthVerificationPurpose = "register" | "password_reset";
+export type AuthVerificationPurpose = "register" | "password_reset" | "login";
 
 export type AuthUser = {
   local_user_id: string;

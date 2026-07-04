@@ -563,6 +563,43 @@
     color: rgba(255, 229, 248, 0.96);
   }
 
+  .auth-field__header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+  }
+
+  .auth-field__header > span {
+    min-width: 0;
+  }
+
+  .auth-inline-switch {
+    flex: 0 0 auto;
+    border: 0;
+    background: transparent;
+    color: rgba(255, 89, 170, 0.92);
+    cursor: pointer;
+    font-size: 12px;
+    font-weight: 700;
+    line-height: 1.2;
+    padding: 0;
+    text-decoration: none;
+    transition:
+      color var(--motion-fast),
+      transform var(--motion-fast);
+  }
+
+  .auth-inline-switch:hover:not(:disabled) {
+    color: #ff9bcc;
+    transform: translateY(-1px);
+  }
+
+  .auth-inline-switch:disabled {
+    cursor: not-allowed;
+    opacity: 0.52;
+  }
+
   .auth-input {
     position: relative;
     display: flex;
@@ -823,6 +860,7 @@
 
   .auth-password__toggle:focus-visible,
   .auth-code-send:focus-visible,
+  .auth-inline-switch:focus-visible,
   .auth-login-options button:focus-visible,
   .auth-submit:focus-visible,
   .auth-switch a:focus-visible {

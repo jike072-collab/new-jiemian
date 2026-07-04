@@ -7,7 +7,7 @@ import { hashPassword, validatePasswordStrength, verifyPassword } from "../passw
 import { InMemoryRateLimiter } from "../rate-limit";
 import { createMemoryAuthRepository, type AuthRepository } from "../repository";
 import { AuthService } from "../service";
-import { AUTH_SESSION_TTL_SECONDS, type AuthUser } from "../types";
+import { AUTH_SESSION_TTL_SECONDS, type AuthUser, type AuthVerificationPurpose } from "../types";
 
 function activeMapping(localUserId: string): NewApiUserSyncResult {
   const now = new Date().toISOString();
@@ -61,7 +61,7 @@ function service(overrides: {
 } = {}) {
   const repository = overrides.repository || createMemoryAuthRepository();
   const mappingRepository = createMemoryNewApiUserMappingRepository();
-  const sentCodes: Array<{ destination: string; purpose: "register" | "password_reset"; code: string }> = [];
+  const sentCodes: Array<{ destination: string; purpose: AuthVerificationPurpose; code: string }> = [];
   return {
     repository,
     mappingRepository,
@@ -318,6 +318,30 @@ test("logs in with email or username and rotates any existing session", async ()
   assert.equal(oldSession.ok, false);
   if (oldSession.ok) return;
   assert.equal(oldSession.uiState, "session_expired");
+});
+
+test("logs in with an email verification code", async () => {
+  const harness = service();
+  await registerActiveAccount(harness);
+  const requested = await harness.service.requestVerificationCode({
+    identifier: "customer@example.com",
+    purpose: "login",
+  }, { ip: "127.0.0.1", userAgent: "test" });
+  assert.equal(requested.ok, true);
+  assert.equal(harness.sentCodes.at(-1)?.purpose, "login");
+
+  const login = await harness.service.login({
+    identifier: "customer@example.com",
+    verificationCode: harness.sentCodes.at(-1)?.code || "",
+    loginMethod: "verification_code",
+    rememberMe: true,
+  });
+
+  assert.equal(login.ok, true);
+  if (!login.ok) return;
+  assert.equal(login.uiState, "success");
+  assert(login.session?.token);
+  assert.equal(login.session?.cookieMaxAgeSeconds, AUTH_SESSION_TTL_SECONDS);
 });
 
 test("remember-me login keeps the session cookie for the full session TTL", async () => {

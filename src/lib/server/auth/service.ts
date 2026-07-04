@@ -51,7 +51,9 @@ export type RegisterInput = {
 
 export type LoginInput = {
   identifier: string;
-  password: string;
+  password?: string;
+  verificationCode?: string;
+  loginMethod?: "password" | "verification_code";
   rememberMe?: boolean;
   existingSessionToken?: string | null;
   redirectTo?: string;
@@ -185,7 +187,7 @@ export class AuthService {
 
   async requestVerificationCode(input: VerificationCodeInput, context: AuthRequestContext = {}): Promise<AuthActionResult> {
     const purpose = input.purpose;
-    if (purpose !== "register" && purpose !== "password_reset") {
+    if (purpose !== "register" && purpose !== "password_reset" && purpose !== "login") {
       return failure({
         status: 400,
         code: "AUTH_VALIDATION_ERROR",
@@ -217,6 +219,15 @@ export class AuthService {
     }
     if (purpose === "password_reset" && !existingUser) {
       await this.audit("auth.password_reset.missing_user", null, context, { destination: destinationHash });
+      return {
+        ok: true,
+        status: 200,
+        uiState: "success",
+        message: "If the account exists, a verification code will be sent.",
+      };
+    }
+    if (purpose === "login" && !existingUser) {
+      await this.audit("auth.login_code.missing_user", null, context, { destination: destinationHash });
       return {
         ok: true,
         status: 200,
@@ -403,7 +414,36 @@ export class AuthService {
   async login(input: LoginInput, context: AuthRequestContext = {}): Promise<AuthResult> {
     const identifier = normalizeIdentifier(input.identifier || "");
     const redirectTo = safeRedirectPath(input.redirectTo);
+    const loginMethod = input.loginMethod === "verification_code" ? "verification_code" : "password";
     const user = await this.repository.getUserByIdentifier(identifier);
+
+    if (loginMethod === "verification_code") {
+      if (!isValidEmail(identifier)) {
+        return failure({
+          status: 400,
+          code: "AUTH_VALIDATION_ERROR",
+          uiState: "validation_error",
+          message: "Login input is invalid.",
+        });
+      }
+      if (!user) {
+        await this.audit("auth.login.failed", null, context, { reason: "missing_user_code", identifier: sha256(identifier) });
+        return failure({
+          status: 401,
+          code: "AUTH_INVALID_CREDENTIALS",
+          uiState: "invalid_credentials",
+          message: genericInvalidCredentials,
+        });
+      }
+      const verification = await this.consumeVerificationCode({
+        destination: identifier,
+        purpose: "login",
+        code: input.verificationCode || "",
+      });
+      if (!verification.ok) return verification;
+      return this.completeLogin(user, input, context, redirectTo);
+    }
+
     const passwordOk = await verifyPassword(input.password || "", user?.password_hash);
     if (!user || !passwordOk) {
       await this.audit("auth.login.failed", user?.local_user_id || null, context, { reason: "invalid_credentials" });
@@ -437,6 +477,15 @@ export class AuthService {
       });
     }
 
+    return this.completeLogin(user, input, context, redirectTo);
+  }
+
+  private async completeLogin(
+    user: AuthUser,
+    input: Pick<LoginInput, "existingSessionToken" | "rememberMe">,
+    context: AuthRequestContext,
+    redirectTo: string,
+  ): Promise<AuthResult> {
     if (user.status === "disabled") {
       await this.audit("auth.login.blocked", user.local_user_id, context, { reason: "disabled" });
       return failure({

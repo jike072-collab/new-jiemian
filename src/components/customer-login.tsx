@@ -16,6 +16,7 @@ const AuthShaderBackground = dynamic(() => import("@/components/auth-shader-back
 });
 
 type AuthMode = "login" | "register" | "reset";
+type LoginMethod = "password" | "verification_code";
 
 type SessionProbe = {
   ok: true;
@@ -108,6 +109,7 @@ export function CustomerLogin({ initialMode = "login" }: CustomerLoginProps) {
   const [confirmPassword, setConfirmPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
+  const [loginMethod, setLoginMethod] = useState<LoginMethod>("password");
   const [rememberMe, setRememberMe] = useState(true);
   const [sendingCode, setSendingCode] = useState(false);
   const [codeCooldown, setCodeCooldown] = useState(0);
@@ -119,10 +121,13 @@ export function CustomerLogin({ initialMode = "login" }: CustomerLoginProps) {
   const isLogin = mode === "login";
   const isRegister = mode === "register";
   const isReset = mode === "reset";
-  const needsVerificationCode = isRegister || isReset;
+  const isCodeLogin = isLogin && loginMethod === "verification_code";
+  const needsVerificationCode = isRegister || isReset || isCodeLogin;
+  const needsPassword = !isCodeLogin;
+  const needsPasswordPolicy = isRegister || isReset;
   const rules = passwordRules(password);
   const passwordMeetsRules = rules.every((rule) => rule.passed);
-  const confirmMismatch = needsVerificationCode && confirmPassword.length > 0 && password !== confirmPassword;
+  const confirmMismatch = needsPasswordPolicy && confirmPassword.length > 0 && password !== confirmPassword;
   const positiveMessage = message === "验证码已发送，请查收" || message === "密码已重置，请使用新密码登录";
 
   useEffect(() => {
@@ -154,6 +159,7 @@ export function CustomerLogin({ initialMode = "login" }: CustomerLoginProps) {
   useEffect(() => {
     function handlePopState() {
       setMode(window.location.pathname === "/register" ? "register" : "login");
+      setLoginMethod("password");
       setMessage("");
       setSuccess(false);
       setVerificationCode("");
@@ -170,6 +176,7 @@ export function CustomerLogin({ initialMode = "login" }: CustomerLoginProps) {
     setSuccess(false);
     setVerificationCode("");
     setConfirmPassword("");
+    if (nextMode !== "login") setLoginMethod("password");
 
     const nextPath = nextMode === "register" ? "/register" : "/login";
     if (window.location.pathname !== nextPath) {
@@ -179,7 +186,10 @@ export function CustomerLogin({ initialMode = "login" }: CustomerLoginProps) {
 
   function validateForm() {
     const trimmedIdentifier = identifier.trim();
-    if (!trimmedIdentifier || !password) {
+    if (!trimmedIdentifier) {
+      return isCodeLogin ? "请填写邮箱和验证码" : isLogin ? "请填写账号和密码" : "请填写邮箱、验证码和密码";
+    }
+    if (needsPassword && !password) {
       return isLogin ? "请填写账号和密码" : "请填写邮箱、验证码和密码";
     }
     if (needsVerificationCode && !isValidEmail(trimmedIdentifier)) {
@@ -188,10 +198,10 @@ export function CustomerLogin({ initialMode = "login" }: CustomerLoginProps) {
     if (needsVerificationCode && !/^\d{6}$/.test(verificationCode.trim())) {
       return "请填写 6 位验证码";
     }
-    if (needsVerificationCode && !passwordMeetsRules) {
+    if (needsPasswordPolicy && !passwordMeetsRules) {
       return "密码需要包含大小写字母和数字";
     }
-    if (needsVerificationCode && password !== confirmPassword) {
+    if (needsPasswordPolicy && password !== confirmPassword) {
       return "两次输入的密码不一致";
     }
     return "";
@@ -212,7 +222,7 @@ export function CustomerLogin({ initialMode = "login" }: CustomerLoginProps) {
         method: "POST",
         body: JSON.stringify({
           identifier: trimmedIdentifier,
-          purpose: isReset ? "password_reset" : "register",
+          purpose: isReset ? "password_reset" : isCodeLogin ? "login" : "register",
         }),
       });
       setCodeCooldown(60);
@@ -241,7 +251,9 @@ export function CustomerLogin({ initialMode = "login" }: CustomerLoginProps) {
           method: "POST",
           body: JSON.stringify({
             identifier: identifier.trim(),
-            password,
+            password: isCodeLogin ? undefined : password,
+            verificationCode: isCodeLogin ? verificationCode.trim() : undefined,
+            loginMethod: isCodeLogin ? "verification_code" : "password",
             rememberMe,
             redirectTo: "/",
           }),
@@ -282,7 +294,8 @@ export function CustomerLogin({ initialMode = "login" }: CustomerLoginProps) {
         router.refresh();
       }, motionTokens.duration.slow);
     } catch (error) {
-      setMessage(friendlyAuthError(error));
+      const text = friendlyAuthError(error);
+      setMessage(isCodeLogin && text === "账号或密码不正确" ? "邮箱或验证码不正确" : text);
     } finally {
       setLoading(false);
     }
@@ -372,24 +385,40 @@ export function CustomerLogin({ initialMode = "login" }: CustomerLoginProps) {
               </div>
 
               <label className="auth-field">
-                <span>{isLogin ? "邮箱或账号" : "邮箱"}</span>
+                <span>{isCodeLogin ? "邮箱" : isLogin ? "邮箱或账号" : "邮箱"}</span>
                 <span className="auth-input">
                   <Mail className="size-5" aria-hidden="true" />
                   <input
                     type="text"
                     value={identifier}
                     onChange={(event) => setIdentifier(event.target.value)}
-                    autoComplete={isLogin ? "username" : "email"}
+                    autoComplete={isLogin && !isCodeLogin ? "username" : "email"}
                     disabled={disabled}
                     aria-invalid={Boolean(message && !identifier.trim())}
-                    placeholder={isLogin ? "请输入邮箱或账号" : "请输入邮箱"}
+                    placeholder={isCodeLogin ? "请输入邮箱" : isLogin ? "请输入邮箱或账号" : "请输入邮箱"}
                   />
                 </span>
               </label>
 
               {needsVerificationCode ? (
-                <label className="auth-field">
-                  <span>验证码</span>
+                <div className="auth-field">
+                  <span className="auth-field__header" id="auth-code-label">
+                    <span>验证码</span>
+                    {isCodeLogin ? (
+                      <button
+                        type="button"
+                        className="auth-inline-switch"
+                        onClick={() => {
+                          setLoginMethod("password");
+                          setMessage("");
+                          setVerificationCode("");
+                        }}
+                        disabled={disabled}
+                      >
+                        密码登录
+                      </button>
+                    ) : null}
+                  </span>
                   <span className="auth-code-row">
                     <span className="auth-input auth-code-input">
                       <input
@@ -400,6 +429,7 @@ export function CustomerLogin({ initialMode = "login" }: CustomerLoginProps) {
                         value={verificationCode}
                         onChange={(event) => setVerificationCode(event.target.value.replace(/\D/g, "").slice(0, 6))}
                         autoComplete="one-time-code"
+                        aria-labelledby="auth-code-label"
                         disabled={disabled}
                         aria-invalid={Boolean(message && !/^\d{6}$/.test(verificationCode.trim()))}
                         placeholder="6 位验证码"
@@ -414,34 +444,53 @@ export function CustomerLogin({ initialMode = "login" }: CustomerLoginProps) {
                       {sendingCode ? "发送中" : codeCooldown > 0 ? `${codeCooldown}s` : "获取验证码"}
                     </button>
                   </span>
-                </label>
+                </div>
               ) : null}
 
-              <label className="auth-field">
-                <span>{isReset ? "新密码" : "密码"}</span>
-                <span className="auth-input auth-password">
-                  <LockKeyhole className="size-5" aria-hidden="true" />
-                  <input
-                    type={showPassword ? "text" : "password"}
-                    value={password}
-                    onChange={(event) => setPassword(event.target.value)}
-                    autoComplete={isLogin ? "current-password" : "new-password"}
-                    disabled={disabled}
-                    aria-invalid={Boolean((message && !password) || (needsVerificationCode && password.length > 0 && !passwordMeetsRules))}
-                    placeholder={isReset ? "请输入新密码" : "请输入密码"}
-                  />
-                  <button
-                    type="button"
-                    className="auth-password__toggle"
-                    onMouseDown={(event) => event.preventDefault()}
-                    onClick={() => setShowPassword((value) => !value)}
-                    disabled={disabled}
-                    aria-label={showPassword ? "隐藏密码" : "显示密码"}
-                  >
-                    {showPassword ? <EyeOff className="size-4" /> : <Eye className="size-4" />}
-                  </button>
-                </span>
-              </label>
+              {needsPassword ? (
+                <div className="auth-field">
+                  <span className="auth-field__header" id="auth-password-label">
+                    <span>{isReset ? "新密码" : "密码"}</span>
+                    {isLogin ? (
+                      <button
+                        type="button"
+                        className="auth-inline-switch"
+                        onClick={() => {
+                          setLoginMethod("verification_code");
+                          setMessage("");
+                          setVerificationCode("");
+                        }}
+                        disabled={disabled}
+                      >
+                        验证码登录
+                      </button>
+                    ) : null}
+                  </span>
+                  <span className="auth-input auth-password">
+                    <LockKeyhole className="size-5" aria-hidden="true" />
+                    <input
+                      type={showPassword ? "text" : "password"}
+                      value={password}
+                      onChange={(event) => setPassword(event.target.value)}
+                      autoComplete={isLogin ? "current-password" : "new-password"}
+                      disabled={disabled}
+                      aria-labelledby="auth-password-label"
+                      aria-invalid={Boolean((message && !password) || (needsPasswordPolicy && password.length > 0 && !passwordMeetsRules))}
+                      placeholder={isReset ? "请输入新密码" : "请输入密码"}
+                    />
+                    <button
+                      type="button"
+                      className="auth-password__toggle"
+                      onMouseDown={(event) => event.preventDefault()}
+                      onClick={() => setShowPassword((value) => !value)}
+                      disabled={disabled}
+                      aria-label={showPassword ? "隐藏密码" : "显示密码"}
+                    >
+                      {showPassword ? <EyeOff className="size-4" /> : <Eye className="size-4" />}
+                    </button>
+                  </span>
+                </div>
+              ) : null}
 
               {isLogin ? (
                 <div className="auth-login-options">
@@ -460,7 +509,7 @@ export function CustomerLogin({ initialMode = "login" }: CustomerLoginProps) {
                 </div>
               ) : null}
 
-              {needsVerificationCode ? (
+              {needsPasswordPolicy ? (
                 <ul className="auth-password-rules" aria-label="密码要求">
                   {rules.map((rule) => (
                     <li key={rule.key} data-passed={rule.passed}>

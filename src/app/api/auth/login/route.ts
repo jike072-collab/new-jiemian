@@ -19,6 +19,8 @@ export async function POST(request: NextRequest) {
   const result = await getAuthService().login({
     identifier: String(body.identifier || body.email || body.username || ""),
     password: String(body.password || ""),
+    verificationCode: String(body.verificationCode || ""),
+    loginMethod: body.loginMethod === "verification_code" ? "verification_code" : "password",
     rememberMe: Boolean(body.rememberMe),
     existingSessionToken: sessionTokenFromRequest(request),
     redirectTo: redirectFromBody(body),

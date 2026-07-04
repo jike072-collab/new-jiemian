@@ -29,6 +29,7 @@ export type {
   AuthUser,
   AuthUserRole,
   AuthUserStatus,
+  AuthVerificationPurpose,
   PublicAuthUser,
 } from "./types";
 export type { AuthPersistenceMode, AuthPersistenceRepositories } from "./persistence";
