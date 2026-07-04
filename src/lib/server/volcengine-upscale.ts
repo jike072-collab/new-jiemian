@@ -688,9 +688,24 @@ export async function upscaleImage(
     const output = parseJsonString(processed.Result?.Output);
     const objectKey = firstString(output.ObjectKey, output.objectKey, output.URI, output.Uri);
     if (!objectKey) throw new GenerationDiagnosticError({ code: "PROVIDER_BAD_RESPONSE", providerId: provider.id, model: provider.model });
-    const outputUrl = await imageResourceUrl(objectKey, config).catch(() => "") || imagexPublicResourceUrl(objectKey, config);
-    if (!outputUrl) throw new GenerationDiagnosticError({ code: "RESULT_ASSET_MISSING", providerId: provider.id, model: provider.model });
-    const stored = await storeRemoteUrl(outputUrl, "image-upscale", "image/png");
+    const outputUrls = uniqueStrings([
+      await imageResourceUrl(objectKey, config).catch(() => ""),
+      imagexPublicResourceUrl(objectKey, config),
+    ]);
+    let outputUrl = "";
+    let stored: Awaited<ReturnType<typeof storeRemoteUrl>> | null = null;
+    let lastStoreError: unknown = null;
+    for (const candidateUrl of outputUrls) {
+      try {
+        stored = await storeRemoteUrl(candidateUrl, "image-upscale", "image/png");
+        outputUrl = candidateUrl;
+        break;
+      } catch (error) {
+        lastStoreError = error;
+      }
+    }
+    if (!stored && lastStoreError) throw lastStoreError;
+    if (!stored || !outputUrl) throw new GenerationDiagnosticError({ code: "RESULT_ASSET_MISSING", providerId: provider.id, model: provider.model });
     const sourceDimensions = readImageDimensions(file.bytes);
     const item = await addLibraryItem({
       ownerLocalUserId: ownerLocalUserId || null,
