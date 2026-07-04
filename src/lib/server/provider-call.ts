@@ -71,19 +71,23 @@ function parseProviderOutput(payload: unknown): ProviderOutput {
   const first = asRecord(data[0] || root.video || root.result || root.output || payload);
   const firstMetadata = asRecord(first.metadata);
   const url = firstString(
-    first.url,
-    first.image_url,
     first.video_url,
-    first.output_url,
     first.download_url,
     first.result_url,
+    first.output_url,
+    first.image_url,
+    first.url,
+    firstMetadata.video_url,
+    firstMetadata.download_url,
+    firstMetadata.result_url,
+    firstMetadata.output_url,
     firstMetadata.url,
-    root.url,
-    root.image_url,
     root.video_url,
-    root.output_url,
     root.download_url,
     root.result_url,
+    root.output_url,
+    root.image_url,
+    root.url,
     metadata.url,
   );
   const base64 = firstString(

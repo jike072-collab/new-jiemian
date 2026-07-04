@@ -27,6 +27,16 @@ test("small valid provider JSON passes", async () => {
   assert.equal(output.url, "https://cdn.example.test/result.png");
 });
 
+test("provider output prefers explicit video result URLs over generic status URLs", async () => {
+  const response = jsonResponse({
+    url: "https://api.example.test/generated/status-page",
+    video_url: "https://video.example.test/result.mp4",
+  });
+  const payload = await providerCallInternalsForTests.readProviderJson(response, provider);
+  const output = providerCallInternalsForTests.parseProviderOutput(payload);
+  assert.equal(output.url, "https://video.example.test/result.mp4");
+});
+
 test("legal image base64 JSON above 2MiB and within 16MiB is accepted", async () => {
   const base64 = Buffer.alloc(Math.floor(2.5 * 1024 * 1024), 0xaa).toString("base64");
   const response = jsonResponse({
