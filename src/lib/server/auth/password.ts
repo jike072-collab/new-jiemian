@@ -30,7 +30,6 @@ function deriveKey(password: string, salt: Buffer, keyLength: number, options: {
 
 export function validatePasswordStrength(password: string) {
   const errors: string[] = [];
-  if (password.length < 10) errors.push("PASSWORD_TOO_SHORT");
   if (password.length > 128) errors.push("PASSWORD_TOO_LONG");
   if (!/[a-z]/.test(password)) errors.push("PASSWORD_REQUIRES_LOWERCASE");
   if (!/[A-Z]/.test(password)) errors.push("PASSWORD_REQUIRES_UPPERCASE");

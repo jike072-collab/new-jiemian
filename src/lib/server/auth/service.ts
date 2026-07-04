@@ -14,12 +14,10 @@ import { createAuthPersistenceRepositories } from "./persistence";
 import {
   isValidEmail,
   isValidUsername,
-  normalizeAuthIdentifier,
   normalizeEmail,
   normalizeIdentifier,
   normalizeUsername,
   nowIso,
-  placeholderEmailFromPhone,
   publicSafeString,
   safeRedirectPath,
   sha256,
@@ -36,7 +34,6 @@ import {
   type AuthSession,
   type AuthSessionPayload,
   type AuthSuccess,
-  type AuthVerificationChannel,
   type AuthVerificationPurpose,
   type AuthUser,
   type PublicAuthUser,
@@ -137,10 +134,6 @@ function verificationCodeHash(input: {
   return hmacSha256(`auth-verification:${input.purpose}:${input.destination}:${input.code}`);
 }
 
-function phoneUsername(phone: string) {
-  return `u-${sha256(phone).slice(0, 20)}`;
-}
-
 function contextHash(value?: string) {
   return value ? sha256(value) : null;
 }
@@ -200,8 +193,8 @@ export class AuthService {
       });
     }
 
-    const identifier = normalizeAuthIdentifier(input.identifier || "");
-    if (!identifier) {
+    const destination = normalizeEmail(input.identifier || "");
+    if (!isValidEmail(destination)) {
       return failure({
         status: 400,
         code: "AUTH_VALIDATION_ERROR",
@@ -210,8 +203,8 @@ export class AuthService {
       });
     }
 
-    const destinationHash = sha256(identifier.value);
-    const existingUser = await this.repository.getUserByIdentifier(identifier.value);
+    const destinationHash = sha256(destination);
+    const existingUser = await this.repository.getUserByIdentifier(destination);
     if (purpose === "register" && existingUser) {
       await this.audit("auth.verification.duplicate", existingUser.local_user_id, context, { destination: destinationHash });
       return failure({
@@ -248,8 +241,8 @@ export class AuthService {
     const code = newVerificationCode();
     try {
       await this.verificationSender({
-        destination: identifier.value,
-        channel: identifier.kind as AuthVerificationChannel,
+        destination,
+        channel: "email",
         purpose,
         code,
         expiresInSeconds: VERIFICATION_CODE_TTL_SECONDS,
@@ -270,10 +263,10 @@ export class AuthService {
     const now = this.now();
     await this.repository.createVerificationCode({
       verification_id: randomUUID(),
-      destination: identifier.value,
-      channel: identifier.kind,
+      destination,
+      channel: "email",
       purpose,
-      code_hash: verificationCodeHash({ purpose, destination: identifier.value, code }),
+      code_hash: verificationCodeHash({ purpose, destination, code }),
       expires_at: nowIso(new Date(now.getTime() + VERIFICATION_CODE_TTL_SECONDS * 1000)),
       consumed_at: null,
       attempt_count: 0,
@@ -294,7 +287,7 @@ export class AuthService {
   }
 
   async register(input: RegisterInput, context: AuthRequestContext = {}): Promise<AuthResult> {
-    const account = normalizeAuthIdentifier(input.identifier || input.email || "");
+    const email = normalizeEmail(input.identifier || input.email || "");
     const redirectTo = safeRedirectPath(input.redirectTo);
     const limitKey = ipRateLimitKey("register", context);
     const rate = this.registerLimiter.consume(limitKey, this.now());
@@ -308,7 +301,7 @@ export class AuthService {
       });
     }
 
-    if (!account) {
+    if (!isValidEmail(email)) {
       return failure({
         status: 400,
         code: "AUTH_VALIDATION_ERROR",
@@ -317,17 +310,10 @@ export class AuthService {
       });
     }
 
-    const email = account.kind === "email" ? normalizeEmail(account.value) : placeholderEmailFromPhone(account.value);
-    const phone = account.kind === "phone" ? account.value : null;
     const normalizedUsername = input.username
       ? normalizeUsername(input.username)
-      : account.kind === "email"
-        ? `${usernameFromEmail(email)}-${sha256(email).slice(0, 6)}`.slice(0, 32)
-        : phoneUsername(account.value);
-    const displayName = publicSafeString(
-      input.displayName || (account.kind === "phone" ? `用户${account.value.slice(-4)}` : normalizedUsername),
-      80,
-    );
+      : `${usernameFromEmail(email)}-${sha256(email).slice(0, 6)}`.slice(0, 32);
+    const displayName = publicSafeString(input.displayName || normalizedUsername, 80);
 
     const passwordErrors = validatePasswordStrength(input.password || "");
     if (!isValidEmail(email) || !isValidUsername(normalizedUsername) || passwordErrors.length > 0) {
@@ -340,11 +326,10 @@ export class AuthService {
     }
 
     if (
-      await this.repository.getUserByIdentifier(account.value)
-      || await this.repository.getUserByIdentifier(email)
+      await this.repository.getUserByIdentifier(email)
       || await this.repository.getUserByIdentifier(normalizedUsername)
     ) {
-      await this.audit("auth.register.duplicate", null, context, { identifier: sha256(account.value) });
+      await this.audit("auth.register.duplicate", null, context, { identifier: sha256(email) });
       return failure({
         status: 409,
         code: "AUTH_DUPLICATE_ACCOUNT",
@@ -354,7 +339,7 @@ export class AuthService {
     }
 
     const verification = await this.consumeVerificationCode({
-      destination: account.value,
+      destination: email,
       purpose: "register",
       code: input.verificationCode || "",
     });
@@ -366,7 +351,7 @@ export class AuthService {
       user = await this.repository.createUser({
         localUserId,
         email,
-        phone,
+        phone: null,
         username: normalizedUsername,
         displayName,
         passwordHash: await hashPassword(input.password),
@@ -493,9 +478,9 @@ export class AuthService {
   }
 
   async resetPassword(input: PasswordResetInput, context: AuthRequestContext = {}): Promise<AuthActionResult> {
-    const account = normalizeAuthIdentifier(input.identifier || "");
+    const account = normalizeEmail(input.identifier || "");
     const passwordErrors = validatePasswordStrength(input.password || "");
-    if (!account || passwordErrors.length > 0) {
+    if (!isValidEmail(account) || passwordErrors.length > 0) {
       return failure({
         status: 400,
         code: "AUTH_VALIDATION_ERROR",
@@ -504,9 +489,9 @@ export class AuthService {
       });
     }
 
-    const user = await this.repository.getUserByIdentifier(account.value);
+    const user = await this.repository.getUserByIdentifier(account);
     if (!user) {
-      await this.audit("auth.password_reset.failed", null, context, { reason: "missing_user", identifier: sha256(account.value) });
+      await this.audit("auth.password_reset.failed", null, context, { reason: "missing_user", identifier: sha256(account) });
       return failure({
         status: 400,
         code: "AUTH_VERIFICATION_CODE_INVALID",
@@ -516,7 +501,7 @@ export class AuthService {
     }
 
     const verification = await this.consumeVerificationCode({
-      destination: account.value,
+      destination: account,
       purpose: "password_reset",
       code: input.verificationCode || "",
     });

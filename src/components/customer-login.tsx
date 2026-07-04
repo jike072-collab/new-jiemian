@@ -78,7 +78,7 @@ function friendlyAuthError(error: unknown) {
     return "请求失败，请稍后重试";
   }
   if (error.code === "AUTH_INVALID_CREDENTIALS") return "账号或密码不正确";
-  if (error.code === "AUTH_DUPLICATE_ACCOUNT") return "该手机号或邮箱已注册";
+  if (error.code === "AUTH_DUPLICATE_ACCOUNT") return "该邮箱已注册";
   if (error.code === "AUTH_VERIFICATION_CODE_INVALID") return "验证码不正确或已过期";
   if (error.code === "AUTH_VERIFICATION_SEND_UNAVAILABLE") return "验证码发送服务暂不可用";
   if (error.code === "AUTH_RATE_LIMITED") return "操作太频繁，请稍后再试";
@@ -91,26 +91,8 @@ function isValidEmail(value: string) {
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value);
 }
 
-function normalizePhone(value: string) {
-  const compact = value.trim().replace(/[\s().-]+/g, "");
-  if (compact.startsWith("+86")) return compact.slice(3);
-  if (compact.startsWith("86") && compact.length === 13) return compact.slice(2);
-  return compact;
-}
-
-function isValidPhone(value: string) {
-  const phone = normalizePhone(value);
-  return /^1[3-9]\d{9}$/.test(phone) || /^\+\d{8,15}$/.test(phone);
-}
-
-function isValidIdentifier(value: string) {
-  const trimmed = value.trim();
-  return trimmed.includes("@") ? isValidEmail(trimmed) : isValidPhone(trimmed);
-}
-
 function passwordRules(password: string) {
   return [
-    { key: "length", label: "至少 10 位", passed: password.length >= 10 && password.length <= 128 },
     { key: "lower", label: "包含小写字母", passed: /[a-z]/.test(password) },
     { key: "upper", label: "包含大写字母", passed: /[A-Z]/.test(password) },
     { key: "digit", label: "包含数字", passed: /[0-9]/.test(password) },
@@ -198,16 +180,16 @@ export function CustomerLogin({ initialMode = "login" }: CustomerLoginProps) {
   function validateForm() {
     const trimmedIdentifier = identifier.trim();
     if (!trimmedIdentifier || !password) {
-      return isLogin ? "请填写账号和密码" : "请填写手机号或邮箱、验证码和密码";
+      return isLogin ? "请填写账号和密码" : "请填写邮箱、验证码和密码";
     }
-    if (needsVerificationCode && !isValidIdentifier(trimmedIdentifier)) {
-      return "请填写有效手机号或邮箱";
+    if (needsVerificationCode && !isValidEmail(trimmedIdentifier)) {
+      return "请填写有效邮箱";
     }
     if (needsVerificationCode && !/^\d{6}$/.test(verificationCode.trim())) {
       return "请填写 6 位验证码";
     }
     if (needsVerificationCode && !passwordMeetsRules) {
-      return "密码至少 10 位，并包含大小写字母和数字";
+      return "密码需要包含大小写字母和数字";
     }
     if (needsVerificationCode && password !== confirmPassword) {
       return "两次输入的密码不一致";
@@ -218,8 +200,8 @@ export function CustomerLogin({ initialMode = "login" }: CustomerLoginProps) {
   async function sendVerificationCode() {
     if (disabled || codeCooldown > 0) return;
     const trimmedIdentifier = identifier.trim();
-    if (!isValidIdentifier(trimmedIdentifier)) {
-      setMessage("请先填写有效手机号或邮箱");
+    if (!isValidEmail(trimmedIdentifier)) {
+      setMessage("请先填写有效邮箱");
       return;
     }
 
@@ -385,12 +367,12 @@ export function CustomerLogin({ initialMode = "login" }: CustomerLoginProps) {
             <div key={mode} className="auth-form-content">
               <div className="auth-card__head">
                 <h2>{isLogin ? "欢迎回来" : isReset ? "重置密码" : "创建账号"}</h2>
-                <p>{isLogin ? "登录后继续你的创作之旅" : isReset ? "用验证码设置新密码" : "开始你的创作之旅"}</p>
+                <p>{isLogin ? "登录后继续你的创作之旅" : isReset ? "验证邮箱后设置新密码" : "开始你的创作之旅"}</p>
                 <span aria-hidden="true" />
               </div>
 
               <label className="auth-field">
-                <span>{isLogin ? "手机号、邮箱或账号" : "手机号或邮箱"}</span>
+                <span>{isLogin ? "邮箱或账号" : "邮箱"}</span>
                 <span className="auth-input">
                   <Mail className="size-5" aria-hidden="true" />
                   <input
@@ -400,7 +382,7 @@ export function CustomerLogin({ initialMode = "login" }: CustomerLoginProps) {
                     autoComplete={isLogin ? "username" : "email"}
                     disabled={disabled}
                     aria-invalid={Boolean(message && !identifier.trim())}
-                    placeholder={isLogin ? "请输入手机号、邮箱或账号" : "请输入手机号或邮箱"}
+                    placeholder={isLogin ? "请输入邮箱或账号" : "请输入邮箱"}
                   />
                 </span>
               </label>
@@ -436,7 +418,7 @@ export function CustomerLogin({ initialMode = "login" }: CustomerLoginProps) {
               ) : null}
 
               <label className="auth-field">
-                <span>密码</span>
+                <span>{isReset ? "新密码" : "密码"}</span>
                 <span className="auth-input auth-password">
                   <LockKeyhole className="size-5" aria-hidden="true" />
                   <input
@@ -446,7 +428,7 @@ export function CustomerLogin({ initialMode = "login" }: CustomerLoginProps) {
                     autoComplete={isLogin ? "current-password" : "new-password"}
                     disabled={disabled}
                     aria-invalid={Boolean((message && !password) || (needsVerificationCode && password.length > 0 && !passwordMeetsRules))}
-                    placeholder="请输入密码"
+                    placeholder={isReset ? "请输入新密码" : "请输入密码"}
                   />
                   <button
                     type="button"
@@ -491,7 +473,7 @@ export function CustomerLogin({ initialMode = "login" }: CustomerLoginProps) {
 
               {!isLogin ? (
                 <label className="auth-field">
-                  <span>确认密码</span>
+                  <span>{isReset ? "确认新密码" : "确认密码"}</span>
                   <span className="auth-input auth-password">
                     <LockKeyhole className="size-5" aria-hidden="true" />
                     <input
@@ -501,7 +483,7 @@ export function CustomerLogin({ initialMode = "login" }: CustomerLoginProps) {
                       autoComplete="new-password"
                       disabled={disabled}
                       aria-invalid={Boolean(confirmMismatch || (message && password !== confirmPassword))}
-                      placeholder="请再次输入密码"
+                      placeholder={isReset ? "请再次输入新密码" : "请再次输入密码"}
                     />
                     <button
                       type="button"

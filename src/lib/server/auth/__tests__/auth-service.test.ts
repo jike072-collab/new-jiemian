@@ -175,40 +175,31 @@ test("rejects duplicate registration without creating another account", async ()
   assert.equal(duplicate.uiState, "validation_error");
 });
 
-test("registers and logs in with a verified phone number", async () => {
+test("rejects phone-only registration until SMS verification is enabled", async () => {
   const harness = service();
   const requested = await harness.service.requestVerificationCode({
     identifier: "13800138000",
     purpose: "register",
   });
-  assert.equal(requested.ok, true);
+  assert.equal(requested.ok, false);
+  if (requested.ok) return;
+  assert.equal(requested.status, 400);
+  assert.equal(requested.uiState, "validation_error");
 
   const registered = await harness.service.register({
     identifier: "13800138000",
     password: "StrongPass123",
-    verificationCode: harness.sentCodes.at(-1)?.code || "",
+    verificationCode: "000000",
   });
-  assert.equal(registered.ok, true);
-  if (!registered.ok) return;
-  assert.equal(registered.user.phone, "13800138000");
-
-  const duplicateCode = await harness.service.requestVerificationCode({
-    identifier: "13800138000",
-    purpose: "register",
-  });
-  assert.equal(duplicateCode.ok, false);
-  if (duplicateCode.ok) return;
-  assert.equal(duplicateCode.code, "AUTH_DUPLICATE_ACCOUNT");
-
-  const login = await harness.service.login({
-    identifier: "13800138000",
-    password: "StrongPass123",
-  });
-  assert.equal(login.ok, true);
+  assert.equal(registered.ok, false);
+  if (registered.ok) return;
+  assert.equal(registered.status, 400);
+  assert.equal(registered.uiState, "validation_error");
 });
 
 test("rejects weak password and invalid input", async () => {
   assert(validatePasswordStrength("weak").length > 0);
+  assert.deepEqual(validatePasswordStrength("Aa1"), []);
   const result = await service().service.register({
     email: "not-an-email",
     username: "bad username",
