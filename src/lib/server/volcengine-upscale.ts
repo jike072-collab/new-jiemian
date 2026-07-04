@@ -1084,7 +1084,7 @@ async function vodPlayInfoUrl(vid: string, config: ReturnType<typeof videoConfig
     method: "GET",
     query: {
       Action: "GetPlayInfo",
-      Version: "2023-01-01",
+      Version: "2020-08-01",
       Vid: vid,
       FileType: "video",
       Format: "mp4",
@@ -1153,7 +1153,7 @@ export async function refreshVideoUpscaleJob(jobId: string, localUserId?: string
       }
     }
     if (!outputUrl) {
-      const message = "视频高清增强已完成，但缺少可下载结果地址。请配置 VOLCENGINE_VOD_OUTPUT_DOMAIN 或使用 VOD 播放地址接口。";
+      const message = "视频高清增强已完成，但火山 VOD 空间没有可用播放域名。请在 VOD 空间配置并启用播放域名，然后把该域名写入 VOLCENGINE_VOD_OUTPUT_DOMAIN。";
       await updateLibraryItem(job.libraryItemId, { status: "failed", error: message });
       const updated = await updateJob(job.id, { status: "failed", error: message }) || job;
       await settleUpscaleBilling({
