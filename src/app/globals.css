@@ -5769,6 +5769,87 @@
     padding: 12px;
   }
 
+  .recharge-payment-dialog {
+    position: fixed;
+    inset: 0;
+    z-index: var(--z-modal);
+    display: grid;
+    place-items: center;
+    padding: 24px;
+    animation: ui-fade-in var(--motion-fast) var(--ease-enter) both;
+  }
+
+  .recharge-payment-dialog__backdrop {
+    position: absolute;
+    inset: 0;
+    border: 0;
+    background:
+      radial-gradient(circle at 50% 42%, rgba(22, 119, 255, 0.14), transparent 30%),
+      rgba(4, 4, 6, 0.76);
+    backdrop-filter: blur(12px);
+  }
+
+  .recharge-payment-dialog__card {
+    position: relative;
+    z-index: 1;
+    display: grid;
+    width: min(390px, 100%);
+    gap: 14px;
+    border: 1px solid rgba(255, 255, 255, 0.11);
+    border-radius: 16px;
+    background: linear-gradient(180deg, rgba(22, 22, 28, 0.98), rgba(13, 13, 17, 0.98));
+    box-shadow: 0 24px 80px rgba(0, 0, 0, 0.5);
+    padding: 18px;
+    animation: ui-dialog-in var(--motion-layout) var(--ease-enter) both;
+  }
+
+  .recharge-payment-dialog__head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+  }
+
+  .recharge-payment-dialog__head span {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    color: #fff;
+    font-size: 16px;
+    font-weight: 760;
+  }
+
+  .recharge-payment-dialog__head svg {
+    color: #5aa2ff;
+  }
+
+  .recharge-payment-dialog__close {
+    display: inline-grid;
+    width: 34px;
+    height: 34px;
+    place-items: center;
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 9px;
+    background: rgba(255, 255, 255, 0.055);
+    color: rgba(255, 255, 255, 0.78);
+  }
+
+  .recharge-payment-dialog__close:hover {
+    border-color: rgba(255, 255, 255, 0.18);
+    color: #fff;
+  }
+
+  @media (max-width: 640px) {
+    .recharge-payment-dialog {
+      padding: 16px;
+    }
+
+    .recharge-payment-dialog__card {
+      border-radius: 14px;
+      padding: 16px;
+    }
+  }
+
   .recharge-payment-qr__image {
     display: grid;
     min-height: 168px;
@@ -5802,26 +5883,6 @@
     color: rgba(255, 255, 255, 0.5);
     font-size: 12px;
     line-height: 1.45;
-  }
-
-  .recharge-payment-qr__link {
-    display: inline-flex;
-    min-height: 32px;
-    align-items: center;
-    justify-content: center;
-    gap: 6px;
-    border: 1px solid rgba(255, 255, 255, 0.11);
-    border-radius: 8px;
-    background: rgba(255, 255, 255, 0.055);
-    color: rgba(255, 255, 255, 0.82);
-    font-size: 12.5px;
-    font-weight: 650;
-    text-decoration: none;
-  }
-
-  .recharge-payment-qr__link:hover {
-    border-color: rgba(255, 43, 136, 0.25);
-    color: #fff;
   }
 
   .recharge-confirm-button {

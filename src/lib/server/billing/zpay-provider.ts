@@ -248,7 +248,7 @@ export function createZpayPaymentAdapter(): PaymentAdapter {
         out_trade_no: input.orderId,
         notify_url: config.notifyUrl,
         return_url: config.returnUrl,
-        name: "奥皇AI积分充值",
+        name: "傲凰AI积分充值",
         money: minorUnitsToYuan(input.requestedAmount),
         clientip: input.clientIp || "127.0.0.1",
         device: input.userAgent?.toLowerCase().includes("mobile") ? "mobile" : "pc",

@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
-import { ArrowLeft, CalendarCheck, Check, Crown, CreditCard, ExternalLink, History, Sparkles, WalletCards } from "lucide-react";
+import { ArrowLeft, CalendarCheck, Check, Crown, CreditCard, ExternalLink, History, Sparkles, WalletCards, X } from "lucide-react";
 import { useRouter, useSearchParams } from "next/navigation";
 import dynamic from "next/dynamic";
 
@@ -144,6 +144,7 @@ type CreateBillingOrderResponse = {
 type PaymentDisplay = {
   qrImageUrl: string;
   paymentUrl: string;
+  gatewayLabel: string;
 };
 
 type AccountView = "center" | "recharge" | "usage";
@@ -175,23 +176,46 @@ type AccountRecord = {
   description: string;
 };
 
-const planOptions: PlanOption[] = [];
-
-const creditTopUpOptions: CreditTopUpOption[] = [
-  { amount: 1, credits: 10, label: "体验充值" },
-  { amount: 5, credits: 50 },
-  { amount: 10, credits: 100 },
-  { amount: 20, credits: 210 },
-  { amount: 30, credits: 320 },
-  { amount: 50, credits: 550, label: "推荐" },
-  { amount: 100, credits: 1150, label: "最划算" },
-  { amount: 200, credits: 2400, label: "超值" },
+const planOptions: PlanOption[] = [
+  {
+    id: "starter",
+    name: "基础套餐",
+    price: 1,
+    monthlyCredits: 100,
+    description: "低门槛体验",
+  },
+  {
+    id: "standard",
+    name: "标准套餐",
+    price: 10,
+    monthlyCredits: 1000,
+    description: "日常创作",
+    recommended: true,
+  },
+  {
+    id: "pro",
+    name: "进阶套餐",
+    price: 50,
+    monthlyCredits: 5500,
+    description: "高频生成",
+  },
 ];
 
-const CREDIT_TOP_UP_BASE_RATE = 10;
+const creditTopUpOptions: CreditTopUpOption[] = [
+  { amount: 1, credits: 100, label: "体验充值" },
+  { amount: 5, credits: 500 },
+  { amount: 10, credits: 1000 },
+  { amount: 20, credits: 2100 },
+  { amount: 30, credits: 3200 },
+  { amount: 50, credits: 5500, label: "推荐" },
+  { amount: 100, credits: 11500, label: "最划算" },
+  { amount: 200, credits: 24000, label: "超值" },
+];
+
+const CREDIT_TOP_UP_BASE_RATE = 100;
 const CUSTOM_RECHARGE_MIN_AMOUNT = 1;
-const PLAN_PERIOD_LABEL = "按月";
-const PLAN_PERIOD_UNIT_LABEL = "月";
+const PLAN_PERIOD_LABEL = "单次购买";
+const PLAN_PERIOD_UNIT_LABEL = "次";
 const CLIENT_IMAGE_SUBMISSION_LIMIT = 2;
 const CLIENT_VIDEO_SUBMISSION_LIMIT = 1;
 
@@ -2843,7 +2867,7 @@ function RechargeCenterWorkspace({
   const customAmountValue = Number(customAmount);
   const customAmountEntered = customAmount.trim() !== "";
   const customAmountValid = customAmountEntered && Number.isFinite(customAmountValue) && customAmountValue >= CUSTOM_RECHARGE_MIN_AMOUNT;
-  const customCredits = customAmountValid ? calculateCustomRechargeCredits(customAmountValue) : 0;
+  const customCredits = customAmountValid ? estimateRechargeCredits(selectedPaymentChannelConfig, customAmountValue) : 0;
   const customRechargeActive = activeTab === "credits" && customAmount.trim() !== "";
   const customAmountError = customAmountEntered && !customAmountValid
     ? `最低充值金额 ¥${CUSTOM_RECHARGE_MIN_AMOUNT}`
@@ -2852,9 +2876,10 @@ function RechargeCenterWorkspace({
   const customAmountErrorId = "custom-recharge-error";
   const pointsStatusLabel = quota ? `${formatQuotaUnits(quota.quota_units)} ✦` : "—";
   const planStatusLabel = getPlanStatusDisplay(planStatus).label;
+  const rechargeBaseCreditsPerYuan = estimateRechargeBaseCredits(selectedPaymentChannelConfig, 1);
   const creditSummaryLines = customRechargeActive
     ? createCustomCreditSummaryLines(customAmount, customAmountValid, customCredits)
-    : createFixedCreditSummaryLines(selectedCredit);
+    : createFixedCreditSummaryLines(selectedCredit, selectedPaymentChannelConfig);
   const creditSummaryReady = customRechargeActive ? customAmountValid : Boolean(selectedCredit);
   const creditPayableAmount = customRechargeActive && customAmountValid
     ? customAmount
@@ -2863,13 +2888,23 @@ function RechargeCenterWorkspace({
   const creditAmountAllowed = selectedPaymentChannelConfig
     ? paymentChannelAllowsAmount(selectedPaymentChannelConfig, creditPayableMinorAmount)
     : false;
-  const planSummaryLines = createPlanSummaryLines(selectedPlan);
+  const selectedPlanCredits = selectedPlan ? estimateRechargeCredits(selectedPaymentChannelConfig, selectedPlan.price, selectedPlan.monthlyCredits) : 0;
+  const planPayableMinorAmount = selectedPlan ? rechargeAmountToMinor(selectedPlan.price) : Number.NaN;
+  const planAmountAllowed = selectedPaymentChannelConfig
+    ? paymentChannelAllowsAmount(selectedPaymentChannelConfig, planPayableMinorAmount)
+    : false;
+  const planSummaryLines = createPlanSummaryLines(selectedPlan, selectedPlanCredits);
   const planSummaryReady = Boolean(selectedPlan);
   const planConfirmState = createRechargeConfirmState({
     mode: "plans",
     user,
     ready: planSummaryReady,
     selectedPlan,
+    amount: selectedPlan?.price,
+    paymentConfigLoading,
+    paymentSubmitting,
+    paymentChannelReady: Boolean(selectedPaymentChannelConfig),
+    paymentAmountAllowed: planAmountAllowed,
   });
   const creditConfirmState = createRechargeConfirmState({
     mode: "credits",
@@ -2884,15 +2919,22 @@ function RechargeCenterWorkspace({
     paymentAmountAllowed: creditAmountAllowed,
   });
   const latestPaymentDisplay = latestPayment ? createPaymentDisplay(latestPayment.payment) : null;
-  const paymentUnavailableNote = "暂无套餐，当前先支持积分充值。";
-  const creditPaymentNote = paymentError
+  const planPaymentNote = paymentError
     || (latestPayment
-      ? "订单已创建，请用支付宝扫码完成支付。支付成功后积分会自动到账。"
+      ? "支付已发起，请在弹窗中使用支付宝扫码完成支付。"
       : selectedPaymentChannelConfig
-        ? "将创建 Z-Pay 支付宝订单，支付成功后积分自动到账。"
+        ? "点击立即支付后，将在当前页面弹出支付宝二维码。"
         : paymentConfigLoading
           ? "正在读取支付通道配置。"
-          : "生产支付通道未配置，暂时无法创建支付订单。");
+          : "生产支付通道未配置，暂时无法发起支付。");
+  const creditPaymentNote = paymentError
+    || (latestPayment
+      ? "支付已发起，请在弹窗中使用支付宝扫码完成支付。"
+      : selectedPaymentChannelConfig
+        ? "点击立即支付后，将在当前页面弹出支付宝二维码。"
+        : paymentConfigLoading
+          ? "正在读取支付通道配置。"
+          : "生产支付通道未配置，暂时无法发起支付。");
 
   useEffect(() => {
     let cancelled = false;
@@ -2933,8 +2975,13 @@ function RechargeCenterWorkspace({
     };
   }, [user]);
 
-  const handleCreditPayment = useCallback(async () => {
-    if (!user || !selectedPaymentChannelConfig || !creditSummaryReady || !creditAmountAllowed || paymentSubmitting) return;
+  const handleRechargePayment = useCallback(async (amount: number | string) => {
+    if (!user || !selectedPaymentChannelConfig || paymentSubmitting) return;
+    const requestedAmount = rechargeAmountToMinor(amount);
+    if (!paymentChannelAllowsAmount(selectedPaymentChannelConfig, requestedAmount)) {
+      setPaymentError("金额不符合支付规则");
+      return;
+    }
     setPaymentSubmitting(true);
     setPaymentError("");
     setLatestPayment(null);
@@ -2944,35 +2991,43 @@ function RechargeCenterWorkspace({
         body: JSON.stringify({
           channel: selectedPaymentChannelConfig.channel,
           currency: "CNY",
-          requestedAmount: creditPayableMinorAmount,
+          requestedAmount,
           idempotencyKey: createTaskId("billing-order"),
         }),
       });
       setLatestPayment(result);
       const display = createPaymentDisplay(result.payment);
       if (!display.qrImageUrl && !display.paymentUrl) {
-        setPaymentError("支付订单已创建，但 Z-Pay 未返回二维码或支付链接。");
+        setPaymentError("支付已发起，但支付网关未返回二维码。");
       }
     } catch (error) {
-      setPaymentError(error instanceof ApiError ? error.message : "创建支付订单失败");
+      setPaymentError(error instanceof ApiError ? error.message : "发起支付失败");
     } finally {
       setPaymentSubmitting(false);
     }
   }, [
-    creditAmountAllowed,
-    creditPayableMinorAmount,
-    creditSummaryReady,
     paymentSubmitting,
     selectedPaymentChannelConfig,
     user,
   ]);
 
+  const handlePlanPayment = useCallback(() => {
+    if (!selectedPlan || !planSummaryReady || !planAmountAllowed) return;
+    void handleRechargePayment(selectedPlan.price);
+  }, [handleRechargePayment, planAmountAllowed, planSummaryReady, selectedPlan]);
+
+  const handleCreditPayment = useCallback(() => {
+    if (!creditSummaryReady || !creditAmountAllowed || creditPayableAmount === "") return;
+    void handleRechargePayment(creditPayableAmount);
+  }, [creditAmountAllowed, creditPayableAmount, creditSummaryReady, handleRechargePayment]);
+
   return (
+    <>
     <section className="user-center-page account-subpage account-subpage--recharge" aria-label="充值中心">
       <AccountSubpageHeader
         breadcrumb="用户中心 / 充值中心"
         title="充值中心"
-        subtitle="选择适合当前创作节奏的套餐或积分充值方式，先核对订单信息，支付开放后再继续。"
+        subtitle="选择适合当前创作节奏的套餐或积分充值方式，核对订单后在当前页面扫码支付。"
         onBack={() => onViewChange("center")}
         meta={(
           <div className="recharge-account-meta" aria-label="账户概览">
@@ -3031,8 +3086,8 @@ function RechargeCenterWorkspace({
             {activeTab === "plans" ? (
               <div className="recharge-center-panel" role="tabpanel">
                 <div className="recharge-selection-head">
-                  <h3>暂无套餐</h3>
-                  <p>当前暂未开放套餐购买，请使用积分充值。</p>
+                  <h3>选择套餐</h3>
+                  <p>套餐为一次性积分包，支付成功后积分自动到账。</p>
                 </div>
                 {planOptions.length > 0 ? (
                   <div className="recharge-plan-grid">
@@ -3055,9 +3110,9 @@ function RechargeCenterWorkspace({
                           </span>
                           <span className="recharge-plan-card__name">{plan.name}</span>
                           <span className="recharge-plan-card__price">¥{plan.price} <small>/ {PLAN_PERIOD_UNIT_LABEL}</small></span>
-                          <span className="recharge-plan-card__credits">每月 {formatQuotaUnits(plan.monthlyCredits)} 积分</span>
+                          <span className="recharge-plan-card__credits">到账 {formatQuotaUnits(estimateRechargeCredits(selectedPaymentChannelConfig, plan.price, plan.monthlyCredits))} 积分</span>
                           <span className="recharge-plan-card__facts" role="list" aria-label={`${plan.name}套餐信息`}>
-                            {createPlanFactItems(plan).map((item) => (
+                            {createPlanFactItems(plan, estimateRechargeCredits(selectedPaymentChannelConfig, plan.price, plan.monthlyCredits)).map((item) => (
                               <span key={item} role="listitem">
                                 <Check className="size-3.5" aria-hidden="true" />
                                 <span>{item}</span>
@@ -3086,8 +3141,9 @@ function RechargeCenterWorkspace({
                 <div className="credit-topup-grid">
                   {creditTopUpOptions.map((option) => {
                     const selected = !customRechargeActive && selectedCredit?.amount === option.amount;
-                    const giftCredits = getCreditTopUpGift(option);
-                    const badge = getCreditTopUpBadge(option, creditTopUpOptions);
+                    const credits = estimateRechargeCredits(selectedPaymentChannelConfig, option.amount, option.credits);
+                    const giftCredits = getCreditTopUpGift(option, selectedPaymentChannelConfig);
+                    const badge = getCreditTopUpBadge(option, creditTopUpOptions, selectedPaymentChannelConfig);
                     return (
                       <button
                         key={option.amount}
@@ -3108,7 +3164,7 @@ function RechargeCenterWorkspace({
                           <strong className="credit-topup-card__amount">¥{formatRechargeAmount(option.amount)}</strong>
                           {badge ? <span className="recharge-card-badge">{badge}</span> : null}
                         </span>
-                        <span className="credit-topup-card__credits">到账 {formatQuotaUnits(option.credits)} 积分</span>
+                        <span className="credit-topup-card__credits">到账 {formatQuotaUnits(credits)} 积分</span>
                         {giftCredits > 0 ? (
                           <span className="credit-topup-card__gift">含赠送 {formatQuotaUnits(giftCredits)} 积分</span>
                         ) : null}
@@ -3120,7 +3176,7 @@ function RechargeCenterWorkspace({
                 <div className={cn("custom-recharge-card", customRechargeActive && "is-active")}>
                   <div className="custom-recharge-card__intro">
                     <h3>自定义充值</h3>
-                    <p>最低金额 ¥{CUSTOM_RECHARGE_MIN_AMOUNT}，换算比例 1 元 = {CREDIT_TOP_UP_BASE_RATE} 积分。</p>
+                    <p>最低金额 ¥{CUSTOM_RECHARGE_MIN_AMOUNT}，换算比例 1 元 = {formatQuotaUnits(rechargeBaseCreditsPerYuan)} 积分。</p>
                   </div>
                   <label className="custom-recharge-field">
                     <span>充值金额</span>
@@ -3158,10 +3214,10 @@ function RechargeCenterWorkspace({
                 icon={<Crown className="size-4" aria-hidden="true" />}
                 title="订单确认"
                 lines={planSummaryLines}
-                note={paymentUnavailableNote}
+                note={planPaymentNote}
                 buttonLabel={planConfirmState.label}
                 disabled={planConfirmState.disabled}
-                onConfirm={onPaymentUnavailable}
+                onConfirm={handlePlanPayment}
               />
             ) : (
               <RechargeConfirmPanel
@@ -3172,13 +3228,21 @@ function RechargeCenterWorkspace({
                 buttonLabel={creditConfirmState.label}
                 disabled={creditConfirmState.disabled}
                 onConfirm={handleCreditPayment}
-                extra={latestPaymentDisplay ? <PaymentQrPanel display={latestPaymentDisplay} /> : null}
               />
             )}
           </aside>
         </div>
       </div>
     </section>
+    {latestPayment && latestPaymentDisplay ? (
+      <PaymentQrDialog
+        display={latestPaymentDisplay}
+        amountLabel={formatMinorCurrency(latestPayment.order.requested_amount)}
+        creditsLabel={formatQuotaUnits(latestPayment.order.credited_quota)}
+        onClose={() => setLatestPayment(null)}
+      />
+    ) : null}
+    </>
   );
 }
 
@@ -3379,39 +3443,66 @@ function createPaymentDisplay(payment: BillingPaymentDescriptor): PaymentDisplay
   return {
     qrImageUrl: paymentImageUrl(payment.qrcode_image_url) || paymentImageUrl(payment.qrcode_url),
     paymentUrl: publicPaymentUrl(payment.checkout_url) || publicPaymentUrl(payment.qrcode_url) || publicPaymentUrl(payment.qrcode_image_url),
+    gatewayLabel: payment.channel.startsWith("production_") ? "支付宝" : "支付宝",
   };
 }
 
-function PaymentQrPanel({ display }: { display: PaymentDisplay }) {
+function PaymentQrDialog({
+  display,
+  amountLabel,
+  creditsLabel,
+  onClose,
+}: {
+  display: PaymentDisplay;
+  amountLabel: string;
+  creditsLabel: string;
+  onClose: () => void;
+}) {
   const [failedImageUrl, setFailedImageUrl] = useState("");
 
   const showImage = Boolean(display.qrImageUrl && failedImageUrl !== display.qrImageUrl);
-  const linkLabel = showImage ? "打开支付链接" : "二维码图片不可用，打开支付链接";
+
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") onClose();
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [onClose]);
 
   return (
-    <div className="recharge-payment-qr" role="status" aria-label="支付二维码">
-      <div className="recharge-payment-qr__image">
-        {showImage ? (
-          // eslint-disable-next-line @next/next/no-img-element -- Z-Pay returns a runtime QR image URL outside Next image config.
-          <img
-            src={display.qrImageUrl}
-            alt="支付宝支付二维码"
-            onError={() => setFailedImageUrl(display.qrImageUrl)}
-          />
-        ) : (
-          <span>请打开支付链接后完成付款</span>
-        )}
+    <div className="recharge-payment-dialog" role="dialog" aria-modal="true" aria-label="支付宝扫码支付">
+      <button type="button" className="recharge-payment-dialog__backdrop" aria-label="关闭支付弹窗" onClick={onClose} />
+      <div className="recharge-payment-dialog__card">
+        <div className="recharge-payment-dialog__head">
+          <span>
+            <CreditCard className="size-4" aria-hidden="true" />
+            {display.gatewayLabel}
+          </span>
+          <button type="button" className="recharge-payment-dialog__close" aria-label="关闭支付弹窗" onClick={onClose}>
+            <X className="size-4" aria-hidden="true" />
+          </button>
+        </div>
+        <div className="recharge-payment-qr" role="status" aria-label="支付二维码">
+          <div className="recharge-payment-qr__image">
+            {showImage ? (
+              // eslint-disable-next-line @next/next/no-img-element -- Z-Pay returns a runtime QR image URL outside Next image config.
+              <img
+                src={display.qrImageUrl}
+                alt="支付宝支付二维码"
+                onError={() => setFailedImageUrl(display.qrImageUrl)}
+              />
+            ) : (
+              <span>二维码暂未返回，请关闭后重新发起支付。</span>
+            )}
+          </div>
+          <div className="recharge-payment-qr__copy">
+            <strong>支付宝扫码支付</strong>
+            <span>金额 {amountLabel}，预计到账 {creditsLabel} 积分。</span>
+            <span>付款后等待积分自动到账，请勿重复付款。</span>
+          </div>
+        </div>
       </div>
-      <div className="recharge-payment-qr__copy">
-        <strong>支付宝扫码支付</strong>
-        <span>请勿重复创建订单，付款后等待积分自动到账。</span>
-      </div>
-      {display.paymentUrl ? (
-        <a className="recharge-payment-qr__link" href={display.paymentUrl} target="_blank" rel="noreferrer">
-          <ExternalLink className="size-3.5" aria-hidden="true" />
-          {linkLabel}
-        </a>
-      ) : null}
     </div>
   );
 }
@@ -3455,27 +3546,44 @@ function createAccountRecords(
   return [...usageRecords, ...paidOrders, ...checkIns].sort((a, b) => Number(new Date(b.createdAt)) - Number(new Date(a.createdAt)));
 }
 
-function getCreditTopUpGift(option: CreditTopUpOption) {
-  return Math.max(0, option.credits - option.amount * CREDIT_TOP_UP_BASE_RATE);
+function estimateRechargeBaseCredits(channel: PublicPaymentChannelConfig | null, amount: number) {
+  const minorAmount = rechargeAmountToMinor(amount);
+  if (!Number.isInteger(minorAmount)) return 0;
+  const quotaPerMinor = channel?.estimated_quota_units_per_minor_unit ?? CREDIT_TOP_UP_BASE_RATE / 100;
+  return Math.floor(minorAmount * quotaPerMinor);
 }
 
-function getCreditTopUpRate(option: CreditTopUpOption) {
+function estimateRechargeCredits(channel: PublicPaymentChannelConfig | null, amount: number, fallbackCredits?: number) {
+  const minorAmount = rechargeAmountToMinor(amount);
+  if (!Number.isInteger(minorAmount)) return fallbackCredits ?? 0;
+  if (!channel) return fallbackCredits ?? Math.floor(amount * CREDIT_TOP_UP_BASE_RATE);
+  const bestDiscount = channel.discounts
+    .filter((discount) => minorAmount >= discount.threshold_amount)
+    .sort((a, b) => b.threshold_amount - a.threshold_amount)[0];
+  const multiplier = bestDiscount?.multiplier_basis_points || 10000;
+  return Math.floor((minorAmount * channel.estimated_quota_units_per_minor_unit * multiplier) / 10000);
+}
+
+function getCreditTopUpGift(option: CreditTopUpOption, channel: PublicPaymentChannelConfig | null) {
+  return Math.max(
+    0,
+    estimateRechargeCredits(channel, option.amount, option.credits) - estimateRechargeBaseCredits(channel, option.amount),
+  );
+}
+
+function getCreditTopUpRate(option: CreditTopUpOption, channel: PublicPaymentChannelConfig | null) {
   if (option.amount <= 0) return 0;
-  return option.credits / option.amount;
+  return estimateRechargeCredits(channel, option.amount, option.credits) / option.amount;
 }
 
-function getCreditTopUpBadge(option: CreditTopUpOption, options: CreditTopUpOption[]) {
+function getCreditTopUpBadge(option: CreditTopUpOption, options: CreditTopUpOption[], channel: PublicPaymentChannelConfig | null) {
   if (option.label === "体验充值") return "体验充值";
   if (option.label === "推荐") return "推荐";
 
-  const bestRate = Math.max(...options.map(getCreditTopUpRate));
-  if (getCreditTopUpGift(option) > 0 && getCreditTopUpRate(option) === bestRate) return "最划算";
+  const bestRate = Math.max(...options.map((entry) => getCreditTopUpRate(entry, channel)));
+  if (getCreditTopUpGift(option, channel) > 0 && getCreditTopUpRate(option, channel) === bestRate) return "最划算";
 
   return "";
-}
-
-function calculateCustomRechargeCredits(amount: number) {
-  return Math.floor(amount * CREDIT_TOP_UP_BASE_RATE);
 }
 
 function formatRechargeAmount(amount: number | string) {
@@ -3501,19 +3609,19 @@ function paymentChannelAllowsAmount(channel: PublicPaymentChannelConfig, minorAm
     && minorAmount <= channel.custom_amount_range.max_amount;
 }
 
-function createPlanFactItems(plan: PlanOption) {
+function createPlanFactItems(plan: PlanOption, credits: number) {
   return [
     `${PLAN_PERIOD_LABEL}购买`,
-    `每月获得 ${formatQuotaUnits(plan.monthlyCredits)} 积分`,
+    `到账 ${formatQuotaUnits(credits || plan.monthlyCredits)} 积分`,
   ];
 }
 
-function createPlanSummaryLines(plan: PlanOption | null): Array<[string, string]> {
+function createPlanSummaryLines(plan: PlanOption | null, credits = 0): Array<[string, string]> {
   if (!plan) {
     return [
       ["当前选择", "暂无套餐"],
       ["套餐周期", "—"],
-      ["每月积分", "暂无套餐"],
+      ["到账积分", "暂无套餐"],
       ["应付金额", "—"],
     ];
   }
@@ -3521,13 +3629,13 @@ function createPlanSummaryLines(plan: PlanOption | null): Array<[string, string]
   return [
     ["当前选择", plan.name],
     ["套餐周期", PLAN_PERIOD_LABEL],
-    ["每月积分", `${formatQuotaUnits(plan.monthlyCredits)} 积分`],
+    ["到账积分", `${formatQuotaUnits(credits || plan.monthlyCredits)} 积分`],
     ["套餐金额", `¥${formatRechargeAmount(plan.price)}`],
     ["应付金额", `¥${formatRechargeAmount(plan.price)}`],
   ];
 }
 
-function createFixedCreditSummaryLines(option: CreditTopUpOption | null): Array<[string, string]> {
+function createFixedCreditSummaryLines(option: CreditTopUpOption | null, channel: PublicPaymentChannelConfig | null): Array<[string, string]> {
   if (!option) {
     return [
       ["当前选择", "未选择"],
@@ -3537,8 +3645,9 @@ function createFixedCreditSummaryLines(option: CreditTopUpOption | null): Array<
     ];
   }
 
-  const giftCredits = getCreditTopUpGift(option);
-  const baseCredits = option.amount * CREDIT_TOP_UP_BASE_RATE;
+  const credits = estimateRechargeCredits(channel, option.amount, option.credits);
+  const giftCredits = getCreditTopUpGift(option, channel);
+  const baseCredits = estimateRechargeBaseCredits(channel, option.amount);
   const lines: Array<[string, string]> = [
     ["当前选择", `¥${formatRechargeAmount(option.amount)} 积分档位`],
     ["充值金额", `¥${formatRechargeAmount(option.amount)}`],
@@ -3549,7 +3658,7 @@ function createFixedCreditSummaryLines(option: CreditTopUpOption | null): Array<
     lines.push(["赠送积分", `${formatQuotaUnits(giftCredits)} 积分`]);
   }
 
-  lines.push(["预计到账", `${formatQuotaUnits(option.credits)} 积分`]);
+  lines.push(["预计到账", `${formatQuotaUnits(credits)} 积分`]);
   lines.push(["应付金额", `¥${formatRechargeAmount(option.amount)}`]);
   return lines;
 }
@@ -3559,7 +3668,7 @@ function createCustomCreditSummaryLines(amountText: string, valid: boolean, cred
   return [
     ["当前选择", "自定义充值"],
     ["充值金额", valid ? `¥${formatRechargeAmount(amount)}` : "未完成"],
-    ["基础积分", valid ? `${formatQuotaUnits(credits)} 积分` : "—"],
+    ["预计积分", valid ? `${formatQuotaUnits(credits)} 积分` : "—"],
     ["预计到账", valid ? `${formatQuotaUnits(credits)} 积分` : `请输入不低于 ¥${CUSTOM_RECHARGE_MIN_AMOUNT} 的金额`],
     ["应付金额", valid ? `¥${formatRechargeAmount(amount)}` : "—"],
   ];
@@ -3586,14 +3695,17 @@ function createRechargeConfirmState(input: {
   }
 
   if (!input.user) return { disabled: true, label: "登录后继续" };
-  if (input.mode === "plans") return { disabled: true, label: "暂无套餐" };
   if (input.paymentConfigLoading) return { disabled: true, label: "支付配置加载中" };
-  if (input.paymentSubmitting) return { disabled: true, label: "正在创建订单" };
+  if (input.paymentSubmitting) return { disabled: true, label: "正在发起支付" };
   if (!input.paymentChannelReady) return { disabled: true, label: "支付通道未配置" };
   if (!input.paymentAmountAllowed) return { disabled: true, label: "金额不符合支付规则" };
 
+  if (input.mode === "plans" && input.selectedPlan) {
+    return { disabled: false, label: `立即支付 ¥${formatRechargeAmount(input.selectedPlan.price)}` };
+  }
+
   if (input.mode === "credits" && input.amount !== undefined && input.amount !== "") {
-    return { disabled: false, label: `立即充值 ¥${formatRechargeAmount(input.amount)}` };
+    return { disabled: false, label: `立即支付 ¥${formatRechargeAmount(input.amount)}` };
   }
 
   return { disabled: true, label: "请选择充值金额" };

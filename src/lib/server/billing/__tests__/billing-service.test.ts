@@ -302,6 +302,9 @@ test("returns sandbox payment channel configuration for the future UI", () => {
   const production = channels.find((channel) => channel.channel === "production_generic");
   assert.equal(production?.enabled, false);
   assert.equal(production?.currency, "CNY");
+  assert.equal(production?.min_amount, 100);
+  assert.equal(production?.fixed_amounts.includes(100), true);
+  assert.equal(production?.estimated_quota_units_per_minor_unit, 1);
 });
 
 test("creates a pending order with server-side discount and quota calculation", async () => {
@@ -523,7 +526,7 @@ test("zpay production adapter creates orders on Zhu Shengyong channel", async ()
       localUserId: "local-user",
       channel: "production_generic",
       currency: "CNY",
-      requestedAmount: 500,
+      requestedAmount: 100,
       idempotencyKey: "zpay-create",
     }, { ip: "203.0.113.10", userAgent: "Desktop browser" });
     assert.equal(created.ok, true);
@@ -541,6 +544,8 @@ test("zpay production adapter creates orders on Zhu Shengyong channel", async ()
   assert.equal(request.get("cid"), ZPAY_ZHU_SHENGYONG_CHANNEL_ID);
   assert.notEqual(request.get("cid"), "19887");
   assert.equal(request.get("type"), "alipay");
+  assert.equal(request.get("name"), "傲凰AI积分充值");
+  assert.equal(request.get("money"), "1.00");
   const outTradeNo = request.get("out_trade_no");
   assert(outTradeNo);
   assert.equal(outTradeNo.length <= 32, true);
@@ -558,7 +563,7 @@ test("zpay GET webhook verifies signature and credits quota", async () => {
   });
   const params = {
     pid: "zpay-pid-test",
-    name: "奥皇AI积分充值",
+    name: "傲凰AI积分充值",
     money: "5.00",
     out_trade_no: order.order_id,
     trade_no: order.provider_order_id,

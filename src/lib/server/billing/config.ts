@@ -45,21 +45,27 @@ function productionChannels(): PaymentChannelConfig[] {
   return [
     {
       channel: "production_generic",
-      name: "Production Payment",
-      display_color: "#334155",
-      min_amount: 500,
-      fixed_amounts: [500, 1000, 3000, 5000, 10000],
+      name: "支付宝",
+      display_color: "#1677ff",
+      min_amount: 100,
+      fixed_amounts: [100, 500, 1000, 2000, 3000, 5000, 10000, 20000],
       custom_amount_range: {
-        min_amount: 500,
+        min_amount: 100,
         max_amount: 200000,
       },
-      discounts: [],
+      discounts: [
+        { threshold_amount: 2000, multiplier_basis_points: 10500 },
+        { threshold_amount: 3000, multiplier_basis_points: 10667 },
+        { threshold_amount: 5000, multiplier_basis_points: 11000 },
+        { threshold_amount: 10000, multiplier_basis_points: 11500 },
+        { threshold_amount: 20000, multiplier_basis_points: 12000 },
+      ],
       currency: "CNY",
       enabled: productionPaymentEnabled()
         && Boolean(productionWebhookSecret().trim())
         && hasProductionPaymentProvider(),
       sort_order: 1000,
-      quota_units_per_minor_unit: 10,
+      quota_units_per_minor_unit: 1,
     },
   ];
 }
