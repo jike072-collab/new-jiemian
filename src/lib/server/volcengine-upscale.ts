@@ -637,7 +637,7 @@ async function imageResourceUrl(objectKey: string, config: ReturnType<typeof ima
   const urls = collectStrings(result)
     .filter((value) => /^https?:\/\//i.test(value))
     .sort((left, right) => Number(right.includes("sign=")) - Number(left.includes("sign=")));
-  return firstString(result.URL, result.url, result.ObjURL, result.obj_url, ...urls);
+  return firstString(...urls, result.URL, result.url, result.ObjURL, result.obj_url);
 }
 
 function imagexPublicResourceUrl(objectKey: string, config: ReturnType<typeof imageConfig>) {
