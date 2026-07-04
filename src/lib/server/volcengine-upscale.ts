@@ -86,6 +86,21 @@ function firstString(...values: unknown[]) {
   return "";
 }
 
+function collectStrings(value: unknown, output: string[] = []) {
+  if (typeof value === "string") {
+    if (value.trim()) output.push(value.trim());
+    return output;
+  }
+  if (Array.isArray(value)) {
+    value.forEach((item) => collectStrings(item, output));
+    return output;
+  }
+  if (value && typeof value === "object") {
+    Object.values(value).forEach((item) => collectStrings(item, output));
+  }
+  return output;
+}
+
 function parseJsonString(value: unknown) {
   if (typeof value !== "string" || !value.trim()) return {};
   try {
@@ -619,7 +634,10 @@ async function imageResourceUrl(objectKey: string, config: ReturnType<typeof ima
     },
   });
   const result = response.Result || {};
-  return firstString(result.URL, result.url, result.ObjURL, result.obj_url);
+  const urls = collectStrings(result)
+    .filter((value) => /^https?:\/\//i.test(value))
+    .sort((left, right) => Number(right.includes("sign=")) - Number(left.includes("sign=")));
+  return firstString(result.URL, result.url, result.ObjURL, result.obj_url, ...urls);
 }
 
 function imagexPublicResourceUrl(objectKey: string, config: ReturnType<typeof imageConfig>) {
