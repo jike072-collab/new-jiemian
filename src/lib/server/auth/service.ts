@@ -82,7 +82,7 @@ export type AuthServiceDependencies = {
 };
 
 const genericInvalidCredentials = "Invalid email, username, or password.";
-const DEFAULT_NEW_USER_INITIAL_CREDITS = 100;
+const DEFAULT_NEW_USER_INITIAL_CREDITS = 300;
 const VERIFICATION_CODE_TTL_SECONDS = 10 * 60;
 const VERIFICATION_CODE_MAX_ATTEMPTS = 5;
 const REMEMBER_ME_SECONDS = AUTH_SESSION_TTL_SECONDS;

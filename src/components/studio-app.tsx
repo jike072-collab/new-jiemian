@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
-import { ArrowLeft, CalendarCheck, Check, Crown, CreditCard, ExternalLink, History, Sparkles, WalletCards, X } from "lucide-react";
+import { ArrowLeft, Building2, CalendarCheck, Check, Crown, CreditCard, ExternalLink, Gift, History, ShieldCheck, Sparkles, WalletCards, X } from "lucide-react";
 import { useRouter, useSearchParams } from "next/navigation";
 import dynamic from "next/dynamic";
 
@@ -159,8 +159,14 @@ type PlanOption = {
   price: number;
   monthlyCredits: number;
   description: string;
+  highlight: string;
+  bonusLabel: string;
+  perks: string[];
+  cyclePriceLabels?: Partial<Record<PlanCycle, string>>;
   recommended?: boolean;
 };
+
+type PlanCycle = "monthly" | "quarterly" | "yearly";
 
 type CreditTopUpOption = {
   amount: number;
@@ -179,44 +185,70 @@ type AccountRecord = {
 
 const planOptions: PlanOption[] = [
   {
-    id: "starter",
-    name: "基础套餐",
-    price: 1,
-    monthlyCredits: 100,
-    description: "低门槛体验",
+    id: "basic",
+    name: "基础会员",
+    price: 29.9,
+    monthlyCredits: 3600,
+    description: "适合电商日常出图与首批客户试用",
+    highlight: "新客友好",
+    bonusLabel: "每月送 3,600 积分",
+    perks: ["充值额外加赠 5%", "送 10 次提示词优化", "送 20 张生图额度", "首屏生成与模板优先体验"],
+    cyclePriceLabels: { monthly: "¥29.9 / 月", quarterly: "¥79 / 季", yearly: "¥299 / 年" },
   },
   {
-    id: "standard",
-    name: "标准套餐",
-    price: 10,
-    monthlyCredits: 1000,
-    description: "日常创作",
+    id: "advanced",
+    name: "进阶会员",
+    price: 59.9,
+    monthlyCredits: 9000,
+    description: "面向持续产出商品图、海报与短视频素材",
+    highlight: "主推档",
+    bonusLabel: "每月送 9,000 积分",
+    perks: ["充值额外加赠 10%", "送 30 次提示词优化", "送 60 张生图额度", "送 1 次 5 秒视频生成"],
+    cyclePriceLabels: { monthly: "¥59.9 / 月", quarterly: "¥159 / 季", yearly: "¥599 / 年" },
     recommended: true,
   },
   {
     id: "pro",
-    name: "进阶套餐",
-    price: 50,
-    monthlyCredits: 5500,
-    description: "高频生成",
+    name: "专业会员",
+    price: 99.9,
+    monthlyCredits: 16000,
+    description: "适合高频商用创作与图片视频混合生产",
+    highlight: "商用高频",
+    bonusLabel: "每月送 16,000 积分",
+    perks: ["充值额外加赠 15%", "送 80 次提示词优化", "送 120 张生图额度", "送 3 次 5 秒视频生成"],
+    cyclePriceLabels: { monthly: "¥99.9 / 月", quarterly: "¥279 / 季", yearly: "¥999 / 年" },
+  },
+  {
+    id: "enterprise",
+    name: "企业会员",
+    price: 199,
+    monthlyCredits: 36000,
+    description: "适合团队协作、批量出图和持续视频投放",
+    highlight: "团队定向",
+    bonusLabel: "每月送 36,000 积分",
+    perks: ["充值额外加赠 20%", "送 200 次提示词优化", "送 300 张生图额度", "送 8 次 5 秒视频生成"],
+    cyclePriceLabels: { monthly: "¥199 / 月", quarterly: "¥549 / 季", yearly: "¥1,999 / 年" },
   },
 ];
 
 const creditTopUpOptions: CreditTopUpOption[] = [
-  { amount: 1, credits: 100, label: "体验充值" },
-  { amount: 5, credits: 500 },
-  { amount: 10, credits: 1000 },
-  { amount: 20, credits: 2100 },
-  { amount: 30, credits: 3200 },
-  { amount: 50, credits: 5500, label: "推荐" },
-  { amount: 100, credits: 11500, label: "最划算" },
-  { amount: 200, credits: 24000, label: "超值" },
+  { amount: 9.9, credits: 1500, label: "新人首充" },
+  { amount: 29.9, credits: 4200, label: "常用" },
+  { amount: 59.9, credits: 9000, label: "推荐" },
+  { amount: 99.9, credits: 16000, label: "高频" },
+  { amount: 199, credits: 34000, label: "最划算" },
+  { amount: 299, credits: 54000, label: "商用" },
 ];
 
 const CREDIT_TOP_UP_BASE_RATE = 100;
 const CUSTOM_RECHARGE_MIN_AMOUNT = 1;
-const PLAN_PERIOD_LABEL = "单次购买";
-const PLAN_PERIOD_UNIT_LABEL = "次";
+const PLAN_PERIOD_LABEL = "月度会员";
+const PLAN_PERIOD_UNIT_LABEL = "月";
+const planCycleOptions: Array<{ id: PlanCycle; label: string; badge?: string }> = [
+  { id: "monthly", label: "月付优先" },
+  { id: "quarterly", label: "季度更省", badge: "赠送更多" },
+  { id: "yearly", label: "年度锁客", badge: "价值最高" },
+];
 const CLIENT_IMAGE_SUBMISSION_LIMIT = 2;
 const CLIENT_VIDEO_SUBMISSION_LIMIT = 1;
 
@@ -556,8 +588,19 @@ export function StudioApp() {
   const videoInFlightCountRef = useRef(0);
   const accountPlanStatus = useMemo<PlanStatus>(() => {
     if (sessionLoading || accountSummaryLoading) return { status: "loading" };
-    return { status: "unavailable" };
-  }, [accountSummaryLoading, sessionLoading]);
+    const paidOrders = billingOrders
+      .filter((order) => order.status === "paid")
+      .sort((a, b) => {
+        const aTime = new Date(a.paid_at || a.updated_at || a.created_at).getTime();
+        const bTime = new Date(b.paid_at || b.updated_at || b.created_at).getTime();
+        return bTime - aTime;
+      });
+    const matchedPlan = paidOrders
+      .map((order) => planOptions.find((plan) => Math.abs(plan.price - order.requested_amount / 100) < 0.001))
+      .find(Boolean);
+    if (matchedPlan) return { status: "active", name: matchedPlan.name };
+    return paidOrders.length > 0 ? { status: "none" } : { status: "unavailable" };
+  }, [accountSummaryLoading, billingOrders, sessionLoading]);
   const accountCheckInStatus = useMemo<CheckInStatus>(() => {
     if (!sessionUser) return "unavailable";
     if (sessionLoading || checkInLoading) return "loading";
@@ -2949,9 +2992,10 @@ function RechargeCenterWorkspace({
   onViewChange: (view: AccountView) => void;
   onPaymentUnavailable: (text?: string) => void;
 }) {
-  const [activeTab, setActiveTab] = useState<RechargeTab>("credits");
-  const [selectedPlanId, setSelectedPlanId] = useState("standard");
-  const [selectedCreditAmount, setSelectedCreditAmount] = useState<number | null>(50);
+  const [activeTab, setActiveTab] = useState<RechargeTab>("plans");
+  const [selectedPlanId, setSelectedPlanId] = useState("advanced");
+  const [selectedPlanCycle, setSelectedPlanCycle] = useState<PlanCycle>("monthly");
+  const [selectedCreditAmount, setSelectedCreditAmount] = useState<number | null>(59.9);
   const [customAmount, setCustomAmount] = useState("");
   const [paymentChannels, setPaymentChannels] = useState<PublicPaymentChannelConfig[]>([]);
   const [selectedPaymentChannel, setSelectedPaymentChannel] = useState("");
@@ -2996,11 +3040,14 @@ function RechargeCenterWorkspace({
     ? paymentChannelAllowsAmount(selectedPaymentChannelConfig, creditPayableMinorAmount)
     : false;
   const selectedPlanCredits = selectedPlan ? estimateRechargeCredits(selectedPaymentChannelConfig, selectedPlan.price, selectedPlan.monthlyCredits) : 0;
+  const selectedPlanFacts = selectedPlan ? createPlanFactItems(selectedPlan, selectedPlanCredits) : [];
   const planPayableMinorAmount = selectedPlan ? rechargeAmountToMinor(selectedPlan.price) : Number.NaN;
   const planAmountAllowed = selectedPaymentChannelConfig
     ? paymentChannelAllowsAmount(selectedPaymentChannelConfig, planPayableMinorAmount)
     : false;
-  const planSummaryLines = createPlanSummaryLines(selectedPlan, selectedPlanCredits);
+  const planSummaryLines = createPlanSummaryLines(selectedPlan, selectedPlanCredits, selectedPlanCycle);
+  const selectedCreditTotal = selectedCredit ? estimateRechargeCredits(selectedPaymentChannelConfig, selectedCredit.amount, selectedCredit.credits) : 0;
+  const selectedCreditGift = selectedCredit ? getCreditTopUpGift(selectedCredit, selectedPaymentChannelConfig) : 0;
   const planSummaryReady = Boolean(selectedPlan);
   const planConfirmState = createRechargeConfirmState({
     mode: "plans",
@@ -3173,12 +3220,51 @@ function RechargeCenterWorkspace({
           </button>
         </div>
 
+        <section className="recharge-hero" aria-label="会员与积分权益">
+          <div className="recharge-hero__copy">
+            <span className="recharge-hero__eyebrow">会员 + 积分双入口</span>
+            <h3>先用会员锁住单价，再用积分包补高峰创作。</h3>
+            <p>更适合图片、视频一起做的商家客户。会员负责省钱和送额度，积分包负责临时补量，首充也单独做了更高赠送。</p>
+          </div>
+          <div className="recharge-hero__stats">
+            <div>
+              <strong>300</strong>
+              <span>新用户注册积分</span>
+            </div>
+            <div>
+              <strong>1,500</strong>
+              <span>¥9.9 首充到账</span>
+            </div>
+            <div>
+              <strong>20%</strong>
+              <span>企业会员最高加赠</span>
+            </div>
+          </div>
+        </section>
+
+        <div className="recharge-plan-cycles" role="tablist" aria-label="会员周期">
+          {planCycleOptions.map((cycle) => (
+            <button
+              key={cycle.id}
+              type="button"
+              role="tab"
+              aria-selected={selectedPlanCycle === cycle.id}
+              className={cn("recharge-plan-cycle", selectedPlanCycle === cycle.id && "is-active")}
+              onClick={() => setSelectedPlanCycle(cycle.id)}
+            >
+              <span>{cycle.label}</span>
+              {cycle.badge ? <small>{cycle.badge}</small> : null}
+            </button>
+          ))}
+        </div>
+
         <div className="recharge-layout">
           <div className="recharge-layout__selection">
             {activeTab === "plans" ? (
               <div className="recharge-center-panel" role="tabpanel">
                 <div className="recharge-selection-head">
-                  <h3>选择套餐</h3>
+                  <h3>选择会员</h3>
+                  <p>把会员做成主入口，优先展示每月送多少积分、充值额外加赠和适合谁用，让客户更容易理解为什么现在就开。</p>
                 </div>
                 {planOptions.length > 0 ? (
                   <div className="recharge-plan-grid">
@@ -3196,12 +3282,16 @@ function RechargeCenterWorkspace({
                             <Check className="size-3.5" />
                           </span>
                           <span className="recharge-plan-card__top">
-                            <span className="recharge-plan-card__scene">{plan.description}</span>
-                            {plan.recommended ? <span className="recharge-card-badge">推荐</span> : null}
+                            <span className="recharge-plan-card__scene">{plan.highlight}</span>
+                            {plan.recommended ? <span className="recharge-card-badge">推荐开通</span> : null}
                           </span>
                           <span className="recharge-plan-card__name">{plan.name}</span>
-                          <span className="recharge-plan-card__price">¥{plan.price} <small>/ {PLAN_PERIOD_UNIT_LABEL}</small></span>
+                          <span className="recharge-plan-card__price">
+                            {plan.cyclePriceLabels?.[selectedPlanCycle] ?? `¥${plan.price} / ${PLAN_PERIOD_UNIT_LABEL}`}
+                          </span>
+                          <span className="recharge-plan-card__desc">{plan.description}</span>
                           <span className="recharge-plan-card__credits">到账 {formatQuotaUnits(estimateRechargeCredits(selectedPaymentChannelConfig, plan.price, plan.monthlyCredits))} 积分</span>
+                          <span className="recharge-plan-card__reason">{plan.bonusLabel}</span>
                           <span className="recharge-plan-card__facts" role="list" aria-label={`${plan.name}套餐信息`}>
                             {createPlanFactItems(plan, estimateRechargeCredits(selectedPaymentChannelConfig, plan.price, plan.monthlyCredits)).map((item) => (
                               <span key={item} role="listitem">
@@ -3210,7 +3300,7 @@ function RechargeCenterWorkspace({
                               </span>
                             ))}
                           </span>
-                          <span className="recharge-plan-card__action">{selected ? "已选择" : "选择套餐"}</span>
+                          <span className="recharge-plan-card__action">{selected ? "当前已选" : "开通会员"}</span>
                         </button>
                       );
                     })}
@@ -3226,7 +3316,8 @@ function RechargeCenterWorkspace({
             ) : (
               <div className="recharge-center-panel" role="tabpanel">
                 <div className="recharge-selection-head">
-                  <h3>选择充值金额</h3>
+                  <h3>补充积分包</h3>
+                  <p>积分包适合活动高峰、临时补量和视频生成。首充做高赠送，后续用推荐档和平衡档承接复购。</p>
                 </div>
                 <div className="credit-topup-grid">
                   {creditTopUpOptions.map((option) => {
@@ -3258,6 +3349,10 @@ function RechargeCenterWorkspace({
                         {giftCredits > 0 ? (
                           <span className="credit-topup-card__gift">含赠送 {formatQuotaUnits(giftCredits)} 积分</span>
                         ) : null}
+                        <span className="credit-topup-card__reason">
+                          {option.label === "新人首充" ? "建议新用户先体验，再决定是否升级会员" : "适合活动补量、短期冲量和视频生成消耗"}
+                        </span>
+                        <span className="credit-topup-card__gift">按 1 元 = 100 积分基线，档位越高赠送越多</span>
                       </button>
                     );
                   })}
@@ -3301,22 +3396,78 @@ function RechargeCenterWorkspace({
             {activeTab === "plans" ? (
               <RechargeConfirmPanel
                 icon={<Crown className="size-4" aria-hidden="true" />}
-                title="订单确认"
+                title="会员开通确认"
                 lines={planSummaryLines}
                 note={planPaymentNote}
-                buttonLabel={planConfirmState.label}
+                buttonLabel={planConfirmState.disabled ? planConfirmState.label : `立即开通 ¥${formatRechargeAmount(selectedPlan?.price ?? 0)}`}
                 disabled={planConfirmState.disabled}
                 onConfirm={handlePlanPayment}
+                extra={selectedPlan ? (
+                  <div className="recharge-confirm-panel__extras">
+                    <div className="recharge-confirm-panel__spotlight">
+                      <div>
+                        <span className="recharge-confirm-panel__spotlight-label">已选方案</span>
+                        <strong>{selectedPlan.name}</strong>
+                      </div>
+                      <em>{selectedPlan.highlight}</em>
+                    </div>
+                    <div className="recharge-confirm-panel__tags" aria-label="会员权益概览">
+                      <span><Gift className="size-3.5" aria-hidden="true" />{selectedPlan.bonusLabel}</span>
+                      <span><ShieldCheck className="size-3.5" aria-hidden="true" />{selectedPlan.perks[0]}</span>
+                      <span><Building2 className="size-3.5" aria-hidden="true" />当前状态：{planStatusLabel}</span>
+                    </div>
+                    <div className="recharge-confirm-panel__list" role="list" aria-label="会员权益">
+                      {selectedPlanFacts.slice(1, 4).map((item) => (
+                        <span key={item} role="listitem">
+                          <Check className="size-3.5" aria-hidden="true" />
+                          <span>{item}</span>
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                ) : null}
               />
             ) : (
               <RechargeConfirmPanel
                 icon={<CreditCard className="size-4" aria-hidden="true" />}
-                title="订单确认"
+                title="积分充值确认"
                 lines={creditSummaryLines}
                 note={creditPaymentNote}
-                buttonLabel={creditConfirmState.label}
+                buttonLabel={creditConfirmState.disabled ? creditConfirmState.label : `立即支付 ¥${formatRechargeAmount(Number(creditPayableAmount || 0))}`}
                 disabled={creditConfirmState.disabled}
                 onConfirm={handleCreditPayment}
+                extra={(
+                  <div className="recharge-confirm-panel__extras">
+                    <div className="recharge-confirm-panel__spotlight">
+                      <div>
+                        <span className="recharge-confirm-panel__spotlight-label">购买建议</span>
+                        <strong>{customRechargeActive ? "自定义补量" : selectedCredit ? `¥${formatRechargeAmount(selectedCredit.amount)} 积分包` : "先选择积分档位"}</strong>
+                      </div>
+                      <em>{customRechargeActive ? "按需充值" : selectedCredit?.label || "灵活补充"}</em>
+                    </div>
+                    <div className="recharge-confirm-panel__tags" aria-label="充值说明">
+                      <span><Gift className="size-3.5" aria-hidden="true" />注册即送 300 积分</span>
+                      <span><Sparkles className="size-3.5" aria-hidden="true" />首充 ¥9.9 可到账 1,500 积分</span>
+                      <span><WalletCards className="size-3.5" aria-hidden="true" />会员用户后续充值更适合走会员 + 补量</span>
+                    </div>
+                    {!customRechargeActive && selectedCredit ? (
+                      <div className="recharge-confirm-panel__list" role="list" aria-label="积分包权益">
+                        <span role="listitem">
+                          <Check className="size-3.5" aria-hidden="true" />
+                          <span>预计到账 {formatQuotaUnits(selectedCreditTotal)} 积分</span>
+                        </span>
+                        <span role="listitem">
+                          <Check className="size-3.5" aria-hidden="true" />
+                          <span>{selectedCreditGift > 0 ? `其中赠送 ${formatQuotaUnits(selectedCreditGift)} 积分` : "按固定档位即时补充积分"}</span>
+                        </span>
+                        <span role="listitem">
+                          <Check className="size-3.5" aria-hidden="true" />
+                          <span>适合临时补量、活动高峰和视频生成消耗</span>
+                        </span>
+                      </div>
+                    ) : null}
+                  </div>
+                )}
               />
             )}
           </aside>
@@ -3666,7 +3817,7 @@ function getCreditTopUpRate(option: CreditTopUpOption, channel: PublicPaymentCha
 }
 
 function getCreditTopUpBadge(option: CreditTopUpOption, options: CreditTopUpOption[], channel: PublicPaymentChannelConfig | null) {
-  if (option.label === "体验充值") return "体验充值";
+  if (option.label === "新人首充") return "新人首充";
   if (option.label === "推荐") return "推荐";
 
   const bestRate = Math.max(...options.map((entry) => getCreditTopUpRate(entry, channel)));
@@ -3700,12 +3851,16 @@ function paymentChannelAllowsAmount(channel: PublicPaymentChannelConfig, minorAm
 
 function createPlanFactItems(plan: PlanOption, credits: number) {
   return [
-    `${PLAN_PERIOD_LABEL}购买`,
+    plan.bonusLabel,
+    `充值加赠权益：${plan.perks[0]}`,
+    plan.perks[1],
+    plan.perks[2],
+    plan.perks[3],
     `到账 ${formatQuotaUnits(credits || plan.monthlyCredits)} 积分`,
   ];
 }
 
-function createPlanSummaryLines(plan: PlanOption | null, credits = 0): Array<[string, string]> {
+function createPlanSummaryLines(plan: PlanOption | null, credits = 0, cycle: PlanCycle = "monthly"): Array<[string, string]> {
   if (!plan) {
     return [
       ["当前选择", "暂无套餐"],
@@ -3717,9 +3872,9 @@ function createPlanSummaryLines(plan: PlanOption | null, credits = 0): Array<[st
 
   return [
     ["当前选择", plan.name],
-    ["套餐周期", PLAN_PERIOD_LABEL],
+    ["套餐周期", cycle === "yearly" ? "年度会员" : cycle === "quarterly" ? "季度会员" : PLAN_PERIOD_LABEL],
     ["到账积分", `${formatQuotaUnits(credits || plan.monthlyCredits)} 积分`],
-    ["套餐金额", `¥${formatRechargeAmount(plan.price)}`],
+    ["赠送权益", plan.bonusLabel],
     ["应付金额", `¥${formatRechargeAmount(plan.price)}`],
   ];
 }

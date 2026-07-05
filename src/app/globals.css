@@ -5486,8 +5486,120 @@
 
   .recharge-center-shell {
     display: grid;
-    gap: 18px;
+    gap: 22px;
     min-width: 0;
+    width: min(100%, 1380px);
+  }
+
+  .recharge-hero {
+    display: grid;
+    grid-template-columns: minmax(0, 1.35fr) minmax(320px, 0.9fr);
+    gap: 18px;
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: 18px;
+    background:
+      radial-gradient(circle at 0% 0%, rgba(255, 43, 136, 0.1), transparent 34%),
+      radial-gradient(circle at 100% 0%, rgba(164, 82, 255, 0.1), transparent 30%),
+      rgba(20, 20, 24, 0.94);
+    padding: 22px 24px;
+  }
+
+  .recharge-hero__copy {
+    display: grid;
+    gap: 10px;
+    align-content: start;
+  }
+
+  .recharge-hero__eyebrow {
+    display: inline-flex;
+    width: fit-content;
+    align-items: center;
+    border: 1px solid rgba(255, 43, 136, 0.22);
+    border-radius: 999px;
+    background: rgba(255, 43, 136, 0.08);
+    padding: 4px 10px;
+    color: #ff8ac4;
+    font-size: 12px;
+    font-weight: 700;
+  }
+
+  .recharge-hero__copy h3 {
+    color: #fff;
+    font-size: 28px;
+    font-weight: 760;
+    line-height: 1.15;
+  }
+
+  .recharge-hero__copy p {
+    max-width: 720px;
+    color: rgba(255, 255, 255, 0.66);
+    font-size: 14px;
+    line-height: 1.6;
+  }
+
+  .recharge-hero__stats {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 12px;
+    align-content: stretch;
+  }
+
+  .recharge-hero__stats div {
+    display: grid;
+    gap: 6px;
+    border: 1px solid rgba(255, 255, 255, 0.07);
+    border-radius: 16px;
+    background: rgba(255, 255, 255, 0.03);
+    padding: 16px 16px 14px;
+  }
+
+  .recharge-hero__stats strong {
+    color: #fff;
+    font-size: 28px;
+    font-weight: 760;
+    line-height: 1;
+  }
+
+  .recharge-hero__stats span {
+    color: rgba(255, 255, 255, 0.6);
+    font-size: 12.5px;
+    line-height: 1.45;
+  }
+
+  .recharge-plan-cycles {
+    display: inline-grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 10px;
+    width: min(100%, 780px);
+  }
+
+  .recharge-plan-cycle {
+    display: grid;
+    gap: 4px;
+    min-height: 58px;
+    place-items: center;
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: 14px;
+    background: rgba(20, 20, 24, 0.92);
+    color: rgba(255, 255, 255, 0.72);
+    transition:
+      border-color var(--motion-fast) var(--ease-enter),
+      background var(--motion-fast) var(--ease-enter),
+      color var(--motion-fast) var(--ease-enter),
+      transform var(--motion-fast) var(--ease-enter);
+  }
+
+  .recharge-plan-cycle small {
+    color: #ff8ac4;
+    font-size: 11px;
+    font-weight: 700;
+  }
+
+  .recharge-plan-cycle.is-active {
+    border-color: rgba(255, 43, 136, 0.46);
+    background: linear-gradient(90deg, rgba(255, 43, 136, 0.14), rgba(164, 82, 255, 0.14));
+    color: #fff;
+    transform: translateY(-1px);
   }
 
   .recharge-center-tabs,
@@ -5561,22 +5673,20 @@
   }
 
   .recharge-layout {
-    display: flex;
-    flex-wrap: wrap;
+    display: grid;
+    grid-template-columns: minmax(0, 1.45fr) 390px;
     align-items: start;
-    gap: 22px;
+    gap: 24px;
     min-width: 0;
   }
 
   .recharge-layout__selection {
-    flex: 1 1 720px;
     min-width: 0;
   }
 
   .recharge-layout__summary {
-    flex: 0 1 360px;
     min-width: 0;
-    width: min(100%, 360px);
+    width: 100%;
   }
 
   .recharge-layout__summary {
@@ -5599,7 +5709,7 @@
 
   .recharge-selection-head h3 {
     color: rgba(255, 255, 255, 0.92);
-    font-size: 16px;
+    font-size: 19px;
     font-weight: 720;
     line-height: 1.25;
   }
@@ -5613,8 +5723,8 @@
 
   .recharge-plan-grid {
     display: grid;
-    grid-template-columns: repeat(3, minmax(0, 1fr));
-    gap: 14px;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 16px;
   }
 
   .recharge-plan-card,
@@ -5641,11 +5751,11 @@
   }
 
   .recharge-plan-card {
-    min-height: 286px;
+    min-height: 420px;
     align-content: start;
-    grid-template-rows: auto auto auto auto 1fr auto auto;
-    gap: 12px;
-    padding: 18px;
+    grid-template-rows: auto auto auto auto auto 1fr auto;
+    gap: 14px;
+    padding: 22px;
   }
 
   .recharge-plan-card:hover,
@@ -5742,8 +5852,8 @@
 
   .recharge-plan-card__scene {
     overflow: hidden;
-    color: rgba(255, 255, 255, 0.5);
-    font-size: 12.5px;
+    color: rgba(255, 255, 255, 0.58);
+    font-size: 13px;
     line-height: 1.35;
     text-overflow: ellipsis;
     white-space: nowrap;
@@ -5751,40 +5861,35 @@
 
   .recharge-plan-card__name {
     color: rgba(255, 255, 255, 0.92);
-    font-size: 17px;
+    font-size: 29px;
     font-weight: 740;
-    line-height: 1.22;
+    line-height: 1.08;
   }
 
   .recharge-plan-card__price {
     color: rgba(255, 255, 255, 0.96);
-    font-size: clamp(28px, 2.2vw, 36px);
+    font-size: clamp(40px, 3vw, 54px);
     font-weight: 760;
     line-height: 1.05;
-  }
-
-  .recharge-plan-card__price small {
-    color: rgba(255, 255, 255, 0.5);
-    font-size: 14px;
-    font-weight: 620;
+    letter-spacing: 0;
   }
 
   .recharge-plan-card__credits {
     color: #ff72b5;
-    font-size: 13px;
+    font-size: 18px;
     font-weight: 680;
   }
 
   .recharge-plan-card__desc {
-    color: rgba(255, 255, 255, 0.48);
-    font-size: 13px;
-    line-height: 1.45;
+    color: rgba(255, 255, 255, 0.62);
+    font-size: 14px;
+    line-height: 1.6;
   }
 
   .recharge-plan-card__facts {
     display: grid;
-    gap: 8px;
-    margin: 2px 0 0;
+    gap: 10px;
+    margin: 4px 0 0;
     padding: 0;
   }
 
@@ -5792,9 +5897,9 @@
     display: grid;
     grid-template-columns: 16px minmax(0, 1fr);
     align-items: start;
-    gap: 7px;
-    color: rgba(255, 255, 255, 0.58);
-    font-size: 12.5px;
+    gap: 8px;
+    color: rgba(255, 255, 255, 0.72);
+    font-size: 13.5px;
     line-height: 1.4;
   }
 
@@ -5819,14 +5924,14 @@
 
   .recharge-plan-card__action {
     display: inline-flex;
-    min-height: 36px;
+    min-height: 46px;
     align-items: center;
     justify-content: center;
     border: 1px solid rgba(255, 255, 255, 0.1);
-    border-radius: 10px;
-    background: rgba(255, 255, 255, 0.045);
-    color: rgba(255, 255, 255, 0.72);
-    font-size: 13px;
+    border-radius: 14px;
+    background: rgba(255, 255, 255, 0.06);
+    color: rgba(255, 255, 255, 0.82);
+    font-size: 15px;
     font-weight: 700;
     transition:
       border-color var(--motion-fast) var(--ease-enter),
@@ -5873,15 +5978,15 @@
 
   .credit-topup-grid {
     display: grid;
-    grid-template-columns: repeat(4, minmax(0, 1fr));
-    gap: 12px;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 14px;
   }
 
   .credit-topup-card {
-    min-height: 144px;
+    min-height: 170px;
     align-content: start;
-    gap: 7px;
-    padding: 17px;
+    gap: 10px;
+    padding: 18px;
   }
 
   .credit-topup-card__headline {
@@ -5898,7 +6003,7 @@
 
   .credit-topup-card__amount {
     color: rgba(255, 255, 255, 0.94);
-    font-size: 24px;
+    font-size: 34px;
     font-weight: 760;
     line-height: 1.05;
   }
@@ -5906,7 +6011,7 @@
   .credit-topup-card__credits,
   .credit-topup-card__gift {
     color: rgba(255, 255, 255, 0.58);
-    font-size: 13px;
+    font-size: 13.5px;
     line-height: 1.35;
   }
 
@@ -5917,6 +6022,12 @@
 
   .credit-topup-card__gift {
     color: rgba(255, 114, 181, 0.88);
+  }
+
+  .credit-topup-card__reason {
+    color: rgba(255, 255, 255, 0.56);
+    font-size: 12.5px;
+    line-height: 1.45;
   }
 
   .custom-recharge-card {
@@ -6106,6 +6217,101 @@
     line-height: 1.5;
   }
 
+  .recharge-confirm-panel__extras {
+    display: grid;
+    gap: 12px;
+  }
+
+  .recharge-confirm-panel__spotlight {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: 12px;
+    background: rgba(255, 255, 255, 0.04);
+    padding: 12px;
+  }
+
+  .recharge-confirm-panel__spotlight > div {
+    display: grid;
+    gap: 4px;
+    min-width: 0;
+  }
+
+  .recharge-confirm-panel__spotlight-label {
+    color: rgba(255, 255, 255, 0.52);
+    font-size: 12px;
+    line-height: 1.25;
+  }
+
+  .recharge-confirm-panel__spotlight strong {
+    color: rgba(255, 255, 255, 0.94);
+    font-size: 18px;
+    font-weight: 760;
+    line-height: 1.15;
+  }
+
+  .recharge-confirm-panel__spotlight em {
+    display: inline-flex;
+    width: fit-content;
+    align-items: center;
+    border: 1px solid rgba(255, 43, 136, 0.2);
+    border-radius: 999px;
+    background: rgba(255, 43, 136, 0.08);
+    padding: 5px 9px;
+    color: #ff8ac4;
+    font-size: 12px;
+    font-style: normal;
+    font-weight: 700;
+    line-height: 1.2;
+  }
+
+  .recharge-confirm-panel__tags {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+
+  .recharge-confirm-panel__tags span {
+    display: inline-flex;
+    max-width: 100%;
+    align-items: center;
+    gap: 6px;
+    border: 1px solid rgba(255, 255, 255, 0.07);
+    border-radius: 999px;
+    background: rgba(255, 255, 255, 0.035);
+    padding: 6px 10px;
+    color: rgba(255, 255, 255, 0.68);
+    font-size: 12px;
+    line-height: 1.35;
+  }
+
+  .recharge-confirm-panel__tags svg {
+    color: rgba(255, 114, 181, 0.9);
+    flex: 0 0 auto;
+  }
+
+  .recharge-confirm-panel__list {
+    display: grid;
+    gap: 8px;
+  }
+
+  .recharge-confirm-panel__list span {
+    display: grid;
+    grid-template-columns: 16px minmax(0, 1fr);
+    align-items: start;
+    gap: 8px;
+    color: rgba(255, 255, 255, 0.72);
+    font-size: 12.5px;
+    line-height: 1.45;
+  }
+
+  .recharge-confirm-panel__list svg {
+    margin-top: 1px;
+    color: rgba(255, 43, 136, 0.86);
+  }
+
   .recharge-payment-qr {
     display: grid;
     gap: 10px;
@@ -6233,16 +6439,16 @@
 
   .recharge-confirm-button {
     display: inline-flex;
-    min-height: 40px;
+    min-height: 46px;
     align-items: center;
     justify-content: center;
     width: 100%;
     border: 1px solid rgba(255, 43, 136, 0.3);
-    border-radius: 10px;
+    border-radius: 12px;
     background: linear-gradient(90deg, rgba(255, 43, 136, 0.92), rgba(164, 82, 255, 0.86));
     padding: 0 16px;
     color: #fff;
-    font-size: 13px;
+    font-size: 14px;
     font-weight: 700;
     transition:
       transform var(--motion-fast) var(--ease-enter),
@@ -9855,6 +10061,18 @@
     grid-template-columns: repeat(4, minmax(0, 1fr));
   }
 
+  .recharge-hero {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .recharge-hero__stats {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .recharge-plan-cycles {
+    width: 100%;
+  }
+
   .custom-recharge-card {
     grid-template-columns: minmax(220px, 1fr) minmax(160px, 1fr);
   }
@@ -10284,6 +10502,23 @@
     padding: 0 10px;
   }
 
+  .shell-panel--mobile-single .recharge-hero,
+  .shell-panel--mobile-single .recharge-plan-cycles {
+    width: 100%;
+  }
+
+  .shell-panel--mobile-single .recharge-hero {
+    padding: 18px;
+  }
+
+  .shell-panel--mobile-single .recharge-hero__copy h3 {
+    font-size: 22px;
+  }
+
+  .shell-panel--mobile-single .recharge-hero__stats {
+    grid-template-columns: 1fr;
+  }
+
   .shell-panel--mobile-single .recharge-plan-grid,
   .shell-panel--mobile-single .custom-recharge-card {
     grid-template-columns: minmax(0, 1fr);
@@ -10314,8 +10549,21 @@
     font-size: 12px;
   }
 
+  .shell-panel--mobile-single .credit-topup-card__reason {
+    font-size: 11.5px;
+  }
+
   .shell-panel--mobile-single .recharge-plan-card {
     min-height: 160px;
+  }
+
+  .shell-panel--mobile-single .recharge-confirm-panel__spotlight,
+  .shell-panel--mobile-single .recharge-confirm-panel__tags {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .shell-panel--mobile-single .recharge-confirm-panel__spotlight {
+    display: grid;
   }
 
   .shell-panel--mobile-single .studio-preview__content {

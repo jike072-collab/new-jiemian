@@ -35,9 +35,9 @@ export function getPlanStatusDisplay(planStatus: PlanStatus): AccountStatusDispl
 
   if (planStatus.status === "none") {
     return {
-      label: "暂未开通",
-      note: "当前使用按次积分模式。",
-      actionLabel: "查看套餐",
+      label: "按需充值",
+      note: "当前使用积分模式，可升级会员享受充值加成与每月赠送。",
+      actionLabel: "查看会员",
       actionDisabled: false,
     };
   }
@@ -52,9 +52,9 @@ export function getPlanStatusDisplay(planStatus: PlanStatus): AccountStatusDispl
   }
 
   return {
-    label: "暂无套餐",
-    note: "当前暂未开放套餐购买。",
-    actionLabel: "积分充值",
+    label: "会员未开通",
+    note: "当前可购买会员或积分包，图片与视频创作都支持积分消耗。",
+    actionLabel: "会员与充值",
     actionDisabled: false,
   };
 }

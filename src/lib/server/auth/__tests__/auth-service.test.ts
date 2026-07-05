@@ -173,14 +173,14 @@ test("register seeds new users with trial credits for New API sync", async () =>
   try {
     const result = await registerActiveAccount(harness);
     assert.equal(result.ok, true);
-    assert.equal(profiles[0]?.initialQuota, 100);
+    assert.equal(profiles[0]?.initialQuota, 300);
   } finally {
     if (previous === undefined) delete process.env.NEW_USER_INITIAL_CREDITS;
     else process.env.NEW_USER_INITIAL_CREDITS = previous;
   }
 });
 
-test("register keeps the 100 credit signup grant when env is set to zero", async () => {
+test("register keeps the 300 credit signup grant when env is set to zero", async () => {
   const profiles: NewApiUserSyncProfile[] = [];
   const harness = service({ profiles });
   const previous = process.env.NEW_USER_INITIAL_CREDITS;
@@ -188,7 +188,7 @@ test("register keeps the 100 credit signup grant when env is set to zero", async
   try {
     const result = await registerActiveAccount(harness);
     assert.equal(result.ok, true);
-    assert.equal(profiles[0]?.initialQuota, 100);
+    assert.equal(profiles[0]?.initialQuota, 300);
   } finally {
     if (previous === undefined) delete process.env.NEW_USER_INITIAL_CREDITS;
     else process.env.NEW_USER_INITIAL_CREDITS = previous;
