@@ -1,7 +1,7 @@
 "use client";
 
 import { useRef, useState, type CSSProperties } from "react";
-import { ArrowDownUp, ImageUp, Loader2, RefreshCw, Search, Trash2, X } from "lucide-react";
+import { ArrowDownUp, Download, ImageUp, Loader2, RefreshCw, Search, Trash2, Video, Wand2, X } from "lucide-react";
 
 import { LibraryCardActions, MediaCard } from "@/components/studio/media-card";
 import { CustomSelect } from "@/components/studio/shared";
@@ -66,6 +66,9 @@ export function LibraryWorkspace({
 }) {
   const searchActive = Boolean(search.trim());
   const filteredEmpty = !items.length && (totalCount > 0 || searchActive);
+  const selectedMediaMissing = selectedItem ? missingMediaIds.has(selectedItem.id) || selectedItem.fileAvailable === false : false;
+  const selectedCanUseOutput = Boolean(selectedItem?.output?.url && !selectedMediaMissing && !selectedItem.expired);
+  const selectedCanDownloadStoredFile = Boolean(selectedItem?.output?.url && selectedItem.output.storedName && !selectedMediaMissing);
 
   return (
     <div className="studio-library-page">
@@ -186,9 +189,65 @@ export function LibraryWorkspace({
             <MediaCard
               item={selectedItem}
               large
-              mediaMissing={missingMediaIds.has(selectedItem.id) || selectedItem.fileAvailable === false}
+              mediaMissing={selectedMediaMissing}
               onMediaMissing={() => onMediaMissing(selectedItem.id)}
             />
+            <div className="studio-library-detail__actions" aria-label="作品操作">
+              <button type="button" className="studio-library-detail__action" onClick={() => onRegenerate(selectedItem)}>
+                <RefreshCw className="size-4" aria-hidden="true" />
+                重新生成
+              </button>
+              <button
+                type="button"
+                className="studio-library-detail__action"
+                onClick={() => onUpscale(selectedItem)}
+                disabled={!selectedCanUseOutput}
+              >
+                <ImageUp className="size-4" aria-hidden="true" />
+                {selectedItem.type === "image" ? "放大" : "视频放大"}
+              </button>
+              {selectedItem.type === "image" ? (
+                <>
+                  <button
+                    type="button"
+                    className="studio-library-detail__action"
+                    onClick={() => onCreateVideo(selectedItem)}
+                    disabled={!selectedCanUseOutput}
+                  >
+                    <Video className="size-4" aria-hidden="true" />
+                    生成视频
+                  </button>
+                  <button
+                    type="button"
+                    className="studio-library-detail__action"
+                    onClick={() => onEditImage(selectedItem)}
+                    disabled={!selectedCanUseOutput}
+                  >
+                    <Wand2 className="size-4" aria-hidden="true" />
+                    图片编辑
+                  </button>
+                </>
+              ) : null}
+              {selectedCanDownloadStoredFile ? (
+                <a className="studio-library-detail__action" href={selectedItem.output?.url} download>
+                  <Download className="size-4" aria-hidden="true" />
+                  下载
+                </a>
+              ) : null}
+              <button type="button" className="studio-library-detail__action" onClick={() => void onRefresh()}>
+                <RefreshCw className="size-4" aria-hidden="true" />
+                刷新
+              </button>
+              <button
+                type="button"
+                className="studio-library-detail__action is-danger"
+                onClick={() => void onDelete(selectedItem.id)}
+                disabled={deletingItemId === selectedItem.id}
+              >
+                {deletingItemId === selectedItem.id ? <Loader2 className="size-4 animate-spin" aria-hidden="true" /> : <Trash2 className="size-4" aria-hidden="true" />}
+                {deletingItemId === selectedItem.id ? "删除中" : "删除"}
+              </button>
+            </div>
             <div className="studio-actions">
               <button
                 type="button"
