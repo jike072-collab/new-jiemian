@@ -38,6 +38,7 @@ function seekVideoToStartFrame(video: HTMLVideoElement) {
 }
 
 export function BeforeAfterImageCompare({
+  beforeSrc,
   afterSrc,
   beforeLabel = "高清前",
   afterLabel = "高清后",
@@ -45,12 +46,13 @@ export function BeforeAfterImageCompare({
   beforeAlt = "",
   afterAlt = "",
   mediaType = "image",
-  beforeEffect = "blur",
+  beforeEffect = "none",
   beforePoster,
   afterPoster,
 }: BeforeAfterImageCompareProps) {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const videoRef = useRef<HTMLVideoElement | null>(null);
+  const beforeVideoRef = useRef<HTMLVideoElement | null>(null);
   const userPausedRef = useRef(false);
   const [position, setPosition] = useState(() => clampComparePosition(initialPosition));
   const [dragging, setDragging] = useState(false);
@@ -135,14 +137,19 @@ export function BeforeAfterImageCompare({
 
   const pauseVideos = useCallback(() => {
     videoRef.current?.pause();
+    beforeVideoRef.current?.pause();
     setPlaying(false);
   }, []);
 
   const playVideos = useCallback(() => {
     const video = videoRef.current;
+    const beforeVideo = beforeVideoRef.current;
     if (!video) return;
 
-    void video.play().then(() => setPlaying(true)).catch(() => setPlaying(false));
+    void Promise.all([
+      video.play(),
+      beforeVideo ? beforeVideo.play() : Promise.resolve(),
+    ]).then(() => setPlaying(true)).catch(() => setPlaying(false));
   }, []);
 
   const handleVideoPlayPause = useCallback(() => {
@@ -169,13 +176,8 @@ export function BeforeAfterImageCompare({
     setPlaying(false);
   }, []);
 
-  const handleBeforeVideoLoaded = useCallback(() => {
-    const video = videoRef.current;
-    if (!video) return;
-
-    if (video.currentTime < videoStartFrameTime) {
-      seekVideoToStartFrame(video);
-    }
+  const handleVideoLoaded = useCallback((video: HTMLVideoElement | null) => {
+    if (video && video.currentTime < videoStartFrameTime) seekVideoToStartFrame(video);
   }, []);
 
   useEffect(() => {
@@ -240,16 +242,27 @@ export function BeforeAfterImageCompare({
             loop
             playsInline
             preload="auto"
-            onLoadedMetadata={handleBeforeVideoLoaded}
+            onLoadedMetadata={() => handleVideoLoaded(videoRef.current)}
             onPlay={handlePrimaryVideoPlay}
             onPause={handlePrimaryVideoPause}
           />
-          <span className="compare-video-before" aria-label={beforeAlt} />
+          <video
+            ref={beforeVideoRef}
+            className="compare-video-before"
+            src={beforeSrc}
+            poster={beforePoster}
+            aria-label={beforeAlt}
+            muted
+            loop
+            playsInline
+            preload="metadata"
+            onLoadedMetadata={() => handleVideoLoaded(beforeVideoRef.current)}
+          />
         </>
       ) : (
         <>
           <img className="compare-image-source" src={afterSrc} alt={afterAlt} draggable={false} />
-          <span className="compare-image-before" aria-label={beforeAlt} />
+          <img className="compare-image-before" src={beforeSrc} alt={beforeAlt} draggable={false} />
         </>
       )}
       <span className="compare-label compare-label--after">{afterLabel}</span>

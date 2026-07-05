@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useState, type CSSProperties } from "react";
+import { useRef, useState } from "react";
 import { ArrowDownUp, Download, ImageUp, Loader2, RefreshCw, Search, Trash2, Video, Wand2, X } from "lucide-react";
 
 import { LibraryCardActions, MediaCard } from "@/components/studio/media-card";
@@ -96,7 +96,6 @@ export function LibraryWorkspace({
             <div
               key={index}
               className="studio-library-skeleton-card"
-              style={{ "--library-card-delay": `${index < 6 ? index * 28 : 0}ms` } as CSSProperties}
             >
               <span className="motion-skeleton-shimmer" />
               <strong className="motion-skeleton-shimmer" />
@@ -141,7 +140,7 @@ export function LibraryWorkspace({
         )
       ) : (
         <div className="studio-library-grid">
-          {items.map((item, index) => (
+          {items.map((item) => (
             <div
               key={item.id}
               className={cn(
@@ -150,7 +149,6 @@ export function LibraryWorkspace({
                 deletingItemId === item.id && "is-deleting",
                 removingItemId === item.id && "is-removing",
               )}
-              style={{ "--library-card-delay": `${index < 6 ? index * 28 : 0}ms` } as CSSProperties}
             >
               <button
                 type="button"

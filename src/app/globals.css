@@ -1972,6 +1972,9 @@
     bottom: 7px;
     left: 7px;
     overflow: hidden;
+    font-size: 12px;
+    font-weight: 600;
+    line-height: 1.2;
     text-overflow: ellipsis;
     white-space: nowrap;
   }
@@ -3311,7 +3314,6 @@
     grid-auto-rows: auto;
     min-height: min(720px, calc(100vh - 270px));
     padding-bottom: 24px;
-    animation: template-grid-reveal var(--motion-layout) var(--ease-enter) both;
   }
 
   .shell-root--tool-templates .template-center-card {
@@ -3324,8 +3326,6 @@
     border-radius: 13px;
     background: #141418;
     padding: 10px;
-    animation: template-card-reveal var(--motion-entrance) var(--ease-enter) both;
-    animation-delay: var(--template-card-delay, 0ms);
     transition:
       transform var(--motion-fast) var(--ease-enter),
       border-color var(--motion-fast) var(--ease-enter),
@@ -3380,7 +3380,7 @@
   }
 
   .shell-root--tool-templates .template-center-card__body strong {
-    font-size: 16px;
+    font-size: 14px;
     font-weight: 650;
   }
 
@@ -3450,7 +3450,6 @@
     align-content: center;
     justify-items: center;
     text-align: center;
-    animation: template-grid-reveal var(--motion-layout) var(--ease-enter) both;
   }
 
   @keyframes template-grid-reveal {
@@ -3700,7 +3699,6 @@
     gap: 18px;
     align-content: start;
     padding-bottom: 24px;
-    transition: grid-template-columns var(--motion-layout) var(--ease-enter);
   }
 
   .shell-root--tool-library .studio-library-tile {
@@ -3712,8 +3710,6 @@
     border-radius: 13px;
     background: #141418;
     padding: 10px;
-    animation: library-card-reveal var(--motion-entrance) var(--ease-enter) both;
-    animation-delay: var(--library-card-delay, 0ms);
     transition:
       transform var(--motion-fast) var(--ease-enter),
       border-color var(--motion-fast) var(--ease-enter),
@@ -7966,6 +7962,53 @@
     }
   }
 
+  .motion-page-reveal,
+  .motion-result-reveal,
+  .image-tutorial-simple__image-shell,
+  .image-tutorial-simple__image,
+  .image-tutorial-simple__overlay,
+  .image-editor-tutorial__canvas,
+  .image-editor-tutorial__dash,
+  .image-editor-plane-mark,
+  .image-editor-photo,
+  .image-editor-arrow,
+  .image-editor-arrow__halo,
+  .image-editor-arrow__path,
+  .image-editor-arrow__shine,
+  .image-editor-arrow__tip,
+  .image-editor-prompt,
+  .tutorial-source-image,
+  .tutorial-prompt-bubble,
+  .video-tutorial-guide,
+  .video-tutorial-guide__arrow-path,
+  .video-tutorial-guide__arrow-head,
+  .tutorial-upload-placeholder,
+  .tutorial-upload-target-ring,
+  .video-tutorial-parameter-demo__asset,
+  .video-tutorial-result-slot__media,
+  .video-tutorial-result-slot__media::before {
+    animation: none !important;
+  }
+
+  .image-editor-photo,
+  .image-editor-arrow,
+  .image-editor-prompt,
+  .image-editor-plane-mark,
+  .video-tutorial-guide,
+  .video-tutorial-parameter-demo__asset,
+  .video-tutorial-result-slot__media {
+    opacity: 1;
+    transform: none;
+  }
+
+  .image-editor-arrow__halo,
+  .image-editor-arrow__path,
+  .image-editor-arrow__shine,
+  .video-tutorial-guide__arrow-path,
+  .video-tutorial-guide__arrow-head {
+    stroke-dashoffset: 0;
+  }
+
   @keyframes studio-soft-pulse {
     0%,
     100% {
@@ -8608,8 +8651,6 @@
   .compare-image-before {
     z-index: 2;
     clip-path: inset(0 calc(100% - var(--compare-position)) 0 0);
-    background: rgba(255, 255, 255, 0.01);
-    backdrop-filter: blur(6px) saturate(0.78) contrast(0.86);
   }
 
   .compare-video-source {
@@ -8619,8 +8660,12 @@
   .compare-video-before {
     z-index: 2;
     clip-path: inset(0 calc(100% - var(--compare-position)) 0 0);
-    background: rgba(255, 255, 255, 0.01);
-    backdrop-filter: blur(6px) saturate(0.78) contrast(0.86);
+  }
+
+  .image-upscale-compare.has-blurred-before .compare-image-before,
+  .image-upscale-compare.has-blurred-before .compare-video-before {
+    filter: blur(6px) saturate(0.78) contrast(0.86);
+    transform: scale(1.018);
   }
 
   .compare-label {

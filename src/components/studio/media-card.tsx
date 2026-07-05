@@ -102,15 +102,19 @@ export function MediaCard({
   const showActions = large && !compact;
   const showMediaControls = large;
   const showBody = !compact;
+  const imageLoading = large ? "eager" : "lazy";
+  const imageFetchPriority = large ? "high" : "low";
+  const videoPreload = large ? "auto" : "metadata";
+  const imageUrl = media?.url && item.type === "image" ? mediaPreviewUrl(media.url, large) : media?.url;
   const statusBadge = mediaExpired ? "已过期" : mediaMissing ? "文件失效" : libraryStatusBadgeLabel(item.status);
   return (
     <article className={cn("studio-media-card", compact && "is-compact")}>
       <div className={cn("studio-media-card__frame", large && "is-large")}>
-        {hasMediaUrl && media?.url && item.type === "image" ? (
-          <img src={media.url} alt={item.title} onError={onMediaMissing} />
+        {hasMediaUrl && imageUrl && item.type === "image" ? (
+          <img src={imageUrl} alt={item.title} loading={imageLoading} decoding="async" fetchPriority={imageFetchPriority} onError={onMediaMissing} />
         ) : null}
         {hasMediaUrl && media?.url && item.type === "video" ? (
-          <video src={media.url} controls={showMediaControls} preload="metadata" onError={onMediaMissing} />
+          <video src={media.url} controls={showMediaControls} preload={videoPreload} onError={onMediaMissing} />
         ) : null}
         {!hasMediaUrl ? (
           <div className={cn("studio-media-card__missing", unavailable && "is-missing")}>
@@ -161,6 +165,11 @@ export function MediaCard({
       </div> : null}
     </article>
   );
+}
+
+function mediaPreviewUrl(url: string, large: boolean) {
+  if (large || !url.startsWith("/api/files/")) return url;
+  return `${url}${url.includes("?") ? "&" : "?"}view=thumb`;
 }
 
 function libraryModeLabel(item: LibraryItem) {

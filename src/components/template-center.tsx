@@ -1,8 +1,10 @@
 "use client";
 
+/* eslint-disable @next/next/no-img-element */
+
 import Link from "next/link";
 import { ArrowRight, Search, SlidersHorizontal } from "lucide-react";
-import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type PointerEvent as ReactPointerEvent } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 
 import { WorkbenchShell } from "@/components/workbench-shell";
@@ -37,10 +39,18 @@ function getWebpThumbnail(thumbnail: string) {
   return thumbnail.endsWith(".png") ? thumbnail.replace(/\.png$/, ".webp") : thumbnail;
 }
 
-function TemplateThumbnail({ template }: { template: TemplatePromptTemplate }) {
+function TemplateThumbnail({
+  template,
+  loading = "lazy",
+  fetchPriority = "low",
+}: {
+  template: TemplatePromptTemplate;
+  loading?: "eager" | "lazy";
+  fetchPriority?: "high" | "low" | "auto";
+}) {
   const thumbnail = getWebpThumbnail(template.thumbnail);
   return (
-    <img src={thumbnail} alt={template.label} loading="lazy" decoding="async" fetchPriority="low" />
+    <img src={thumbnail} alt={template.label} loading={loading} decoding="async" fetchPriority={fetchPriority} />
   );
 }
 
@@ -168,7 +178,7 @@ export function TemplateRail({
         onClickCapture={handleClickCapture}
       >
         <div className="studio-template-track">
-          {templates.map((template) => (
+          {templates.map((template, index) => (
             <button
               key={template.id}
               type="button"
@@ -177,7 +187,7 @@ export function TemplateRail({
               aria-pressed={activeTemplateId === template.id}
             >
               <span className="studio-template-card__thumb">
-                <TemplateThumbnail template={template} />
+                <TemplateThumbnail template={template} loading={index < 6 ? "eager" : "lazy"} fetchPriority={index < 6 ? "auto" : "low"} />
                 <span className="studio-template-card__fade" aria-hidden="true" />
                 <span className="studio-template-card__label">{template.label}</span>
               </span>
@@ -513,10 +523,9 @@ function TemplateBrowserPanel({
           <article
             key={template.id}
             className="template-center-card"
-            style={{ "--template-card-delay": `${Math.min(index * 20, 220)}ms` } as CSSProperties}
           >
             <span className="template-center-card__thumb">
-              <TemplateThumbnail template={template} />
+              <TemplateThumbnail template={template} loading={index < 12 ? "eager" : "lazy"} fetchPriority={index < 12 ? "auto" : "low"} />
               <span className="template-center-card__ratio">{template.aspectRatio}</span>
             </span>
             <span className="template-center-card__body">
