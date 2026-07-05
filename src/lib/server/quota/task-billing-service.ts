@@ -10,6 +10,8 @@ import {
   type NewApiQuotaDisplayConfig,
   type NewApiUserMappingRepository,
 } from "../integrations/new-api";
+import { type MembershipEntitlementKind } from "../membership/plans";
+import { getMembershipService, type MembershipService } from "../membership/service";
 import { QuotaDisplayCache } from "./cache";
 import {
   createJsonUsageLogRepository,
@@ -73,6 +75,7 @@ export type TaskBillingServiceDependencies = {
   taskRepository?: TaskBillingRepository;
   usageRepository?: UsageLogRepository;
   mappingRepository?: NewApiUserMappingRepository;
+  membershipService?: MembershipService;
   quotaCache?: QuotaDisplayCache;
   getQuotaSnapshot?: (localUserId: string) => Promise<{ ok: true; snapshot: QuotaSnapshot } | TaskBillingFailure>;
   getProviderQuota?: (newApiUserId: string) => Promise<ProviderQuotaResult>;
@@ -86,6 +89,7 @@ const billableOperations = new Set<BillableOperation>([
   "cloud_video_generation",
   "cloud_image_upscale",
   "cloud_video_upscale",
+  "prompt_optimize",
 ]);
 const providerDispatchTimeoutMs = 2 * 60 * 1000;
 
@@ -183,10 +187,21 @@ function extractNewApiUserQuota(payload: { data?: NewApiUserSelf; user?: NewApiU
   return Number.isFinite(quota) ? quota : null;
 }
 
+function membershipEntitlementKindForOperation(operation: BillableOperation): MembershipEntitlementKind | null {
+  if (operation === "cloud_image_generation") return "image_generation";
+  if (operation === "cloud_video_generation") return "video_generation";
+  return null;
+}
+
+function chargeableQuotaForRecord(record: TaskBillingRecord, quotaUnits: number) {
+  return record.membership_entitlement_units > 0 ? 0 : quotaUnits;
+}
+
 export class TaskBillingService {
   private readonly taskRepository: TaskBillingRepository;
   private readonly usageRepository: UsageLogRepository;
   private readonly mappingRepository: NewApiUserMappingRepository;
+  private readonly membershipService: MembershipService;
   private readonly quotaCache: QuotaDisplayCache;
   private readonly getQuotaSnapshot: NonNullable<TaskBillingServiceDependencies["getQuotaSnapshot"]>;
   private readonly getQuotaDisplayConfig: NonNullable<TaskBillingServiceDependencies["getQuotaDisplayConfig"]>;
@@ -202,6 +217,7 @@ export class TaskBillingService {
     this.taskRepository = dependencies.taskRepository || persistence!.taskRepository;
     this.usageRepository = dependencies.usageRepository || persistence!.usageRepository || createJsonUsageLogRepository();
     this.mappingRepository = dependencies.mappingRepository || persistence!.mappingRepository || createJsonNewApiUserMappingRepository();
+    this.membershipService = dependencies.membershipService || getMembershipService();
     this.quotaCache = dependencies.quotaCache || new QuotaDisplayCache(15_000);
     this.getQuotaSnapshot = dependencies.getQuotaSnapshot || this.defaultQuotaSnapshot.bind(this);
     this.getQuotaDisplayConfig = dependencies.getQuotaDisplayConfig || getNewApiQuotaDisplayConfig;
@@ -293,14 +309,26 @@ export class TaskBillingService {
 
     const quota = await this.getQuotaSnapshot(input.localUserId);
     if (!quota.ok) return quota;
-    if (quota.snapshot.available_quota_units < input.estimatedQuotaUnits) {
+    const membershipEntitlementKind = membershipEntitlementKindForOperation(input.operation);
+    const membershipEntitlementUnits = membershipEntitlementKind
+      ? (await this.membershipService.consumeEntitlement({
+        localUserId: input.localUserId,
+        kind: membershipEntitlementKind,
+        amount: 1,
+        idempotencyKey: `membership:${membershipEntitlementKind}:${input.taskId}`,
+        taskId: input.taskId,
+        now: this.now(),
+      })).consumed
+      : 0;
+    const chargeableEstimatedQuotaUnits = membershipEntitlementUnits > 0 ? 0 : input.estimatedQuotaUnits;
+    if (quota.snapshot.available_quota_units < chargeableEstimatedQuotaUnits) {
       await this.recordUsage({
         localUserId: input.localUserId,
         newApiUserId: quota.snapshot.new_api_user_id,
         taskId: input.taskId,
         operation: input.operation,
         status: "failed",
-        estimatedQuotaUnits: input.estimatedQuotaUnits,
+        estimatedQuotaUnits: chargeableEstimatedQuotaUnits,
         actualQuotaUnits: null,
         idempotencyKey: input.idempotencyKey,
         errorCode: "insufficient_quota",
@@ -316,7 +344,7 @@ export class TaskBillingService {
         taskId: input.taskId,
         operation: input.operation,
         status: "prechecked",
-        estimatedQuotaUnits: input.estimatedQuotaUnits,
+        estimatedQuotaUnits: chargeableEstimatedQuotaUnits,
         actualQuotaUnits: null,
         idempotencyKey: input.idempotencyKey,
       });
@@ -327,6 +355,8 @@ export class TaskBillingService {
         idempotencyKey: input.idempotencyKey,
         requestFingerprint: input.requestFingerprint || null,
         estimatedQuotaUnits: input.estimatedQuotaUnits,
+        membershipEntitlementKind,
+        membershipEntitlementUnits,
         now: this.now(),
       });
       return { ok: true, status: 201, action: "prechecked", record, usage };
@@ -543,22 +573,25 @@ export class TaskBillingService {
   private async completeSettlement(record: TaskBillingRecord, input: TaskBillingSettleInput): Promise<TaskBillingResult> {
     const mapping = await this.mappingRepository.getByLocalUserId(input.localUserId);
     if (!mapping || mapping.sync_status !== "active" || !mapping.new_api_user_id) return quotaFailure("mapping_pending");
+    const chargeableQuotaUnits = chargeableQuotaForRecord(record, input.actualQuotaUnits);
 
-    const charge = await this.applyIdempotentQuotaAdjustment({
-      localUserId: input.localUserId,
-      newApiUserId: mapping.new_api_user_id,
-      taskId: input.taskId,
-      quotaDelta: -input.actualQuotaUnits,
-      idempotencyKey: `task-settle:${record.id}`,
-      taskBillingRecordId: record.id,
-    });
-    if (!charge.ok) return this.markReconciliationRequired(record, charge.message);
+    if (chargeableQuotaUnits > 0) {
+      const charge = await this.applyIdempotentQuotaAdjustment({
+        localUserId: input.localUserId,
+        newApiUserId: mapping.new_api_user_id,
+        taskId: input.taskId,
+        quotaDelta: -chargeableQuotaUnits,
+        idempotencyKey: `task-settle:${record.id}`,
+        taskBillingRecordId: record.id,
+      });
+      if (!charge.ok) return this.markReconciliationRequired(record, charge.message);
+    }
 
     const timestamp = nowIso(this.now());
     const usage = await this.updateUsageForRecord(record, {
       newApiUserId: mapping.new_api_user_id,
       status: "succeeded",
-      actualQuotaUnits: input.actualQuotaUnits,
+      actualQuotaUnits: chargeableQuotaUnits,
       upstreamLogId: input.upstreamLogId || null,
       upstreamRequestId: input.upstreamRequestId || null,
       upstreamModel: input.upstreamModel || null,
@@ -567,7 +600,7 @@ export class TaskBillingService {
       billing_state: "settled",
       new_api_task_id: input.newApiTaskId || record.new_api_task_id,
       usage_record_id: usage?.id || record.usage_record_id,
-      final_quota_units: input.actualQuotaUnits,
+      final_quota_units: chargeableQuotaUnits,
       settled_at: timestamp,
       updated_at: timestamp,
       last_error: null,
@@ -899,7 +932,7 @@ export class TaskBillingService {
       taskId: record.task_id,
       operation: existingUsage?.operation || "cloud_image_generation",
       status: patch.status || existingUsage?.status || "prechecked",
-      estimatedQuotaUnits: record.estimated_quota_units,
+      estimatedQuotaUnits: chargeableQuotaForRecord(record, record.estimated_quota_units),
       actualQuotaUnits: patch.actualQuotaUnits === undefined ? existingUsage?.actual_quota_units ?? null : patch.actualQuotaUnits,
       upstreamLogId: patch.upstreamLogId === undefined ? existingUsage?.upstream_log_id || null : patch.upstreamLogId,
       upstreamRequestId: patch.upstreamRequestId === undefined ? existingUsage?.upstream_request_id || null : patch.upstreamRequestId,

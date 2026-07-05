@@ -17,9 +17,12 @@ type BillingStorage = {
   write(store: BillingStore): Promise<void>;
 };
 
-export type CreateOrderRecordInput = Omit<BillingOrder, "version" | "webhook_event_ids"> & {
+export type CreateOrderRecordInput = Omit<BillingOrder, "version" | "webhook_event_ids" | "product_type" | "product_plan_id" | "product_cycle"> & {
   version?: number;
   webhook_event_ids?: string[];
+  product_type?: BillingOrder["product_type"];
+  product_plan_id?: string | null;
+  product_cycle?: string | null;
 };
 
 export type BillingOrderPatch = Partial<Omit<BillingOrder, "order_id" | "created_at" | "local_user_id" | "new_api_user_id" | "idempotency_key">>;
@@ -92,6 +95,9 @@ function normalizeStore(store: Partial<BillingStore> | null): BillingStore {
   return {
     orders: Array.isArray(store?.orders) ? store.orders.map((order) => ({
       ...order,
+      product_type: order.product_type || "credits",
+      product_plan_id: order.product_plan_id ?? null,
+      product_cycle: order.product_cycle ?? null,
       webhook_event_ids: Array.isArray(order.webhook_event_ids) ? order.webhook_event_ids : [],
     })) : [],
     webhook_events: Array.isArray(store?.webhook_events) ? store.webhook_events.map((event) => ({
@@ -191,6 +197,9 @@ class StoreBillingRepository implements BillingRepository {
       if (duplicate) throw new BillingRepositoryError("BILLING_DUPLICATE", "Billing order already exists.");
       const order: BillingOrder = {
         ...input,
+        product_type: input.product_type || "credits",
+        product_plan_id: input.product_plan_id ?? null,
+        product_cycle: input.product_cycle ?? null,
         version: input.version ?? 1,
         webhook_event_ids: input.webhook_event_ids?.slice() || [],
       };

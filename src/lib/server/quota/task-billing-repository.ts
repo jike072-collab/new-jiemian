@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import { join } from "node:path";
 
 import { dataRoot, readJsonFile, writeJsonFile } from "../paths";
+import { type MembershipEntitlementKind } from "../membership/plans";
 import { type TaskBillingRecord, type TaskBillingState } from "./task-billing-types";
 
 type TaskBillingStorage = {
@@ -16,6 +17,8 @@ export type CreateTaskBillingRecordInput = {
   idempotencyKey: string;
   requestFingerprint?: string | null;
   estimatedQuotaUnits: number;
+  membershipEntitlementKind?: MembershipEntitlementKind | null;
+  membershipEntitlementUnits?: number;
   now?: Date;
 };
 
@@ -134,6 +137,8 @@ function normalizeRecord(record: Partial<TaskBillingRecord>): TaskBillingRecord 
     billing_state: record.billing_state || "prechecked",
     estimated_quota_units: Number(record.estimated_quota_units || 0),
     final_quota_units: record.final_quota_units === undefined ? null : record.final_quota_units,
+    membership_entitlement_kind: record.membership_entitlement_kind ?? null,
+    membership_entitlement_units: Number(record.membership_entitlement_units || 0),
     created_at: timestamp,
     updated_at: record.updated_at || timestamp,
     settled_at: record.settled_at ?? null,
@@ -262,6 +267,8 @@ class StoreTaskBillingRepository implements TaskBillingRepository {
         billing_state: "prechecked",
         estimated_quota_units: input.estimatedQuotaUnits,
         final_quota_units: null,
+        membership_entitlement_kind: input.membershipEntitlementKind || null,
+        membership_entitlement_units: input.membershipEntitlementUnits || 0,
         created_at: timestamp,
         updated_at: timestamp,
         settled_at: null,

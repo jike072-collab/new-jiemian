@@ -7,6 +7,8 @@ import { test } from "node:test";
 import { applicationQuery, closeApplicationDatabasePool } from "../../database";
 import { createMemoryNewApiUserMappingRepository, type NewApiUserMapping } from "../../integrations/new-api";
 import { createPostgresNewApiUserMappingRepository } from "../../integrations/new-api/postgres-user-mapping";
+import { createMemoryMembershipRepository } from "../../membership/repository";
+import { MembershipService } from "../../membership/service";
 import { createDualBillingRepository } from "../persistence";
 import { createJsonBillingDualRepairRepository } from "../dual-repair";
 import { createMemoryBillingRepository, type BillingRepository } from "../repository";
@@ -143,10 +145,15 @@ function service(overrides: {
 } = {}) {
   const repository = createMemoryBillingRepository();
   const mappingRepository = createMemoryNewApiUserMappingRepository(overrides.mappings || mappingSeed());
+  const membership = new MembershipService({
+    repository: createMemoryMembershipRepository(),
+    now: overrides.now || (() => new Date("2026-06-18T00:00:00.000Z")),
+  });
   const creditCalls: CreditQuotaInput[] = [];
   const billing = new BillingService({
     repository,
     mappingRepository,
+    membershipService: membership,
     getProviderStatus: overrides.getProviderStatus,
     now: overrides.now || (() => new Date("2026-06-18T00:00:00.000Z")),
     creditQuota: overrides.creditQuota || (async (input) => {
@@ -154,7 +161,7 @@ function service(overrides: {
       return { ok: true, providerCreditId: `credit:${input.orderId}` };
     }),
   });
-  return { billing, repository, mappingRepository, creditCalls };
+  return { billing, repository, mappingRepository, membership, creditCalls };
 }
 
 async function createOrder(harness = service(), input: Partial<Parameters<BillingService["createOrder"]>[0]> = {}) {
@@ -318,6 +325,86 @@ test("creates a pending order with server-side discount and quota calculation", 
   assert.equal(order.credited_quota, 31500);
   assert.equal(order.paid_amount, 0);
   assert.equal(order.last_error, null);
+});
+
+test("validates membership order amount against the selected SKU", async () => {
+  const harness = service();
+  const invalid = await harness.billing.createOrder({
+    localUserId: "local-user",
+    channel: "sandbox_alipay",
+    currency: "CNY",
+    requestedAmount: 3000,
+    productType: "membership",
+    planId: "basic",
+    cycle: "monthly",
+    idempotencyKey: "membership-invalid-amount",
+  });
+  assert.equal(invalid.ok, false);
+  if (!invalid.ok) assert.equal(invalid.code, "invalid_billing_request");
+
+  const valid = await harness.billing.createOrder({
+    localUserId: "local-user",
+    channel: "sandbox_alipay",
+    currency: "CNY",
+    requestedAmount: 2990,
+    productType: "membership",
+    planId: "basic",
+    cycle: "monthly",
+    idempotencyKey: "membership-valid-amount",
+  });
+  assert.equal(valid.ok, true);
+  if (!valid.ok) return;
+  assert.equal(valid.order.product_type, "membership");
+  assert.equal(valid.order.product_plan_id, "basic");
+  assert.equal(valid.order.product_cycle, "monthly");
+  assert.equal(valid.order.credited_quota, 3600);
+});
+
+test("paid membership order credits quota and grants entitlements once", async () => {
+  const harness = service();
+  const order = await createOrder(harness, {
+    requestedAmount: 5990,
+    productType: "membership",
+    planId: "advanced",
+    cycle: "monthly",
+    idempotencyKey: "membership-paid",
+  });
+  const paid = await withSecret(() => signedWebhook(harness.billing, payloadFor(order)));
+  assert.equal(paid.ok, true);
+  if (!paid.ok) return;
+  assert.equal(paid.action, "credited");
+  assert.equal(paid.order.status, "paid");
+  assert.equal(harness.creditCalls.length, 1);
+  assert.equal(harness.creditCalls[0].idempotencyKey, `membership-credit:${order.order_id}`);
+  assert.equal(harness.creditCalls[0].quotaUnits, 9000);
+
+  const status = await harness.membership.getStatus("local-user");
+  assert.equal(status.active?.plan_id, "advanced");
+  assert.equal(status.recharge_bonus_basis_points, 1000);
+  assert.equal(status.entitlements.prompt_optimize.remaining, 30);
+  assert.equal(status.entitlements.image_generation.remaining, 60);
+  assert.equal(status.entitlements.video_generation.remaining, 1);
+
+  const duplicate = await withSecret(() => signedWebhook(harness.billing, payloadFor(order)));
+  assert.equal(duplicate.ok, true);
+  assert.equal(harness.creditCalls.length, 1);
+});
+
+test("credit package applies active membership recharge bonus", async () => {
+  const harness = service();
+  await harness.membership.applyPaidMembership({
+    localUserId: "local-user",
+    orderId: "seed-pro-membership",
+    planId: "pro",
+    cycle: "monthly",
+    now: new Date("2026-06-18T00:00:00.000Z"),
+  });
+  const order = await createOrder(harness, {
+    requestedAmount: 1000,
+    idempotencyKey: "credits-with-pro-bonus",
+  });
+  assert.equal(order.product_type, "credits");
+  assert.equal(order.credited_quota, 11500);
 });
 
 test("production payment channel is disabled by default", async () => {
@@ -962,16 +1049,21 @@ test("lists current user orders with pagination and status filtering", async () 
     ...mappingSeed("other-user", "200"),
   ]);
   const creditCalls: CreditQuotaInput[] = [];
+  const membership = new MembershipService({
+    repository: createMemoryMembershipRepository(),
+    now: () => new Date("2026-06-18T00:00:00.000Z"),
+  });
   const billing = new BillingService({
     repository,
     mappingRepository,
+    membershipService: membership,
     now: () => new Date("2026-06-18T00:00:00.000Z"),
     creditQuota: async (input) => {
       creditCalls.push(input);
       return { ok: true, providerCreditId: `credit:${input.orderId}` };
     },
   });
-  const harness = { billing, repository, mappingRepository, creditCalls };
+  const harness = { billing, repository, mappingRepository, membership, creditCalls };
   await createOrder(harness, { idempotencyKey: "idem-1" });
   const paid = await createOrder(harness, { idempotencyKey: "idem-2" });
   const other = await billing.createOrder({

@@ -18,6 +18,7 @@ import {
 import { createBillingPersistenceRepository } from "./persistence";
 import { BillingRepositoryError, type BillingRepository } from "./repository";
 import { getPaymentAdapter, type PaymentAdapter } from "./payment-adapters";
+import { getMembershipService, type MembershipService } from "../membership/service";
 import {
   type BillingErrorCode,
   type BillingFailure,
@@ -55,6 +56,7 @@ export type CreditQuotaResult = {
 export type BillingServiceDependencies = {
   repository?: BillingRepository;
   mappingRepository?: NewApiUserMappingRepository;
+  membershipService?: MembershipService;
   creditQuota?: (input: CreditQuotaInput) => Promise<CreditQuotaResult>;
   getProviderStatus?: (order: BillingOrder) => Promise<PaymentProviderStatus>;
   getPaymentAdapter?: (channel: string) => PaymentAdapter;
@@ -126,6 +128,7 @@ function safeDetails(details: Record<string, string | number | boolean | null>) 
 export class BillingService {
   private readonly repository: BillingRepository;
   private readonly mappingRepository: NewApiUserMappingRepository;
+  private readonly membershipService: MembershipService;
   private readonly getQuotaDisplayConfig: NonNullable<BillingServiceDependencies["getQuotaDisplayConfig"]>;
   private readonly creditQuota: (input: CreditQuotaInput) => Promise<CreditQuotaResult>;
   private readonly getProviderStatus?: (order: BillingOrder) => Promise<PaymentProviderStatus>;
@@ -135,6 +138,7 @@ export class BillingService {
   constructor(dependencies: BillingServiceDependencies = {}) {
     this.repository = dependencies.repository || createBillingPersistenceRepository();
     this.mappingRepository = dependencies.mappingRepository || createAuthPersistenceRepositories().mappingRepository;
+    this.membershipService = dependencies.membershipService || getMembershipService();
     this.getQuotaDisplayConfig = dependencies.getQuotaDisplayConfig || getNewApiQuotaDisplayConfig;
     this.creditQuota = dependencies.creditQuota || this.defaultCreditQuota.bind(this);
     this.getProviderStatus = dependencies.getProviderStatus;
@@ -172,7 +176,16 @@ export class BillingService {
     if (!channel || !channel.enabled) {
       return billingFailure("payment_channel_unavailable", 400, "Payment channel is unavailable.");
     }
-    if (input.currency !== channel.currency || !amountAllowed(channel, input.requestedAmount)) {
+    const productType = input.productType || "credits";
+    const sku = productType === "membership"
+      ? this.membershipService.getSku(input.planId, input.cycle)
+      : null;
+    const requestedAmount = productType === "membership" && sku ? sku.price_amount : input.requestedAmount;
+    if (
+      input.currency !== channel.currency
+      || (productType === "membership" && (!sku || input.requestedAmount !== requestedAmount))
+      || !amountAllowed(channel, requestedAmount)
+    ) {
       return billingFailure("invalid_billing_request", 400, "Billing amount is invalid.");
     }
     const idempotencyKey = input.idempotencyKey.trim();
@@ -204,7 +217,9 @@ export class BillingService {
 
     const timestamp = nowIso(this.now());
     const orderId = createBillingOrderId();
-    const creditedQuota = calculateCreditedQuota(channel, input.requestedAmount);
+    const creditedQuota = sku
+      ? sku.grant_credits
+      : await this.calculateCreditedQuotaWithMembershipBonus(input.localUserId, channel, requestedAmount);
     const adapter = this.getPaymentAdapter(channel.channel);
     const providerOrder = await adapter.createOrder({
       orderId,
@@ -212,7 +227,7 @@ export class BillingService {
       newApiUserId: mapping.new_api_user_id,
       channel: channel.channel,
       currency: channel.currency,
-      requestedAmount: input.requestedAmount,
+      requestedAmount,
       idempotencyKey,
       clientIp: context.ip,
       userAgent: context.userAgent,
@@ -236,9 +251,12 @@ export class BillingService {
       new_api_user_id: mapping.new_api_user_id,
       channel: channel.channel,
       currency: channel.currency,
-      requested_amount: input.requestedAmount,
+      requested_amount: requestedAmount,
       paid_amount: 0,
       credited_quota: creditedQuota,
+      product_type: productType,
+      product_plan_id: sku ? sku.plan.id : null,
+      product_cycle: sku ? sku.cycle : null,
       status: "pending",
       idempotency_key: idempotencyKey,
       provider_order_id: providerOrder.providerOrderId,
@@ -250,8 +268,9 @@ export class BillingService {
       refunded_at: null,
     });
     await this.audit("billing.order.created", order, context, {
-      amount: input.requestedAmount,
+      amount: requestedAmount,
       credited_quota: creditedQuota,
+      product_type: productType,
     });
     return {
       ok: true,
@@ -484,6 +503,18 @@ export class BillingService {
       paid_at: order.paid_at,
       refunded_at: targetStatus === "refunded" ? nowIso(this.now()) : order.refunded_at,
     });
+    if (targetStatus === "refunded" && updated.product_type === "membership") {
+      try {
+        await this.membershipService.cancelByOrder(updated.order_id, this.now());
+      } catch (error) {
+        const review = await this.updateStatus(updated, "review", {
+          last_error: sanitizeError(error instanceof Error ? error.message : "Membership cancellation failed."),
+        });
+        await this.repository.updateWebhookEventStatus(payload.event_id, "failed", review.last_error);
+        await this.audit("billing.membership.refund_cancel_failed", review, context, { event_id: payload.event_id });
+        return { ok: true, status: 202, order: publicOrder(review), action: "review" };
+      }
+    }
     await this.repository.updateWebhookEventStatus(payload.event_id, "completed", null);
     await this.audit(`billing.webhook.${targetStatus}`, updated, context, { event_id: payload.event_id });
     return { ok: true, status: 200, order: publicOrder(updated), action: "status_updated" };
@@ -548,6 +579,17 @@ export class BillingService {
 
   private paymentDescriptor(order: BillingOrder) {
     return this.getPaymentAdapter(order.channel).paymentDescriptor(order);
+  }
+
+  private async calculateCreditedQuotaWithMembershipBonus(
+    localUserId: string,
+    channel: Parameters<typeof calculateCreditedQuota>[0],
+    requestedAmount: number,
+  ) {
+    const baseQuota = calculateCreditedQuota(channel, requestedAmount);
+    const status = await this.membershipService.getStatus(localUserId, this.now());
+    const bonusBasisPoints = Math.max(0, status.recharge_bonus_basis_points || 0);
+    return Math.floor((baseQuota * (10000 + bonusBasisPoints)) / 10000);
   }
 
   private webhookMismatch(order: BillingOrder, payload: BillingWebhookPayload) {
@@ -649,6 +691,10 @@ export class BillingService {
   }
 
   private async creditPaidOrder(order: BillingOrder, context: BillingRequestContext, eventId: string) {
+    if (order.product_type === "membership") {
+      return this.fulfillMembershipOrder(order, context, eventId);
+    }
+
     if (order.quota_credit_applied_at) {
       const paid = order.status === "paid" ? order : await this.updateStatus(order, "paid", {});
       return { ok: true as const, status: 200, order: publicOrder(paid), action: "idempotent" as const };
@@ -680,6 +726,74 @@ export class BillingService {
     });
     await this.repository.updateWebhookEventStatus(eventId, "completed", null);
     await this.audit("billing.quota.credited", paid, context, {
+      event_id: eventId,
+      provider_credit_id: credit.providerCreditId,
+      credited_quota: paid.credited_quota,
+    });
+    return { ok: true as const, status: 200, order: publicOrder(paid), action: "credited" as const };
+  }
+
+  private async fulfillMembershipOrder(order: BillingOrder, context: BillingRequestContext, eventId: string) {
+    if (order.quota_credit_applied_at) {
+      const paid = order.status === "paid" ? order : await this.updateStatus(order, "paid", {});
+      return { ok: true as const, status: 200, order: publicOrder(paid), action: "idempotent" as const };
+    }
+    const sku = this.membershipService.getSku(order.product_plan_id, order.product_cycle);
+    if (!sku || sku.price_amount !== order.requested_amount) {
+      const review = await this.updateStatusWithRetry(order, "review", {
+        last_error: "Invalid membership SKU on paid order.",
+      });
+      await this.repository.updateWebhookEventStatus(eventId, "failed", review.last_error);
+      await this.audit("billing.membership.invalid_sku", review, context, { event_id: eventId });
+      return { ok: true as const, status: 202, order: publicOrder(review), action: "review" as const };
+    }
+
+    const credit = await this.creditQuota({
+      orderId: order.order_id,
+      localUserId: order.local_user_id,
+      newApiUserId: order.new_api_user_id,
+      quotaUnits: order.credited_quota,
+      idempotencyKey: `membership-credit:${order.order_id}`,
+    });
+    if (!credit.ok) {
+      const review = await this.updateStatusWithRetry(order, "review", {
+        last_error: credit.message,
+      });
+      await this.repository.updateWebhookEventStatus(eventId, "failed", sanitizeError(credit.message));
+      await this.audit("billing.membership.credit_failed", review, context, {
+        event_id: eventId,
+        error_code: credit.code,
+        retryable: credit.retryable,
+      });
+      return { ok: true as const, status: 202, order: publicOrder(review), action: "review" as const };
+    }
+
+    try {
+      await this.membershipService.applyPaidMembership({
+        localUserId: order.local_user_id,
+        orderId: order.order_id,
+        planId: order.product_plan_id,
+        cycle: order.product_cycle,
+        now: this.now(),
+      });
+    } catch (error) {
+      const review = await this.updateStatusWithRetry(order, "review", {
+        last_error: sanitizeError(error instanceof Error ? error.message : "Membership activation failed."),
+      });
+      await this.repository.updateWebhookEventStatus(eventId, "failed", review.last_error);
+      await this.audit("billing.membership.activation_failed", review, context, {
+        event_id: eventId,
+        provider_credit_id: credit.providerCreditId,
+      });
+      return { ok: true as const, status: 202, order: publicOrder(review), action: "review" as const };
+    }
+
+    const paid = await this.updateStatusWithRetry(order, "paid", {
+      quota_credit_applied_at: nowIso(this.now()),
+      last_error: null,
+    });
+    await this.repository.updateWebhookEventStatus(eventId, "completed", null);
+    await this.audit("billing.membership.fulfilled", paid, context, {
       event_id: eventId,
       provider_credit_id: credit.providerCreditId,
       credited_quota: paid.credited_quota,

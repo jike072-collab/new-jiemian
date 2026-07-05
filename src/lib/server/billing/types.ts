@@ -8,6 +8,7 @@ export type BillingOrderStatus =
   | "refunded";
 
 export type BillingCurrency = "CNY";
+export type BillingProductType = "credits" | "membership";
 
 export type BillingErrorCode =
   | "billing_disabled"
@@ -66,6 +67,9 @@ export type BillingOrder = {
   requested_amount: number;
   paid_amount: number;
   credited_quota: number;
+  product_type: BillingProductType;
+  product_plan_id: string | null;
+  product_cycle: string | null;
   status: BillingOrderStatus;
   idempotency_key: string;
   provider_order_id: string;
@@ -102,6 +106,9 @@ export type CreateBillingOrderInput = {
   channel: string;
   currency: BillingCurrency;
   requestedAmount: number;
+  productType?: BillingProductType;
+  planId?: string | null;
+  cycle?: string | null;
   idempotencyKey: string;
 };
 

@@ -10,6 +10,7 @@ const billableOperations = new Set<BillableOperation>([
   "cloud_video_generation",
   "cloud_image_upscale",
   "cloud_video_upscale",
+  "prompt_optimize",
 ]);
 
 function quotaErrorResponse(input: {

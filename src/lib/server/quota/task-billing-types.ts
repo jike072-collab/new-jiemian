@@ -1,4 +1,5 @@
 import { type BillableOperation, type QuotaErrorCode, type UsageLogEntry } from "./types";
+import { type MembershipEntitlementKind } from "../membership/plans";
 
 export type TaskBillingState =
   | "prechecked"
@@ -40,6 +41,8 @@ export type TaskBillingRecord = {
   billing_state: TaskBillingState;
   estimated_quota_units: number;
   final_quota_units: number | null;
+  membership_entitlement_kind: MembershipEntitlementKind | null;
+  membership_entitlement_units: number;
   created_at: string;
   updated_at: string;
   settled_at: string | null;

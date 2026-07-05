@@ -21,7 +21,8 @@ export type BillableOperation =
   | "cloud_image_generation"
   | "cloud_video_generation"
   | "cloud_image_upscale"
-  | "cloud_video_upscale";
+  | "cloud_video_upscale"
+  | "prompt_optimize";
 
 export type QuotaSnapshot = {
   local_user_id: string;

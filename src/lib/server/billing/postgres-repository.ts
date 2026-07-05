@@ -32,6 +32,9 @@ type BillingOrderRow = QueryResultRow & {
   requested_amount: number;
   paid_amount: number;
   credited_quota: number;
+  product_type: "credits" | "membership";
+  product_plan_id: string | null;
+  product_cycle: string | null;
   status: BillingOrderStatus;
   idempotency_key: string;
   provider_order_id: string;
@@ -92,6 +95,9 @@ function orderFromRow(row: BillingOrderRow): BillingOrder {
     requested_amount: Number(row.requested_amount),
     paid_amount: Number(row.paid_amount),
     credited_quota: Number(row.credited_quota),
+    product_type: row.product_type || "credits",
+    product_plan_id: row.product_plan_id,
+    product_cycle: row.product_cycle,
     status: row.status,
     idempotency_key: row.idempotency_key,
     provider_order_id: row.provider_order_id,
@@ -176,9 +182,9 @@ export class PostgresBillingRepository implements BillingRepository {
       const result = await applicationQuery<BillingOrderRow>(`
         insert into billing_orders(
           order_id, local_user_id, new_api_user_id, channel, currency, requested_amount,
-          paid_amount, credited_quota, status, idempotency_key, provider_order_id,
+          paid_amount, credited_quota, product_type, product_plan_id, product_cycle, status, idempotency_key, provider_order_id,
           created_at, updated_at, paid_at, last_error, version, quota_credit_applied_at, refunded_at
-        ) values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18)
+        ) values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21)
         returning *, array[]::text[] as webhook_event_ids
       `, [
         input.order_id,
@@ -189,6 +195,9 @@ export class PostgresBillingRepository implements BillingRepository {
         input.requested_amount,
         input.paid_amount,
         input.credited_quota,
+        input.product_type || "credits",
+        input.product_plan_id ?? null,
+        input.product_cycle ?? null,
         input.status,
         input.idempotency_key,
         input.provider_order_id,
@@ -228,6 +237,9 @@ export class PostgresBillingRepository implements BillingRepository {
     if (patch.requested_amount !== undefined) add("requested_amount", patch.requested_amount);
     if (patch.paid_amount !== undefined) add("paid_amount", patch.paid_amount);
     if (patch.credited_quota !== undefined) add("credited_quota", patch.credited_quota);
+    if (patch.product_type !== undefined) add("product_type", patch.product_type);
+    if (patch.product_plan_id !== undefined) add("product_plan_id", patch.product_plan_id);
+    if (patch.product_cycle !== undefined) add("product_cycle", patch.product_cycle);
     if (patch.status !== undefined) add("status", patch.status);
     if (patch.provider_order_id !== undefined) add("provider_order_id", patch.provider_order_id);
     if (patch.updated_at !== undefined) add("updated_at", patch.updated_at);

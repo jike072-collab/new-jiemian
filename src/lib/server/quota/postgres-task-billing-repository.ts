@@ -33,6 +33,8 @@ type TaskBillingRecordRow = QueryResultRow & {
   billing_state: TaskBillingState;
   estimated_quota_units: number;
   final_quota_units: number | null;
+  membership_entitlement_kind: TaskBillingRecord["membership_entitlement_kind"];
+  membership_entitlement_units: number;
   created_at: Date | string;
   updated_at: Date | string;
   settled_at: Date | string | null;
@@ -83,6 +85,8 @@ function fromRow(row: TaskBillingRecordRow): TaskBillingRecord {
     billing_state: row.billing_state,
     estimated_quota_units: Number(row.estimated_quota_units),
     final_quota_units: row.final_quota_units === null ? null : Number(row.final_quota_units),
+    membership_entitlement_kind: row.membership_entitlement_kind,
+    membership_entitlement_units: Number(row.membership_entitlement_units || 0),
     created_at: iso(row.created_at),
     updated_at: iso(row.updated_at),
     settled_at: isoOrNull(row.settled_at),
@@ -206,8 +210,8 @@ export class PostgresTaskBillingRepository implements TaskBillingRepository {
         insert into task_billing_records(
           id, local_user_id, task_id, new_api_task_id, usage_record_id, idempotency_key,
           request_fingerprint, billing_state, estimated_quota_units, final_quota_units, created_at, updated_at,
-          settled_at, refunded_at, last_error, version
-        ) values ($1,$2,$3,null,$4,$5,$6,'prechecked',$7,null,$8,$8,null,null,null,1)
+          membership_entitlement_kind, membership_entitlement_units, settled_at, refunded_at, last_error, version
+        ) values ($1,$2,$3,null,$4,$5,$6,'prechecked',$7,null,$8,$8,$9,$10,null,null,null,1)
         returning *
       `, [
         randomUUID(),
@@ -218,6 +222,8 @@ export class PostgresTaskBillingRepository implements TaskBillingRepository {
         input.requestFingerprint || null,
         input.estimatedQuotaUnits,
         timestamp,
+        input.membershipEntitlementKind || null,
+        input.membershipEntitlementUnits || 0,
       ]);
       return fromRow(result.rows[0]);
     } catch (error) {

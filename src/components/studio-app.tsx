@@ -113,6 +113,32 @@ type BillingConfigResponse = {
   channels: PublicPaymentChannelConfig[];
 };
 
+type MembershipStatusResponse = {
+  ok: true;
+  plans: Array<{
+    id: string;
+    name: string;
+    prices: Record<PlanCycle, number>;
+    monthly_credits: number;
+    recharge_bonus_basis_points: number;
+    monthly_entitlements: {
+      prompt_optimize: number;
+      image_generation: number;
+      video_generation: number;
+    };
+  }>;
+  membership: {
+    active: { plan_id: string; ends_at: string } | null;
+    queued: { plan_id: string; starts_at: string; ends_at: string } | null;
+    recharge_bonus_basis_points: number;
+    entitlements: Record<"prompt_optimize" | "image_generation" | "video_generation", {
+      remaining: number;
+      granted: number;
+      used: number;
+    }>;
+  };
+};
+
 type CheckInResponse = {
   ok: true;
   checkIn: PublicDailyCheckInStatus;
@@ -157,6 +183,7 @@ type PlanOption = {
   id: string;
   name: string;
   price: number;
+  cyclePrices: Record<PlanCycle, number>;
   monthlyCredits: number;
   description: string;
   highlight: string;
@@ -188,6 +215,7 @@ const planOptions: PlanOption[] = [
     id: "basic",
     name: "基础会员",
     price: 29.9,
+    cyclePrices: { monthly: 29.9, quarterly: 79, yearly: 299 },
     monthlyCredits: 3600,
     description: "适合电商日常出图与首批客户试用",
     highlight: "新客友好",
@@ -199,6 +227,7 @@ const planOptions: PlanOption[] = [
     id: "advanced",
     name: "进阶会员",
     price: 59.9,
+    cyclePrices: { monthly: 59.9, quarterly: 159, yearly: 599 },
     monthlyCredits: 9000,
     description: "面向持续产出商品图、海报与短视频素材",
     highlight: "主推档",
@@ -211,6 +240,7 @@ const planOptions: PlanOption[] = [
     id: "pro",
     name: "专业会员",
     price: 99.9,
+    cyclePrices: { monthly: 99.9, quarterly: 279, yearly: 999 },
     monthlyCredits: 16000,
     description: "适合高频商用创作与图片视频混合生产",
     highlight: "商用高频",
@@ -222,6 +252,7 @@ const planOptions: PlanOption[] = [
     id: "enterprise",
     name: "企业会员",
     price: 199,
+    cyclePrices: { monthly: 199, quarterly: 549, yearly: 1999 },
     monthlyCredits: 36000,
     description: "适合团队协作、批量出图和持续视频投放",
     highlight: "团队定向",
@@ -249,6 +280,11 @@ const planCycleOptions: Array<{ id: PlanCycle; label: string; badge?: string }> 
   { id: "quarterly", label: "季度更省", badge: "赠送更多" },
   { id: "yearly", label: "年度锁客", badge: "价值最高" },
 ];
+const planCycleMonths: Record<PlanCycle, number> = {
+  monthly: 1,
+  quarterly: 3,
+  yearly: 12,
+};
 const CLIENT_IMAGE_SUBMISSION_LIMIT = 2;
 const CLIENT_VIDEO_SUBMISSION_LIMIT = 1;
 
@@ -490,6 +526,7 @@ export function StudioApp() {
   const [checkInRecords, setCheckInRecords] = useState<PublicDailyCheckInRecord[]>([]);
   const [usagePage, setUsagePage] = useState<UsagePage | null>(null);
   const [billingOrders, setBillingOrders] = useState<BillingOrder[]>([]);
+  const [membershipSnapshot, setMembershipSnapshot] = useState<MembershipStatusResponse | null>(null);
   const [accountSummaryLoading, setAccountSummaryLoading] = useState(false);
   const [checkInLoading, setCheckInLoading] = useState(false);
   const [checkInSubmitting, setCheckInSubmitting] = useState(false);
@@ -588,19 +625,11 @@ export function StudioApp() {
   const videoInFlightCountRef = useRef(0);
   const accountPlanStatus = useMemo<PlanStatus>(() => {
     if (sessionLoading || accountSummaryLoading) return { status: "loading" };
-    const paidOrders = billingOrders
-      .filter((order) => order.status === "paid")
-      .sort((a, b) => {
-        const aTime = new Date(a.paid_at || a.updated_at || a.created_at).getTime();
-        const bTime = new Date(b.paid_at || b.updated_at || b.created_at).getTime();
-        return bTime - aTime;
-      });
-    const matchedPlan = paidOrders
-      .map((order) => planOptions.find((plan) => Math.abs(plan.price - order.requested_amount / 100) < 0.001))
-      .find(Boolean);
-    if (matchedPlan) return { status: "active", name: matchedPlan.name };
-    return paidOrders.length > 0 ? { status: "none" } : { status: "unavailable" };
-  }, [accountSummaryLoading, billingOrders, sessionLoading]);
+    const activePlanId = membershipSnapshot?.membership.active?.plan_id;
+    const activePlan = activePlanId ? planOptions.find((plan) => plan.id === activePlanId) : null;
+    if (activePlan) return { status: "active", name: activePlan.name };
+    return sessionUser ? { status: "none" } : { status: "unavailable" };
+  }, [accountSummaryLoading, membershipSnapshot?.membership.active?.plan_id, sessionLoading, sessionUser]);
   const accountCheckInStatus = useMemo<CheckInStatus>(() => {
     if (!sessionUser) return "unavailable";
     if (sessionLoading || checkInLoading) return "loading";
@@ -622,6 +651,7 @@ export function StudioApp() {
     setCheckInRecords([]);
     setUsagePage(null);
     setBillingOrders([]);
+    setMembershipSnapshot(null);
     setAccountDataError("");
     setCheckInError("");
     setAccountSummaryLoading(false);
@@ -644,11 +674,14 @@ export function StudioApp() {
     setAccountSummaryLoading(true);
     try {
       const quotaResult = await fetchJson<{ ok: true; quota: QuotaSnapshot }>("/api/quota");
+      const membershipResult = await fetchJson<MembershipStatusResponse>("/api/membership/status").catch(() => null);
       setQuotaSnapshot(quotaResult.quota);
+      setMembershipSnapshot(membershipResult);
       setAccountSummaryLoaded(true);
       setAccountDataError("");
     } catch (error) {
       setQuotaSnapshot(null);
+      setMembershipSnapshot(null);
       setAccountDataError("account-data-unavailable");
       if (process.env.NODE_ENV !== "production") {
         console.debug("[account] Failed to load quota snapshot", error);
@@ -1358,9 +1391,12 @@ export function StudioApp() {
       promptOptimizeUndo: "",
     });
     try {
+      const taskId = createTaskId("prompt-image");
       const data = await fetchJsonWithCsrf<{ prompt?: string; optimizedPrompt?: string }>("/api/prompts/optimize", {
         method: "POST",
         body: JSON.stringify({
+          taskId,
+          idempotencyKey: taskId,
           tool: activeWorkspaceToolId === "image-editor" ? "image-editor" : "image-generator",
           templateId: imageWorkspace.templateId,
           prompt: originalPrompt,
@@ -1735,9 +1771,12 @@ export function StudioApp() {
       promptOptimizeUndo: "",
     });
     try {
+      const taskId = createTaskId("prompt-video");
       const data = await fetchJsonWithCsrf<{ prompt?: string; optimizedPrompt?: string }>("/api/prompts/optimize", {
         method: "POST",
         body: JSON.stringify({
+          taskId,
+          idempotencyKey: taskId,
           tool: "video-generator",
           templateId: videoWorkspace.templateId,
           prompt: originalPrompt,
@@ -3039,13 +3078,14 @@ function RechargeCenterWorkspace({
   const creditAmountAllowed = selectedPaymentChannelConfig
     ? paymentChannelAllowsAmount(selectedPaymentChannelConfig, creditPayableMinorAmount)
     : false;
-  const selectedPlanCredits = selectedPlan ? estimateRechargeCredits(selectedPaymentChannelConfig, selectedPlan.price, selectedPlan.monthlyCredits) : 0;
+  const selectedPlanPrice = selectedPlan ? getPlanCyclePrice(selectedPlan, selectedPlanCycle) : 0;
+  const selectedPlanCredits = selectedPlan ? getPlanCycleCredits(selectedPlan, selectedPlanCycle) : 0;
   const selectedPlanFacts = selectedPlan ? createPlanFactItems(selectedPlan, selectedPlanCredits) : [];
-  const planPayableMinorAmount = selectedPlan ? rechargeAmountToMinor(selectedPlan.price) : Number.NaN;
+  const planPayableMinorAmount = selectedPlan ? rechargeAmountToMinor(selectedPlanPrice) : Number.NaN;
   const planAmountAllowed = selectedPaymentChannelConfig
     ? paymentChannelAllowsAmount(selectedPaymentChannelConfig, planPayableMinorAmount)
     : false;
-  const planSummaryLines = createPlanSummaryLines(selectedPlan, selectedPlanCredits, selectedPlanCycle);
+  const planSummaryLines = createPlanSummaryLines(selectedPlan, selectedPlanCredits, selectedPlanCycle, selectedPlanPrice);
   const selectedCreditTotal = selectedCredit ? estimateRechargeCredits(selectedPaymentChannelConfig, selectedCredit.amount, selectedCredit.credits) : 0;
   const selectedCreditGift = selectedCredit ? getCreditTopUpGift(selectedCredit, selectedPaymentChannelConfig) : 0;
   const planSummaryReady = Boolean(selectedPlan);
@@ -3054,7 +3094,7 @@ function RechargeCenterWorkspace({
     user,
     ready: planSummaryReady,
     selectedPlan,
-    amount: selectedPlan?.price,
+    amount: selectedPlanPrice,
     paymentConfigLoading,
     paymentSubmitting,
     paymentChannelReady: Boolean(selectedPaymentChannelConfig),
@@ -3115,7 +3155,10 @@ function RechargeCenterWorkspace({
     };
   }, [user]);
 
-  const handleRechargePayment = useCallback(async (amount: number | string) => {
+  const handleRechargePayment = useCallback(async (
+    amount: number | string,
+    product: { productType: "credits" } | { productType: "membership"; planId: string; cycle: PlanCycle },
+  ) => {
     if (!user || !selectedPaymentChannelConfig || paymentSubmitting) return;
     const requestedAmount = rechargeAmountToMinor(amount);
     if (!paymentChannelAllowsAmount(selectedPaymentChannelConfig, requestedAmount)) {
@@ -3132,6 +3175,8 @@ function RechargeCenterWorkspace({
           channel: selectedPaymentChannelConfig.channel,
           currency: "CNY",
           requestedAmount,
+          productType: product.productType,
+          ...(product.productType === "membership" ? { planId: product.planId, cycle: product.cycle } : {}),
           idempotencyKey: createTaskId("billing-order"),
         }),
       });
@@ -3153,12 +3198,16 @@ function RechargeCenterWorkspace({
 
   const handlePlanPayment = useCallback(() => {
     if (!selectedPlan || !planSummaryReady || !planAmountAllowed) return;
-    void handleRechargePayment(selectedPlan.price);
-  }, [handleRechargePayment, planAmountAllowed, planSummaryReady, selectedPlan]);
+    void handleRechargePayment(selectedPlanPrice, {
+      productType: "membership",
+      planId: selectedPlan.id,
+      cycle: selectedPlanCycle,
+    });
+  }, [handleRechargePayment, planAmountAllowed, planSummaryReady, selectedPlan, selectedPlanCycle, selectedPlanPrice]);
 
   const handleCreditPayment = useCallback(() => {
     if (!creditSummaryReady || !creditAmountAllowed || creditPayableAmount === "") return;
-    void handleRechargePayment(creditPayableAmount);
+    void handleRechargePayment(creditPayableAmount, { productType: "credits" });
   }, [creditAmountAllowed, creditPayableAmount, creditSummaryReady, handleRechargePayment]);
 
   return (
@@ -3287,13 +3336,13 @@ function RechargeCenterWorkspace({
                           </span>
                           <span className="recharge-plan-card__name">{plan.name}</span>
                           <span className="recharge-plan-card__price">
-                            {plan.cyclePriceLabels?.[selectedPlanCycle] ?? `¥${plan.price} / ${PLAN_PERIOD_UNIT_LABEL}`}
+                            {plan.cyclePriceLabels?.[selectedPlanCycle] ?? `¥${getPlanCyclePrice(plan, selectedPlanCycle)} / ${PLAN_PERIOD_UNIT_LABEL}`}
                           </span>
                           <span className="recharge-plan-card__desc">{plan.description}</span>
-                          <span className="recharge-plan-card__credits">到账 {formatQuotaUnits(estimateRechargeCredits(selectedPaymentChannelConfig, plan.price, plan.monthlyCredits))} 积分</span>
+                          <span className="recharge-plan-card__credits">到账 {formatQuotaUnits(getPlanCycleCredits(plan, selectedPlanCycle))} 积分</span>
                           <span className="recharge-plan-card__reason">{plan.bonusLabel}</span>
                           <span className="recharge-plan-card__facts" role="list" aria-label={`${plan.name}套餐信息`}>
-                            {createPlanFactItems(plan, estimateRechargeCredits(selectedPaymentChannelConfig, plan.price, plan.monthlyCredits)).map((item) => (
+                            {createPlanFactItems(plan, getPlanCycleCredits(plan, selectedPlanCycle)).map((item) => (
                               <span key={item} role="listitem">
                                 <Check className="size-3.5" aria-hidden="true" />
                                 <span>{item}</span>
@@ -3399,7 +3448,7 @@ function RechargeCenterWorkspace({
                 title="会员开通确认"
                 lines={planSummaryLines}
                 note={planPaymentNote}
-                buttonLabel={planConfirmState.disabled ? planConfirmState.label : `立即开通 ¥${formatRechargeAmount(selectedPlan?.price ?? 0)}`}
+                buttonLabel={planConfirmState.disabled ? planConfirmState.label : `立即开通 ¥${formatRechargeAmount(selectedPlanPrice)}`}
                 disabled={planConfirmState.disabled}
                 onConfirm={handlePlanPayment}
                 extra={selectedPlan ? (
@@ -3849,6 +3898,14 @@ function paymentChannelAllowsAmount(channel: PublicPaymentChannelConfig, minorAm
     && minorAmount <= channel.custom_amount_range.max_amount;
 }
 
+function getPlanCyclePrice(plan: PlanOption, cycle: PlanCycle) {
+  return plan.cyclePrices[cycle] ?? plan.price;
+}
+
+function getPlanCycleCredits(plan: PlanOption, cycle: PlanCycle) {
+  return plan.monthlyCredits * planCycleMonths[cycle];
+}
+
 function createPlanFactItems(plan: PlanOption, credits: number) {
   return [
     plan.bonusLabel,
@@ -3860,7 +3917,7 @@ function createPlanFactItems(plan: PlanOption, credits: number) {
   ];
 }
 
-function createPlanSummaryLines(plan: PlanOption | null, credits = 0, cycle: PlanCycle = "monthly"): Array<[string, string]> {
+function createPlanSummaryLines(plan: PlanOption | null, credits = 0, cycle: PlanCycle = "monthly", amount?: number): Array<[string, string]> {
   if (!plan) {
     return [
       ["当前选择", "暂无套餐"],
@@ -3875,7 +3932,7 @@ function createPlanSummaryLines(plan: PlanOption | null, credits = 0, cycle: Pla
     ["套餐周期", cycle === "yearly" ? "年度会员" : cycle === "quarterly" ? "季度会员" : PLAN_PERIOD_LABEL],
     ["到账积分", `${formatQuotaUnits(credits || plan.monthlyCredits)} 积分`],
     ["赠送权益", plan.bonusLabel],
-    ["应付金额", `¥${formatRechargeAmount(plan.price)}`],
+    ["应付金额", `¥${formatRechargeAmount(amount ?? getPlanCyclePrice(plan, cycle))}`],
   ];
 }
 
@@ -3945,7 +4002,7 @@ function createRechargeConfirmState(input: {
   if (!input.paymentAmountAllowed) return { disabled: true, label: "金额不符合支付规则" };
 
   if (input.mode === "plans" && input.selectedPlan) {
-    return { disabled: false, label: `立即支付 ¥${formatRechargeAmount(input.selectedPlan.price)}` };
+    return { disabled: false, label: `立即支付 ¥${formatRechargeAmount(input.amount ?? input.selectedPlan.price)}` };
   }
 
   if (input.mode === "credits" && input.amount !== undefined && input.amount !== "") {
@@ -3993,6 +4050,7 @@ function usageOperationLabel(operation: UsageLogEntry["operation"]) {
     cloud_video_generation: "AI 视频生成器",
     cloud_image_upscale: "图片高清增强",
     cloud_video_upscale: "视频高清增强",
+    prompt_optimize: "提示词优化",
   };
   return labels[operation] || "AI 工具";
 }
@@ -4003,6 +4061,7 @@ function usageDescription(entry: UsageLogEntry) {
     cloud_video_generation: "生成视频",
     cloud_image_upscale: "图片高清增强处理",
     cloud_video_upscale: "视频高清增强处理",
+    prompt_optimize: "优化提示词",
   };
   if (entry.status === "failed") return `${descriptions[entry.operation] || "工具处理"}失败`;
   if (entry.status === "refunded") return `${descriptions[entry.operation] || "工具处理"}已退回额度`;

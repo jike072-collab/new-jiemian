@@ -9,7 +9,7 @@ import {
   readJsonBody,
 } from "../auth";
 import { getBillingService } from "./service";
-import { type BillingErrorCode, type BillingOrderStatus } from "./types";
+import { type BillingErrorCode, type BillingOrderStatus, type BillingProductType } from "./types";
 
 function billingErrorResponse(input: {
   code: BillingErrorCode;
@@ -41,6 +41,10 @@ async function requireLocalUser(request: NextRequest) {
 function parseAmount(value: unknown) {
   const amount = Number(value);
   return Number.isInteger(amount) ? amount : Number.NaN;
+}
+
+function parseProductType(value: unknown): BillingProductType {
+  return value === "membership" ? "membership" : "credits";
 }
 
 const orderStatuses = new Set<BillingOrderStatus>([
@@ -86,6 +90,9 @@ export async function createBillingOrderResponse(request: NextRequest) {
     channel: String(body.channel || ""),
     currency: body.currency === "CNY" ? "CNY" : "CNY",
     requestedAmount: parseAmount(body.requestedAmount),
+    productType: parseProductType(body.productType),
+    planId: typeof body.planId === "string" ? body.planId : null,
+    cycle: typeof body.cycle === "string" ? body.cycle : null,
     idempotencyKey: String(body.idempotencyKey || ""),
   }, authRequestContext(request));
   if (!result.ok) return billingErrorResponse(result);

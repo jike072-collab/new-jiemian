@@ -7,6 +7,8 @@ import {
   type NewApiUserMapping,
 } from "../../integrations/new-api";
 import { createPostgresNewApiUserMappingRepository } from "../../integrations/new-api/postgres-user-mapping";
+import { createMemoryMembershipRepository } from "../../membership/repository";
+import { MembershipService } from "../../membership/service";
 import { createMemoryUsageLogRepository } from "../repository";
 import { createPostgresUsageLogRepository } from "../postgres-usage-repository";
 import { QuotaDisplayCache } from "../cache";
@@ -64,6 +66,10 @@ function service(overrides: {
   const taskRepository = overrides.repository || createMemoryTaskBillingRepository();
   const usageRepository = createMemoryUsageLogRepository();
   const mappingRepository = createMemoryNewApiUserMappingRepository(mappingSeed());
+  const membershipService = new MembershipService({
+    repository: createMemoryMembershipRepository(),
+    now: () => new Date("2026-06-18T00:00:00.000Z"),
+  });
   const quotaCache = new QuotaDisplayCache(15_000);
   const adjustments: AdjustQuotaInput[] = [];
   let providerQuota = overrides.providerQuota ?? overrides.availableQuota ?? 100;
@@ -71,6 +77,7 @@ function service(overrides: {
     taskRepository,
     usageRepository,
     mappingRepository,
+    membershipService,
     quotaCache,
     now: () => new Date("2026-06-18T00:00:00.000Z"),
     getQuotaSnapshot: async (localUserId) => ({
@@ -89,6 +96,7 @@ function service(overrides: {
     taskRepository,
     usageRepository,
     mappingRepository,
+    membershipService,
     adjustments,
     get providerQuota() {
       return providerQuota;
@@ -148,6 +156,41 @@ test("prechecks sufficient quota and denies insufficient quota before upstream s
   assert.equal(rejected.code, "insufficient_quota");
   assert.equal((await low.usageRepository.getByTaskId("local-user", "task-low"))?.status, "failed");
   assert.equal(low.adjustments.length, 0);
+});
+
+test("uses membership image entitlement before charging quota", async () => {
+  const harness = service({ availableQuota: 0, providerQuota: 0 });
+  await harness.membershipService.applyPaidMembership({
+    localUserId: "local-user",
+    orderId: "membership-image-entitlement",
+    planId: "basic",
+    cycle: "monthly",
+    now: new Date("2026-06-18T00:00:00.000Z"),
+  });
+  const prechecked = await harness.taskBilling.precheck({
+    localUserId: "local-user",
+    taskId: "member-image-task",
+    operation: "cloud_image_generation",
+    estimatedQuotaUnits: 10,
+    idempotencyKey: "member-image-task",
+  });
+  assert.equal(prechecked.ok, true);
+  if (!prechecked.ok) return;
+  assert.equal(prechecked.record.estimated_quota_units, 10);
+  assert.equal(prechecked.record.membership_entitlement_kind, "image_generation");
+  assert.equal(prechecked.record.membership_entitlement_units, 1);
+
+  const settled = await harness.taskBilling.settleSuccess({
+    localUserId: "local-user",
+    taskId: "member-image-task",
+    actualQuotaUnits: 10,
+  });
+  assert.equal(settled.ok, true);
+  if (!settled.ok) return;
+  assert.equal(settled.record.final_quota_units, 0);
+  assert.equal(harness.adjustments.length, 0);
+  const status = await harness.membershipService.getStatus("local-user");
+  assert.equal(status.entitlements.image_generation.remaining, 19);
 });
 
 test("server-side generation requires a matching precheck record", async () => {

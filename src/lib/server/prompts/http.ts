@@ -1,4 +1,5 @@
 import { type NextRequest, NextResponse } from "next/server";
+import { randomUUID } from "node:crypto";
 
 import {
   authRequestContext,
@@ -9,12 +10,15 @@ import {
   readJsonBody,
 } from "../auth";
 import { InMemoryRateLimiter } from "../auth/rate-limit";
+import { getMembershipService } from "../membership/service";
+import { getTaskBillingService } from "../quota/task-billing-service";
 import { getPromptOptimizeService } from "./optimizer";
 
 const limiter = new InMemoryRateLimiter(
   Number(process.env.PROMPT_OPTIMIZER_RATE_LIMIT || 20),
   60_000,
 );
+const PROMPT_OPTIMIZE_QUOTA_UNITS = 10;
 
 function failureResponse(input: {
   code: string;
@@ -54,16 +58,61 @@ export async function optimizePromptResponse(request: NextRequest) {
     });
   }
 
-  const result = await getPromptOptimizeService().optimize(await readJsonBody(request), {
+  const body = await readJsonBody(request);
+  const idempotencyKey = String(body.idempotencyKey || body.taskId || context.requestId || `prompt-${randomUUID()}`).trim();
+  const membership = getMembershipService();
+  const membershipStatus = await membership.getStatus(session.user.local_user_id);
+  const hasPromptEntitlement = membershipStatus.entitlements.prompt_optimize.remaining > 0;
+  const taskBilling = getTaskBillingService();
+
+  if (!hasPromptEntitlement) {
+    const precheck = await taskBilling.precheck({
+      localUserId: session.user.local_user_id,
+      taskId: idempotencyKey,
+      operation: "prompt_optimize",
+      estimatedQuotaUnits: PROMPT_OPTIMIZE_QUOTA_UNITS,
+      idempotencyKey,
+      requestFingerprint: `prompt_optimize:${idempotencyKey}`,
+    });
+    if (!precheck.ok) return failureResponse(precheck);
+  }
+
+  const result = await getPromptOptimizeService().optimize(body, {
     localUserId: session.user.local_user_id,
     requestId: context.requestId,
   });
 
   if (!result.ok) {
+    if (!hasPromptEntitlement) {
+      await taskBilling.fail({
+        localUserId: session.user.local_user_id,
+        taskId: idempotencyKey,
+        reason: result.message,
+      }).catch(() => undefined);
+    }
     return failureResponse(result);
+  }
+
+  const entitlement = hasPromptEntitlement && idempotencyKey
+    ? await membership.consumeEntitlement({
+      localUserId: session.user.local_user_id,
+      kind: "prompt_optimize",
+      amount: 1,
+      idempotencyKey: `membership:prompt_optimize:${idempotencyKey}`,
+      taskId: idempotencyKey,
+    })
+    : { consumed: 0 };
+  if (!hasPromptEntitlement) {
+    const settled = await taskBilling.settleSuccess({
+      localUserId: session.user.local_user_id,
+      taskId: idempotencyKey,
+      actualQuotaUnits: PROMPT_OPTIMIZE_QUOTA_UNITS,
+    });
+    if (!settled.ok) return failureResponse(settled);
   }
 
   return NextResponse.json({
     optimizedPrompt: result.optimizedPrompt,
+    membershipEntitlementConsumed: entitlement.consumed,
   });
 }
