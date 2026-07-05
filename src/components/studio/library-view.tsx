@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useMemo, useRef, useState, type KeyboardEvent } from "react";
 import { ArrowDownUp, Download, ImageUp, Loader2, RefreshCw, Search, Trash2, Video, Wand2, X } from "lucide-react";
 
 import { LibraryCardActions, MediaCard } from "@/components/studio/media-card";
@@ -66,9 +66,20 @@ export function LibraryWorkspace({
 }) {
   const searchActive = Boolean(search.trim());
   const filteredEmpty = !items.length && (totalCount > 0 || searchActive);
+  const displayEntries = useMemo(() => buildLibraryDisplayEntries(items), [items]);
   const selectedMediaMissing = selectedItem ? missingMediaIds.has(selectedItem.id) || selectedItem.fileAvailable === false : false;
+  const selectedEntry = selectedItem
+    ? displayEntries.find((entry) => entry.items.some((item) => item.id === selectedItem.id)) || null
+    : null;
   const selectedCanUseOutput = Boolean(selectedItem?.output?.url && !selectedMediaMissing && !selectedItem.expired);
   const selectedCanDownloadStoredFile = Boolean(selectedItem?.output?.url && selectedItem.output.storedName && !selectedMediaMissing);
+
+  const openItemFromKeyboard = (event: KeyboardEvent<HTMLElement>, id: string) => {
+    if (event.target !== event.currentTarget) return;
+    if (event.key !== "Enter" && event.key !== " ") return;
+    event.preventDefault();
+    onSelectItem(id);
+  };
 
   return (
     <div className="studio-library-page">
@@ -140,40 +151,67 @@ export function LibraryWorkspace({
         )
       ) : (
         <div className="studio-library-grid">
-          {items.map((item) => (
-            <div
-              key={item.id}
-              className={cn(
-                "studio-library-tile",
-                selectedItem?.id === item.id && "is-active",
-                deletingItemId === item.id && "is-deleting",
-                removingItemId === item.id && "is-removing",
-              )}
-            >
-              <button
-                type="button"
-                className="studio-library-tile__preview"
-                onClick={() => onSelectItem(item.id)}
-                aria-label={`预览作品 ${item.title}`}
+          {displayEntries.map((entry) => {
+            const item = entry.item;
+            const isVideo = item.type === "video";
+            const entryActive = selectedItem ? entry.items.some((entryItem) => entryItem.id === selectedItem.id) : false;
+            const entryDeleting = entry.items.some((entryItem) => deletingItemId === entryItem.id);
+            const entryRemoving = entry.items.some((entryItem) => removingItemId === entryItem.id);
+            const itemMissing = missingMediaIds.has(item.id) || item.fileAvailable === false;
+            return (
+              <div
+                key={entry.id}
+                className={cn(
+                  "studio-library-tile",
+                  entry.items.length > 1 && "is-group",
+                  entryActive && "is-active",
+                  entryDeleting && "is-deleting",
+                  entryRemoving && "is-removing",
+                )}
               >
-                <MediaCard
+                {isVideo ? (
+                  <div
+                    className="studio-library-tile__preview"
+                    role="button"
+                    tabIndex={0}
+                    onClick={() => onSelectItem(item.id)}
+                    onKeyDown={(event) => openItemFromKeyboard(event, item.id)}
+                    aria-label={`预览作品 ${item.title}`}
+                  >
+                    <MediaCard
+                      item={item}
+                      mediaMissing={itemMissing}
+                      onMediaMissing={() => onMediaMissing(item.id)}
+                    />
+                  </div>
+                ) : (
+                  <button
+                    type="button"
+                    className="studio-library-tile__preview"
+                    onClick={() => onSelectItem(item.id)}
+                    aria-label={`预览作品 ${item.title}`}
+                  >
+                    <MediaCard
+                      item={item}
+                      groupItems={entry.items}
+                      mediaMissing={itemMissing}
+                      onMediaMissing={() => onMediaMissing(item.id)}
+                    />
+                  </button>
+                )}
+                <LibraryCardActions
                   item={item}
-                  mediaMissing={missingMediaIds.has(item.id) || item.fileAvailable === false}
-                  onMediaMissing={() => onMediaMissing(item.id)}
+                  mediaMissing={itemMissing}
+                  deleting={entryDeleting}
+                  onDelete={() => void onDelete(item.id)}
+                  onRegenerate={() => onRegenerate(item)}
+                  onUpscale={() => onUpscale(item)}
+                  onCreateVideo={() => onCreateVideo(item)}
+                  onEditImage={() => onEditImage(item)}
                 />
-              </button>
-              <LibraryCardActions
-                item={item}
-                mediaMissing={missingMediaIds.has(item.id) || item.fileAvailable === false}
-                deleting={deletingItemId === item.id}
-                onDelete={() => void onDelete(item.id)}
-                onRegenerate={() => onRegenerate(item)}
-                onUpscale={() => onUpscale(item)}
-                onCreateVideo={() => onCreateVideo(item)}
-                onEditImage={() => onEditImage(item)}
-              />
-            </div>
-          ))}
+              </div>
+            );
+          })}
         </div>
       )}
 
@@ -186,6 +224,7 @@ export function LibraryWorkspace({
             </button>
             <MediaCard
               item={selectedItem}
+              groupItems={selectedEntry?.items}
               large
               mediaMissing={selectedMediaMissing}
               onMediaMissing={() => onMediaMissing(selectedItem.id)}
@@ -361,6 +400,64 @@ function LibraryKindTabs({
       ))}
     </div>
   );
+}
+
+type LibraryDisplayEntry = {
+  id: string;
+  item: LibraryItem;
+  items: LibraryItem[];
+  key: string | null;
+  stableBatch: boolean;
+};
+
+function buildLibraryDisplayEntries(items: LibraryItem[]): LibraryDisplayEntry[] {
+  const entries: LibraryDisplayEntry[] = [];
+  for (const item of items) {
+    const batch = imageBatchIdentity(item);
+    if (!batch) {
+      entries.push({ id: item.id, item, items: [item], key: null, stableBatch: false });
+      continue;
+    }
+
+    const target = entries.find((entry) => (
+      entry.key === batch.key
+      && entry.items.length < 4
+      && (batch.stable || withinLegacyImageBatchWindow(entry.items[0], item))
+    ));
+    if (!target) {
+      entries.push({ id: batch.stable ? batch.key : item.id, item, items: [item], key: batch.key, stableBatch: batch.stable });
+      continue;
+    }
+    target.items.push(item);
+  }
+  return entries;
+}
+
+function imageBatchIdentity(item: LibraryItem): { key: string; stable: boolean } | null {
+  if (item.type !== "image" || item.status !== "done" || !item.output?.url) return null;
+  const batchId = typeof item.params.imageBatchId === "string" ? item.params.imageBatchId.trim() : "";
+  if (batchId) return { key: `batch:${batchId}`, stable: true };
+  if (item.mode !== "text-to-image" && item.mode !== "image-to-image") return null;
+  return {
+    key: [
+      "legacy-image",
+      item.mode,
+      item.prompt.trim(),
+      item.providerId,
+      item.model,
+      String(item.params.ratio || ""),
+      String(item.params.quality || ""),
+      String(item.params.referenceImages || ""),
+    ].join("\u001f"),
+    stable: false,
+  };
+}
+
+function withinLegacyImageBatchWindow(first: LibraryItem, next: LibraryItem) {
+  const firstTime = Number(new Date(first.createdAt));
+  const nextTime = Number(new Date(next.createdAt));
+  if (!Number.isFinite(firstTime) || !Number.isFinite(nextTime)) return false;
+  return Math.abs(firstTime - nextTime) <= 5 * 60 * 1000;
 }
 
 function LibraryToolbar({

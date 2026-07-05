@@ -16,7 +16,7 @@ export type WorkloadLimits = {
 };
 
 export const defaultWorkloadLimits: WorkloadLimits = {
-  userImageTasks: 2,
+  userImageTasks: 4,
   userVideoTasks: 1,
   userLargeUploads: 1,
   processLargeVideoIo: 1,
@@ -66,4 +66,3 @@ export function getWorkloadLimits(env: NodeJS.ProcessEnv = process.env): Workloa
     registerPerIp: loweredInteger(env[envKeys.registerPerIp], defaultWorkloadLimits.registerPerIp),
   };
 }
-

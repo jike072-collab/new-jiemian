@@ -1465,6 +1465,7 @@ export function StudioApp() {
       referenceImages: imageWorkspace.files.length,
     });
     const progressId = createTaskId("image-progress");
+    const batchId = createTaskId("image-batch");
     const snapshot = {
       providerId: selectedImageProvider.id,
       mode: activeImageMode,
@@ -1474,6 +1475,7 @@ export function StudioApp() {
       files: imageWorkspace.files.map((attachment) => attachment.file),
       estimatedQuotaUnitsPerImage,
       totalCount,
+      batchId,
     };
 
     updateImageInFlightState(imageInFlightCountRef.current + 1);
@@ -1498,7 +1500,8 @@ export function StudioApp() {
       message: totalCount > 1 ? `正在生成第 1 / ${totalCount} 张` : "正在生成图片",
     }]);
     try {
-      for (let index = 0; index < totalCount; index += 1) {
+      let completedCount = 0;
+      await Promise.all(Array.from({ length: totalCount }, async (_, index) => {
         const taskId = createTaskId(`image-${index + 1}`);
         const requestFingerprint = generationBillingFingerprint({
           kind: "image",
@@ -1514,8 +1517,7 @@ export function StudioApp() {
         updateImageGenerationProgress(progressId, (current) => ({
           ...current,
           status: "running",
-          current: index,
-          message: totalCount > 1 ? `正在生成第 ${index + 1} / ${totalCount} 张` : "正在生成图片",
+          message: totalCount > 1 ? `正在同时生成 ${totalCount} 张图片` : "正在生成图片",
         }));
 
         try {
@@ -1543,6 +1545,8 @@ export function StudioApp() {
         form.set("prompt", snapshot.prompt);
         form.set("taskId", taskId);
         form.set("idempotencyKey", taskId);
+        form.set("batchId", snapshot.batchId);
+        form.set("batchTotal", String(snapshot.totalCount));
         form.set("estimatedQuotaUnits", String(snapshot.estimatedQuotaUnitsPerImage));
         snapshot.files.forEach((file) => form.append("files", file));
         const data = await fetchJsonWithCsrf<{ item: LibraryItem }>("/api/generate/image", {
@@ -1550,12 +1554,13 @@ export function StudioApp() {
           body: form,
         });
         handleImageResult(data.item, { append: true });
+        completedCount += 1;
         updateImageGenerationProgress(progressId, (current) => ({
           ...current,
-          current: index + 1,
-          message: totalCount > 1 ? `已完成 ${index + 1} / ${totalCount} 张` : "图片已生成",
+          current: completedCount,
+          message: totalCount > 1 ? `已完成 ${completedCount} / ${totalCount} 张` : "图片已生成",
         }));
-      }
+      }));
 
       await refreshLibraryAfterMutation();
       await refreshAccountAfterGeneration();

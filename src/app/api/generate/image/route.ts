@@ -20,6 +20,8 @@ export async function POST(request: NextRequest) {
       ratio: String(form.get("ratio") || "1:1"),
       quality: String(form.get("quality") || "1k"),
       files: await uploadedMediaFromForm(form),
+      batchId: String(form.get("batchId") || "").trim(),
+      batchTotal: Number(form.get("batchTotal") || Number.NaN),
       billingLocalUserId: session.user.local_user_id,
       billingTaskId: String(form.get("taskId") || form.get("billingTaskId") || ""),
       billingIdempotencyKey: String(form.get("idempotencyKey") || form.get("billingIdempotencyKey") || ""),

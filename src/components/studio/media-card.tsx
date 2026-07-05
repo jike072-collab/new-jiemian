@@ -3,6 +3,7 @@
 /* eslint-disable @next/next/no-img-element */
 
 import { AlertTriangle, Download, ExternalLink, ImageUp, Loader2, Play, RefreshCw, Trash2, Video, Wand2 } from "lucide-react";
+import { useRef, useState, type MouseEvent } from "react";
 
 import type { LibraryItem } from "@/lib/server/types";
 import { cn } from "@/lib/utils";
@@ -73,18 +74,26 @@ export function LibraryCardActions({
 
 export function MediaCard({
   item,
+  groupItems,
   large = false,
   compact = false,
   mediaMissing = false,
   onMediaMissing,
 }: {
   item: LibraryItem;
+  groupItems?: LibraryItem[];
   large?: boolean;
   compact?: boolean;
   mediaMissing?: boolean;
   onMediaMissing?: () => void;
 }) {
+  const videoRef = useRef<HTMLVideoElement | null>(null);
+  const [previewPlaying, setPreviewPlaying] = useState(false);
   const media = item.output;
+  const imageGroupItems = item.type === "image"
+    ? (groupItems || [item]).filter((entry) => entry.type === "image" && entry.output?.url && !entry.expired).slice(0, 4)
+    : [];
+  const isImageGroup = imageGroupItems.length > 1;
   const mediaExpired = Boolean(item.expired);
   const unavailable = mediaMissing || mediaExpired;
   const hasMediaUrl = Boolean(media?.url) && !unavailable;
@@ -107,14 +116,56 @@ export function MediaCard({
   const videoPreload = large ? "auto" : "metadata";
   const imageUrl = media?.url && item.type === "image" ? mediaPreviewUrl(media.url, large) : media?.url;
   const statusBadge = mediaExpired ? "已过期" : mediaMissing ? "文件失效" : libraryStatusBadgeLabel(item.status);
+  const batchText = isImageGroup ? `${imageGroupItems.length} 张` : "";
+
+  const togglePreviewPlayback = async (event: MouseEvent<HTMLButtonElement>) => {
+    event.preventDefault();
+    event.stopPropagation();
+    const video = videoRef.current;
+    if (!video) return;
+    if (video.paused) {
+      video.muted = true;
+      await video.play();
+      setPreviewPlaying(true);
+      return;
+    }
+    video.pause();
+    setPreviewPlaying(false);
+  };
+
   return (
     <article className={cn("studio-media-card", compact && "is-compact")}>
       <div className={cn("studio-media-card__frame", large && "is-large")}>
-        {hasMediaUrl && imageUrl && item.type === "image" ? (
+        {isImageGroup ? (
+          <div className={cn("studio-media-card__collage", `is-count-${imageGroupItems.length}`)}>
+            {imageGroupItems.map((entry) => (
+              <img
+                key={entry.id}
+                src={entry.output?.url ? mediaPreviewUrl(entry.output.url, large) : ""}
+                alt={entry.title}
+                loading={imageLoading}
+                decoding="async"
+                fetchPriority={imageFetchPriority}
+                onError={entry.id === item.id ? onMediaMissing : undefined}
+              />
+            ))}
+          </div>
+        ) : hasMediaUrl && imageUrl && item.type === "image" ? (
           <img src={imageUrl} alt={item.title} loading={imageLoading} decoding="async" fetchPriority={imageFetchPriority} onError={onMediaMissing} />
         ) : null}
         {hasMediaUrl && media?.url && item.type === "video" ? (
-          <video src={media.url} controls={showMediaControls} preload={videoPreload} onError={onMediaMissing} />
+          <video
+            ref={videoRef}
+            src={media.url}
+            controls={showMediaControls}
+            muted={!large}
+            playsInline
+            preload={videoPreload}
+            onError={onMediaMissing}
+            onPause={() => setPreviewPlaying(false)}
+            onPlay={() => setPreviewPlaying(true)}
+            onEnded={() => setPreviewPlaying(false)}
+          />
         ) : null}
         {!hasMediaUrl ? (
           <div className={cn("studio-media-card__missing", unavailable && "is-missing")}>
@@ -124,9 +175,14 @@ export function MediaCard({
         ) : null}
         {!large && item.type === "video" && hasMediaUrl ? (
           <>
-            <span className="studio-media-card__play" aria-hidden="true">
+            <button
+              type="button"
+              className={cn("studio-media-card__play", previewPlaying && "is-playing")}
+              onClick={(event) => void togglePreviewPlayback(event)}
+              aria-label={previewPlaying ? "暂停预览" : "播放预览"}
+            >
               <Play className="size-5" fill="currentColor" />
-            </span>
+            </button>
             {durationText ? <span className="studio-media-card__duration">{durationText}</span> : null}
           </>
         ) : null}
@@ -134,10 +190,11 @@ export function MediaCard({
       {showBody ? <div className="studio-media-card__body">
         <div className="studio-media-card__head">
           <strong>{item.title}</strong>
-          {statusBadge ? <span>{statusBadge}</span> : null}
+          {batchText ? <span>{batchText}</span> : statusBadge ? <span>{statusBadge}</span> : null}
         </div>
         <div className="studio-media-card__meta" aria-label="作品信息">
           <span>{typeLabel}</span>
+          {batchText ? <span>{batchText}</span> : null}
           <span>{createdAt}</span>
           {durationText ? <span>{durationText}</span> : null}
           {scaleText ? <span>{scaleText}</span> : null}

@@ -910,6 +910,8 @@ export async function generateImage(input: {
   ratio: string;
   quality: string;
   files: UploadedMedia[];
+  batchId?: string | null;
+  batchTotal?: number | null;
   billingLocalUserId?: string | null;
   billingTaskId?: string | null;
   billingIdempotencyKey?: string | null;
@@ -976,6 +978,8 @@ export async function generateImage(input: {
         ratio: input.ratio,
         quality: input.quality,
         referenceImages: input.files.length,
+        ...(input.batchId ? { imageBatchId: input.batchId } : {}),
+        ...(Number.isFinite(Number(input.batchTotal)) && Number(input.batchTotal) > 1 ? { imageBatchTotal: Math.min(Math.max(Math.round(Number(input.batchTotal)), 1), 4) } : {}),
         ...(input.billingTaskId ? { billingTaskId: input.billingTaskId } : {}),
         ...(input.billingIdempotencyKey ? { billingIdempotencyKey: input.billingIdempotencyKey } : {}),
         billingEstimatedQuotaUnits: estimatedQuotaUnits,
