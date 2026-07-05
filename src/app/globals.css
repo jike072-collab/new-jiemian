@@ -2047,6 +2047,11 @@
     background: color-mix(in srgb, var(--primary-soft) 38%, var(--surface));
   }
 
+  .template-center-category.is-disabled {
+    cursor: not-allowed;
+    opacity: 0.42;
+  }
+
   .template-center-category.is-active em {
     background: color-mix(in srgb, var(--primary) 24%, var(--surface));
     color: var(--primary);
@@ -2889,6 +2894,11 @@
     padding: 10px;
   }
 
+  .template-center-card--placeholder {
+    visibility: hidden;
+    pointer-events: none;
+  }
+
   .studio-image-result-card__head {
     display: flex;
     min-height: 22px;
@@ -3308,8 +3318,22 @@
     color: #ff3b91;
   }
 
+  .shell-root--tool-templates .template-center-category.is-disabled {
+    border-color: transparent;
+    background: #111115;
+    color: rgba(255, 255, 255, 0.36);
+    transform: none;
+  }
+
   .shell-root--tool-templates .template-center-category:hover {
     transform: translateY(-1px);
+  }
+
+  .shell-root--tool-templates .template-center-category.is-disabled:hover {
+    border-color: transparent;
+    background: #111115;
+    color: rgba(255, 255, 255, 0.36);
+    transform: none;
   }
 
   .shell-root--tool-templates .template-center-category.is-active {
@@ -3320,8 +3344,8 @@
     grid-template-columns: repeat(auto-fill, minmax(min(100%, 260px), 1fr));
     gap: 18px;
     align-content: start;
-    align-items: start;
-    grid-auto-rows: auto;
+    align-items: stretch;
+    grid-auto-rows: minmax(348px, auto);
     min-height: min(720px, calc(100vh - 270px));
     padding-bottom: 24px;
   }
@@ -3329,8 +3353,9 @@
   .shell-root--tool-templates .template-center-card {
     grid-template-rows: auto minmax(72px, auto) 40px;
     gap: 10px;
-    align-self: start;
+    align-self: stretch;
     height: auto;
+    min-height: 348px;
     overflow: hidden;
     border-color: rgba(255, 255, 255, 0.08);
     border-radius: 13px;

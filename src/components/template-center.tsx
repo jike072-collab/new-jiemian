@@ -370,15 +370,17 @@ function TemplateCategoryPanel({
   return (
     <div className={cn("template-center-panel", className)}>
       <div className="template-center-categories" role="group" aria-label="模板分类">
-        {templateCategories.filter((item) => item === "全部" || counts[item] > 0).map((item) => {
+        {templateCategories.map((item) => {
           const meta = templateCategoryMeta[item];
+          const disabled = item !== "全部" && counts[item] <= 0;
           return (
             <button
               key={item}
               type="button"
-              className={cn("template-center-category", category === item && "is-active")}
+              className={cn("template-center-category", category === item && "is-active", disabled && "is-disabled")}
               onClick={() => onCategoryChange(item)}
               aria-pressed={category === item}
+              disabled={disabled}
             >
               <span>
                 <strong>{meta.title}</strong>
@@ -419,6 +421,7 @@ function TemplateBrowserPanel({
   const searchInputRef = useRef<HTMLInputElement | null>(null);
   const [mobileSearchOpen, setMobileSearchOpen] = useState(false);
   const [mobileCategoryOpen, setMobileCategoryOpen] = useState(false);
+  const placeholderCount = templates.length ? Math.max(0, Math.min(12, totalCount) - templates.length) : 0;
 
   const handleCategoryChange = (value: TemplateCategory | "全部") => {
     onCategoryChange(value);
@@ -519,30 +522,37 @@ function TemplateBrowserPanel({
       </div>
 
       <div key={gridMotionKey} className="template-center-grid" aria-label="模板列表">
-        {templates.length ? templates.map((template, index) => (
-          <article
-            key={template.id}
-            className="template-center-card"
-          >
-            <span className="template-center-card__thumb">
-              <TemplateThumbnail template={template} loading={index < 12 ? "eager" : "lazy"} fetchPriority={index < 12 ? "auto" : "low"} />
-              <span className="template-center-card__ratio">{template.aspectRatio}</span>
-            </span>
-            <span className="template-center-card__body">
-              <strong>{template.label}</strong>
-              <small>{template.summary}</small>
-              <span className="template-center-card__meta">
-                <span>{template.category}</span>
-                <span>{template.scope === "image" ? template.quality.toUpperCase() : `${template.duration} 秒`}</span>
-                <span>{template.requiresImage ? "需图像" : "无须图像"}</span>
-              </span>
-            </span>
-            <Link href={cloneHref(template.id)} className="studio-primary-action template-center-card__clone">
-              使用模板
-              <ArrowRight className="size-4" aria-hidden="true" />
-            </Link>
-          </article>
-        )) : (
+        {templates.length ? (
+          <>
+            {templates.map((template, index) => (
+              <article
+                key={template.id}
+                className="template-center-card"
+              >
+                <span className="template-center-card__thumb">
+                  <TemplateThumbnail template={template} loading={index < 12 ? "eager" : "lazy"} fetchPriority={index < 12 ? "auto" : "low"} />
+                  <span className="template-center-card__ratio">{template.aspectRatio}</span>
+                </span>
+                <span className="template-center-card__body">
+                  <strong>{template.label}</strong>
+                  <small>{template.summary}</small>
+                  <span className="template-center-card__meta">
+                    <span>{template.category}</span>
+                    <span>{template.scope === "image" ? template.quality.toUpperCase() : `${template.duration} 秒`}</span>
+                    <span>{template.requiresImage ? "需图像" : "无须图像"}</span>
+                  </span>
+                </span>
+                <Link href={cloneHref(template.id)} className="studio-primary-action template-center-card__clone">
+                  使用模板
+                  <ArrowRight className="size-4" aria-hidden="true" />
+                </Link>
+              </article>
+            ))}
+            {Array.from({ length: placeholderCount }, (_, index) => (
+              <span key={`template-placeholder-${index}`} className="template-center-card template-center-card--placeholder" aria-hidden="true" />
+            ))}
+          </>
+        ) : (
           <div className="template-center-empty" role="status">
             <strong>没有找到模板</strong>
             <span>可以换一个关键词或分类再试。</span>
