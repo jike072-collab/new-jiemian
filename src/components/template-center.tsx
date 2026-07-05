@@ -3,7 +3,7 @@
 /* eslint-disable @next/next/no-img-element */
 
 import Link from "next/link";
-import { ArrowRight, Search, SlidersHorizontal } from "lucide-react";
+import { ArrowLeft, ArrowRight, ChevronDown, ChevronUp, Search, SlidersHorizontal } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 
@@ -34,6 +34,15 @@ type QuotaResponse = {
 
 const templateRailDragThreshold = 12;
 const templateRailLongPressDelay = 180;
+const templatePageSize = 12;
+const defaultTemplateCategoryIds: Array<TemplateCategory | "全部"> = [
+  "全部",
+  "商品美食",
+  "电商详情",
+  "海报品牌",
+  "社媒内容",
+  "图片编辑",
+];
 
 function getWebpThumbnail(thumbnail: string) {
   return thumbnail.endsWith(".png") ? thumbnail.replace(/\.png$/, ".webp") : thumbnail;
@@ -330,9 +339,17 @@ const templateCategoryMeta: Record<TemplateCategory | "全部", { title: string;
     title: "商品美食",
     description: "商品图、美食、服装和商业展示。",
   },
+  "电商详情": {
+    title: "电商详情",
+    description: "详情页、卖点拆解、对比图和长图。",
+  },
   "海报品牌": {
     title: "海报品牌",
     description: "促销海报、活动主视觉和品牌系统。",
+  },
+  "社媒内容": {
+    title: "社媒内容",
+    description: "短视频封面、UGC 种草、口播和笔记。",
   },
   "摄影人像": {
     title: "摄影人像",
@@ -367,10 +384,16 @@ function TemplateCategoryPanel({
   onCategoryChange: (value: TemplateCategory | "全部") => void;
   className?: string;
 }) {
+  const [expanded, setExpanded] = useState(false);
+  const visibleCategories = expanded
+    ? templateCategories
+    : templateCategories.filter((item) => defaultTemplateCategoryIds.includes(item) || item === category);
+  const hiddenCount = templateCategories.length - visibleCategories.length;
+
   return (
     <div className={cn("template-center-panel", className)}>
       <div className="template-center-categories" role="group" aria-label="模板分类">
-        {templateCategories.map((item) => {
+        {visibleCategories.map((item) => {
           const meta = templateCategoryMeta[item];
           const disabled = item !== "全部" && counts[item] <= 0;
           return (
@@ -389,6 +412,19 @@ function TemplateCategoryPanel({
             </button>
           );
         })}
+        {hiddenCount > 0 || expanded ? (
+          <button
+            type="button"
+            className="template-center-category template-center-category--more"
+            onClick={() => setExpanded((value) => !value)}
+            aria-expanded={expanded}
+          >
+            <span>
+              <strong>{expanded ? "收起分类" : `展开 ${hiddenCount} 个`}</strong>
+            </span>
+            {expanded ? <ChevronUp className="size-4" aria-hidden="true" /> : <ChevronDown className="size-4" aria-hidden="true" />}
+          </button>
+        ) : null}
       </div>
     </div>
   );
@@ -421,11 +457,26 @@ function TemplateBrowserPanel({
   const searchInputRef = useRef<HTMLInputElement | null>(null);
   const [mobileSearchOpen, setMobileSearchOpen] = useState(false);
   const [mobileCategoryOpen, setMobileCategoryOpen] = useState(false);
-  const placeholderCount = templates.length ? Math.max(0, Math.min(12, totalCount) - templates.length) : 0;
+  const [page, setPage] = useState(1);
+  const pageCount = Math.max(1, Math.ceil(templates.length / templatePageSize));
+  const safePage = Math.min(page, pageCount);
+  const visibleTemplates = templates.slice((safePage - 1) * templatePageSize, safePage * templatePageSize);
+  const placeholderCount = visibleTemplates.length ? Math.max(0, templatePageSize - visibleTemplates.length) : 0;
 
   const handleCategoryChange = (value: TemplateCategory | "全部") => {
+    setPage(1);
     onCategoryChange(value);
     setMobileCategoryOpen(false);
+  };
+
+  const handleScopeChange = (value: TemplateScope) => {
+    setPage(1);
+    onScopeChange(value);
+  };
+
+  const handleSearchChange = (value: string) => {
+    setPage(1);
+    onSearchChange(value);
   };
 
   const openMobileSearch = () => {
@@ -467,7 +518,7 @@ function TemplateBrowserPanel({
             type="button"
             className={cn("template-center-tab", scope === "image" && "is-active")}
             aria-pressed={scope === "image"}
-            onClick={() => onScopeChange("image")}
+            onClick={() => handleScopeChange("image")}
           >
             图片模板
           </button>
@@ -475,7 +526,7 @@ function TemplateBrowserPanel({
             type="button"
             className={cn("template-center-tab", scope === "video" && "is-active")}
             aria-pressed={scope === "video"}
-            onClick={() => onScopeChange("video")}
+            onClick={() => handleScopeChange("video")}
           >
             视频模板
           </button>
@@ -508,7 +559,7 @@ function TemplateBrowserPanel({
             className="studio-input"
             type="search"
             value={search}
-            onChange={(event) => onSearchChange(event.target.value)}
+            onChange={(event) => handleSearchChange(event.target.value)}
             placeholder="搜索模板"
           />
         </label>
@@ -522,9 +573,9 @@ function TemplateBrowserPanel({
       </div>
 
       <div key={gridMotionKey} className="template-center-grid" aria-label="模板列表">
-        {templates.length ? (
+        {visibleTemplates.length ? (
           <>
-            {templates.map((template, index) => (
+            {visibleTemplates.map((template, index) => (
               <article
                 key={template.id}
                 className="template-center-card"
@@ -559,6 +610,32 @@ function TemplateBrowserPanel({
           </div>
         )}
       </div>
+
+      {templates.length > templatePageSize ? (
+        <div className="template-center-pagination" aria-label="模板分页">
+          <button
+            type="button"
+            className="template-center-page-button"
+            onClick={() => setPage((value) => Math.max(1, value - 1))}
+            disabled={safePage <= 1}
+          >
+            <ArrowLeft className="size-4" aria-hidden="true" />
+            上一页
+          </button>
+          <span className="template-center-page-status">
+            {safePage} / {pageCount}
+          </span>
+          <button
+            type="button"
+            className="template-center-page-button"
+            onClick={() => setPage((value) => Math.min(pageCount, value + 1))}
+            disabled={safePage >= pageCount}
+          >
+            下一页
+            <ArrowRight className="size-4" aria-hidden="true" />
+          </button>
+        </div>
+      ) : null}
     </div>
   );
 }

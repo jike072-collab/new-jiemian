@@ -216,6 +216,7 @@ function looksRelatedToInput(output: string, input: PromptOptimizeInput) {
 
 function composeStrictChineseUserPrompt(input: PromptOptimizeInput) {
   const targetPlatform = input.targetPlatform || "TikTok Shop";
+  const scenarioGuidance = promptScenarioGuidance(input);
   const scenario = input.tool === "image-editor"
     ? "任务类型：图片编辑。基于参考图进行修改，必须明确写出保留项与修改项。"
     : input.tool === "video-generator"
@@ -233,19 +234,54 @@ function composeStrictChineseUserPrompt(input: PromptOptimizeInput) {
   return [
     scenario,
     referenceInstruction,
+    scenarioGuidance,
     `目标平台：${targetPlatform}`,
     input.templateId ? `模板：${input.templateId}` : "",
     input.aspectRatio ? `画幅：${input.aspectRatio}` : "",
     input.quality ? `质量档位：${input.quality}` : "",
     qualityInstruction,
+    "输出结构要求：把用户需求整理成一段自然提示词，必须覆盖主体与目标、场景与构图、光线与材质、镜头或动作、文字与品牌约束、负向约束。不要用列表或标题。",
     "请直接输出一段可以提交给模型的简体中文提示词。",
     "用户原始要求：",
     input.prompt,
   ].filter(Boolean).join("\n");
 }
 
+function promptScenarioGuidance(input: PromptOptimizeInput) {
+  const prompt = input.prompt;
+  if (input.tool === "video-generator") {
+    if (/口播|讲解|带货|达人|主播|真人/u.test(prompt)) {
+      return "场景策略：这是口播或带货类短视频，强调首秒钩子、人物自然表情、手势克制、商品露出节奏、镜头稳定和真实生活背景。";
+    }
+    if (/开箱|拆箱|包装/u.test(prompt)) {
+      return "场景策略：这是开箱类短视频，按包装外观、打开动作、取出商品、细节特写、完整展示的顺序组织镜头。";
+    }
+    return "场景策略：这是短视频生成，写清楚首秒画面、镜头运动、主体动作、节奏变化、场景连续性和结尾停留画面。";
+  }
+  if (input.tool === "image-editor") {
+    if (/抠图|透明|去背|透明背景/u.test(prompt)) {
+      return "场景策略：这是透明素材或抠图任务，重点写清保留主体事实、边缘干净、透明背景、真实阴影和不改变商品结构。";
+    }
+    if (/文字|翻译|改字|替换文案/u.test(prompt)) {
+      return "场景策略：这是文字编辑任务，重点写清只改指定文字，保留原排版、字体风格、透视、背景和主体不变。";
+    }
+    return "场景策略：这是图生图编辑任务，必须区分保留项、修改项和禁止改动项，避免模型重绘无关内容。";
+  }
+  if (/详情|长图|卖点|参数|对比/u.test(prompt)) {
+    return "场景策略：这是电商详情或卖点图，强调信息层级、卖点拆解、对比关系、参数区、留白和中文可读性。";
+  }
+  if (/封面|小红书|社媒|笔记|UGC|种草/u.test(prompt)) {
+    return "场景策略：这是社媒封面或种草图，强调首屏吸引力、真实生活感、标题预留区、点击动机和不过度广告化。";
+  }
+  if (/海报|促销|活动|品牌|主视觉/u.test(prompt)) {
+    return "场景策略：这是海报或品牌主视觉，强调标题区、主体层级、活动氛围、版式秩序和不要出现乱码文字。";
+  }
+  return "场景策略：这是图片生成任务，优先补足主体、构图、背景、光线、材质、风格边界和不希望出现的内容。";
+}
+
 function localChineseOptimizedPrompt(input: PromptOptimizeInput) {
   const targetPlatform = input.targetPlatform || "TikTok Shop";
+  const scenarioGuidance = promptScenarioGuidance(input);
   const scene = input.tool === "image-editor"
     ? "基于参考图进行图片编辑，保留原有主体外观、颜色、材质、结构、品牌和数量，只修改用户明确指定的部分"
     : input.tool === "video-generator"
@@ -263,6 +299,8 @@ function localChineseOptimizedPrompt(input: PromptOptimizeInput) {
     `适用平台：${targetPlatform}`,
     input.aspectRatio ? `画幅 ${input.aspectRatio}` : "",
     input.quality ? `质量 ${input.quality}` : "",
+    scenarioGuidance,
+    "补全主体与目标、场景与构图、镜头或动作、光线与材质、文字与品牌约束、负向约束",
     "使用简体中文表达，画面真实可信，光线自然，细节清晰，不额外添加用户未要求的文字、品牌、人物或装饰",
   ].filter(Boolean);
   return cleanOptimizedPrompt(parts.join("，"));

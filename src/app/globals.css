@@ -2052,6 +2052,10 @@
     opacity: 0.42;
   }
 
+  .template-center-category--more {
+    justify-content: center;
+  }
+
   .template-center-category.is-active em {
     background: color-mix(in srgb, var(--primary) 24%, var(--surface));
     color: var(--primary);
@@ -2252,6 +2256,46 @@
     border-radius: var(--radius-card);
     padding: 16px;
     color: var(--muted);
+  }
+
+  .template-center-pagination {
+    display: flex;
+    min-width: 0;
+    align-items: center;
+    justify-content: center;
+    gap: 10px;
+    padding: 2px 0 24px;
+  }
+
+  .template-center-page-button,
+  .template-center-page-status {
+    display: inline-flex;
+    height: 38px;
+    align-items: center;
+    justify-content: center;
+    gap: 7px;
+    border: 1px solid var(--border-subtle);
+    border-radius: var(--radius-control);
+    background: color-mix(in srgb, var(--surface) 72%, transparent);
+    color: var(--muted-strong);
+    font-size: 13px;
+    font-weight: 650;
+    line-height: 1;
+  }
+
+  .template-center-page-button {
+    min-width: 104px;
+    padding: 0 14px;
+  }
+
+  .template-center-page-button:disabled {
+    cursor: not-allowed;
+    opacity: 0.45;
+  }
+
+  .template-center-page-status {
+    min-width: 72px;
+    color: var(--foreground);
   }
 
   .studio-custom-select {
@@ -3336,6 +3380,18 @@
     transform: none;
   }
 
+  .shell-root--tool-templates .template-center-category--more {
+    border-color: rgba(255, 255, 255, 0.08);
+    background: #111115;
+    color: rgba(255, 255, 255, 0.72);
+  }
+
+  .shell-root--tool-templates .template-center-category--more:hover {
+    border-color: rgba(255, 43, 136, 0.32);
+    background: rgba(255, 43, 136, 0.1);
+    color: #ff72b5;
+  }
+
   .shell-root--tool-templates .template-center-category.is-active {
     box-shadow: inset 0 0 0 1px rgba(255, 43, 136, 0.08);
   }
@@ -3478,6 +3534,23 @@
 
   .shell-root--tool-templates .template-center-card__clone:active {
     transform: translateY(1px);
+  }
+
+  .shell-root--tool-templates .template-center-pagination {
+    padding-top: 2px;
+  }
+
+  .shell-root--tool-templates .template-center-page-button,
+  .shell-root--tool-templates .template-center-page-status {
+    border-color: rgba(255, 255, 255, 0.09);
+    border-radius: 8px;
+    background: #141418;
+  }
+
+  .shell-root--tool-templates .template-center-page-button:hover:not(:disabled) {
+    border-color: rgba(255, 43, 136, 0.36);
+    background: rgba(255, 43, 136, 0.11);
+    color: #fff;
   }
 
   .shell-root--tool-templates .template-center-empty {
