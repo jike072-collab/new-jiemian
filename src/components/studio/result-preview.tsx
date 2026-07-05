@@ -487,6 +487,7 @@ function VideoTutorialResultSlot({
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const wasPlayingRef = useRef(false);
   const [isInView, setIsInView] = useState(typeof IntersectionObserver === "undefined");
+  const [videoReady, setVideoReady] = useState(false);
   const shouldPlay = Boolean(videoTutorialResultVideoSrc && !paused && isVideoTutorialResultPlayingState(playbackState) && isInView);
 
   useEffect(() => {
@@ -533,18 +534,24 @@ function VideoTutorialResultSlot({
           "video-tutorial-result-slot__media",
           isVideoTutorialResultVisibleState(playbackState) && "is-visible",
           isVideoTutorialResultPlayingState(playbackState) && "is-playing",
+          videoReady && "is-video-ready",
           playbackState === "complete" && "is-complete",
           playbackState === "resetting" && "is-resetting",
         )}
       >
+        <img className="video-tutorial-result-slot__poster" src={videoTutorialResultPosterSrc} alt="" loading="eager" decoding="async" />
         {videoTutorialResultVideoSrc ? (
           <video
             ref={videoRef}
             src={videoTutorialResultVideoSrc}
             poster={videoTutorialResultPosterSrc}
+            autoPlay
+            loop
             muted
             playsInline
-            preload="metadata"
+            preload="auto"
+            onCanPlay={() => setVideoReady(true)}
+            onLoadedData={() => setVideoReady(true)}
             onEnded={onPlaybackEnd}
             onError={onPlaybackEnd}
           />
@@ -596,8 +603,8 @@ function VideoGenerationTutorial({ paused = false }: { paused?: boolean }) {
   const [pageVisible, setPageVisible] = useState(true);
   const [cycle, setCycle] = useState(0);
   const shouldPause = paused || reducedMotion || !isInView || !pageVisible;
-  const playbackState = reducedMotion ? "final" : playbackStateState;
-  const typedText = reducedMotion ? videoTutorialPromptText : typedTextState;
+  const playbackState = shouldPause ? (reducedMotion ? "final" : playbackStateState) : "result-playing";
+  const typedText = shouldPause && !reducedMotion ? typedTextState : videoTutorialPromptText;
   const promptText = reducedMotion ? videoTutorialPromptText : typedText;
 
   const clearReplayTimer = useCallback(() => {

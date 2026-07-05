@@ -1168,7 +1168,13 @@ export function StudioApp() {
       if (!prefersReducedMotion) {
         await new Promise((resolve) => window.setTimeout(resolve, 220));
       }
-      await refreshLibraryAfterMutation();
+      setLibrary((current) => current.filter((item) => item.id !== id));
+      setMissingLibraryMediaIds((current) => {
+        if (!current.has(id)) return current;
+        const next = new Set(current);
+        next.delete(id);
+        return next;
+      });
     } catch (error) {
       const text = error instanceof Error ? error.message : "删除失败。";
       setLibraryError(text);
@@ -1177,7 +1183,7 @@ export function StudioApp() {
       setDeletingLibraryItemId(null);
       setRemovingLibraryItemId(null);
     }
-  }, [deletingLibraryItemId, libraryDeleteConfirmItemId, prefersReducedMotion, refreshLibraryAfterMutation]);
+  }, [deletingLibraryItemId, libraryDeleteConfirmItemId, prefersReducedMotion]);
 
   const libraryCounts = useMemo(() => ({
     all: library.length,
@@ -2973,7 +2979,6 @@ function RechargeCenterWorkspace({
   const customAmountErrorId = "custom-recharge-error";
   const pointsStatusLabel = quota ? `${formatQuotaUnits(quota.quota_units)} ✦` : "—";
   const planStatusLabel = getPlanStatusDisplay(planStatus).label;
-  const rechargeBaseCreditsPerYuan = estimateRechargeBaseCredits(selectedPaymentChannelConfig, 1);
   const creditSummaryLines = customRechargeActive
     ? createCustomCreditSummaryLines(customAmount, customAmountValid, customCredits)
     : createFixedCreditSummaryLines(selectedCredit, selectedPaymentChannelConfig);
@@ -3016,22 +3021,8 @@ function RechargeCenterWorkspace({
     paymentAmountAllowed: creditAmountAllowed,
   });
   const latestPaymentDisplay = latestPayment ? createPaymentDisplay(latestPayment.payment) : null;
-  const planPaymentNote = paymentError
-    || (latestPayment
-      ? "支付已发起，请在弹窗中使用支付宝扫码完成支付。"
-      : selectedPaymentChannelConfig
-        ? "点击立即支付后，将在当前页面弹出支付宝二维码。"
-        : paymentConfigLoading
-          ? "正在读取支付通道配置。"
-          : "生产支付通道未配置，暂时无法发起支付。");
-  const creditPaymentNote = paymentError
-    || (latestPayment
-      ? "支付已发起，请在弹窗中使用支付宝扫码完成支付。"
-      : selectedPaymentChannelConfig
-        ? "点击立即支付后，将在当前页面弹出支付宝二维码。"
-        : paymentConfigLoading
-          ? "正在读取支付通道配置。"
-          : "生产支付通道未配置，暂时无法发起支付。");
+  const planPaymentNote = paymentError || undefined;
+  const creditPaymentNote = paymentError || undefined;
 
   useEffect(() => {
     let cancelled = false;
@@ -3124,7 +3115,6 @@ function RechargeCenterWorkspace({
       <AccountSubpageHeader
         breadcrumb="用户中心 / 充值中心"
         title="充值中心"
-        subtitle="选择适合当前创作节奏的套餐或积分充值方式，核对订单后在当前页面扫码支付。"
         onBack={() => onViewChange("center")}
         meta={(
           <div className="recharge-account-meta" aria-label="账户概览">
@@ -3184,7 +3174,6 @@ function RechargeCenterWorkspace({
               <div className="recharge-center-panel" role="tabpanel">
                 <div className="recharge-selection-head">
                   <h3>选择套餐</h3>
-                  <p>套餐为一次性积分包，支付成功后积分自动到账。</p>
                 </div>
                 {planOptions.length > 0 ? (
                   <div className="recharge-plan-grid">
@@ -3233,7 +3222,6 @@ function RechargeCenterWorkspace({
               <div className="recharge-center-panel" role="tabpanel">
                 <div className="recharge-selection-head">
                   <h3>选择充值金额</h3>
-                  <p>充值成功后，积分将发放至当前账户。</p>
                 </div>
                 <div className="credit-topup-grid">
                   {creditTopUpOptions.map((option) => {
@@ -3273,7 +3261,6 @@ function RechargeCenterWorkspace({
                 <div className={cn("custom-recharge-card", customRechargeActive && "is-active")}>
                   <div className="custom-recharge-card__intro">
                     <h3>自定义充值</h3>
-                    <p>最低金额 ¥{CUSTOM_RECHARGE_MIN_AMOUNT}，换算比例 1 元 = {formatQuotaUnits(rechargeBaseCreditsPerYuan)} 积分。</p>
                   </div>
                   <label className="custom-recharge-field">
                     <span>充值金额</span>
@@ -3449,7 +3436,7 @@ function AccountSubpageHeader({
 }: {
   breadcrumb: string;
   title: string;
-  subtitle: string;
+  subtitle?: string;
   meta?: React.ReactNode;
   actions?: React.ReactNode;
   onBack: () => void;
@@ -3464,7 +3451,7 @@ function AccountSubpageHeader({
         <div>
           <span className="account-subpage-breadcrumb">{breadcrumb}</span>
           <h2>{title}</h2>
-          <p>{subtitle}</p>
+          {subtitle ? <p>{subtitle}</p> : null}
           {meta ? <div className="account-subpage-header__meta">{meta}</div> : null}
         </div>
         {actions ? <div className="account-subpage-header__actions">{actions}</div> : null}

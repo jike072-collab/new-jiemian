@@ -261,39 +261,53 @@ export function CompactDropzone({
           {dragging ? <span className="studio-upload__drop-hint">释放后自动读取文件</span> : null}
           {hasFiles && !dragging ? <span>点击区域可替换文件</span> : null}
         </div>
-      </div>
-
-      {hasFiles ? (
-        <div className="studio-upload-list">
-          {files.map((file, index) => (
-            <div key={`${file.name}-${file.size}-${index}`} className="studio-upload-item">
-              {file.previewUrl ? (
-                file.mediaType === "video"
-                  ? <video src={file.previewUrl} controls />
-                  : <img src={file.previewUrl} alt={file.name} />
-              ) : (
-                <span className="studio-upload-item__placeholder" aria-hidden="true">
-                  <ImageUp className="size-5" />
-                </span>
-              )}
-              <div>
-                <strong>{file.name}</strong>
-                <span>{formatFileSize(file.size)}</span>
+        {hasFiles ? (
+          <div className="studio-upload-list">
+            {files.map((file, index) => (
+              <div key={`${file.name}-${file.size}-${index}`} className="studio-upload-item">
+                {file.previewUrl ? (
+                  file.mediaType === "video"
+                    ? <video src={file.previewUrl} controls />
+                    : <img src={file.previewUrl} alt={file.name} />
+                ) : (
+                  <span className="studio-upload-item__placeholder" aria-hidden="true">
+                    <ImageUp className="size-5" />
+                  </span>
+                )}
+                <div>
+                  <strong>{file.name}</strong>
+                  <span>{formatFileSize(file.size)}</span>
+                </div>
+                {onRemove ? (
+                  <button
+                    type="button"
+                    className="studio-icon-button"
+                    aria-label={`删除 ${file.name}`}
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      onRemove(index);
+                    }}
+                  >
+                    <X className="size-4" aria-hidden="true" />
+                  </button>
+                ) : null}
               </div>
-              {onRemove ? (
-                <button type="button" className="studio-icon-button" aria-label={`删除 ${file.name}`} onClick={() => onRemove(index)}>
-                  <X className="size-4" aria-hidden="true" />
-                </button>
-              ) : null}
-            </div>
-          ))}
-          {files.length > 1 && onClear ? (
-            <button type="button" className="studio-secondary-button studio-upload-clear" onClick={onClear}>
-              全部删除
-            </button>
-          ) : null}
-        </div>
-      ) : null}
+            ))}
+            {files.length > 1 && onClear ? (
+              <button
+                type="button"
+                className="studio-secondary-button studio-upload-clear"
+                onClick={(event) => {
+                  event.stopPropagation();
+                  onClear();
+                }}
+              >
+                全部删除
+              </button>
+            ) : null}
+          </div>
+        ) : null}
+      </div>
     </div>
   );
 }

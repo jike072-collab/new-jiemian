@@ -2516,8 +2516,14 @@
   }
 
   .studio-upload.is-filled {
+    align-content: stretch;
     border-color: color-mix(in srgb, var(--primary) 28%, var(--border-subtle));
     background: color-mix(in srgb, var(--surface-hover) 48%, var(--surface));
+  }
+
+  .studio-upload.is-filled .studio-upload__icon,
+  .studio-upload.is-filled .studio-upload__content {
+    justify-self: center;
   }
 
   .studio-upload.is-error {
@@ -2595,13 +2601,11 @@
   }
 
   .studio-upload-list {
+    width: 100%;
     display: flex;
     flex-wrap: wrap;
     gap: 8px;
-  }
-
-  .studio-upload-list {
-    margin-top: 10px;
+    margin-top: 4px;
   }
 
   .studio-upload-item {
@@ -6152,9 +6156,10 @@
   .studio-library-modal .studio-library-detail {
     position: relative;
     z-index: 1;
-    width: min(920px, 100%);
-    max-height: min(86vh, 760px);
-    overflow-y: auto;
+    width: min(1120px, calc(100vw - 48px));
+    max-height: calc(100dvh - 48px);
+    overflow: hidden;
+    grid-template-rows: auto minmax(0, 1fr) auto;
     background: var(--panel);
     box-shadow: 0 24px 90px rgba(0, 0, 0, 0.42);
     animation: ui-dialog-in var(--motion-layout) var(--ease-enter) both;
@@ -6170,19 +6175,30 @@
     display: none;
   }
 
+  .studio-library-modal .studio-media-card {
+    min-height: 0;
+  }
+
+  .studio-library-modal .studio-media-card__body {
+    min-height: 0;
+  }
+
+  .studio-library-modal .studio-media-card__frame.is-large {
+    height: min(66vh, calc(100dvh - 220px));
+    min-height: 0;
+    max-height: none;
+  }
+
   .studio-library-detail__actions {
     display: flex;
     min-width: 0;
     align-items: center;
+    justify-content: center;
+    flex-wrap: wrap;
     gap: 8px;
-    overflow-x: auto;
+    overflow: hidden;
     border-top: 1px solid color-mix(in srgb, var(--border-subtle) 76%, transparent);
     padding-top: 12px;
-    scrollbar-width: none;
-  }
-
-  .studio-library-detail__actions::-webkit-scrollbar {
-    display: none;
   }
 
   .studio-library-detail__action {
@@ -6921,6 +6937,29 @@
     width: 100%;
     height: 100%;
     object-fit: cover;
+  }
+
+  .video-tutorial-result-slot__poster {
+    position: absolute;
+    inset: 0;
+    z-index: 1;
+    opacity: 1;
+    transition: opacity 140ms ease-out;
+  }
+
+  .video-tutorial-result-slot__media video {
+    position: relative;
+    z-index: 0;
+    opacity: 0;
+    transition: opacity 140ms ease-out;
+  }
+
+  .video-tutorial-result-slot__media.is-video-ready video {
+    opacity: 1;
+  }
+
+  .video-tutorial-result-slot__media.is-video-ready .video-tutorial-result-slot__poster {
+    opacity: 0;
   }
 
   .video-tutorial-result-slot__media {
@@ -7963,7 +8002,10 @@
   }
 
   .motion-page-reveal,
-  .motion-result-reveal,
+  .motion-result-reveal {
+    opacity: 1;
+  }
+
   .image-tutorial-simple__image-shell,
   .image-tutorial-simple__image,
   .image-tutorial-simple__overlay,
@@ -8078,11 +8120,11 @@
 
   @media (prefers-reduced-motion: no-preference) {
     .motion-page-reveal {
-      animation: motion-page-reveal var(--motion-entrance) var(--ease-enter) both;
+      animation: motion-page-reveal 140ms ease-out both;
     }
 
     .motion-result-reveal {
-      animation: motion-result-reveal var(--motion-layout) var(--ease-enter) both;
+      animation: motion-result-reveal 140ms ease-out both;
     }
 
     .motion-skeleton-shimmer {
@@ -8224,8 +8266,8 @@
 
   @keyframes motion-page-reveal {
     from {
-      opacity: 0;
-      transform: translateY(8px);
+      opacity: 0.92;
+      transform: translateY(3px);
     }
 
     to {
@@ -8236,8 +8278,8 @@
 
   @keyframes motion-result-reveal {
     from {
-      opacity: 0;
-      transform: translateY(6px);
+      opacity: 0.92;
+      transform: translateY(3px);
     }
 
     to {
