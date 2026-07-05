@@ -3,7 +3,7 @@
 /* eslint-disable @next/next/no-img-element */
 
 import Link from "next/link";
-import { ArrowLeft, ArrowRight, ChevronDown, ChevronUp, Search, SlidersHorizontal } from "lucide-react";
+import { ArrowLeft, ArrowRight, ChevronDown, ChevronUp, Search, SlidersHorizontal, Star } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 
@@ -22,6 +22,7 @@ import {
 import type { WorkspaceAction, WorkspaceToolId } from "@/lib/workspace-registry";
 
 type TemplateScope = "image" | "video";
+type TemplateFilter = TemplateCategory | "全部" | "收藏";
 
 type AuthSessionResponse =
   | { ok: true; user: PublicAuthUser; mappingStatus: string | null }
@@ -35,8 +36,10 @@ type QuotaResponse = {
 const templateRailDragThreshold = 12;
 const templateRailLongPressDelay = 180;
 const templatePageSize = 12;
-const defaultTemplateCategoryIds: Array<TemplateCategory | "全部"> = [
+const favoriteTemplateStorageKey = "aohuang-template-favorites";
+const defaultTemplateCategoryIds: TemplateFilter[] = [
   "全部",
+  "收藏",
   "商品美食",
   "电商详情",
   "海报品牌",
@@ -214,7 +217,8 @@ export function TemplateCenterView() {
   const scope: TemplateScope = searchParams.get("tab") === "video" ? "video" : "image";
   const previewMode = searchParams.get("preview") === "1";
   const [search, setSearch] = useState("");
-  const [category, setCategory] = useState<TemplateCategory | "全部">("全部");
+  const [category, setCategory] = useState<TemplateFilter>("全部");
+  const [favoriteIds, setFavoriteIds] = useState<Set<string>>(() => new Set());
   const [sessionUser, setSessionUser] = useState<PublicAuthUser | null>(null);
   const [quotaLabel, setQuotaLabel] = useState<string | null>(null);
 
@@ -224,23 +228,40 @@ export function TemplateCenterView() {
   const filteredTemplates = useMemo(() => {
     const keyword = search.trim().toLowerCase();
     return templates.filter((template) => {
-      const matchesCategory = category === "全部" || template.category === category;
+      const matchesCategory = category === "全部"
+        || (category === "收藏" ? favoriteIds.has(template.id) : template.category === category);
       const matchesSearch = !keyword
         || template.label.toLowerCase().includes(keyword)
         || template.summary.toLowerCase().includes(keyword)
         || template.category.toLowerCase().includes(keyword);
       return matchesCategory && matchesSearch;
     });
-  }, [category, search, templates]);
+  }, [category, favoriteIds, search, templates]);
 
   const categoryCounts = useMemo(() => {
-    return templateCategories.reduce<Record<TemplateCategory | "全部", number>>((result, item) => {
+    return templateCategories.reduce<Record<TemplateFilter, number>>((result, item) => {
       result[item] = item === "全部"
         ? templates.length
         : templates.filter((template) => template.category === item).length;
       return result;
-    }, Object.fromEntries(templateCategories.map((item) => [item, 0])) as Record<TemplateCategory | "全部", number>);
-  }, [templates]);
+    }, {
+      ...Object.fromEntries(templateCategories.map((item) => [item, 0])),
+      "收藏": templates.filter((template) => favoriteIds.has(template.id)).length,
+    } as Record<TemplateFilter, number>);
+  }, [favoriteIds, templates]);
+
+  const handleFavoriteToggle = (id: string) => {
+    setFavoriteIds((current) => {
+      const next = new Set(current);
+      if (next.has(id)) {
+        next.delete(id);
+      } else {
+        next.add(id);
+      }
+      window.localStorage.setItem(favoriteTemplateStorageKey, JSON.stringify(Array.from(next)));
+      return next;
+    });
+  };
 
   const handleToolAction = (action: WorkspaceAction, tool: WorkspaceToolId) => {
     if (action.kind === "route") {
@@ -292,6 +313,21 @@ export function TemplateCenterView() {
     };
   }, []);
 
+  useEffect(() => {
+    const timer = window.setTimeout(() => {
+      try {
+        const raw = window.localStorage.getItem(favoriteTemplateStorageKey);
+        const ids = raw ? JSON.parse(raw) : [];
+        if (Array.isArray(ids)) {
+          setFavoriteIds(new Set(ids.filter((id): id is string => typeof id === "string")));
+        }
+      } catch {
+        setFavoriteIds(new Set());
+      }
+    }, 0);
+    return () => window.clearTimeout(timer);
+  }, []);
+
   return (
     <WorkbenchShell
       state={{ activeToolId: "templates" }}
@@ -313,12 +349,14 @@ export function TemplateCenterView() {
           counts={categoryCounts}
           templates={filteredTemplates}
           totalCount={totalTemplateCount}
+          favoriteIds={favoriteIds}
           onScopeChange={(nextScope) => {
             setCategory("全部");
             router.push(`${templateTabHref(nextScope)}${previewMode ? "&preview=1" : ""}`, { scroll: false });
           }}
           onSearchChange={setSearch}
           onCategoryChange={setCategory}
+          onFavoriteToggle={handleFavoriteToggle}
         />
       }
     />
@@ -330,10 +368,14 @@ function withPreviewParam(href: string, previewMode: boolean) {
   return `${href}${href.includes("?") ? "&" : "?"}preview=1`;
 }
 
-const templateCategoryMeta: Record<TemplateCategory | "全部", { title: string; description: string }> = {
+const templateCategoryMeta: Record<TemplateFilter, { title: string; description: string }> = {
   "全部": {
     title: "全部",
     description: "查看图片和视频的全部模板分类。",
+  },
+  "收藏": {
+    title: "收藏",
+    description: "查看自己收藏的常用模板。",
   },
   "商品美食": {
     title: "商品美食",
@@ -379,31 +421,32 @@ function TemplateCategoryPanel({
   onCategoryChange,
   className,
 }: {
-  category: TemplateCategory | "全部";
-  counts: Record<TemplateCategory | "全部", number>;
-  onCategoryChange: (value: TemplateCategory | "全部") => void;
+  category: TemplateFilter;
+  counts: Record<TemplateFilter, number>;
+  onCategoryChange: (value: TemplateFilter) => void;
   className?: string;
 }) {
   const [expanded, setExpanded] = useState(false);
+  const availableCategories = (["收藏", ...templateCategories] as TemplateFilter[]).filter((item) => {
+    return item === "全部" || item === "收藏" || counts[item] > 0 || item === category;
+  });
   const visibleCategories = expanded
-    ? templateCategories
-    : templateCategories.filter((item) => defaultTemplateCategoryIds.includes(item) || item === category);
-  const hiddenCount = templateCategories.length - visibleCategories.length;
+    ? availableCategories
+    : availableCategories.filter((item) => defaultTemplateCategoryIds.includes(item) || item === category);
+  const hiddenCount = Math.max(0, availableCategories.length - visibleCategories.length);
 
   return (
     <div className={cn("template-center-panel", className)}>
       <div className="template-center-categories" role="group" aria-label="模板分类">
         {visibleCategories.map((item) => {
           const meta = templateCategoryMeta[item];
-          const disabled = item !== "全部" && counts[item] <= 0;
           return (
             <button
               key={item}
               type="button"
-              className={cn("template-center-category", category === item && "is-active", disabled && "is-disabled")}
+              className={cn("template-center-category", category === item && "is-active")}
               onClick={() => onCategoryChange(item)}
               aria-pressed={category === item}
-              disabled={disabled}
             >
               <span>
                 <strong>{meta.title}</strong>
@@ -438,20 +481,24 @@ function TemplateBrowserPanel({
   counts,
   templates,
   totalCount,
+  favoriteIds,
   onScopeChange,
   onSearchChange,
   onCategoryChange,
+  onFavoriteToggle,
 }: {
   scope: TemplateScope;
   previewMode: boolean;
   search: string;
-  category: TemplateCategory | "全部";
-  counts: Record<TemplateCategory | "全部", number>;
+  category: TemplateFilter;
+  counts: Record<TemplateFilter, number>;
   templates: TemplatePromptTemplate[];
   totalCount: number;
+  favoriteIds: Set<string>;
   onScopeChange: (scope: TemplateScope) => void;
   onSearchChange: (value: string) => void;
-  onCategoryChange: (value: TemplateCategory | "全部") => void;
+  onCategoryChange: (value: TemplateFilter) => void;
+  onFavoriteToggle: (id: string) => void;
 }) {
   const gridMotionKey = `${scope}:${category}:${search.trim().toLowerCase()}`;
   const searchInputRef = useRef<HTMLInputElement | null>(null);
@@ -462,8 +509,9 @@ function TemplateBrowserPanel({
   const safePage = Math.min(page, pageCount);
   const visibleTemplates = templates.slice((safePage - 1) * templatePageSize, safePage * templatePageSize);
   const placeholderCount = visibleTemplates.length ? Math.max(0, templatePageSize - visibleTemplates.length) : 0;
+  const pageNumbers = Array.from({ length: pageCount }, (_, index) => index + 1);
 
-  const handleCategoryChange = (value: TemplateCategory | "全部") => {
+  const handleCategoryChange = (value: TemplateFilter) => {
     setPage(1);
     onCategoryChange(value);
     setMobileCategoryOpen(false);
@@ -582,6 +630,15 @@ function TemplateBrowserPanel({
               >
                 <span className="template-center-card__thumb">
                   <TemplateThumbnail template={template} loading={index < 12 ? "eager" : "lazy"} fetchPriority={index < 12 ? "auto" : "low"} />
+                  <button
+                    type="button"
+                    className={cn("template-center-card__favorite", favoriteIds.has(template.id) && "is-active")}
+                    onClick={() => onFavoriteToggle(template.id)}
+                    aria-pressed={favoriteIds.has(template.id)}
+                    aria-label={favoriteIds.has(template.id) ? "取消收藏模板" : "收藏模板"}
+                  >
+                    <Star className="size-4" aria-hidden="true" />
+                  </button>
                   <span className="template-center-card__ratio">{template.aspectRatio}</span>
                 </span>
                 <span className="template-center-card__body">
@@ -622,8 +679,18 @@ function TemplateBrowserPanel({
             <ArrowLeft className="size-4" aria-hidden="true" />
             上一页
           </button>
-          <span className="template-center-page-status">
-            {safePage} / {pageCount}
+          <span className="template-center-page-status" aria-label={`当前第 ${safePage} 页，共 ${pageCount} 页`}>
+            {pageNumbers.map((pageNumber) => (
+              <button
+                key={pageNumber}
+                type="button"
+                className={cn("template-center-page-number", safePage === pageNumber && "is-active")}
+                onClick={() => setPage(pageNumber)}
+                aria-current={safePage === pageNumber ? "page" : undefined}
+              >
+                {pageNumber}
+              </button>
+            ))}
           </span>
           <button
             type="button"
