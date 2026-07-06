@@ -193,6 +193,23 @@ test("uses membership image entitlement before charging quota", async () => {
   assert.equal(status.entitlements.image_generation.remaining, 19);
 });
 
+test("does not persist membership entitlement kind when no generation entitlement is consumed", async () => {
+  const harness = service({ availableQuota: 500, providerQuota: 500 });
+  const prechecked = await harness.taskBilling.precheck({
+    localUserId: "local-user",
+    taskId: "non-member-video-task",
+    operation: "cloud_video_generation",
+    estimatedQuotaUnits: 432,
+    idempotencyKey: "non-member-video-task",
+    requestFingerprint: "video:non-member-video-task:432",
+  });
+  assert.equal(prechecked.ok, true);
+  if (!prechecked.ok) return;
+  assert.equal(prechecked.record.membership_entitlement_kind, null);
+  assert.equal(prechecked.record.membership_entitlement_units, 0);
+  assert.equal((await harness.usageRepository.getByTaskId("local-user", "non-member-video-task"))?.estimated_quota_units, 432);
+});
+
 test("server-side generation requires a matching precheck record", async () => {
   const harness = service();
   const missing = await harness.taskBilling.verifyPrecheck({

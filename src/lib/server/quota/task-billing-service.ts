@@ -309,17 +309,18 @@ export class TaskBillingService {
 
     const quota = await this.getQuotaSnapshot(input.localUserId);
     if (!quota.ok) return quota;
-    const membershipEntitlementKind = membershipEntitlementKindForOperation(input.operation);
-    const membershipEntitlementUnits = membershipEntitlementKind
+    const requestedMembershipEntitlementKind = membershipEntitlementKindForOperation(input.operation);
+    const membershipEntitlementUnits = requestedMembershipEntitlementKind
       ? (await this.membershipService.consumeEntitlement({
         localUserId: input.localUserId,
-        kind: membershipEntitlementKind,
+        kind: requestedMembershipEntitlementKind,
         amount: 1,
-        idempotencyKey: `membership:${membershipEntitlementKind}:${input.taskId}`,
+        idempotencyKey: `membership:${requestedMembershipEntitlementKind}:${input.taskId}`,
         taskId: input.taskId,
         now: this.now(),
       })).consumed
       : 0;
+    const membershipEntitlementKind = membershipEntitlementUnits > 0 ? requestedMembershipEntitlementKind : null;
     const chargeableEstimatedQuotaUnits = membershipEntitlementUnits > 0 ? 0 : input.estimatedQuotaUnits;
     if (quota.snapshot.available_quota_units < chargeableEstimatedQuotaUnits) {
       await this.recordUsage({
