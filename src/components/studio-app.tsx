@@ -3055,6 +3055,7 @@ function RechargeCenterWorkspace({
   const customAmountErrorId = "custom-recharge-error";
   const pointsStatusLabel = quota ? `${formatQuotaUnits(quota.quota_units)} ✦` : "—";
   const planStatusLabel = getPlanStatusDisplay(planStatus).label;
+  const membershipStatusLabel = planStatus.status === "active" ? planStatusLabel : "暂无会员";
   const creditSummaryLines = customRechargeActive
     ? createCustomCreditSummaryLines(customAmount, customAmountValid, customCredits)
     : createFixedCreditSummaryLines(selectedCredit, selectedPaymentChannelConfig);
@@ -3201,20 +3202,23 @@ function RechargeCenterWorkspace({
           </div>
         </div>
         <div className="recharge-account-meta" aria-label="账户概览">
-          <span className="recharge-account-meta__item">
-            <span>当前积分</span>
+          <span className="recharge-account-meta__item recharge-account-meta__item--points">
+            <span>积分</span>
             {loading && !quota ? (
               <i className="recharge-account-meta__skeleton motion-skeleton-shimmer" aria-label="积分加载中" />
             ) : (
               <strong>{pointsStatusLabel}</strong>
             )}
+            <button type="button" className="recharge-toolbar-button recharge-toolbar-button--inline" onClick={() => setCreditsDialogOpen(true)}>
+              充值
+            </button>
           </span>
           <span className="recharge-account-meta__item">
-            <span>当前套餐</span>
+            <span>会员</span>
             {planStatus.status === "loading" ? (
               <i className="recharge-account-meta__skeleton motion-skeleton-shimmer" aria-label="套餐加载中" />
             ) : (
-              <strong>{planStatusLabel}</strong>
+              <strong>{membershipStatusLabel}</strong>
             )}
           </span>
         </div>
@@ -3222,12 +3226,6 @@ function RechargeCenterWorkspace({
 
       <div className="recharge-center-shell">
         <div className="recharge-pricing-toolbar">
-          <div className="recharge-pricing-toolbar__spacer" aria-hidden="true" />
-          <div className="recharge-pricing-toolbar__actions">
-            <button type="button" className="recharge-toolbar-button" onClick={() => setCreditsDialogOpen(true)}>
-              积分充值
-            </button>
-          </div>
           <div className="recharge-plan-cycles" role="tablist" aria-label="会员周期">
             {planCycleOptions.map((cycle) => (
               <button
@@ -3261,9 +3259,9 @@ function RechargeCenterWorkspace({
                     return (
                       <article
                         key={plan.id}
-                        className={cn("recharge-plan-card", plan.recommended && "is-recommended", selected && "is-selected")}
+                        className={cn("recharge-plan-card", selected && "is-selected")}
+                        onClick={() => setSelectedPlanId(plan.id)}
                       >
-                        {plan.recommended ? <span className="recharge-plan-card__ribbon">推荐</span> : null}
                         <span className="recharge-plan-card__top">
                           <span className="recharge-plan-card__scene">{plan.highlight}</span>
                           {plan.recommended ? <span className="recharge-card-badge">主推</span> : null}
@@ -3289,7 +3287,8 @@ function RechargeCenterWorkspace({
                           type="button"
                           className="recharge-plan-card__action"
                           disabled={planCardDisabled}
-                          onClick={() => {
+                          onClick={(event) => {
+                            event.stopPropagation();
                             if (planCardDisabled) return;
                             setSelectedPlanId(plan.id);
                             setPaymentError("");
@@ -3622,9 +3621,6 @@ function CreditsPurchaseDialog({
                     onClick={() => onSelectCredit(option.amount)}
                     aria-pressed={selected}
                   >
-                    <span className="recharge-card-check" aria-hidden="true">
-                      <Check className="size-3.5" />
-                    </span>
                     <span className="credit-topup-card__headline">
                       <strong className="credit-topup-card__amount">¥{formatRechargeAmount(option.amount)}</strong>
                       {badge ? <span className="recharge-card-badge">{badge}</span> : null}
@@ -3633,9 +3629,6 @@ function CreditsPurchaseDialog({
                     {giftCredits > 0 ? (
                       <span className="credit-topup-card__gift">含赠送 {formatQuotaUnits(giftCredits)} 积分</span>
                     ) : null}
-                    <span className="credit-topup-card__reason">
-                      {option.label === "新人首充" ? "建议新用户先体验，再决定是否升级会员" : "适合活动补量、短期冲量和视频生成消耗"}
-                    </span>
                   </button>
                 );
               })}
