@@ -5335,8 +5335,38 @@
   }
 
   .account-subpage--recharge {
-    width: min(100%, 1180px);
-    margin-inline: auto;
+    min-height: 100%;
+    width: 100%;
+    max-width: none;
+    margin-inline: 0;
+    gap: 22px;
+    border-radius: 18px;
+    background:
+      linear-gradient(180deg, rgba(255, 255, 255, 0.035), transparent 240px),
+      #090a0d;
+    padding: clamp(18px, 2vw, 28px);
+  }
+
+  .recharge-pricing-header {
+    display: flex;
+    align-items: flex-end;
+    justify-content: space-between;
+    gap: 18px;
+    min-width: 0;
+  }
+
+  .recharge-pricing-header__main {
+    display: grid;
+    gap: 14px;
+    min-width: 0;
+  }
+
+  .recharge-pricing-header h2 {
+    color: #fff;
+    font-size: clamp(28px, 2.4vw, 40px);
+    font-weight: 780;
+    letter-spacing: 0;
+    line-height: 1.05;
   }
 
   .account-subpage-header {
@@ -5417,18 +5447,19 @@
   .recharge-account-meta {
     display: flex;
     flex-wrap: wrap;
+    justify-content: flex-end;
     gap: 10px;
   }
 
   .recharge-account-meta__item {
     display: inline-flex;
-    min-height: 34px;
+    min-height: 40px;
     align-items: center;
     gap: 8px;
-    border: 1px solid rgba(255, 255, 255, 0.1);
-    border-radius: 999px;
-    background: rgba(16, 16, 20, 0.86);
-    padding: 0 12px;
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    border-radius: 8px;
+    background: rgba(255, 255, 255, 0.045);
+    padding: 0 14px;
     color: rgba(255, 255, 255, 0.62);
     font-size: 12.5px;
     line-height: 1;
@@ -5486,9 +5517,55 @@
 
   .recharge-center-shell {
     display: grid;
-    gap: 22px;
+    gap: 20px;
     min-width: 0;
-    width: min(100%, 1380px);
+    width: 100%;
+  }
+
+  .recharge-pricing-toolbar {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+    align-items: center;
+    gap: 14px;
+    min-width: 0;
+  }
+
+  .recharge-pricing-toolbar__spacer {
+    grid-column: 1;
+    min-height: 1px;
+  }
+
+  .recharge-pricing-toolbar__actions {
+    display: flex;
+    grid-column: 3;
+    justify-self: end;
+    gap: 10px;
+  }
+
+  .recharge-toolbar-button {
+    display: inline-flex;
+    min-height: 40px;
+    align-items: center;
+    justify-content: center;
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 8px;
+    background: rgba(255, 255, 255, 0.045);
+    padding: 0 16px;
+    color: rgba(255, 255, 255, 0.9);
+    font-size: 13px;
+    font-weight: 720;
+    transition:
+      border-color var(--motion-fast) var(--ease-enter),
+      background var(--motion-fast) var(--ease-enter),
+      color var(--motion-fast) var(--ease-enter),
+      transform var(--motion-fast) var(--ease-enter);
+  }
+
+  .recharge-toolbar-button:hover {
+    border-color: rgba(255, 43, 136, 0.28);
+    background: rgba(255, 43, 136, 0.12);
+    color: #fff;
+    transform: translateY(-1px);
   }
 
   .recharge-hero {
@@ -5568,20 +5645,28 @@
 
   .recharge-plan-cycles {
     display: inline-grid;
+    grid-column: 2;
     grid-template-columns: repeat(3, minmax(0, 1fr));
-    gap: 10px;
-    width: min(100%, 780px);
+    gap: 4px;
+    justify-self: center;
+    min-width: 560px;
+    width: min(100%, 640px);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 8px;
+    background: rgba(255, 255, 255, 0.045);
+    padding: 4px;
   }
 
   .recharge-plan-cycle {
     display: grid;
-    gap: 4px;
-    min-height: 58px;
+    gap: 2px;
+    min-height: 40px;
     place-items: center;
-    border: 1px solid rgba(255, 255, 255, 0.08);
-    border-radius: 14px;
-    background: rgba(20, 20, 24, 0.92);
+    border: 0;
+    border-radius: 6px;
+    background: transparent;
     color: rgba(255, 255, 255, 0.72);
+    white-space: nowrap;
     transition:
       border-color var(--motion-fast) var(--ease-enter),
       background var(--motion-fast) var(--ease-enter),
@@ -5593,13 +5678,22 @@
     color: #ff8ac4;
     font-size: 11px;
     font-weight: 700;
+    white-space: nowrap;
   }
 
   .recharge-plan-cycle.is-active {
-    border-color: rgba(255, 43, 136, 0.46);
-    background: linear-gradient(90deg, rgba(255, 43, 136, 0.14), rgba(164, 82, 255, 0.14));
+    background: #fff;
+    color: #101116;
+    box-shadow: 0 10px 24px rgba(0, 0, 0, 0.22);
+    transform: none;
+  }
+
+  .recharge-plan-cycle.is-active small {
+    color: #c02670;
+  }
+
+  .recharge-plan-cycle:hover {
     color: #fff;
-    transform: translateY(-1px);
   }
 
   .recharge-center-tabs,
@@ -5608,9 +5702,9 @@
     width: fit-content;
     align-items: center;
     gap: 4px;
-    border: 1px solid rgba(255, 255, 255, 0.08);
-    border-radius: 12px;
-    background: #101014;
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 8px;
+    background: rgba(255, 255, 255, 0.045);
     padding: 4px;
   }
 
@@ -5618,9 +5712,9 @@
   .usage-record-filter {
     min-height: 34px;
     border: 0;
-    border-radius: 8px;
+    border-radius: 6px;
     background: transparent;
-    padding: 0 14px;
+    padding: 0 18px;
     color: rgba(255, 255, 255, 0.58);
     font-size: 13px;
     font-weight: 650;
@@ -5638,9 +5732,9 @@
 
   .recharge-center-tab.is-active,
   .usage-record-filter.is-active {
-    background: linear-gradient(90deg, rgba(255, 43, 136, 0.16), rgba(164, 82, 255, 0.14));
-    color: #fff;
-    box-shadow: inset 0 0 0 1px rgba(255, 43, 136, 0.15);
+    background: #fff;
+    color: #101116;
+    box-shadow: 0 10px 24px rgba(0, 0, 0, 0.18);
   }
 
   .recharge-account-error {
@@ -5674,9 +5768,9 @@
 
   .recharge-layout {
     display: grid;
-    grid-template-columns: minmax(0, 1.45fr) 390px;
+    grid-template-columns: minmax(0, 1fr);
     align-items: start;
-    gap: 24px;
+    gap: 0;
     min-width: 0;
   }
 
@@ -5684,19 +5778,9 @@
     min-width: 0;
   }
 
-  .recharge-layout__summary {
-    min-width: 0;
-    width: 100%;
-  }
-
-  .recharge-layout__summary {
-    position: sticky;
-    top: 18px;
-  }
-
   .recharge-center-panel {
     display: grid;
-    gap: 14px;
+    gap: 18px;
     min-width: 0;
     animation: user-center-row-in var(--motion-layout) var(--ease-enter) both;
   }
@@ -5709,9 +5793,10 @@
 
   .recharge-selection-head h3 {
     color: rgba(255, 255, 255, 0.92);
-    font-size: 19px;
+    font-size: 24px;
     font-weight: 720;
     line-height: 1.25;
+    text-align: center;
   }
 
   .recharge-selection-head p {
@@ -5724,7 +5809,7 @@
   .recharge-plan-grid {
     display: grid;
     grid-template-columns: repeat(4, minmax(0, 1fr));
-    gap: 16px;
+    gap: 12px;
   }
 
   .recharge-plan-card,
@@ -5747,55 +5832,74 @@
   .credit-topup-card {
     display: grid;
     min-width: 0;
+    border: 0;
     text-align: left;
   }
 
   .recharge-plan-card {
-    min-height: 420px;
-    align-content: start;
-    grid-template-rows: auto auto auto auto auto 1fr auto;
-    gap: 14px;
-    padding: 22px;
+    min-height: 560px;
+    display: flex;
+    flex-direction: column;
+    gap: 15px;
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 8px;
+    background: #141519;
+    padding: 26px;
   }
 
   .recharge-plan-card:hover,
   .credit-topup-card:hover,
   .custom-recharge-card:hover {
     border-color: rgba(255, 43, 136, 0.2);
-    background: #18181e;
-    box-shadow: 0 14px 30px rgba(0, 0, 0, 0.2);
+    background: #18191e;
+    box-shadow: 0 18px 38px rgba(0, 0, 0, 0.26);
     transform: translateY(-2px);
   }
 
   .recharge-plan-card.is-selected,
   .credit-topup-card.is-selected {
-    border-color: rgba(255, 43, 136, 0.58);
+    border-color: rgba(255, 43, 136, 0.5);
     background:
-      radial-gradient(circle at 18% 0%, rgba(255, 43, 136, 0.16), transparent 40%),
-      #141418;
+      linear-gradient(180deg, rgba(255, 43, 136, 0.08), transparent 38%),
+      #17181d;
   }
 
   .recharge-plan-card.is-recommended {
-    border-color: rgba(164, 82, 255, 0.32);
+    border-color: rgba(255, 43, 136, 0.82);
     background:
-      radial-gradient(circle at 18% 0%, rgba(164, 82, 255, 0.1), transparent 42%),
-      rgba(22, 22, 27, 0.98);
-    box-shadow: 0 18px 38px rgba(164, 82, 255, 0.08);
+      linear-gradient(180deg, rgba(255, 43, 136, 0.12), transparent 34%),
+      #171519;
+    box-shadow: 0 20px 44px rgba(255, 43, 136, 0.1);
   }
 
   .recharge-plan-card.is-recommended.is-selected {
-    border-color: rgba(255, 43, 136, 0.62);
-    background:
-      radial-gradient(circle at 16% 0%, rgba(255, 43, 136, 0.15), transparent 40%),
-      radial-gradient(circle at 86% 12%, rgba(164, 82, 255, 0.14), transparent 36%),
-      #141418;
+    border-color: rgba(255, 43, 136, 0.82);
+    background: #1f151d;
+  }
+
+  .recharge-plan-card__ribbon {
+    position: absolute;
+    top: 0;
+    right: 0;
+    left: 0;
+    display: grid;
+    height: 34px;
+    place-items: center;
+    background: #ff2b88;
+    color: #fff;
+    font-size: 13px;
+    font-weight: 760;
+  }
+
+  .recharge-plan-card.is-recommended {
+    padding-top: 50px;
   }
 
   .custom-recharge-card.is-active {
     border-color: rgba(255, 43, 136, 0.42);
     background:
-      radial-gradient(circle at 16% 0%, rgba(255, 43, 136, 0.12), transparent 42%),
-      #141418;
+      linear-gradient(180deg, rgba(255, 43, 136, 0.08), transparent 80%),
+      #141519;
   }
 
   .recharge-card-check {
@@ -5847,13 +5951,13 @@
     align-items: center;
     justify-content: space-between;
     gap: 10px;
-    padding-right: 26px;
+    padding-right: 0;
   }
 
   .recharge-plan-card__scene {
     overflow: hidden;
     color: rgba(255, 255, 255, 0.58);
-    font-size: 13px;
+    font-size: 12.5px;
     line-height: 1.35;
     text-overflow: ellipsis;
     white-space: nowrap;
@@ -5861,23 +5965,51 @@
 
   .recharge-plan-card__name {
     color: rgba(255, 255, 255, 0.92);
-    font-size: 29px;
+    font-size: 22px;
     font-weight: 740;
     line-height: 1.08;
   }
 
   .recharge-plan-card__price {
+    display: flex;
+    align-items: baseline;
+    gap: 7px;
     color: rgba(255, 255, 255, 0.96);
-    font-size: clamp(40px, 3vw, 54px);
+    font-size: clamp(38px, 2.8vw, 52px);
     font-weight: 760;
     line-height: 1.05;
     letter-spacing: 0;
   }
 
-  .recharge-plan-card__credits {
-    color: #ff72b5;
+  .recharge-plan-card__price em {
     font-size: 18px;
-    font-weight: 680;
+    font-style: normal;
+    font-weight: 760;
+  }
+
+  .recharge-plan-card__price small {
+    color: rgba(255, 255, 255, 0.5);
+    font-size: 13px;
+    font-weight: 650;
+  }
+
+  .recharge-plan-card__credits {
+    display: flex;
+    min-height: 68px;
+    align-items: center;
+    gap: 8px;
+    border-radius: 8px;
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    background: rgba(255, 255, 255, 0.055);
+    padding: 14px 16px;
+    color: rgba(255, 255, 255, 0.88);
+    font-size: 17px;
+    font-weight: 720;
+  }
+
+  .recharge-plan-card__credits svg {
+    color: #ff72b5;
+    flex: 0 0 auto;
   }
 
   .recharge-plan-card__desc {
@@ -5888,9 +6020,13 @@
 
   .recharge-plan-card__facts {
     display: grid;
-    gap: 10px;
-    margin: 4px 0 0;
+    gap: 13px;
+    align-content: start;
+    flex: 1;
+    margin: 8px 0 0;
     padding: 0;
+    border-top: 1px solid rgba(255, 255, 255, 0.065);
+    padding-top: 22px;
   }
 
   .recharge-plan-card__facts > span {
@@ -5899,7 +6035,7 @@
     align-items: start;
     gap: 8px;
     color: rgba(255, 255, 255, 0.72);
-    font-size: 13.5px;
+    font-size: 14px;
     line-height: 1.4;
   }
 
@@ -5909,7 +6045,7 @@
   }
 
   .recharge-plan-card__reason {
-    display: inline-flex;
+    display: none;
     width: fit-content;
     max-width: 100%;
     align-items: center;
@@ -5923,16 +6059,17 @@
   }
 
   .recharge-plan-card__action {
+    margin-top: auto;
     display: inline-flex;
-    min-height: 46px;
+    min-height: 52px;
     align-items: center;
     justify-content: center;
-    border: 1px solid rgba(255, 255, 255, 0.1);
-    border-radius: 14px;
-    background: rgba(255, 255, 255, 0.06);
-    color: rgba(255, 255, 255, 0.82);
+    border: 0;
+    border-radius: 8px;
+    background: rgba(245, 250, 255, 0.95);
+    color: #101116;
     font-size: 15px;
-    font-weight: 700;
+    font-weight: 760;
     transition:
       border-color var(--motion-fast) var(--ease-enter),
       background var(--motion-fast) var(--ease-enter),
@@ -5940,14 +6077,22 @@
   }
 
   .recharge-plan-card:hover .recharge-plan-card__action {
-    border-color: rgba(255, 43, 136, 0.26);
-    color: rgba(255, 255, 255, 0.9);
+    color: #09090b;
   }
 
   .recharge-plan-card.is-selected .recharge-plan-card__action {
-    border-color: rgba(255, 43, 136, 0.36);
-    background: linear-gradient(90deg, rgba(255, 43, 136, 0.24), rgba(164, 82, 255, 0.2));
+    background: #ff2b88;
     color: #fff;
+  }
+
+  .recharge-plan-card.is-recommended .recharge-plan-card__action {
+    background: #ff2b88;
+    color: #fff;
+  }
+
+  .recharge-plan-card__action:disabled {
+    cursor: not-allowed;
+    opacity: 0.58;
   }
 
   .recharge-plan-empty {
@@ -5978,15 +6123,17 @@
 
   .credit-topup-grid {
     display: grid;
-    grid-template-columns: repeat(3, minmax(0, 1fr));
-    gap: 14px;
+    grid-template-columns: repeat(6, minmax(0, 1fr));
+    gap: 12px;
   }
 
   .credit-topup-card {
-    min-height: 170px;
+    min-height: 156px;
     align-content: start;
     gap: 10px;
-    padding: 18px;
+    border: 1px solid rgba(255, 255, 255, 0.09);
+    background: #141519;
+    padding: 16px;
   }
 
   .credit-topup-card__headline {
@@ -6003,9 +6150,192 @@
 
   .credit-topup-card__amount {
     color: rgba(255, 255, 255, 0.94);
-    font-size: 34px;
+    font-size: 28px;
     font-weight: 760;
     line-height: 1.05;
+  }
+
+  .recharge-credit-bottom {
+    display: grid;
+    grid-template-columns: minmax(0, 1.35fr) minmax(320px, 0.65fr);
+    gap: 12px;
+    align-items: stretch;
+    min-width: 0;
+  }
+
+  .credits-dialog {
+    position: fixed;
+    inset: 0;
+    z-index: 90;
+    display: grid;
+    place-items: center;
+    padding: 24px;
+  }
+
+  .credits-dialog__backdrop {
+    position: absolute;
+    inset: 0;
+    border: 0;
+    background: rgba(4, 5, 8, 0.76);
+    backdrop-filter: blur(12px);
+  }
+
+  .credits-dialog__card {
+    position: relative;
+    z-index: 1;
+    display: grid;
+    gap: 18px;
+    width: min(100%, 1040px);
+    border: 1px solid rgba(255, 255, 255, 0.09);
+    border-radius: 8px;
+    background: #1a1c20;
+    box-shadow: 0 36px 80px rgba(0, 0, 0, 0.42);
+    padding: 22px;
+  }
+
+  .credits-dialog__head {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 18px;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+    padding-bottom: 14px;
+  }
+
+  .credits-dialog__profile {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    min-width: 0;
+  }
+
+  .credits-dialog__avatar {
+    display: grid;
+    width: 48px;
+    height: 48px;
+    flex: 0 0 auto;
+    place-items: center;
+    border-radius: 999px;
+    background: linear-gradient(135deg, rgba(255, 43, 136, 0.9), rgba(164, 82, 255, 0.78));
+    color: #fff;
+    font-size: 22px;
+    font-weight: 800;
+  }
+
+  .credits-dialog__title {
+    display: grid;
+    gap: 4px;
+  }
+
+  .credits-dialog__title strong {
+    color: #fff;
+    font-size: 20px;
+    font-weight: 780;
+    line-height: 1.08;
+  }
+
+  .credits-dialog__title span {
+    color: rgba(255, 255, 255, 0.54);
+    font-size: 13px;
+    line-height: 1.45;
+  }
+
+  .credits-dialog__meta {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex: 0 0 auto;
+  }
+
+  .credits-dialog__points {
+    display: inline-flex;
+    min-height: 36px;
+    align-items: center;
+    gap: 6px;
+    border: 1px solid rgba(255, 255, 255, 0.09);
+    border-radius: 999px;
+    background: rgba(255, 255, 255, 0.045);
+    padding: 0 12px;
+    color: rgba(255, 255, 255, 0.82);
+    font-size: 13px;
+    font-weight: 680;
+    white-space: nowrap;
+  }
+
+  .credits-dialog__close {
+    display: inline-flex;
+    width: 36px;
+    height: 36px;
+    align-items: center;
+    justify-content: center;
+    border: 1px solid rgba(255, 255, 255, 0.09);
+    border-radius: 8px;
+    background: rgba(255, 255, 255, 0.045);
+    color: rgba(255, 255, 255, 0.78);
+  }
+
+  .credits-dialog__body {
+    display: grid;
+    grid-template-columns: minmax(0, 1.35fr) minmax(320px, 0.72fr);
+    gap: 14px;
+    min-width: 0;
+  }
+
+  .credits-dialog__picker {
+    display: grid;
+    gap: 12px;
+    min-width: 0;
+  }
+
+  .credits-dialog__section-head {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: rgba(255, 255, 255, 0.9);
+    font-size: 15px;
+    font-weight: 740;
+    padding-top: 2px;
+  }
+
+  .credits-dialog__grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .credits-dialog__custom {
+    grid-template-columns: minmax(100px, auto) minmax(200px, 1fr) minmax(124px, 0.52fr);
+    align-items: center;
+    gap: 10px;
+  }
+
+  .credits-dialog__custom-label {
+    display: grid;
+    min-width: 100px;
+    gap: 2px;
+  }
+
+  .credits-dialog__custom-label strong {
+    color: rgba(255, 255, 255, 0.92);
+    font-size: 13px;
+    font-weight: 740;
+  }
+
+  .credits-dialog__confirm {
+    min-width: 0;
+  }
+
+  .credits-dialog__confirm .recharge-confirm-panel {
+    height: 100%;
+    align-content: start;
+    border-color: rgba(255, 255, 255, 0.08);
+    background:
+      linear-gradient(180deg, rgba(255, 255, 255, 0.025), transparent 120px),
+      #18191e;
+  }
+
+  .credits-dialog__note {
+    color: rgba(255, 255, 255, 0.42);
+    font-size: 12px;
+    line-height: 1.45;
   }
 
   .credit-topup-card__credits,
@@ -6032,10 +6362,12 @@
 
   .custom-recharge-card {
     display: grid;
-    grid-template-columns: minmax(220px, 1fr) minmax(240px, 1fr) minmax(140px, 0.55fr);
+    grid-template-columns: minmax(120px, 0.55fr) minmax(220px, 1fr) minmax(132px, 0.52fr);
     align-items: stretch;
-    gap: 16px;
-    padding: 18px;
+    gap: 10px;
+    border: 1px solid rgba(255, 255, 255, 0.09);
+    background: #141519;
+    padding: 12px 14px;
   }
 
   .custom-recharge-card h3 {
@@ -6058,25 +6390,25 @@
   .custom-recharge-field,
   .custom-recharge-preview {
     display: grid;
-    gap: 7px;
+    gap: 5px;
   }
 
   .custom-recharge-field span,
   .custom-recharge-preview span {
     color: rgba(255, 255, 255, 0.5);
-    font-size: 12.5px;
+    font-size: 12px;
     font-weight: 620;
   }
 
   .custom-recharge-input {
     display: flex;
-    min-height: 44px;
+    min-height: 38px;
     align-items: center;
-    gap: 8px;
+    gap: 6px;
     border: 1px solid rgba(255, 255, 255, 0.09);
-    border-radius: 10px;
+    border-radius: 9px;
     background: rgba(9, 9, 11, 0.72);
-    padding: 0 12px;
+    padding: 0 10px;
     transition:
       border-color var(--motion-fast) var(--ease-enter),
       background var(--motion-fast) var(--ease-enter),
@@ -6085,7 +6417,7 @@
 
   .custom-recharge-input em {
     color: rgba(255, 255, 255, 0.72);
-    font-size: 14px;
+    font-size: 13px;
     font-style: normal;
     font-weight: 720;
   }
@@ -6097,7 +6429,7 @@
     background: transparent;
     padding: 0;
     color: rgba(255, 255, 255, 0.92);
-    font-size: 14px;
+    font-size: 13px;
     outline: none;
   }
 
@@ -6123,17 +6455,17 @@
   }
 
   .custom-recharge-preview {
-    min-height: 74px;
+    min-height: 58px;
     align-content: center;
     border: 1px solid rgba(255, 255, 255, 0.075);
-    border-radius: 12px;
+    border-radius: 10px;
     background: rgba(255, 255, 255, 0.035);
-    padding: 12px;
+    padding: 10px 12px;
   }
 
   .custom-recharge-preview strong {
     color: #ff72b5;
-    font-size: 18px;
+    font-size: 16px;
     font-weight: 740;
   }
 
@@ -6145,12 +6477,10 @@
 
   .recharge-confirm-panel {
     display: grid;
-    gap: 16px;
+    gap: 12px;
     border-color: rgba(255, 255, 255, 0.1);
-    background:
-      radial-gradient(circle at 18% 0%, rgba(164, 82, 255, 0.12), transparent 42%),
-      rgba(16, 16, 20, 0.98);
-    padding: 18px;
+    background: #141519;
+    padding: 16px;
     box-shadow: 0 18px 42px rgba(0, 0, 0, 0.22);
   }
 
@@ -6209,7 +6539,7 @@
 
   .recharge-confirm-panel__note {
     border: 1px solid rgba(255, 255, 255, 0.07);
-    border-radius: 10px;
+    border-radius: 8px;
     background: rgba(255, 255, 255, 0.035);
     padding: 10px 11px;
     color: rgba(255, 255, 255, 0.5);
@@ -6228,7 +6558,7 @@
     justify-content: space-between;
     gap: 12px;
     border: 1px solid rgba(255, 255, 255, 0.08);
-    border-radius: 12px;
+    border-radius: 8px;
     background: rgba(255, 255, 255, 0.04);
     padding: 12px;
   }
@@ -6297,7 +6627,7 @@
     gap: 8px;
   }
 
-  .recharge-confirm-panel__list span {
+  .recharge-confirm-panel__list > span {
     display: grid;
     grid-template-columns: 16px minmax(0, 1fr);
     align-items: start;
@@ -6381,7 +6711,7 @@
     height: 34px;
     place-items: center;
     border: 1px solid rgba(255, 255, 255, 0.1);
-    border-radius: 9px;
+    border-radius: 8px;
     background: rgba(255, 255, 255, 0.055);
     color: rgba(255, 255, 255, 0.78);
   }
@@ -10048,6 +10378,23 @@
     width: 100%;
   }
 
+  .recharge-pricing-header {
+    display: grid;
+    align-items: start;
+  }
+
+  .recharge-account-meta {
+    justify-content: flex-start;
+  }
+
+  .recharge-pricing-toolbar {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .recharge-pricing-toolbar__actions {
+    justify-self: flex-start;
+  }
+
   .recharge-layout__summary {
     width: 100%;
     position: static;
@@ -10070,11 +10417,25 @@
   }
 
   .recharge-plan-cycles {
+    min-width: 0;
     width: 100%;
+    justify-self: stretch;
+  }
+
+  .recharge-credit-bottom {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .credits-dialog__body {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .credits-dialog__grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
   }
 
   .custom-recharge-card {
-    grid-template-columns: minmax(220px, 1fr) minmax(160px, 1fr);
+    grid-template-columns: minmax(180px, 1fr) minmax(140px, 0.85fr);
   }
 
   .custom-recharge-preview {
@@ -10491,17 +10852,6 @@
     position: static;
   }
 
-  .shell-panel--mobile-single .recharge-center-tabs,
-  .shell-panel--mobile-single .usage-record-filters {
-    width: 100%;
-  }
-
-  .shell-panel--mobile-single .recharge-center-tab,
-  .shell-panel--mobile-single .usage-record-filter {
-    flex: 1;
-    padding: 0 10px;
-  }
-
   .shell-panel--mobile-single .recharge-hero,
   .shell-panel--mobile-single .recharge-plan-cycles {
     width: 100%;
@@ -10527,6 +10877,29 @@
   .shell-panel--mobile-single .credit-topup-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
     gap: 10px;
+  }
+
+  .shell-panel--mobile-single .credits-dialog {
+    padding: 12px;
+  }
+
+  .shell-panel--mobile-single .credits-dialog__card {
+    padding: 16px;
+  }
+
+  .shell-panel--mobile-single .credits-dialog__head,
+  .shell-panel--mobile-single .credits-dialog__body {
+    grid-template-columns: minmax(0, 1fr);
+    display: grid;
+  }
+
+  .shell-panel--mobile-single .credits-dialog__meta {
+    justify-content: space-between;
+  }
+
+  .shell-panel--mobile-single .credits-dialog__grid,
+  .shell-panel--mobile-single .credits-dialog__custom {
+    grid-template-columns: minmax(0, 1fr);
   }
 
   .shell-panel--mobile-single .credit-topup-card {
