@@ -209,6 +209,7 @@ test("local Grok video provider sends reference images through the NewAPI videos
     assert.equal(requestedBody.model, "grok-video-1.5");
     assert.equal(requestedBody.prompt, "test prompt");
     assert.equal(requestedBody.seconds, "4");
+    assert.equal("duration" in requestedBody, false);
     assert.equal(requestedBody.aspect_ratio, "16:9");
     assert.equal(typeof requestedBody.image, "string");
     assert.match(requestedBody.image as string, /^data:image\/png;base64,/);

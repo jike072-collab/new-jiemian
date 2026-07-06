@@ -454,7 +454,6 @@ async function callOpenAiCompatibleGrokVideoProvider(provider: ProviderConfig, i
   const payload: Record<string, string | number> = {
     model: provider.model,
     prompt: input.prompt,
-    duration: String(input.duration),
     seconds: String(input.duration),
     aspect_ratio: input.ratio,
     resolution: "720p",
