@@ -219,7 +219,7 @@ test("local Grok video provider sends reference images through the NewAPI videos
   }
 });
 
-test("grok video validation accepts 5-second requests that the UI submits", () => {
+test("grok video validation keeps model-specific duration rules", () => {
   assert.doesNotThrow(() => providerCallInternalsForTests.validateGrokVideoInput({
     ...provider,
     id: "video-grok-10",
@@ -234,7 +234,7 @@ test("grok video validation accepts 5-second requests that the UI submits", () =
     files: [],
   }));
 
-  assert.doesNotThrow(() => providerCallInternalsForTests.validateGrokVideoInput({
+  assert.throws(() => providerCallInternalsForTests.validateGrokVideoInput({
     ...provider,
     id: "video-grok-15",
     kind: "video",

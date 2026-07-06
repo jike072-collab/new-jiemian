@@ -110,8 +110,29 @@ export function jimengVideoOptionsForModel(model: string): ProviderConfig["video
   };
 }
 
+function grokVideoOptionsForModel(model: string): ProviderConfig["videoOptions"] {
+  const normalized = model.trim().toLowerCase();
+  if (!normalized.startsWith("grok-video-")) return undefined;
+  if (normalized === "grok-video-1.5") {
+    return {
+      durations: [4, 6, 8, 10, 12, 15],
+      ratios: ["16:9", "9:16"],
+      resolution: "720p",
+      maxReferenceImages: 1,
+    };
+  }
+  return {
+    durations: [4, 5, 6, 8, 10, 12, 15],
+    ratios: ["1:1", "16:9", "9:16", "4:3", "3:4", "3:2", "2:3"],
+    resolution: "720p",
+    maxReferenceImages: 7,
+  };
+}
+
 function providerVideoOptions(provider: ProviderConfig) {
-  return jimengVideoOptionsForModel(provider.model) || normalizeVideoOptions(provider.videoOptions);
+  return grokVideoOptionsForModel(provider.model)
+    || jimengVideoOptionsForModel(provider.model)
+    || normalizeVideoOptions(provider.videoOptions);
 }
 
 function legacyUpscaleEndpointForKind(kind: ProviderKind) {

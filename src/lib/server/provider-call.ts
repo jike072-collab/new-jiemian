@@ -46,7 +46,8 @@ class BillingDispatchRejectedError extends Error {
   }
 }
 
-const grokVideoDurations = new Set([4, 5, 6, 8, 10, 12, 15]);
+const grokVideo10Durations = new Set([4, 5, 6, 8, 10, 12, 15]);
+const grokVideo15Durations = new Set([4, 6, 8, 10, 12, 15]);
 const grokVideo10Ratios = new Set(["1:1", "16:9", "9:16", "4:3", "3:4", "3:2", "2:3"]);
 const grokVideo15Ratios = new Set(["16:9", "9:16"]);
 const defaultVideoRatios = new Set(["1:1", "16:9", "9:16", "4:3", "3:4", "3:2", "2:3"]);
@@ -312,12 +313,15 @@ function validateGrokVideoInput(provider: ProviderConfig, input: {
   duration: number;
   files: UploadedMedia[];
 }) {
-  if (!grokVideoDurations.has(input.duration)) {
+  const allowedDurations = provider.model === "grok-video-1.5" ? grokVideo15Durations : grokVideo10Durations;
+  if (!allowedDurations.has(input.duration)) {
     throw new GenerationDiagnosticError({
       code: "INPUT_INVALID_PARAMETERS",
       providerId: provider.id,
       model: provider.model,
-      publicMessage: "当前 Grok 视频模型只支持 4、5、6、8、10、12、15 秒。",
+      publicMessage: provider.model === "grok-video-1.5"
+        ? "当前 Grok 视频 1.5 只支持 4、6、8、10、12、15 秒。"
+        : "当前 Grok 视频模型只支持 4、5、6、8、10、12、15 秒。",
     });
   }
   if (!grokVideoRatioOptions(provider).has(input.ratio)) {

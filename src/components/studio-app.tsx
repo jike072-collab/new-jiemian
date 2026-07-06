@@ -26,9 +26,10 @@ import {
   defaultUploadLimits,
   formatQuotaSymbolLabel,
   formatQuotaUnits,
+  grokVideo10Durations,
   grokVideo10Ratios,
+  grokVideo15Durations,
   grokVideo15Ratios,
-  grokVideoDurations,
   jimengVideoRatios,
   maxReferenceImageCount,
   maxReferenceImageSize,
@@ -474,7 +475,8 @@ function videoDurationOptions(provider: WorkspacePublicProvider | null | undefin
   if (provider?.videoOptions?.durations?.length) return provider.videoOptions.durations;
   const jimengOptions = jimengVideoOptions(provider);
   if (jimengOptions) return jimengOptions.durations;
-  return isGrokVideoProvider(provider) ? grokVideoDurations : defaultVideoDurations;
+  if (!isGrokVideoProvider(provider)) return defaultVideoDurations;
+  return provider?.model === "grok-video-1.5" ? grokVideo15Durations : grokVideo10Durations;
 }
 
 function videoRatioOptions(provider: WorkspacePublicProvider | null | undefined) {
