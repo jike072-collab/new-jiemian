@@ -177,6 +177,48 @@ test("img2 special request format is only used for legacy image4k models", () =>
   }), true);
 });
 
+test("batch image generation retries once when upstream returns fewer outputs than requested", async () => {
+  const originalFetch = globalThis.fetch;
+  let callCount = 0;
+  globalThis.fetch = (async () => {
+    callCount += 1;
+    if (callCount === 1) {
+      return jsonResponse({
+        data: [
+          { url: "https://cdn.example.test/result-1.png" },
+          { url: "https://cdn.example.test/result-2.png" },
+          { url: "https://cdn.example.test/result-3.png" },
+        ],
+      });
+    }
+    return jsonResponse({
+      data: [
+        { url: "https://cdn.example.test/result-4.png" },
+      ],
+    });
+  }) as typeof fetch;
+  try {
+    const outputs = await providerCallInternalsForTests.collectImageProviderOutputs({
+      provider,
+      prompt: "test prompt",
+      ratio: "1:1",
+      quality: "1k",
+      files: [],
+      count: 4,
+    });
+    assert.equal(callCount, 2);
+    assert.equal(outputs.length, 4);
+    assert.deepEqual(outputs.map((item) => item.url), [
+      "https://cdn.example.test/result-1.png",
+      "https://cdn.example.test/result-2.png",
+      "https://cdn.example.test/result-3.png",
+      "https://cdn.example.test/result-4.png",
+    ]);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
 test("local Grok video provider sends reference images through the NewAPI videos endpoint", async () => {
   assert.equal(providerCallInternalsForTests.isLocalOpenAiCompatibleEndpoint("http://127.0.0.1:3000/v1/videos"), true);
   assert.equal(providerCallInternalsForTests.isLocalOpenAiCompatibleEndpoint("https://api.manxiaobai.online/v1/videos"), false);
@@ -202,13 +244,13 @@ test("local Grok video provider sends reference images through the NewAPI videos
       mode: "image-to-video",
       prompt: "test prompt",
       ratio: "16:9",
-      duration: 4,
+      duration: 6,
       files: [{ bytes: Buffer.from("image-bytes"), mimeType: "image/png", fileName: "首帧.png" }],
     });
     assert.equal(requestedUrl, "http://127.0.0.1:3000/v1/videos");
     assert.equal(requestedBody.model, "grok-video-1.5");
     assert.equal(requestedBody.prompt, "test prompt");
-    assert.equal(requestedBody.seconds, "4");
+    assert.equal(requestedBody.seconds, "6");
     assert.equal("duration" in requestedBody, false);
     assert.equal(requestedBody.aspect_ratio, "16:9");
     assert.equal(typeof requestedBody.image, "string");
@@ -233,6 +275,19 @@ test("grok video validation keeps model-specific duration rules", () => {
     duration: 5,
     files: [],
   }));
+  assert.doesNotThrow(() => providerCallInternalsForTests.validateGrokVideoInput({
+    ...provider,
+    id: "video-grok-10-valid-six-seconds",
+    kind: "video",
+    apiUrl: "https://provider.example.test/v1/videos",
+    model: "grok-video-1.0",
+    endpointType: "grok-videos",
+  }, {
+    mode: "text-to-video",
+    ratio: "16:9",
+    duration: 6,
+    files: [],
+  }));
 
   assert.throws(() => providerCallInternalsForTests.validateGrokVideoInput({
     ...provider,
@@ -246,6 +301,34 @@ test("grok video validation keeps model-specific duration rules", () => {
     ratio: "16:9",
     duration: 5,
     files: [{ bytes: Buffer.from("image-bytes"), mimeType: "image/png", fileName: "frame.png" }],
+  }));
+
+  assert.throws(() => providerCallInternalsForTests.validateGrokVideoInput({
+    ...provider,
+    id: "video-grok-15-four-seconds",
+    kind: "video",
+    apiUrl: "https://provider.example.test/v1/videos",
+    model: "grok-video-1.5",
+    endpointType: "grok-videos",
+  }, {
+    mode: "image-to-video",
+    ratio: "16:9",
+    duration: 4,
+    files: [{ bytes: Buffer.from("image-bytes"), mimeType: "image/png", fileName: "frame.png" }],
+  }));
+
+  assert.throws(() => providerCallInternalsForTests.validateGrokVideoInput({
+    ...provider,
+    id: "video-grok-10-five-seconds",
+    kind: "video",
+    apiUrl: "https://provider.example.test/v1/videos",
+    model: "grok-video-1.0",
+    endpointType: "grok-videos",
+  }, {
+    mode: "text-to-video",
+    ratio: "16:9",
+    duration: 6,
+    files: [],
   }));
 });
 

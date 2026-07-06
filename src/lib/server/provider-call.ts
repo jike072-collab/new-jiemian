@@ -46,8 +46,8 @@ class BillingDispatchRejectedError extends Error {
   }
 }
 
-const grokVideo10Durations = new Set([4, 5, 6, 8, 10, 12, 15]);
-const grokVideo15Durations = new Set([4, 6, 8, 10, 12, 15]);
+const grokVideo10Durations = new Set([6, 8, 10, 12, 15]);
+const grokVideo15Durations = new Set([6, 8, 10, 12, 15]);
 const grokVideo10Ratios = new Set(["1:1", "16:9", "9:16", "4:3", "3:4", "3:2", "2:3"]);
 const grokVideo15Ratios = new Set(["16:9", "9:16"]);
 const defaultVideoRatios = new Set(["1:1", "16:9", "9:16", "4:3", "3:4", "3:2", "2:3"]);
@@ -174,6 +174,25 @@ function parseProviderOutput(payload: unknown): ProviderOutput {
     statusUrl: firstString(first.status_url, root.status_url),
     mimeType: firstString(first.mime_type, root.mime_type),
   };
+}
+
+function hasProviderOutput(output: ProviderOutput) {
+  return Boolean(output.url || output.base64 || output.jobId || output.statusUrl || output.status);
+}
+
+function parseImageProviderOutputs(payload: unknown): ProviderOutput[] {
+  const root = asRecord(payload);
+  const data = Array.isArray(root.data) ? root.data : [];
+  if (!data.length) {
+    const fallback = parseProviderOutput(payload);
+    return hasProviderOutput(fallback) ? [fallback] : [];
+  }
+  const outputs = data
+    .map((entry) => parseProviderOutput({ ...root, data: [entry] }))
+    .filter(hasProviderOutput);
+  if (outputs.length) return outputs;
+  const fallback = parseProviderOutput(payload);
+  return hasProviderOutput(fallback) ? [fallback] : [];
 }
 
 function authHeaders(provider: ProviderConfig) {
@@ -320,8 +339,8 @@ function validateGrokVideoInput(provider: ProviderConfig, input: {
       providerId: provider.id,
       model: provider.model,
       publicMessage: provider.model === "grok-video-1.5"
-        ? "当前 Grok 视频 1.5 只支持 4、6、8、10、12、15 秒。"
-        : "当前 Grok 视频模型只支持 4、5、6、8、10、12、15 秒。",
+        ? "当前 Grok 视频 1.5 只支持 6、8、10、12、15 秒。"
+        : "当前 Grok 视频模型只支持 6、8、10、12、15 秒。",
     });
   }
   if (!grokVideoRatioOptions(provider).has(input.ratio)) {
@@ -721,16 +740,19 @@ async function callImageProvider({
   ratio,
   quality,
   files,
+  count,
 }: {
   provider: ProviderConfig;
   prompt: string;
   ratio: string;
   quality: string;
   files: UploadedMedia[];
+  count: number;
 }) {
   const size = ratioToSize(ratio);
   const useMultipart = files.length > 0;
   const apiUrl = imageEndpoint(provider, useMultipart);
+  const outputCount = Math.min(Math.max(Math.round(count || 1), 1), 4);
 
   if (isImg2ImageProvider(provider) && !useMultipart) {
     const response = await fetch(apiUrl, {
@@ -743,10 +765,11 @@ async function callImageProvider({
         model: provider.model,
         prompt,
         size: img2ImageSize(ratio, quality),
+        n: outputCount,
       }),
       signal: AbortSignal.timeout(300000),
     });
-    return parseProviderOutput(await readProviderJson(response, provider));
+    return parseImageProviderOutputs(await readProviderJson(response, provider));
   }
 
   if (useMultipart) {
@@ -754,7 +777,7 @@ async function callImageProvider({
     const form = new FormData();
     form.append("model", provider.model);
     form.append("prompt", prompt);
-    form.append("n", "1");
+    form.append("n", String(outputCount));
     form.append("size", size);
     form.append("quality", imageQualityLabel(quality));
     form.append("response_format", "url");
@@ -773,7 +796,7 @@ async function callImageProvider({
       body: form,
       signal: AbortSignal.timeout(300000),
     });
-    return parseProviderOutput(await readProviderJson(response, provider));
+    return parseImageProviderOutputs(await readProviderJson(response, provider));
   }
 
   const upscale = imageUpscaleValue(quality);
@@ -786,6 +809,7 @@ async function callImageProvider({
     body: JSON.stringify({
       model: provider.model,
       prompt,
+      n: outputCount,
       size,
       quality: imageQualityLabel(quality),
       response_format: "url",
@@ -793,7 +817,24 @@ async function callImageProvider({
     }),
     signal: AbortSignal.timeout(300000),
   });
-  return parseProviderOutput(await readProviderJson(response, provider));
+  return parseImageProviderOutputs(await readProviderJson(response, provider));
+}
+
+async function collectImageProviderOutputs(input: {
+  provider: ProviderConfig;
+  prompt: string;
+  ratio: string;
+  quality: string;
+  files: UploadedMedia[];
+  count: number;
+}) {
+  const targetCount = Math.min(Math.max(Math.round(input.count || 1), 1), 4);
+  const outputs = await callImageProvider({ ...input, count: targetCount });
+  if (outputs.length >= targetCount) return outputs.slice(0, targetCount);
+
+  const missingCount = targetCount - outputs.length;
+  const refillOutputs = await callImageProvider({ ...input, count: missingCount });
+  return [...outputs, ...refillOutputs].slice(0, targetCount);
 }
 
 async function outputToLibrary(output: ProviderOutput, type: "image" | "video", prefix: string) {
@@ -913,6 +954,7 @@ export async function generateImage(input: {
   ratio: string;
   quality: string;
   files: UploadedMedia[];
+  count?: number | null;
   batchId?: string | null;
   batchTotal?: number | null;
   billingLocalUserId?: string | null;
@@ -921,14 +963,20 @@ export async function generateImage(input: {
   billingEstimatedQuotaUnits?: number | null;
 }) {
   const provider = await providerById(input.providerId);
-  const estimatedQuotaUnits = estimateGenerationQuota({
-    kind: "image",
-    providerId: input.providerId,
-    mode: input.mode,
-    ratio: input.ratio,
-    quality: input.quality,
-    referenceImages: input.files.length,
-  });
+  const outputCount = Math.min(Math.max(Math.round(Number(input.count) || 1), 1), 4);
+  const estimatedQuotaUnitsPerImage = Math.max(1, Math.round(
+    estimateGenerationQuota({
+      kind: "image",
+      providerId: input.providerId,
+      mode: input.mode,
+      ratio: input.ratio,
+      quality: input.quality,
+      referenceImages: input.files.length,
+    }),
+  ));
+  const estimatedQuotaUnits = Number.isFinite(Number(input.billingEstimatedQuotaUnits))
+    ? Math.max(0, Math.round(Number(input.billingEstimatedQuotaUnits)))
+    : estimatedQuotaUnitsPerImage * outputCount;
   const billingFingerprint = generationBillingFingerprint({
     kind: "image",
     providerId: input.providerId,
@@ -959,15 +1007,23 @@ export async function generateImage(input: {
       upstreamModel: readyProvider.model,
     });
 
-    const output = await callImageProvider({
+    const output = await collectImageProviderOutputs({
       provider: readyProvider,
       prompt: input.prompt,
       ratio: input.ratio,
       quality: input.quality,
       files: input.files,
+      count: outputCount,
     });
-    const stored = await outputToLibrary(output, "image", "image");
-    const item = await addLibraryItem({
+    if (!output.length) throw new Error("Image provider returned no outputs.");
+    const actualOutputCount = output.length;
+    const actualQuotaUnits = estimatedQuotaUnitsPerImage * actualOutputCount;
+    const batchTotal = Number.isFinite(Number(input.batchTotal)) && Number(input.batchTotal) > 1
+      ? Math.min(Math.max(Math.round(Number(input.batchTotal)), 1), 4)
+      : Math.min(Math.max(Math.max(actualOutputCount, outputCount), 1), 4);
+    const items = await Promise.all(output.map(async (entry, index) => {
+      const stored = await outputToLibrary(entry, "image", "image");
+      return addLibraryItem({
       ownerLocalUserId: input.billingLocalUserId || null,
       type: "image",
       mode: input.mode,
@@ -982,31 +1038,33 @@ export async function generateImage(input: {
         quality: input.quality,
         referenceImages: input.files.length,
         ...(input.batchId ? { imageBatchId: input.batchId } : {}),
-        ...(Number.isFinite(Number(input.batchTotal)) && Number(input.batchTotal) > 1 ? { imageBatchTotal: Math.min(Math.max(Math.round(Number(input.batchTotal)), 1), 4) } : {}),
+        ...(batchTotal > 1 ? { imageBatchTotal: batchTotal, imageBatchIndex: index + 1 } : {}),
         ...(input.billingTaskId ? { billingTaskId: input.billingTaskId } : {}),
         ...(input.billingIdempotencyKey ? { billingIdempotencyKey: input.billingIdempotencyKey } : {}),
-        billingEstimatedQuotaUnits: estimatedQuotaUnits,
+        billingEstimatedQuotaUnits: actualQuotaUnits,
         billingRequestFingerprint: billingFingerprint,
+        ...(actualOutputCount !== outputCount ? { partialBatch: true, requestedBatchTotal: outputCount } : {}),
       },
-    });
+      });
+    }));
     await acceptGenerationBilling({
       localUserId: input.billingLocalUserId,
       taskId: input.billingTaskId,
-      newApiTaskId: output.jobId || item.id,
+      newApiTaskId: output[0]?.jobId || items[0]?.id,
       upstreamModel: readyProvider.model,
     });
     const settled = await settleGeneratedTaskBilling({
       localUserId: input.billingLocalUserId,
       taskId: input.billingTaskId,
-      estimatedQuotaUnits,
+      estimatedQuotaUnits: actualQuotaUnits,
       outcome: "success",
       upstreamModel: readyProvider.model,
-      newApiTaskId: output.jobId || item.id,
+      newApiTaskId: output[0]?.jobId || items[0]?.id,
     });
     if (!settled.ok) {
       throw new BillingSettlementRequiredError(settled.status === 202 ? "生成已完成，但计费结算需要人工对账。" : settled.message);
     }
-    return item;
+    return items;
   } catch (error) {
     if (!(error instanceof BillingSettlementRequiredError) && !(error instanceof BillingDispatchRejectedError)) {
       await settleGeneratedTaskBilling({
@@ -1381,9 +1439,11 @@ export async function uploadedMediaFromForm(
 export const providerCallInternalsForTests = {
   validateGrokVideoInput,
   callOpenAiCompatibleGrokVideoProvider,
+  collectImageProviderOutputs,
   isImg2ImageProvider,
   isLocalOpenAiCompatibleEndpoint,
   parseProviderOutput,
+  parseImageProviderOutputs,
   planProviderOutputStorage,
   readProviderJson,
   outputToLibrary,
