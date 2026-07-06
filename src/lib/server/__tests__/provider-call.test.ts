@@ -219,6 +219,36 @@ test("local Grok video provider sends reference images through the NewAPI videos
   }
 });
 
+test("grok video validation accepts 5-second requests that the UI submits", () => {
+  assert.doesNotThrow(() => providerCallInternalsForTests.validateGrokVideoInput({
+    ...provider,
+    id: "video-grok-10",
+    kind: "video",
+    apiUrl: "https://provider.example.test/v1/videos",
+    model: "grok-video-1.0",
+    endpointType: "grok-videos",
+  }, {
+    mode: "text-to-video",
+    ratio: "16:9",
+    duration: 5,
+    files: [],
+  }));
+
+  assert.doesNotThrow(() => providerCallInternalsForTests.validateGrokVideoInput({
+    ...provider,
+    id: "video-grok-15",
+    kind: "video",
+    apiUrl: "https://provider.example.test/v1/videos",
+    model: "grok-video-1.5",
+    endpointType: "grok-videos",
+  }, {
+    mode: "image-to-video",
+    ratio: "16:9",
+    duration: 5,
+    files: [{ bytes: Buffer.from("image-bytes"), mimeType: "image/png", fileName: "frame.png" }],
+  }));
+});
+
 test("error logs do not include oversized response bodies or base64 payloads", async () => {
   const bodySnippet = `SECRET-BODY-${createHash("sha256").update("provider-json").digest("hex")}`;
   const { response } = streamingJsonResponse({
