@@ -86,6 +86,7 @@ test("thrown errors are classified without leaking raw provider details", () => 
   assert.equal(codeForThrownError(new Error("fetch failed ECONNRESET")), "PROVIDER_NETWORK_ERROR");
   assert.equal(codeForThrownError(new Error("request timeout")), "PROVIDER_TIMEOUT");
   assert.equal(codeForThrownError(new Error("API Key is invalid")), "PROVIDER_AUTH_FAILED");
+  assert.equal(codeForThrownError(Object.assign(new Error("生成任务无法领取上游派发权限。"), { name: "BillingDispatchRejectedError" })), "TASK_CREATE_FAILED");
   assert.equal(codeForThrownError(new Error("请上传参考图片")), "INPUT_MISSING_IMAGE");
   assert.equal(codeForThrownError(new Error("文件不能超过 10MB")), "INPUT_FILE_TOO_LARGE");
   assert.equal(codeForThrownError(new Error("当前视频模型不支持 5 秒。")), "INPUT_INVALID_PARAMETERS");

@@ -131,6 +131,13 @@ function codeForCommonThrownMessage(message: string): ErrorDiagnosticCode | null
 export function codeForThrownError(error: unknown, fallback: ErrorDiagnosticCode = "UNKNOWN_ERROR"): ErrorDiagnosticCode {
   if (error instanceof GenerationDiagnosticError) return error.code;
   const message = error instanceof Error ? error.message : String(error || "");
+  const errorName = error instanceof Error ? error.name : "";
+  if (errorName === "BillingDispatchRejectedError" || errorName === "UpscaleBillingDispatchRejectedError") {
+    return "TASK_CREATE_FAILED";
+  }
+  if (/无法领取上游派发权限|dispatch(?:ing)?(?: was)? not claimed|dispatch was not claimed|dispatch rejected/i.test(message)) {
+    return "TASK_CREATE_FAILED";
+  }
   const commonCode = codeForCommonThrownMessage(message);
   if (commonCode) return commonCode;
   if (error instanceof DOMException && error.name === "TimeoutError") return "PROVIDER_TIMEOUT";
