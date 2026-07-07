@@ -2,6 +2,9 @@
 
 These files are templates for a single Ubuntu 22.04 LTS production server.
 They do not deploy anything by themselves and must not be used for local 3107.
+Domain cutover notes and the temporary Windows-server preview boundary are
+documented in
+[`docs/DOMAIN_SERVER_MIGRATION_HANDOFF.md`](../../docs/DOMAIN_SERVER_MIGRATION_HANDOFF.md).
 
 ## Production Shape
 

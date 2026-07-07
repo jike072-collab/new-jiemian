@@ -3,6 +3,8 @@
 This is the current high-level release runbook for the Ubuntu 3106 server.
 Older Windows-local release notes were archived under
 [archive/windows-local-environment/PRODUCTION_RELEASE_RUNBOOK.md](archive/windows-local-environment/PRODUCTION_RELEASE_RUNBOOK.md).
+For domain cutover and temporary Windows-server handoff notes, see
+[DOMAIN_SERVER_MIGRATION_HANDOFF.md](DOMAIN_SERVER_MIGRATION_HANDOFF.md).
 
 ## Release Flow
 
