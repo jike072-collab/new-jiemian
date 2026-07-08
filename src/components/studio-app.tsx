@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
-import { ArrowLeft, CalendarCheck, Check, Crown, CreditCard, History, Sparkles, WalletCards, X } from "lucide-react";
+import { ArrowLeft, CalendarCheck, Check, Crown, CreditCard, History, LogOut, Sparkles, WalletCards, X } from "lucide-react";
 import { useRouter, useSearchParams } from "next/navigation";
 import dynamic from "next/dynamic";
 
@@ -180,7 +180,7 @@ type PaymentDisplay = {
   gatewayLabel: string;
 };
 
-type AccountView = "center" | "recharge" | "usage";
+type AccountView = "center" | "recharge" | "usage" | "orders";
 type RechargeTab = "plans" | "credits";
 type AccountRecordKind = "spend" | "recharge" | "checkin";
 type AccountUsageFilter = "all" | AccountRecordKind;
@@ -335,7 +335,8 @@ const WorkspaceAccountPanel = dynamic(
 
 function accountViewTitle(view: AccountView) {
   if (view === "recharge") return "会员订阅";
-  if (view === "usage") return "消费记录";
+  if (view === "usage") return "积分明细";
+  if (view === "orders") return "订单记录";
   return "用户中心";
 }
 
@@ -622,6 +623,7 @@ export function StudioApp() {
   const [accountCenterOpen, setAccountCenterOpen] = useState(false);
   const [accountView, setAccountView] = useState<AccountView>("center");
   const [accountCloseSignal, setAccountCloseSignal] = useState(0);
+  const [logoutConfirmOpen, setLogoutConfirmOpen] = useState(false);
   const [message, setMessage] = useState("");
   const [imageGenerationProgress, setImageGenerationProgress] = useState<ImageGenerationProgressState>([]);
   const [generationProgressTick, setGenerationProgressTick] = useState(() => Date.now());
@@ -721,7 +723,7 @@ export function StudioApp() {
     if (checkInError) return "error";
     if (!checkInLoaded && !checkInSnapshot) return "loading";
     return checkInSnapshot?.status === "checked" ? "checked" : "available";
-  }, [checkInError, checkInLoaded, checkInLoading, checkInSnapshot, checkInSnapshot?.status, checkInSubmitting, sessionLoading, sessionUser]);
+  }, [checkInError, checkInLoaded, checkInLoading, checkInSnapshot, checkInSubmitting, sessionLoading, sessionUser]);
   const resetLibraryState = useCallback(() => {
     setLibrary([]);
     setLibraryLoading(false);
@@ -835,7 +837,7 @@ export function StudioApp() {
 
     setAccountOrdersLoading(true);
     try {
-      const ordersResult = await fetchJson<BillingOrdersResponse>("/api/billing/orders?page=1&pageSize=8");
+      const ordersResult = await fetchJson<BillingOrdersResponse>("/api/billing/orders?page=1&pageSize=20");
       setBillingOrders(ordersResult.orders);
       setAccountOrdersLoaded(true);
     } catch (error) {
@@ -868,7 +870,7 @@ export function StudioApp() {
     if (view !== "recharge" && (options?.force || !accountUsageLoaded)) {
       tasks.push(refreshUsageSnapshot(userId));
     }
-    if (view === "usage" && (options?.force || !accountOrdersLoaded)) {
+    if ((view === "center" || view === "usage" || view === "orders") && (options?.force || !accountOrdersLoaded)) {
       tasks.push(refreshBillingOrdersSnapshot(userId));
     }
     if (tasks.length) {
@@ -899,6 +901,7 @@ export function StudioApp() {
       imageInFlightCountRef.current = 0;
       videoInFlightCountRef.current = 0;
       setImageGenerationProgress([]);
+      setLogoutConfirmOpen(false);
       router.replace("/login");
     }
   }, [resetAccountState, resetLibraryState, router, sessionUser]);
@@ -1205,7 +1208,7 @@ export function StudioApp() {
   }, [applyTemplatePreset, templateParam]);
 
   useEffect(() => {
-    if (accountParam !== "center" && accountParam !== "recharge" && accountParam !== "usage") return;
+    if (accountParam !== "center" && accountParam !== "recharge" && accountParam !== "usage" && accountParam !== "orders") return;
     setAccountCenterOpen(true);
     setAccountView(accountParam);
     setAccountCloseSignal((value) => value + 1);
@@ -1242,6 +1245,18 @@ export function StudioApp() {
     setAccountCloseSignal((value) => value + 1);
   }, []);
 
+  const handleOpenUsageRecords = useCallback(() => {
+    setAccountCenterOpen(true);
+    setAccountView("usage");
+    setAccountCloseSignal((value) => value + 1);
+  }, []);
+
+  const handleOpenOrderRecords = useCallback(() => {
+    setAccountCenterOpen(true);
+    setAccountView("orders");
+    setAccountCloseSignal((value) => value + 1);
+  }, []);
+
   const handleCheckIn = useCallback(async () => {
     const userId = sessionUser?.local_user_id || null;
     if (!userId || checkInSubmitting) return;
@@ -1256,7 +1271,7 @@ export function StudioApp() {
         refreshQuotaSnapshot(userId),
         refreshUsageSnapshot(userId),
       ]);
-      if (accountView === "usage" && accountOrdersLoaded) {
+      if ((accountView === "usage" || accountView === "orders") && accountOrdersLoaded) {
         await refreshBillingOrdersSnapshot(userId);
       }
       setMessage(result.action === "credited" ? `签到成功，已领取 ${result.quota_delta} 积分。` : "今日已签到。");
@@ -1383,10 +1398,10 @@ export function StudioApp() {
   );
   const accountSummaryBusy = sessionLoading || accountSummaryLoading;
   const accountViewLoading = sessionLoading
-    || (accountView === "usage"
+    || (accountView === "usage" || accountView === "orders"
       ? accountSummaryLoading || checkInLoading || accountUsageLoading || accountOrdersLoading
       : accountView === "center"
-        ? accountSummaryLoading || checkInLoading || accountUsageLoading
+        ? accountSummaryLoading || checkInLoading || accountUsageLoading || accountOrdersLoading
         : accountSummaryLoading);
   const libraryPanelLoading = activeBusinessTool === "library"
     && (sessionLoading || (Boolean(sessionUser) && !libraryLoaded))
@@ -2709,11 +2724,14 @@ export function StudioApp() {
             accountError={accountDataError}
             accountView={accountCenterOpen ? accountView : undefined}
             planStatus={accountPlanStatus}
+            membershipEndsAt={membershipSnapshot?.membership.active?.ends_at ?? null}
             checkInStatus={accountCheckInStatus}
             onRefresh={() => void refreshAccountSnapshot()}
-            onLogout={() => void handleLogout()}
+            onLogout={() => setLogoutConfirmOpen(true)}
             onOpenCenter={handleOpenAccountCenter}
             onOpenRecharge={handleOpenRechargeCenter}
+            onOpenUsage={handleOpenUsageRecords}
+            onOpenOrders={handleOpenOrderRecords}
             onCheckInUnavailable={() => void handleCheckIn()}
           />
         )}
@@ -2837,6 +2855,13 @@ export function StudioApp() {
         />
       ) : null}
       {message ? <Toast message={message} onClose={() => setMessage("")} /> : null}
+      {logoutConfirmOpen ? (
+        <LogoutConfirmDialog
+          loading={accountSummaryBusy}
+          onCancel={() => setLogoutConfirmOpen(false)}
+          onConfirm={() => void handleLogout()}
+        />
+      ) : null}
     </>
   );
 }
@@ -2896,6 +2921,16 @@ function UserCenterWorkspace({
     );
   }
 
+  if (accountView === "orders") {
+    return (
+      <OrderRecordsWorkspace
+        billingOrders={billingOrders}
+        loading={loading}
+        onViewChange={onViewChange}
+      />
+    );
+  }
+
   return (
       <UserCenterOverview
         user={user}
@@ -2937,6 +2972,24 @@ function createMembershipEntitlementItems(entitlements: MembershipEntitlements |
   ].filter((item) => item.remaining > 0);
 }
 
+function formatMembershipDate(value: string | null | undefined) {
+  if (!value) return "";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "";
+  return new Intl.DateTimeFormat("zh-CN", {
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(date);
+}
+
+function formatMembershipRemainingDays(value: string | null | undefined) {
+  if (!value) return "";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "";
+  return `${formatQuotaUnits(Math.max(0, Math.ceil((date.getTime() - Date.now()) / 86400000)))} 天`;
+}
+
 function UserCenterOverview({
   user,
   quota,
@@ -2975,6 +3028,9 @@ function UserCenterOverview({
       : "登录后将显示真实账户积分。";
   const entitlementItems = createMembershipEntitlementItems(membershipSnapshot?.membership.entitlements ?? null);
   const planDisplay = getPlanStatusDisplay(planStatus);
+  const activeMembership = membershipSnapshot?.membership.active ?? null;
+  const planEndsAtLabel = formatMembershipDate(activeMembership?.ends_at);
+  const planRemainingLabel = formatMembershipRemainingDays(activeMembership?.ends_at);
   const checkInButtonLabel = checkInStatus === "checked" ? "已签到" : "签到";
   const checkInButtonDisabled = !user || checkInStatus === "checked" || checkInStatus === "loading" || checkInStatus === "submitting";
   const previousQuotaUnitsRef = useRef<number | null>(quotaUnits);
@@ -3005,7 +3061,7 @@ function UserCenterOverview({
       <header className="user-center-page__header">
         <div>
           <h2>用户中心</h2>
-          <p>查看积分、套餐与签到信息</p>
+          <p>查看积分、套餐、签到与订单信息</p>
         </div>
         <button
           type="button"
@@ -3026,17 +3082,21 @@ function UserCenterOverview({
                 <Sparkles className="size-5" aria-hidden="true" />
               </span>
               <div className="user-center-points-card__copy">
-                <span>当前可用积分</span>
+                <span>账户资产</span>
+                <em className="user-center-card-kicker">可用积分</em>
                 <strong className="user-center-points-card__value">{quotaValue}</strong>
                 <p>{quotaNote}</p>
                 {entitlementItems.length ? (
-                  <div className="user-center-entitlement-strip" aria-label="会员剩余次数">
-                    {entitlementItems.map((item) => (
-                      <span key={item.key} className="user-center-entitlement-pill">
-                        <em>{item.label}</em>
-                        <strong>{item.value}</strong>
-                      </span>
-                    ))}
+                  <div className="user-center-entitlement-block">
+                    <span>剩余额度</span>
+                    <div className="user-center-entitlement-strip" aria-label="会员剩余次数">
+                      {entitlementItems.map((item) => (
+                        <span key={item.key} className="user-center-entitlement-pill">
+                          <em>{item.label}</em>
+                          <strong>{item.value}</strong>
+                        </span>
+                      ))}
+                    </div>
                   </div>
                 ) : null}
               </div>
@@ -3044,6 +3104,10 @@ function UserCenterOverview({
                 <button type="button" className="user-center-action user-center-action--primary" onClick={() => onViewChange("recharge")} disabled={!user}>
                   <WalletCards className="size-4" aria-hidden="true" />
                   立即充值
+                </button>
+                <button type="button" className="user-center-action" onClick={() => onViewChange("usage")} disabled={!user}>
+                  <History className="size-4" aria-hidden="true" />
+                  积分明细
                 </button>
               </div>
               <div className="user-center-mobile-status">
@@ -3068,7 +3132,24 @@ function UserCenterOverview({
                 <div>
                   <span>当前套餐</span>
                   <strong>{planDisplay.label}</strong>
-                  <p>{planDisplay.note}</p>
+                  {planEndsAtLabel || planRemainingLabel ? (
+                    <div className="user-center-plan-details">
+                      {planEndsAtLabel ? (
+                        <span>
+                          到期时间
+                          <strong>{planEndsAtLabel}</strong>
+                        </span>
+                      ) : null}
+                      {planRemainingLabel ? (
+                        <span>
+                          剩余天数
+                          <strong>{planRemainingLabel}</strong>
+                        </span>
+                      ) : null}
+                    </div>
+                  ) : (
+                    <p>{planStatus.status === "active" ? "会员权益以账户数据为准。" : planDisplay.note}</p>
+                  )}
                 </div>
                 <button
                   type="button"
@@ -3083,11 +3164,29 @@ function UserCenterOverview({
             </div>
           </div>
 
+          <section className="user-center-quick-links" aria-label="快捷入口">
+            {[
+              { label: "积分明细", note: "查看全部积分变动", icon: History, view: "usage" as AccountView },
+              { label: "订单记录", note: "充值与会员订单", icon: CreditCard, view: "orders" as AccountView },
+              { label: "会员套餐", note: "订阅与积分充值", icon: Crown, view: "recharge" as AccountView },
+              { label: "签到记录", note: "查看签到积分", icon: CalendarCheck, view: "usage" as AccountView },
+            ].map((item) => {
+              const Icon = item.icon;
+              return (
+                <button key={item.label} type="button" className="user-center-quick-link" onClick={() => onViewChange(item.view)} disabled={!user}>
+                  <span><Icon className="size-4" aria-hidden="true" /></span>
+                  <strong>{item.label}</strong>
+                  <em>{item.note}</em>
+                </button>
+              );
+            })}
+          </section>
+
           <section className="user-center-usage">
             <div className="user-center-section-head">
               <div>
-                <h3>最近使用记录</h3>
-                <p>仅展示最近的真实使用记录。</p>
+                <h3>最近积分记录</h3>
+                <p>仅展示最近的真实积分变动。</p>
               </div>
               <button type="button" className="user-center-link-button" onClick={() => onViewChange("usage")}>
                 查看全部记录
@@ -3098,7 +3197,7 @@ function UserCenterOverview({
               <div className="user-center-usage__list">
                 <div className="user-center-usage__row user-center-usage__row--head" aria-hidden="true">
                   <span>时间</span>
-                  <span>功能</span>
+                  <span>类型</span>
                   <span>积分变动</span>
                   <span>积分余额</span>
                   <span>描述</span>
@@ -3117,7 +3216,7 @@ function UserCenterOverview({
               <div className="user-center-usage__list">
                 <div className="user-center-usage__row user-center-usage__row--head" aria-hidden="true">
                   <span>时间</span>
-                  <span>功能</span>
+                  <span>类型</span>
                   <span>积分变动</span>
                   <span>积分余额</span>
                   <span>描述</span>
@@ -3135,7 +3234,7 @@ function UserCenterOverview({
             ) : (
               <div className="user-center-usage__empty">
                 <History className="size-5" aria-hidden="true" />
-                <strong>暂无使用记录</strong>
+                <strong>暂无积分记录</strong>
                 <span>开始生成图片或视频后，记录会自动出现在这里。</span>
               </div>
             )}
@@ -3543,10 +3642,10 @@ function UsageRecordsWorkspace({
   const filteredRecords = filter === "all" ? records : records.filter((record) => record.kind === filter);
 
   return (
-    <section className="user-center-page account-subpage account-subpage--usage" aria-label="消费记录">
+    <section className="user-center-page account-subpage account-subpage--usage" aria-label="积分明细">
       <AccountSubpageHeader
-        breadcrumb="用户中心 / 消费记录"
-        title="消费记录"
+        breadcrumb="用户中心 / 积分明细"
+        title="积分明细"
         subtitle="只展示真实产生的积分支出、充值和签到记录"
         onBack={() => onViewChange("center")}
       />
@@ -3616,8 +3715,90 @@ function UsageRecordsWorkspace({
         ) : (
           <div className="user-center-usage__empty">
             <History className="size-5" aria-hidden="true" />
-            <strong>暂无消费记录</strong>
+            <strong>暂无积分明细</strong>
             <span>充值、签到或使用创作工具后，相关记录会显示在这里。</span>
+          </div>
+        )}
+      </section>
+    </section>
+  );
+}
+
+function OrderRecordsWorkspace({
+  billingOrders,
+  loading,
+  onViewChange,
+}: {
+  billingOrders: BillingOrder[];
+  loading: boolean;
+  onViewChange: (view: AccountView) => void;
+}) {
+  const sortedOrders = useMemo(
+    () => [...billingOrders].sort((a, b) => Number(new Date(b.created_at)) - Number(new Date(a.created_at))),
+    [billingOrders],
+  );
+
+  return (
+    <section className="user-center-page account-subpage account-subpage--orders" aria-label="订单记录">
+      <AccountSubpageHeader
+        breadcrumb="用户中心 / 订单记录"
+        title="订单记录"
+        subtitle="展示真实充值订单和会员订单"
+        onBack={() => onViewChange("center")}
+      />
+
+      <section className="user-center-usage account-records account-orders">
+        {loading && !sortedOrders.length ? (
+          <div className="user-center-usage__list">
+            <div className="user-center-usage__row user-center-usage__row--head account-order-row" aria-hidden="true">
+              <span>时间</span>
+              <span>订单类型</span>
+              <span>套餐/充值内容</span>
+              <span>金额</span>
+              <span>状态</span>
+              <span>操作</span>
+            </div>
+            {Array.from({ length: 5 }).map((_, index) => (
+              <div key={index} className="user-center-usage__row user-center-usage__row--skeleton account-order-row" aria-hidden="true">
+                <span className="motion-skeleton-shimmer" />
+                <span className="motion-skeleton-shimmer" />
+                <span className="motion-skeleton-shimmer" />
+                <span className="motion-skeleton-shimmer" />
+                <span className="motion-skeleton-shimmer" />
+                <span className="motion-skeleton-shimmer" />
+              </div>
+            ))}
+          </div>
+        ) : sortedOrders.length ? (
+          <div className="user-center-usage__list">
+            <div className="user-center-usage__row user-center-usage__row--head account-order-row" aria-hidden="true">
+              <span>时间</span>
+              <span>订单类型</span>
+              <span>套餐/充值内容</span>
+              <span>金额</span>
+              <span>状态</span>
+              <span>操作</span>
+            </div>
+            {sortedOrders.map((order, index) => (
+              <div
+                key={order.order_id}
+                className={cn("user-center-usage__row", "account-order-row", `is-${order.status}`)}
+                style={{ "--usage-row-delay": `${index < 8 ? index * 24 : 0}ms` } as CSSProperties}
+              >
+                <span>{formatUsageDate(order.created_at)}</span>
+                <strong>{formatOrderType(order)}</strong>
+                <span>{formatOrderContent(order)}</span>
+                <span>{formatMinorCurrency(order.paid_amount || order.requested_amount)}</span>
+                <em>{formatOrderStatus(order.status)}</em>
+                <span>{formatOrderAction(order.status)}</span>
+              </div>
+            ))}
+          </div>
+        ) : (
+          <div className="user-center-usage__empty">
+            <CreditCard className="size-5" aria-hidden="true" />
+            <strong>暂无订单记录</strong>
+            <span>充值积分或开通会员后，订单会显示在这里。</span>
           </div>
         )}
       </section>
@@ -3961,6 +4142,39 @@ function PaymentQrDialog({
   );
 }
 
+function LogoutConfirmDialog({
+  loading,
+  onCancel,
+  onConfirm,
+}: {
+  loading: boolean;
+  onCancel: () => void;
+  onConfirm: () => void;
+}) {
+  return (
+    <div className="studio-library-confirm account-logout-confirm" role="dialog" aria-modal="true" aria-labelledby="account-logout-confirm-title">
+      <button type="button" className="studio-library-confirm__backdrop" aria-label="取消退出登录" onClick={onCancel} disabled={loading} />
+      <section className="studio-library-confirm__card">
+        <span className="studio-library-confirm__icon" aria-hidden="true">
+          <LogOut className="size-5" />
+        </span>
+        <div className="studio-library-confirm__copy">
+          <h3 id="account-logout-confirm-title">确认退出登录？</h3>
+          <p>退出后需要重新登录才能继续查看账户、作品和生成记录。</p>
+        </div>
+        <div className="studio-library-confirm__actions">
+          <button type="button" className="studio-secondary-button" onClick={onCancel} disabled={loading}>
+            取消
+          </button>
+          <button type="button" className="studio-danger-button" onClick={onConfirm} disabled={loading}>
+            {loading ? "退出中" : "确认退出"}
+          </button>
+        </div>
+      </section>
+    </div>
+  );
+}
+
 function createAccountRecords(
   usageEntries: UsageLogEntry[],
   billingOrders: BillingOrder[],
@@ -4211,6 +4425,42 @@ function formatAccountQuotaChange(record: AccountRecord) {
 function formatAccountQuotaBalance(record: AccountRecord) {
   if (!Number.isFinite(record.balanceAfterQuotaUnits ?? Number.NaN)) return "--";
   return `${formatQuotaUnits(record.balanceAfterQuotaUnits || 0)} 分`;
+}
+
+function formatOrderType(order: BillingOrder) {
+  return order.product_type === "membership" ? "会员订单" : "积分充值";
+}
+
+function formatOrderContent(order: BillingOrder) {
+  if (order.product_type === "membership") {
+    const planName = planOptions.find((plan) => plan.id === order.product_plan_id)?.name || order.product_plan_id || "会员套餐";
+    const cycleLabel = planCycleOptions.find((cycle) => cycle.id === order.product_cycle)?.label || order.product_cycle || "";
+    return cycleLabel ? `${planName} · ${cycleLabel}` : planName;
+  }
+
+  if (order.credited_quota > 0) return `${formatQuotaUnits(order.credited_quota)} 积分`;
+  return "积分充值";
+}
+
+function formatOrderStatus(status: BillingOrder["status"]) {
+  const labels: Record<BillingOrder["status"], string> = {
+    pending: "待支付",
+    processing: "处理中",
+    paid: "已支付",
+    failed: "支付失败",
+    cancelled: "已取消",
+    expired: "已过期",
+    review: "人工核对",
+    refunded: "已退款",
+  };
+  return labels[status] || status;
+}
+
+function formatOrderAction(status: BillingOrder["status"]) {
+  if (status === "paid") return "已完成";
+  if (status === "pending" || status === "processing") return "等待支付";
+  if (status === "review") return "等待核对";
+  return "--";
 }
 
 function formatMinorCurrency(value: number) {
