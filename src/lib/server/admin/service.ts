@@ -92,6 +92,7 @@ const orderStatuses = new Set<BillingOrderStatus>([
   "paid",
   "failed",
   "cancelled",
+  "expired",
   "review",
   "refunded",
 ]);
@@ -111,6 +112,7 @@ const safeOrderReviewTransitions: Record<BillingOrderStatus, BillingOrderStatus[
   paid: ["review"],
   failed: ["review"],
   cancelled: ["review"],
+  expired: ["review"],
   review: ["processing", "failed", "cancelled"],
   refunded: ["review"],
 };

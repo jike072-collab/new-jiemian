@@ -30,6 +30,30 @@ Before a production release:
 7. Disk status is below the configured protection thresholds.
 8. The media cleanup timer and Nginx upload limit match the application limits.
 
+## Release Directory Prune
+
+Old release artifacts may be pruned only through the guarded release-prune
+commands. The default policy keeps the current active release plus the newest 5
+release directories under `.runtime/releases`.
+
+Before applying cleanup, run:
+
+```bash
+npm run ops:releases:prune:dry-run
+```
+
+Review the explicit `candidates` list. It must contain only old directories
+inside `.runtime/releases`; `.env`, uploads, data, SSL material, backups, and
+the active release must not appear. After confirming the list, run:
+
+```bash
+npm run ops:releases:prune:apply
+```
+
+Check storage again after apply. If the service is unhealthy after a later
+deploy, roll back to the active release metadata instead of restoring deleted
+old artifacts.
+
 ## Production Invariants
 
 - `NODE_ENV=production`.

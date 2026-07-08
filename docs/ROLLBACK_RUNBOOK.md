@@ -20,6 +20,12 @@ database, `data`, and uploads are still valid. The rollback target must be an
 explicit reviewed commit or release artifact. Run release checks before
 switching service traffic.
 
+Release pruning keeps the active release and newest retained releases, but it
+can remove older inactive artifacts. Before relying on an old artifact rollback,
+confirm it is still present in `.runtime/releases`. If it was pruned, use an
+explicit reviewed commit and the normal release checks instead of restoring a
+deleted directory.
+
 ## Data Restore
 
 Use data restore only when data, PostgreSQL rows, or required metadata are part

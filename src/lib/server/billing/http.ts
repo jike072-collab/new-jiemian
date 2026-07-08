@@ -53,6 +53,7 @@ const orderStatuses = new Set<BillingOrderStatus>([
   "paid",
   "failed",
   "cancelled",
+  "expired",
   "review",
   "refunded",
 ]);

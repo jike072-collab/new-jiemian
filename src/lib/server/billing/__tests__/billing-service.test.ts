@@ -382,7 +382,7 @@ test("paid membership order credits quota and grants entitlements once", async (
   assert.equal(status.active?.plan_id, "advanced");
   assert.equal(status.recharge_bonus_basis_points, 1000);
   assert.equal(status.entitlements.prompt_optimize.remaining, 30);
-  assert.equal(status.entitlements.image_generation.remaining, 60);
+  assert.equal(status.entitlements.image_generation.remaining, 30);
   assert.equal(status.entitlements.video_generation.remaining, 1);
 
   const duplicate = await withSecret(() => signedWebhook(harness.billing, payloadFor(order)));
@@ -726,7 +726,8 @@ test("creates orders idempotently and rejects invalid amount or inactive mapping
   });
   assert.equal(sameAmountNewKey.ok, true);
   if (!sameAmountNewKey.ok) return;
-  assert.notEqual(sameAmountNewKey.order.order_id, first.order_id);
+  assert.equal(sameAmountNewKey.status, 200);
+  assert.equal(sameAmountNewKey.order.order_id, first.order_id);
 
   const retrySameClick = await harness.billing.createOrder({
     localUserId: "local-user",
@@ -737,7 +738,35 @@ test("creates orders idempotently and rejects invalid amount or inactive mapping
   });
   assert.equal(retrySameClick.ok, true);
   if (!retrySameClick.ok) return;
-  assert.equal(retrySameClick.order.order_id, sameAmountNewKey.order.order_id);
+  assert.equal(retrySameClick.order.order_id, first.order_id);
+
+  const membershipFirst = await harness.billing.createOrder({
+    localUserId: "local-user",
+    channel: "sandbox_alipay",
+    currency: "CNY",
+    requestedAmount: 5990,
+    productType: "membership",
+    planId: "advanced",
+    cycle: "monthly",
+    idempotencyKey: "membership-click-1",
+  });
+  assert.equal(membershipFirst.ok, true);
+  if (!membershipFirst.ok) return;
+
+  const membershipSecond = await harness.billing.createOrder({
+    localUserId: "local-user",
+    channel: "sandbox_alipay",
+    currency: "CNY",
+    requestedAmount: 5990,
+    productType: "membership",
+    planId: "advanced",
+    cycle: "monthly",
+    idempotencyKey: "membership-click-2",
+  });
+  assert.equal(membershipSecond.ok, true);
+  if (!membershipSecond.ok) return;
+  assert.equal(membershipSecond.status, 200);
+  assert.equal(membershipSecond.order.order_id, membershipFirst.order.order_id);
 
   const pending = await service({ mappings: failedMappingSeed() }).billing.createOrder({
     localUserId: "local-user",
@@ -778,7 +807,7 @@ test("retries a lost create-order response with the same key without duplicating
     localUserId: "local-user",
     channel: "sandbox_alipay",
     currency: "CNY",
-    requestedAmount: 1000,
+    requestedAmount: 2000,
     idempotencyKey: "second-click-key",
   });
   assert.equal(newOperation.ok, true);
@@ -1014,6 +1043,26 @@ test("payment success with New API credit failure enters review and can be recon
   assert.equal((await harness.repository.getOrder(order.order_id))?.status, "paid");
 });
 
+test("reconciliation expires stale open orders without crediting quota", async () => {
+  const harness = service({ now: () => new Date("2026-06-18T01:00:00.000Z") });
+  const order = await createOrder(harness, {
+    idempotencyKey: "stale-open-order",
+  });
+  const staleAt = "2026-06-18T00:00:00.000Z";
+  await harness.repository.updateOrder(order.order_id, {
+    updated_at: staleAt,
+  }, order.version);
+
+  const result = await harness.billing.reconcile({ timeoutMinutes: 30 });
+  assert.equal(result.issues.some((issue) => (
+    issue.order_id === order.order_id
+    && issue.status === "expired"
+    && issue.action === "marked_expired"
+  )), true);
+  assert.equal((await harness.repository.getOrder(order.order_id))?.status, "expired");
+  assert.equal(harness.creditCalls.length, 0);
+});
+
 test("refund webhook marks refunded without adding quota again", async () => {
   const harness = service();
   const order = await createOrder(harness);
@@ -1065,7 +1114,7 @@ test("lists current user orders with pagination and status filtering", async () 
   });
   const harness = { billing, repository, mappingRepository, membership, creditCalls };
   await createOrder(harness, { idempotencyKey: "idem-1" });
-  const paid = await createOrder(harness, { idempotencyKey: "idem-2" });
+  const paid = await createOrder(harness, { requestedAmount: 2000, idempotencyKey: "idem-2" });
   const other = await billing.createOrder({
     localUserId: "other-user",
     channel: "sandbox_alipay",

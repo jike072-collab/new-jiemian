@@ -5769,6 +5769,37 @@
     width: 100%;
   }
 
+  .recharge-section-head {
+    display: flex;
+    align-items: end;
+    justify-content: space-between;
+    gap: 16px;
+    min-width: 0;
+  }
+
+  .recharge-section-head span,
+  .membership-faq__head span {
+    color: rgba(255, 255, 255, 0.94);
+    font-size: 18px;
+    font-weight: 740;
+    line-height: 1.25;
+  }
+
+  .recharge-section-head p,
+  .membership-faq__head p {
+    max-width: 640px;
+    color: rgba(255, 255, 255, 0.52);
+    font-size: 13px;
+    line-height: 1.5;
+    text-align: right;
+  }
+
+  .recharge-section-head--credits {
+    margin-top: 6px;
+    border-top: 1px solid rgba(255, 255, 255, 0.06);
+    padding-top: 18px;
+  }
+
   .recharge-pricing-toolbar {
     display: flex;
     align-items: center;
@@ -6088,7 +6119,7 @@
   }
 
   .recharge-plan-card {
-    min-height: 548px;
+    min-height: 592px;
     display: flex;
     flex-direction: column;
     gap: 14px;
@@ -6114,6 +6145,10 @@
       linear-gradient(180deg, rgba(255, 43, 136, 0.16), rgba(255, 255, 255, 0.02) 52%, transparent 100%),
       #1a1b21;
     box-shadow: 0 18px 42px rgba(255, 43, 136, 0.12);
+  }
+
+  .recharge-plan-card.is-disabled {
+    background: #121318;
   }
 
   .custom-recharge-card.is-active {
@@ -6162,6 +6197,13 @@
     line-height: 1.08;
   }
 
+  .recharge-plan-card__recommended-note {
+    min-height: 34px;
+    color: #ffd7e8;
+    font-size: 12.5px;
+    line-height: 1.35;
+  }
+
   .recharge-plan-card__price {
     display: flex;
     align-items: baseline;
@@ -6183,6 +6225,23 @@
     color: rgba(255, 255, 255, 0.5);
     font-size: 13px;
     font-weight: 650;
+  }
+
+  .recharge-plan-card__price-meta {
+    display: grid;
+    gap: 5px;
+    min-height: 58px;
+    border-radius: 8px;
+    background: rgba(255, 255, 255, 0.04);
+    padding: 10px 12px;
+    color: rgba(255, 255, 255, 0.62);
+    font-size: 12.5px;
+    line-height: 1.25;
+  }
+
+  .recharge-plan-card__price-meta span:last-child {
+    color: #ff8ac4;
+    font-weight: 720;
   }
 
   .recharge-plan-card__credits {
@@ -6237,7 +6296,7 @@
   }
 
   .recharge-plan-card__reason {
-    display: none;
+    display: inline-flex;
     width: fit-content;
     max-width: 100%;
     align-items: center;
@@ -6280,6 +6339,49 @@
   .recharge-plan-card__action:disabled {
     cursor: not-allowed;
     opacity: 0.58;
+  }
+
+  .membership-faq {
+    display: grid;
+    gap: 14px;
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: 8px;
+    background: #121318;
+    padding: 20px;
+  }
+
+  .membership-faq__head {
+    display: flex;
+    align-items: end;
+    justify-content: space-between;
+    gap: 16px;
+  }
+
+  .membership-faq__grid {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 10px;
+  }
+
+  .membership-faq__grid article {
+    display: grid;
+    gap: 7px;
+    border: 1px solid rgba(255, 255, 255, 0.07);
+    border-radius: 8px;
+    background: rgba(255, 255, 255, 0.035);
+    padding: 14px;
+  }
+
+  .membership-faq__grid strong {
+    color: rgba(255, 255, 255, 0.9);
+    font-size: 14px;
+    line-height: 1.35;
+  }
+
+  .membership-faq__grid span {
+    color: rgba(255, 255, 255, 0.58);
+    font-size: 12.5px;
+    line-height: 1.55;
   }
 
   .recharge-plan-empty {
@@ -10798,7 +10900,11 @@
   }
 
   .recharge-plan-grid {
-    grid-template-columns: repeat(3, minmax(0, 1fr));
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .membership-faq__grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
   .credit-topup-grid {
@@ -11271,8 +11377,20 @@
   }
 
   .shell-panel--mobile-single .recharge-plan-grid,
-  .shell-panel--mobile-single .custom-recharge-card {
+  .shell-panel--mobile-single .custom-recharge-card,
+  .shell-panel--mobile-single .membership-faq__grid {
     grid-template-columns: minmax(0, 1fr);
+  }
+
+  .shell-panel--mobile-single .recharge-section-head,
+  .shell-panel--mobile-single .membership-faq__head {
+    display: grid;
+    align-items: start;
+  }
+
+  .shell-panel--mobile-single .recharge-section-head p,
+  .shell-panel--mobile-single .membership-faq__head p {
+    text-align: left;
   }
 
   .shell-panel--mobile-single .credit-topup-grid {

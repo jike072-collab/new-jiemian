@@ -4,6 +4,7 @@ export type BillingOrderStatus =
   | "paid"
   | "failed"
   | "cancelled"
+  | "expired"
   | "review"
   | "refunded";
 
@@ -193,7 +194,7 @@ export type ReconciliationIssue = {
   order_id: string;
   status: BillingOrderStatus;
   issue: string;
-  action: "none" | "marked_review" | "credited" | "status_updated";
+  action: "none" | "marked_review" | "marked_expired" | "credited" | "status_updated";
 };
 
 export type ReconciliationResult = {

@@ -65,14 +65,17 @@ export type BillingServiceDependencies = {
 };
 
 const allowedTransitions: Record<BillingOrderStatus, BillingOrderStatus[]> = {
-  pending: ["processing", "cancelled", "failed", "review"],
-  processing: ["paid", "failed", "cancelled", "review"],
+  pending: ["processing", "cancelled", "failed", "expired", "review"],
+  processing: ["paid", "failed", "cancelled", "expired", "review"],
   paid: ["refunded", "review"],
   failed: ["review"],
   cancelled: ["review"],
+  expired: ["review"],
   review: ["processing", "paid", "failed", "cancelled", "refunded"],
   refunded: ["review"],
 };
+
+const duplicatePendingOrderWindowMs = 5 * 60 * 1000;
 
 function nowIso(now: Date) {
   return now.toISOString();
@@ -201,6 +204,27 @@ export class BillingService {
         status: 200,
         order: publicOrder(existing),
         payment: this.paymentDescriptor(existing),
+      };
+    }
+
+    const duplicate = await this.findRecentOpenOrder({
+      localUserId: input.localUserId,
+      channel: channel.channel,
+      productType,
+      requestedAmount,
+      planId: sku ? sku.plan.id : null,
+      cycle: sku ? sku.cycle : null,
+    });
+    if (duplicate) {
+      await this.audit("billing.order.reused_open_order", duplicate, context, {
+        request_id: context.requestId || null,
+        product_type: productType,
+      });
+      return {
+        ok: true,
+        status: 200,
+        order: publicOrder(duplicate),
+        payment: this.paymentDescriptor(duplicate),
       };
     }
 
@@ -555,18 +579,41 @@ export class BillingService {
         continue;
       }
       if (ageMs > timeoutMs && (order.status === "pending" || order.status === "processing")) {
-        const review = await this.updateStatus(order, "review", {
+        const expired = await this.updateStatus(order, "expired", {
           last_error: "Order exceeded reconciliation timeout.",
         });
         result.issues.push({
-          order_id: review.order_id,
-          status: review.status,
+          order_id: expired.order_id,
+          status: expired.status,
           issue: "timeout",
-          action: "marked_review",
+          action: "marked_expired",
         });
       }
     }
     return result;
+  }
+
+  private async findRecentOpenOrder(input: {
+    localUserId: string;
+    channel: string;
+    productType: BillingOrder["product_type"];
+    requestedAmount: number;
+    planId: string | null;
+    cycle: string | null;
+  }) {
+    const cutoff = this.now().getTime() - duplicatePendingOrderWindowMs;
+    const orders = await this.repository.listOrders({
+      localUserId: input.localUserId,
+      statuses: ["pending", "processing"],
+    });
+    return orders.find((order) => (
+      Date.parse(order.created_at) >= cutoff
+      && order.channel === input.channel
+      && order.product_type === input.productType
+      && order.requested_amount === input.requestedAmount
+      && order.product_plan_id === input.planId
+      && order.product_cycle === input.cycle
+    )) || null;
   }
 
   sandboxWebhookSecretConfigured() {

@@ -243,6 +243,96 @@ export function createReleaseCandidateRoot(config, targetCommit, deploymentId = 
   return candidateRoot;
 }
 
+export function planReleasePrune(service, options = {}) {
+  const config = getServiceConfig(service, options);
+  const keep = normalizeReleasePruneKeep(options.keep);
+  const releasesRoot = resolve(join(config.runtimeDir, "releases"));
+  const activeRelease = readActiveRelease(config);
+  const activeReleaseRoot = activeRelease?.releaseRoot ? resolve(activeRelease.releaseRoot) : null;
+  const releases = listPrunableReleases(config, releasesRoot);
+  const sorted = releases.sort((left, right) => {
+    if (right.mtimeMs !== left.mtimeMs) return right.mtimeMs - left.mtimeMs;
+    return right.name.localeCompare(left.name);
+  });
+  const retained = new Set(sorted.slice(0, keep).map((release) => release.path.toLowerCase()));
+  if (activeReleaseRoot) retained.add(activeReleaseRoot.toLowerCase());
+  const candidates = sorted.filter((release) => !retained.has(release.path.toLowerCase()));
+  return {
+    ok: true,
+    service,
+    mode: options.apply ? "apply" : "dry-run",
+    keep,
+    releasesRoot,
+    activeRelease: activeReleaseRoot,
+    retained: sorted.filter((release) => retained.has(release.path.toLowerCase())),
+    candidates,
+  };
+}
+
+export function pruneServiceReleases(service, options = {}) {
+  const plan = planReleasePrune(service, { ...options, apply: true });
+  const deleted = [];
+  for (const candidate of plan.candidates) {
+    assertPrunableReleaseRootSafe(getServiceConfig(service, options), plan.releasesRoot, candidate.path);
+    rmSync(candidate.path, { recursive: true, force: false });
+    deleted.push(candidate);
+  }
+  return { ...plan, deleted };
+}
+
+function normalizeReleasePruneKeep(value) {
+  if (value == null || value === "") return 5;
+  const keep = Number(value);
+  if (!Number.isInteger(keep) || keep < 1) {
+    throw new Error("Release prune keep count must be a positive integer.");
+  }
+  return keep;
+}
+
+function listPrunableReleases(config, releasesRoot) {
+  if (!existsSync(releasesRoot)) return [];
+  const releases = [];
+  for (const entry of readdirSync(releasesRoot, { withFileTypes: true })) {
+    if (!entry.isDirectory()) continue;
+    const releaseRoot = resolve(releasesRoot, entry.name);
+    assertPrunableReleaseRootSafe(config, releasesRoot, releaseRoot);
+    if (!existsSync(join(releaseRoot, "package.json"))) continue;
+    const stats = statSync(releaseRoot);
+    releases.push({
+      name: entry.name,
+      path: releaseRoot,
+      mtimeMs: stats.mtimeMs,
+      modifiedAt: stats.mtime.toISOString(),
+    });
+  }
+  return releases;
+}
+
+function assertPrunableReleaseRootSafe(config, releasesRoot, releaseRoot) {
+  const resolvedReleaseRoot = resolve(String(releaseRoot || ""));
+  const resolvedReleasesRoot = resolve(String(releasesRoot || ""));
+  if (!isPathWithin(resolvedReleasesRoot, resolvedReleaseRoot) || isSamePath(resolvedReleasesRoot, resolvedReleaseRoot)) {
+    throw new Error(`Release prune path escaped releases directory: ${resolvedReleaseRoot}`);
+  }
+  if (!sameVolume(config.root, resolvedReleaseRoot)) {
+    throw new Error(`Release prune path must stay on the same volume as the service root: ${resolvedReleaseRoot}`);
+  }
+  for (const protectedPath of [config.root, config.runtimeDir]) {
+    if (isSamePath(resolvedReleaseRoot, protectedPath)) {
+      throw new Error(`Release prune path overlaps protected runtime path: ${resolvedReleaseRoot}`);
+    }
+  }
+  for (const protectedPath of [config.dataDir, config.uploadsDir]) {
+    if (isSamePath(resolvedReleaseRoot, protectedPath) || isPathWithin(resolvedReleaseRoot, protectedPath) || isPathWithin(protectedPath, resolvedReleaseRoot)) {
+      throw new Error(`Release prune path overlaps protected data/uploads path: ${resolvedReleaseRoot}`);
+    }
+  }
+  const baseName = basename(resolvedReleaseRoot).toLowerCase();
+  if (["backup", "backups", "data", "uploads"].includes(baseName)) {
+    throw new Error(`Release prune refuses protected directory name: ${resolvedReleaseRoot}`);
+  }
+}
+
 export function createReleaseValidationWorktreeRoot(config, targetCommit, deploymentId = randomUUID()) {
   const shortCommit = String(targetCommit || "unknown").slice(0, 12).replace(/[^a-f0-9]/gi, "x");
   const safeId = String(deploymentId || randomUUID()).replace(/[^a-z0-9-]/gi, "").slice(0, 18) || randomUUID().slice(0, 8);

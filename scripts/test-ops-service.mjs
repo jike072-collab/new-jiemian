@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
-import { existsSync, mkdirSync, readFileSync, readdirSync, renameSync, unlinkSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, readdirSync, renameSync, unlinkSync, utimesSync, writeFileSync } from "node:fs";
 import http from "node:http";
 import { tmpdir } from "node:os";
 import { basename, dirname, join, resolve } from "node:path";
@@ -24,10 +24,13 @@ import {
   buildReleaseCandidateVerificationEnv,
   createReleaseCandidateRoot,
   createReleaseValidationWorktreeRoot,
+  planReleasePrune,
+  pruneServiceReleases,
   sameVolume,
   shouldExcludeFromReleaseArtifact,
   waitForStoppedServiceArtifacts,
 } from "./ops/deploy-service.mjs";
+import { writeActiveRelease } from "./ops/active-release.mjs";
 import { cleanupStaleServiceOperationLock, classifyOperationLock } from "./ops/operation-lock.mjs";
 import { createServerBackup, pruneServerBackups, verifyServerBackupManifest } from "./ops/server-backup.mjs";
 import { restoreServerBackup } from "./ops/server-restore.mjs";
@@ -1325,6 +1328,48 @@ test("release artifact and validation worktree roots are isolated under service 
     assert(!validation.includes("uploads-staging"));
     assert.equal(sameVolume(config.root, candidate), true);
     assert.equal(sameVolume(config.root, validation), true);
+  });
+});
+
+test("release prune keeps active and newest releases while listing explicit candidates", async () => {
+  await withTempProject(async (root) => {
+    const config = getServiceConfig("production", { root });
+    const releasesRoot = join(config.runtimeDir, "releases");
+    mkdirSync(releasesRoot, { recursive: true });
+    const releases = [];
+    for (let index = 1; index <= 8; index += 1) {
+      const releaseRoot = join(releasesRoot, `release-${index}`);
+      mkdirSync(releaseRoot, { recursive: true });
+      writeFileSync(join(releaseRoot, "package.json"), "{}");
+      writeFileSync(join(releaseRoot, "marker.txt"), `release-${index}`);
+      const timestamp = new Date(1_800_000_000_000 + index * 1000);
+      utimesSync(releaseRoot, timestamp, timestamp);
+      releases.push(releaseRoot);
+    }
+    writeActiveRelease(config, {
+      releaseRoot: releases[1],
+      runtimeCommit: "abcdef1234567890",
+      deploymentId: "ops-test",
+    });
+
+    const dryRun = planReleasePrune("production", { root, keep: 3 });
+    assert.equal(dryRun.mode, "dry-run");
+    assert.deepEqual(dryRun.candidates.map((entry) => entry.name), ["release-5", "release-4", "release-3", "release-1"]);
+    assert(!dryRun.candidates.some((entry) => entry.path === releases[1]), "active release must never be pruned");
+    assert.equal(existsSync(releases[0]), true, "dry-run must not delete candidate releases");
+
+    const applied = pruneServiceReleases("production", { root, keep: 3 });
+    assert.equal(applied.mode, "apply");
+    assert.deepEqual(applied.deleted.map((entry) => entry.name), ["release-5", "release-4", "release-3", "release-1"]);
+    for (const index of [0, 2, 3, 4]) {
+      assert.equal(existsSync(releases[index]), false, `candidate ${index + 1} should be deleted`);
+    }
+    for (const index of [1, 5, 6, 7]) {
+      assert.equal(existsSync(releases[index]), true, `retained release ${index + 1} should remain`);
+    }
+    assert.equal(existsSync(config.dataDir), true);
+    assert.equal(existsSync(config.uploadsDir), true);
+    assert.equal(existsSync(config.activeReleaseFile), true);
   });
 });
 
