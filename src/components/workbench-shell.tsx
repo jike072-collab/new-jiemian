@@ -558,22 +558,14 @@ function DesktopNavigation({
               </span>
             </button>
             <div className="shell-nav-account__points" aria-label="剩余积分">
-              <span className="shell-nav-account__points-label">剩余积分</span>
-              <strong className="shell-nav-account__points-value">
-                {pointsValue}
-                {showPointsStar ? <span aria-hidden="true">✦</span> : null}
-              </strong>
-            </div>
-            <div className="shell-nav-account__actions is-split">
-              <button
-                type="button"
-                className={cn("shell-nav-account__button", accountCenterActive && "is-active")}
-                onClick={onOpenAccountCenter || ((event) => onToggleAccount(event.currentTarget))}
-              >
-                <UserRound className="size-4" aria-hidden="true" />
-                用户中心
-              </button>
-              <button type="button" className="shell-nav-account__button shell-nav-account__button--primary" onClick={onOpenAccountRecharge || ((event) => onToggleAccount(event.currentTarget))}>
+              <span className="shell-nav-account__points-copy">
+                <span className="shell-nav-account__points-label">剩余积分</span>
+                <strong className="shell-nav-account__points-value">
+                  {pointsValue}
+                  {showPointsStar ? <span aria-hidden="true">✦</span> : null}
+                </strong>
+              </span>
+              <button type="button" className="shell-nav-account__button shell-nav-account__button--primary shell-nav-account__recharge" onClick={onOpenAccountRecharge || ((event) => onToggleAccount(event.currentTarget))}>
                 <CreditCard className="size-4" aria-hidden="true" />
                 充值
               </button>
