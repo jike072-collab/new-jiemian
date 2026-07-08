@@ -484,7 +484,11 @@ function DesktopNavigation({
   onOpenAccountRecharge?: () => void;
 }) {
   const displayName = accountName || "账户";
+  const compactName = compactAccountIdentity(displayName);
   const avatarText = displayName.slice(0, 2).toUpperCase();
+  const pointsText = accountPointsLabel || "—";
+  const pointsValue = pointsText.replace(/\s*✦\s*$/, "");
+  const showPointsStar = pointsText.includes("✦");
 
   return (
     <aside className="shell-nav" aria-label="工作台导航">
@@ -546,14 +550,20 @@ function DesktopNavigation({
             >
               <span className="shell-nav-account__avatar">{avatarText}</span>
               <span className="shell-nav-account__copy">
-                <strong>{displayName}</strong>
-                <span>剩余积分 {accountPointsLabel || "—"}</span>
+                <strong className="shell-nav-account__id" title={displayName}>{compactName}</strong>
                 <small className="shell-nav-account__plan">
                   <Crown className="size-3" aria-hidden="true" />
                   {accountPlanLabel || "会员未开通"}
                 </small>
               </span>
             </button>
+            <div className="shell-nav-account__points" aria-label="剩余积分">
+              <span className="shell-nav-account__points-label">剩余积分</span>
+              <strong className="shell-nav-account__points-value">
+                {pointsValue}
+                {showPointsStar ? <span aria-hidden="true">✦</span> : null}
+              </strong>
+            </div>
             <div className="shell-nav-account__actions is-split">
               <button
                 type="button"
@@ -600,6 +610,15 @@ function DesktopNavigation({
       </div>
     </aside>
   );
+}
+
+function compactAccountIdentity(value: string) {
+  const text = value.trim();
+  if (!text) return "账户";
+  const [prefix] = text.split("-");
+  if (prefix && prefix.length >= 6 && prefix.length <= 12) return prefix;
+  if (text.length <= 14) return text;
+  return `${text.slice(0, 6)}...${text.slice(-4)}`;
 }
 
 function MobileOverlay({

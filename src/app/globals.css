@@ -811,14 +811,13 @@
   .shell-nav__account {
     position: relative;
     display: grid;
-    gap: 8px;
+    gap: 12px;
     margin: 0 8px 10px;
-    border: 1px solid rgba(255, 255, 255, 0.09);
-    border-radius: 14px;
-    background:
-      radial-gradient(circle at 16% 0%, rgba(255, 43, 136, 0.08), transparent 45%),
-      rgba(255, 255, 255, 0.035);
-    padding: 9px;
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 16px;
+    background: linear-gradient(180deg, rgba(255, 255, 255, 0.06), rgba(255, 255, 255, 0.03));
+    box-shadow: 0 12px 30px rgba(0, 0, 0, 0.28), inset 0 1px 0 rgba(255, 255, 255, 0.06);
+    padding: 14px;
     transition:
       transform var(--motion-fast) var(--ease-enter),
       border-color var(--motion-fast) var(--ease-enter),
@@ -831,9 +830,9 @@
   .shell-nav__account.is-active {
     border-color: rgba(255, 43, 136, 0.26);
     background:
-      radial-gradient(circle at 16% 0%, rgba(255, 43, 136, 0.14), transparent 48%),
-      rgba(255, 255, 255, 0.048);
-    box-shadow: 0 10px 24px rgba(255, 43, 136, 0.08);
+      radial-gradient(circle at 20% 0%, rgba(255, 43, 136, 0.1), transparent 42%),
+      linear-gradient(180deg, rgba(255, 255, 255, 0.075), rgba(255, 255, 255, 0.035));
+    box-shadow: 0 14px 34px rgba(0, 0, 0, 0.32), inset 0 1px 0 rgba(255, 255, 255, 0.07);
   }
 
   .shell-nav__account:hover {
@@ -843,14 +842,13 @@
   .shell-nav__account:hover .shell-nav-account__avatar,
   .shell-nav__account.is-open .shell-nav-account__avatar,
   .shell-nav__account.is-active .shell-nav-account__avatar {
-    border-color: rgba(255, 43, 136, 0.22);
-    background: rgba(255, 43, 136, 0.1);
+    border-color: rgba(255, 255, 255, 0.18);
+    background: radial-gradient(circle at 30% 20%, rgba(255, 255, 255, 0.22), rgba(255, 43, 136, 0.12));
     color: #fff;
   }
 
   .shell-nav-account__main {
-    display: grid;
-    grid-template-columns: 34px minmax(0, 1fr);
+    display: flex;
     align-items: center;
     gap: 10px;
   }
@@ -872,16 +870,19 @@
   }
 
   .shell-nav-account__avatar {
-    display: grid;
-    width: 34px;
-    height: 34px;
+    display: flex;
+    width: 42px;
+    height: 42px;
+    flex: 0 0 42px;
+    align-items: center;
+    justify-content: center;
     place-items: center;
     border: 1px solid rgba(255, 255, 255, 0.09);
     border-radius: 999px;
-    background: rgba(255, 255, 255, 0.055);
+    background: radial-gradient(circle at 30% 20%, rgba(255, 255, 255, 0.18), rgba(255, 255, 255, 0.06));
     color: rgba(255, 255, 255, 0.86);
-    font-size: 12.5px;
-    font-weight: 700;
+    font-size: 13px;
+    font-weight: 760;
     transition:
       border-color var(--motion-fast) var(--ease-enter),
       background var(--motion-fast) var(--ease-enter),
@@ -890,35 +891,28 @@
 
   .shell-nav-account__copy {
     display: grid;
+    flex: 1;
     min-width: 0;
-    gap: 0;
+    gap: 5px;
+    justify-items: start;
   }
 
   .shell-nav-account__copy strong,
-  .shell-nav-account__copy span,
   .shell-nav-account__copy small {
     overflow: hidden;
+    max-width: 100%;
     text-overflow: ellipsis;
     white-space: nowrap;
   }
 
-  .shell-nav-account__copy strong {
-    color: rgba(255, 255, 255, 0.9);
-    font-size: 12.5px;
-    font-weight: 640;
-  }
-
-  .shell-nav-account__copy span {
-    color: rgba(255, 255, 255, 0.66);
-    font-size: 12.5px;
-    font-weight: 620;
-    line-height: 1.25;
+  .shell-nav-account__id {
+    color: rgba(255, 255, 255, 0.94);
+    font-size: 14px;
+    font-weight: 760;
+    line-height: 1.15;
   }
 
   .shell-nav-account__copy small {
-    color: rgba(255, 255, 255, 0.48);
-    font-size: 11.5px;
-    font-weight: 560;
     line-height: 1.25;
   }
 
@@ -926,12 +920,53 @@
     display: inline-flex;
     align-items: center;
     gap: 4px;
+    width: fit-content;
+    border: 1px solid rgba(255, 196, 87, 0.28);
+    border-radius: 999px;
+    background: rgba(255, 196, 87, 0.12);
+    padding: 3px 8px;
     color: #ffd36e !important;
+    font-size: 12px !important;
     font-weight: 720 !important;
   }
 
   .shell-nav-account__plan svg {
     flex: 0 0 auto;
+  }
+
+  .shell-nav-account__points {
+    display: grid;
+    gap: 5px;
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: 14px;
+    background: rgba(0, 0, 0, 0.2);
+    padding: 12px;
+  }
+
+  .shell-nav-account__points-label {
+    color: rgba(255, 255, 255, 0.55);
+    font-size: 12px;
+    line-height: 1.2;
+  }
+
+  .shell-nav-account__points-value {
+    display: inline-flex;
+    align-items: baseline;
+    gap: 6px;
+    overflow: hidden;
+    color: #fff;
+    font-size: 24px;
+    font-weight: 820;
+    letter-spacing: 0;
+    line-height: 1;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .shell-nav-account__points-value span {
+    color: #ff4fa3;
+    font-size: 16px;
+    font-weight: 780;
   }
 
   .shell-nav-account__chevron {
@@ -949,7 +984,7 @@
   .shell-nav-account__actions {
     display: grid;
     grid-template-columns: 1fr;
-    gap: 6px;
+    gap: 8px;
   }
 
   .shell-nav-account__actions.is-split {
@@ -958,16 +993,16 @@
 
   .shell-nav-account__button {
     display: inline-flex;
-    min-height: 32px;
+    min-height: 38px;
     align-items: center;
     justify-content: center;
     gap: 6px;
     min-width: 0;
-    border: 1px solid rgba(255, 255, 255, 0.1);
-    border-radius: 10px;
-    background: rgba(255, 255, 255, 0.04);
-    color: rgba(255, 255, 255, 0.76);
-    font-size: 12.5px;
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    border-radius: 11px;
+    background: rgba(255, 255, 255, 0.05);
+    color: rgba(255, 255, 255, 0.86);
+    font-size: 14px;
     font-weight: 700;
     transition:
       transform var(--motion-fast) var(--ease-enter),
@@ -979,8 +1014,8 @@
 
   .shell-nav-account__button:hover,
   .shell-nav-account__button.is-active {
-    border-color: rgba(255, 59, 145, 0.26);
-    background: rgba(255, 32, 122, 0.1);
+    border-color: rgba(255, 255, 255, 0.16);
+    background: rgba(255, 255, 255, 0.08);
     color: #fff;
   }
 
@@ -1019,15 +1054,16 @@
   }
 
   .shell-nav-account__button--primary {
-    border-color: rgba(255, 43, 136, 0.34);
-    background: linear-gradient(135deg, rgba(255, 43, 136, 0.2), rgba(164, 82, 255, 0.14));
-    color: #ffe0ee;
+    border-color: rgba(255, 255, 255, 0.12);
+    background: linear-gradient(135deg, #ff2b8a, #b936ff);
+    color: #fff;
+    box-shadow: 0 8px 18px rgba(255, 43, 138, 0.24);
   }
 
   .shell-nav-account__button--primary:hover,
   .shell-nav-account__button--secondary:hover {
-    border-color: rgba(164, 82, 255, 0.54);
-    background: linear-gradient(135deg, rgba(164, 82, 255, 0.28), rgba(255, 43, 136, 0.12));
+    border-color: rgba(255, 255, 255, 0.18);
+    filter: brightness(1.08);
     color: #fff;
   }
 
@@ -1296,33 +1332,42 @@
   .account-popover-entitlements {
     display: grid !important;
     grid-template-columns: repeat(3, minmax(0, 1fr));
-    gap: 7px;
+    gap: 8px;
   }
 
   .account-popover-entitlements span {
     display: grid;
     min-width: 0;
-    gap: 3px;
+    min-height: 58px;
+    align-content: center;
+    gap: 5px;
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: 11px;
+    background: rgba(255, 255, 255, 0.035);
+    padding: 9px 8px;
   }
 
   .account-popover-entitlements em {
     overflow: hidden;
-    color: rgba(255, 255, 255, 0.48);
-    font-size: 11px;
+    color: rgba(255, 255, 255, 0.5);
+    font-size: 11.5px;
     font-style: normal;
     line-height: 1.1;
+    text-align: center;
     text-overflow: ellipsis;
     white-space: nowrap;
   }
 
   .account-popover-entitlements strong {
     overflow: hidden;
-    color: rgba(255, 255, 255, 0.9);
-    font-size: 12.5px;
-    font-weight: 700;
+    color: rgba(255, 255, 255, 0.94);
+    font-size: 14px;
+    font-weight: 780;
     line-height: 1.15;
+    text-align: center;
     text-overflow: ellipsis;
     white-space: nowrap;
+    font-variant-numeric: tabular-nums;
   }
 
   .account-popover-row button {
@@ -5170,38 +5215,43 @@
   .user-center-entitlement-strip {
     display: grid;
     grid-template-columns: repeat(3, minmax(0, 1fr));
-    gap: 8px;
+    gap: 10px;
     max-width: 520px;
   }
 
   .user-center-entitlement-pill {
     display: grid;
     min-width: 0;
-    gap: 4px;
+    min-height: 64px;
+    align-content: center;
+    gap: 6px;
     border: 1px solid rgba(255, 255, 255, 0.08);
-    border-radius: 10px;
-    background: rgba(255, 255, 255, 0.045);
-    padding: 9px 10px;
+    border-radius: 12px;
+    background: linear-gradient(180deg, rgba(255, 255, 255, 0.052), rgba(255, 255, 255, 0.032));
+    padding: 11px 12px;
   }
 
   .user-center-entitlement-pill em {
     overflow: hidden;
     color: rgba(255, 255, 255, 0.52);
-    font-size: 12px;
+    font-size: 12.5px;
     font-style: normal;
     line-height: 1.15;
+    text-align: center;
     text-overflow: ellipsis;
     white-space: nowrap;
   }
 
   .user-center-entitlement-pill strong {
     overflow: hidden;
-    color: rgba(255, 255, 255, 0.9);
-    font-size: 14px;
-    font-weight: 720;
+    color: rgba(255, 255, 255, 0.95);
+    font-size: 17px;
+    font-weight: 800;
     line-height: 1.2;
+    text-align: center;
     text-overflow: ellipsis;
     white-space: nowrap;
+    font-variant-numeric: tabular-nums;
   }
 
   .user-center-points-card__actions {
@@ -10814,31 +10864,30 @@
   }
 
   .shell-root > .shell-main .shell-grid > .shell-nav .shell-nav__account {
-    gap: 8px;
-    padding: 9px;
+    gap: 12px;
+    padding: 14px;
   }
 
   .shell-root > .shell-main .shell-grid > .shell-nav .shell-nav-account__main {
-    grid-template-columns: 34px minmax(0, 1fr);
     gap: 10px;
   }
 
   .shell-root > .shell-main .shell-grid > .shell-nav .shell-nav-account__avatar {
-    width: 34px;
-    height: 34px;
+    width: 42px;
+    height: 42px;
   }
 
   .shell-root > .shell-main .shell-grid > .shell-nav .shell-nav-account__copy {
-    gap: 0;
+    gap: 5px;
   }
 
   .shell-root > .shell-main .shell-grid > .shell-nav .shell-nav-account__copy strong {
-    font-size: 12.5px;
+    font-size: 14px;
   }
 
   .shell-root > .shell-main .shell-grid > .shell-nav .shell-nav-account__button {
-    min-height: 32px;
-    font-size: 12.5px;
+    min-height: 38px;
+    font-size: 14px;
   }
 }
 
