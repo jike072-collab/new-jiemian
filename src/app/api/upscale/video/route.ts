@@ -3,7 +3,7 @@ import { type NextRequest, NextResponse } from "next/server";
 import { authResultResponse, csrfFailure, requireAuthSession, requireCsrf } from "@/lib/server/auth";
 import { diagnosticErrorResponse, GenerationDiagnosticError } from "@/lib/server/error-diagnostics";
 import { submitVideoUpscale as runSubmitVideoUpscale, uploadedUpscaleFile } from "@/lib/server/volcengine-upscale";
-import { WorkloadLimitError, withUserVideoWorkload, withVideoProviderUpload, workloadLimitResponse } from "@/lib/server/workload-guard";
+import { WorkloadLimitError, withUserVideoUpscaleWorkload, withVideoProviderUpload, workloadLimitResponse } from "@/lib/server/workload-guard";
 
 export const runtime = "nodejs";
 
@@ -26,7 +26,7 @@ export async function POST(request: NextRequest) {
       billingTaskId: String(form.get("taskId") || "").trim(),
       billingIdempotencyKey: String(form.get("idempotencyKey") || form.get("taskId") || "").trim(),
     };
-    const result = await withUserVideoWorkload(session.user.local_user_id, () => (
+    const result = await withUserVideoUpscaleWorkload(session.user.local_user_id, () => (
       withVideoProviderUpload(session.user.local_user_id, async () => {
         const file = await uploadedUpscaleFile(form, "video");
         const submitVideoUpscale = (

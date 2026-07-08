@@ -21,6 +21,7 @@ type UsageRow = QueryResultRow & {
   upstream_request_id: string | null;
   upstream_model: string | null;
   upstream_created_at: Date | string | null;
+  balance_after_quota_units?: number | null;
   created_at: Date | string;
   updated_at: Date | string;
   idempotency_key: string;
@@ -52,6 +53,9 @@ function fromRow(row: UsageRow): UsageLogEntry {
     upstream_request_id: row.upstream_request_id,
     upstream_model: row.upstream_model,
     upstream_created_at: isoOrNull(row.upstream_created_at),
+    balance_after_quota_units: row.balance_after_quota_units === undefined || row.balance_after_quota_units === null
+      ? null
+      : Number(row.balance_after_quota_units),
     created_at: iso(row.created_at),
     updated_at: iso(row.updated_at),
     idempotency_key: row.idempotency_key,
@@ -107,7 +111,10 @@ export class PostgresUsageLogRepository implements UsageLogRepository {
       input.errorCode || null,
       input.errorMessage || null,
     ]);
-    return fromRow(result.rows[0]);
+    return {
+      ...fromRow(result.rows[0]),
+      balance_after_quota_units: input.balanceAfterQuotaUnits === undefined ? null : input.balanceAfterQuotaUnits,
+    };
   }
 
   async listForUser(localUserId: string, page = 1, pageSize = 20) {
@@ -118,10 +125,19 @@ export class PostgresUsageLogRepository implements UsageLogRepository {
       [localUserId.trim()],
     );
     const result = await applicationQuery<UsageRow>(`
-      select *
+      select usage_records.*, adjustment.target_quota as balance_after_quota_units
       from usage_records
-      where local_user_id = $1
-      order by created_at desc, id desc
+      left join lateral (
+        select target_quota
+        from task_quota_adjustments
+        where task_quota_adjustments.local_user_id = usage_records.local_user_id
+          and task_quota_adjustments.task_id = usage_records.task_id
+          and task_quota_adjustments.status = 'applied'
+        order by applied_at desc nulls last, updated_at desc
+        limit 1
+      ) adjustment on true
+      where usage_records.local_user_id = $1
+      order by usage_records.created_at desc, usage_records.id desc
       limit $2 offset $3
     `, [localUserId.trim(), safePageSize, (safePage - 1) * safePageSize]);
     return {

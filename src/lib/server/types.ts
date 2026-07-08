@@ -29,12 +29,14 @@ export type ProviderConfig = {
     supportsAudioReference?: boolean;
   };
   apiKey: string;
+  fallbackApiKey?: string;
+  fallbackProviderId?: string;
   enabled: boolean;
   endpointType: EndpointType;
   custom?: boolean;
 };
 
-export type PublicProvider = Omit<ProviderConfig, "apiKey"> & {
+export type PublicProvider = Omit<ProviderConfig, "apiKey" | "fallbackApiKey" | "fallbackProviderId"> & {
   configured: boolean;
   keyPreview: string;
 };

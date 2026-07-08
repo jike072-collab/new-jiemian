@@ -144,6 +144,22 @@ export function withUserVideoWorkload<T>(localUserId: string, handler: () => Pro
   }], handler);
 }
 
+export function withUserImageUpscaleWorkload<T>(localUserId: string, handler: () => Promise<T>) {
+  return withWorkloadSlots([{
+    key: `user:${localUserId}:image-upscale-task`,
+    limit: 1,
+    message: "图片高清任务正在排队，请稍后再试。",
+  }], handler);
+}
+
+export function withUserVideoUpscaleWorkload<T>(localUserId: string, handler: () => Promise<T>) {
+  return withWorkloadSlots([{
+    key: `user:${localUserId}:video-upscale-task`,
+    limit: 1,
+    message: "视频高清任务正在排队，请稍后再试。",
+  }], handler);
+}
+
 export function withVideoUploadPhase<T>(localUserId: string, handler: () => Promise<T>) {
   const limits = getWorkloadLimits();
   return withWorkloadSlots([
@@ -184,4 +200,3 @@ export function withVideoProviderUpload<T>(localUserId: string, handler: () => P
 export function resetWorkloadLimiterForTests() {
   defaultLimiter.reset();
 }
-

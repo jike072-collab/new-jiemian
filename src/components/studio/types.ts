@@ -4,7 +4,7 @@ import type { PublicUploadLimits } from "@/lib/upload-limits";
 
 export type BusinessToolId = "image" | "video" | "image-upscale" | "video-upscale" | "library";
 export type LibraryFilter = "image" | "video";
-export type LibrarySort = "recent" | "title";
+export type LibrarySort = "created-desc" | "created-asc" | "size-desc" | "size-asc";
 export type UpscaleKind = "image" | "video";
 export type UpscaleAvailability = { ready: boolean; detail: string };
 export type UpscaleStatusResponse = Record<UpscaleKind, UpscaleAvailability> & {
@@ -123,6 +123,8 @@ export type ImageUpscaleWorkspaceFile = {
 export type VideoUpscaleWorkspaceFile = {
   file: File;
   previewUrl: string;
+  width?: number;
+  height?: number;
 };
 
 export type ImageUpscaleWorkspaceState = {

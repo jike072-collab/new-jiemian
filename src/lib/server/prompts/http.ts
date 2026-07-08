@@ -18,7 +18,7 @@ const limiter = new InMemoryRateLimiter(
   Number(process.env.PROMPT_OPTIMIZER_RATE_LIMIT || 20),
   60_000,
 );
-const PROMPT_OPTIMIZE_QUOTA_UNITS = 10;
+const PROMPT_OPTIMIZE_QUOTA_UNITS = 100;
 
 function failureResponse(input: {
   code: string;

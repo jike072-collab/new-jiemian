@@ -110,10 +110,6 @@ function parseJsonString(value: unknown) {
   }
 }
 
-function asRecordOrJson(value: unknown) {
-  return typeof value === "string" ? parseJsonString(value) : asRecord(value);
-}
-
 function targetLabel(scale: TargetScale) {
   if (scale === 4) return "4K";
   if (scale === 2) return "2K";
@@ -1007,67 +1003,137 @@ function normalizeVolcStatus(value: unknown): JobRecord["status"] {
   return "queued";
 }
 
-function findVideoOutputFile(result: Record<string, unknown>) {
-  const output = asRecordOrJson(result.Output);
-  const data = asRecordOrJson(output.Data);
-  const task = asRecordOrJson(output.Task || data.Task);
-  const enhance = asRecordOrJson(task.Enhance);
-  const template = asRecordOrJson(output.Template || data.Template);
-  const templateEnhance = asRecordOrJson(template.Enhance);
-  const resultFile = asRecordOrJson(output.Result || data.Result);
-  const candidates = [
-    asRecordOrJson(result),
-    output,
-    data,
-    resultFile,
-    enhance,
-    templateEnhance,
-    asRecordOrJson(template.TranscodeVideo),
-    asRecordOrJson(template.ByteHD),
-    asRecordOrJson(enhance.File),
-    asRecordOrJson(templateEnhance.File),
-    asRecordOrJson(task.File),
-    asRecordOrJson(output.File),
-    asRecordOrJson(data.File),
-    asRecordOrJson(resultFile.File),
-  ];
-  const nestedKeys = [
-    "Files",
-    "FileList",
-    "OutputFiles",
-    "OutputFileList",
-    "MediaInfoList",
-    "PlayInfoList",
-    "ResultList",
-  ];
-  for (const source of [output, data, resultFile, enhance, templateEnhance, task]) {
-    for (const key of nestedKeys) {
-      const value = source[key];
-      if (Array.isArray(value)) candidates.push(...value.map(asRecord));
+type VideoOutputCandidate = {
+  url: string;
+  storeUri: string;
+  vid: string;
+  fileId: string;
+  size?: number;
+  duration?: number;
+  width?: number;
+  height?: number;
+  score: number;
+  path: string;
+};
+
+function collectNestedRecords(
+  value: unknown,
+  path = "result",
+  depth = 0,
+  seen = new Set<unknown>(),
+  output: Array<{ path: string; record: Record<string, unknown> }> = [],
+) {
+  if (depth > 6 || !value || typeof value !== "object") return output;
+  if (seen.has(value)) return output;
+  seen.add(value);
+
+  const record = typeof value === "string" ? parseJsonString(value) : asRecord(value);
+  if (!Object.keys(record).length) return output;
+  output.push({ path, record });
+
+  for (const [key, nested] of Object.entries(record)) {
+    const nextPath = `${path}.${key}`;
+    if (typeof nested === "string") {
+      const nestedRecord = parseJsonString(nested);
+      if (Object.keys(nestedRecord).length) collectNestedRecords(nestedRecord, nextPath, depth + 1, seen, output);
+      continue;
     }
+    if (Array.isArray(nested)) {
+      nested.forEach((item, index) => collectNestedRecords(item, `${nextPath}[${index}]`, depth + 1, seen, output));
+      continue;
+    }
+    collectNestedRecords(nested, nextPath, depth + 1, seen, output);
   }
-  for (const candidate of candidates) {
-    const url = firstString(candidate.URL, candidate.Url, candidate.url, candidate.PlayUrl, candidate.PlayURL, candidate.DownloadUrl, candidate.DownloadURL);
-    const storeUri = firstString(candidate.StoreUri, candidate.StoreURI, candidate.FileName, candidate.fileName, candidate.FilePath, candidate.filePath);
-    const vid = firstString(candidate.Vid, candidate.vid, candidate.VideoId, candidate.videoId, candidate.MediaId, candidate.mediaId);
-    const fileId = firstString(candidate.FileId, candidate.fileId, candidate.FileID, candidate.fileID);
-    const size = Number(candidate.Size);
-    const duration = Number(candidate.Duration);
-    const videoStream = asRecord(candidate.VideoStreamMeta);
-    if (url || storeUri || vid || fileId) {
-      return {
-        url,
-        storeUri,
-        vid,
-        fileId,
-        size: Number.isFinite(size) ? size : undefined,
-        duration: Number.isFinite(duration) ? duration : undefined,
+  return output;
+}
+
+function scoreVideoOutputCandidate(path: string, input: Omit<VideoOutputCandidate, "score" | "path">) {
+  let score = 0;
+  const lowerPath = path.toLowerCase();
+  if (input.url) score += 24;
+  if (input.storeUri) score += 20;
+  if (input.fileId) score += 18;
+  if (input.vid) score += 8;
+  if (Number.isFinite(input.width) && Number(input.width) > 0) score += 2;
+  if (Number.isFinite(input.height) && Number(input.height) > 0) score += 2;
+  if (Number.isFinite(input.duration) && Number(input.duration) > 0) score += 2;
+  if (/\b(output|outputs|result|results|file|files|media|playinfo|product|products|enhance|transcode)\b/.test(lowerPath)) score += 12;
+  if (/\b(task|template|data)\b/.test(lowerPath)) score += 3;
+  if (/\b(input|source)\b/.test(lowerPath)) score -= 10;
+  if (path === "result" && !input.url && !input.storeUri && !input.fileId) score -= 10;
+  return score;
+}
+
+function findVideoOutputFile(result: Record<string, unknown>) {
+  const candidates = collectNestedRecords(result)
+    .map(({ path, record }) => {
+      const videoStream = asRecord(record.VideoStreamMeta || record.VideoMeta || record.MediaInfo || record.Video || record.StreamMeta);
+      const candidate = {
+        url: firstString(
+          record.URL,
+          record.Url,
+          record.url,
+          record.PlayUrl,
+          record.PlayURL,
+          record.MainPlayUrl,
+          record.DownloadUrl,
+          record.DownloadURL,
+          record.MediaUrl,
+          record.mediaUrl,
+        ),
+        storeUri: firstString(
+          record.StoreUri,
+          record.StoreURI,
+          record.OutputStoreUri,
+          record.ResultStoreUri,
+          record.FileName,
+          record.fileName,
+          record.FilePath,
+          record.filePath,
+          record.Uri,
+        ),
+        vid: firstString(
+          record.OutputVid,
+          record.ResultVid,
+          record.Vid,
+          record.vid,
+          record.VideoId,
+          record.videoId,
+          record.MediaId,
+          record.mediaId,
+        ),
+        fileId: firstString(
+          record.OutputFileId,
+          record.ResultFileId,
+          record.FileId,
+          record.fileId,
+          record.FileID,
+          record.fileID,
+        ),
+        size: Number(record.Size),
+        duration: Number(record.Duration),
         width: Number(videoStream.Width),
         height: Number(videoStream.Height),
-      };
-    }
-  }
-  return null;
+        score: 0,
+        path,
+      } satisfies VideoOutputCandidate;
+      candidate.score = scoreVideoOutputCandidate(path, candidate);
+      return candidate;
+    })
+    .filter((candidate) => candidate.url || candidate.storeUri || candidate.vid || candidate.fileId)
+    .sort((left, right) => right.score - left.score || left.path.length - right.path.length);
+  const best = candidates[0];
+  if (!best) return null;
+  return {
+    url: best.url,
+    storeUri: best.storeUri,
+    vid: best.vid,
+    fileId: best.fileId,
+    size: Number.isFinite(best.size) ? best.size : undefined,
+    duration: Number.isFinite(best.duration) ? best.duration : undefined,
+    width: Number.isFinite(best.width) ? best.width : undefined,
+    height: Number.isFinite(best.height) ? best.height : undefined,
+  };
 }
 
 function fileUrlFromStoreUri(storeUri: string, outputDomain: string) {
@@ -1115,6 +1181,16 @@ function findVodPlayInfoUrl(result: Record<string, unknown>) {
   return "";
 }
 
+function playInfoLookupVid(result: Record<string, unknown>, outputVid?: string) {
+  return firstString(
+    outputVid,
+    asRecord(result.Input).Vid,
+    asRecord(result.Input).vid,
+    result.Vid,
+    result.vid,
+  );
+}
+
 async function publishVodMedia(vid: string, config: ReturnType<typeof videoConfig>) {
   if (!vid || !config.credential) return;
   await openapiRequest({
@@ -1125,7 +1201,7 @@ async function publishVodMedia(vid: string, config: ReturnType<typeof videoConfi
     method: "GET",
     query: {
       Action: "UpdateMediaPublishStatus",
-      Version: "2023-01-01",
+      Version: "2020-08-01",
       Vid: vid,
       Status: "Published",
     },
@@ -1194,8 +1270,8 @@ export async function refreshVideoUpscaleJob(jobId: string, localUserId?: string
   const status = normalizeVolcStatus(result.Status);
   if (status === "done") {
     const output = findVideoOutputFile(result);
-    const outputVid = output?.vid || "";
-    const playInfoUrl = await vodPlayInfoUrl(outputVid, config).catch(() => "");
+    const playInfoVid = playInfoLookupVid(result, output?.vid);
+    const playInfoUrl = await vodPlayInfoUrl(playInfoVid, config).catch(() => "");
     const outputUrls = uniqueStrings([
       playInfoUrl,
       output?.url || "",
@@ -1254,10 +1330,10 @@ export async function refreshVideoUpscaleJob(jobId: string, localUserId?: string
         ...(output?.duration ? { outputDuration: output.duration } : {}),
       },
     });
-    const updated = await updateJob(job.id, {
+    let updated = await updateJob(job.id, {
       status: "done",
       sourceUrl: outputUrl,
-      billing_state: job.billing_task_id ? "settled" : job.billing_state,
+      billing_state: job.billing_task_id ? job.billing_state || "accepted" : job.billing_state,
       billing_last_error: null,
     }) || job;
     const settled = await settleUpscaleBilling({
@@ -1272,6 +1348,11 @@ export async function refreshVideoUpscaleJob(jobId: string, localUserId?: string
         billing_state: "reconciliation_required",
         billing_last_error: settled.message,
       });
+    } else if (job.billing_task_id) {
+      updated = await updateJob(job.id, {
+        billing_state: "settled",
+        billing_last_error: null,
+      }) || updated;
     }
     return updated;
   }
@@ -1311,3 +1392,10 @@ export async function uploadedUpscaleFile(
     fileName: value.name || (kind === "image" ? "image.png" : "video.mp4"),
   };
 }
+
+export const volcengineUpscaleInternalsForTests = {
+  collectNestedRecords,
+  findVideoOutputFile,
+  playInfoLookupVid,
+  scoreVideoOutputCandidate,
+};

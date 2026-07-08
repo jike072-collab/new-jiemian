@@ -300,6 +300,9 @@ export function AdminProvidersClient() {
                 <ArrowLeft className="size-4" />
                 返回工作台
               </Link>
+              <Link href="/admin/users" className="flex items-center gap-2 rounded-2xl border border-white/10 px-4 py-3 text-sm text-white/65 hover:text-white">
+                NewAPI 订阅
+              </Link>
               <button type="button" onClick={load} disabled={loading} className="admin-secondary">
                 <RefreshCw className="size-4" />
                 读取配置

@@ -54,6 +54,7 @@ export type AdjustQuotaInput = {
 export type AdjustQuotaResult = {
   ok: true;
   providerAdjustmentId: string;
+  targetQuota?: number | null;
 } | {
   ok: false;
   code: string;
@@ -267,6 +268,7 @@ export class TaskBillingService {
       return {
         ok: true,
         providerAdjustmentId: `new-api:${input.taskId}:${input.idempotencyKey}`,
+        targetQuota: input.targetQuota ?? null,
       };
     } catch (error) {
       return {
@@ -575,17 +577,21 @@ export class TaskBillingService {
     const mapping = await this.mappingRepository.getByLocalUserId(input.localUserId);
     if (!mapping || mapping.sync_status !== "active" || !mapping.new_api_user_id) return quotaFailure("mapping_pending");
     const chargeableQuotaUnits = chargeableQuotaForRecord(record, input.actualQuotaUnits);
+    const chargedQuotaUnits = Math.max(0, record.final_quota_units || 0);
+    const quotaDelta = chargedQuotaUnits - chargeableQuotaUnits;
+    let balanceAfterQuotaUnits: number | null = null;
 
-    if (chargeableQuotaUnits > 0) {
+    if (quotaDelta !== 0) {
       const charge = await this.applyIdempotentQuotaAdjustment({
         localUserId: input.localUserId,
         newApiUserId: mapping.new_api_user_id,
         taskId: input.taskId,
-        quotaDelta: -chargeableQuotaUnits,
+        quotaDelta,
         idempotencyKey: `task-settle:${record.id}`,
         taskBillingRecordId: record.id,
       });
       if (!charge.ok) return this.markReconciliationRequired(record, charge.message);
+      balanceAfterQuotaUnits = charge.targetQuota ?? null;
     }
 
     const timestamp = nowIso(this.now());
@@ -593,6 +599,7 @@ export class TaskBillingService {
       newApiUserId: mapping.new_api_user_id,
       status: "succeeded",
       actualQuotaUnits: chargeableQuotaUnits,
+      ...(balanceAfterQuotaUnits === null ? {} : { balanceAfterQuotaUnits }),
       upstreamLogId: input.upstreamLogId || null,
       upstreamRequestId: input.upstreamRequestId || null,
       upstreamModel: input.upstreamModel || null,
@@ -643,6 +650,11 @@ export class TaskBillingService {
     }
     if (record.billing_state === "settled") {
       const refunded = await this.refundSettledTask(record, state, input.reason || `${state} after settlement`);
+      if (!refunded.ok) return refunded;
+      return refunded;
+    }
+    if ((record.final_quota_units || 0) > 0 && !record.refunded_at) {
+      const refunded = await this.refundSettledTask(record, state, input.reason || `${state} after upfront charge`);
       if (!refunded.ok) return refunded;
       return refunded;
     }
@@ -699,6 +711,7 @@ export class TaskBillingService {
       newApiUserId: mapping.new_api_user_id,
       status: "refunded",
       actualQuotaUnits: 0,
+      balanceAfterQuotaUnits: refund.targetQuota ?? null,
       errorCode: "task_refunded",
       errorMessage: reason,
     });
@@ -757,6 +770,7 @@ export class TaskBillingService {
           return {
             ok: true,
             providerAdjustmentId: adjustment.provider_adjustment_id || `task-quota:${input.idempotencyKey}`,
+            targetQuota: adjustment.target_quota,
           };
         }
         const persistedOriginalQuota = adjustment?.original_quota ?? originalQuota;
@@ -766,7 +780,7 @@ export class TaskBillingService {
           if (this.taskRepository.markQuotaAdjustmentApplied) {
             await this.taskRepository.markQuotaAdjustmentApplied(input.idempotencyKey, providerAdjustmentId, this.now());
           }
-          return { ok: true, providerAdjustmentId };
+          return { ok: true, providerAdjustmentId, targetQuota: persistedTargetQuota };
         }
         if (adjustment && !adjustment.created && currentQuota.quota !== persistedOriginalQuota) {
           const message = "New API quota changed outside the pending task adjustment.";
@@ -796,7 +810,7 @@ export class TaskBillingService {
         if (this.taskRepository.markQuotaAdjustmentApplied) {
           await this.taskRepository.markQuotaAdjustmentApplied(input.idempotencyKey, result.providerAdjustmentId, this.now());
         }
-        return result;
+        return { ...result, targetQuota: persistedTargetQuota };
       } catch (error) {
         return errorFailure(error);
       }
@@ -812,14 +826,33 @@ export class TaskBillingService {
     attempt = 0,
   ): Promise<TaskBillingResult> {
     try {
+      const mapping = await this.mappingRepository.getByLocalUserId(record.local_user_id);
+      if (!mapping || mapping.sync_status !== "active" || !mapping.new_api_user_id) return quotaFailure("mapping_pending");
+      const chargeableQuotaUnits = chargeableQuotaForRecord(record, record.estimated_quota_units);
+      let balanceAfterQuotaUnits: number | null = null;
+      if (chargeableQuotaUnits > 0 && (record.final_quota_units || 0) === 0 && !record.refunded_at) {
+        const charge = await this.applyIdempotentQuotaAdjustment({
+          localUserId: record.local_user_id,
+          newApiUserId: mapping.new_api_user_id,
+          taskId: record.task_id,
+          quotaDelta: -chargeableQuotaUnits,
+          idempotencyKey: `task-accept:${record.id}`,
+          taskBillingRecordId: record.id,
+        });
+        if (!charge.ok) return this.markReconciliationRequired(record, charge.message);
+        balanceAfterQuotaUnits = charge.targetQuota ?? null;
+      }
       const updated = await this.taskRepository.update(record.id, {
         billing_state: "dispatching",
+        final_quota_units: chargeableQuotaUnits,
         updated_at: nowIso(this.now()),
         last_error: null,
       }, record.version);
       const usage = await this.updateUsageForRecord(updated, {
         status: "accepted",
-        actualQuotaUnits: null,
+        actualQuotaUnits: chargeableQuotaUnits,
+        newApiUserId: mapping.new_api_user_id,
+        balanceAfterQuotaUnits,
       });
       return { ok: true, status: 200, action: "dispatching", record: updated, usage: usage || undefined };
     } catch (error) {
@@ -939,6 +972,7 @@ export class TaskBillingService {
       upstreamRequestId: patch.upstreamRequestId === undefined ? existingUsage?.upstream_request_id || null : patch.upstreamRequestId,
       upstreamModel: patch.upstreamModel === undefined ? existingUsage?.upstream_model || null : patch.upstreamModel,
       upstreamCreatedAt: patch.upstreamCreatedAt === undefined ? existingUsage?.upstream_created_at || null : patch.upstreamCreatedAt,
+      balanceAfterQuotaUnits: patch.balanceAfterQuotaUnits === undefined ? existingUsage?.balance_after_quota_units ?? null : patch.balanceAfterQuotaUnits,
       idempotencyKey: record.idempotency_key,
       errorCode: patch.errorCode === undefined ? existingUsage?.error_code || null : patch.errorCode,
       errorMessage: patch.errorMessage === undefined ? existingUsage?.error_message || null : patch.errorMessage,

@@ -1,13 +1,14 @@
 "use client";
 
-import { useMemo, useRef, useState, type KeyboardEvent } from "react";
-import { ArrowDownUp, Download, ImageUp, Loader2, RefreshCw, Search, Trash2, Video, Wand2, X } from "lucide-react";
+import { useEffect, useMemo, useState, type KeyboardEvent, type MouseEvent } from "react";
+import { ArrowDownUp, ArrowLeft, ArrowRight, Check, Download, ImageUp, Loader2, RefreshCw, Trash2, Video, Wand2, X } from "lucide-react";
 
-import { LibraryCardActions, MediaCard } from "@/components/studio/media-card";
-import { CustomSelect } from "@/components/studio/shared";
+import { MediaCard } from "@/components/studio/media-card";
 import type { LibraryFilter, LibrarySort } from "@/components/studio/types";
 import type { LibraryItem } from "@/lib/server/types";
 import { cn } from "@/lib/utils";
+
+const libraryPageSize = 18;
 
 export function LibraryWorkspace({
   items,
@@ -21,6 +22,7 @@ export function LibraryWorkspace({
   sort,
   search,
   deletingItemId,
+  bulkDeleting,
   removingItemId,
   missingMediaIds,
   onFilterChange,
@@ -28,6 +30,7 @@ export function LibraryWorkspace({
   onSearchChange,
   onSelectItem,
   onDelete,
+  onDeleteMany,
   onRegenerate,
   onUpscale,
   onCreateVideo,
@@ -48,6 +51,7 @@ export function LibraryWorkspace({
   sort: LibrarySort;
   search: string;
   deletingItemId: string | null;
+  bulkDeleting: boolean;
   removingItemId: string | null;
   missingMediaIds: Set<string>;
   onFilterChange: (value: LibraryFilter) => void;
@@ -55,6 +59,7 @@ export function LibraryWorkspace({
   onSearchChange: (value: string) => void;
   onSelectItem: (id: string | null) => void;
   onDelete: (id: string) => Promise<void>;
+  onDeleteMany: (ids: string[]) => Promise<void>;
   onRegenerate: (item: LibraryItem) => void;
   onUpscale: (item: LibraryItem) => void;
   onCreateVideo: (item: LibraryItem) => void;
@@ -64,21 +69,87 @@ export function LibraryWorkspace({
   onLogin: () => void;
   onStartCreate: () => void;
 }) {
-  const searchActive = Boolean(search.trim());
-  const filteredEmpty = !items.length && (totalCount > 0 || searchActive);
+  const filteredEmpty = !items.length && totalCount > 0;
   const displayEntries = useMemo(() => buildLibraryDisplayEntries(items), [items]);
+  const [page, setPage] = useState(1);
+  const pageCount = Math.max(1, Math.ceil(displayEntries.length / libraryPageSize));
+  const safePage = Math.min(page, pageCount);
+  const visibleEntries = useMemo(
+    () => displayEntries.slice((safePage - 1) * libraryPageSize, safePage * libraryPageSize),
+    [displayEntries, safePage],
+  );
+  const pageNumbers = useMemo(() => Array.from({ length: pageCount }, (_, index) => index + 1), [pageCount]);
   const selectedMediaMissing = selectedItem ? missingMediaIds.has(selectedItem.id) || selectedItem.fileAvailable === false : false;
   const selectedEntry = selectedItem
     ? displayEntries.find((entry) => entry.items.some((item) => item.id === selectedItem.id)) || null
     : null;
   const selectedCanUseOutput = Boolean(selectedItem?.output?.url && !selectedMediaMissing && !selectedItem.expired);
   const selectedCanDownloadStoredFile = Boolean(selectedItem?.output?.url && selectedItem.output.storedName && !selectedMediaMissing);
+  const [selectedIds, setSelectedIds] = useState<string[]>([]);
+  const visibleItemIds = useMemo(
+    () => Array.from(new Set(visibleEntries.flatMap((entry) => entry.items.map((item) => item.id)))),
+    [visibleEntries],
+  );
+  const selectedIdSet = useMemo(() => new Set(selectedIds), [selectedIds]);
+  const selectedVisibleCount = useMemo(
+    () => visibleItemIds.filter((id) => selectedIdSet.has(id)).length,
+    [selectedIdSet, visibleItemIds],
+  );
+  const allVisibleSelected = visibleItemIds.length > 0 && visibleItemIds.every((id) => selectedIdSet.has(id));
+  const [bulkDeleteConfirmOpen, setBulkDeleteConfirmOpen] = useState(false);
+
+  useEffect(() => {
+    setSelectedIds((current) => current.filter((id) => visibleItemIds.includes(id)));
+  }, [visibleItemIds]);
+
+  useEffect(() => {
+    setPage(1);
+  }, [filter, sort]);
+
+  useEffect(() => {
+    if (page !== safePage) setPage(safePage);
+  }, [page, safePage]);
+
+  useEffect(() => {
+    if (search.trim()) onSearchChange("");
+  }, [onSearchChange, search]);
 
   const openItemFromKeyboard = (event: KeyboardEvent<HTMLElement>, id: string) => {
     if (event.target !== event.currentTarget) return;
     if (event.key !== "Enter" && event.key !== " ") return;
     event.preventDefault();
     onSelectItem(id);
+  };
+
+  const toggleEntrySelection = (entryIds: string[], event?: MouseEvent<HTMLButtonElement>) => {
+    event?.preventDefault();
+    event?.stopPropagation();
+    setSelectedIds((current) => {
+      const currentSet = new Set(current);
+      const fullySelected = entryIds.every((id) => currentSet.has(id));
+      for (const id of entryIds) {
+        if (fullySelected) currentSet.delete(id);
+        else currentSet.add(id);
+      }
+      return Array.from(currentSet);
+    });
+  };
+
+  const handleSelectAll = () => {
+    setSelectedIds((current) => {
+      const visibleSet = new Set(visibleItemIds);
+      if (allVisibleSelected) return current.filter((id) => !visibleSet.has(id));
+      return Array.from(new Set([...current.filter((id) => !visibleSet.has(id)), ...visibleItemIds]));
+    });
+  };
+
+  const handleBulkDelete = async () => {
+    const ids = visibleItemIds.filter((id) => selectedIdSet.has(id));
+    if (!ids.length || bulkDeleting) return;
+    await onDeleteMany(ids);
+    setBulkDeleteConfirmOpen(false);
+    setSelectedIds((current) => current.filter((id) => !ids.includes(id)));
+    if (selectedItem && ids.includes(selectedItem.id)) onSelectItem(null);
   };
 
   return (
@@ -95,9 +166,12 @@ export function LibraryWorkspace({
         <LibraryKindTabs count={count} filter={filter} onFilterChange={onFilterChange} />
         <LibraryToolbar
           sort={sort}
-          search={search}
+          selectedCount={selectedVisibleCount}
+          allSelected={allVisibleSelected}
+          deleting={bulkDeleting}
           onSortChange={onSortChange}
-          onSearchChange={onSearchChange}
+          onToggleSelectAll={handleSelectAll}
+          onDeleteSelected={() => setBulkDeleteConfirmOpen(true)}
         />
       </div>
 
@@ -134,8 +208,6 @@ export function LibraryWorkspace({
           <LibraryEmptyState
             title="没有匹配的作品"
             description={`当前${filter === "image" ? "图片" : "视频"}分类下没有找到符合条件的作品。`}
-            actionLabel={searchActive ? "清空搜索" : undefined}
-            onAction={searchActive ? () => onSearchChange("") : undefined}
             secondaryLabel="刷新作品库"
             onSecondary={() => void onRefresh()}
           />
@@ -151,11 +223,12 @@ export function LibraryWorkspace({
         )
       ) : (
         <div className="studio-library-grid">
-          {displayEntries.map((entry) => {
+          {visibleEntries.map((entry) => {
             const item = entry.item;
             const isVideo = item.type === "video";
+            const entryItemIds = entry.items.map((entryItem) => entryItem.id);
+            const entrySelected = entryItemIds.every((id) => selectedIdSet.has(id));
             const entryActive = selectedItem ? entry.items.some((entryItem) => entryItem.id === selectedItem.id) : false;
-            const entryDeleting = entry.items.some((entryItem) => deletingItemId === entryItem.id);
             const entryRemoving = entry.items.some((entryItem) => removingItemId === entryItem.id);
             const itemMissing = missingMediaIds.has(item.id) || item.fileAvailable === false;
             return (
@@ -165,10 +238,20 @@ export function LibraryWorkspace({
                   "studio-library-tile",
                   entry.items.length > 1 && "is-group",
                   entryActive && "is-active",
-                  entryDeleting && "is-deleting",
+                  entrySelected && "is-selected",
                   entryRemoving && "is-removing",
                 )}
               >
+                <button
+                  type="button"
+                  className={cn("studio-library-tile__select", entrySelected && "is-selected")}
+                  onClick={(event) => toggleEntrySelection(entryItemIds, event)}
+                  disabled={bulkDeleting}
+                  aria-label={entrySelected ? "取消选择作品" : "选择作品"}
+                  aria-pressed={entrySelected}
+                >
+                  {entrySelected ? <Check className="size-4" aria-hidden="true" /> : null}
+                </button>
                 {isVideo ? (
                   <div
                     className="studio-library-tile__preview"
@@ -199,21 +282,47 @@ export function LibraryWorkspace({
                     />
                   </button>
                 )}
-                <LibraryCardActions
-                  item={item}
-                  mediaMissing={itemMissing}
-                  deleting={entryDeleting}
-                  onDelete={() => void onDelete(item.id)}
-                  onRegenerate={() => onRegenerate(item)}
-                  onUpscale={() => onUpscale(item)}
-                  onCreateVideo={() => onCreateVideo(item)}
-                  onEditImage={() => onEditImage(item)}
-                />
               </div>
             );
           })}
         </div>
       )}
+
+      {displayEntries.length > libraryPageSize ? (
+        <div className="studio-library-pagination" aria-label="作品分页">
+          <button
+            type="button"
+            className="studio-library-page-button"
+            onClick={() => setPage((value) => Math.max(1, value - 1))}
+            disabled={safePage <= 1}
+          >
+            <ArrowLeft className="size-4" aria-hidden="true" />
+            上一页
+          </button>
+          <span className="studio-library-page-status" aria-label={`当前第 ${safePage} 页，共 ${pageCount} 页`}>
+            {pageNumbers.map((pageNumber) => (
+              <button
+                key={pageNumber}
+                type="button"
+                className={cn("studio-library-page-number", safePage === pageNumber && "is-active")}
+                onClick={() => setPage(pageNumber)}
+                aria-current={safePage === pageNumber ? "page" : undefined}
+              >
+                {pageNumber}
+              </button>
+            ))}
+          </span>
+          <button
+            type="button"
+            className="studio-library-page-button"
+            onClick={() => setPage((value) => Math.min(pageCount, value + 1))}
+            disabled={safePage >= pageCount}
+          >
+            下一页
+            <ArrowRight className="size-4" aria-hidden="true" />
+          </button>
+        </div>
+      ) : null}
 
       {selectedItem ? (
         <div className="studio-library-modal" role="dialog" aria-modal="true" aria-label={selectedItem.title}>
@@ -226,6 +335,7 @@ export function LibraryWorkspace({
               item={selectedItem}
               groupItems={selectedEntry?.items}
               large
+              showDetailFacts
               mediaMissing={selectedMediaMissing}
               onMediaMissing={() => onMediaMissing(selectedItem.id)}
             />
@@ -285,14 +395,43 @@ export function LibraryWorkspace({
                 {deletingItemId === selectedItem.id ? "删除中" : "删除"}
               </button>
             </div>
-            <div className="studio-actions">
+          </div>
+        </div>
+      ) : null}
+      {bulkDeleteConfirmOpen ? (
+        <div className="studio-library-confirm" role="dialog" aria-modal="true" aria-labelledby="library-bulk-delete-confirm-title">
+          <button
+            type="button"
+            className="studio-library-confirm__backdrop"
+            aria-label="取消批量删除"
+            onClick={() => setBulkDeleteConfirmOpen(false)}
+            disabled={bulkDeleting}
+          />
+          <section className="studio-library-confirm__card studio-library-confirm__card--bulk">
+            <span className="studio-library-confirm__icon" aria-hidden="true">
+              <Trash2 className="size-5" />
+            </span>
+            <div className="studio-library-confirm__copy">
+              <p className="shell-eyebrow">批量删除</p>
+              <h3 id="library-bulk-delete-confirm-title">确认删除已选 {selectedVisibleCount} 项作品？</h3>
+              <p>已选作品删除后会从当前作品库中移除，并同步清理对应的可删除文件。</p>
+            </div>
+            <div className="studio-library-confirm__actions">
               <button
                 type="button"
                 className="studio-secondary-button"
-                onClick={() => void onDelete(selectedItem.id)}
-                disabled={deletingItemId === selectedItem.id}
+                onClick={() => setBulkDeleteConfirmOpen(false)}
+                disabled={bulkDeleting}
               >
-                {deletingItemId === selectedItem.id ? (
+                取消
+              </button>
+              <button
+                type="button"
+                className="studio-danger-button"
+                onClick={() => void handleBulkDelete()}
+                disabled={!selectedVisibleCount || bulkDeleting}
+              >
+                {bulkDeleting ? (
                   <>
                     <Loader2 className="size-4 animate-spin" aria-hidden="true" />
                     删除中
@@ -300,16 +439,12 @@ export function LibraryWorkspace({
                 ) : (
                   <>
                     <Trash2 className="size-4" aria-hidden="true" />
-                    删除
+                    确认删除
                   </>
                 )}
               </button>
-              <button type="button" className="studio-secondary-button" onClick={() => void onRefresh()}>
-                <RefreshCw className="size-4" aria-hidden="true" />
-                刷新
-              </button>
             </div>
-          </div>
+          </section>
         </div>
       ) : null}
     </div>
@@ -462,60 +597,70 @@ function withinLegacyImageBatchWindow(first: LibraryItem, next: LibraryItem) {
 
 function LibraryToolbar({
   sort,
-  search,
+  selectedCount,
+  allSelected,
+  deleting,
   onSortChange,
-  onSearchChange,
+  onToggleSelectAll,
+  onDeleteSelected,
 }: {
   sort: LibrarySort;
-  search: string;
+  selectedCount: number;
+  allSelected: boolean;
+  deleting: boolean;
   onSortChange: (value: LibrarySort) => void;
-  onSearchChange: (value: string) => void;
+  onToggleSelectAll: () => void;
+  onDeleteSelected: () => void;
 }) {
-  const searchInputRef = useRef<HTMLInputElement | null>(null);
-  const [mobileSearchOpen, setMobileSearchOpen] = useState(false);
-  const searchVisible = mobileSearchOpen || Boolean(search.trim());
-
-  const toggleMobileSearch = () => {
-    setMobileSearchOpen((value) => {
-      const next = !value;
-      if (next) window.requestAnimationFrame(() => searchInputRef.current?.focus());
-      return next;
-    });
-  };
+  const timeSort = sort === "created-asc" ? "created-asc" : "created-desc";
+  const sizeSort = sort === "size-asc" ? "size-asc" : "size-desc";
 
   return (
-    <div className={cn("studio-library-toolbar", searchVisible && "is-search-open")}>
-      <button
-        type="button"
-        className={cn("studio-library-search-trigger", searchVisible && "is-active")}
-        onClick={toggleMobileSearch}
-        aria-label="搜索作品"
-        aria-expanded={searchVisible}
-      >
-        <Search className="size-4" aria-hidden="true" />
-      </button>
-      <div className="studio-library-toolbar__search">
-        <Search className="size-4" aria-hidden="true" />
-        <label className="studio-sr-only" htmlFor="library-search">查找作品</label>
-        <input
-          ref={searchInputRef}
-          id="library-search"
-          value={search}
-          onChange={(event) => onSearchChange(event.target.value)}
-          placeholder="搜索作品"
-          className="studio-input"
-        />
+    <div className="studio-library-toolbar">
+      <div className="studio-library-toolbar__actions">
+        <button type="button" className="studio-secondary-button" onClick={onToggleSelectAll} disabled={deleting}>
+          <Check className="size-4" aria-hidden="true" />
+          {allSelected ? "取消全选" : "全选"}
+        </button>
+        <button
+          type="button"
+          className="studio-secondary-button studio-secondary-button--danger"
+          onClick={onDeleteSelected}
+          disabled={!selectedCount || deleting}
+        >
+          {deleting ? (
+            <>
+              <Loader2 className="size-4 animate-spin" aria-hidden="true" />
+              删除中
+            </>
+          ) : (
+            <>
+              <Trash2 className="size-4" aria-hidden="true" />
+              {selectedCount ? `删除已选 (${selectedCount})` : "删除已选"}
+            </>
+          )}
+        </button>
       </div>
-      <CustomSelect
-        label="排序"
-        value={sort}
-        icon={<ArrowDownUp className="size-4" />}
-        options={[
-          { value: "recent", label: "最新" },
-          { value: "title", label: "标题" },
-        ]}
-        onChange={(value) => onSortChange(value as LibrarySort)}
-      />
+      <div className="studio-library-toolbar__sorts" role="group" aria-label="作品排序">
+        <button
+          type="button"
+          className={cn("studio-library-toolbar__sort", sort.startsWith("created") && "is-active")}
+          onClick={() => onSortChange(timeSort === "created-desc" ? "created-asc" : "created-desc")}
+          aria-pressed={sort.startsWith("created")}
+        >
+          <ArrowDownUp className="size-4" aria-hidden="true" />
+          {timeSort === "created-desc" ? "时间 最新" : "时间 最久"}
+        </button>
+        <button
+          type="button"
+          className={cn("studio-library-toolbar__sort", sort.startsWith("size") && "is-active")}
+          onClick={() => onSortChange(sizeSort === "size-desc" ? "size-asc" : "size-desc")}
+          aria-pressed={sort.startsWith("size")}
+        >
+          <ArrowDownUp className="size-4" aria-hidden="true" />
+          {sizeSort === "size-desc" ? "文件大小 最大" : "文件大小 最小"}
+        </button>
+      </div>
     </div>
   );
 }

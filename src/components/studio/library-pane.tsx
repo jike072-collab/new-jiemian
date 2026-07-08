@@ -16,6 +16,7 @@ export function LibraryPane({
   sort,
   search,
   deletingItemId,
+  bulkDeleting,
   removingItemId,
   missingMediaIds,
   deleteConfirmItem,
@@ -24,6 +25,7 @@ export function LibraryPane({
   onSearchChange,
   onSelectItem,
   onDelete,
+  onDeleteMany,
   onRegenerate,
   onUpscale,
   onCreateVideo,
@@ -46,6 +48,7 @@ export function LibraryPane({
   sort: LibrarySort;
   search: string;
   deletingItemId: string | null;
+  bulkDeleting: boolean;
   removingItemId: string | null;
   missingMediaIds: Set<string>;
   deleteConfirmItem: LibraryItem | null;
@@ -54,6 +57,7 @@ export function LibraryPane({
   onSearchChange: (value: string) => void;
   onSelectItem: (id: string | null) => void;
   onDelete: (id: string) => Promise<void>;
+  onDeleteMany: (ids: string[]) => Promise<void>;
   onRegenerate: (item: LibraryItem) => void;
   onUpscale: (item: LibraryItem) => void;
   onCreateVideo: (item: LibraryItem) => void;
@@ -79,6 +83,7 @@ export function LibraryPane({
         sort={sort}
         search={search}
         deletingItemId={deletingItemId}
+        bulkDeleting={bulkDeleting}
         removingItemId={removingItemId}
         missingMediaIds={missingMediaIds}
         onFilterChange={onFilterChange}
@@ -86,6 +91,7 @@ export function LibraryPane({
         onSearchChange={onSearchChange}
         onSelectItem={onSelectItem}
         onDelete={onDelete}
+        onDeleteMany={onDeleteMany}
         onRegenerate={onRegenerate}
         onUpscale={onUpscale}
         onCreateVideo={onCreateVideo}

@@ -21,6 +21,7 @@ export type RecordUsageInput = {
   upstreamRequestId?: string | null;
   upstreamModel?: string | null;
   upstreamCreatedAt?: string | null;
+  balanceAfterQuotaUnits?: number | null;
   idempotencyKey: string;
   errorCode?: string | null;
   errorMessage?: string | null;
@@ -115,6 +116,9 @@ class StoreUsageLogRepository implements UsageLogRepository {
         entries[existingIndex] = {
           ...entries[existingIndex],
           ...patch,
+          balance_after_quota_units: input.balanceAfterQuotaUnits === undefined
+            ? entries[existingIndex].balance_after_quota_units ?? null
+            : input.balanceAfterQuotaUnits,
           id: entries[existingIndex].id,
           created_at: entries[existingIndex].created_at,
           idempotency_key: entries[existingIndex].idempotency_key,
@@ -125,6 +129,7 @@ class StoreUsageLogRepository implements UsageLogRepository {
       const entry: UsageLogEntry = {
         id: randomUUID(),
         ...patch,
+        balance_after_quota_units: input.balanceAfterQuotaUnits === undefined ? null : input.balanceAfterQuotaUnits,
         created_at: timestamp,
         idempotency_key: idempotencyKey,
       };

@@ -20,10 +20,13 @@ type BeforeAfterImageCompareProps = {
   beforeEffect?: "none" | "blur";
   beforePoster?: string;
   afterPoster?: string;
+  autoPlayVideo?: boolean;
+  videoPreload?: "none" | "metadata" | "auto";
 };
 
 const clampComparePosition = (value: number) => Math.min(97, Math.max(3, value));
 const videoStartFrameTime = 0.12;
+const videoSyncDriftSeconds = 0.08;
 const compareHintStoragePrefix = "aohuang-upscale-compare-hint-seen";
 
 function seekVideoToStartFrame(video: HTMLVideoElement) {
@@ -49,14 +52,17 @@ export function BeforeAfterImageCompare({
   beforeEffect = "none",
   beforePoster,
   afterPoster,
+  autoPlayVideo = true,
+  videoPreload = "auto",
 }: BeforeAfterImageCompareProps) {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const beforeVideoRef = useRef<HTMLVideoElement | null>(null);
   const userPausedRef = useRef(false);
+  const resumeOnVisibleRef = useRef(false);
   const [position, setPosition] = useState(() => clampComparePosition(initialPosition));
   const [dragging, setDragging] = useState(false);
-  const [playing, setPlaying] = useState(mediaType === "video");
+  const [playing, setPlaying] = useState(mediaType === "video" && autoPlayVideo);
   const [hintVisible, setHintVisible] = useState(false);
   const hintStorageKey = `${compareHintStoragePrefix}:${mediaType}`;
 
@@ -149,7 +155,10 @@ export function BeforeAfterImageCompare({
     void Promise.all([
       video.play(),
       beforeVideo ? beforeVideo.play() : Promise.resolve(),
-    ]).then(() => setPlaying(true)).catch(() => setPlaying(false));
+    ]).then(() => {
+      resumeOnVisibleRef.current = true;
+      setPlaying(true);
+    }).catch(() => setPlaying(false));
   }, []);
 
   const handleVideoPlayPause = useCallback(() => {
@@ -160,6 +169,7 @@ export function BeforeAfterImageCompare({
 
     if (!video.paused) {
       userPausedRef.current = true;
+      resumeOnVisibleRef.current = false;
       pauseVideos();
       return;
     }
@@ -180,16 +190,32 @@ export function BeforeAfterImageCompare({
     if (video && video.currentTime < videoStartFrameTime) seekVideoToStartFrame(video);
   }, []);
 
+  const syncBeforeVideo = useCallback(() => {
+    const video = videoRef.current;
+    const beforeVideo = beforeVideoRef.current;
+    if (!video || !beforeVideo) return;
+
+    const drift = Math.abs(beforeVideo.currentTime - video.currentTime);
+    if (drift > videoSyncDriftSeconds) {
+      try {
+        beforeVideo.currentTime = video.currentTime;
+      } catch {
+        // The paired video can still be loading metadata; the next media event will retry.
+      }
+    }
+  }, []);
+
   useEffect(() => {
     if (mediaType !== "video") return undefined;
 
     const handleVisibilityChange = () => {
       if (document.visibilityState !== "visible") {
+        resumeOnVisibleRef.current = Boolean(videoRef.current && !videoRef.current.paused);
         pauseVideos();
         return;
       }
 
-      if (!userPausedRef.current) {
+      if (!userPausedRef.current && resumeOnVisibleRef.current) {
         playVideos();
       }
     };
@@ -199,10 +225,10 @@ export function BeforeAfterImageCompare({
   }, [mediaType, pauseVideos, playVideos]);
 
   useEffect(() => {
-    if (mediaType !== "video" || userPausedRef.current) return;
+    if (mediaType !== "video" || !autoPlayVideo || userPausedRef.current) return;
 
     playVideos();
-  }, [mediaType, playVideos]);
+  }, [autoPlayVideo, mediaType, playVideos]);
 
   return (
     <div
@@ -237,14 +263,17 @@ export function BeforeAfterImageCompare({
             src={afterSrc}
             poster={afterPoster ?? beforePoster}
             aria-label={afterAlt}
-            autoPlay
             muted
             loop
             playsInline
-            preload="auto"
+            preload={videoPreload}
             onLoadedMetadata={() => handleVideoLoaded(videoRef.current)}
+            onLoadedData={syncBeforeVideo}
             onPlay={handlePrimaryVideoPlay}
             onPause={handlePrimaryVideoPause}
+            onSeeking={syncBeforeVideo}
+            onSeeked={syncBeforeVideo}
+            onTimeUpdate={syncBeforeVideo}
           />
           <video
             ref={beforeVideoRef}
@@ -255,7 +284,7 @@ export function BeforeAfterImageCompare({
             muted
             loop
             playsInline
-            preload="metadata"
+            preload={videoPreload}
             onLoadedMetadata={() => handleVideoLoaded(beforeVideoRef.current)}
           />
         </>

@@ -4,12 +4,14 @@ import {
   adminGetNewApiUser,
   adminSetNewApiUserQuota,
   creditsToNewApiQuota,
+  createNewApiUserSyncService,
   getNewApiQuotaDisplayConfig,
   newApiQuotaToCredits,
   type NewApiQuotaDisplayConfig,
   type NewApiUserMapping,
   type NewApiUserMappingRepository,
   type NewApiUserMappingStatus,
+  type NewApiUserSyncService,
 } from "../integrations/new-api";
 import {
   createAuthPersistenceRepositories,
@@ -29,9 +31,11 @@ import {
 import { type BillingRepository } from "../billing/repository";
 import {
   createTaskBillingPersistenceRepositories,
+  getQuotaService,
   type TaskBillingState,
 } from "../quota";
 import { type TaskBillingRepository, type TaskQuotaAdjustment } from "../quota/task-billing-repository";
+import { getMembershipService, type MembershipService } from "../membership/service";
 
 export type AdminFailureCode =
   | "admin_auth_required"
@@ -63,6 +67,8 @@ export type AdminServiceDependencies = {
   mappingRepository?: NewApiUserMappingRepository;
   billingRepository?: BillingRepository;
   taskRepository?: TaskBillingRepository;
+  membershipService?: MembershipService;
+  userSyncService?: NewApiUserSyncService;
   currentUser?: (sessionToken?: string | null, context?: AuthRequestContext) => Promise<AuthResult>;
   getQuotaDisplayConfig?: () => Promise<NewApiQuotaDisplayConfig>;
   getProviderQuota?: (newApiUserId: string) => Promise<number>;
@@ -198,6 +204,8 @@ export class AdminService {
   private readonly mappingRepository: NewApiUserMappingRepository;
   private readonly billingRepository: BillingRepository;
   private readonly taskRepository: TaskBillingRepository;
+  private readonly membershipService: MembershipService;
+  private readonly userSyncService: NewApiUserSyncService;
   private readonly currentUser: (sessionToken?: string | null, context?: AuthRequestContext) => Promise<AuthResult>;
   private readonly getQuotaDisplayConfig: NonNullable<AdminServiceDependencies["getQuotaDisplayConfig"]>;
   private readonly getProviderQuota: (newApiUserId: string) => Promise<number>;
@@ -216,6 +224,8 @@ export class AdminService {
     this.mappingRepository = mappingRepository;
     this.billingRepository = dependencies.billingRepository || createBillingPersistenceRepository();
     this.taskRepository = dependencies.taskRepository || createTaskBillingPersistenceRepositories().taskRepository;
+    this.membershipService = dependencies.membershipService || getMembershipService();
+    this.userSyncService = dependencies.userSyncService || createNewApiUserSyncService({ repository: this.mappingRepository });
     this.currentUser = dependencies.currentUser || ((sessionToken, context) => getAuthService().currentUser(sessionToken, context));
     this.getQuotaDisplayConfig = dependencies.getQuotaDisplayConfig || getNewApiQuotaDisplayConfig;
     this.getProviderQuota = dependencies.getProviderQuota || ((newApiUserId) => defaultGetProviderQuota(newApiUserId, this.getQuotaDisplayConfig));
@@ -240,6 +250,13 @@ export class AdminService {
     };
   }
 
+  private async publicUserWithMembership(user: AuthUser) {
+    return {
+      ...publicUser(user),
+      membership: await this.membershipService.getStatus(user.local_user_id),
+    };
+  }
+
   async listUsers(actor: AdminActor, input: { status?: string; role?: string; query?: string; page?: number; pageSize?: number }, context: AuthRequestContext = {}) {
     if (input.status && !userStatuses.has(input.status as AuthUserStatus)) return failure("admin_invalid_request", 400, "User status is invalid.");
     if (input.role && !userRoles.has(input.role as AuthUserRole)) return failure("admin_invalid_request", 400, "User role is invalid.");
@@ -252,11 +269,13 @@ export class AdminService {
       page: currentPage,
       pageSize: currentPageSize,
     });
+    const users = await Promise.all(result.users.map((user) => this.publicUserWithMembership(user)));
     await this.audit("admin.users.list", actor.localUserId, context, { page: currentPage, page_size: currentPageSize });
     return {
       ok: true as const,
       status: 200,
-      users: result.users.map(publicUser),
+      users,
+      membership_plans: this.membershipService.listPlans(),
       page: currentPage,
       page_size: currentPageSize,
       total: result.total,
@@ -272,8 +291,9 @@ export class AdminService {
     return {
       ok: true as const,
       status: 200,
-      user: publicUser(user),
+      user: await this.publicUserWithMembership(user),
       mapping,
+      membership_plans: this.membershipService.listPlans(),
     };
   }
 
@@ -342,22 +362,54 @@ export class AdminService {
     return { ok: true as const, status: 200, mapping };
   }
 
+  private async ensureQuotaMapping(localUserId: string, idempotencyKey: string, context: AuthRequestContext) {
+    const user = await this.authRepository.getUserById(localUserId);
+    if (!user) return failure("admin_not_found", 404, "User was not found.");
+    try {
+      const sync = await this.userSyncService.ensureMapped({
+        localUserId: user.local_user_id,
+        email: user.email,
+        username: user.username,
+        displayName: user.display_name,
+        initialQuota: 0,
+      }, {
+        idempotencyKey: `admin-quota:${idempotencyKey}`,
+      });
+      if (sync.mapping.sync_status === "active" && sync.mapping.new_api_user_id) {
+        await this.audit("admin.quota.mapping_ensured", user.local_user_id, context, {
+          sync_action: sync.action,
+        });
+        return { ok: true as const, mapping: sync.mapping };
+      }
+      return failure("admin_conflict", 409, "Active New API mapping is required.");
+    } catch (error) {
+      await this.audit("admin.quota.mapping_failed", localUserId, context, {
+        error: sanitize(error instanceof Error ? error.message : "mapping sync failed"),
+      });
+      return failure("admin_upstream_unavailable", 503, "New API user mapping is unavailable.");
+    }
+  }
+
   async adjustQuota(actor: AdminActor, input: { localUserId: string; quotaDelta: number; idempotencyKey: string; reason: string }, context: AuthRequestContext = {}) {
     if (!Number.isInteger(input.quotaDelta) || input.quotaDelta === 0) return failure("admin_invalid_request", 400, "Quota delta is invalid.");
     if (!input.idempotencyKey.trim() || !input.reason.trim()) return failure("admin_invalid_request", 400, "Idempotency key and reason are required.");
-    const mapping = await this.mappingRepository.getByLocalUserId(input.localUserId);
+    let mapping = await this.mappingRepository.getByLocalUserId(input.localUserId);
     if (!mapping || mapping.sync_status !== "active" || !mapping.new_api_user_id) {
-      return failure("admin_conflict", 409, "Active New API mapping is required.");
+      const ensured = await this.ensureQuotaMapping(input.localUserId, input.idempotencyKey.trim(), context);
+      if (!ensured.ok) return ensured;
+      mapping = ensured.mapping;
     }
+    const activeNewApiUserId = mapping.new_api_user_id;
+    if (!activeNewApiUserId) return failure("admin_conflict", 409, "Active New API mapping is required.");
     if (!this.taskRepository.claimQuotaAdjustment || !this.taskRepository.markQuotaAdjustmentApplied || !this.taskRepository.markQuotaAdjustmentFailed) {
       return failure("admin_conflict", 409, "Quota adjustment repository is not configured.");
     }
     const operation = async (): Promise<AdminSuccess<{ adjustment: unknown; original_quota: number; target_quota: number }> | AdminFailure> => {
       try {
-        const currentQuota = await this.getProviderQuota(mapping.new_api_user_id!);
+        const currentQuota = await this.getProviderQuota(activeNewApiUserId);
         const originalQuota = currentQuota;
         const targetQuota = originalQuota + input.quotaDelta;
-        const newApiUserId = mapping.new_api_user_id!;
+        const newApiUserId = activeNewApiUserId;
         const taskId = `admin:${input.idempotencyKey.trim()}`;
         const adjustment = await this.taskRepository.claimQuotaAdjustment!({
           localUserId: input.localUserId,
@@ -433,9 +485,57 @@ export class AdminService {
       }
     };
     if (this.taskRepository.withQuotaAdjustmentLock) {
-      return this.taskRepository.withQuotaAdjustmentLock(mapping.new_api_user_id, operation);
+      return this.taskRepository.withQuotaAdjustmentLock(activeNewApiUserId, operation);
     }
     return operation();
+  }
+
+  async grantMembership(actor: AdminActor, input: { localUserId: string; planId: string; cycle: string; idempotencyKey: string; reason: string }, context: AuthRequestContext = {}) {
+    if (!input.idempotencyKey.trim() || !input.reason.trim()) return failure("admin_invalid_request", 400, "Idempotency key and reason are required.");
+    const target = await this.authRepository.getUserById(input.localUserId);
+    if (!target) return failure("admin_not_found", 404, "User was not found.");
+    const sku = this.membershipService.getSku(input.planId, input.cycle);
+    if (!sku) return failure("admin_invalid_request", 400, "Membership plan is invalid.");
+    const idempotencyKey = `membership:${input.idempotencyKey.trim()}`;
+    const quota = await this.adjustQuota(actor, {
+      localUserId: input.localUserId,
+      quotaDelta: sku.grant_credits,
+      idempotencyKey,
+      reason: `membership:${input.reason}`,
+    }, context);
+    if (!quota.ok) return quota;
+    try {
+      const orderId = this.membershipService.createManualOrderId(input.localUserId, idempotencyKey);
+      const membership = await this.membershipService.applyManualMembership({
+        localUserId: input.localUserId,
+        orderId,
+        planId: input.planId,
+        cycle: input.cycle,
+        now: this.now(),
+      });
+      getQuotaService().invalidateCache(input.localUserId);
+      const status = await this.membershipService.getStatus(input.localUserId);
+      await this.audit("admin.membership.granted", actor.localUserId, context, {
+        target_user_id: input.localUserId,
+        plan_id: sku.plan.id,
+        cycle: sku.cycle,
+        credited_quota: sku.grant_credits,
+        reason: sanitize(input.reason),
+      });
+      return {
+        ok: true as const,
+        status: 200,
+        membership,
+        membership_status: status,
+        credited_quota: sku.grant_credits,
+      };
+    } catch (error) {
+      await this.audit("admin.membership.grant_failed", actor.localUserId, context, {
+        target_user_id: input.localUserId,
+        error: sanitize(error instanceof Error ? error.message : "membership grant failed"),
+      });
+      return failure("admin_upstream_unavailable", 503, "Membership grant is unavailable.");
+    }
   }
 
   async listOrders(actor: AdminActor, input: { localUserId?: string; status?: string; page?: number; pageSize?: number }, context: AuthRequestContext = {}) {

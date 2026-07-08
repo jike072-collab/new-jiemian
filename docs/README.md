@@ -15,6 +15,7 @@ development computer and is not deployed to the server.
 - [SERVER_PREPARATION_FINAL_AUDIT.md](SERVER_PREPARATION_FINAL_AUDIT.md): final repository audit before local 3107 validation.
 - [STUDIO_REGRESSION_GUARDS.md](STUDIO_REGRESSION_GUARDS.md): provider-safe UI/API regression guardrails.
 - [PROVIDER_HEALTH_CHECKS.md](PROVIDER_HEALTH_CHECKS.md): provider health behavior and redaction boundary.
+- [UPSTREAM_PROVIDER_RUNBOOK.md](UPSTREAM_PROVIDER_RUNBOOK.md): non-secret upstream, DNS, VOD, and New API troubleshooting runbook.
 - [ERROR_DIAGNOSTICS.md](ERROR_DIAGNOSTICS.md): safe error diagnostics.
 
 ## WINDOWS_LOCAL

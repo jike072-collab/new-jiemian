@@ -72,7 +72,7 @@ export function getCheckInStatusDisplay(checkInStatus: CheckInStatus): AccountSt
   if (checkInStatus === "available") {
     return {
       label: "今日未签到",
-      note: "每日签到可领取 50 积分。",
+      note: "每日签到可领取 200 积分。",
       actionLabel: "签到",
       actionDisabled: false,
     };

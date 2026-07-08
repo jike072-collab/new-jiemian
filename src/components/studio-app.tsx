@@ -70,7 +70,7 @@ import {
 import { ApiError, fetchJson, fetchJsonWithCsrf } from "@/lib/client/api";
 import {
   estimateUpscaleQuota,
-  estimateImageGenerationQuota,
+  estimateImageGenerationTotalQuota,
   estimateVideoGenerationQuota,
   generationBillingFingerprint,
   upscaleBillingFingerprint,
@@ -139,6 +139,7 @@ type MembershipStatusResponse = {
     }>;
   };
 };
+type MembershipEntitlements = MembershipStatusResponse["membership"]["entitlements"];
 
 type CheckInResponse = {
   ok: true;
@@ -208,6 +209,7 @@ type AccountRecord = {
   kind: AccountRecordKind;
   typeLabel: string;
   quotaDelta: number;
+  balanceAfterQuotaUnits?: number | null;
   description: string;
 };
 
@@ -221,7 +223,7 @@ const planOptions: PlanOption[] = [
     description: "适合电商日常出图与首批客户试用",
     highlight: "新客友好",
     bonusLabel: "每月送 3,600 积分",
-    perks: ["充值额外加赠 5%", "送 10 次提示词优化", "送 20 张生图额度", "首屏生成与模板优先体验"],
+    perks: ["充值额外加赠 5%", "送 10 次提示词优化", "送 10 张生图额度", "首屏生成与模板优先体验"],
     cyclePriceLabels: { monthly: "¥29.9 / 月", quarterly: "¥79 / 季", yearly: "¥299 / 年" },
   },
   {
@@ -233,7 +235,7 @@ const planOptions: PlanOption[] = [
     description: "面向持续产出商品图、海报与短视频素材",
     highlight: "主推档",
     bonusLabel: "每月送 9,000 积分",
-    perks: ["充值额外加赠 10%", "送 30 次提示词优化", "送 60 张生图额度", "送 1 次 5 秒视频生成"],
+    perks: ["充值额外加赠 10%", "送 30 次提示词优化", "送 30 张生图额度", "送 1 次视频生成"],
     cyclePriceLabels: { monthly: "¥59.9 / 月", quarterly: "¥159 / 季", yearly: "¥599 / 年" },
     recommended: true,
   },
@@ -246,7 +248,7 @@ const planOptions: PlanOption[] = [
     description: "适合高频商用创作与图片视频混合生产",
     highlight: "商用高频",
     bonusLabel: "每月送 16,000 积分",
-    perks: ["充值额外加赠 15%", "送 80 次提示词优化", "送 120 张生图额度", "送 3 次 5 秒视频生成"],
+    perks: ["充值额外加赠 15%", "送 80 次提示词优化", "送 60 张生图额度", "送 3 次视频生成"],
     cyclePriceLabels: { monthly: "¥99.9 / 月", quarterly: "¥279 / 季", yearly: "¥999 / 年" },
   },
   {
@@ -258,18 +260,18 @@ const planOptions: PlanOption[] = [
     description: "适合团队协作、批量出图和持续视频投放",
     highlight: "团队定向",
     bonusLabel: "每月送 36,000 积分",
-    perks: ["充值额外加赠 20%", "送 200 次提示词优化", "送 300 张生图额度", "送 8 次 5 秒视频生成"],
+    perks: ["充值额外加赠 20%", "送 200 次提示词优化", "送 150 张生图额度", "送 8 次视频生成"],
     cyclePriceLabels: { monthly: "¥199 / 月", quarterly: "¥549 / 季", yearly: "¥1,999 / 年" },
   },
 ];
 
 const creditTopUpOptions: CreditTopUpOption[] = [
-  { amount: 9.9, credits: 1180, label: "新人首充" },
-  { amount: 29.9, credits: 3400, label: "常用" },
-  { amount: 59.9, credits: 7200, label: "推荐" },
-  { amount: 99.9, credits: 12500, label: "高频" },
-  { amount: 199, credits: 27000, label: "最划算" },
-  { amount: 299, credits: 43000, label: "商用" },
+  { amount: 9.9, credits: 1089, label: "新人首充" },
+  { amount: 29.9, credits: 3438, label: "常用" },
+  { amount: 59.9, credits: 7188, label: "推荐" },
+  { amount: 99.9, credits: 12487, label: "高频" },
+  { amount: 199, credits: 25870, label: "最划算" },
+  { amount: 299, credits: 40365, label: "商用" },
 ];
 
 const CREDIT_TOP_UP_BASE_RATE = 100;
@@ -277,15 +279,17 @@ const CUSTOM_RECHARGE_MIN_AMOUNT = 1;
 const planCycleOptions: Array<{ id: PlanCycle; label: string; badge?: string }> = [
   { id: "monthly", label: "月付优先" },
   { id: "quarterly", label: "季度更省", badge: "赠送更多" },
-  { id: "yearly", label: "年度锁客", badge: "价值最高" },
+  { id: "yearly", label: "年度尊享", badge: "价值最高" },
 ];
 const planCycleMonths: Record<PlanCycle, number> = {
   monthly: 1,
   quarterly: 3,
   yearly: 12,
 };
-const CLIENT_IMAGE_SUBMISSION_LIMIT = 2;
 const CLIENT_VIDEO_SUBMISSION_LIMIT = 1;
+const LIBRARY_THUMB_CACHE_WARMUP_CONCURRENCY = 4;
+const LIBRARY_FULL_MEDIA_CACHE_WARMUP_DELAY_MS = 5000;
+const LIBRARY_FULL_MEDIA_CACHE_WARMUP_CONCURRENCY = 1;
 
 const LibraryPane = dynamic(
   () => import("@/components/studio/library-pane").then((module) => ({ default: module.LibraryPane })),
@@ -459,6 +463,66 @@ async function fileFromLibraryOutput(item: LibraryItem, fallbackExtension: strin
   return new File([blob], safeName, { type: mimeType });
 }
 
+function appendQueryParam(url: string, key: string, value: string) {
+  return `${url}${url.includes("?") ? "&" : "?"}${encodeURIComponent(key)}=${encodeURIComponent(value)}`;
+}
+
+function warmLibraryMediaCache(items: LibraryItem[]) {
+  if (typeof window === "undefined") return;
+
+  const thumbnailUrls: string[] = [];
+  const fullMediaUrls: string[] = [];
+  for (const item of items) {
+    if (item.status !== "done" || item.expired || !item.output?.url?.startsWith("/api/files/")) continue;
+    if (item.type === "image") {
+      thumbnailUrls.push(appendQueryParam(item.output.url, "view", "thumb"));
+    }
+    fullMediaUrls.push(item.output.url);
+  }
+
+  const uniqueThumbnailUrls = Array.from(new Set(thumbnailUrls));
+  const uniqueFullMediaUrls = Array.from(new Set(fullMediaUrls));
+  if (!uniqueThumbnailUrls.length && !uniqueFullMediaUrls.length) return;
+
+  const warmUrls = (urls: string[], concurrency: number) => {
+    let nextIndex = 0;
+    let activeCount = 0;
+
+    const runNext = () => {
+      while (activeCount < concurrency && nextIndex < urls.length) {
+        const url = urls[nextIndex];
+        nextIndex += 1;
+        activeCount += 1;
+        void fetch(url, {
+          credentials: "same-origin",
+          cache: "force-cache",
+        }).catch(() => undefined).finally(() => {
+          activeCount -= 1;
+          runNext();
+        });
+      }
+    };
+
+    runNext();
+  };
+
+  const warm = () => {
+    warmUrls(uniqueThumbnailUrls, LIBRARY_THUMB_CACHE_WARMUP_CONCURRENCY);
+    window.setTimeout(() => {
+      warmUrls(uniqueFullMediaUrls, LIBRARY_FULL_MEDIA_CACHE_WARMUP_CONCURRENCY);
+    }, LIBRARY_FULL_MEDIA_CACHE_WARMUP_DELAY_MS);
+  };
+
+  const idleWindow = window as Window & {
+    requestIdleCallback?: (callback: () => void, options?: { timeout: number }) => number;
+  };
+  if (idleWindow.requestIdleCallback) {
+    idleWindow.requestIdleCallback(warm, { timeout: 1500 });
+  } else {
+    window.setTimeout(warm, 500);
+  }
+}
+
 function isGrokVideoProvider(provider: WorkspacePublicProvider | null | undefined) {
   return provider?.endpointType === "grok-videos" || Boolean(provider?.model.startsWith("grok-video-"));
 }
@@ -550,11 +614,12 @@ export function StudioApp() {
   const [mobilePreviewSignal, setMobilePreviewSignal] = useState(0);
   const [uploadLimits, setUploadLimits] = useState(defaultUploadLimits);
   const [libraryFilter, setLibraryFilter] = useState<LibraryFilter>("image");
-  const [librarySort, setLibrarySort] = useState<LibrarySort>("recent");
+  const [librarySort, setLibrarySort] = useState<LibrarySort>("created-desc");
   const [librarySearch, setLibrarySearch] = useState("");
   const [selectedLibraryItemId, setSelectedLibraryItemId] = useState<string | null>(null);
   const [libraryDeleteConfirmItemId, setLibraryDeleteConfirmItemId] = useState<string | null>(null);
   const [deletingLibraryItemId, setDeletingLibraryItemId] = useState<string | null>(null);
+  const [bulkDeletingLibrary, setBulkDeletingLibrary] = useState(false);
   const [removingLibraryItemId, setRemovingLibraryItemId] = useState<string | null>(null);
   const [missingLibraryMediaIds, setMissingLibraryMediaIds] = useState<Set<string>>(() => new Set());
   const [imageWorkspace, setImageWorkspace] = useState<ImageWorkspaceState>({
@@ -623,6 +688,8 @@ export function StudioApp() {
   const appliedTemplateIdRef = useRef<string | null>(null);
   const imageInFlightCountRef = useRef(0);
   const videoInFlightCountRef = useRef(0);
+  const imageUpscaleInFlightRef = useRef(false);
+  const videoUpscaleInFlightRef = useRef(false);
   const accountPlanStatus = useMemo<PlanStatus>(() => {
     if (sessionLoading || accountSummaryLoading) return { status: "loading" };
     const activePlanId = membershipSnapshot?.membership.active?.plan_id;
@@ -635,8 +702,9 @@ export function StudioApp() {
     if (sessionLoading || checkInLoading) return "loading";
     if (checkInSubmitting) return "submitting";
     if (checkInError) return "error";
+    if (!checkInLoaded && !checkInSnapshot) return "loading";
     return checkInSnapshot?.status === "checked" ? "checked" : "available";
-  }, [checkInError, checkInLoading, checkInSnapshot?.status, checkInSubmitting, sessionLoading, sessionUser]);
+  }, [checkInError, checkInLoaded, checkInLoading, checkInSnapshot, checkInSnapshot?.status, checkInSubmitting, sessionLoading, sessionUser]);
   const resetLibraryState = useCallback(() => {
     setLibrary([]);
     setLibraryLoading(false);
@@ -859,7 +927,9 @@ export function StudioApp() {
       return;
     }
     void refreshQuotaSnapshot(userId);
+    void refreshCheckInSnapshot(userId);
   }, [
+    refreshCheckInSnapshot,
     refreshQuotaSnapshot,
     resetAccountState,
     sessionLoading,
@@ -881,6 +951,7 @@ export function StudioApp() {
       setMissingLibraryMediaIds(new Set());
       setLibraryLoaded(true);
       setLibraryNeedsRefresh(false);
+      warmLibraryMediaCache(data.items);
     } catch (error) {
       const text = error instanceof Error ? error.message : "作品库加载失败。";
       setLibraryError(text);
@@ -1124,21 +1195,19 @@ export function StudioApp() {
   }, [accountParam]);
 
   const currentLibraryItems = useMemo(() => {
-    const search = librarySearch.trim().toLowerCase();
-    const filtered = library.filter((item) => (
-      item.type === libraryFilter
-      && (!search
-        || item.title.toLowerCase().includes(search)
-        || item.prompt.toLowerCase().includes(search))
-    ));
+    const filtered = library.filter((item) => item.type === libraryFilter);
     const sorted = [...filtered];
-    if (librarySort === "title") {
-      sorted.sort((a, b) => a.title.localeCompare(b.title, "zh-Hans-CN"));
-    } else {
+    if (librarySort === "created-desc") {
       sorted.sort((a, b) => Number(new Date(b.createdAt)) - Number(new Date(a.createdAt)));
+    } else if (librarySort === "created-asc") {
+      sorted.sort((a, b) => Number(new Date(a.createdAt)) - Number(new Date(b.createdAt)));
+    } else if (librarySort === "size-desc") {
+      sorted.sort((a, b) => (b.output?.size || 0) - (a.output?.size || 0));
+    } else {
+      sorted.sort((a, b) => (a.output?.size || 0) - (b.output?.size || 0));
     }
     return sorted;
-  }, [library, libraryFilter, librarySearch, librarySort]);
+  }, [library, libraryFilter, librarySort]);
 
   const selectedLibraryItem = useMemo(
     () => currentLibraryItems.find((item) => item.id === selectedLibraryItemId) || null,
@@ -1257,6 +1326,35 @@ export function StudioApp() {
     }
   }, [deletingLibraryItemId, libraryDeleteConfirmItemId, prefersReducedMotion]);
 
+  const handleDeleteManyLibraryItems = useCallback(async (ids: string[]) => {
+    const deleteIds = Array.from(new Set(ids.map((value) => value.trim()).filter(Boolean)));
+    if (!deleteIds.length || bulkDeletingLibrary) return;
+
+    setBulkDeletingLibrary(true);
+    setLibraryError("");
+    try {
+      const result = await jsonFetch<{ deletedIds?: string[] }>("/api/library", {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ids: deleteIds }),
+      });
+      const deletedIds = Array.isArray(result.deletedIds) && result.deletedIds.length ? result.deletedIds : deleteIds;
+      setSelectedLibraryItemId((current) => (current && deletedIds.includes(current) ? null : current));
+      setLibrary((current) => current.filter((item) => !deletedIds.includes(item.id)));
+      setMissingLibraryMediaIds((current) => {
+        const next = new Set(current);
+        deletedIds.forEach((id) => next.delete(id));
+        return next;
+      });
+    } catch (error) {
+      const text = error instanceof Error ? error.message : "批量删除失败。";
+      setLibraryError(text);
+      setMessage(text);
+    } finally {
+      setBulkDeletingLibrary(false);
+    }
+  }, [bulkDeletingLibrary]);
+
   const libraryCounts = useMemo(() => ({
     all: library.length,
     image: library.filter((item) => item.type === "image").length,
@@ -1313,15 +1411,14 @@ export function StudioApp() {
   const imageWorkspacePrompt = imageWorkspace.prompt.trim();
   const imageWorkspaceRequiresFile = activeImageTemplate?.scope === "image" && activeImageTemplate.requiresImage;
   const imageGenerationCount = Math.min(Math.max(Math.round(Number(imageWorkspace.count) || 1), 1), 4);
-  const imageEstimatedQuotaUnits = estimateImageGenerationQuota({
-    mode: activeImageMode,
+  const imageEstimatedQuotaUnits = estimateImageGenerationTotalQuota({
     quality: imageWorkspace.quality,
-    referenceImages: imageWorkspace.files.length,
-  }) * imageGenerationCount;
+    count: imageGenerationCount,
+  });
   const imageGenerationCostLabel = formatQuotaSymbolLabel(imageEstimatedQuotaUnits);
   const imageWorkspaceCanSubmit = Boolean(selectedImageProvider)
     && !providersLoading
-    && imageWorkspace.inFlightCount < CLIENT_IMAGE_SUBMISSION_LIMIT
+    && !imageWorkspace.loading
     && Boolean(imageWorkspacePrompt)
     && (!imageWorkspaceRequiresFile || imageWorkspaceHasFiles);
 
@@ -1498,6 +1595,7 @@ export function StudioApp() {
   }, []);
 
   const submitImageWorkspace = useCallback(async () => {
+    if (imageInFlightCountRef.current > 0) return;
     if (!selectedImageProvider) {
       setImageWorkspace((prev) => ({
         ...prev,
@@ -1515,16 +1613,6 @@ export function StudioApp() {
       }));
       return;
     }
-    if (imageInFlightCountRef.current >= CLIENT_IMAGE_SUBMISSION_LIMIT) {
-      const text = `当前最多同时进行 ${CLIENT_IMAGE_SUBMISSION_LIMIT} 个图片任务，请稍后再试。`;
-      setImageWorkspace((prev) => ({
-        ...prev,
-        submitError: text,
-        submitDiagnostic: null,
-      }));
-      setMessage(text);
-      return;
-    }
     if (imageWorkspaceRequiresFile && !imageWorkspaceHasFiles) {
       setImageWorkspace((prev) => ({
         ...prev,
@@ -1534,10 +1622,9 @@ export function StudioApp() {
     }
 
     const totalCount = imageGenerationCount;
-    const estimatedQuotaUnitsPerImage = estimateImageGenerationQuota({
-      mode: activeImageMode,
+    const estimatedQuotaUnits = estimateImageGenerationTotalQuota({
       quality: imageWorkspace.quality,
-      referenceImages: imageWorkspace.files.length,
+      count: totalCount,
     });
     const progressId = createTaskId("image-progress");
     const batchId = createTaskId("image-batch");
@@ -1548,7 +1635,7 @@ export function StudioApp() {
       quality: imageWorkspace.quality,
       prompt: imageWorkspace.prompt,
       files: imageWorkspace.files.map((attachment) => attachment.file),
-      estimatedQuotaUnitsPerImage,
+      estimatedQuotaUnits,
       totalCount,
       batchId,
     };
@@ -1572,79 +1659,67 @@ export function StudioApp() {
       current: 0,
       total: totalCount,
       startedAt,
-      message: totalCount > 1 ? `正在生成第 1 / ${totalCount} 张` : "正在生成图片",
+      message: totalCount > 1 ? `正在同时生成 ${totalCount} 张图片` : "正在生成图片",
     }]);
     try {
-      let completedCount = 0;
-      await Promise.all(Array.from({ length: totalCount }, async (_, index) => {
-        const taskId = createTaskId(`image-${index + 1}`);
-        const requestFingerprint = generationBillingFingerprint({
-          kind: "image",
-          providerId: snapshot.providerId,
-          mode: snapshot.mode,
-          ratio: snapshot.ratio,
-          quality: snapshot.quality,
-          referenceImages: snapshot.files.length,
+      const taskId = createTaskId("image");
+      const requestFingerprint = generationBillingFingerprint({
+        kind: "image",
+        providerId: snapshot.providerId,
+        mode: snapshot.mode,
+        ratio: snapshot.ratio,
+        quality: snapshot.quality,
+        referenceImages: snapshot.files.length,
+        taskId,
+        estimatedQuotaUnits: snapshot.estimatedQuotaUnits,
+      });
+
+      await fetchJsonWithCsrf("/api/quota/precheck", {
+        method: "POST",
+        body: JSON.stringify({
+          operation: "cloud_image_generation",
           taskId,
-          estimatedQuotaUnits: snapshot.estimatedQuotaUnitsPerImage,
-        });
+          idempotencyKey: taskId,
+          estimatedQuotaUnits: snapshot.estimatedQuotaUnits,
+          requestFingerprint,
+        }),
+      });
 
-        updateImageGenerationProgress(progressId, (current) => ({
-          ...current,
-          status: "running",
-          message: totalCount > 1 ? `正在同时生成 ${totalCount} 张图片` : "正在生成图片",
-        }));
-
-        try {
-          await fetchJsonWithCsrf("/api/quota/precheck", {
-            method: "POST",
-            body: JSON.stringify({
-              operation: "cloud_image_generation",
-              taskId,
-              idempotencyKey: taskId,
-              estimatedQuotaUnits: snapshot.estimatedQuotaUnitsPerImage,
-              requestFingerprint,
-            }),
-          });
-        } catch (error) {
-          const text = error instanceof Error ? error.message : "额度预检失败。";
-          setImageWorkspace((prev) => ({ ...prev, submitError: text, submitDiagnostic: diagnosticFromError(error) }));
-          throw error;
-        }
-
-        const form = new FormData();
-        form.set("providerId", snapshot.providerId);
-        form.set("mode", snapshot.mode);
-        form.set("ratio", snapshot.ratio);
-        form.set("quality", snapshot.quality);
-        form.set("prompt", snapshot.prompt);
-        form.set("taskId", taskId);
-        form.set("idempotencyKey", taskId);
-        form.set("batchId", snapshot.batchId);
-        form.set("batchTotal", String(snapshot.totalCount));
-        form.set("estimatedQuotaUnits", String(snapshot.estimatedQuotaUnitsPerImage));
-        snapshot.files.forEach((file) => form.append("files", file));
-        const data = await fetchJsonWithCsrf<{ item: LibraryItem }>("/api/generate/image", {
-          method: "POST",
-          body: form,
-        });
-        handleImageResult(data.item, { append: true });
-        completedCount += 1;
-        updateImageGenerationProgress(progressId, (current) => ({
-          ...current,
-          current: completedCount,
-          message: totalCount > 1 ? `已完成 ${completedCount} / ${totalCount} 张` : "图片已生成",
-        }));
-      }));
+      const form = new FormData();
+      form.set("providerId", snapshot.providerId);
+      form.set("mode", snapshot.mode);
+      form.set("ratio", snapshot.ratio);
+      form.set("quality", snapshot.quality);
+      form.set("prompt", snapshot.prompt);
+      form.set("taskId", taskId);
+      form.set("idempotencyKey", taskId);
+      form.set("batchId", snapshot.batchId);
+      form.set("batchTotal", String(snapshot.totalCount));
+      form.set("count", String(snapshot.totalCount));
+      form.set("estimatedQuotaUnits", String(snapshot.estimatedQuotaUnits));
+      snapshot.files.forEach((file) => form.append("files", file));
+      const data = await fetchJsonWithCsrf<{ item: LibraryItem | null; items?: LibraryItem[] }>("/api/generate/image", {
+        method: "POST",
+        body: form,
+      });
+      const items = Array.isArray(data.items) && data.items.length
+        ? data.items
+        : data.item
+          ? [data.item]
+          : [];
+      if (!items.length) {
+        throw new Error("图片生成未返回结果。");
+      }
+      items.forEach((item) => handleImageResult(item, { append: true }));
 
       await refreshLibraryAfterMutation();
       await refreshAccountAfterGeneration();
       updateImageGenerationProgress(progressId, (current) => ({
         ...current,
         status: "done",
-        current: totalCount,
+        current: items.length,
         completedAt: Date.now(),
-        message: totalCount > 1 ? `${totalCount} 张图片已生成` : "图片已生成",
+        message: items.length > 1 ? `${items.length} 张图片已生成` : "图片已生成",
       }));
     } catch (error) {
       const text = error instanceof Error ? error.message : "图片生成失败。";
@@ -1703,6 +1778,7 @@ export function StudioApp() {
     mode: activeVideoMode,
     durationSeconds: videoWorkspace.duration,
     referenceImages: videoWorkspace.files.length,
+    model: selectedVideoProvider?.model,
   });
   const videoGenerationCostLabel = formatQuotaSymbolLabel(videoEstimatedQuotaUnits);
   const videoWorkspaceCanSubmit = Boolean(selectedVideoProvider)
@@ -1960,7 +2036,8 @@ export function StudioApp() {
       });
       return;
     }
-    if (imageUpscaleWorkspace.loading) return;
+    if (imageUpscaleWorkspace.loading || imageUpscaleInFlightRef.current) return;
+    imageUpscaleInFlightRef.current = true;
 
     updateImageUpscaleWorkspace({
       loading: true,
@@ -2009,6 +2086,7 @@ export function StudioApp() {
       updateImageUpscaleWorkspace({ submitError: text, submitDiagnostic: diagnosticFromError(error) });
       setMessage(text);
     } finally {
+      imageUpscaleInFlightRef.current = false;
       updateImageUpscaleWorkspace({ loading: false });
     }
   }, [imageUpscaleWorkspace.availability?.ready, imageUpscaleWorkspace.file, imageUpscaleWorkspace.loading, imageUpscaleWorkspace.scale, refreshAccountAfterGeneration, refreshLibraryAfterMutation, setMessage, updateImageUpscaleWorkspace]);
@@ -2116,7 +2194,8 @@ export function StudioApp() {
       });
       return;
     }
-    if (videoUpscaleWorkspace.loading || pendingJob) return;
+    if (videoUpscaleWorkspace.loading || pendingJob || videoUpscaleInFlightRef.current) return;
+    videoUpscaleInFlightRef.current = true;
 
     updateVideoUpscaleWorkspace({
       loading: true,
@@ -2161,14 +2240,17 @@ export function StudioApp() {
       updateVideoUpscaleWorkspace({ job: data.job });
       setOutputs((prev) => ({ ...prev, "video-upscale": { item: data.item, job: data.job, title: "视频高清增强结果", tool: "video-upscale" } }));
       await refreshLibraryAfterMutation();
+      await refreshAccountAfterGeneration();
     } catch (error) {
       const text = error instanceof Error ? error.message : "视频高清增强处理失败。";
       updateVideoUpscaleWorkspace({ submitError: text, submitDiagnostic: diagnosticFromError(error) });
       setMessage(text);
     } finally {
+      videoUpscaleInFlightRef.current = false;
       updateVideoUpscaleWorkspace({ loading: false });
     }
   }, [
+    refreshAccountAfterGeneration,
     refreshLibraryAfterMutation,
     setMessage,
     updateVideoUpscaleWorkspace,
@@ -2316,6 +2398,9 @@ export function StudioApp() {
             updateVideoUpscaleWorkspace({ submitError: updatedItem.error || nextJob.error || "视频高清增强处理失败。" });
           }
         }
+        if (nextJob.status === "done" || nextJob.status === "failed") {
+          await refreshAccountAfterGeneration();
+        }
         await refreshLibraryAfterMutation();
       } catch (error) {
         const text = error instanceof Error ? error.message : "视频高清增强任务查询失败。";
@@ -2324,7 +2409,7 @@ export function StudioApp() {
       }
     }, 5000);
     return () => window.clearInterval(timer);
-  }, [refreshLibraryAfterMutation, setMessage, updateVideoUpscaleWorkspace, videoUpscaleWorkspace.job]);
+  }, [refreshAccountAfterGeneration, refreshLibraryAfterMutation, setMessage, updateVideoUpscaleWorkspace, videoUpscaleWorkspace.job]);
 
   useEffect(() => {
     const job = videoWorkspace.job;
@@ -2392,11 +2477,13 @@ export function StudioApp() {
       ratio: videoWorkspace.ratio,
       duration: videoWorkspace.duration,
       prompt: videoWorkspace.prompt,
+      model: selectedVideoProvider.model,
       files: videoWorkspace.files.map((attachment) => attachment.file),
       estimatedQuotaUnits: estimateVideoGenerationQuota({
         mode: activeVideoMode,
         durationSeconds: videoWorkspace.duration,
         referenceImages: videoWorkspace.files.length,
+        model: selectedVideoProvider.model,
       }),
     };
     const requestFingerprint = generationBillingFingerprint({
@@ -2406,6 +2493,7 @@ export function StudioApp() {
       ratio: snapshot.ratio,
       durationSeconds: snapshot.duration,
       referenceImages: snapshot.files.length,
+      model: snapshot.model,
       taskId,
       estimatedQuotaUnits: snapshot.estimatedQuotaUnits,
     });
@@ -2579,6 +2667,9 @@ export function StudioApp() {
       ) : null}
     </>
   );
+  const accountEntitlementsLabel = accountSummaryBusy
+    ? null
+    : createAccountEntitlementsLabel(membershipSnapshot?.membership.entitlements ?? null);
 
   return (
     <>
@@ -2589,6 +2680,7 @@ export function StudioApp() {
         canAccessAdmin={sessionUser?.role === "admin"}
         accountName={sessionUser?.display_name || sessionUser?.username || null}
         accountPointsLabel={accountSummaryBusy ? "加载中" : quotaSnapshot ? `${formatQuotaUnits(quotaSnapshot.quota_units)} ✦` : "—"}
+        accountEntitlementsLabel={accountEntitlementsLabel}
         headerRightSlot={accountHeaderSlot}
         accountCloseSignal={accountCloseSignal}
         onOpenAccountCenter={handleOpenAccountCenter}
@@ -2597,6 +2689,7 @@ export function StudioApp() {
           <WorkspaceAccountPanel
             user={sessionUser}
             quota={quotaSnapshot}
+            membershipEntitlements={membershipSnapshot?.membership.entitlements ?? null}
             loading={accountSummaryBusy}
             accountError={accountDataError}
             accountView={accountCenterOpen ? accountView : undefined}
@@ -2618,6 +2711,7 @@ export function StudioApp() {
             <UserCenterWorkspace
               user={sessionUser}
               quota={quotaSnapshot}
+              membershipSnapshot={membershipSnapshot}
               usage={usagePage}
               loading={accountViewLoading}
               billingOrders={billingOrders}
@@ -2641,6 +2735,7 @@ export function StudioApp() {
               sort={librarySort}
               search={librarySearch}
               deletingItemId={deletingLibraryItemId}
+              bulkDeleting={bulkDeletingLibrary}
               removingItemId={removingLibraryItemId}
               missingMediaIds={missingLibraryMediaIds}
               deleteConfirmItem={libraryDeleteConfirmItem}
@@ -2649,6 +2744,7 @@ export function StudioApp() {
               onSearchChange={setLibrarySearch}
               onSelectItem={setSelectedLibraryItemId}
               onDelete={handleRequestDeleteLibraryItem}
+              onDeleteMany={handleDeleteManyLibraryItems}
               onRegenerate={reuseLibraryItemParameters}
               onUpscale={sendResultToUpscale}
               onCreateVideo={sendImageResultToVideo}
@@ -2732,6 +2828,7 @@ export function StudioApp() {
 function UserCenterWorkspace({
   user,
   quota,
+  membershipSnapshot,
   usage,
   loading,
   billingOrders,
@@ -2744,6 +2841,7 @@ function UserCenterWorkspace({
 }: {
   user: PublicAuthUser | null;
   quota: QuotaSnapshot | null;
+  membershipSnapshot: MembershipStatusResponse | null;
   usage: UsagePage | null;
   loading: boolean;
   billingOrders: BillingOrder[];
@@ -2779,10 +2877,11 @@ function UserCenterWorkspace({
   }
 
   return (
-    <UserCenterOverview
-      user={user}
-      quota={quota}
-      usage={usage}
+      <UserCenterOverview
+        user={user}
+        quota={quota}
+        membershipSnapshot={membershipSnapshot}
+        usage={usage}
       billingOrders={billingOrders}
       checkInRecords={checkInRecords}
       loading={loading}
@@ -2794,9 +2893,37 @@ function UserCenterWorkspace({
   );
 }
 
+function createMembershipEntitlementItems(entitlements: MembershipEntitlements | null) {
+  if (!entitlements) return [];
+  return [
+    {
+      key: "prompt_optimize",
+      label: "提示词优化",
+      value: `${formatQuotaUnits(entitlements.prompt_optimize.remaining)} 次`,
+    },
+    {
+      key: "image_generation",
+      label: "生图",
+      value: `${formatQuotaUnits(entitlements.image_generation.remaining)} 张`,
+    },
+    {
+      key: "video_generation",
+      label: "视频",
+      value: `${formatQuotaUnits(entitlements.video_generation.remaining)} 次`,
+    },
+  ].filter((item) => item.value !== "0 次" && item.value !== "0 张");
+}
+
+function createAccountEntitlementsLabel(entitlements: MembershipEntitlements | null) {
+  const items = createMembershipEntitlementItems(entitlements);
+  if (!items.length) return null;
+  return items.map((item) => `${item.label} ${item.value}`).join(" · ");
+}
+
 function UserCenterOverview({
   user,
   quota,
+  membershipSnapshot,
   usage,
   billingOrders,
   checkInRecords,
@@ -2808,6 +2935,7 @@ function UserCenterOverview({
 }: {
   user: PublicAuthUser | null;
   quota: QuotaSnapshot | null;
+  membershipSnapshot: MembershipStatusResponse | null;
   usage: UsagePage | null;
   billingOrders: BillingOrder[];
   checkInRecords: PublicDailyCheckInRecord[];
@@ -2828,6 +2956,7 @@ function UserCenterOverview({
     : quota
       ? "积分用于图片和视频创作。"
       : "登录后将显示真实账户积分。";
+  const entitlementItems = createMembershipEntitlementItems(membershipSnapshot?.membership.entitlements ?? null);
   const planDisplay = getPlanStatusDisplay(planStatus);
   const checkInDisplay = getCheckInStatusDisplay(checkInStatus);
   const previousQuotaUnitsRef = useRef<number | null>(quotaUnits);
@@ -2873,6 +3002,16 @@ function UserCenterOverview({
                 <span>当前可用积分</span>
                 <strong className="user-center-points-card__value">{quotaValue}</strong>
                 <p>{quotaNote}</p>
+                {entitlementItems.length ? (
+                  <div className="user-center-entitlement-strip" aria-label="会员剩余次数">
+                    {entitlementItems.map((item) => (
+                      <span key={item.key} className="user-center-entitlement-pill">
+                        <em>{item.label}</em>
+                        <strong>{item.value}</strong>
+                      </span>
+                    ))}
+                  </div>
+                ) : null}
               </div>
               <div className="user-center-points-card__actions">
                 <button type="button" className="user-center-action user-center-action--primary" onClick={() => onViewChange("recharge")} disabled={!user}>
@@ -2966,10 +3105,12 @@ function UserCenterOverview({
                   <span>时间</span>
                   <span>功能</span>
                   <span>积分变动</span>
+                  <span>积分余额</span>
                   <span>描述</span>
                 </div>
                 {Array.from({ length: 5 }).map((_, index) => (
                   <div key={index} className="user-center-usage__row user-center-usage__row--skeleton" aria-hidden="true">
+                    <span className="motion-skeleton-shimmer" />
                     <span className="motion-skeleton-shimmer" />
                     <span className="motion-skeleton-shimmer" />
                     <span className="motion-skeleton-shimmer" />
@@ -2983,13 +3124,15 @@ function UserCenterOverview({
                   <span>时间</span>
                   <span>功能</span>
                   <span>积分变动</span>
+                  <span>积分余额</span>
                   <span>描述</span>
                 </div>
                 {recentRecords.map((record, index) => (
                   <div key={record.id} className={cn("user-center-usage__row", `is-${record.kind}`)} style={{ "--usage-row-delay": `${index < 6 ? index * 24 : 0}ms` } as CSSProperties}>
                     <span>{formatUsageDate(record.createdAt)}</span>
                     <strong>{record.typeLabel}</strong>
-                    <em>{formatSignedQuota(record.quotaDelta)} 分</em>
+                    <em>{formatAccountQuotaChange(record)}</em>
+                    <span className="user-center-usage__balance">{formatAccountQuotaBalance(record)}</span>
                     <span>{record.description}</span>
                   </div>
                 ))}
@@ -3417,10 +3560,12 @@ function UsageRecordsWorkspace({
               <span>时间</span>
               <span>类型</span>
               <span>积分变动</span>
+              <span>积分余额</span>
               <span>描述</span>
             </div>
             {Array.from({ length: 5 }).map((_, index) => (
               <div key={index} className="user-center-usage__row user-center-usage__row--skeleton" aria-hidden="true">
+                <span className="motion-skeleton-shimmer" />
                 <span className="motion-skeleton-shimmer" />
                 <span className="motion-skeleton-shimmer" />
                 <span className="motion-skeleton-shimmer" />
@@ -3434,6 +3579,7 @@ function UsageRecordsWorkspace({
               <span>时间</span>
               <span>类型</span>
               <span>积分变动</span>
+              <span>积分余额</span>
               <span>描述</span>
             </div>
             {filteredRecords.map((record, index) => (
@@ -3444,7 +3590,8 @@ function UsageRecordsWorkspace({
               >
                 <span>{formatUsageDate(record.createdAt)}</span>
                 <strong>{record.typeLabel}</strong>
-                <em>{formatSignedQuota(record.quotaDelta)} 分</em>
+                <em>{formatAccountQuotaChange(record)}</em>
+                <span className="user-center-usage__balance">{formatAccountQuotaBalance(record)}</span>
                 <span>{record.description}</span>
               </div>
             ))}
@@ -3637,9 +3784,6 @@ function CreditsPurchaseDialog({
             </div>
 
             <div className={cn("custom-recharge-card credits-dialog__custom", customRechargeActive && "is-active")}>
-              <div className="credits-dialog__custom-label">
-                <strong>自定义充值</strong>
-              </div>
               <label className="custom-recharge-field">
                 <span>充值金额</span>
                 <span className={cn("custom-recharge-input", customAmountError && "is-invalid")}>
@@ -3782,6 +3926,7 @@ function createAccountRecords(
     kind: "spend",
     typeLabel: "支出",
     quotaDelta: -Math.abs(entry.actual_quota_units ?? entry.estimated_quota_units),
+    balanceAfterQuotaUnits: entry.balance_after_quota_units ?? null,
     description: `${usageOperationLabel(entry.operation)}：${usageDescription(entry)}`,
   }));
 
@@ -3960,6 +4105,15 @@ function createRechargeConfirmState(input: {
 function formatSignedQuota(value: number) {
   const prefix = value > 0 ? "+" : "";
   return `${prefix}${formatQuotaUnits(value)}`;
+}
+
+function formatAccountQuotaChange(record: AccountRecord) {
+  return `${formatSignedQuota(record.quotaDelta)} 分`;
+}
+
+function formatAccountQuotaBalance(record: AccountRecord) {
+  if (!Number.isFinite(record.balanceAfterQuotaUnits ?? Number.NaN)) return "--";
+  return `${formatQuotaUnits(record.balanceAfterQuotaUnits || 0)} 分`;
 }
 
 function formatMinorCurrency(value: number) {

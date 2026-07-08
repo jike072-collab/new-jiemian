@@ -162,8 +162,8 @@ export const workspaceAccountMenu: WorkspaceAccountEntry[] = [
   },
   {
     id: "balance-topup",
-    label: "余额与充值",
-    description: "查看余额和充值入口",
+    label: "积分与充值",
+    description: "查看积分和充值入口",
     visible: false,
     requiresAuth: true,
     featureFlag: "new-api-account-menu",

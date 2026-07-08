@@ -31,7 +31,7 @@ export const membershipPlans: MembershipPlan[] = [
     monthly_credits: 3600,
     monthly_entitlements: {
       prompt_optimize: 10,
-      image_generation: 20,
+      image_generation: 10,
       video_generation: 0,
     },
     prices: {
@@ -48,7 +48,7 @@ export const membershipPlans: MembershipPlan[] = [
     monthly_credits: 9000,
     monthly_entitlements: {
       prompt_optimize: 30,
-      image_generation: 60,
+      image_generation: 30,
       video_generation: 1,
     },
     prices: {
@@ -65,7 +65,7 @@ export const membershipPlans: MembershipPlan[] = [
     monthly_credits: 16000,
     monthly_entitlements: {
       prompt_optimize: 80,
-      image_generation: 120,
+      image_generation: 60,
       video_generation: 3,
     },
     prices: {
@@ -82,7 +82,7 @@ export const membershipPlans: MembershipPlan[] = [
     monthly_credits: 36000,
     monthly_entitlements: {
       prompt_optimize: 200,
-      image_generation: 300,
+      image_generation: 150,
       video_generation: 8,
     },
     prices: {

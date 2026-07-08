@@ -60,7 +60,7 @@ export async function quotaSnapshotResponse(request: NextRequest) {
   const auth = await requireLocalUser(request);
   if (!auth.ok) return auth.response;
 
-  const result = await getQuotaService().getCurrentQuota(auth.localUserId, { allowCached: true });
+  const result = await getQuotaService().getCurrentQuota(auth.localUserId, { allowCached: false });
   if (!result.ok) return quotaErrorResponse(result);
   return NextResponse.json({ ok: true, quota: result.snapshot });
 }
@@ -89,18 +89,20 @@ export async function precheckResponse(request: NextRequest) {
   const operation = parseBillableOperation(body.operation);
   const taskId = String(body.taskId || "").trim();
   const idempotencyKey = String(body.idempotencyKey || body.taskId || "").trim();
+  const membershipEntitlementAmount = Number(body.membershipEntitlementAmount);
   if (!operation || !taskId || !idempotencyKey) return invalidQuotaRequest();
 
   const result = await getTaskBillingService().precheck({
     localUserId: auth.localUserId,
     estimatedQuotaUnits: Number(body.estimatedQuotaUnits),
+    membershipEntitlementAmount: Number.isFinite(membershipEntitlementAmount) ? membershipEntitlementAmount : null,
     operation,
     taskId,
     idempotencyKey,
     requestFingerprint: String(body.requestFingerprint || "").trim() || null,
   });
   if (!result.ok) return quotaErrorResponse(result);
-  const quota = await getQuotaService().getCurrentQuota(auth.localUserId, { allowCached: true });
+  const quota = await getQuotaService().getCurrentQuota(auth.localUserId, { allowCached: false });
   return NextResponse.json({
     ok: true,
     quota: quota.ok ? quota.snapshot : null,

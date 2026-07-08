@@ -55,6 +55,7 @@ export type MembershipRepository = {
   updateMembership(id: string, patch: MembershipPatch, expectedVersion?: number): Promise<UserMembership>;
   listEntitlements(localUserId: string, now?: string): Promise<MembershipEntitlementGrant[]>;
   grantEntitlement(input: GrantEntitlementInput): Promise<MembershipEntitlementGrant | null>;
+  expireEntitlementsBySourceOrder(localUserId: string, sourceOrderIds: string[], now?: string): Promise<number>;
   consumeEntitlement(input: ConsumeEntitlementInput): Promise<{ consumed: number; ledger: MembershipEntitlementLedger | null }>;
   getLedgerByIdempotencyKey(localUserId: string, idempotencyKey: string): Promise<MembershipEntitlementLedger | null>;
 };
@@ -231,6 +232,35 @@ class StoreMembershipRepository implements MembershipRepository {
         created_at: timestamp,
       });
       return cloneEntitlement(grant);
+    });
+  }
+
+  async expireEntitlementsBySourceOrder(localUserId: string, sourceOrderIds: string[], now = new Date().toISOString()) {
+    const owner = localUserId.trim();
+    const orderIds = new Set(sourceOrderIds.map((value) => value.trim()).filter(Boolean));
+    if (!owner || !orderIds.size) return 0;
+    return this.mutate((store) => {
+      let expired = 0;
+      for (const grant of store.entitlements) {
+        if (grant.local_user_id !== owner || !orderIds.has(grant.source_order_id) || grant.remaining <= 0) continue;
+        const delta = -grant.remaining;
+        grant.used += grant.remaining;
+        grant.remaining = 0;
+        grant.updated_at = now;
+        grant.version += 1;
+        store.ledger.push({
+          id: randomUUID(),
+          local_user_id: owner,
+          kind: grant.kind,
+          delta,
+          idempotency_key: `membership-expire:${grant.source_order_id}:${grant.kind}:${grant.id}`,
+          source_order_id: grant.source_order_id,
+          task_id: null,
+          created_at: now,
+        });
+        expired += Math.abs(delta);
+      }
+      return expired;
     });
   }
 

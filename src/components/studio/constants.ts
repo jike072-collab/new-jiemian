@@ -17,14 +17,14 @@ export function videoUpscaleScaleLabel(scale: string) {
 
 export const ratios = ["1:1", "16:9", "9:16", "4:3", "3:4", "3:2", "2:3"];
 export const defaultVideoDurations = [5, 8, 10, 15];
-export const grokVideo10Durations = [4, 5, 6, 8, 10, 12, 15];
-export const grokVideo15Durations = [4, 6, 8, 10, 12, 15];
+export const grokVideo10Durations = [6, 8, 10, 12, 15];
+export const grokVideo15Durations = [6, 8, 10, 12, 15];
 export const grokVideo10Ratios = ["1:1", "16:9", "9:16", "4:3", "3:4", "3:2", "2:3"];
 export const grokVideo15Ratios = ["16:9", "9:16"];
 export const jimengVideoRatios = ["16:9", "9:16", "1:1"];
 export const upscaleUnavailableMessage = "高清处理暂时不可用，请稍后重试";
 export const promptOptimizationTargetPlatform = "TikTok Shop";
-export const PROMPT_OPTIMIZATION_QUOTA_UNITS = 10;
+export const PROMPT_OPTIMIZATION_QUOTA_UNITS = 100;
 export const quotaSymbol = "✦";
 
 export const imageWorkspaceModeMeta: Record<WorkspaceImageMode, {

@@ -488,7 +488,8 @@ function VideoTutorialResultSlot({
   const wasPlayingRef = useRef(false);
   const [isInView, setIsInView] = useState(typeof IntersectionObserver === "undefined");
   const [videoReady, setVideoReady] = useState(false);
-  const shouldPlay = Boolean(videoTutorialResultVideoSrc && !paused && isVideoTutorialResultPlayingState(playbackState) && isInView);
+  const resultPreviewActive = Boolean(videoTutorialResultVideoSrc && !paused);
+  const shouldPlay = Boolean(resultPreviewActive && isInView);
 
   useEffect(() => {
     const node = mediaRef.current;
@@ -529,14 +530,14 @@ function VideoTutorialResultSlot({
         <img src={videoTutorialInputImageSrc} alt="" loading="lazy" decoding="async" />
       </div>
       <div
-        ref={mediaRef}
-        className={cn(
-          "video-tutorial-result-slot__media",
-          isVideoTutorialResultVisibleState(playbackState) && "is-visible",
-          isVideoTutorialResultPlayingState(playbackState) && "is-playing",
-          videoReady && "is-video-ready",
-          playbackState === "complete" && "is-complete",
-          playbackState === "resetting" && "is-resetting",
+          ref={mediaRef}
+          className={cn(
+            "video-tutorial-result-slot__media",
+            (resultPreviewActive || isVideoTutorialResultVisibleState(playbackState)) && "is-visible",
+            (resultPreviewActive || isVideoTutorialResultPlayingState(playbackState)) && "is-playing",
+            videoReady && "is-video-ready",
+            playbackState === "complete" && "is-complete",
+            playbackState === "resetting" && "is-resetting",
         )}
       >
         <img className="video-tutorial-result-slot__poster" src={videoTutorialResultPosterSrc} alt="" loading="eager" decoding="async" />
@@ -545,7 +546,7 @@ function VideoTutorialResultSlot({
             ref={videoRef}
             src={videoTutorialResultVideoSrc}
             poster={videoTutorialResultPosterSrc}
-            autoPlay
+            autoPlay={resultPreviewActive}
             loop
             muted
             playsInline
@@ -598,14 +599,17 @@ function VideoGenerationTutorial({ paused = false }: { paused?: boolean }) {
   const replayTimerRef = useRef<number | undefined>(undefined);
   const reducedMotion = useReducedMotion();
   const [playbackStateState, setPlaybackState] = useState<VideoTutorialPlaybackState>("idle");
-  const [typedTextState, setTypedText] = useState("");
+  const [, setTypedText] = useState("");
   const [isInView, setIsInView] = useState(true);
   const [pageVisible, setPageVisible] = useState(true);
   const [cycle, setCycle] = useState(0);
+  const [inputPlaybackStateState, setInputPlaybackState] = useState<VideoTutorialPlaybackState>("idle");
+  const [inputTypedTextState, setInputTypedText] = useState("");
+  const [inputCycle, setInputCycle] = useState(0);
   const shouldPause = paused || reducedMotion || !isInView || !pageVisible;
-  const playbackState = shouldPause ? (reducedMotion ? "final" : playbackStateState) : "result-playing";
-  const typedText = shouldPause && !reducedMotion ? typedTextState : videoTutorialPromptText;
-  const promptText = reducedMotion ? videoTutorialPromptText : typedText;
+  const playbackState = reducedMotion ? "final" : playbackStateState;
+  const inputPlaybackState = reducedMotion ? "final" : inputPlaybackStateState;
+  const inputPromptText = reducedMotion ? videoTutorialPromptText : inputTypedTextState;
 
   const clearReplayTimer = useCallback(() => {
     if (replayTimerRef.current) {
@@ -613,6 +617,52 @@ function VideoGenerationTutorial({ paused = false }: { paused?: boolean }) {
       replayTimerRef.current = undefined;
     }
   }, []);
+
+  useEffect(() => {
+    if (shouldPause || reducedMotion) return undefined;
+
+    const timeline = createTutorialTimeline();
+    let typingTimer: number | undefined;
+
+    const stopTyping = () => {
+      if (typingTimer) {
+        window.clearInterval(typingTimer);
+        typingTimer = undefined;
+      }
+    };
+
+    setInputPlaybackState("idle");
+    setInputTypedText("");
+    timeline.wait(() => setInputPlaybackState("image-entering"), 80);
+    timeline.wait(() => setInputPlaybackState("image-touching"), 820);
+    timeline.wait(() => setInputPlaybackState("image-covered"), 1540);
+    timeline.wait(() => {
+      setInputPlaybackState("typing");
+      setInputTypedText(videoTutorialPromptText.slice(0, 1));
+
+      let index = 1;
+      typingTimer = window.setInterval(() => {
+        index += 1;
+        setInputTypedText(videoTutorialPromptText.slice(0, index));
+
+        if (index >= videoTutorialPromptText.length) {
+          stopTyping();
+          setInputTypedText(videoTutorialPromptText);
+          timeline.wait(() => setInputPlaybackState("fading-out"), 1700);
+          timeline.wait(() => {
+            setInputPlaybackState("idle");
+            setInputTypedText("");
+            setInputCycle((value) => value + 1);
+          }, 2220);
+        }
+      }, 42);
+    }, 1800);
+
+    return () => {
+      timeline.clear();
+      stopTyping();
+    };
+  }, [inputCycle, reducedMotion, shouldPause]);
 
   const finishTutorialCycle = useCallback(() => {
     if (shouldPause || reducedMotion || playbackStateState !== "result-playing") return;
@@ -633,6 +683,16 @@ function VideoGenerationTutorial({ paused = false }: { paused?: boolean }) {
       }, 760);
     }, 900);
   }, [clearReplayTimer, playbackStateState, reducedMotion, shouldPause]);
+
+  useEffect(() => {
+    if (shouldPause || reducedMotion || playbackStateState !== "result-playing") return undefined;
+
+    const timer = window.setTimeout(() => {
+      finishTutorialCycle();
+    }, 5600);
+
+    return () => window.clearTimeout(timer);
+  }, [finishTutorialCycle, playbackStateState, reducedMotion, shouldPause]);
 
   useEffect(() => {
     if (playbackStateState !== "resetting") return undefined;
@@ -745,7 +805,7 @@ function VideoGenerationTutorial({ paused = false }: { paused?: boolean }) {
       id: "upload",
       title: "输入内容并确认视频场景",
       description: "上传参考图后输入提示词，让视频围绕起始画面和动作描述生成。",
-      visual: <VideoTutorialInputDemo key={`input-${cycle}`} playbackState={playbackState} promptText={promptText} />,
+      visual: <VideoTutorialInputDemo key={`input-${inputCycle}`} playbackState={inputPlaybackState} promptText={inputPromptText} />,
       visualSide: "left",
     },
     {
@@ -806,6 +866,10 @@ function VideoGenerationTutorial({ paused = false }: { paused?: boolean }) {
 }
 
 function ToolTutorial({ kind, paused = false }: { kind: ToolTutorialKind; paused?: boolean }) {
+  useEffect(() => {
+    warmPublicAssetCache(tutorialAssetUrls(kind));
+  }, [kind]);
+
   if (kind === "image") {
     return <ImageGenerationTutorial />;
   }
@@ -860,11 +924,86 @@ function ToolTutorial({ kind, paused = false }: { kind: ToolTutorialKind; paused
   );
 }
 
-function ProcessingPreview({ label, detail = "系统正在处理你的任务，可以继续准备其他创作。", progress = 62 }: { label: string; detail?: string; progress?: number }) {
-  const [startedAt] = useState(() => Date.now());
+function taskStartMs(value?: string | null) {
+  const parsed = value ? Number(new Date(value)) : NaN;
+  return Number.isFinite(parsed) ? parsed : Date.now();
+}
+
+const publicAssetWarmupConcurrency = 2;
+
+function warmPublicAssetCache(urls: string[]) {
+  if (typeof window === "undefined") return;
+  const uniqueUrls = Array.from(new Set(urls.filter(Boolean)));
+  if (!uniqueUrls.length) return;
+
+  const warm = () => {
+    let nextIndex = 0;
+    let activeCount = 0;
+
+    const runNext = () => {
+      while (activeCount < publicAssetWarmupConcurrency && nextIndex < uniqueUrls.length) {
+        const url = uniqueUrls[nextIndex];
+        nextIndex += 1;
+        activeCount += 1;
+        void fetch(url, { cache: "force-cache" }).catch(() => undefined).finally(() => {
+          activeCount -= 1;
+          runNext();
+        });
+      }
+    };
+
+    runNext();
+  };
+
+  const idleWindow = window as Window & {
+    requestIdleCallback?: (callback: () => void, options?: { timeout: number }) => number;
+  };
+  if (idleWindow.requestIdleCallback) {
+    idleWindow.requestIdleCallback(warm, { timeout: 1500 });
+  } else {
+    window.setTimeout(warm, 500);
+  }
+}
+
+function tutorialAssetUrls(kind: ToolTutorialKind) {
+  if (kind === "image") {
+    return ["/tutorials/image-generator/perfume-result.webp"];
+  }
+  if (kind === "image-editor") {
+    return [
+      "/tutorials/image-editor/single-source.webp",
+      "/tutorials/image-editor/single-result.webp",
+      "/tutorials/image-editor/merge-product.webp",
+      "/tutorials/image-editor/merge-scene.webp",
+      "/tutorials/image-editor/merge-result.webp",
+    ];
+  }
+  if (kind === "video") {
+    return [videoTutorialInputImageSrc, videoTutorialResultPosterSrc, videoTutorialResultVideoSrc];
+  }
+
+  return toolTutorials[kind].sections.flatMap((section) => (
+    section.layers.flatMap((layer) => layer.poster ? [layer.src, layer.poster] : [layer.src])
+  ));
+}
+
+function ProcessingPreview({
+  label,
+  detail = "系统正在处理你的任务，可以继续准备其他创作。",
+  progress = 62,
+  startedAt,
+}: {
+  label: string;
+  detail?: string;
+  progress?: number;
+  startedAt?: string | null;
+}) {
+  const [fallbackStartedAt] = useState(() => Date.now());
+  const startedAtMs = startedAt ? taskStartMs(startedAt) : fallbackStartedAt;
   const [now, setNow] = useState(() => Date.now());
-  const progressValue = Math.min(94, Math.max(8, progress));
-  const elapsedText = formatElapsedClock(now - startedAt);
+  const elapsedMs = Math.max(0, now - startedAtMs);
+  const progressValue = Math.round(animatedTaskProgress(elapsedMs, Math.max(0, progress / 100), 0.94) * 100);
+  const elapsedText = formatElapsedClock(elapsedMs);
 
   useEffect(() => {
     const timer = window.setInterval(() => setNow(Date.now()), 1000);
@@ -923,6 +1062,70 @@ function ErrorPreview({
   );
 }
 
+function imageResultFacts(item: LibraryItem) {
+  const facts: string[] = [];
+  const ratio = typeof item.params.ratio === "string" ? item.params.ratio : "";
+  const quality = typeof item.params.quality === "string" ? item.params.quality : "";
+  const width = Number(item.params.outputWidth || item.params.sourceWidth || 0);
+  const height = Number(item.params.outputHeight || item.params.sourceHeight || 0);
+  if (ratio) facts.push(ratio);
+  if (Number.isFinite(width) && Number.isFinite(height) && width > 0 && height > 0) {
+    facts.push(`${Math.round(width)} x ${Math.round(height)}`);
+  }
+  if (quality) facts.push(quality.toUpperCase());
+  return facts;
+}
+
+function videoResultFacts(item: LibraryItem) {
+  const facts: string[] = [];
+  const ratio = typeof item.params.ratio === "string" ? item.params.ratio : "";
+  const rawDuration = item.params.durationSeconds || item.params.duration || item.params.videoDuration;
+  const duration = Number(rawDuration);
+  const width = Number(item.params.outputWidth || item.params.sourceWidth || 0);
+  const height = Number(item.params.outputHeight || item.params.sourceHeight || 0);
+  if (ratio) facts.push(ratio);
+  if (Number.isFinite(duration) && duration > 0) facts.push(`${Math.round(duration)} 秒`);
+  if (Number.isFinite(width) && Number.isFinite(height) && width > 0 && height > 0) {
+    facts.push(`${Math.round(width)} x ${Math.round(height)}`);
+  } else {
+    facts.push("720P");
+  }
+  return facts;
+}
+
+function JobStatusPreview({
+  title,
+  detail,
+  facts,
+  badge,
+}: {
+  title: string;
+  detail: string;
+  facts: string[];
+  badge?: string;
+}) {
+  return (
+    <PreviewState eyebrow="结果" title={title} description={detail} badge={badge} role="status" live>
+      <div className="studio-job-status-card" aria-live="polite">
+        <div className="studio-processing-orbit" aria-hidden="true">
+          <span />
+          <span />
+          <Loader2 className="size-5" />
+        </div>
+        <div className="studio-job-status-card__copy">
+          <strong>{title}</strong>
+          <p>{detail}</p>
+        </div>
+        {facts.length ? (
+          <div className="studio-result-facts" aria-label="任务参数">
+            {facts.map((fact) => <span key={fact}>{fact}</span>)}
+          </div>
+        ) : null}
+      </div>
+    </PreviewState>
+  );
+}
+
 function UpscaleUnavailablePreview({ message }: { message?: string }) {
   return (
     <PreviewState eyebrow="暂不可用" title="高清处理暂时不可用" description={message || "高清处理暂时不可用，请稍后重试"} role="alert">
@@ -934,6 +1137,13 @@ function UpscaleUnavailablePreview({ message }: { message?: string }) {
 }
 
 function ImageUpscaleCompareTutorial() {
+  useEffect(() => {
+    warmPublicAssetCache([
+      "/tutorial/image-upscaler/image-before.jpg",
+      "/tutorial/image-upscaler/image-after.png",
+    ]);
+  }, []);
+
   return (
     <PreviewState eyebrow="图片细节对比" title="图片细节对比" description="拖动分割线，查看高清前后的清晰度和细节变化。">
       <BeforeAfterImageCompare
@@ -949,10 +1159,17 @@ function ImageUpscaleCompareTutorial() {
 }
 
 function VideoUpscaleCompareTutorial() {
+  useEffect(() => {
+    warmPublicAssetCache([
+      "/tutorial/video-upscaler/video-before.mp4",
+      "/tutorial/video-upscaler/video-after.mp4",
+    ]);
+  }, []);
+
   return (
     <PreviewState eyebrow="视频细节对比" title="视频细节对比" description="拖动分割线，查看高清前后的视频清晰度和细节变化。">
       <BeforeAfterImageCompare
-        beforeSrc="/tutorial/video-upscaler/video-after.mp4"
+        beforeSrc="/tutorial/video-upscaler/video-before.mp4"
         afterSrc="/tutorial/video-upscaler/video-after.mp4"
         beforeLabel="高清前"
         afterLabel="高清后"
@@ -960,6 +1177,8 @@ function VideoUpscaleCompareTutorial() {
         afterAlt="高清后示例视频"
         mediaType="video"
         beforeEffect="blur"
+        autoPlayVideo
+        videoPreload="metadata"
       />
     </PreviewState>
   );
@@ -1063,7 +1282,7 @@ export function VideoUpscalePreviewPanel({
   const source = state.file;
 
   if (state.loading || state.job?.status === "generating" || state.job?.status === "queued") {
-    return <ProcessingPreview label="正在处理视频" detail="视频高清增强需要排队处理，完成后会自动刷新结果。" progress={42} />;
+    return <ProcessingPreview label="正在处理视频" detail="视频高清增强需要排队处理，完成后会自动刷新结果。" progress={42} startedAt={state.job?.createdAt} />;
   }
 
   if (state.submitError) {
@@ -1098,6 +1317,8 @@ export function VideoUpscalePreviewPanel({
             beforeAlt={source.file.name}
             afterAlt={output.item.title}
             mediaType="video"
+            autoPlayVideo={false}
+            videoPreload="metadata"
           />
         ) : (
           <figure className="studio-upscale-preview__figure">
@@ -1244,22 +1465,27 @@ function ImageResultGrid({
             {libraryStatusBadgeLabel(output.item.status) ? <strong>{libraryStatusBadgeLabel(output.item.status)}</strong> : null}
           </div>
           <MediaCard item={output.item} large compact />
+          {imageResultFacts(output.item).length ? (
+            <div className="studio-result-facts" aria-label="任务参数">
+              {imageResultFacts(output.item).map((fact) => <span key={`${output.item.id}-${fact}`}>{fact}</span>)}
+            </div>
+          ) : null}
           <div className="studio-image-result-card__actions">
             <button type="button" className="studio-secondary-button" onClick={onSubmit} disabled={!canRetry || loading}>
               <RefreshCw className="size-4" aria-hidden="true" />
-              重新生成
+              重做
             </button>
             <button type="button" className="studio-secondary-button studio-secondary-button--accent" onClick={() => onUpscale(output.item)}>
               <ImageUp className="size-4" aria-hidden="true" />
-              放大
+              高清
             </button>
             <button type="button" className="studio-secondary-button" onClick={() => onCreateVideo(output.item)}>
               <Video className="size-4" aria-hidden="true" />
-              生成视频
+              做视频
             </button>
             <button type="button" className="studio-secondary-button" onClick={() => onEdit(output.item)}>
               <Wand2 className="size-4" aria-hidden="true" />
-              图片编辑
+              编辑
             </button>
             {output.item.output?.url ? (
               <a className="studio-secondary-button" href={output.item.output.url} download>
@@ -1313,9 +1539,11 @@ export function VideoPreviewPanel({
   onUpscale: (item: LibraryItem) => void;
 }) {
   const canRetry = canSubmit && hasProvider && promptFilled && (mode === "text-to-video" || hasFiles);
+  const outputFacts = output ? videoResultFacts(output.item) : [];
+  const statusLabel = output?.job?.status || output?.item.status;
 
   if (loading && !output) {
-    return <ProcessingPreview label="正在生成视频" detail="视频任务通常需要更久，生成期间可以切回图片工具继续创作。" progress={38} />;
+    return <ProcessingPreview label="正在生成视频" detail="视频任务通常需要更久，生成期间可以继续切回图片工具创作。" progress={38} />;
   }
 
   if (submitError && !output) {
@@ -1329,22 +1557,49 @@ export function VideoPreviewPanel({
       />
     );
   }
+  if (output && statusLabel === "failed") {
+    return (
+      <ErrorPreview
+        canRetry={canRetry}
+        onRetry={onSubmit}
+        onReloadProviders={!hasProvider ? onReloadProviders : undefined}
+        message={output.item.error || output.job?.error || submitError}
+        diagnostic={submitDiagnostic}
+      />
+    );
+  }
+
+  if (output && (statusLabel === "queued" || statusLabel === "generating")) {
+    return (
+      <JobStatusPreview
+        title={statusLabel === "queued" ? "视频任务排队中" : "视频正在生成"}
+        detail={statusLabel === "queued" ? "任务已提交到上游，生成完成后会自动刷新到这里。" : "视频生成时间会更久一些，你可以继续切换到图片工具创作。"}
+        facts={outputFacts}
+        badge={libraryStatusBadgeLabel(output.item.status)}
+      />
+    );
+  }
 
   if (output) {
     return (
-      <PreviewState eyebrow="结果" title="结果" badge={libraryStatusBadgeLabel(output.item.status)} role="status" live>
+      <PreviewState eyebrow="结果" title="视频结果" badge={libraryStatusBadgeLabel(output.item.status)} role="status" live>
         <MediaCard item={output.item} large compact />
+        {outputFacts.length ? (
+          <div className="studio-result-facts" aria-label="任务参数">
+            {outputFacts.map((fact) => <span key={`${output.item.id}-${fact}`}>{fact}</span>)}
+          </div>
+        ) : null}
         <div className="studio-actions studio-actions--result">
           {output.item.output?.url ? (
             <a className="studio-secondary-button" href={output.item.output.url} download>
-              下载视频
+              下载
             </a>
           ) : null}
           <button type="button" className="studio-secondary-button" onClick={onSubmit} disabled={!canRetry}>
-            再次生成
+            重做
           </button>
           <button type="button" className="studio-secondary-button studio-secondary-button--accent" onClick={() => onUpscale(output.item)}>
-            放大
+            视频高清处理
           </button>
         </div>
       </PreviewState>
@@ -1398,6 +1653,13 @@ function formatElapsedClock(milliseconds: number) {
   return `${String(minutes).padStart(2, "0")}:${String(seconds).padStart(2, "0")}`;
 }
 
+function animatedTaskProgress(elapsedMs: number, baseRatio = 0, ceiling = 0.94) {
+  const safeBase = Math.min(Math.max(baseRatio, 0), ceiling);
+  const safeElapsed = Math.max(0, elapsedMs);
+  const ramp = 1 - Math.exp(-safeElapsed / 18000);
+  return Math.min(ceiling, safeBase + (ceiling - safeBase) * ramp);
+}
+
 export function ImageGenerationProgressToast({
   progress,
   tick,
@@ -1430,7 +1692,9 @@ export function ImageGenerationProgressToast({
     const elapsedMs = (item.completedAt ?? tick) - item.startedAt;
     const progressRatio = item.status === "done"
       ? 1
-      : Math.min(Math.max(completed / total, 0), 1);
+      : item.status === "failed"
+        ? Math.min(Math.max(completed / total, 0), 1)
+        : animatedTaskProgress(elapsedMs, completed / total, 0.94);
     const title = item.status === "done"
       ? "生成已完成"
       : item.status === "failed"

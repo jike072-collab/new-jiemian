@@ -1379,21 +1379,26 @@ export const videoPromptTemplates: VideoPromptTemplate[] = [
   },
 ];
 
-export const featuredImagePromptTemplates = [
-  imagePromptTemplates.find((template) => template.id === "product-hero"),
-  imagePromptTemplates.find((template) => template.id === "detail-page-long"),
-  imagePromptTemplates.find((template) => template.id === "premium-perfume"),
-  imagePromptTemplates.find((template) => template.id === "social-cover"),
-  imagePromptTemplates.find((template) => template.id === "text-translation"),
-].filter((template): template is ImagePromptTemplate => Boolean(template));
+const templateRailLimit = 8;
 
-export const featuredVideoPromptTemplates = [
-  videoPromptTemplates.find((template) => template.id === "product-rotation"),
-  videoPromptTemplates.find((template) => template.id === "detail-closeup"),
-  videoPromptTemplates.find((template) => template.id === "usage-demo"),
-  videoPromptTemplates.find((template) => template.id === "ugc-hook-video"),
-  videoPromptTemplates.find((template) => template.id === "promo-video"),
-].filter((template): template is VideoPromptTemplate => Boolean(template));
+function templateRailTemplates<T extends TemplatePromptTemplate>(templates: T[]) {
+  return templates
+    .map((template, index) => ({ template, index }))
+    .sort((left, right) => {
+      const featuredDelta = Number(right.template.featured) - Number(left.template.featured);
+      return featuredDelta || left.index - right.index;
+    })
+    .slice(0, templateRailLimit)
+    .map(({ template }) => template);
+}
+
+export const featuredImagePromptTemplates = templateRailTemplates(imagePromptTemplates);
+
+export const featuredImageGenerationPromptTemplates = templateRailTemplates(
+  imagePromptTemplates.filter((template) => template.targetToolId === "image"),
+);
+
+export const featuredVideoPromptTemplates = templateRailTemplates(videoPromptTemplates);
 
 export function templateById(id: string) {
   return [...imagePromptTemplates, ...videoPromptTemplates].find((template) => template.id === id) || null;

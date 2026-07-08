@@ -8,10 +8,16 @@ import { getCheckInStatusDisplay, getPlanStatusDisplay, type CheckInStatus, type
 import { cn } from "@/lib/utils";
 
 type AccountView = "center" | "recharge" | "usage";
+type MembershipEntitlements = Record<"prompt_optimize" | "image_generation" | "video_generation", {
+  remaining: number;
+  granted: number;
+  used: number;
+}>;
 
 type WorkspaceAccountPanelProps = {
   user: PublicAuthUser | null;
   quota: QuotaSnapshot | null;
+  membershipEntitlements?: MembershipEntitlements | null;
   loading: boolean;
   accountError?: string;
   accountView?: AccountView;
@@ -29,9 +35,19 @@ function formatQuota(value: number | null | undefined) {
   return new Intl.NumberFormat("zh-CN").format(value);
 }
 
+function createEntitlementItems(entitlements: MembershipEntitlements | null | undefined) {
+  if (!entitlements) return [];
+  return [
+    ["提示词", `${formatQuota(entitlements.prompt_optimize.remaining)} 次`],
+    ["生图", `${formatQuota(entitlements.image_generation.remaining)} 张`],
+    ["视频", `${formatQuota(entitlements.video_generation.remaining)} 次`],
+  ].filter(([, value]) => value !== "0 次" && value !== "0 张");
+}
+
 export function WorkspaceAccountPanel({
   user,
   quota,
+  membershipEntitlements,
   loading,
   accountError = "",
   accountView,
@@ -49,6 +65,7 @@ export function WorkspaceAccountPanel({
   const planDisplay = getPlanStatusDisplay(planStatus);
   const checkInDisplay = getCheckInStatusDisplay(checkInStatus);
   const currentCenter = accountView === "center";
+  const entitlementItems = createEntitlementItems(membershipEntitlements);
 
   return (
     <div className="account-popover-card" data-account-error={accountError && !loading ? "true" : undefined}>
@@ -81,6 +98,16 @@ export function WorkspaceAccountPanel({
             {planDisplay.actionLabel}
           </button>
         </div>
+        {entitlementItems.length ? (
+          <div className="account-popover-entitlements" aria-label="会员剩余次数">
+            {entitlementItems.map(([label, value]) => (
+              <span key={label}>
+                <em>{label}</em>
+                <strong>{value}</strong>
+              </span>
+            ))}
+          </div>
+        ) : null}
         <div className="account-popover-row">
           <span>
             <CalendarCheck className="size-3.5" aria-hidden="true" />

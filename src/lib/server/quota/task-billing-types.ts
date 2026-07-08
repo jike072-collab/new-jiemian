@@ -74,6 +74,7 @@ export type TaskBillingPrecheckInput = {
   taskId: string;
   operation: BillableOperation;
   estimatedQuotaUnits: number;
+  membershipEntitlementAmount?: number | null;
   idempotencyKey: string;
   requestFingerprint?: string | null;
 };

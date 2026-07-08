@@ -2,10 +2,11 @@ import { randomUUID } from "node:crypto";
 
 import {
   estimateGenerationQuota,
+  estimateImageGenerationTotalQuota,
   generationBillingFingerprint,
 } from "../generation-quota";
 
-import { addJob, addLibraryItem, storeDataUrl, storeRemoteUrl, updateJob, updateLibraryItem } from "./library";
+import { addJob, addLibraryItem, readLibraryMetadataForOwner, storeDataUrl, storeRemoteUrl, updateJob, updateLibraryItem } from "./library";
 import { codeForUpstreamStatus, GenerationDiagnosticError } from "./error-diagnostics";
 import {
   assertFileFormatAllowed,
@@ -46,11 +47,15 @@ class BillingDispatchRejectedError extends Error {
   }
 }
 
+const duplicateImageDispatchWaitMs = 180000;
+const duplicateImageDispatchPollMs = 2000;
+
 const grokVideo10Durations = new Set([6, 8, 10, 12, 15]);
 const grokVideo15Durations = new Set([6, 8, 10, 12, 15]);
 const grokVideo10Ratios = new Set(["1:1", "16:9", "9:16", "4:3", "3:4", "3:2", "2:3"]);
 const grokVideo15Ratios = new Set(["16:9", "9:16"]);
 const defaultVideoRatios = new Set(["1:1", "16:9", "9:16", "4:3", "3:4", "3:2", "2:3"]);
+const manxiaobaiGrokVideosApiUrl = "https://api.manxiaobai.online/v1/videos";
 
 function asRecord(value: unknown): Record<string, unknown> {
   return value && typeof value === "object" && !Array.isArray(value)
@@ -176,6 +181,10 @@ function parseProviderOutput(payload: unknown): ProviderOutput {
   };
 }
 
+function wait(ms: number) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
 function hasProviderOutput(output: ProviderOutput) {
   return Boolean(output.url || output.base64 || output.jobId || output.statusUrl || output.status);
 }
@@ -197,6 +206,19 @@ function parseImageProviderOutputs(payload: unknown): ProviderOutput[] {
 
 function authHeaders(provider: ProviderConfig) {
   return { Authorization: `Bearer ${provider.apiKey}` };
+}
+
+function providerWithApiKey(provider: ProviderConfig, apiKey: string): ProviderConfig {
+  return { ...provider, apiKey };
+}
+
+async function fallbackImageProviderFor(provider: ProviderConfig) {
+  const fallbackProviderId = String(provider.fallbackProviderId || "").trim();
+  if (!fallbackProviderId || fallbackProviderId === provider.id) return null;
+  const fallback = await providerById(fallbackProviderId);
+  if (!fallback || fallback.kind !== "image") return null;
+  if (!fallback.apiUrl.trim() || !fallback.apiKey.trim() || !fallback.model.trim()) return null;
+  return fallback;
 }
 
 function assertProviderReady(
@@ -281,7 +303,9 @@ function deriveStatusUrl(apiUrl: string, jobId: string) {
   try {
     const parsed = new URL(apiUrl);
     const encodedJobId = encodeURIComponent(jobId);
-    if (/\/videos\/generations\/?$/i.test(parsed.pathname)) {
+    if (/\/video\/generations\/?$/i.test(parsed.pathname)) {
+      parsed.pathname = parsed.pathname.replace(/\/video\/generations\/?$/i, `/video/generations/${encodedJobId}`);
+    } else if (/\/videos\/generations\/?$/i.test(parsed.pathname)) {
       parsed.pathname = parsed.pathname.replace(/\/videos\/generations\/?$/i, `/videos/${encodedJobId}`);
     } else if (/\/videos\/?$/i.test(parsed.pathname)) {
       parsed.pathname = parsed.pathname.replace(/\/videos\/?$/i, `/videos/${encodedJobId}`);
@@ -309,6 +333,70 @@ function grokVideosEndpoint(apiUrl: string) {
     return parsed.toString();
   } catch {
     return apiUrl;
+  }
+}
+
+function grokVideoGenerationsEndpoint(apiUrl: string) {
+  try {
+    const parsed = new URL(apiUrl);
+    if (isLocalOpenAiCompatibleEndpoint(apiUrl)) {
+      if (parsed.pathname === "/" || parsed.pathname === "") {
+        parsed.pathname = "/v1/video/generations";
+      } else if (/\/videos\/generations\/?$/i.test(parsed.pathname)) {
+        parsed.pathname = parsed.pathname.replace(/\/videos\/generations\/?$/i, "/video/generations");
+      } else if (/\/video\/generations\/?$/i.test(parsed.pathname)) {
+        parsed.pathname = parsed.pathname.replace(/\/video\/generations\/?$/i, "/video/generations");
+      } else if (/\/videos\/?$/i.test(parsed.pathname)) {
+        parsed.pathname = parsed.pathname.replace(/\/videos\/?$/i, "/video/generations");
+      } else if (/\/video\/?$/i.test(parsed.pathname)) {
+        parsed.pathname = parsed.pathname.replace(/\/video\/?$/i, "/video/generations");
+      } else {
+        parsed.pathname = parsed.pathname.replace(/\/$/, "") + "/video/generations";
+      }
+      parsed.search = "";
+      return parsed.toString();
+    }
+    const direct = new URL(grokVideosEndpoint(apiUrl));
+    if (/\/videos\/generations\/?$/i.test(direct.pathname)) {
+      direct.search = "";
+      return direct.toString();
+    }
+    direct.pathname = direct.pathname.replace(/\/videos\/?$/i, "/videos/generations");
+    direct.search = "";
+    return direct.toString();
+  } catch {
+    return apiUrl;
+  }
+}
+
+function grokStatusUrl(apiUrl: string, jobId: string) {
+  if (!jobId) return "";
+  try {
+    const encodedJobId = encodeURIComponent(jobId);
+    if (isLocalOpenAiCompatibleEndpoint(apiUrl)) {
+      const parsed = new URL(grokVideoGenerationsEndpoint(apiUrl));
+      parsed.pathname = parsed.pathname.replace(/\/video\/generations\/?$/i, `/video/generations/${encodedJobId}`);
+      parsed.search = "";
+      return parsed.toString();
+    }
+    const parsed = new URL(grokVideosEndpoint(apiUrl));
+    parsed.pathname = parsed.pathname.replace(/\/videos\/?$/i, `/videos/${encodedJobId}`);
+    parsed.search = "";
+    return parsed.toString();
+  } catch {
+    return "";
+  }
+}
+
+function grokOpenAiVideoStatusUrl(apiUrl: string, jobId: string) {
+  if (!jobId) return "";
+  try {
+    const parsed = new URL(grokVideosEndpoint(apiUrl));
+    parsed.pathname = parsed.pathname.replace(/\/videos\/?$/i, `/videos/${encodeURIComponent(jobId)}`);
+    parsed.search = "";
+    return parsed.toString();
+  } catch {
+    return "";
   }
 }
 
@@ -437,18 +525,6 @@ function isLocalOpenAiCompatibleEndpoint(apiUrl: string) {
   }
 }
 
-function grokStatusUrl(apiUrl: string, jobId: string) {
-  if (!jobId) return "";
-  try {
-    const parsed = new URL(grokVideosEndpoint(apiUrl));
-    parsed.pathname = parsed.pathname.replace(/\/videos\/?$/i, `/videos/${encodeURIComponent(jobId)}`);
-    parsed.search = "";
-    return parsed.toString();
-  } catch {
-    return "";
-  }
-}
-
 async function uploadGrokReferenceImage(provider: ProviderConfig, file: UploadedMedia) {
   const response = await fetch(grokReferenceImageEndpoint(provider.apiUrl), {
     method: "POST",
@@ -474,6 +550,29 @@ async function callOpenAiCompatibleGrokVideoProvider(provider: ProviderConfig, i
   duration: number;
   files: UploadedMedia[];
 }) {
+  if (provider.model === "grok-video-1.5" && input.files.length === 1) {
+    const referenceUploadProvider = { ...provider, apiUrl: manxiaobaiGrokVideosApiUrl };
+    const form = new FormData();
+    form.append("model", provider.model);
+    form.append("prompt", input.prompt);
+    form.append("seconds", String(input.duration));
+    form.append("aspect_ratio", input.ratio);
+    form.append("resolution", "720p");
+    form.append("input_reference[image_url]", await uploadGrokReferenceImage(referenceUploadProvider, input.files[0]));
+
+    const response = await fetch(grokVideosEndpoint(provider.apiUrl), {
+      method: "POST",
+      headers: authHeaders(provider),
+      body: form,
+      signal: AbortSignal.timeout(180000),
+    });
+    const output = parseProviderOutput(await readProviderJson(response, provider));
+    return {
+      ...output,
+      statusUrl: output.statusUrl || grokOpenAiVideoStatusUrl(provider.apiUrl, output.jobId || ""),
+    };
+  }
+
   const payload: Record<string, string | number> = {
     model: provider.model,
     prompt: input.prompt,
@@ -487,7 +586,7 @@ async function callOpenAiCompatibleGrokVideoProvider(provider: ProviderConfig, i
     payload.image = `data:${file.mimeType};base64,${file.bytes.toString("base64")}`;
   }
 
-  const response = await fetch(grokVideosEndpoint(provider.apiUrl), {
+  const response = await fetch(grokVideoGenerationsEndpoint(provider.apiUrl), {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
@@ -749,6 +848,48 @@ async function callImageProvider({
   files: UploadedMedia[];
   count: number;
 }) {
+  const fallbackApiKey = String(provider.fallbackApiKey || "").trim();
+  try {
+    return await callImageProviderOnce({ provider, prompt, ratio, quality, files, count });
+  } catch (error) {
+    const fallbackProvider = await fallbackImageProviderFor(provider);
+    if (fallbackProvider) {
+      return callImageProviderOnce({
+        provider: fallbackProvider,
+        prompt,
+        ratio,
+        quality,
+        files,
+        count,
+      });
+    }
+    if (!fallbackApiKey || fallbackApiKey === provider.apiKey.trim()) throw error;
+    return callImageProviderOnce({
+      provider: providerWithApiKey(provider, fallbackApiKey),
+      prompt,
+      ratio,
+      quality,
+      files,
+      count,
+    });
+  }
+}
+
+async function callImageProviderOnce({
+  provider,
+  prompt,
+  ratio,
+  quality,
+  files,
+  count,
+}: {
+  provider: ProviderConfig;
+  prompt: string;
+  ratio: string;
+  quality: string;
+  files: UploadedMedia[];
+  count: number;
+}) {
   const size = ratioToSize(ratio);
   const useMultipart = files.length > 0;
   const apiUrl = imageEndpoint(provider, useMultipart);
@@ -835,6 +976,40 @@ async function collectImageProviderOutputs(input: {
   const missingCount = targetCount - outputs.length;
   const refillOutputs = await callImageProvider({ ...input, count: missingCount });
   return [...outputs, ...refillOutputs].slice(0, targetCount);
+}
+
+async function findExistingImageItemsForBillingTask(localUserId?: string | null, taskId?: string | null) {
+  if (!localUserId || !taskId) return [];
+  const items = await readLibraryMetadataForOwner(localUserId);
+  return items
+    .filter((item) => (
+      item.type === "image"
+      && item.status === "done"
+      && item.params?.billingTaskId === taskId
+      && item.output?.url
+    ))
+    .sort((a, b) => {
+      const leftIndex = Number(a.params?.imageBatchIndex || 0);
+      const rightIndex = Number(b.params?.imageBatchIndex || 0);
+      if (leftIndex || rightIndex) return leftIndex - rightIndex;
+      return a.createdAt.localeCompare(b.createdAt);
+    });
+}
+
+async function waitForExistingImageItemsForBillingTask(input: {
+  localUserId?: string | null;
+  taskId?: string | null;
+  expectedCount: number;
+}) {
+  const expectedCount = Math.min(Math.max(Math.round(input.expectedCount || 1), 1), 4);
+  const deadline = Date.now() + duplicateImageDispatchWaitMs;
+  while (Date.now() <= deadline) {
+    const items = await findExistingImageItemsForBillingTask(input.localUserId, input.taskId);
+    if (items.length >= expectedCount) return items.slice(0, expectedCount);
+    if (items.length > 0 && expectedCount === 1) return items.slice(0, 1);
+    await wait(duplicateImageDispatchPollMs);
+  }
+  return findExistingImageItemsForBillingTask(input.localUserId, input.taskId);
 }
 
 async function outputToLibrary(output: ProviderOutput, type: "image" | "video", prefix: string) {
@@ -964,19 +1139,12 @@ export async function generateImage(input: {
 }) {
   const provider = await providerById(input.providerId);
   const outputCount = Math.min(Math.max(Math.round(Number(input.count) || 1), 1), 4);
-  const estimatedQuotaUnitsPerImage = Math.max(1, Math.round(
-    estimateGenerationQuota({
-      kind: "image",
-      providerId: input.providerId,
-      mode: input.mode,
-      ratio: input.ratio,
-      quality: input.quality,
-      referenceImages: input.files.length,
-    }),
-  ));
   const estimatedQuotaUnits = Number.isFinite(Number(input.billingEstimatedQuotaUnits))
     ? Math.max(0, Math.round(Number(input.billingEstimatedQuotaUnits)))
-    : estimatedQuotaUnitsPerImage * outputCount;
+    : estimateImageGenerationTotalQuota({
+      quality: input.quality,
+      count: outputCount,
+    });
   const billingFingerprint = generationBillingFingerprint({
     kind: "image",
     providerId: input.providerId,
@@ -1017,7 +1185,10 @@ export async function generateImage(input: {
     });
     if (!output.length) throw new Error("Image provider returned no outputs.");
     const actualOutputCount = output.length;
-    const actualQuotaUnits = estimatedQuotaUnitsPerImage * actualOutputCount;
+    const actualQuotaUnits = estimateImageGenerationTotalQuota({
+      quality: input.quality,
+      count: actualOutputCount,
+    });
     const batchTotal = Number.isFinite(Number(input.batchTotal)) && Number(input.batchTotal) > 1
       ? Math.min(Math.max(Math.round(Number(input.batchTotal)), 1), 4)
       : Math.min(Math.max(Math.max(actualOutputCount, outputCount), 1), 4);
@@ -1066,6 +1237,14 @@ export async function generateImage(input: {
     }
     return items;
   } catch (error) {
+    if (error instanceof BillingDispatchRejectedError) {
+      const existingItems = await waitForExistingImageItemsForBillingTask({
+        localUserId: input.billingLocalUserId,
+        taskId: input.billingTaskId,
+        expectedCount: outputCount,
+      });
+      if (existingItems.length) return existingItems;
+    }
     if (!(error instanceof BillingSettlementRequiredError) && !(error instanceof BillingDispatchRejectedError)) {
       await settleGeneratedTaskBilling({
         localUserId: input.billingLocalUserId,
@@ -1100,6 +1279,7 @@ export async function submitVideo(input: {
     ratio: input.ratio,
     durationSeconds: input.duration,
     referenceImages: input.files.length,
+    model: provider?.model,
   });
   const billingFingerprint = generationBillingFingerprint({
     kind: "video",
@@ -1108,6 +1288,7 @@ export async function submitVideo(input: {
     ratio: input.ratio,
     durationSeconds: input.duration,
     referenceImages: input.files.length,
+    model: provider?.model,
     taskId: input.billingTaskId || "",
     estimatedQuotaUnits,
   });
@@ -1340,11 +1521,11 @@ export async function refreshVideoJob(jobId: string, localUserId?: string | null
       status: "done",
       output: stored,
     } satisfies Partial<LibraryItem>);
-    const updated = await updateJob(job.id, {
+    let updated = await updateJob(job.id, {
       status: "done",
-      billing_state: job.billing_task_id ? "settled" : job.billing_state,
+      billing_state: job.billing_task_id ? job.billing_state || "accepted" : job.billing_state,
       billing_last_error: null,
-    });
+    }) || job;
     const settled = await settleGeneratedTaskBilling({
       localUserId: job.billing_local_user_id || job.ownerLocalUserId || localUserId || null,
       taskId: job.billing_task_id,
@@ -1359,6 +1540,11 @@ export async function refreshVideoJob(jobId: string, localUserId?: string | null
         billing_state: "reconciliation_required",
         billing_last_error: settled.message,
       });
+    } else if (job.billing_task_id) {
+      updated = await updateJob(job.id, {
+        billing_state: "settled",
+        billing_last_error: null,
+      }) || updated;
     }
     return updated;
   }
@@ -1370,11 +1556,11 @@ export async function refreshVideoJob(jobId: string, localUserId?: string | null
       status: "done",
       output: stored,
     } satisfies Partial<LibraryItem>);
-    const updated = await updateJob(job.id, {
+    let updated = await updateJob(job.id, {
       status: "done",
-      billing_state: job.billing_task_id ? "settled" : job.billing_state,
+      billing_state: job.billing_task_id ? job.billing_state || "accepted" : job.billing_state,
       billing_last_error: null,
-    });
+    }) || job;
     const settled = await settleGeneratedTaskBilling({
       localUserId: job.billing_local_user_id || job.ownerLocalUserId || localUserId || null,
       taskId: job.billing_task_id,
@@ -1389,6 +1575,11 @@ export async function refreshVideoJob(jobId: string, localUserId?: string | null
         billing_state: "reconciliation_required",
         billing_last_error: settled.message,
       });
+    } else if (job.billing_task_id) {
+      updated = await updateJob(job.id, {
+        billing_state: "settled",
+        billing_last_error: null,
+      }) || updated;
     }
     return updated;
   }
@@ -1413,6 +1604,24 @@ export async function refreshVideoJob(jobId: string, localUserId?: string | null
     status,
     billing_state: job.billing_task_id ? job.billing_state || "prechecked" : job.billing_state,
   });
+}
+
+export async function refreshPendingVideoJobsForOwner(localUserId: string, limit = 3) {
+  const ownerId = localUserId.trim();
+  if (!ownerId) return;
+  const { readJobs } = await import("./library");
+  const jobs = (await readJobs())
+    .filter((job: JobRecord) => (
+      job.type === "video"
+      && job.status !== "done"
+      && job.status !== "failed"
+      && (job.ownerLocalUserId === ownerId || job.billing_local_user_id === ownerId)
+    ))
+    .sort((a: JobRecord, b: JobRecord) => a.updatedAt.localeCompare(b.updatedAt))
+    .slice(0, Math.max(1, Math.min(10, Math.floor(limit))));
+  for (const job of jobs) {
+    await refreshVideoJob(job.id, ownerId).catch(() => undefined);
+  }
 }
 
 export async function uploadedMediaFromForm(

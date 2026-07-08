@@ -2,81 +2,18 @@
 
 /* eslint-disable @next/next/no-img-element */
 
-import { AlertTriangle, Download, ExternalLink, ImageUp, Loader2, Play, RefreshCw, Trash2, Video, Wand2 } from "lucide-react";
-import { useRef, useState, type MouseEvent } from "react";
+import { AlertTriangle, Download, ExternalLink, Pause, Play } from "lucide-react";
+import { useEffect, useRef, useState, type MouseEvent, type PointerEvent, type WheelEvent } from "react";
 
 import type { LibraryItem } from "@/lib/server/types";
 import { cn } from "@/lib/utils";
-
-export function LibraryCardActions({
-  item,
-  mediaMissing,
-  deleting,
-  onDelete,
-  onRegenerate,
-  onUpscale,
-  onCreateVideo,
-  onEditImage,
-}: {
-  item: LibraryItem;
-  mediaMissing: boolean;
-  deleting: boolean;
-  onDelete: () => void;
-  onRegenerate: () => void;
-  onUpscale: () => void;
-  onCreateVideo: () => void;
-  onEditImage: () => void;
-}) {
-  const canDownloadStoredFile = Boolean(item.output?.url && item.output.storedName && !mediaMissing);
-  const canUseOutput = Boolean(item.output?.url && !mediaMissing && !item.expired);
-
-  return (
-    <>
-      <button type="button" className="studio-library-tile__delete" onClick={onDelete} disabled={deleting} aria-label="删除作品">
-        {deleting ? <Loader2 className="size-4 animate-spin" aria-hidden="true" /> : <Trash2 className="size-4" aria-hidden="true" />}
-      </button>
-      <div className="studio-library-tile__actions" aria-label="作品操作">
-        <button type="button" onClick={onRegenerate}>
-          <RefreshCw className="size-4" aria-hidden="true" />
-          重新生成
-        </button>
-        {item.type === "image" ? (
-          <>
-            <button type="button" onClick={onUpscale} disabled={!canUseOutput}>
-              <ImageUp className="size-4" aria-hidden="true" />
-              放大
-            </button>
-            <button type="button" onClick={onCreateVideo} disabled={!canUseOutput}>
-              <Video className="size-4" aria-hidden="true" />
-              生成视频
-            </button>
-            <button type="button" onClick={onEditImage} disabled={!canUseOutput}>
-              <Wand2 className="size-4" aria-hidden="true" />
-              图片编辑
-            </button>
-          </>
-        ) : (
-          <button type="button" onClick={onUpscale} disabled={!canUseOutput}>
-            <ImageUp className="size-4" aria-hidden="true" />
-            视频放大
-          </button>
-        )}
-        {canDownloadStoredFile ? (
-          <a href={item.output?.url} download>
-            <Download className="size-4" aria-hidden="true" />
-            下载
-          </a>
-        ) : null}
-      </div>
-    </>
-  );
-}
 
 export function MediaCard({
   item,
   groupItems,
   large = false,
   compact = false,
+  showDetailFacts = false,
   mediaMissing = false,
   onMediaMissing,
 }: {
@@ -84,16 +21,24 @@ export function MediaCard({
   groupItems?: LibraryItem[];
   large?: boolean;
   compact?: boolean;
+  showDetailFacts?: boolean;
   mediaMissing?: boolean;
   onMediaMissing?: () => void;
 }) {
   const videoRef = useRef<HTMLVideoElement | null>(null);
+  const dragStateRef = useRef<{ pointerId: number; startX: number; startY: number; originX: number; originY: number } | null>(null);
   const [previewPlaying, setPreviewPlaying] = useState(false);
+  const [activeImageIndex, setActiveImageIndex] = useState(0);
+  const [imageZoom, setImageZoom] = useState(1);
+  const [imageOffset, setImageOffset] = useState({ x: 0, y: 0 });
+  const [isDraggingImage, setIsDraggingImage] = useState(false);
   const media = item.output;
   const imageGroupItems = item.type === "image"
     ? (groupItems || [item]).filter((entry) => entry.type === "image" && entry.output?.url && !entry.expired).slice(0, 4)
     : [];
   const isImageGroup = imageGroupItems.length > 1;
+  const showLargeGallery = large && isImageGroup;
+  const activeImageItem = showLargeGallery ? imageGroupItems[activeImageIndex] || imageGroupItems[0] : null;
   const mediaExpired = Boolean(item.expired);
   const unavailable = mediaMissing || mediaExpired;
   const hasMediaUrl = Boolean(media?.url) && !unavailable;
@@ -118,6 +63,20 @@ export function MediaCard({
   const statusBadge = mediaExpired ? "已过期" : mediaMissing ? "文件失效" : libraryStatusBadgeLabel(item.status);
   const batchText = isImageGroup ? `${imageGroupItems.length} 张` : "";
 
+  const detailFactItem = showLargeGallery ? activeImageItem || item : item;
+  const detailFacts = showDetailFacts ? buildLibraryDetailFacts(detailFactItem) : [];
+
+  useEffect(() => {
+    setActiveImageIndex(0);
+  }, [item.id, imageGroupItems.length]);
+
+  useEffect(() => {
+    setImageZoom(1);
+    setImageOffset({ x: 0, y: 0 });
+    setIsDraggingImage(false);
+    dragStateRef.current = null;
+  }, [item.id, activeImageIndex, large]);
+
   const togglePreviewPlayback = async (event: MouseEvent<HTMLButtonElement>) => {
     event.preventDefault();
     event.stopPropagation();
@@ -133,10 +92,120 @@ export function MediaCard({
     setPreviewPlaying(false);
   };
 
+  const handleImageWheelZoom = (event: WheelEvent<HTMLDivElement>) => {
+    if (!large || item.type !== "image") return;
+    event.preventDefault();
+    event.stopPropagation();
+    const direction = Math.sign(event.deltaY);
+    if (!direction) return;
+    setImageZoom((current) => {
+      const next = current + (direction < 0 ? 0.2 : -0.2);
+      return Math.min(4, Math.max(1, Number(next.toFixed(2))));
+    });
+  };
+
+  const clampImageOffset = (value: { x: number; y: number }, element: HTMLDivElement) => {
+    if (imageZoom <= 1) return { x: 0, y: 0 };
+    const rect = element.getBoundingClientRect();
+    const maxX = ((imageZoom - 1) * rect.width) / 2;
+    const maxY = ((imageZoom - 1) * rect.height) / 2;
+    return {
+      x: Math.max(-maxX, Math.min(maxX, value.x)),
+      y: Math.max(-maxY, Math.min(maxY, value.y)),
+    };
+  };
+
+  const handleImagePointerDown = (event: PointerEvent<HTMLDivElement>) => {
+    if (!large || item.type !== "image") return;
+    event.preventDefault();
+    event.stopPropagation();
+    event.currentTarget.setPointerCapture(event.pointerId);
+    dragStateRef.current = {
+      pointerId: event.pointerId,
+      startX: event.clientX,
+      startY: event.clientY,
+      originX: imageOffset.x,
+      originY: imageOffset.y,
+    };
+    setIsDraggingImage(true);
+  };
+
+  const handleImagePointerMove = (event: PointerEvent<HTMLDivElement>) => {
+    const dragState = dragStateRef.current;
+    if (!dragState || dragState.pointerId !== event.pointerId) return;
+    event.preventDefault();
+    event.stopPropagation();
+    const rawOffset = {
+      x: dragState.originX + (event.clientX - dragState.startX),
+      y: dragState.originY + (event.clientY - dragState.startY),
+    };
+    const next = imageZoom > 1 ? clampImageOffset(rawOffset, event.currentTarget) : rawOffset;
+    setImageOffset(next);
+  };
+
+  const handleImagePointerEnd = (event: PointerEvent<HTMLDivElement>) => {
+    const dragState = dragStateRef.current;
+    if (!dragState || dragState.pointerId !== event.pointerId) return;
+    if (event.currentTarget.hasPointerCapture(event.pointerId)) {
+      event.currentTarget.releasePointerCapture(event.pointerId);
+    }
+    dragStateRef.current = null;
+    setIsDraggingImage(false);
+  };
+
   return (
     <article className={cn("studio-media-card", compact && "is-compact")}>
       <div className={cn("studio-media-card__frame", large && "is-large")}>
-        {isImageGroup ? (
+        {detailFacts.length ? (
+          <div className="studio-media-card__facts-overlay" aria-label="Detail facts">
+            {detailFacts.map((fact, index) => (
+              <span key={`${detailFactItem.id}-${fact}-${index}`}>{fact}</span>
+            ))}
+          </div>
+        ) : null}
+        {showLargeGallery ? (
+          <div className="studio-media-card__gallery-single">
+            {activeImageItem ? (
+              <div
+                className={cn("studio-media-card__zoom-surface", imageZoom > 1 && "is-zoomed", isDraggingImage && "is-dragging")}
+                onWheel={handleImageWheelZoom}
+                onPointerDown={handleImagePointerDown}
+                onPointerMove={handleImagePointerMove}
+                onPointerUp={handleImagePointerEnd}
+                onPointerCancel={handleImagePointerEnd}
+              >
+                <img
+                  key={activeImageItem.id}
+                  src={activeImageItem.output?.url || ""}
+                  alt={activeImageItem.title}
+                  loading={imageLoading}
+                  decoding="async"
+                  fetchPriority={imageFetchPriority}
+                  onError={activeImageItem.id === item.id ? onMediaMissing : undefined}
+                  style={{ transform: `translate3d(${imageOffset.x}px, ${imageOffset.y}px, 0) scale(${imageZoom})` }}
+                />
+              </div>
+            ) : null}
+            <div className="studio-media-card__gallery-pager" aria-label="Image switcher">
+              {imageGroupItems.map((entry, index) => (
+                <button
+                  key={entry.id}
+                  type="button"
+                  className={cn(index === activeImageIndex && "is-active")}
+                  onClick={(event) => {
+                    event.preventDefault();
+                    event.stopPropagation();
+                    setActiveImageIndex(index);
+                  }}
+                  aria-label={`View image ${index + 1}`}
+                  aria-pressed={index === activeImageIndex}
+                >
+                  {index + 1}
+                </button>
+              ))}
+            </div>
+          </div>
+        ) : isImageGroup ? (
           <div className={cn("studio-media-card__collage", `is-count-${imageGroupItems.length}`)}>
             {imageGroupItems.map((entry) => (
               <img
@@ -151,7 +220,28 @@ export function MediaCard({
             ))}
           </div>
         ) : hasMediaUrl && imageUrl && item.type === "image" ? (
-          <img src={imageUrl} alt={item.title} loading={imageLoading} decoding="async" fetchPriority={imageFetchPriority} onError={onMediaMissing} />
+          large ? (
+            <div
+              className={cn("studio-media-card__zoom-surface", imageZoom > 1 && "is-zoomed", isDraggingImage && "is-dragging")}
+              onWheel={handleImageWheelZoom}
+              onPointerDown={handleImagePointerDown}
+              onPointerMove={handleImagePointerMove}
+              onPointerUp={handleImagePointerEnd}
+              onPointerCancel={handleImagePointerEnd}
+            >
+              <img
+                src={imageUrl}
+                alt={item.title}
+                loading={imageLoading}
+                decoding="async"
+                fetchPriority={imageFetchPriority}
+                onError={onMediaMissing}
+                style={{ transform: `translate3d(${imageOffset.x}px, ${imageOffset.y}px, 0) scale(${imageZoom})` }}
+              />
+            </div>
+          ) : (
+            <img src={imageUrl} alt={item.title} loading={imageLoading} decoding="async" fetchPriority={imageFetchPriority} onError={onMediaMissing} />
+          )
         ) : null}
         {hasMediaUrl && media?.url && item.type === "video" ? (
           <video
@@ -181,7 +271,7 @@ export function MediaCard({
               onClick={(event) => void togglePreviewPlayback(event)}
               aria-label={previewPlaying ? "暂停预览" : "播放预览"}
             >
-              <Play className="size-5" fill="currentColor" />
+              {previewPlaying ? <Pause className="size-5" fill="currentColor" /> : <Play className="size-5" fill="currentColor" />}
             </button>
             {durationText ? <span className="studio-media-card__duration">{durationText}</span> : null}
           </>
@@ -192,7 +282,7 @@ export function MediaCard({
           <strong>{item.title}</strong>
           {batchText ? <span>{batchText}</span> : statusBadge ? <span>{statusBadge}</span> : null}
         </div>
-        <div className="studio-media-card__meta" aria-label="作品信息">
+        <div className="studio-media-card__meta" aria-label="Item info">
           <span>{typeLabel}</span>
           {batchText ? <span>{batchText}</span> : null}
           <span>{createdAt}</span>
@@ -222,6 +312,24 @@ export function MediaCard({
       </div> : null}
     </article>
   );
+}
+
+export function buildLibraryDetailFacts(item: LibraryItem) {
+  const facts: string[] = [];
+  facts.push(formatDateTime(item.createdAt));
+  const durationText = libraryDuration(item);
+  if (durationText) facts.push(durationText);
+  const ratioText = libraryRatio(item);
+  if (ratioText) facts.push(ratioText);
+  const dimensionText = libraryDimensions(item);
+  if (dimensionText) facts.push(dimensionText);
+  const scaleText = typeof item.params.scale === "number" || typeof item.params.scale === "string"
+    ? `${item.params.scale}x`
+    : "";
+  if (scaleText) facts.push(scaleText);
+  const fileSizeText = typeof item.output?.size === "number" ? formatBytes(item.output.size) : "";
+  if (fileSizeText) facts.push(fileSizeText);
+  return facts.filter(Boolean);
 }
 
 function mediaPreviewUrl(url: string, large: boolean) {
@@ -273,6 +381,10 @@ function libraryDimensions(item: LibraryItem) {
   const height = Number(item.params.outputHeight || item.params.sourceHeight || 0);
   if (!Number.isFinite(width) || !Number.isFinite(height) || width <= 0 || height <= 0) return "";
   return `${Math.round(width)}×${Math.round(height)}`;
+}
+
+function libraryRatio(item: LibraryItem) {
+  return typeof item.params.ratio === "string" ? item.params.ratio.trim() : "";
 }
 
 function libraryDuration(item: LibraryItem) {

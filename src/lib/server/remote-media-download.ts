@@ -41,6 +41,7 @@ const defaultIdleTimeoutMs = 30000;
 const defaultMaxRedirects = 5;
 const metadataHost = "169.254.169.254";
 const allowedHostsEnvName = "REMOTE_MEDIA_ALLOWED_HOSTS";
+const builtInRemoteMediaHosts = ["image.codesonline.dev"];
 
 export async function storeRemoteUrlStreamed(url: string, options: RemoteMediaDownloadOptions) {
   await ensureRuntimeDirs();
@@ -336,7 +337,7 @@ function assertAllowedRemoteHost(hostname: string) {
 }
 
 function allowedRemoteHostRules() {
-  return String(process.env[allowedHostsEnvName] || "")
+  return `${process.env[allowedHostsEnvName] || ""},${builtInRemoteMediaHosts.join(",")}`
     .split(",")
     .map((entry) => entry.trim().toLowerCase())
     .filter(Boolean)

@@ -8,20 +8,31 @@ export function estimateImageGenerationQuota(input: {
   quality: string;
   referenceImages: number;
 }) {
-  const base = input.quality === "4k" ? 160 : input.quality === "2k" ? 80 : 40;
-  const referenceCost = input.mode === "image-to-image" ? Math.min(40, Math.max(0, input.referenceImages) * 8) : 0;
-  return Math.max(20, base + referenceCost);
+  return applyImageQualityMultiplier(300, input.quality);
+}
+
+export function estimateImageGenerationTotalQuota(input: {
+  quality: string;
+  count: number;
+}) {
+  const count = Math.min(Math.max(Math.round(Number(input.count) || 1), 1), 4);
+  const base = count === 4 ? 1000 : 300 * count;
+  return applyImageQualityMultiplier(base, input.quality);
 }
 
 export function estimateVideoGenerationQuota(input: {
   mode: WorkspaceVideoMode;
   durationSeconds: number;
   referenceImages: number;
+  model?: string | null;
 }) {
   const duration = Math.max(1, Math.floor(input.durationSeconds || 1));
-  const perSecond = input.mode === "image-to-video" ? 28 : 20;
-  const referenceCost = input.mode === "image-to-video" ? Math.min(50, Math.max(0, input.referenceImages) * 12) : 0;
-  return Math.max(30, duration * perSecond + referenceCost);
+  const base = duration * 100;
+  let quota = base;
+  if (duration >= 15) quota = Math.round(base * 0.8);
+  else if (duration >= 12) quota = Math.round(base * 0.85);
+  else if (duration >= 10) quota = Math.round(base * 0.9);
+  return applyGrokVideoModelDiscount(quota, input.model);
 }
 
 export type GenerationBillingIntent =
@@ -40,6 +51,7 @@ export type GenerationBillingIntent =
       ratio: string;
       durationSeconds: number;
       referenceImages: number;
+      model?: string | null;
     };
 
 export function generationBillingOperation(input: Pick<GenerationBillingIntent, "kind">): GenerationBillableOperation {
@@ -57,6 +69,7 @@ export function estimateGenerationQuota(input: GenerationBillingIntent) {
       mode: input.mode,
       durationSeconds: input.durationSeconds,
       referenceImages: input.referenceImages,
+      model: input.model,
     });
 }
 
@@ -81,6 +94,7 @@ export function generationBillingFingerprint(input: GenerationBillingIntent & {
       generationBillingOperation(input),
       input.taskId,
       input.providerId,
+      input.model || "",
       input.mode,
       input.ratio,
       Math.max(1, Math.floor(input.durationSeconds || 1)),
@@ -95,8 +109,14 @@ export function estimateUpscaleQuota(input: {
   scale: string | number;
 }) {
   const numericScale = Math.max(1, Math.trunc(Number(input.scale) || 1));
-  const base = input.kind === "image" ? 40 : 120;
-  return Math.max(base, base * numericScale);
+  if (input.kind === "image") {
+    if (numericScale >= 4) return 350;
+    if (numericScale >= 2) return 200;
+    return 100;
+  }
+  if (numericScale >= 4) return 450;
+  if (numericScale >= 2) return 300;
+  return 200;
 }
 
 export function upscaleBillingOperation(input: { kind: "image" | "video" }): UpscaleBillableOperation {
@@ -117,4 +137,16 @@ export function upscaleBillingFingerprint(input: {
     input.estimatedQuotaUnits,
   ];
   return parts.map((part) => encodeURIComponent(String(part))).join(":");
+}
+
+function applyImageQualityMultiplier(base: number, quality: string) {
+  if (quality === "4k") return Math.round(base * 1.2);
+  if (quality === "2k") return Math.round(base * 1.1);
+  return base;
+}
+
+function applyGrokVideoModelDiscount(base: number, model?: string | null) {
+  return String(model || "").trim().toLowerCase() === "grok-video-1.0"
+    ? Math.round(base * 0.8)
+    : base;
 }

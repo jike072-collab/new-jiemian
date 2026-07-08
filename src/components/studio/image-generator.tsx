@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 
-import { featuredImagePromptTemplates } from "@/lib/template-catalog";
+import { featuredImageGenerationPromptTemplates } from "@/lib/template-catalog";
 import type { FrontendProvider } from "@/lib/server/types";
 import type { WorkspaceImageMode } from "@/lib/workspace-registry";
 import { TemplateRail } from "@/components/template-center";
@@ -104,7 +104,7 @@ export function ImageGenerator({
         <TemplateRail
           title="模板"
           viewAllHref={templateCenterHref}
-          templates={featuredImagePromptTemplates}
+          templates={featuredImageGenerationPromptTemplates}
           activeTemplateId={state.templateId}
           onSelect={(template) => onTemplateChange(template.id)}
         />

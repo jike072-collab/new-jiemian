@@ -3,7 +3,7 @@ import { type NextRequest, NextResponse } from "next/server";
 import { authResultResponse, csrfFailure, requireAuthSession, requireCsrf } from "@/lib/server/auth";
 import { diagnosticErrorResponse, GenerationDiagnosticError } from "@/lib/server/error-diagnostics";
 import { uploadedUpscaleFile, upscaleImage as runUpscaleImage } from "@/lib/server/volcengine-upscale";
-import { WorkloadLimitError, withUserImageWorkload, workloadLimitResponse } from "@/lib/server/workload-guard";
+import { WorkloadLimitError, withUserImageUpscaleWorkload, workloadLimitResponse } from "@/lib/server/workload-guard";
 
 export const runtime = "nodejs";
 export const maxDuration = 900;
@@ -27,7 +27,7 @@ export async function POST(request: NextRequest) {
       billingTaskId: String(form.get("taskId") || "").trim(),
       billingIdempotencyKey: String(form.get("idempotencyKey") || form.get("taskId") || "").trim(),
     };
-    const item = await withUserImageWorkload(session.user.local_user_id, async () => {
+    const item = await withUserImageUpscaleWorkload(session.user.local_user_id, async () => {
       const file = await uploadedUpscaleFile(form, "image");
       const upscaleImage = (file: Parameters<typeof runUpscaleImage>[0], scale: Parameters<typeof runUpscaleImage>[1]) => (
         runUpscaleImage(file, scale, session.user.local_user_id, billing)

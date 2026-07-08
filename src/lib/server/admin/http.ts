@@ -103,6 +103,22 @@ export async function adminAdjustQuotaResponse(request: NextRequest, localUserId
   ));
 }
 
+export async function adminGrantMembershipResponse(request: NextRequest, localUserId: string) {
+  if (!requireCsrf(request)) return json(csrfFailureForAdmin());
+  const body = await readJsonBody(request);
+  return adminResponse(request, (actor) => getAdminService().grantMembership(
+    actor,
+    {
+      localUserId,
+      planId: String(body.planId || body.plan_id || ""),
+      cycle: String(body.cycle || ""),
+      idempotencyKey: String(body.idempotencyKey || body.idempotency_key || ""),
+      reason: String(body.reason || ""),
+    },
+    authRequestContext(request),
+  ));
+}
+
 export function adminListOrdersResponse(request: NextRequest) {
   const url = new URL(request.url);
   return adminResponse(request, (actor) => getAdminService().listOrders(actor, {

@@ -255,6 +255,44 @@ export class PostgresMembershipRepository implements MembershipRepository {
     });
   }
 
+  async expireEntitlementsBySourceOrder(localUserId: string, sourceOrderIds: string[], now = new Date().toISOString()) {
+    const owner = localUserId.trim();
+    const orderIds = sourceOrderIds.map((value) => value.trim()).filter(Boolean);
+    if (!owner || !orderIds.length) return 0;
+    return withApplicationTransaction(async (client) => {
+      const grants = await client.query<EntitlementRow>(`
+        select * from membership_entitlements
+        where local_user_id = $1 and source_order_id = any($2::text[]) and remaining > 0
+        for update
+      `, [owner, orderIds]);
+      let expired = 0;
+      for (const grant of grants.rows) {
+        const remaining = Number(grant.remaining);
+        if (remaining <= 0) continue;
+        await client.query(`
+          update membership_entitlements
+          set used = used + $2, remaining = 0, updated_at = $3, version = version + 1
+          where id = $1
+        `, [grant.id, remaining, now]);
+        await client.query(`
+          insert into membership_entitlement_ledger(
+            id, local_user_id, kind, delta, idempotency_key, source_order_id, task_id, created_at
+          ) values ($1,$2,$3,$4,$5,$6,null,$7)
+        `, [
+          randomUUID(),
+          owner,
+          grant.kind,
+          -remaining,
+          `membership-expire:${grant.source_order_id}:${grant.kind}:${grant.id}`,
+          grant.source_order_id,
+          now,
+        ]);
+        expired += remaining;
+      }
+      return expired;
+    });
+  }
+
   async consumeEntitlement(input: ConsumeEntitlementInput) {
     if (input.amount <= 0) return { consumed: 0, ledger: null };
     const timestamp = input.now || new Date().toISOString();

@@ -17,7 +17,7 @@ import {
   type DailyCheckInRepository,
 } from "./repository";
 
-export const DAILY_CHECK_IN_REWARD_CREDITS = 50;
+export const DAILY_CHECK_IN_REWARD_CREDITS = 200;
 export const DAILY_CHECK_IN_TIME_ZONE = "Asia/Shanghai";
 
 export type PublicDailyCheckInStatus = {

@@ -50,6 +50,7 @@ export type UsageLogEntry = {
   upstream_request_id: string | null;
   upstream_model: string | null;
   upstream_created_at: string | null;
+  balance_after_quota_units?: number | null;
   created_at: string;
   updated_at: string;
   idempotency_key: string;

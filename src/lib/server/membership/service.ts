@@ -1,3 +1,5 @@
+import { randomUUID } from "node:crypto";
+
 import {
   addMembershipDuration,
   getMembershipPlan,
@@ -8,6 +10,7 @@ import {
 import { createMembershipPersistenceRepository } from "./persistence";
 import type { MembershipRepository } from "./repository";
 import type { MembershipStatusSnapshot, UserMembership } from "./types";
+import { getNewApiSubscriptionMembershipStatus } from "./new-api-subscription";
 
 export type MembershipGrantInput = {
   localUserId: string;
@@ -16,6 +19,8 @@ export type MembershipGrantInput = {
   cycle: string | null;
   now?: Date;
 };
+
+export type ManualMembershipGrantInput = MembershipGrantInput;
 
 export type MembershipConsumeInput = {
   localUserId: string;
@@ -28,6 +33,7 @@ export type MembershipConsumeInput = {
 
 export type MembershipServiceDependencies = {
   repository?: MembershipRepository;
+  externalStatus?: (localUserId: string, at: Date) => Promise<MembershipStatusSnapshot | null>;
   now?: () => Date;
 };
 
@@ -79,10 +85,12 @@ function cloneEmptyEntitlements() {
 
 export class MembershipService {
   private readonly repository: MembershipRepository;
+  private readonly externalStatus: (localUserId: string, at: Date) => Promise<MembershipStatusSnapshot | null>;
   private readonly now: () => Date;
 
   constructor(dependencies: MembershipServiceDependencies = {}) {
     this.repository = dependencies.repository || createMembershipPersistenceRepository();
+    this.externalStatus = dependencies.externalStatus || getNewApiSubscriptionMembershipStatus;
     this.now = dependencies.now || (() => new Date());
   }
 
@@ -110,12 +118,19 @@ export class MembershipService {
         used: grant.used,
       });
     }
-    return {
+    const localStatus = {
       active,
       queued,
       recharge_bonus_basis_points: active ? getMembershipPlan(active.plan_id)?.recharge_bonus_basis_points || 0 : 0,
       entitlements,
     };
+    if (active) return localStatus;
+    try {
+      const external = await this.externalStatus(localUserId, at);
+      return external || localStatus;
+    } catch {
+      return localStatus;
+    }
   }
 
   async applyPaidMembership(input: MembershipGrantInput) {
@@ -153,6 +168,47 @@ export class MembershipService {
     }
     await this.grantMembershipEntitlements(input.localUserId, input.orderId, sku.grant_entitlements, record.ends_at, timestamp);
     return record;
+  }
+
+  async applyManualMembership(input: ManualMembershipGrantInput) {
+    const now = input.now || this.now();
+    const timestamp = nowIso(now);
+    const existing = await this.repository.getMembershipByOrder(input.orderId);
+    if (existing) return existing;
+    const sku = getMembershipSku(input.planId, input.cycle);
+    if (!sku) throw new Error("Invalid membership SKU.");
+    await this.refreshExpired(input.localUserId, now);
+    const memberships = await this.repository.listMemberships(input.localUserId);
+    const startsAt = now;
+    const endsAt = addMembershipDuration(startsAt, sku.cycle);
+    const record = await this.repository.createMembership({
+      localUserId: input.localUserId,
+      planId: sku.plan.id,
+      cycle: sku.cycle,
+      status: "active",
+      startsAt: nowIso(startsAt),
+      endsAt: nowIso(endsAt),
+      sourceOrderId: input.orderId,
+      now: timestamp,
+    });
+    for (const membership of memberships) {
+      if (membership.status !== "active" && membership.status !== "queued") continue;
+      await this.repository.updateMembership(membership.id, {
+        status: "cancelled",
+        cancelled_at: timestamp,
+        updated_at: timestamp,
+      }, membership.version);
+    }
+    const replacedOrderIds = memberships
+      .filter((membership) => membership.status === "active" || membership.status === "queued")
+      .map((membership) => membership.source_order_id);
+    await this.repository.expireEntitlementsBySourceOrder(input.localUserId, replacedOrderIds, timestamp);
+    await this.grantMembershipEntitlements(input.localUserId, input.orderId, sku.grant_entitlements, record.ends_at, timestamp);
+    return record;
+  }
+
+  createManualOrderId(localUserId: string, idempotencyKey: string) {
+    return `admin-membership:${localUserId.trim()}:${idempotencyKey.trim() || randomUUID()}`;
   }
 
   async cancelByOrder(orderId: string, at: Date = this.now()) {

@@ -37,7 +37,13 @@ async function readResponseData(response: Response) {
 
 function extractErrorMessage(payload: unknown, fallback: string) {
   if (!payload) return fallback;
-  if (typeof payload === "string" && payload.trim()) return payload.trim();
+  if (typeof payload === "string" && payload.trim()) {
+    const text = payload.trim();
+    if (/^<!doctype html/i.test(text) || /^<html[\s>]/i.test(text) || /<title>\s*502/i.test(text)) {
+      return "服务暂时不可用，请稍后重试。";
+    }
+    return text;
+  }
   if (typeof payload !== "object" || Array.isArray(payload)) return fallback;
   const record = payload as ApiErrorPayload & { detail?: string };
   return record.message || record.error || record.detail || fallback;

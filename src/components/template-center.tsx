@@ -37,6 +37,7 @@ const templateRailDragThreshold = 12;
 const templateRailLongPressDelay = 180;
 const templatePageSize = 12;
 const favoriteTemplateStorageKey = "aohuang-template-favorites";
+const templateThumbnailWarmupConcurrency = 3;
 const defaultTemplateCategoryIds: TemplateFilter[] = [
   "全部",
   "收藏",
@@ -49,6 +50,41 @@ const defaultTemplateCategoryIds: TemplateFilter[] = [
 
 function getWebpThumbnail(thumbnail: string) {
   return thumbnail.endsWith(".png") ? thumbnail.replace(/\.png$/, ".webp") : thumbnail;
+}
+
+function warmTemplateThumbnailCache(templates: TemplatePromptTemplate[]) {
+  if (typeof window === "undefined") return;
+
+  const urls = Array.from(new Set(templates.map((template) => getWebpThumbnail(template.thumbnail))));
+  if (!urls.length) return;
+
+  const warm = () => {
+    let nextIndex = 0;
+    let activeCount = 0;
+
+    const runNext = () => {
+      while (activeCount < templateThumbnailWarmupConcurrency && nextIndex < urls.length) {
+        const url = urls[nextIndex];
+        nextIndex += 1;
+        activeCount += 1;
+        void fetch(url, { cache: "force-cache" }).catch(() => undefined).finally(() => {
+          activeCount -= 1;
+          runNext();
+        });
+      }
+    };
+
+    runNext();
+  };
+
+  const idleWindow = window as Window & {
+    requestIdleCallback?: (callback: () => void, options?: { timeout: number }) => number;
+  };
+  if (idleWindow.requestIdleCallback) {
+    idleWindow.requestIdleCallback(warm, { timeout: 1500 });
+  } else {
+    window.setTimeout(warm, 500);
+  }
 }
 
 function TemplateThumbnail({
@@ -250,6 +286,10 @@ export function TemplateCenterView() {
     } as Record<TemplateFilter, number>);
   }, [favoriteIds, templates]);
 
+  useEffect(() => {
+    warmTemplateThumbnailCache([...imagePromptTemplates, ...videoPromptTemplates]);
+  }, []);
+
   const handleFavoriteToggle = (id: string) => {
     setFavoriteIds((current) => {
       const next = new Set(current);
@@ -427,10 +467,19 @@ function TemplateCategoryPanel({
   className?: string;
 }) {
   const [expanded, setExpanded] = useState(false);
+  const [desktopCategoriesExpanded, setDesktopCategoriesExpanded] = useState(false);
+  useEffect(() => {
+    const query = window.matchMedia("(min-width: 1200px)");
+    const sync = () => setDesktopCategoriesExpanded(query.matches);
+    sync();
+    query.addEventListener("change", sync);
+    return () => query.removeEventListener("change", sync);
+  }, []);
   const availableCategories = (["收藏", ...templateCategories] as TemplateFilter[]).filter((item) => {
     return item === "全部" || item === "收藏" || counts[item] > 0 || item === category;
   });
-  const visibleCategories = expanded
+  const categoriesExpanded = expanded || desktopCategoriesExpanded;
+  const visibleCategories = categoriesExpanded
     ? availableCategories
     : availableCategories.filter((item) => defaultTemplateCategoryIds.includes(item) || item === category);
   const hiddenCount = Math.max(0, availableCategories.length - visibleCategories.length);
@@ -439,7 +488,10 @@ function TemplateCategoryPanel({
     <div className={cn("template-center-panel", className)}>
       <div className="template-center-categories" role="group" aria-label="模板分类">
         {visibleCategories.map((item) => {
-          const meta = templateCategoryMeta[item];
+          const meta = templateCategoryMeta[item] || {
+            title: item,
+            description: "",
+          };
           return (
             <button
               key={item}
@@ -455,7 +507,7 @@ function TemplateCategoryPanel({
             </button>
           );
         })}
-        {hiddenCount > 0 || expanded ? (
+        {!desktopCategoriesExpanded && (hiddenCount > 0 || expanded) ? (
           <button
             type="button"
             className="template-center-category template-center-category--more"

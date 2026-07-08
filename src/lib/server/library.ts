@@ -163,8 +163,28 @@ export async function readLibrary() {
   return withFileState.sort((a, b) => b.createdAt.localeCompare(a.createdAt));
 }
 
+export async function readLibraryMetadata() {
+  const flags = getStage9cbDatabaseIntegrationFlags();
+  const items = shouldReadLibraryFromDatabase(flags)
+    ? await getDatabaseAdapter().readLibrary()
+    : await readLibraryFile();
+  return items.map(withRetentionMetadata).sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+}
+
 export async function readLibraryForOwner(ownerLocalUserId: string) {
-  return (await readLibrary()).filter((item) => isOwnedBy(item, ownerLocalUserId));
+  return (await readLibrary()).filter((item) => (
+    isOwnedBy(item, ownerLocalUserId)
+    && !item.expired
+    && item.status !== "failed"
+  ));
+}
+
+export async function readLibraryMetadataForOwner(ownerLocalUserId: string) {
+  return (await readLibraryMetadata()).filter((item) => (
+    isOwnedBy(item, ownerLocalUserId)
+    && !item.expired
+    && item.status !== "failed"
+  ));
 }
 
 export async function saveLibrary(items: LibraryItem[]) {
@@ -497,6 +517,23 @@ export async function deleteLibraryItemForOwner(id: string, ownerLocalUserId: st
     await getDatabaseAdapter().softDeleteLibraryItem(id);
   }
   return { deleted: Boolean(removed) };
+}
+
+export async function deleteLibraryItemsForOwner(ids: string[], ownerLocalUserId: string) {
+  const deletedIds: string[] = [];
+  for (const id of Array.from(new Set(ids.map((value) => value.trim()).filter(Boolean)))) {
+    try {
+      const result = await deleteLibraryItemForOwner(id, ownerLocalUserId);
+      if (result.deleted) deletedIds.push(id);
+    } catch (error) {
+      if (error instanceof LibraryOperationError && error.status === 404) continue;
+      throw error;
+    }
+  }
+  return {
+    deleted: deletedIds.length > 0,
+    deletedIds,
+  };
 }
 
 export async function readJobs() {

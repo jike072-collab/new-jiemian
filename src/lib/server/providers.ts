@@ -115,14 +115,14 @@ function grokVideoOptionsForModel(model: string): ProviderConfig["videoOptions"]
   if (!normalized.startsWith("grok-video-")) return undefined;
   if (normalized === "grok-video-1.5") {
     return {
-      durations: [4, 6, 8, 10, 12, 15],
+      durations: [6, 8, 10, 12, 15],
       ratios: ["16:9", "9:16"],
       resolution: "720p",
       maxReferenceImages: 1,
     };
   }
   return {
-    durations: [4, 5, 6, 8, 10, 12, 15],
+    durations: [6, 8, 10, 12, 15],
     ratios: ["1:1", "16:9", "9:16", "4:3", "3:4", "3:2", "2:3"],
     resolution: "720p",
     maxReferenceImages: 7,
@@ -220,6 +220,8 @@ export function defaultProviders(): ProviderConfig[] {
       model: env("IMAGE_MODEL", "gpt-image-2"),
       displayName: env("IMAGE_DISPLAY_NAME", env("IMAGE_MODEL", "gpt-image-2")),
       apiKey: env("IMAGE_MODEL_API_KEY"),
+      fallbackApiKey: env("IMAGE_MODEL_FALLBACK_API_KEY"),
+      fallbackProviderId: env("IMAGE_MODEL_FALLBACK_PROVIDER_ID"),
       enabled: hasKey(env("IMAGE_MODEL_API_KEY")),
       endpointType: (env("IMAGE_ENDPOINT_TYPE", "images-generations") as EndpointType),
       custom: false,
@@ -233,8 +235,28 @@ export function defaultProviders(): ProviderConfig[] {
       model: env("IMG2_IMAGE_MODEL", "gpt-image-2"),
       displayName: env("IMG2_IMAGE_DISPLAY_NAME", "img2-4K"),
       apiKey: env("IMG2_IMAGE_API_KEY"),
+      fallbackApiKey: env("IMG2_IMAGE_FALLBACK_API_KEY"),
+      fallbackProviderId: env("IMG2_IMAGE_FALLBACK_PROVIDER_ID", "custom-image-1"),
       enabled: hasKey(env("IMG2_IMAGE_API_KEY")),
       endpointType: (env("IMG2_IMAGE_ENDPOINT_TYPE", "images-generations") as EndpointType),
+      custom: false,
+    },
+    {
+      id: "image-nanobanana2-pro",
+      kind: "image",
+      title: "Nanobanana2pro image generation",
+      role: "Supports Nanobanana2pro text-to-image, image-to-image, and 4K image generation",
+      apiUrl: env("NANOBANANA_IMAGE_API_URL", "https://image.codesonline.dev/v1/images/generations"),
+      model: env("NANOBANANA_IMAGE_MODEL", "gemini-banana-2.0-pro"),
+      models: ["gemini-banana-2.0-pro"],
+      modelDisplayNames: {
+        "gemini-banana-2.0-pro": "Nanobanana2pro",
+      },
+      enabledModels: ["gemini-banana-2.0-pro"],
+      displayName: env("NANOBANANA_IMAGE_DISPLAY_NAME", "Nanobanana2pro"),
+      apiKey: env("NANOBANANA_IMAGE_API_KEY"),
+      enabled: hasKey(env("NANOBANANA_IMAGE_API_KEY")),
+      endpointType: (env("NANOBANANA_IMAGE_ENDPOINT_TYPE", "images-generations") as EndpointType),
       custom: false,
     },
     {
@@ -324,10 +346,28 @@ function normalizeProvider(provider: ProviderConfig): ProviderConfig {
     displayName: String(legacyNormalized.displayName || legacyNormalized.model || "").trim() || undefined,
     videoOptions: normalizeVideoOptions(legacyNormalized.videoOptions),
     apiKey: String(legacyNormalized.apiKey || "").trim(),
+    fallbackApiKey: fallbackApiKeyForProvider(legacyNormalized),
+    fallbackProviderId: fallbackProviderIdForProvider(legacyNormalized),
     enabled: Boolean(legacyNormalized.enabled),
     endpointType: normalizeEndpointType(legacyNormalized.endpointType, legacyNormalized.kind),
     custom: Boolean(legacyNormalized.custom),
   };
+}
+
+function fallbackApiKeyForProvider(provider: ProviderConfig) {
+  const configured = String(provider.fallbackApiKey || "").trim();
+  if (configured) return configured;
+  if (provider.id === "image-img2-4k") return env("IMG2_IMAGE_FALLBACK_API_KEY");
+  if (provider.id === "image-main") return env("IMAGE_MODEL_FALLBACK_API_KEY");
+  return "";
+}
+
+function fallbackProviderIdForProvider(provider: ProviderConfig) {
+  const configured = String(provider.fallbackProviderId || "").trim();
+  if (configured) return configured;
+  if (provider.id === "image-img2-4k") return env("IMG2_IMAGE_FALLBACK_PROVIDER_ID", "custom-image-1");
+  if (provider.id === "image-main") return env("IMAGE_MODEL_FALLBACK_PROVIDER_ID");
+  return "";
 }
 
 export function sanitizeProvider(provider: ProviderConfig): PublicProvider {
@@ -483,18 +523,29 @@ export async function readFrontendProviders(kind?: ProviderKind): Promise<Fronte
 export async function providerById(id: string) {
   const providers = await readProviders();
   const direct = providers.find((provider) => provider.id === id);
-  if (direct) return direct;
+  if (direct) {
+    const normalized = normalizeProvider(direct);
+    const knownModels = normalizeModels(normalized.models);
+    const enabledModels = normalizeModels(normalized.enabledModels);
+    if (knownModels.length && enabledModels.length && !enabledModels.includes(normalized.model)) return null;
+    return direct;
+  }
   const virtual = parseVirtualProviderId(id);
   if (!virtual) return null;
   const provider = providers.find((item) => item.id === virtual.providerId);
   if (!provider || !shouldExpandProvider(provider)) return null;
   const knownModels = normalizeModels(provider.models);
   if (knownModels.length && !knownModels.includes(virtual.model)) return null;
+  const enabledModels = normalizeModels(provider.enabledModels);
+  if (enabledModels.length && !enabledModels.includes(virtual.model)) return null;
+  const visibleModels = enabledModels.length
+    ? knownModels.filter((model) => enabledModels.includes(model))
+    : knownModels;
   return normalizeProvider({
     ...provider,
     id,
     model: virtual.model,
-    displayName: publicDisplayName(provider, virtual.model, knownModels.length > 1),
+    displayName: publicDisplayName(provider, virtual.model, visibleModels.length > 1),
     videoOptions: providerVideoOptions({ ...provider, model: virtual.model }),
   });
 }
