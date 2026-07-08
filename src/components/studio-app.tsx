@@ -62,7 +62,6 @@ import type {
   StudioErrorDiagnostic,
 } from "@/components/studio/types";
 import {
-  getCheckInStatusDisplay,
   getPlanStatusDisplay,
   type CheckInStatus,
   type PlanStatus,
@@ -199,7 +198,6 @@ type PlanOption = {
   perks: string[];
   cyclePriceLabels?: Partial<Record<PlanCycle, string>>;
   recommended?: boolean;
-  recommendedNote?: string;
 };
 
 type PlanCycle = "monthly" | "quarterly" | "yearly";
@@ -242,12 +240,11 @@ const planOptions: PlanOption[] = [
     cyclePrices: { monthly: 59.9, quarterly: 159, yearly: 599 },
     monthlyCredits: 9000,
     description: "面向持续产出商品图、海报与短视频素材",
-    highlight: "推荐选择",
+    highlight: "创作者常用",
     bonusLabel: "此后每月发放 9,000 积分",
     perks: ["会员有效期内，积分充值额外加赠 10%", "送 30 次提示词优化", "送 30 张生图额度", "送 1 次视频生成"],
     cyclePriceLabels: { monthly: "¥59.9 / 月", quarterly: "¥159 / 季", yearly: "¥599 / 年" },
     recommended: true,
-    recommendedNote: "适合大多数创作者，图像与视频混合使用推荐",
   },
   {
     id: "pro",
@@ -337,7 +334,7 @@ const WorkspaceAccountPanel = dynamic(
 );
 
 function accountViewTitle(view: AccountView) {
-  if (view === "recharge") return "会员中心";
+  if (view === "recharge") return "会员订阅";
   if (view === "usage") return "消费记录";
   return "用户中心";
 }
@@ -2687,9 +2684,7 @@ export function StudioApp() {
       ) : null}
     </>
   );
-  const accountEntitlementsLabel = accountSummaryBusy
-    ? null
-    : createAccountEntitlementsLabel(membershipSnapshot?.membership.entitlements ?? null);
+  const accountPlanLabel = accountSummaryBusy ? "会员加载中" : getPlanStatusDisplay(accountPlanStatus).label;
 
   return (
     <>
@@ -2700,7 +2695,7 @@ export function StudioApp() {
         canAccessAdmin={sessionUser?.role === "admin"}
         accountName={sessionUser?.display_name || sessionUser?.username || null}
         accountPointsLabel={accountSummaryBusy ? "加载中" : quotaSnapshot ? `${formatQuotaUnits(quotaSnapshot.quota_units)} ✦` : "—"}
-        accountEntitlementsLabel={accountEntitlementsLabel}
+        accountPlanLabel={accountPlanLabel}
         headerRightSlot={accountHeaderSlot}
         accountCloseSignal={accountCloseSignal}
         onOpenAccountCenter={handleOpenAccountCenter}
@@ -2924,25 +2919,22 @@ function createMembershipEntitlementItems(entitlements: MembershipEntitlements |
     {
       key: "prompt_optimize",
       label: "提示词优化",
-      value: `${formatQuotaUnits(entitlements.prompt_optimize.remaining)} 次`,
+      value: `剩余 ${formatQuotaUnits(entitlements.prompt_optimize.remaining)} 次`,
+      remaining: entitlements.prompt_optimize.remaining,
     },
     {
       key: "image_generation",
       label: "生图",
-      value: `${formatQuotaUnits(entitlements.image_generation.remaining)} 张`,
+      value: `剩余 ${formatQuotaUnits(entitlements.image_generation.remaining)} 张`,
+      remaining: entitlements.image_generation.remaining,
     },
     {
       key: "video_generation",
       label: "视频",
-      value: `${formatQuotaUnits(entitlements.video_generation.remaining)} 次`,
+      value: `剩余 ${formatQuotaUnits(entitlements.video_generation.remaining)} 次`,
+      remaining: entitlements.video_generation.remaining,
     },
-  ].filter((item) => item.value !== "0 次" && item.value !== "0 张");
-}
-
-function createAccountEntitlementsLabel(entitlements: MembershipEntitlements | null) {
-  const items = createMembershipEntitlementItems(entitlements);
-  if (!items.length) return null;
-  return items.map((item) => `${item.label} ${item.value}`).join(" · ");
+  ].filter((item) => item.remaining > 0);
 }
 
 function UserCenterOverview({
@@ -2983,7 +2975,8 @@ function UserCenterOverview({
       : "登录后将显示真实账户积分。";
   const entitlementItems = createMembershipEntitlementItems(membershipSnapshot?.membership.entitlements ?? null);
   const planDisplay = getPlanStatusDisplay(planStatus);
-  const checkInDisplay = getCheckInStatusDisplay(checkInStatus);
+  const checkInButtonLabel = checkInStatus === "checked" ? "已签到" : "签到";
+  const checkInButtonDisabled = !user || checkInStatus === "checked" || checkInStatus === "loading" || checkInStatus === "submitting";
   const previousQuotaUnitsRef = useRef<number | null>(quotaUnits);
   const [quotaChanged, setQuotaChanged] = useState(false);
 
@@ -3014,6 +3007,15 @@ function UserCenterOverview({
           <h2>用户中心</h2>
           <p>查看积分、套餐与签到信息</p>
         </div>
+        <button
+          type="button"
+          className={cn("user-center-checkin-button", checkInStatus === "checked" && "is-checked")}
+          onClick={checkInButtonDisabled ? undefined : onCheckInUnavailable}
+          disabled={checkInButtonDisabled}
+        >
+          <CalendarCheck className="size-4" aria-hidden="true" />
+          {checkInButtonLabel}
+        </button>
       </header>
 
       <div className="user-center-page__grid">
@@ -3055,20 +3057,6 @@ function UserCenterOverview({
                     {planDisplay.actionLabel}
                   </button>
                 </div>
-                <div className="user-center-mobile-status__item">
-                  <span>
-                    <CalendarCheck className="size-3.5" aria-hidden="true" />
-                    每日签到
-                  </span>
-                  <strong>{checkInDisplay.label}</strong>
-                  <button
-                    type="button"
-                    onClick={checkInStatus === "checked" || checkInStatus === "loading" || checkInStatus === "submitting" ? undefined : onCheckInUnavailable}
-                    disabled={!user || (checkInStatus !== "unavailable" && checkInDisplay.actionDisabled)}
-                  >
-                    {checkInDisplay.actionLabel}
-                  </button>
-                </div>
               </div>
             </article>
 
@@ -3092,24 +3080,6 @@ function UserCenterOverview({
                 </button>
               </article>
 
-              <article className="user-center-mini-card">
-                <span className="user-center-card-icon">
-                  <CalendarCheck className="size-4" aria-hidden="true" />
-                </span>
-                <div>
-                  <span>每日签到</span>
-                  <strong>{checkInDisplay.label}</strong>
-                  <p>{checkInDisplay.note}</p>
-                </div>
-                <button
-                  type="button"
-                  className="user-center-mini-card__action"
-                  onClick={checkInStatus === "checked" || checkInStatus === "loading" || checkInStatus === "submitting" ? undefined : onCheckInUnavailable}
-                  disabled={!user || (checkInStatus !== "unavailable" && checkInDisplay.actionDisabled)}
-                >
-                  {checkInDisplay.actionLabel}
-                </button>
-              </article>
             </div>
           </div>
 
@@ -3347,7 +3317,7 @@ function RechargeCenterWorkspace({
 
   return (
     <>
-    <section className="user-center-page account-subpage account-subpage--recharge" aria-label="会员中心">
+    <section className="user-center-page account-subpage account-subpage--recharge" aria-label="会员订阅">
       <header className="recharge-pricing-header">
         <div className="recharge-pricing-header__main">
           <button type="button" className="account-subpage-back" onClick={() => onViewChange("center")}>
@@ -3355,8 +3325,7 @@ function RechargeCenterWorkspace({
             返回用户中心
           </button>
           <div>
-            <span className="account-subpage-breadcrumb">用户中心 / 会员中心</span>
-            <h2>会员中心</h2>
+            <h2>会员订阅</h2>
           </div>
         </div>
         <div className="recharge-account-meta" aria-label="账户概览">
@@ -3367,9 +3336,6 @@ function RechargeCenterWorkspace({
             ) : (
               <strong>{pointsStatusLabel}</strong>
             )}
-            <button type="button" className="recharge-toolbar-button recharge-toolbar-button--inline" onClick={() => setCreditsDialogOpen(true)}>
-              充值
-            </button>
           </span>
           <span className="recharge-account-meta__item">
             <span>会员</span>
@@ -3379,14 +3345,14 @@ function RechargeCenterWorkspace({
               <strong>{membershipStatusLabel}</strong>
             )}
           </span>
+          <button type="button" className="recharge-toolbar-button recharge-toolbar-button--primary" onClick={() => setCreditsDialogOpen(true)}>
+            <WalletCards className="size-4" aria-hidden="true" />
+            积分充值
+          </button>
         </div>
       </header>
 
       <div className="recharge-center-shell">
-        <div className="recharge-section-head">
-          <span>会员订阅</span>
-          <p>升级后立即获得首月积分和会员权益，同级续费会从当前到期时间顺延。</p>
-        </div>
         <div className="recharge-pricing-toolbar">
           <div className="recharge-plan-cycles" role="tablist" aria-label="会员周期">
             {planCycleOptions.map((cycle) => (
@@ -3438,7 +3404,6 @@ function RechargeCenterWorkspace({
                           <span className="recharge-plan-card__scene">{plan.highlight}</span>
                           {plan.recommended ? <span className="recharge-card-badge">推荐选择</span> : null}
                         </span>
-                        {plan.recommendedNote ? <span className="recharge-plan-card__recommended-note">{plan.recommendedNote}</span> : null}
                         <span className="recharge-plan-card__name">{plan.name}</span>
                         <span className="recharge-plan-card__price">
                           <em>¥</em>{formatRechargeAmount(planPrice)}<small>/{selectedPlanCycle === "yearly" ? "年" : selectedPlanCycle === "quarterly" ? "季" : "月"}</small>
@@ -3496,10 +3461,6 @@ function RechargeCenterWorkspace({
               )}
             </div>
           </div>
-        </div>
-        <div className="recharge-section-head recharge-section-head--credits">
-          <span>积分充值</span>
-          <p>当前页面保留积分入口，充值按钮在右上角账户概览中打开。</p>
         </div>
         <section className="membership-faq" aria-label="会员规则说明">
           <div className="membership-faq__head">

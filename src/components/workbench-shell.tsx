@@ -4,6 +4,7 @@ import Link from "next/link";
 import {
   ChevronDown,
   CreditCard,
+  Crown,
   LogIn,
   Menu,
   PanelLeft,
@@ -39,7 +40,7 @@ type WorkbenchShellProps = {
   canAccessAdmin?: boolean;
   accountName?: string | null;
   accountPointsLabel?: string | null;
-  accountEntitlementsLabel?: string | null;
+  accountPlanLabel?: string | null;
   headerRightSlot?: ReactNode;
   accountSlot?: ReactNode;
   accountCloseSignal?: number;
@@ -60,7 +61,7 @@ export function WorkbenchShell({
   canAccessAdmin = false,
   accountName,
   accountPointsLabel,
-  accountEntitlementsLabel,
+  accountPlanLabel,
   headerRightSlot,
   accountSlot,
   accountCloseSignal,
@@ -251,7 +252,7 @@ export function WorkbenchShell({
         isAuthenticated={isAuthenticated}
         accountName={accountName}
         accountPointsLabel={accountPointsLabel}
-        accountEntitlementsLabel={accountEntitlementsLabel}
+        accountPlanLabel={accountPlanLabel}
         onToggleDrawer={() => setDrawerOpen((value) => !value)}
         onToggleAccount={toggleAccountPopover}
         onOpenAccountCenter={onOpenAccountCenter}
@@ -298,7 +299,7 @@ export function WorkbenchShell({
             canAccessAdmin={canAccessAdmin}
             accountName={accountName}
             accountPointsLabel={accountPointsLabel}
-            accountEntitlementsLabel={accountEntitlementsLabel}
+            accountPlanLabel={accountPlanLabel}
             accountOpen={accountOpen}
             accountPopoverVisible={accountPopoverVisible}
             accountPopoverClosing={accountPopoverClosing}
@@ -339,7 +340,7 @@ function Header({
   isAuthenticated,
   accountName,
   accountPointsLabel,
-  accountEntitlementsLabel,
+  accountPlanLabel,
   onToggleDrawer,
   onToggleAccount,
   onOpenAccountCenter,
@@ -356,7 +357,7 @@ function Header({
   isAuthenticated: boolean;
   accountName?: string | null;
   accountPointsLabel?: string | null;
-  accountEntitlementsLabel?: string | null;
+  accountPlanLabel?: string | null;
   onToggleDrawer: () => void;
   onToggleAccount: (trigger?: HTMLElement | null) => void;
   onOpenAccountCenter?: () => void;
@@ -412,7 +413,10 @@ function Header({
             <span className="shell-account__meta">
               <span className="shell-account__name">{accountName || "账户"}</span>
               <span className="shell-account__points">{accountPointsLabel || "—"}</span>
-              {accountEntitlementsLabel ? <span className="shell-account__entitlements">{accountEntitlementsLabel}</span> : null}
+              <span className="shell-account__plan">
+                <Crown className="size-3" aria-hidden="true" />
+                {accountPlanLabel || "会员未开通"}
+              </span>
             </span>
             {accountSlot ? <ChevronDown className={cn("size-4 transition", accountOpen && "rotate-180")} /> : null}
           </button>
@@ -448,7 +452,7 @@ function DesktopNavigation({
   canAccessAdmin,
   accountName,
   accountPointsLabel,
-  accountEntitlementsLabel,
+  accountPlanLabel,
   accountOpen,
   accountPopoverVisible,
   accountPopoverClosing,
@@ -467,7 +471,7 @@ function DesktopNavigation({
   canAccessAdmin: boolean;
   accountName?: string | null;
   accountPointsLabel?: string | null;
-  accountEntitlementsLabel?: string | null;
+  accountPlanLabel?: string | null;
   accountOpen: boolean;
   accountPopoverVisible: boolean;
   accountPopoverClosing: boolean;
@@ -544,7 +548,10 @@ function DesktopNavigation({
               <span className="shell-nav-account__copy">
                 <strong>{displayName}</strong>
                 <span>剩余积分 {accountPointsLabel || "—"}</span>
-                {accountEntitlementsLabel ? <small>{accountEntitlementsLabel}</small> : null}
+                <small className="shell-nav-account__plan">
+                  <Crown className="size-3" aria-hidden="true" />
+                  {accountPlanLabel || "会员未开通"}
+                </small>
               </span>
             </button>
             <div className="shell-nav-account__actions is-split">

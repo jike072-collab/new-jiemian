@@ -436,7 +436,7 @@ function VideoTutorialInputDemo({
     : playbackState === "image-entering" || playbackState === "image-touching"
       ? "dragging"
       : "hidden";
-  const targetState = playbackState === "image-touching" ? "touching" : imagePhase === "landed" ? "covered" : "idle";
+  const targetState = imagePhase === "landed" ? "covered" : "idle";
   const promptBubbleVisible = isVideoTutorialPromptVisibleState(playbackState);
 
   return (
@@ -448,7 +448,6 @@ function VideoTutorialInputDemo({
       <span
         className={cn(
           "tutorial-upload-target-ring",
-          targetState === "touching" && "is-touching",
           targetState === "covered" && "is-covered",
         )}
         aria-hidden="true"

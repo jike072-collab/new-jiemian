@@ -1,10 +1,10 @@
 "use client";
 
-import { CalendarCheck, ChevronRight, Crown, Loader2, LogOut, Sparkles, UserRound } from "lucide-react";
+import { ChevronRight, Crown, Loader2, LogOut, Sparkles, UserRound } from "lucide-react";
 
 import type { PublicAuthUser } from "@/lib/server/auth";
 import type { QuotaSnapshot } from "@/lib/server/quota";
-import { getCheckInStatusDisplay, getPlanStatusDisplay, type CheckInStatus, type PlanStatus } from "@/lib/account-status";
+import { getPlanStatusDisplay, type CheckInStatus, type PlanStatus } from "@/lib/account-status";
 import { cn } from "@/lib/utils";
 
 type AccountView = "center" | "recharge" | "usage";
@@ -38,9 +38,9 @@ function formatQuota(value: number | null | undefined) {
 function createEntitlementItems(entitlements: MembershipEntitlements | null | undefined) {
   if (!entitlements) return [];
   return [
-    ["提示词", `${formatQuota(entitlements.prompt_optimize.remaining)} 次`],
-    ["生图", `${formatQuota(entitlements.image_generation.remaining)} 张`],
-    ["视频", `${formatQuota(entitlements.video_generation.remaining)} 次`],
+    ["剩余提示词", `${formatQuota(entitlements.prompt_optimize.remaining)} 次`],
+    ["剩余生图", `${formatQuota(entitlements.image_generation.remaining)} 张`],
+    ["剩余视频", `${formatQuota(entitlements.video_generation.remaining)} 次`],
   ].filter(([, value]) => value !== "0 次" && value !== "0 张");
 }
 
@@ -63,9 +63,10 @@ export function WorkspaceAccountPanel({
   const avatarText = displayName.slice(0, 2).toUpperCase();
   const pointsLabel = loading ? "加载中" : quota ? `${formatQuota(quota.quota_units)} ✦` : "—";
   const planDisplay = getPlanStatusDisplay(planStatus);
-  const checkInDisplay = getCheckInStatusDisplay(checkInStatus);
   const currentCenter = accountView === "center";
   const entitlementItems = createEntitlementItems(membershipEntitlements);
+  const checkInButtonLabel = checkInStatus === "checked" ? "已签到" : "签到";
+  const checkInButtonDisabled = !user || checkInStatus === "checked" || checkInStatus === "loading" || checkInStatus === "submitting";
 
   return (
     <div className="account-popover-card" data-account-error={accountError && !loading ? "true" : undefined}>
@@ -75,6 +76,14 @@ export function WorkspaceAccountPanel({
           <strong>{displayName}</strong>
           <span>{user?.email || "登录后查看账户信息"}</span>
         </div>
+        <button
+          type="button"
+          className={cn("account-popover-card__checkin", checkInStatus === "checked" && "is-checked")}
+          onClick={checkInButtonDisabled ? undefined : onCheckInUnavailable}
+          disabled={checkInButtonDisabled}
+        >
+          {checkInButtonLabel}
+        </button>
       </div>
 
       <div className="account-popover-card__rows">
@@ -108,20 +117,6 @@ export function WorkspaceAccountPanel({
             ))}
           </div>
         ) : null}
-        <div className="account-popover-row">
-          <span>
-            <CalendarCheck className="size-3.5" aria-hidden="true" />
-            每日签到
-          </span>
-          <strong>{checkInDisplay.label}</strong>
-          <button
-            type="button"
-            onClick={checkInStatus === "error" ? onRefresh : onCheckInUnavailable}
-            disabled={!user || (checkInStatus !== "unavailable" && checkInDisplay.actionDisabled)}
-          >
-            {checkInDisplay.actionLabel}
-          </button>
-        </div>
       </div>
 
       <div className="account-popover-card__nav">
