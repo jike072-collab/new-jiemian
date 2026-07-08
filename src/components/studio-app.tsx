@@ -63,6 +63,7 @@ import type {
 } from "@/components/studio/types";
 import {
   getPlanStatusDisplay,
+  getPlanTone,
   type CheckInStatus,
   type PlanStatus,
 } from "@/lib/account-status";
@@ -3028,6 +3029,7 @@ function UserCenterOverview({
       : "登录后将显示真实账户积分。";
   const entitlementItems = createMembershipEntitlementItems(membershipSnapshot?.membership.entitlements ?? null);
   const planDisplay = getPlanStatusDisplay(planStatus);
+  const planTone = getPlanTone(planDisplay.label);
   const activeMembership = membershipSnapshot?.membership.active ?? null;
   const planEndsAtLabel = formatMembershipDate(activeMembership?.ends_at);
   const planRemainingLabel = formatMembershipRemainingDays(activeMembership?.ends_at);
@@ -3116,7 +3118,7 @@ function UserCenterOverview({
                     <Crown className="size-3.5" aria-hidden="true" />
                     当前套餐
                   </span>
-                  <strong>{planDisplay.label}</strong>
+                  <strong className={cn("user-center-plan-name", `user-center-plan-name--${planTone}`)}>{planDisplay.label}</strong>
                   <button type="button" onClick={() => onViewChange("recharge")} disabled={!user}>
                     {planDisplay.actionLabel}
                   </button>
@@ -3125,13 +3127,13 @@ function UserCenterOverview({
             </article>
 
             <div className="user-center-side-cards">
-              <article className="user-center-mini-card">
+              <article className={cn("user-center-mini-card", `user-center-mini-card--${planTone}`)}>
                 <span className="user-center-card-icon">
                   <Crown className="size-4" aria-hidden="true" />
                 </span>
                 <div>
                   <span>当前套餐</span>
-                  <strong>{planDisplay.label}</strong>
+                  <strong className={cn("user-center-plan-name", `user-center-plan-name--${planTone}`)}>{planDisplay.label}</strong>
                   {planEndsAtLabel || planRemainingLabel ? (
                     <div className="user-center-plan-details">
                       {planEndsAtLabel ? (

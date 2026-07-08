@@ -4,7 +4,7 @@ import { ChevronRight, CreditCard, Crown, History, Loader2, LogOut, Sparkles, Us
 
 import type { PublicAuthUser } from "@/lib/server/auth";
 import type { QuotaSnapshot } from "@/lib/server/quota";
-import { getPlanStatusDisplay, type CheckInStatus, type PlanStatus } from "@/lib/account-status";
+import { getPlanStatusDisplay, getPlanTone, type CheckInStatus, type PlanStatus } from "@/lib/account-status";
 import { cn } from "@/lib/utils";
 
 type AccountView = "center" | "recharge" | "usage" | "orders";
@@ -88,6 +88,7 @@ export function WorkspaceAccountPanel({
   const avatarText = displayName.slice(0, 2).toUpperCase();
   const pointsLabel = loading ? "加载中" : quota ? `${formatQuota(quota.quota_units)} ✦` : "—";
   const planDisplay = getPlanStatusDisplay(planStatus);
+  const planTone = getPlanTone(planDisplay.label);
   const currentCenter = accountView === "center";
   const currentUsage = accountView === "usage";
   const currentOrders = accountView === "orders";
@@ -129,7 +130,7 @@ export function WorkspaceAccountPanel({
         </div>
         <button
           type="button"
-          className="account-popover-plan-card"
+          className={cn("account-popover-plan-card", `account-popover-plan-card--${planTone}`)}
           onClick={handlePlanClick}
           disabled={!user}
         >

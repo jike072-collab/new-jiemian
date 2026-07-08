@@ -6,6 +6,7 @@ export type PlanStatus =
   | { status: "error" };
 
 export type CheckInStatus = "loading" | "available" | "submitting" | "checked" | "unavailable" | "error";
+export type PlanTone = "none" | "basic" | "advanced" | "pro" | "enterprise";
 
 export type AccountStatusDisplay = {
   label: string;
@@ -57,6 +58,15 @@ export function getPlanStatusDisplay(planStatus: PlanStatus): AccountStatusDispl
     actionLabel: "会员与充值",
     actionDisabled: false,
   };
+}
+
+export function getPlanTone(label?: string | null): PlanTone {
+  if (!label) return "none";
+  if (label.includes("企业")) return "enterprise";
+  if (label.includes("专业")) return "pro";
+  if (label.includes("进阶")) return "advanced";
+  if (label.includes("基础")) return "basic";
+  return "none";
 }
 
 export function getCheckInStatusDisplay(checkInStatus: CheckInStatus): AccountStatusDisplay {

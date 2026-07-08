@@ -15,6 +15,7 @@ import {
 import { type ReactNode, type RefObject, useCallback, useEffect, useId, useRef, useState } from "react";
 
 import { BrandLogo } from "@/components/brand-logo";
+import { getPlanTone } from "@/lib/account-status";
 import { cn } from "@/lib/utils";
 import {
   type WorkspaceAction,
@@ -371,6 +372,7 @@ function Header({
   drawerId: string;
   drawerOpen: boolean;
 }) {
+  const planTone = getPlanTone(accountPlanLabel);
   return (
     <header className="shell-header relative">
       <div className="shell-header__brand">
@@ -413,7 +415,7 @@ function Header({
             <span className="shell-account__meta">
               <span className="shell-account__name">{accountName || "账户"}</span>
               <span className="shell-account__points">{accountPointsLabel || "—"}</span>
-              <span className="shell-account__plan">
+              <span className={cn("shell-account__plan", `shell-account__plan--${planTone}`)}>
                 <Crown className="size-3" aria-hidden="true" />
                 {accountPlanLabel || "会员未开通"}
               </span>
@@ -489,6 +491,7 @@ function DesktopNavigation({
   const pointsText = accountPointsLabel || "—";
   const pointsValue = pointsText.replace(/\s*✦\s*$/, "");
   const showPointsStar = pointsText.includes("✦");
+  const planTone = getPlanTone(accountPlanLabel);
 
   return (
     <aside className="shell-nav" aria-label="工作台导航">
@@ -551,7 +554,7 @@ function DesktopNavigation({
               <span className="shell-nav-account__avatar">{avatarText}</span>
               <span className="shell-nav-account__copy">
                 <strong className="shell-nav-account__id" title={displayName}>{compactName}</strong>
-                <small className="shell-nav-account__plan">
+                <small className={cn("shell-nav-account__plan", `shell-nav-account__plan--${planTone}`)}>
                   <Crown className="size-3" aria-hidden="true" />
                   {accountPlanLabel || "会员未开通"}
                 </small>
