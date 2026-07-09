@@ -3,7 +3,7 @@ import { test } from "node:test";
 
 import { createMemoryNewApiUserMappingRepository, type NewApiUserMapping } from "../../integrations/new-api";
 import { createMemoryTaskBillingRepository } from "../../quota";
-import { createDailyCheckInService } from "../service";
+import { DAILY_CHECK_IN_REWARD_CREDITS, createDailyCheckInService } from "../service";
 import { createMemoryDailyCheckInRepository } from "../repository";
 
 function mapping(localUserId = "11111111-1111-4111-8111-111111111111", newApiUserId = "100"): NewApiUserMapping {
@@ -61,24 +61,25 @@ function harness(input: { now?: Date; quota?: number; failFirstWrite?: boolean }
   };
 }
 
-test("daily check-in credits 50 once per Beijing date", async () => {
+test("daily check-in credits once per Beijing date", async () => {
   const app = harness();
   const first = await app.service.claim(app.localUserId);
   assert.equal(first.ok, true);
   if (!first.ok) return;
   assert.equal(first.action, "credited");
-  assert.equal(first.quota_delta, 50);
+  assert.equal(first.quota_delta, DAILY_CHECK_IN_REWARD_CREDITS);
   assert.equal(first.checkIn.status, "checked");
   assert.equal(first.checkIn.check_in_date, "2026-07-03");
-  assert.equal(app.providerQuota, 150);
+  assert.equal(app.providerQuota, 100 + DAILY_CHECK_IN_REWARD_CREDITS);
   assert.equal(app.writeCount, 1);
+  assert.equal(first.records[0]?.balance_after_quota_units, 100 + DAILY_CHECK_IN_REWARD_CREDITS);
 
   const duplicate = await app.service.claim(app.localUserId);
   assert.equal(duplicate.ok, true);
   if (!duplicate.ok) return;
   assert.equal(duplicate.action, "already_checked");
   assert.equal(duplicate.quota_delta, 0);
-  assert.equal(app.providerQuota, 150);
+  assert.equal(app.providerQuota, 100 + DAILY_CHECK_IN_REWARD_CREDITS);
   assert.equal(app.writeCount, 1);
 
   const status = await app.service.getStatus(app.localUserId);
@@ -99,7 +100,7 @@ test("daily check-in resets at Beijing midnight", async () => {
   if (!second.ok) return;
   assert.equal(second.action, "credited");
   assert.equal(second.checkIn.check_in_date, "2026-07-04");
-  assert.equal(app.providerQuota, 200);
+  assert.equal(app.providerQuota, 100 + (DAILY_CHECK_IN_REWARD_CREDITS * 2));
   assert.equal(app.writeCount, 2);
   assert.equal(second.records.length, 2);
 });
@@ -120,13 +121,13 @@ test("failed daily check-in can be retried without double credit", async () => {
   assert.equal(retry.ok, true);
   if (!retry.ok) return;
   assert.equal(retry.action, "credited");
-  assert.equal(app.providerQuota, 150);
+  assert.equal(app.providerQuota, 100 + DAILY_CHECK_IN_REWARD_CREDITS);
   assert.equal(app.writeCount, 2);
 
   const duplicate = await app.service.claim(app.localUserId);
   assert.equal(duplicate.ok, true);
   if (!duplicate.ok) return;
   assert.equal(duplicate.action, "already_checked");
-  assert.equal(app.providerQuota, 150);
+  assert.equal(app.providerQuota, 100 + DAILY_CHECK_IN_REWARD_CREDITS);
   assert.equal(app.writeCount, 2);
 });

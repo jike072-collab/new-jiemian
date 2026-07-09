@@ -33,6 +33,7 @@ export type PublicDailyCheckInRecord = {
   id: string;
   check_in_date: string;
   quota_delta: number;
+  balance_after_quota_units?: number | null;
   status: "credited";
   created_at: string;
 };
@@ -133,16 +134,37 @@ function publicStatus(checkInDate: string, record: DailyCheckInRecord | null): P
   };
 }
 
-function publicRecords(records: DailyCheckInRecord[]): PublicDailyCheckInRecord[] {
+function publicRecords(records: DailyCheckInRecord[], balanceByDate: Map<string, number | null> = new Map()): PublicDailyCheckInRecord[] {
   return records
     .filter((record) => record.status === "credited")
     .map((record) => ({
       id: record.id,
       check_in_date: record.checkin_date,
       quota_delta: record.quota_delta,
+      balance_after_quota_units: balanceByDate.get(record.checkin_date) ?? null,
       status: "credited",
       created_at: record.claimed_at || record.updated_at || record.created_at,
     }));
+}
+
+async function checkInBalanceByDate(
+  taskRepository: TaskBillingRepository,
+  localUserId: string,
+  records: DailyCheckInRecord[],
+) {
+  const creditedDates = Array.from(new Set(records
+    .filter((record) => record.status === "credited")
+    .map((record) => record.checkin_date)));
+  if (!creditedDates.length || !taskRepository.getQuotaAdjustmentByTaskId) return new Map<string, number | null>();
+
+  const entries = await Promise.all(creditedDates.map(async (checkInDate) => {
+    const adjustment = await taskRepository.getQuotaAdjustmentByTaskId!(localUserId, taskId(checkInDate)).catch(() => null);
+    return [
+      checkInDate,
+      adjustment?.status === "applied" ? adjustment.target_quota ?? null : null,
+    ] as const;
+  }));
+  return new Map(entries);
 }
 
 function idempotencyKey(localUserId: string, checkInDate: string) {
@@ -203,11 +225,12 @@ export class DailyCheckInService {
       this.repository.getForDate(localUserId, checkInDate),
       this.repository.listForUser(localUserId, 20),
     ]);
+    const balances = await checkInBalanceByDate(this.taskRepository, localUserId, records);
     return {
       ok: true,
       status: 200,
       checkIn: publicStatus(checkInDate, record),
-      records: publicRecords(records),
+      records: publicRecords(records, balances),
     };
   }
 
@@ -313,13 +336,14 @@ export class DailyCheckInService {
     action: DailyCheckInClaimResult["action"],
   ): Promise<DailyCheckInClaimResult> {
     const records = await this.repository.listForUser(record.local_user_id, 20);
+    const balances = await checkInBalanceByDate(this.taskRepository, record.local_user_id, records);
     return {
       ok: true,
       status: 200,
       action,
       quota_delta: action === "credited" ? DAILY_CHECK_IN_REWARD_CREDITS : 0,
       checkIn: publicStatus(checkInDate, record),
-      records: publicRecords(records),
+      records: publicRecords(records, balances),
     };
   }
 }

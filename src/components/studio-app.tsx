@@ -1416,6 +1416,7 @@ export function StudioApp() {
       <strong className="text-white">{accountSummaryBusy ? "加载中" : quotaSnapshot ? `${formatQuotaUnits(quotaSnapshot.quota_units)} ✦` : "—"}</strong>
     </div>
   );
+  const membershipEntitlements = membershipSnapshot?.membership.entitlements ?? null;
 
   const handleImageResult = useCallback((item: LibraryItem, options?: { append?: boolean }) => {
     const nextOutput: OutputItemState = { item, title: "图片结果", tool: "image" };
@@ -1448,7 +1449,12 @@ export function StudioApp() {
     quality: imageWorkspace.quality,
     count: imageGenerationCount,
   });
-  const imageGenerationCostLabel = formatQuotaSymbolLabel(imageEstimatedQuotaUnits);
+  const imageGenerationCostLabel = membershipEntitlementLabel(
+    membershipEntitlements,
+    "image_generation",
+    "张",
+    formatQuotaSymbolLabel(imageEstimatedQuotaUnits),
+  );
   const imageWorkspaceCanSubmit = Boolean(selectedImageProvider)
     && !providersLoading
     && !imageWorkspace.loading
@@ -1813,7 +1819,12 @@ export function StudioApp() {
     referenceImages: videoWorkspace.files.length,
     model: selectedVideoProvider?.model,
   });
-  const videoGenerationCostLabel = formatQuotaSymbolLabel(videoEstimatedQuotaUnits);
+  const videoGenerationCostLabel = membershipEntitlementLabel(
+    membershipEntitlements,
+    "video_generation",
+    "次",
+    formatQuotaSymbolLabel(videoEstimatedQuotaUnits),
+  );
   const videoWorkspaceCanSubmit = Boolean(selectedVideoProvider)
     && !providersLoading
     && videoWorkspace.inFlightCount < CLIENT_VIDEO_SUBMISSION_LIMIT
@@ -2632,7 +2643,7 @@ export function StudioApp() {
           onPromptChange={(value) => updateImageWorkspace({ prompt: value, promptOptimizeError: "", submitError: "" })}
           onPromptOptimize={optimizeImagePrompt}
           onPromptOptimizeUndo={undoImagePromptOptimization}
-          promptOptimizeCostLabel={promptOptimizationCostLabel}
+          promptOptimizeCostLabel={membershipEntitlementLabel(membershipEntitlements, "prompt_optimize", "次", promptOptimizationCostLabel)}
           onFilesChange={replaceImageWorkspaceFiles}
           onFileRemove={removeImageWorkspaceFile}
           onFilesClear={clearImageWorkspaceFiles}
@@ -2660,7 +2671,7 @@ export function StudioApp() {
           onPromptChange={(value) => updateVideoWorkspace({ prompt: value, promptOptimizeError: "", submitError: "" })}
           onPromptOptimize={optimizeVideoPrompt}
           onPromptOptimizeUndo={undoVideoPromptOptimization}
-          promptOptimizeCostLabel={promptOptimizationCostLabel}
+          promptOptimizeCostLabel={membershipEntitlementLabel(membershipEntitlements, "prompt_optimize", "次", promptOptimizationCostLabel)}
           onFilesChange={replaceVideoWorkspaceFiles}
           onFileRemove={removeVideoWorkspaceFile}
           onFilesClear={clearVideoWorkspaceFiles}
@@ -2720,7 +2731,7 @@ export function StudioApp() {
           <WorkspaceAccountPanel
             user={sessionUser}
             quota={quotaSnapshot}
-            membershipEntitlements={membershipSnapshot?.membership.entitlements ?? null}
+            membershipEntitlements={membershipEntitlements}
             loading={accountSummaryBusy}
             accountError={accountDataError}
             accountView={accountCenterOpen ? accountView : undefined}
@@ -2971,6 +2982,16 @@ function createMembershipEntitlementItems(entitlements: MembershipEntitlements |
       remaining: entitlements.video_generation.remaining,
     },
   ].filter((item) => item.remaining > 0);
+}
+
+function membershipEntitlementLabel(
+  entitlements: MembershipEntitlements | null | undefined,
+  kind: keyof MembershipEntitlements,
+  unit: "次" | "张",
+  fallback: string,
+) {
+  const remaining = entitlements?.[kind]?.remaining ?? 0;
+  return remaining > 0 ? `会员权益 剩余 ${formatQuotaUnits(remaining)} ${unit}` : fallback;
 }
 
 function formatMembershipDate(value: string | null | undefined) {
@@ -3498,7 +3519,6 @@ function RechargeCenterWorkspace({
                           <span className="recharge-plan-card__price-meta">
                             <span>原价 {priceMeta.original}</span>
                             <span>折合 {priceMeta.monthly} / 月</span>
-                            <span>{priceMeta.saved}</span>
                           </span>
                         ) : null}
                         <span className="recharge-plan-card__desc">{plan.description}</span>
@@ -4196,6 +4216,7 @@ function createAccountRecords(
       kind: "checkin",
       typeLabel: "签到",
       quotaDelta: record.quota_delta,
+      balanceAfterQuotaUnits: record.balance_after_quota_units ?? null,
       description: `每日签到奖励 ${record.quota_delta} 积分`,
     }));
 
@@ -4279,11 +4300,9 @@ function createPlanPriceMeta(plan: PlanOption, cycle: PlanCycle) {
   const months = planCycleMonths[cycle];
   const cyclePrice = getPlanCyclePrice(plan, cycle);
   const originalPrice = getPlanCyclePrice(plan, "monthly") * months;
-  const saved = Math.max(0, originalPrice - cyclePrice);
   return {
     original: `¥${formatRechargeAmount(originalPrice)}`,
     monthly: `¥${formatRechargeAmount(cyclePrice / months)}`,
-    saved: saved > 0 ? `立省 ¥${formatRechargeAmount(saved)}` : "已是当前优惠价",
   };
 }
 

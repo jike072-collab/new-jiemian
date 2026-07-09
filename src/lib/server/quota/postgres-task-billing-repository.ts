@@ -323,6 +323,17 @@ export class PostgresTaskBillingRepository implements TaskBillingRepository {
     });
   }
 
+  async getQuotaAdjustmentByTaskId(localUserId: string, taskId: string) {
+    const result = await applicationQuery<TaskQuotaAdjustmentRow>(`
+      select *
+      from task_quota_adjustments
+      where local_user_id = $1 and task_id = $2
+      order by updated_at desc, id desc
+      limit 1
+    `, [localUserId.trim(), taskId.trim()]);
+    return result.rows[0] ? adjustmentFromRow(result.rows[0]) : null;
+  }
+
   async markQuotaAdjustmentApplied(idempotencyKey: string, providerAdjustmentId: string, now?: Date) {
     const timestamp = (now || new Date()).toISOString();
     return this.updateQuotaAdjustment(idempotencyKey, `

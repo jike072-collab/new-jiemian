@@ -5089,7 +5089,7 @@
   .user-center-page {
     display: grid;
     align-content: start;
-    gap: 28px;
+    gap: 20px;
     width: min(100%, 1180px);
     margin-inline: auto;
     min-height: 100%;
@@ -5243,8 +5243,8 @@
 
   .user-center-account-summary {
     display: grid;
-    grid-template-columns: minmax(0, 1.18fr) minmax(320px, 0.82fr);
-    gap: 18px;
+    grid-template-columns: minmax(0, 1.08fr) minmax(320px, 0.92fr);
+    gap: 14px;
     align-items: stretch;
     min-width: 0;
   }
@@ -5297,9 +5297,9 @@
 
   .user-center-points-card {
     display: grid;
-    min-height: 260px;
-    align-content: space-between;
-    gap: 18px;
+    min-height: 214px;
+    align-content: start;
+    gap: 14px;
     border-color: rgba(255, 43, 136, 0.2);
     background:
       radial-gradient(circle at 14% 0%, rgba(255, 43, 136, 0.16), transparent 42%),
@@ -5391,20 +5391,20 @@
   .user-center-entitlement-strip {
     display: grid;
     grid-template-columns: repeat(3, minmax(0, 1fr));
-    gap: 10px;
+    gap: 8px;
     max-width: 520px;
   }
 
   .user-center-entitlement-pill {
     display: grid;
     min-width: 0;
-    min-height: 64px;
+    min-height: 58px;
     align-content: center;
     gap: 6px;
     border: 1px solid rgba(255, 255, 255, 0.08);
     border-radius: 12px;
     background: linear-gradient(180deg, rgba(255, 255, 255, 0.052), rgba(255, 255, 255, 0.032));
-    padding: 11px 12px;
+    padding: 9px 10px;
   }
 
   .user-center-entitlement-pill em {
@@ -5492,7 +5492,7 @@
 
   .user-center-side-cards {
     display: grid;
-    gap: 14px;
+    gap: 12px;
     min-width: 0;
   }
 
@@ -5501,13 +5501,13 @@
     grid-template-columns: 36px minmax(0, 1fr);
     align-items: start;
     gap: 12px;
-    min-height: 260px;
+    min-height: 214px;
     align-content: start;
     border-color: var(--member-border, rgba(255, 255, 255, 0.08));
     background:
       radial-gradient(circle at 18% 0%, var(--member-glow, transparent), transparent 44%),
       #141418;
-    padding: 18px;
+    padding: 18px 18px 16px;
   }
 
   .user-center-mini-card div {
@@ -6542,7 +6542,7 @@
     border: 1px solid rgba(255, 255, 255, 0.1);
     border-radius: 8px;
     background: #141519;
-    padding: 24px;
+    padding: 20px;
   }
 
   .recharge-plan-card:hover,
@@ -6639,18 +6639,12 @@
   .recharge-plan-card__price-meta {
     display: grid;
     gap: 5px;
-    min-height: 58px;
     border-radius: 8px;
     background: rgba(255, 255, 255, 0.04);
     padding: 10px 12px;
     color: rgba(255, 255, 255, 0.62);
     font-size: 12.5px;
     line-height: 1.25;
-  }
-
-  .recharge-plan-card__price-meta span:last-child {
-    color: #ff8ac4;
-    font-weight: 720;
   }
 
   .recharge-plan-card__credits {

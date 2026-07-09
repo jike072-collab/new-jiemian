@@ -87,6 +87,7 @@ export type TaskBillingRepository = {
   createPrecheck(input: CreateTaskBillingRecordInput): Promise<TaskBillingRecord>;
   update(recordId: string, patch: TaskBillingRecordPatch, expectedVersion?: number): Promise<TaskBillingRecord>;
   withQuotaAdjustmentLock?<T>(newApiUserId: string, operation: () => Promise<T>): Promise<T>;
+  getQuotaAdjustmentByTaskId?(localUserId: string, taskId: string): Promise<TaskQuotaAdjustment | null>;
   claimQuotaAdjustment?(input: TaskQuotaAdjustmentInput): Promise<TaskQuotaAdjustment>;
   markQuotaAdjustmentApplied?(idempotencyKey: string, providerAdjustmentId: string, now?: Date): Promise<TaskQuotaAdjustment>;
   markQuotaAdjustmentFailed?(idempotencyKey: string, error: string, now?: Date): Promise<TaskQuotaAdjustment>;
@@ -347,6 +348,16 @@ class StoreTaskBillingRepository implements TaskBillingRepository {
       await this.adjustmentStorage!.write(adjustments);
       return { ...cloneAdjustment(adjustment), created: true };
     });
+  }
+
+  async getQuotaAdjustmentByTaskId(localUserId: string, taskId: string) {
+    if (!this.adjustmentStorage) return null;
+    const localId = requiredText(localUserId, "localUserId");
+    const task = requiredText(taskId, "taskId");
+    const adjustments = (await this.adjustmentStorage.read()).map(cloneAdjustment);
+    return adjustments
+      .filter((adjustment) => adjustment.local_user_id === localId && adjustment.task_id === task)
+      .sort((a, b) => b.updated_at.localeCompare(a.updated_at))[0] || null;
   }
 
   async markQuotaAdjustmentApplied(idempotencyKey: string, providerAdjustmentId: string, now?: Date) {

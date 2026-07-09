@@ -1542,7 +1542,7 @@ export function VideoPreviewPanel({
   const statusLabel = output?.job?.status || output?.item.status;
 
   if (loading && !output) {
-    return <ProcessingPreview label="正在生成视频" detail="视频任务通常需要更久，生成期间可以继续切回图片工具创作。" progress={38} />;
+    return <ToolTutorial kind="video" paused={false} />;
   }
 
   if (submitError && !output) {
@@ -1605,7 +1605,7 @@ export function VideoPreviewPanel({
     );
   }
 
-  return <ToolTutorial kind="video" paused={loading} />;
+  return <ToolTutorial kind="video" paused={false} />;
 }
 
 export function OutputPanel({
