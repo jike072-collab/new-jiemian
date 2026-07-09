@@ -101,10 +101,6 @@ import {
 } from "@/lib/workspace-registry";
 import type { PublicUploadLimit } from "@/lib/upload-limits";
 
-type AuthSessionResponse =
-  | { ok: true; user: PublicAuthUser; mappingStatus: string | null }
-  | { ok: false; code: string; uiState: string; message: string; retryAfterSeconds?: number };
-
 type BillingOrdersResponse = {
   ok: true;
   orders: BillingOrder[];
@@ -150,6 +146,14 @@ type CheckInResponse = {
   ok: true;
   checkIn: PublicDailyCheckInStatus;
   records: PublicDailyCheckInRecord[];
+};
+
+type AccountSummaryResponse = {
+  ok: true;
+  user: PublicAuthUser;
+  quota: QuotaSnapshot | null;
+  membership: MembershipStatusResponse;
+  checkIn: CheckInResponse;
 };
 
 type ClaimCheckInResponse = CheckInResponse & {
@@ -783,6 +787,18 @@ export function StudioApp() {
     setAccountOrdersLoaded(false);
   }, []);
 
+  const applyAccountSummary = useCallback((summary: AccountSummaryResponse) => {
+    setSessionUser(summary.user);
+    setQuotaSnapshot(summary.quota);
+    setMembershipSnapshot(summary.membership);
+    setCheckInSnapshot(summary.checkIn.checkIn);
+    setCheckInRecords(summary.checkIn.records || []);
+    setAccountSummaryLoaded(Boolean(summary.quota || summary.membership));
+    setCheckInLoaded(true);
+    setAccountDataError(summary.quota ? "" : "account-data-unavailable");
+    setCheckInError("");
+  }, []);
+
   const refreshQuotaSnapshot = useCallback(async (userId?: string | null) => {
     if (!userId) {
       resetAccountState();
@@ -790,52 +806,25 @@ export function StudioApp() {
     }
 
     setAccountSummaryLoading(true);
+    setCheckInLoading(true);
     try {
-      const quotaResult = await fetchJson<{ ok: true; quota: QuotaSnapshot }>("/api/quota");
-      const membershipResult = await fetchJson<MembershipStatusResponse>("/api/membership/status").catch(() => null);
-      setQuotaSnapshot(quotaResult.quota);
-      setMembershipSnapshot(membershipResult);
-      setAccountSummaryLoaded(true);
-      setAccountDataError("");
+      const summary = await fetchJson<AccountSummaryResponse>("/api/account/summary");
+      applyAccountSummary(summary);
     } catch (error) {
       setQuotaSnapshot(null);
       setMembershipSnapshot(null);
+      setCheckInSnapshot(null);
+      setCheckInRecords([]);
       setAccountDataError("account-data-unavailable");
+      setCheckInError("check-in-unavailable");
       if (process.env.NODE_ENV !== "production") {
-        console.debug("[account] Failed to load quota snapshot", error);
+        console.debug("[account] Failed to load account summary", error);
       }
     } finally {
       setAccountSummaryLoading(false);
-    }
-  }, [resetAccountState]);
-
-  const refreshCheckInSnapshot = useCallback(async (userId?: string | null) => {
-    if (!userId) {
-      setCheckInSnapshot(null);
-      setCheckInRecords([]);
-      setCheckInLoaded(false);
-      setCheckInError("");
-      return;
-    }
-
-    setCheckInLoading(true);
-    try {
-      const checkInResult = await fetchJson<CheckInResponse>("/api/check-in");
-      setCheckInSnapshot(checkInResult.checkIn);
-      setCheckInRecords(checkInResult.records || []);
-      setCheckInLoaded(true);
-      setCheckInError("");
-    } catch (error) {
-      setCheckInSnapshot(null);
-      setCheckInRecords([]);
-      setCheckInError("check-in-unavailable");
-      if (process.env.NODE_ENV !== "production") {
-        console.debug("[account] Failed to load check-in snapshot", error);
-      }
-    } finally {
       setCheckInLoading(false);
     }
-  }, []);
+  }, [applyAccountSummary, resetAccountState]);
 
   const refreshUsageSnapshot = useCallback(async (userId?: string | null) => {
     if (!userId) {
@@ -892,11 +881,9 @@ export function StudioApp() {
     }
 
     const tasks: Array<Promise<void>> = [];
-    if (options?.force || !accountSummaryLoaded) {
+    const needsSummary = options?.force || !accountSummaryLoaded || !checkInLoaded;
+    if (needsSummary) {
       tasks.push(refreshQuotaSnapshot(userId));
-    }
-    if (options?.force || !checkInLoaded) {
-      tasks.push(refreshCheckInSnapshot(userId));
     }
     if (view !== "recharge" && (options?.force || !accountUsageLoaded)) {
       tasks.push(refreshUsageSnapshot(userId));
@@ -913,7 +900,6 @@ export function StudioApp() {
     accountUsageLoaded,
     checkInLoaded,
     refreshBillingOrdersSnapshot,
-    refreshCheckInSnapshot,
     refreshQuotaSnapshot,
     refreshUsageSnapshot,
     resetAccountState,
@@ -942,10 +928,10 @@ export function StudioApp() {
     setSessionLoading(true);
     setSessionError("");
     try {
-      const result = await fetchJson<AuthSessionResponse>("/api/auth/session");
+      const result = await fetchJson<AccountSummaryResponse>("/api/account/summary");
       if ("ok" in result && result.ok) {
-        setSessionUser(result.user);
         applyCachedAccountSnapshot(result.user.local_user_id);
+        applyAccountSummary(result);
         return;
       }
       setSessionUser(null);
@@ -968,7 +954,7 @@ export function StudioApp() {
     } finally {
       setSessionLoading(false);
     }
-  }, [applyCachedAccountSnapshot, resetAccountState, resetLibraryState]);
+  }, [applyAccountSummary, applyCachedAccountSnapshot, resetAccountState, resetLibraryState]);
 
   const refreshAccountSnapshot = useCallback(async () => {
     await ensureAccountViewData(accountView, sessionUser?.local_user_id || null, { force: true });
@@ -983,11 +969,11 @@ export function StudioApp() {
       return;
     }
     applyCachedAccountSnapshot(userId);
-    void refreshQuotaSnapshot(userId);
-    void refreshCheckInSnapshot(userId);
+    if (!accountSummaryLoaded || !checkInLoaded) void refreshQuotaSnapshot(userId);
   }, [
+    accountSummaryLoaded,
     applyCachedAccountSnapshot,
-    refreshCheckInSnapshot,
+    checkInLoaded,
     refreshQuotaSnapshot,
     resetAccountState,
     sessionLoading,

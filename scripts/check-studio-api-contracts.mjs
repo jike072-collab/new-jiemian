@@ -12,14 +12,26 @@ const upscaleForm = read("src/components/studio/upscale-form.tsx");
 const resultPreview = read("src/components/studio/result-preview.tsx");
 const types = read("src/components/studio/types.ts");
 const constants = read("src/components/studio/constants.ts");
+const templateCenter = read("src/components/template-center.tsx");
 const clientApi = read("src/lib/client/api.ts");
 const uploadLimits = read("src/lib/upload-limits.ts");
 const mediaUploadGuard = read("src/lib/server/media-upload-guard.ts");
 const providerCall = read("src/lib/server/provider-call.ts");
 const volcengineUpscale = read("src/lib/server/volcengine-upscale.ts");
 const library = read("src/lib/server/library.ts");
+const accountSummaryRoute = read("src/app/api/account/summary/route.ts");
 
 const contracts = [
+  {
+    name: "account summary",
+    source: `${studioApp}\n${templateCenter}\n${accountSummaryRoute}`,
+    checks: [
+      "\"/api/account/summary\"",
+      "getQuotaService()",
+      "getMembershipService()",
+      "getDailyCheckInService()",
+    ],
+  },
   {
     name: "library read",
     source: studioApp,
@@ -55,9 +67,9 @@ const contracts = [
       "form.set(\"prompt\", snapshot.prompt)",
       "form.set(\"taskId\", taskId)",
       "form.set(\"idempotencyKey\", taskId)",
-      "form.set(\"estimatedQuotaUnits\", String(snapshot.estimatedQuotaUnitsPerImage))",
+      "form.set(\"estimatedQuotaUnits\", String(snapshot.estimatedQuotaUnits))",
       "snapshot.files.forEach((file) => form.append(\"files\", file))",
-      "handleImageResult(data.item)",
+      "items.forEach((item) => handleImageResult(item, { append: true }))",
     ],
   },
   {

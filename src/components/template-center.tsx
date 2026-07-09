@@ -33,15 +33,6 @@ import type { WorkspaceAction, WorkspaceToolId } from "@/lib/workspace-registry"
 type TemplateScope = "image" | "video";
 type TemplateFilter = TemplateCategory | "全部" | "收藏";
 
-type AuthSessionResponse =
-  | { ok: true; user: PublicAuthUser; mappingStatus: string | null }
-  | { ok: false; code: string; uiState: string; message: string; retryAfterSeconds?: number };
-
-type QuotaResponse = {
-  ok: true;
-  quota: QuotaSnapshot;
-};
-
 type MembershipStatusResponse = {
   ok: true;
   plans: Array<{
@@ -61,6 +52,14 @@ type MembershipStatusResponse = {
 type CheckInResponse = {
   ok: true;
   checkIn: { status: "available" | "checked" | string };
+};
+
+type AccountSummaryResponse = {
+  ok: true;
+  user: PublicAuthUser;
+  quota: QuotaSnapshot | null;
+  membership: MembershipStatusResponse;
+  checkIn: CheckInResponse;
 };
 
 const templateRailDragThreshold = 12;
@@ -381,6 +380,14 @@ export function TemplateCenterView() {
     router.push(`/?account=recharge${previewMode ? "&preview=1" : ""}`);
   };
 
+  const applyAccountSummary = useCallback((summary: AccountSummaryResponse) => {
+    setSessionUser(summary.user);
+    setQuotaSnapshot(summary.quota);
+    setQuotaLabel(summary.quota ? `${new Intl.NumberFormat("zh-CN").format(summary.quota.quota_units)} ✦` : null);
+    setMembershipSnapshot(summary.membership);
+    setCheckInStatus(summary.checkIn.checkIn.status === "checked" ? "checked" : "available");
+  }, []);
+
   const refreshAccountSnapshot = useCallback(async (user: PublicAuthUser | null) => {
     if (!user) {
       clearCachedAccountSnapshot();
@@ -394,25 +401,12 @@ export function TemplateCenterView() {
     setAccountLoading(true);
     setCheckInStatus("loading");
     try {
-      const [quotaData, membershipData, checkInData] = await Promise.all([
-        fetchJson<QuotaResponse>("/api/quota").catch(() => null),
-        fetchJson<MembershipStatusResponse>("/api/membership/status").catch(() => null),
-        fetchJson<CheckInResponse>("/api/check-in").catch(() => null),
-      ]);
-
-      if (quotaData?.quota) {
-        setQuotaSnapshot(quotaData.quota);
-        setQuotaLabel(`${new Intl.NumberFormat("zh-CN").format(quotaData.quota.quota_units)} ✦`);
-      } else {
-        setQuotaSnapshot(null);
-        setQuotaLabel(null);
-      }
-      setMembershipSnapshot(membershipData);
-      setCheckInStatus(checkInData?.checkIn.status === "checked" ? "checked" : "available");
+      const summary = await fetchJson<AccountSummaryResponse>("/api/account/summary");
+      applyAccountSummary(summary);
     } finally {
       setAccountLoading(false);
     }
-  }, []);
+  }, [applyAccountSummary]);
 
   const accountPlanStatus = useMemo<PlanStatus>(() => {
     if (!sessionUser) return { status: "unavailable" };
@@ -460,12 +454,11 @@ export function TemplateCenterView() {
 
     void (async () => {
       try {
-        const session = await fetchJson<AuthSessionResponse>("/api/auth/session");
+        const summary = await fetchJson<AccountSummaryResponse>("/api/account/summary");
         if (cancelled) return;
-        if ("ok" in session && session.ok) {
-          setSessionUser(session.user);
-          applyCachedAccountSnapshot(session.user.local_user_id);
-          await refreshAccountSnapshot(session.user);
+        if ("ok" in summary && summary.ok) {
+          applyCachedAccountSnapshot(summary.user.local_user_id);
+          applyAccountSummary(summary);
           return;
         }
         setSessionUser(null);
@@ -489,7 +482,7 @@ export function TemplateCenterView() {
     return () => {
       cancelled = true;
     };
-  }, [applyCachedAccountSnapshot, refreshAccountSnapshot]);
+  }, [applyAccountSummary, applyCachedAccountSnapshot]);
 
   useEffect(() => {
     const timer = window.setTimeout(() => {
