@@ -9794,6 +9794,17 @@
     animation: media-soft-reveal 260ms var(--ease-enter) both !important;
   }
 
+  .shell-panel__body--preview .video-tutorial-result-slot__media.is-video-ready video {
+    opacity: 1 !important;
+    animation: none !important;
+  }
+
+  .shell-panel__body--preview .video-tutorial-result-slot__media.is-video-ready .video-tutorial-result-slot__poster {
+    display: none;
+    opacity: 0 !important;
+    animation: none !important;
+  }
+
   @keyframes studio-soft-pulse {
     0%,
     100% {
