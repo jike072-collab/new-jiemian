@@ -5864,7 +5864,9 @@
     white-space: nowrap;
   }
 
+  .user-center-mini-card .user-center-plan-name,
   .user-center-plan-name {
+    background: transparent;
     color: var(--member-fg, rgba(255, 255, 255, 0.92)) !important;
     font-size: clamp(44px, 4.5vw, 60px);
     font-weight: 880;
