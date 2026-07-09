@@ -5544,7 +5544,7 @@
 
   .user-center-plan-line > span {
     color: rgba(255, 255, 255, 0.62);
-    font-size: 13px;
+    font-size: 15px;
     font-weight: 650;
   }
 
@@ -5866,8 +5866,8 @@
 
   .user-center-plan-name {
     color: var(--member-fg, rgba(255, 255, 255, 0.92)) !important;
-    font-size: clamp(34px, 3.7vw, 48px);
-    font-weight: 850;
+    font-size: clamp(44px, 4.5vw, 60px);
+    font-weight: 880;
     line-height: 1.05;
   }
 
@@ -11748,6 +11748,10 @@
     gap: 5px;
   }
 
+  .shell-panel--mobile-single .user-center-plan-name {
+    font-size: 34px;
+  }
+
   .shell-panel--mobile-single .user-center-stat {
     grid-template-columns: 34px minmax(0, 1fr);
     align-items: center;
@@ -12740,5 +12744,9 @@
   .shell-root .shell-panel.shell-panel--mobile-single .user-center-mini-card__action {
     width: 100%;
     margin-top: 4px;
+  }
+
+  .shell-root .shell-panel.shell-panel--mobile-single .user-center-plan-name {
+    font-size: 34px;
   }
 }

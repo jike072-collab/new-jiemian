@@ -501,9 +501,15 @@ function VideoTutorialResultSlot({
   const playResultVideo = useCallback(() => {
     const video = videoRef.current;
     if (!video || !shouldPlay) return;
+    video.autoplay = true;
+    video.defaultMuted = true;
     video.muted = true;
     video.loop = true;
     video.playsInline = true;
+    video.setAttribute("autoplay", "");
+    video.setAttribute("muted", "");
+    video.setAttribute("loop", "");
+    video.setAttribute("playsinline", "");
     void video.play().catch(() => undefined);
   }, [shouldPlay]);
 
@@ -542,8 +548,19 @@ function VideoTutorialResultSlot({
       const video = videoRef.current;
       if (!video || !video.paused) return;
       playResultVideo();
-    }, 1200);
+    }, 500);
     return () => window.clearInterval(timer);
+  }, [playResultVideo, shouldPlay]);
+
+  useEffect(() => {
+    if (!shouldPlay) return undefined;
+    const replay = () => playResultVideo();
+    window.addEventListener("focus", replay);
+    document.addEventListener("visibilitychange", replay);
+    return () => {
+      window.removeEventListener("focus", replay);
+      document.removeEventListener("visibilitychange", replay);
+    };
   }, [playResultVideo, shouldPlay]);
 
   return (
@@ -567,7 +584,7 @@ function VideoTutorialResultSlot({
             ref={videoRef}
             src={videoTutorialResultVideoSrc}
             poster={videoTutorialResultPosterSrc}
-            autoPlay={resultPreviewActive}
+            autoPlay
             loop
             muted
             playsInline
@@ -575,6 +592,8 @@ function VideoTutorialResultSlot({
             onLoadedMetadata={markResultVideoReady}
             onCanPlay={markResultVideoReady}
             onLoadedData={markResultVideoReady}
+            onPlay={() => setVideoReady(true)}
+            onPlaying={() => setVideoReady(true)}
             onPause={playResultVideo}
           />
         ) : (
@@ -825,7 +844,7 @@ function VideoGenerationTutorial({ paused = false }: { paused?: boolean }) {
       id: "result",
       title: "生成视频并查看结果",
       description: "生成完成后在这里预览视频结果，需要时可以下载或重新生成。",
-      visual: <VideoTutorialResultSlot playbackState={playbackState} paused={shouldPause} />,
+      visual: <VideoTutorialResultSlot playbackState={playbackState} paused={paused || reducedMotion || !pageVisible} />,
       visualSide: "left",
     },
   ];
