@@ -102,6 +102,39 @@ export class MembershipService {
     return getMembershipSku(planId, cycle);
   }
 
+  private async mirrorExternalStatus(localUserId: string, status: MembershipStatusSnapshot, now: Date) {
+    if (!status.active) return;
+    try {
+      const existing = await this.repository.getMembershipByOrder(status.active.source_order_id);
+      if (!existing) {
+        await this.repository.createMembership({
+          localUserId,
+          planId: status.active.plan_id,
+          cycle: status.active.cycle,
+          status: status.active.status,
+          startsAt: status.active.starts_at,
+          endsAt: status.active.ends_at,
+          sourceOrderId: status.active.source_order_id,
+          now: nowIso(now),
+        });
+      }
+      for (const [kind, grant] of Object.entries(status.entitlements) as Array<[MembershipEntitlementKind, { remaining: number; granted: number; used: number }]>) {
+        if (grant.granted <= 0) continue;
+        await this.repository.grantEntitlement({
+          localUserId,
+          kind,
+          amount: grant.granted,
+          sourceOrderId: status.active.source_order_id,
+          expiresAt: status.active.ends_at,
+          idempotencyKey: `new-api-mirror:${status.active.source_order_id}:${kind}`,
+          now: nowIso(now),
+        });
+      }
+    } catch {
+      return;
+    }
+  }
+
   async getStatus(localUserId: string, at: Date = this.now()): Promise<MembershipStatusSnapshot> {
     const timestamp = nowIso(at);
     await this.refreshExpired(localUserId, at);
@@ -127,6 +160,7 @@ export class MembershipService {
     if (active) return localStatus;
     try {
       const external = await this.externalStatus(localUserId, at);
+      if (external) await this.mirrorExternalStatus(localUserId, external, at);
       return external || localStatus;
     } catch {
       return localStatus;
@@ -235,6 +269,20 @@ export class MembershipService {
       now: nowIso(now),
     });
     return { consumed: result.consumed };
+  }
+
+  async restoreEntitlement(input: MembershipConsumeInput) {
+    if (!Number.isInteger(input.amount) || input.amount <= 0) return { restored: 0 };
+    const now = input.now || this.now();
+    const result = await this.repository.restoreEntitlement({
+      localUserId: input.localUserId,
+      kind: input.kind,
+      amount: input.amount,
+      idempotencyKey: input.idempotencyKey,
+      taskId: input.taskId || null,
+      now: nowIso(now),
+    });
+    return { restored: result.restored };
   }
 
   async consumedForTask(localUserId: string, taskId: string) {

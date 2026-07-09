@@ -13,6 +13,7 @@ import {
   type GrantEntitlementInput,
   type MembershipPatch,
   type MembershipRepository,
+  type RestoreEntitlementInput,
 } from "./repository";
 import type { MembershipEntitlementGrant, MembershipEntitlementLedger, UserMembership, UserMembershipStatus } from "./types";
 
@@ -341,6 +342,62 @@ export class PostgresMembershipRepository implements MembershipRepository {
         timestamp,
       ]);
       return { consumed, ledger: ledgerFromRow(ledger.rows[0]) };
+    });
+  }
+
+  async restoreEntitlement(input: RestoreEntitlementInput) {
+    if (input.amount <= 0) return { restored: 0, ledger: null };
+    const timestamp = input.now || new Date().toISOString();
+    return withApplicationTransaction(async (client) => {
+      const existing = await client.query<LedgerRow>(`
+        select * from membership_entitlement_ledger
+        where local_user_id = $1 and idempotency_key = $2
+        limit 1
+      `, [input.localUserId.trim(), input.idempotencyKey.trim()]);
+      if (existing.rows[0]) {
+        const ledger = ledgerFromRow(existing.rows[0]);
+        return { restored: Math.max(0, ledger.delta), ledger };
+      }
+
+      const grants = await client.query<EntitlementRow>(`
+        select * from membership_entitlements
+        where local_user_id = $1 and kind = $2 and used > 0 and expires_at > $3
+        order by expires_at asc, created_at asc
+        for update
+      `, [input.localUserId.trim(), input.kind, timestamp]);
+      let remaining = input.amount;
+      let restored = 0;
+      let sourceOrderId: string | null = null;
+      for (const grant of grants.rows) {
+        if (remaining <= 0) break;
+        const giveBack = Math.min(remaining, Number(grant.used));
+        if (giveBack <= 0) continue;
+        await client.query(`
+          update membership_entitlements
+          set remaining = remaining + $2, used = used - $2, updated_at = $3, version = version + 1
+          where id = $1
+        `, [grant.id, giveBack, timestamp]);
+        remaining -= giveBack;
+        restored += giveBack;
+        sourceOrderId ||= grant.source_order_id;
+      }
+      if (restored <= 0) return { restored: 0, ledger: null };
+      const ledger = await client.query<LedgerRow>(`
+        insert into membership_entitlement_ledger(
+          id, local_user_id, kind, delta, idempotency_key, source_order_id, task_id, created_at
+        ) values ($1,$2,$3,$4,$5,$6,$7,$8)
+        returning *
+      `, [
+        randomUUID(),
+        input.localUserId.trim(),
+        input.kind,
+        restored,
+        input.idempotencyKey.trim(),
+        sourceOrderId,
+        input.taskId || null,
+        timestamp,
+      ]);
+      return { restored, ledger: ledgerFromRow(ledger.rows[0]) };
     });
   }
 

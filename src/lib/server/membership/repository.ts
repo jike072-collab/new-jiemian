@@ -48,6 +48,15 @@ export type ConsumeEntitlementInput = {
   now?: string;
 };
 
+export type RestoreEntitlementInput = {
+  localUserId: string;
+  kind: MembershipEntitlementKind;
+  amount: number;
+  idempotencyKey: string;
+  taskId?: string | null;
+  now?: string;
+};
+
 export type MembershipRepository = {
   listMemberships(localUserId: string): Promise<UserMembership[]>;
   getMembershipByOrder(sourceOrderId: string): Promise<UserMembership | null>;
@@ -57,6 +66,7 @@ export type MembershipRepository = {
   grantEntitlement(input: GrantEntitlementInput): Promise<MembershipEntitlementGrant | null>;
   expireEntitlementsBySourceOrder(localUserId: string, sourceOrderIds: string[], now?: string): Promise<number>;
   consumeEntitlement(input: ConsumeEntitlementInput): Promise<{ consumed: number; ledger: MembershipEntitlementLedger | null }>;
+  restoreEntitlement(input: RestoreEntitlementInput): Promise<{ restored: number; ledger: MembershipEntitlementLedger | null }>;
   getLedgerByIdempotencyKey(localUserId: string, idempotencyKey: string): Promise<MembershipEntitlementLedger | null>;
 };
 
@@ -303,6 +313,50 @@ class StoreMembershipRepository implements MembershipRepository {
       };
       store.ledger.push(ledger);
       return { consumed, ledger: cloneLedger(ledger) };
+    });
+  }
+
+  async restoreEntitlement(input: RestoreEntitlementInput) {
+    if (input.amount <= 0) return { restored: 0, ledger: null };
+    const timestamp = nowIso(input.now);
+    return this.mutate((store) => {
+      const existing = store.ledger.find((record) => (
+        record.local_user_id === input.localUserId.trim()
+        && record.idempotency_key === input.idempotencyKey.trim()
+      ));
+      if (existing) return { restored: Math.max(0, existing.delta), ledger: cloneLedger(existing) };
+
+      let remaining = input.amount;
+      let restored = 0;
+      let sourceOrderId: string | null = null;
+      const active = store.entitlements
+        .filter((record) => record.local_user_id === input.localUserId.trim())
+        .filter((record) => record.kind === input.kind && record.used > 0 && record.expires_at > timestamp)
+        .sort((a, b) => a.expires_at.localeCompare(b.expires_at));
+      for (const grant of active) {
+        if (remaining <= 0) break;
+        const giveBack = Math.min(remaining, grant.used);
+        grant.used -= giveBack;
+        grant.remaining += giveBack;
+        grant.updated_at = timestamp;
+        grant.version += 1;
+        remaining -= giveBack;
+        restored += giveBack;
+        sourceOrderId ||= grant.source_order_id;
+      }
+      if (restored <= 0) return { restored: 0, ledger: null };
+      const ledger: MembershipEntitlementLedger = {
+        id: randomUUID(),
+        local_user_id: input.localUserId.trim(),
+        kind: input.kind,
+        delta: restored,
+        idempotency_key: input.idempotencyKey.trim(),
+        source_order_id: sourceOrderId,
+        task_id: input.taskId || null,
+        created_at: timestamp,
+      };
+      store.ledger.push(ledger);
+      return { restored, ledger: cloneLedger(ledger) };
     });
   }
 

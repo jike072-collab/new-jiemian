@@ -5,6 +5,7 @@ import {
   estimateImageGenerationTotalQuota,
   generationBillingFingerprint,
 } from "../generation-quota";
+import { getMembershipService } from "./membership";
 
 import { addJob, addLibraryItem, readLibraryMetadataForOwner, storeDataUrl, storeRemoteUrl, updateJob, updateLibraryItem } from "./library";
 import { codeForUpstreamStatus, GenerationDiagnosticError } from "./error-diagnostics";
@@ -179,6 +180,10 @@ function parseProviderOutput(payload: unknown): ProviderOutput {
     statusUrl: firstString(first.status_url, root.status_url),
     mimeType: firstString(first.mime_type, root.mime_type),
   };
+}
+
+function looksLikeOpenAiImageModel(model: string) {
+  return model.trim().toLowerCase().startsWith("gpt-image");
 }
 
 function wait(ms: number) {
@@ -921,7 +926,7 @@ async function callImageProviderOnce({
     form.append("n", String(outputCount));
     form.append("size", size);
     form.append("quality", imageQualityLabel(quality));
-    form.append("response_format", "url");
+    form.append("response_format", looksLikeOpenAiImageModel(provider.model) ? "b64_json" : "url");
     if (upscale) form.append("upscale", upscale);
     files.forEach((file, index) => {
       form.append(
@@ -953,7 +958,7 @@ async function callImageProviderOnce({
       n: outputCount,
       size,
       quality: imageQualityLabel(quality),
-      response_format: "url",
+      response_format: looksLikeOpenAiImageModel(provider.model) ? "b64_json" : "url",
       ...(upscale ? { upscale } : {}),
     }),
     signal: AbortSignal.timeout(300000),
@@ -1068,6 +1073,26 @@ async function settleGeneratedTaskBilling(input: {
   } catch {
     return { ok: false, status: 503, message: "Task billing settlement failed." };
   }
+}
+
+async function restoreMembershipEntitlementOnFailure(input: {
+  localUserId?: string | null;
+  taskId?: string | null;
+  operation?: "cloud_image_generation" | "cloud_video_generation" | "cloud_image_upscale" | "cloud_video_upscale" | "prompt_optimize" | null;
+}) {
+  if (!input.localUserId || !input.taskId || !input.operation) return;
+  const kind = input.operation === "cloud_video_generation" || input.operation === "cloud_video_upscale"
+    ? "video_generation"
+    : input.operation === "prompt_optimize"
+      ? "prompt_optimize"
+      : "image_generation";
+  await getMembershipService().restoreEntitlement({
+    localUserId: input.localUserId,
+    kind,
+    amount: 1,
+    idempotencyKey: `membership:restore:${kind}:${input.taskId}`,
+    taskId: input.taskId,
+  }).catch(() => undefined);
 }
 
 async function claimGenerationBillingDispatch(input: {
@@ -1244,6 +1269,11 @@ export async function generateImage(input: {
         expectedCount: outputCount,
       });
       if (existingItems.length) return existingItems;
+      await restoreMembershipEntitlementOnFailure({
+        localUserId: input.billingLocalUserId,
+        taskId: input.billingTaskId,
+        operation: "cloud_image_generation",
+      });
       throw new GenerationDiagnosticError({
         code: "TASK_CREATE_FAILED",
         status: 409,
@@ -1252,6 +1282,11 @@ export async function generateImage(input: {
       });
     }
     if (!(error instanceof BillingSettlementRequiredError) && !(error instanceof BillingDispatchRejectedError)) {
+      await restoreMembershipEntitlementOnFailure({
+        localUserId: input.billingLocalUserId,
+        taskId: input.billingTaskId,
+        operation: "cloud_image_generation",
+      });
       await settleGeneratedTaskBilling({
         localUserId: input.billingLocalUserId,
         taskId: input.billingTaskId,
@@ -1445,6 +1480,11 @@ export async function submitVideo(input: {
     return { item, job };
   } catch (error) {
     if (error instanceof BillingDispatchRejectedError) {
+      await restoreMembershipEntitlementOnFailure({
+        localUserId: input.billingLocalUserId,
+        taskId: input.billingTaskId,
+        operation: "cloud_video_generation",
+      });
       throw new GenerationDiagnosticError({
         code: "TASK_CREATE_FAILED",
         status: 409,
@@ -1453,6 +1493,11 @@ export async function submitVideo(input: {
       });
     }
     if (!(error instanceof BillingSettlementRequiredError) && !(error instanceof BillingDispatchRejectedError)) {
+      await restoreMembershipEntitlementOnFailure({
+        localUserId: input.billingLocalUserId,
+        taskId: input.billingTaskId,
+        operation: "cloud_video_generation",
+      });
       await settleGeneratedTaskBilling({
         localUserId: input.billingLocalUserId,
         taskId: input.billingTaskId,

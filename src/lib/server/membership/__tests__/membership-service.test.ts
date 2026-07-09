@@ -69,3 +69,47 @@ test("same tier renews, higher tier activates immediately, lower tier queues", a
   const afterPro = await membership.getStatus("user-1", new Date(upgraded.ends_at));
   assert.equal(afterPro.active?.source_order_id, "order-basic-2");
 });
+
+test("mirrors external New API membership into the local repository", async () => {
+  const repository = createMemoryMembershipRepository();
+  const membership = new MembershipService({
+    repository,
+    externalStatus: async () => ({
+      active: {
+        id: "new-api-subscription:mirror-1",
+        local_user_id: "user-2",
+        plan_id: "pro",
+        cycle: "monthly",
+        status: "active",
+        starts_at: "2026-06-18T00:00:00.000Z",
+        ends_at: "2026-07-18T00:00:00.000Z",
+        source_order_id: "new-api-subscription:mirror-1",
+        created_at: "2026-06-18T00:00:00.000Z",
+        updated_at: "2026-06-18T00:00:00.000Z",
+        cancelled_at: null,
+        version: 1,
+      },
+      queued: null,
+      recharge_bonus_basis_points: 0,
+      entitlements: {
+        prompt_optimize: { remaining: 3, granted: 3, used: 0 },
+        image_generation: { remaining: 4, granted: 4, used: 0 },
+        video_generation: { remaining: 1, granted: 1, used: 0 },
+      },
+    }),
+    now: () => new Date("2026-06-18T00:00:00.000Z"),
+  });
+
+  const status = await membership.getStatus("user-2");
+  assert.equal(status.active?.plan_id, "pro");
+  assert.equal((await repository.listMemberships("user-2")).length, 1);
+  assert.equal((await repository.listEntitlements("user-2")).length, 3);
+
+  const consumed = await membership.consumeEntitlement({
+    localUserId: "user-2",
+    kind: "image_generation",
+    amount: 1,
+    idempotencyKey: "mirror-consume",
+  });
+  assert.equal(consumed.consumed, 1);
+});
