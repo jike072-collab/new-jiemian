@@ -1,6 +1,13 @@
 import { randomBytes, randomInt, randomUUID } from "node:crypto";
 
-import { createNewApiUserSyncService, type NewApiUserMappingRepository, type NewApiUserSyncService } from "../integrations/new-api";
+import {
+  adminGetNewApiUser,
+  createNewApiUserSyncService,
+  isNewApiError,
+  type NewApiUserMapping,
+  type NewApiUserMappingRepository,
+  type NewApiUserSyncService,
+} from "../integrations/new-api";
 import { hashPassword, validatePasswordStrength, verifyPassword } from "./password";
 import { InMemoryRateLimiter } from "./rate-limit";
 import { hmacSha256, timingSafeStringEqual } from "./secrets";
@@ -73,6 +80,7 @@ export type AuthServiceDependencies = {
   repository?: AuthRepository;
   mappingRepository?: NewApiUserMappingRepository;
   userSyncService?: Pick<NewApiUserSyncService, "ensureMapped">;
+  getNewApiUser?: typeof adminGetNewApiUser;
   loginLimiter?: InMemoryRateLimiter;
   adminPasswordLimiter?: InMemoryRateLimiter;
   registerLimiter?: InMemoryRateLimiter;
@@ -93,6 +101,35 @@ function envNumber(name: string, fallback: number, min: number, max: number) {
   const parsed = Number(value);
   if (!Number.isFinite(parsed)) return fallback;
   return Math.min(Math.max(Math.trunc(parsed), min), max);
+}
+
+function extractNewApiUser(payload: unknown) {
+  if (!payload || typeof payload !== "object") return null;
+  const root = payload as Record<string, unknown>;
+  const data = root.data;
+  const user = root.user;
+  if (data && typeof data === "object" && !Array.isArray(data)) return data as Record<string, unknown>;
+  if (user && typeof user === "object" && !Array.isArray(user)) return user as Record<string, unknown>;
+  return root;
+}
+
+function terminalNewApiUserStatusReason(user: Record<string, unknown> | null) {
+  if (!user) return null;
+  const deletedAt = user.deleted_at ?? user.deletedAt ?? user.cancelled_at ?? user.canceled_at;
+  if (deletedAt) return "upstream_deleted";
+
+  const status = user.status;
+  if (typeof status === "number") {
+    if (status === 3 || status === 4) return `upstream_status_${status}`;
+    return null;
+  }
+
+  const normalized = String(status ?? user.status_text ?? user.statusText ?? "").trim().toLowerCase();
+  if (!normalized) return null;
+  if (/注销|已注销|deleted|deactivated|cancelled|canceled|closed/.test(normalized)) {
+    return `upstream_status_${normalized.slice(0, 40)}`;
+  }
+  return null;
 }
 
 function newUserInitialCredits() {
@@ -152,6 +189,7 @@ export class AuthService {
   private readonly repository: AuthRepository;
   private readonly mappingRepository: NewApiUserMappingRepository;
   private readonly userSyncService: Pick<NewApiUserSyncService, "ensureMapped">;
+  private readonly getNewApiUser: typeof adminGetNewApiUser;
   private readonly loginLimiter: InMemoryRateLimiter;
   private readonly adminPasswordLimiter: InMemoryRateLimiter;
   private readonly registerLimiter: InMemoryRateLimiter;
@@ -172,6 +210,7 @@ export class AuthService {
     this.userSyncService = dependencies.userSyncService || createNewApiUserSyncService({
       repository: this.mappingRepository,
     });
+    this.getNewApiUser = dependencies.getNewApiUser || adminGetNewApiUser;
     const limits = getWorkloadLimits();
     this.loginLimiter = dependencies.loginLimiter || new InMemoryRateLimiter(limits.failedLoginPerIp, limits.failedLoginWindowMs);
     this.adminPasswordLimiter = dependencies.adminPasswordLimiter || new InMemoryRateLimiter(
@@ -206,15 +245,20 @@ export class AuthService {
     }
 
     const destinationHash = sha256(destination);
-    const existingUser = await this.repository.getUserByIdentifier(destination);
+    let existingUser = await this.repository.getUserByIdentifier(destination);
     if (purpose === "register" && existingUser) {
-      await this.audit("auth.verification.duplicate", existingUser.local_user_id, context, { destination: destinationHash });
-      return failure({
-        status: 409,
-        code: "AUTH_DUPLICATE_ACCOUNT",
-        uiState: "validation_error",
-        message: "Account already exists.",
-      });
+      const released = await this.releaseReusableRegistrationIdentity(existingUser, context, "verification");
+      if (released) {
+        existingUser = null;
+      } else {
+        await this.audit("auth.verification.duplicate", existingUser.local_user_id, context, { destination: destinationHash });
+        return failure({
+          status: 409,
+          code: "AUTH_DUPLICATE_ACCOUNT",
+          uiState: "validation_error",
+          message: "Account already exists.",
+        });
+      }
     }
     if (purpose === "password_reset" && !existingUser) {
       await this.audit("auth.password_reset.missing_user", null, context, { destination: destinationHash });
@@ -334,10 +378,13 @@ export class AuthService {
       });
     }
 
-    if (
-      await this.repository.getUserByIdentifier(email)
-      || await this.repository.getUserByIdentifier(normalizedUsername)
-    ) {
+    const duplicateUsers = [
+      await this.repository.getUserByIdentifier(email),
+      await this.repository.getUserByIdentifier(normalizedUsername),
+    ].filter((user): user is AuthUser => Boolean(user));
+    const uniqueDuplicateUsers = Array.from(new Map(duplicateUsers.map((user) => [user.local_user_id, user])).values());
+    const unreleasedDuplicateUser = await this.firstUnreleasedRegistrationDuplicate(uniqueDuplicateUsers, context);
+    if (unreleasedDuplicateUser) {
       await this.audit("auth.register.duplicate", null, context, { identifier: sha256(email) });
       return failure({
         status: 409,
@@ -475,6 +522,76 @@ export class AuthService {
     }
 
     return this.completeLogin(user, input, context, redirectTo);
+  }
+
+  private async firstUnreleasedRegistrationDuplicate(users: AuthUser[], context: AuthRequestContext) {
+    for (const user of users) {
+      const released = await this.releaseReusableRegistrationIdentity(user, context, "register");
+      if (!released) return user;
+    }
+    return null;
+  }
+
+  private async releaseReusableRegistrationIdentity(user: AuthUser, context: AuthRequestContext, source: "verification" | "register") {
+    const reason = await this.registrationIdentityReleaseReason(user);
+    if (!reason) return false;
+
+    if (user.status !== "disabled") {
+      await this.repository.updateUser(user.local_user_id, { status: "disabled" }, this.now());
+    }
+    const released = await this.repository.releaseUserIdentity(user.local_user_id, this.now());
+    const mappingTransition = reason.startsWith("upstream_")
+      ? this.mappingRepository.markOrphaned.bind(this.mappingRepository)
+      : this.mappingRepository.markDisabled.bind(this.mappingRepository);
+    await mappingTransition({
+      localUserId: user.local_user_id,
+      code: "AUTH_REGISTRATION_IDENTITY_RELEASED",
+      message: `Registration released an obsolete identity: ${reason}`,
+      now: this.now(),
+    }).catch(() => undefined);
+    await this.audit("auth.register.identity_released", user.local_user_id, context, {
+      reason,
+      source,
+      released_user_id: released.local_user_id,
+    });
+    return true;
+  }
+
+  private async registrationIdentityReleaseReason(user: AuthUser) {
+    if (user.status === "disabled") return "local_disabled";
+
+    let mapping: NewApiUserMapping | null = null;
+    try {
+      mapping = await this.mappingRepository.getByLocalUserId(user.local_user_id);
+    } catch {
+      return null;
+    }
+
+    if (mapping?.sync_status === "disabled" || mapping?.sync_status === "orphaned") {
+      return `mapping_${mapping.sync_status}`;
+    }
+
+    if (mapping?.sync_status === "active" && mapping.new_api_user_id) {
+      const upstreamStatus = await this.getTerminalUpstreamUserStatus(mapping.new_api_user_id);
+      if (upstreamStatus) return upstreamStatus;
+    }
+
+    return null;
+  }
+
+  private async getTerminalUpstreamUserStatus(newApiUserId: string) {
+    const parsed = Number(newApiUserId);
+    if (!Number.isInteger(parsed) || parsed <= 0) return null;
+    try {
+      const response = await this.getNewApiUser({ newApiUserId: parsed });
+      const user = extractNewApiUser(response.data);
+      return terminalNewApiUserStatusReason(user);
+    } catch (error) {
+      if (isNewApiError(error) && (error.upstreamStatus === 404 || error.status === 404)) {
+        return "upstream_missing";
+      }
+      return null;
+    }
   }
 
   private async completeLogin(

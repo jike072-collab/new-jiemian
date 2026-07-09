@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
-import { createMemoryNewApiUserMappingRepository, type NewApiUserSyncProfile, type NewApiUserSyncResult } from "../../integrations/new-api";
+import { adminGetNewApiUser, createMemoryNewApiUserMappingRepository, type NewApiUserSyncProfile, type NewApiUserSyncResult } from "../../integrations/new-api";
 import { createCsrfToken, verifyCsrfToken } from "../csrf";
 import { hashPassword, validatePasswordStrength, verifyPassword } from "../password";
 import { InMemoryRateLimiter } from "../rate-limit";
@@ -58,6 +58,7 @@ function service(overrides: {
   adminPasswordLimiter?: InMemoryRateLimiter;
   registerLimiter?: InMemoryRateLimiter;
   verificationLimiter?: InMemoryRateLimiter;
+  getNewApiUser?: typeof adminGetNewApiUser;
 } = {}) {
   const repository = overrides.repository || createMemoryAuthRepository();
   const mappingRepository = createMemoryNewApiUserMappingRepository();
@@ -73,6 +74,7 @@ function service(overrides: {
       adminPasswordLimiter: overrides.adminPasswordLimiter,
       registerLimiter: overrides.registerLimiter,
       verificationLimiter: overrides.verificationLimiter,
+      getNewApiUser: overrides.getNewApiUser,
       verificationSender: async (payload) => {
         sentCodes.push(payload);
       },
@@ -209,6 +211,48 @@ test("rejects duplicate registration without creating another account", async ()
   if (duplicate.ok) return;
   assert.equal(duplicate.status, 409);
   assert.equal(duplicate.uiState, "validation_error");
+});
+
+test("registration reuses an email after the mapped upstream account was cancelled", async () => {
+  const harness = service({
+    getNewApiUser: async () => ({
+      data: { data: { id: 100, username: "customer", status: 3 } },
+      requestId: "test-upstream-deleted",
+      upstreamStatus: 200,
+    }),
+    sync: (localUserId) => ({
+      ...activeMapping(localUserId),
+      mapping: {
+        ...activeMapping(localUserId).mapping,
+        new_api_user_id: "101",
+      },
+    }),
+  });
+  const first = await registerActiveAccount(harness);
+  assert.equal(first.ok, true);
+  if (!first.ok) return;
+
+  const requested = await harness.service.requestVerificationCode({
+    identifier: "customer@example.com",
+    purpose: "register",
+  });
+  assert.equal(requested.ok, true);
+  assert.equal(await harness.repository.getUserByIdentifier("customer@example.com"), null);
+  assert.equal(await harness.repository.getUserByIdentifier("customer"), null);
+
+  const second = await harness.service.register({
+    email: "customer@example.com",
+    username: "customer",
+    password: "StrongPass123",
+    verificationCode: harness.sentCodes.at(-1)?.code || "",
+    displayName: "Customer Again",
+  });
+  assert.equal(second.ok, true);
+  if (!second.ok) return;
+  assert.notEqual(second.user.local_user_id, first.user.local_user_id);
+
+  const audit = await harness.repository.listAuditEvents();
+  assert.equal(audit.some((event) => event.event === "auth.register.identity_released"), true);
 });
 
 test("rejects phone-only registration until SMS verification is enabled", async () => {
