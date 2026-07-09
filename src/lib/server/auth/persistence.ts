@@ -227,6 +227,17 @@ export function createDualAuthRepository(json: AuthRepository, postgres: AuthRep
         },
       );
     },
+    async releaseUserIdentity(localUserId, now) {
+      return mirrorWrite(
+        json.releaseUserIdentity(localUserId, now),
+        {
+          scope: "auth_user",
+          operation: "releaseUserIdentity",
+          key: () => localUserId,
+          mirror: () => postgres.releaseUserIdentity(localUserId, now),
+        },
+      );
+    },
     async createSession(session) {
       return mirrorWrite(
         json.createSession(session),

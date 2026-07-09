@@ -67,6 +67,7 @@ function unavailableAuthRepository(): AuthRepository {
     listUsersPage: async () => fail(),
     createUser: async () => fail(),
     updateUser: async () => fail(),
+    releaseUserIdentity: async () => fail(),
     createSession: async () => fail(),
     getSessionByTokenHash: async () => fail(),
     touchSession: async () => fail(),
@@ -412,6 +413,19 @@ dbTest("postgres auth repository supports user, session, audit, and duplicate pr
   });
   assert.equal((await repository.getSessionByTokenHash("a".repeat(64)))?.session_id, session.session_id);
   assert.equal((await repository.revokeSession(session.session_id))?.revoked_at !== null, true);
+
+  await repository.releaseUserIdentity(user.local_user_id, new Date("2026-06-18T00:05:00.000Z"));
+  assert.equal(await repository.getUserByIdentifier("pg-customer@example.com"), null);
+  assert.equal(await repository.getUserByIdentifier("pg-customer"), null);
+  const recreated = await repository.createUser({
+    localUserId: randomUUID(),
+    email: "pg-customer@example.com",
+    username: "pg-customer",
+    displayName: "PG Customer Again",
+    passwordHash,
+    now: new Date("2026-06-18T00:06:00.000Z"),
+  });
+  assert.equal(recreated.email, "pg-customer@example.com");
 
   await repository.appendAudit({
     id: randomUUID(),

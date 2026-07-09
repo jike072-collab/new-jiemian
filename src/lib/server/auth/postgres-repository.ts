@@ -282,6 +282,34 @@ export class PostgresAuthRepository implements AuthRepository {
     return userFromRow(result.rows[0]);
   }
 
+  async releaseUserIdentity(localUserId: string, now?: Date) {
+    const timestamp = nowIso(now);
+    const compact = localUserId.trim().toLowerCase().replace(/[^a-z0-9]/g, "").slice(0, 24) || randomUUID().replace(/-/g, "").slice(0, 24);
+    const result = await applicationQuery<UserRow>(`
+      update app_users
+      set
+        email = $2,
+        username = $3,
+        phone = null,
+        session_version = session_version + 1,
+        updated_at = $4
+      where local_user_id = $1
+      returning *
+    `, [
+      localUserId,
+      `archived+${compact}@deleted.local`,
+      `archived-${compact}`.slice(0, 32),
+      timestamp,
+    ]);
+    if (!result.rows[0]) throw new AuthRepositoryError("AUTH_NOT_FOUND", "Account was not found.");
+    await applicationQuery(`
+      update auth_sessions
+      set revoked_at = $2, updated_at = $2
+      where local_user_id = $1 and revoked_at is null
+    `, [localUserId, timestamp]);
+    return userFromRow(result.rows[0]);
+  }
+
   async createSession(session: AuthSession) {
     const result = await applicationQuery<SessionRow>(`
       insert into auth_sessions(

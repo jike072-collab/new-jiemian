@@ -249,6 +249,7 @@ test("admin user status changes and order review write audit records", async () 
   assert.equal(updated.ok, true);
   if (!updated.ok) return;
   assert.equal(updated.user.status, "disabled");
+  assert.equal((await authRepository.getUserByIdentifier("target@example.com"))?.local_user_id, "target-user");
 
   const reviewed = await service.reviewOrder(adminActor, "bo_admin", "failed", "manual review password:hidden");
   assert.equal(reviewed.ok, true);
@@ -260,6 +261,45 @@ test("admin user status changes and order review write audit records", async () 
   assert.equal(audit.some((event) => event.event === "admin.billing.orders.reviewed"), true);
   assert.equal(JSON.stringify(audit).includes("token:hidden"), false);
   assert.equal(JSON.stringify(audit).includes("password:hidden"), false);
+});
+
+test("admin account cancellation releases email for future registration", async () => {
+  const { service, authRepository } = harness();
+  await authRepository.createSession({
+    session_id: "session-to-revoke",
+    local_user_id: "target-user",
+    token_hash: "a".repeat(64),
+    session_version: 1,
+    created_at: "2026-06-19T00:00:00.000Z",
+    updated_at: "2026-06-19T00:00:00.000Z",
+    last_seen_at: "2026-06-19T00:00:00.000Z",
+    idle_expires_at: "2026-06-19T01:00:00.000Z",
+    expires_at: "2026-06-20T00:00:00.000Z",
+    revoked_at: null,
+    user_agent_hash: null,
+    ip_hash: null,
+  });
+
+  const updated = await service.updateUserStatus(adminActor, "target-user", "disabled", "客户注销，释放邮箱");
+  assert.equal(updated.ok, true);
+  if (!updated.ok) return;
+  assert.equal(updated.user.status, "disabled");
+  assert.equal(await authRepository.getUserByIdentifier("target@example.com"), null);
+  assert.equal(await authRepository.getUserByIdentifier("target"), null);
+  assert.equal((await authRepository.getSessionByTokenHash("a".repeat(64)))?.revoked_at !== null, true);
+
+  const recreated = await authRepository.createUser({
+    localUserId: "new-target-user",
+    email: "target@example.com",
+    username: "target",
+    displayName: "New Target",
+    passwordHash: "hash",
+    now: new Date("2026-06-19T00:02:00.000Z"),
+  });
+  assert.equal(recreated.local_user_id, "new-target-user");
+
+  const audit = await authRepository.listAuditEvents();
+  assert.equal(audit.some((event) => event.event === "admin.users.status_updated" && event.details.identity_released === true), true);
 });
 
 test("quota adjustment is idempotent and does not create a second local balance", async () => {

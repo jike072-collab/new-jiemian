@@ -5297,14 +5297,14 @@
 
   .user-center-points-card {
     display: grid;
-    min-height: 196px;
+    min-height: 172px;
     align-content: center;
-    gap: 12px;
+    gap: 10px;
     border-color: rgba(255, 43, 136, 0.2);
     background:
       radial-gradient(circle at 14% 0%, rgba(255, 43, 136, 0.16), transparent 42%),
       #141418;
-    padding: 22px;
+    padding: 18px;
   }
 
   .user-center-card-icon {
@@ -5328,14 +5328,14 @@
 
   .user-center-points-card__copy {
     display: grid;
-    gap: 10px;
+    gap: 8px;
     min-width: 0;
   }
 
   .user-center-points-card__main {
     display: grid;
-    grid-template-columns: minmax(0, 1fr) auto;
-    gap: 14px;
+    grid-template-columns: minmax(0, 1fr) 154px;
+    gap: 16px;
     align-items: center;
   }
 
@@ -5357,7 +5357,7 @@
   .user-center-points-card__value {
     overflow: hidden;
     color: #ff62a9;
-    font-size: clamp(36px, 4vw, 52px);
+    font-size: clamp(34px, 3.7vw, 48px);
     font-weight: 780;
     line-height: 1.05;
     text-overflow: ellipsis;
@@ -5460,6 +5460,10 @@
   }
 
   .user-center-action--primary {
+    min-height: 48px;
+    border-radius: 13px;
+    font-size: 14px;
+    font-weight: 760;
     border-color: rgba(255, 43, 136, 0.38);
     background: linear-gradient(90deg, rgba(255, 43, 136, 0.92), rgba(164, 82, 255, 0.84));
     color: #fff;
@@ -5497,13 +5501,13 @@
     grid-template-columns: 36px minmax(0, 1fr);
     align-items: start;
     gap: 12px;
-    min-height: 196px;
+    min-height: 172px;
     align-content: start;
     border-color: var(--member-border, rgba(255, 255, 255, 0.08));
     background:
       radial-gradient(circle at 18% 0%, var(--member-glow, transparent), transparent 44%),
       #141418;
-    padding: 18px 18px 16px;
+    padding: 18px 118px 14px 18px;
   }
 
   .user-center-mini-card div {
@@ -5844,6 +5848,9 @@
 
   .user-center-plan-name {
     color: var(--member-fg, rgba(255, 255, 255, 0.92)) !important;
+    font-size: 25px;
+    font-weight: 850;
+    line-height: 1.08;
   }
 
   .user-center-plan-details {
@@ -5872,9 +5879,15 @@
   }
 
   .user-center-mini-card__action {
-    grid-column: 1 / -1;
+    position: absolute;
+    top: 16px;
+    right: 16px;
+    grid-column: auto;
     width: fit-content;
-    margin-top: 4px;
+    min-height: 34px;
+    margin-top: 0;
+    border-radius: 999px;
+    padding: 0 13px;
   }
 
   .user-center-quick-links {
@@ -11701,9 +11714,11 @@
   }
 
   .shell-panel--mobile-single .user-center-mini-card__action {
+    position: static;
     grid-column: 2;
     width: fit-content;
     min-height: 32px;
+    margin-top: 4px;
   }
 
   .shell-panel--mobile-single .user-center-plan-line {
@@ -12697,7 +12712,9 @@
   }
 
   .shell-root .shell-panel.shell-panel--mobile-single .user-center-mini-card__action {
+    position: static;
     grid-column: 2;
     width: fit-content;
+    margin-top: 4px;
   }
 }

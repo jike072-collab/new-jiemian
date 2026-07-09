@@ -36,6 +36,7 @@ export type UserRepository = {
   listUsersPage(filter?: AuthUserListFilter): Promise<AuthUserListPage>;
   createUser(input: CreateAuthUserInput): Promise<AuthUser>;
   updateUser(localUserId: string, patch: Partial<Pick<AuthUser, "status" | "last_login_at" | "session_version" | "display_name" | "password_hash">>, now?: Date): Promise<AuthUser>;
+  releaseUserIdentity(localUserId: string, now?: Date): Promise<AuthUser>;
 };
 
 export type AuthUserListFilter = {
@@ -212,6 +213,29 @@ class StoreAuthRepository implements AuthRepository {
     });
   }
 
+  async releaseUserIdentity(localUserId: string, now?: Date) {
+    return this.mutate((store) => {
+      const index = store.users.findIndex((user) => user.local_user_id === localUserId);
+      if (index < 0) throw new AuthRepositoryError("AUTH_NOT_FOUND", "Account was not found.");
+      const timestamp = nowIso(now);
+      const archived = archivedIdentity(localUserId);
+      store.users[index] = {
+        ...store.users[index],
+        email: archived.email,
+        username: archived.username,
+        phone: null,
+        session_version: store.users[index].session_version + 1,
+        updated_at: timestamp,
+      };
+      store.sessions = store.sessions.map((session) => (
+        session.local_user_id === localUserId && !session.revoked_at
+          ? { ...session, revoked_at: timestamp, updated_at: timestamp }
+          : session
+      ));
+      return { ...store.users[index] };
+    });
+  }
+
   async createSession(session: AuthSession) {
     return this.mutate((store) => {
       store.sessions.push({ ...session });
@@ -315,4 +339,12 @@ export function createJsonAuthRepository(path = defaultAuthStorePath) {
       await writeJsonFile(path, store);
     },
   });
+}
+
+function archivedIdentity(localUserId: string) {
+  const compact = localUserId.trim().toLowerCase().replace(/[^a-z0-9]/g, "").slice(0, 24) || randomUUID().replace(/-/g, "").slice(0, 24);
+  return {
+    email: `archived+${compact}@deleted.local`,
+    username: `archived-${compact}`.slice(0, 32),
+  };
 }

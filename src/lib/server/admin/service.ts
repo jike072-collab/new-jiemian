@@ -122,6 +122,12 @@ function failure(code: AdminFailureCode, status: number, message: string): Admin
   return { ok: false, code, status, message };
 }
 
+function shouldReleaseDisabledUserIdentity(status: string, reason: string) {
+  if (status !== "disabled") return false;
+  const normalized = reason.trim().toLowerCase();
+  return /注销|释放邮箱|释放账号|释放登录|delete account|deleted account|release identity|release email/.test(normalized);
+}
+
 function nowIso(now: Date) {
   return now.toISOString();
 }
@@ -304,13 +310,17 @@ export class AdminService {
     if (!reason.trim()) return failure("admin_invalid_request", 400, "Reason is required.");
     const current = await this.authRepository.getUserById(localUserId);
     if (!current) return failure("admin_not_found", 404, "User was not found.");
-    const updated = current.status === status
+    let updated = current.status === status
       ? current
       : await this.authRepository.updateUser(localUserId, { status: status as AuthUserStatus }, this.now());
+    if (shouldReleaseDisabledUserIdentity(status, reason)) {
+      updated = await this.authRepository.releaseUserIdentity(localUserId, this.now());
+    }
     await this.audit("admin.users.status_updated", actor.localUserId, context, {
       target_user_id: localUserId,
       previous_status: current.status,
       status,
+      identity_released: shouldReleaseDisabledUserIdentity(status, reason),
       reason: sanitize(reason),
     });
     return { ok: true as const, status: 200, user: publicUser(updated) };
