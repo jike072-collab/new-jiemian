@@ -193,6 +193,40 @@ test("uses membership image entitlement before charging quota", async () => {
   assert.equal(status.entitlements.image_generation.remaining, 19);
 });
 
+test("uses dedicated image edit entitlement before charging quota", async () => {
+  const harness = service({ availableQuota: 0, providerQuota: 0 });
+  await harness.membershipService.applyPaidMembership({
+    localUserId: "local-user",
+    orderId: "membership-image-edit-entitlement",
+    planId: "basic",
+    cycle: "monthly",
+    now: new Date("2026-06-18T00:00:00.000Z"),
+  });
+  const prechecked = await harness.taskBilling.precheck({
+    localUserId: "local-user",
+    taskId: "member-image-edit-task",
+    operation: "cloud_image_edit",
+    estimatedQuotaUnits: 10,
+    idempotencyKey: "member-image-edit-task",
+  });
+  assert.equal(prechecked.ok, true);
+  if (!prechecked.ok) return;
+  assert.equal(prechecked.record.membership_entitlement_kind, "image_edit");
+  assert.equal(prechecked.record.membership_entitlement_units, 1);
+
+  const settled = await harness.taskBilling.settleSuccess({
+    localUserId: "local-user",
+    taskId: "member-image-edit-task",
+    actualQuotaUnits: 10,
+  });
+  assert.equal(settled.ok, true);
+  if (!settled.ok) return;
+  assert.equal(settled.record.final_quota_units, 0);
+  assert.equal(harness.adjustments.length, 0);
+  const status = await harness.membershipService.getStatus("local-user");
+  assert.equal(status.entitlements.image_edit.remaining, 9);
+});
+
 test("server-side generation requires a matching precheck record", async () => {
   const harness = service();
   const missing = await harness.taskBilling.verifyPrecheck({

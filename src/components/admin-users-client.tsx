@@ -45,9 +45,12 @@ const cycleLabels: Record<MembershipCycle, string> = {
 };
 
 const entitlementLabels = {
-  prompt_optimize: "提示词",
-  image_generation: "生图",
-  video_generation: "视频",
+  prompt_optimize: "Prompt",
+  image_generation: "Image Gen",
+  video_generation: "Video Gen",
+  image_edit: "Image Edit",
+  image_upscale: "Image Upscale",
+  video_upscale: "Video Upscale",
 } as const;
 
 function formatDate(value: string | null | undefined) {

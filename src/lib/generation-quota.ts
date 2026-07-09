@@ -1,6 +1,7 @@
 import type { WorkspaceImageMode, WorkspaceVideoMode } from "@/lib/workspace-registry";
 
-type GenerationBillableOperation = "cloud_image_generation" | "cloud_video_generation";
+type ImageGenerationBillableOperation = "cloud_image_generation" | "cloud_image_edit";
+type GenerationBillableOperation = ImageGenerationBillableOperation | "cloud_video_generation";
 type UpscaleBillableOperation = "cloud_image_upscale" | "cloud_video_upscale";
 
 export function estimateImageGenerationQuota(input: {
@@ -38,6 +39,7 @@ export function estimateVideoGenerationQuota(input: {
 export type GenerationBillingIntent =
   | {
       kind: "image";
+      operation: ImageGenerationBillableOperation;
       providerId: string;
       mode: WorkspaceImageMode;
       ratio: string;
@@ -80,7 +82,7 @@ export function generationBillingFingerprint(input: GenerationBillingIntent & {
   const parts = input.kind === "image"
     ? [
       input.kind,
-      generationBillingOperation(input),
+      input.operation,
       input.taskId,
       input.providerId,
       input.mode,

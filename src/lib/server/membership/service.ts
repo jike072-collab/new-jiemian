@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 
 import {
+  createEmptyMembershipEntitlements,
   addMembershipDuration,
   getMembershipPlan,
   getMembershipSku,
@@ -41,6 +42,9 @@ const emptyEntitlements: MembershipStatusSnapshot["entitlements"] = {
   prompt_optimize: { remaining: 0, granted: 0, used: 0 },
   image_generation: { remaining: 0, granted: 0, used: 0 },
   video_generation: { remaining: 0, granted: 0, used: 0 },
+  image_edit: { remaining: 0, granted: 0, used: 0 },
+  image_upscale: { remaining: 0, granted: 0, used: 0 },
+  video_upscale: { remaining: 0, granted: 0, used: 0 },
 };
 
 function nowIso(now: Date) {
@@ -76,11 +80,10 @@ function addEntitlements(
 }
 
 function cloneEmptyEntitlements() {
-  return {
-    prompt_optimize: { ...emptyEntitlements.prompt_optimize },
-    image_generation: { ...emptyEntitlements.image_generation },
-    video_generation: { ...emptyEntitlements.video_generation },
-  };
+  const next = createEmptyMembershipEntitlements();
+  return Object.fromEntries(
+    Object.entries(next).map(([kind]) => [kind, { ...emptyEntitlements[kind as MembershipEntitlementKind] }]),
+  ) as MembershipStatusSnapshot["entitlements"];
 }
 
 export class MembershipService {
@@ -289,6 +292,9 @@ export class MembershipService {
     const keys = [
       `membership:image_generation:${taskId}`,
       `membership:video_generation:${taskId}`,
+      `membership:image_edit:${taskId}`,
+      `membership:image_upscale:${taskId}`,
+      `membership:video_upscale:${taskId}`,
       `membership:prompt_optimize:${taskId}`,
     ];
     for (const key of keys) {

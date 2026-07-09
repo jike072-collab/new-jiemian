@@ -127,13 +127,16 @@ type MembershipStatusResponse = {
       prompt_optimize: number;
       image_generation: number;
       video_generation: number;
+      image_edit: number;
+      image_upscale: number;
+      video_upscale: number;
     };
   }>;
   membership: {
     active: { plan_id: string; ends_at: string } | null;
     queued: { plan_id: string; starts_at: string; ends_at: string } | null;
     recharge_bonus_basis_points: number;
-    entitlements: Record<"prompt_optimize" | "image_generation" | "video_generation", {
+    entitlements: Record<"prompt_optimize" | "image_generation" | "video_generation" | "image_edit" | "image_upscale" | "video_upscale", {
       remaining: number;
       granted: number;
       used: number;
@@ -141,6 +144,7 @@ type MembershipStatusResponse = {
   };
 };
 type MembershipEntitlements = MembershipStatusResponse["membership"]["entitlements"];
+type ImageBillingOperation = "cloud_image_generation" | "cloud_image_edit";
 
 type CheckInResponse = {
   ok: true;
@@ -356,6 +360,26 @@ function createTaskId(prefix: string) {
 }
 
 type ImageWorkspaceScope = "image" | "image-editor";
+
+function createInitialImageWorkspaceState(): ImageWorkspaceState {
+  return {
+    providerId: "",
+    ratio: "1:1",
+    quality: "1k",
+    count: 1,
+    templateId: "",
+    prompt: "",
+    promptOptimizing: false,
+    promptOptimizeError: "",
+    promptOptimizeUndo: "",
+    files: [],
+    fileError: "",
+    submitError: "",
+    submitDiagnostic: null,
+    inFlightCount: 0,
+    loading: false,
+  };
+}
 
 function withPreviewParam(href: string, previewMode: boolean) {
   if (!previewMode || href.includes("preview=1")) return href;
@@ -655,23 +679,8 @@ export function StudioApp() {
   const [bulkDeletingLibrary, setBulkDeletingLibrary] = useState(false);
   const [removingLibraryItemId, setRemovingLibraryItemId] = useState<string | null>(null);
   const [missingLibraryMediaIds, setMissingLibraryMediaIds] = useState<Set<string>>(() => new Set());
-  const [imageWorkspace, setImageWorkspace] = useState<ImageWorkspaceState>({
-    providerId: "",
-    ratio: "1:1",
-    quality: "1k",
-    count: 1,
-    templateId: "",
-    prompt: "",
-    promptOptimizing: false,
-    promptOptimizeError: "",
-    promptOptimizeUndo: "",
-    files: [],
-    fileError: "",
-    submitError: "",
-    submitDiagnostic: null,
-    inFlightCount: 0,
-    loading: false,
-  });
+  const [imageWorkspace, setImageWorkspace] = useState<ImageWorkspaceState>(() => createInitialImageWorkspaceState());
+  const [imageEditorWorkspace, setImageEditorWorkspace] = useState<ImageWorkspaceState>(() => createInitialImageWorkspaceState());
   const [videoWorkspace, setVideoWorkspace] = useState<VideoWorkspaceState>({
     providerId: "",
     ratio: "16:9",
@@ -715,11 +724,13 @@ export function StudioApp() {
     job: null,
   });
   const imageWorkspaceFilesRef = useRef<ImageWorkspaceFile[]>([]);
+  const imageEditorWorkspaceFilesRef = useRef<ImageWorkspaceFile[]>([]);
   const videoWorkspaceFilesRef = useRef<VideoWorkspaceFile[]>([]);
   const imageUpscaleFileRef = useRef<ImageUpscaleWorkspaceFile | null>(null);
   const videoUpscaleFileRef = useRef<VideoUpscaleWorkspaceFile | null>(null);
   const appliedTemplateIdRef = useRef<string | null>(null);
   const imageInFlightCountRef = useRef(0);
+  const imageEditorInFlightCountRef = useRef(0);
   const videoInFlightCountRef = useRef(0);
   const imageUpscaleInFlightRef = useRef(false);
   const videoUpscaleInFlightRef = useRef(false);
@@ -921,6 +932,7 @@ export function StudioApp() {
       resetAccountState();
       resetLibraryState();
       imageInFlightCountRef.current = 0;
+      imageEditorInFlightCountRef.current = 0;
       videoInFlightCountRef.current = 0;
       setImageGenerationProgress([]);
       setLogoutConfirmOpen(false);
@@ -1099,6 +1111,7 @@ export function StudioApp() {
 
   useEffect(() => () => {
     imageWorkspaceFilesRef.current.forEach((file) => URL.revokeObjectURL(file.previewUrl));
+    imageEditorWorkspaceFilesRef.current.forEach((file) => URL.revokeObjectURL(file.previewUrl));
     videoWorkspaceFilesRef.current.forEach((file) => URL.revokeObjectURL(file.previewUrl));
     if (imageUpscaleFileRef.current) URL.revokeObjectURL(imageUpscaleFileRef.current.previewUrl);
     if (videoUpscaleFileRef.current) URL.revokeObjectURL(videoUpscaleFileRef.current.previewUrl);
@@ -1106,6 +1119,14 @@ export function StudioApp() {
 
   useEffect(() => {
     setImageWorkspace((prev) => {
+      const nextProviders = providers.image;
+      if (!nextProviders.length) {
+        return prev.providerId ? { ...prev, providerId: "" } : prev;
+      }
+      if (nextProviders.some((provider) => provider.id === prev.providerId)) return prev;
+      return { ...prev, providerId: nextProviders[0].id };
+    });
+    setImageEditorWorkspace((prev) => {
       const nextProviders = providers.image;
       if (!nextProviders.length) {
         return prev.providerId ? { ...prev, providerId: "" } : prev;
@@ -1135,7 +1156,11 @@ export function StudioApp() {
 
     const nextImageMode = action.mode === "text-to-image" || action.mode === "image-to-image" ? action.mode : null;
     if (action.toolId === "image" && nextImageMode) {
-      setImageWorkspace((prev) => ({ ...prev, submitError: "", submitDiagnostic: null, fileError: "" }));
+      if (tool === "image-editor") {
+        setImageEditorWorkspace((prev) => ({ ...prev, submitError: "", submitDiagnostic: null, fileError: "" }));
+      } else {
+        setImageWorkspace((prev) => ({ ...prev, submitError: "", submitDiagnostic: null, fileError: "" }));
+      }
     }
 
     const nextVideoMode = action.mode === "text-to-video" || action.mode === "image-to-video" ? action.mode : null;
@@ -1150,12 +1175,17 @@ export function StudioApp() {
   const activeAction = activeWorkspaceTool.action.kind === "workspace" ? activeWorkspaceTool.action : null;
   const activeBusinessTool = activeAction?.toolId || "library";
   const activeOutput = outputs[activeBusinessTool] || null;
-  const activeImageMode: WorkspaceImageMode = activeWorkspaceToolId === "image-editor" || imageWorkspace.files.length
+  const activeImageWorkspaceScope: ImageWorkspaceScope = activeWorkspaceToolId === "image-editor" ? "image-editor" : "image";
+  const activeImageWorkspace = activeImageWorkspaceScope === "image-editor" ? imageEditorWorkspace : imageWorkspace;
+  const activeImageWorkspaceFilesRef = activeImageWorkspaceScope === "image-editor" ? imageEditorWorkspaceFilesRef : imageWorkspaceFilesRef;
+  const activeImageWorkspaceSetter = activeImageWorkspaceScope === "image-editor" ? setImageEditorWorkspace : setImageWorkspace;
+  const activeImageInFlightCountRef = activeImageWorkspaceScope === "image-editor" ? imageEditorInFlightCountRef : imageInFlightCountRef;
+  const activeImageMode: WorkspaceImageMode = activeImageWorkspaceScope === "image-editor" || activeImageWorkspace.files.length
     ? "image-to-image"
     : "text-to-image";
   const activeVideoMode: WorkspaceVideoMode = videoWorkspace.files.length ? "image-to-video" : "text-to-video";
   const templateParam = searchParams.get("template") || "";
-  const activeImageTemplate = useMemo(() => templateById(imageWorkspace.templateId), [imageWorkspace.templateId]);
+  const activeImageTemplate = useMemo(() => templateById(activeImageWorkspace.templateId), [activeImageWorkspace.templateId]);
   const activeVideoTemplate = useMemo(() => templateById(videoWorkspace.templateId), [videoWorkspace.templateId]);
   const imageTemplateCenterHref = useMemo(
     () => withPreviewParam(templateTabHref("image"), previewMode),
@@ -1210,7 +1240,8 @@ export function StudioApp() {
 
     if (template.scope === "image") {
       setActiveWorkspaceToolId(template.targetToolId);
-      setImageWorkspace((prev) => ({
+      const setWorkspace = template.targetToolId === "image-editor" ? setImageEditorWorkspace : setImageWorkspace;
+      setWorkspace((prev) => ({
         ...prev,
         templateId: template.id,
         prompt: template.prompt,
@@ -1479,52 +1510,56 @@ export function StudioApp() {
 
   const selectedImageProvider = useMemo(() => {
     if (!providers.image.length) return null;
-    return providers.image.find((provider) => provider.id === imageWorkspace.providerId) || providers.image[0];
-  }, [imageWorkspace.providerId, providers.image]);
+    return providers.image.find((provider) => provider.id === activeImageWorkspace.providerId) || providers.image[0];
+  }, [activeImageWorkspace.providerId, providers.image]);
 
-  const activeImageWorkspaceScope: ImageWorkspaceScope = activeWorkspaceToolId === "image-editor" ? "image-editor" : "image";
-  const imageWorkspaceFiles = imageWorkspace.files;
+  const imageWorkspaceFiles = activeImageWorkspace.files;
   const imageWorkspaceHasFiles = imageWorkspaceFiles.length > 0;
-  const imageWorkspacePrompt = imageWorkspace.prompt.trim();
+  const imageWorkspacePrompt = activeImageWorkspace.prompt.trim();
   const imageWorkspaceRequiresFile = activeImageTemplate?.scope === "image" && activeImageTemplate.requiresImage;
-  const imageGenerationCount = Math.min(Math.max(Math.round(Number(imageWorkspace.count) || 1), 1), 4);
+  const imageGenerationCount = Math.min(Math.max(Math.round(Number(activeImageWorkspace.count) || 1), 1), 4);
   const imageEstimatedQuotaUnits = estimateImageGenerationTotalQuota({
-    quality: imageWorkspace.quality,
+    quality: activeImageWorkspace.quality,
     count: imageGenerationCount,
   });
+  const activeImageBillingOperation: ImageBillingOperation = activeImageWorkspaceScope === "image-editor"
+    ? "cloud_image_edit"
+    : "cloud_image_generation";
   const imageGenerationCostLabel = membershipEntitlementLabel(
     membershipEntitlements,
-    "image_generation",
+    activeImageWorkspaceScope === "image-editor" ? "image_edit" : "image_generation",
     "张",
     formatQuotaSymbolLabel(imageEstimatedQuotaUnits),
   );
   const imageWorkspaceCanSubmit = Boolean(selectedImageProvider)
     && !providersLoading
-    && !imageWorkspace.loading
+    && !activeImageWorkspace.loading
     && Boolean(imageWorkspacePrompt)
     && (!imageWorkspaceRequiresFile || imageWorkspaceHasFiles);
-  const scopedImageLoading = imageWorkspace.loading && imageRequestScope === activeImageWorkspaceScope;
-  const scopedImageSubmitError = imageRequestScope === activeImageWorkspaceScope ? imageWorkspace.submitError : "";
-  const scopedImageSubmitDiagnostic = imageRequestScope === activeImageWorkspaceScope ? imageWorkspace.submitDiagnostic : null;
+  const scopedImageLoading = activeImageWorkspace.loading && imageRequestScope === activeImageWorkspaceScope;
+  const scopedImageSubmitError = imageRequestScope === activeImageWorkspaceScope ? activeImageWorkspace.submitError : "";
+  const scopedImageSubmitDiagnostic = imageRequestScope === activeImageWorkspaceScope ? activeImageWorkspace.submitDiagnostic : null;
   const scopedImageOutputs = imageResultScope === activeImageWorkspaceScope ? imageOutputs : [];
   const scopedActiveImageOutput = imageResultScope === activeImageWorkspaceScope ? activeOutput : null;
 
   const updateImageWorkspace = useCallback((patch: Partial<ImageWorkspaceState>) => {
-    setImageWorkspace((prev) => ({
+    activeImageWorkspaceSetter((prev) => ({
       ...prev,
       ...patch,
       ...("submitError" in patch && !("submitDiagnostic" in patch) ? { submitDiagnostic: null } : {}),
     }));
-  }, []);
+  }, [activeImageWorkspaceSetter]);
 
-  const updateImageInFlightState = useCallback((nextCount: number) => {
-    imageInFlightCountRef.current = Math.max(0, nextCount);
-    setImageWorkspace((prev) => ({
+  const updateImageInFlightState = useCallback((nextCount: number, scope: ImageWorkspaceScope = activeImageWorkspaceScope) => {
+    const countRef = scope === "image-editor" ? imageEditorInFlightCountRef : imageInFlightCountRef;
+    const setWorkspace = scope === "image-editor" ? setImageEditorWorkspace : setImageWorkspace;
+    countRef.current = Math.max(0, nextCount);
+    setWorkspace((prev) => ({
       ...prev,
-      inFlightCount: imageInFlightCountRef.current,
-      loading: imageInFlightCountRef.current > 0,
+      inFlightCount: countRef.current,
+      loading: countRef.current > 0,
     }));
-  }, []);
+  }, [activeImageWorkspaceScope]);
 
   const updateVideoInFlightState = useCallback((nextCount: number) => {
     videoInFlightCountRef.current = Math.max(0, nextCount);
@@ -1552,7 +1587,7 @@ export function StudioApp() {
   }, [applyTemplatePreset]);
 
   const optimizeImagePrompt = useCallback(async () => {
-    const prompt = imageWorkspace.prompt.trim();
+    const prompt = activeImageWorkspace.prompt.trim();
     if (!prompt) {
       const text = "请先填写提示词。";
       updateImageWorkspace({
@@ -1562,9 +1597,9 @@ export function StudioApp() {
       setMessage(text);
       return;
     }
-    if (imageWorkspace.promptOptimizing) return;
+    if (activeImageWorkspace.promptOptimizing) return;
 
-    const originalPrompt = imageWorkspace.prompt;
+    const originalPrompt = activeImageWorkspace.prompt;
     updateImageWorkspace({
       promptOptimizing: true,
       promptOptimizeError: "",
@@ -1578,11 +1613,11 @@ export function StudioApp() {
           taskId,
           idempotencyKey: taskId,
           tool: activeWorkspaceToolId === "image-editor" ? "image-editor" : "image-generator",
-          templateId: imageWorkspace.templateId,
+          templateId: activeImageWorkspace.templateId,
           prompt: originalPrompt,
           hasImage: imageWorkspaceHasFiles,
-          aspectRatio: imageWorkspace.ratio,
-          quality: imageWorkspace.quality,
+          aspectRatio: activeImageWorkspace.ratio,
+          quality: activeImageWorkspace.quality,
           targetPlatform: promptOptimizationTargetPlatform,
         }),
       });
@@ -1606,17 +1641,17 @@ export function StudioApp() {
     }
   }, [
     activeWorkspaceToolId,
-    imageWorkspace.prompt,
-    imageWorkspace.promptOptimizing,
-    imageWorkspace.quality,
-    imageWorkspace.ratio,
-    imageWorkspace.templateId,
+    activeImageWorkspace.prompt,
+    activeImageWorkspace.promptOptimizing,
+    activeImageWorkspace.quality,
+    activeImageWorkspace.ratio,
+    activeImageWorkspace.templateId,
     imageWorkspaceHasFiles,
     updateImageWorkspace,
   ]);
 
   const undoImagePromptOptimization = useCallback(() => {
-    setImageWorkspace((prev) => {
+    activeImageWorkspaceSetter((prev) => {
       if (!prev.promptOptimizeUndo) return prev;
       return {
         ...prev,
@@ -1627,14 +1662,14 @@ export function StudioApp() {
         submitDiagnostic: null,
       };
     });
-  }, []);
+  }, [activeImageWorkspaceSetter]);
 
   const replaceImageWorkspaceFiles = useCallback((files: File[]) => {
     let nextFiles: ImageWorkspaceFile[];
     try {
       nextFiles = createImageWorkspaceFiles(files);
     } catch (error) {
-      setImageWorkspace((prev) => ({
+      activeImageWorkspaceSetter((prev) => ({
         ...prev,
         fileError: error instanceof Error ? error.message : "图像读取失败。",
         submitError: "",
@@ -1642,23 +1677,23 @@ export function StudioApp() {
       }));
       return;
     }
-    setImageWorkspace((prev) => ({
+    activeImageWorkspaceSetter((prev) => ({
       ...prev,
       files: nextFiles,
       fileError: "",
       submitError: "",
       submitDiagnostic: null,
     }));
-    imageWorkspaceFilesRef.current.forEach((file) => URL.revokeObjectURL(file.previewUrl));
-    imageWorkspaceFilesRef.current = nextFiles;
-  }, []);
+    activeImageWorkspaceFilesRef.current.forEach((file) => URL.revokeObjectURL(file.previewUrl));
+    activeImageWorkspaceFilesRef.current = nextFiles;
+  }, [activeImageWorkspaceFilesRef, activeImageWorkspaceSetter]);
 
   const removeImageWorkspaceFile = useCallback((index: number) => {
-    setImageWorkspace((prev) => {
+    activeImageWorkspaceSetter((prev) => {
       const removed = prev.files[index];
       if (removed) URL.revokeObjectURL(removed.previewUrl);
       const nextFiles = prev.files.filter((_, currentIndex) => currentIndex !== index);
-      imageWorkspaceFilesRef.current = nextFiles;
+      activeImageWorkspaceFilesRef.current = nextFiles;
       return {
         ...prev,
         files: nextFiles,
@@ -1667,24 +1702,24 @@ export function StudioApp() {
         submitDiagnostic: null,
       };
     });
-  }, []);
+  }, [activeImageWorkspaceFilesRef, activeImageWorkspaceSetter]);
 
   const clearImageWorkspaceFiles = useCallback(() => {
-    imageWorkspaceFilesRef.current.forEach((file) => URL.revokeObjectURL(file.previewUrl));
-    imageWorkspaceFilesRef.current = [];
-    setImageWorkspace((prev) => ({
+    activeImageWorkspaceFilesRef.current.forEach((file) => URL.revokeObjectURL(file.previewUrl));
+    activeImageWorkspaceFilesRef.current = [];
+    activeImageWorkspaceSetter((prev) => ({
       ...prev,
       files: [],
       fileError: "",
       submitError: "",
       submitDiagnostic: null,
     }));
-  }, []);
+  }, [activeImageWorkspaceFilesRef, activeImageWorkspaceSetter]);
 
   const submitImageWorkspace = useCallback(async () => {
-    if (imageInFlightCountRef.current > 0) return;
+    if (activeImageInFlightCountRef.current > 0) return;
     if (!selectedImageProvider) {
-      setImageWorkspace((prev) => ({
+      activeImageWorkspaceSetter((prev) => ({
         ...prev,
         submitError: "当前尚未配置可用模型。",
         submitDiagnostic: null,
@@ -1693,7 +1728,7 @@ export function StudioApp() {
       return;
     }
     if (!imageWorkspacePrompt) {
-      setImageWorkspace((prev) => ({
+      activeImageWorkspaceSetter((prev) => ({
         ...prev,
         submitError: "请输入提示词。",
         submitDiagnostic: null,
@@ -1701,7 +1736,7 @@ export function StudioApp() {
       return;
     }
     if (imageWorkspaceRequiresFile && !imageWorkspaceHasFiles) {
-      setImageWorkspace((prev) => ({
+      activeImageWorkspaceSetter((prev) => ({
         ...prev,
         fileError: "请先上传图像。",
       }));
@@ -1710,7 +1745,7 @@ export function StudioApp() {
 
     const totalCount = imageGenerationCount;
     const estimatedQuotaUnits = estimateImageGenerationTotalQuota({
-      quality: imageWorkspace.quality,
+      quality: activeImageWorkspace.quality,
       count: totalCount,
     });
     const progressId = createTaskId("image-progress");
@@ -1719,21 +1754,22 @@ export function StudioApp() {
       scope: activeImageWorkspaceScope,
       providerId: selectedImageProvider.id,
       mode: activeImageMode,
-      ratio: imageWorkspace.ratio,
-      quality: imageWorkspace.quality,
-      prompt: imageWorkspace.prompt,
-      files: imageWorkspace.files.map((attachment) => attachment.file),
+      operation: activeImageBillingOperation,
+      ratio: activeImageWorkspace.ratio,
+      quality: activeImageWorkspace.quality,
+      prompt: activeImageWorkspace.prompt,
+      files: activeImageWorkspace.files.map((attachment) => attachment.file),
       estimatedQuotaUnits,
       totalCount,
       batchId,
     };
 
-    updateImageInFlightState(imageInFlightCountRef.current + 1);
+    updateImageInFlightState(activeImageInFlightCountRef.current + 1, snapshot.scope);
     setImageRequestScope(snapshot.scope);
     setImageResultScope(null);
     setImageOutputs([]);
     setOutputs((prev) => ({ ...prev, image: null }));
-    setImageWorkspace((prev) => ({
+    activeImageWorkspaceSetter((prev) => ({
       ...prev,
       submitError: "",
       submitDiagnostic: null,
@@ -1755,6 +1791,7 @@ export function StudioApp() {
       const taskId = createTaskId("image");
       const requestFingerprint = generationBillingFingerprint({
         kind: "image",
+        operation: snapshot.operation,
         providerId: snapshot.providerId,
         mode: snapshot.mode,
         ratio: snapshot.ratio,
@@ -1767,7 +1804,7 @@ export function StudioApp() {
       await fetchJsonWithCsrf("/api/quota/precheck", {
         method: "POST",
         body: JSON.stringify({
-          operation: "cloud_image_generation",
+          operation: snapshot.operation,
           taskId,
           idempotencyKey: taskId,
           estimatedQuotaUnits: snapshot.estimatedQuotaUnits,
@@ -1788,6 +1825,7 @@ export function StudioApp() {
       form.set("batchTotal", String(snapshot.totalCount));
       form.set("count", String(snapshot.totalCount));
       form.set("estimatedQuotaUnits", String(snapshot.estimatedQuotaUnits));
+      form.set("operation", snapshot.operation);
       snapshot.files.forEach((file) => form.append("files", file));
       const data = await fetchJsonWithCsrf<{ item: LibraryItem | null; items?: LibraryItem[] }>("/api/generate/image", {
         method: "POST",
@@ -1814,7 +1852,7 @@ export function StudioApp() {
       }));
     } catch (error) {
       const text = error instanceof Error ? error.message : "图片生成失败。";
-      setImageWorkspace((prev) => ({
+      activeImageWorkspaceSetter((prev) => ({
         ...prev,
         submitError: text,
         submitDiagnostic: diagnosticFromError(error),
@@ -1827,16 +1865,19 @@ export function StudioApp() {
       }));
       setMessage(text);
     } finally {
-      updateImageInFlightState(imageInFlightCountRef.current - 1);
+      updateImageInFlightState(activeImageInFlightCountRef.current - 1, activeImageWorkspaceScope);
     }
   }, [
+    activeImageBillingOperation,
+    activeImageInFlightCountRef,
+    activeImageWorkspace.files,
+    activeImageWorkspace.prompt,
+    activeImageWorkspace.quality,
+    activeImageWorkspace.ratio,
+    activeImageWorkspaceSetter,
     activeImageWorkspaceScope,
     activeImageMode,
     handleImageResult,
-    imageWorkspace.files,
-    imageWorkspace.quality,
-    imageWorkspace.ratio,
-    imageWorkspace.prompt,
     imageGenerationCount,
     imageWorkspacePrompt,
     imageWorkspaceHasFiles,
@@ -2426,13 +2467,17 @@ export function StudioApp() {
     try {
       setMessage("正在准备图片编辑素材。");
       const file = await fileFromLibraryOutput(item, ".png", defaultUploadLimits.referenceImage);
-      replaceImageWorkspaceFiles([file]);
-      setImageWorkspace((prev) => ({
+      const nextFiles = createImageWorkspaceFiles([file]);
+      imageEditorWorkspaceFilesRef.current.forEach((entry) => URL.revokeObjectURL(entry.previewUrl));
+      imageEditorWorkspaceFilesRef.current = nextFiles;
+      setImageEditorWorkspace((prev) => ({
         ...prev,
         prompt: item.prompt || prev.prompt,
         ratio: typeof item.params.ratio === "string" ? item.params.ratio : prev.ratio,
         quality: typeof item.params.quality === "string" ? item.params.quality : prev.quality,
         count: 1,
+        files: nextFiles,
+        fileError: "",
         submitError: "",
         submitDiagnostic: null,
       }));
@@ -2443,7 +2488,7 @@ export function StudioApp() {
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "图片编辑素材准备失败。");
     }
-  }, [replaceImageWorkspaceFiles]);
+  }, []);
 
   const reuseLibraryItemParameters = useCallback((item: LibraryItem) => {
     setMessage("已复用上次的文案和参数。");
@@ -2466,7 +2511,8 @@ export function StudioApp() {
       return;
     }
 
-    setImageWorkspace((prev) => ({
+    const setWorkspace = item.mode === "image-to-image" ? setImageEditorWorkspace : setImageWorkspace;
+    setWorkspace((prev) => ({
       ...prev,
       providerId: item.providerId || prev.providerId,
       prompt: item.prompt || prev.prompt,
@@ -2690,7 +2736,7 @@ export function StudioApp() {
               providersError={providersError}
               selectedProvider={selectedImageProvider}
           templateCenterHref={imageTemplateCenterHref}
-          state={imageWorkspace}
+          state={activeImageWorkspace}
           loading={scopedImageLoading}
           canSubmit={imageWorkspaceCanSubmit}
           estimatedQuotaUnits={imageEstimatedQuotaUnits}
@@ -3017,21 +3063,39 @@ function createMembershipEntitlementItems(entitlements: MembershipEntitlements |
   return [
     {
       key: "prompt_optimize",
-      label: "提示词优化",
-      value: `${formatQuotaUnits(entitlements.prompt_optimize.remaining)} 次`,
+      label: "Prompt Optimize",
+      value: `${formatQuotaUnits(entitlements.prompt_optimize.remaining)} uses`,
       remaining: entitlements.prompt_optimize.remaining,
     },
     {
       key: "image_generation",
-      label: "生图",
-      value: `${formatQuotaUnits(entitlements.image_generation.remaining)} 张`,
+      label: "Image Generation",
+      value: `${formatQuotaUnits(entitlements.image_generation.remaining)} items`,
       remaining: entitlements.image_generation.remaining,
     },
     {
       key: "video_generation",
-      label: "视频",
-      value: `${formatQuotaUnits(entitlements.video_generation.remaining)} 次`,
+      label: "Video Generation",
+      value: `${formatQuotaUnits(entitlements.video_generation.remaining)} uses`,
       remaining: entitlements.video_generation.remaining,
+    },
+    {
+      key: "image_edit",
+      label: "Image Edit",
+      value: `${formatQuotaUnits(entitlements.image_edit.remaining)} items`,
+      remaining: entitlements.image_edit.remaining,
+    },
+    {
+      key: "image_upscale",
+      label: "Image Upscale",
+      value: `${formatQuotaUnits(entitlements.image_upscale.remaining)} items`,
+      remaining: entitlements.image_upscale.remaining,
+    },
+    {
+      key: "video_upscale",
+      label: "Video Upscale",
+      value: `${formatQuotaUnits(entitlements.video_upscale.remaining)} uses`,
+      remaining: entitlements.video_upscale.remaining,
     },
   ].filter((item) => item.remaining > 0);
 }
@@ -4524,24 +4588,26 @@ function formatUsageDate(value: string) {
 
 function usageOperationLabel(operation: UsageLogEntry["operation"]) {
   const labels: Record<UsageLogEntry["operation"], string> = {
-    cloud_image_generation: "AI 图像生成器",
-    cloud_video_generation: "AI 视频生成器",
-    cloud_image_upscale: "图片高清增强",
-    cloud_video_upscale: "视频高清增强",
-    prompt_optimize: "提示词优化",
+    cloud_image_generation: "AI Image Generator",
+    cloud_image_edit: "AI Image Editor",
+    cloud_video_generation: "AI Video Generator",
+    cloud_image_upscale: "Image Upscale",
+    cloud_video_upscale: "Video Upscale",
+    prompt_optimize: "Prompt Optimize",
   };
-  return labels[operation] || "AI 工具";
+  return labels[operation] || "AI Tool";
 }
 
 function usageDescription(entry: UsageLogEntry) {
   const descriptions: Record<UsageLogEntry["operation"], string> = {
-    cloud_image_generation: "生成图片",
-    cloud_video_generation: "生成视频",
-    cloud_image_upscale: "图片高清增强处理",
-    cloud_video_upscale: "视频高清增强处理",
-    prompt_optimize: "优化提示词",
+    cloud_image_generation: "Generate image",
+    cloud_image_edit: "Edit image",
+    cloud_video_generation: "Generate video",
+    cloud_image_upscale: "Run image upscale",
+    cloud_video_upscale: "Run video upscale",
+    prompt_optimize: "Optimize prompt",
   };
-  if (entry.status === "failed") return `${descriptions[entry.operation] || "工具处理"}失败`;
-  if (entry.status === "refunded") return `${descriptions[entry.operation] || "工具处理"}已退回额度`;
-  return descriptions[entry.operation] || "工具处理";
+  if (entry.status === "failed") return `${descriptions[entry.operation] || "Tool action"} failed`;
+  if (entry.status === "refunded") return `${descriptions[entry.operation] || "Tool action"} refunded`;
+  return descriptions[entry.operation] || "Tool action";
 }

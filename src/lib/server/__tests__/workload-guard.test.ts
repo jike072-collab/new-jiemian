@@ -30,13 +30,13 @@ test("enforces one video task and one large upload per user", () => {
   assert.equal(uploadTwo.ok, false);
 });
 
-test("enforces process and site-wide video upload limits", () => {
+test("enforces per-user image edit and upscale limits independently", () => {
   const limiter = new InMemoryConcurrencyLimiter(() => new Date("2026-07-01T00:00:00.000Z"));
-  assert.equal(limiter.tryAcquire("process:large-video-io", 1, 60_000).ok, true);
-  assert.equal(limiter.tryAcquire("process:large-video-io", 1, 60_000).ok, false);
-  assert.equal(limiter.tryAcquire("site:video-upload-phase", 2, 60_000).ok, true);
-  assert.equal(limiter.tryAcquire("site:video-upload-phase", 2, 60_000).ok, true);
-  assert.equal(limiter.tryAcquire("site:video-upload-phase", 2, 60_000).ok, false);
+  assert.equal(limiter.tryAcquire("user:u1:image-edit-task", 1, 60_000).ok, true);
+  assert.equal(limiter.tryAcquire("user:u1:image-edit-task", 1, 60_000).ok, false);
+  assert.equal(limiter.tryAcquire("user:u1:image-upscale-task", 1, 60_000).ok, true);
+  assert.equal(limiter.tryAcquire("user:u1:image-upscale-task", 1, 60_000).ok, false);
+  assert.equal(limiter.tryAcquire("user:u2:image-edit-task", 1, 60_000).ok, true);
 });
 
 test("releases slots on success and thrown errors", async () => {
@@ -83,26 +83,26 @@ test("environment configuration can lower but not raise safe defaults", () => {
   const loweredEnv: NodeJS.ProcessEnv = {
     NODE_ENV: "test",
     WORKLOAD_USER_IMAGE_TASKS: "1",
-    WORKLOAD_SITE_VIDEO_UPLOAD_PHASE: "1",
+    WORKLOAD_USER_IMAGE_EDIT_TASKS: "1",
     AUTH_LOGIN_FAILED_PER_IP_PER_MINUTE: "4",
     AUTH_REGISTER_PER_IP_PER_HOUR: "2",
   };
   const lowered = getWorkloadLimits(loweredEnv);
   assert.equal(lowered.userImageTasks, 1);
-  assert.equal(lowered.siteVideoUploadPhase, 1);
+  assert.equal(lowered.userImageEditTasks, 1);
   assert.equal(lowered.failedLoginPerIp, 4);
   assert.equal(lowered.registerPerIp, 2);
 
   const raisedEnv: NodeJS.ProcessEnv = {
     NODE_ENV: "test",
     WORKLOAD_USER_VIDEO_TASKS: "2",
-    WORKLOAD_PROCESS_LARGE_VIDEO_IO: "5",
+    WORKLOAD_USER_VIDEO_UPSCALE_TASKS: "2",
     AUTH_LOGIN_FAILED_PER_IP_PER_MINUTE: "50",
     AUTH_REGISTER_PER_IP_PER_HOUR: "30",
   };
   const raised = getWorkloadLimits(raisedEnv);
   assert.equal(raised.userVideoTasks, defaultWorkloadLimits.userVideoTasks);
-  assert.equal(raised.processLargeVideoIo, defaultWorkloadLimits.processLargeVideoIo);
+  assert.equal(raised.userVideoUpscaleTasks, defaultWorkloadLimits.userVideoUpscaleTasks);
   assert.equal(raised.failedLoginPerIp, defaultWorkloadLimits.failedLoginPerIp);
   assert.equal(raised.registerPerIp, defaultWorkloadLimits.registerPerIp);
 });

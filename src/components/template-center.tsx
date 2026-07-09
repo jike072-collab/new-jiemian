@@ -11,6 +11,7 @@ import { WorkbenchShell } from "@/components/workbench-shell";
 import { WorkspaceAccountPanel } from "@/components/workspace-account-panel";
 import { getPlanStatusDisplay, type CheckInStatus, type PlanStatus } from "@/lib/account-status";
 import {
+  type CachedMembershipSnapshot,
   clearCachedAccountSnapshot,
   readAnyCachedAccountSnapshot,
   readCachedAccountSnapshot,
@@ -33,21 +34,7 @@ import type { WorkspaceAction, WorkspaceToolId } from "@/lib/workspace-registry"
 type TemplateScope = "image" | "video";
 type TemplateFilter = TemplateCategory | "全部" | "收藏";
 
-type MembershipStatusResponse = {
-  ok: true;
-  plans: Array<{
-    id: string;
-    name: string;
-  }>;
-  membership: {
-    active: { plan_id: string; ends_at: string } | null;
-    entitlements: Record<"prompt_optimize" | "image_generation" | "video_generation", {
-      remaining: number;
-      granted: number;
-      used: number;
-    }>;
-  };
-};
+type MembershipStatusResponse = CachedMembershipSnapshot;
 
 type CheckInResponse = {
   ok: true;

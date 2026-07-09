@@ -16,6 +16,9 @@ function emptyMembershipStatus() {
       prompt_optimize: { remaining: 0, granted: 0, used: 0 },
       image_generation: { remaining: 0, granted: 0, used: 0 },
       video_generation: { remaining: 0, granted: 0, used: 0 },
+      image_edit: { remaining: 0, granted: 0, used: 0 },
+      image_upscale: { remaining: 0, granted: 0, used: 0 },
+      video_upscale: { remaining: 0, granted: 0, used: 0 },
     },
   };
 }

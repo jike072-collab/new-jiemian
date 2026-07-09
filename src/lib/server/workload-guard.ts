@@ -131,7 +131,16 @@ export function withUserImageWorkload<T>(localUserId: string, handler: () => Pro
   return withWorkloadSlots([{
     key: `user:${localUserId}:image-task`,
     limit: limits.userImageTasks,
-    message: "图片任务正在排队，请稍后再试。",
+    message: "Image generation is already running for this account. Please retry shortly.",
+  }], handler);
+}
+
+export function withUserImageEditWorkload<T>(localUserId: string, handler: () => Promise<T>) {
+  const limits = getWorkloadLimits();
+  return withWorkloadSlots([{
+    key: `user:${localUserId}:image-edit-task`,
+    limit: limits.userImageEditTasks,
+    message: "Image editing is already running for this account. Please retry shortly.",
   }], handler);
 }
 
@@ -140,61 +149,44 @@ export function withUserVideoWorkload<T>(localUserId: string, handler: () => Pro
   return withWorkloadSlots([{
     key: `user:${localUserId}:video-task`,
     limit: limits.userVideoTasks,
-    message: "视频任务正在排队，请稍后再试。",
+    message: "Video generation is already running for this account. Please retry shortly.",
   }], handler);
 }
 
 export function withUserImageUpscaleWorkload<T>(localUserId: string, handler: () => Promise<T>) {
+  const limits = getWorkloadLimits();
   return withWorkloadSlots([{
     key: `user:${localUserId}:image-upscale-task`,
-    limit: 1,
-    message: "图片高清任务正在排队，请稍后再试。",
+    limit: limits.userImageUpscaleTasks,
+    message: "Image upscale is already running for this account. Please retry shortly.",
   }], handler);
 }
 
 export function withUserVideoUpscaleWorkload<T>(localUserId: string, handler: () => Promise<T>) {
+  const limits = getWorkloadLimits();
   return withWorkloadSlots([{
     key: `user:${localUserId}:video-upscale-task`,
-    limit: 1,
-    message: "视频高清任务正在排队，请稍后再试。",
+    limit: limits.userVideoUpscaleTasks,
+    message: "Video upscale is already running for this account. Please retry shortly.",
   }], handler);
 }
 
 export function withVideoUploadPhase<T>(localUserId: string, handler: () => Promise<T>) {
   const limits = getWorkloadLimits();
-  return withWorkloadSlots([
-    {
-      key: `user:${localUserId}:large-upload`,
-      limit: limits.userLargeUploads,
-      message: "当前已有大文件上传任务，请稍后再试。",
-    },
-    {
-      key: "site:video-upload-phase",
-      limit: limits.siteVideoUploadPhase,
-      message: "视频上传任务较多，请稍后再试。",
-    },
-  ], handler);
+  return withWorkloadSlots([{
+    key: `user:${localUserId}:large-upload`,
+    limit: limits.userLargeUploads,
+    message: "A large upload is already running for this account. Please retry shortly.",
+  }], handler);
 }
 
 export function withVideoProviderUpload<T>(localUserId: string, handler: () => Promise<T>) {
   const limits = getWorkloadLimits();
-  return withWorkloadSlots([
-    {
-      key: `user:${localUserId}:large-upload`,
-      limit: limits.userLargeUploads,
-      message: "当前已有大文件上传任务，请稍后再试。",
-    },
-    {
-      key: "site:video-upload-phase",
-      limit: limits.siteVideoUploadPhase,
-      message: "视频上传任务较多，请稍后再试。",
-    },
-    {
-      key: "process:large-video-io",
-      limit: limits.processLargeVideoIo,
-      message: "视频上传处理繁忙，请稍后再试。",
-    },
-  ], handler);
+  return withWorkloadSlots([{
+    key: `user:${localUserId}:large-upload`,
+    limit: limits.userLargeUploads,
+    message: "A large upload is already running for this account. Please retry shortly.",
+  }], handler);
 }
 
 export function resetWorkloadLimiterForTests() {

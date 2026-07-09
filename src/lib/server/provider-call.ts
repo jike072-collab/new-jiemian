@@ -1078,14 +1078,20 @@ async function settleGeneratedTaskBilling(input: {
 async function restoreMembershipEntitlementOnFailure(input: {
   localUserId?: string | null;
   taskId?: string | null;
-  operation?: "cloud_image_generation" | "cloud_video_generation" | "cloud_image_upscale" | "cloud_video_upscale" | "prompt_optimize" | null;
+  operation?: "cloud_image_generation" | "cloud_image_edit" | "cloud_video_generation" | "cloud_image_upscale" | "cloud_video_upscale" | "prompt_optimize" | null;
 }) {
   if (!input.localUserId || !input.taskId || !input.operation) return;
-  const kind = input.operation === "cloud_video_generation" || input.operation === "cloud_video_upscale"
+  const kind = input.operation === "cloud_video_generation"
     ? "video_generation"
-    : input.operation === "prompt_optimize"
-      ? "prompt_optimize"
-      : "image_generation";
+    : input.operation === "cloud_video_upscale"
+      ? "video_upscale"
+      : input.operation === "cloud_image_upscale"
+        ? "image_upscale"
+        : input.operation === "cloud_image_edit"
+          ? "image_edit"
+          : input.operation === "prompt_optimize"
+            ? "prompt_optimize"
+            : "image_generation";
   await getMembershipService().restoreEntitlement({
     localUserId: input.localUserId,
     kind,
@@ -1150,6 +1156,7 @@ async function acceptGenerationBilling(input: {
 export async function generateImage(input: {
   providerId: string;
   mode: "text-to-image" | "image-to-image";
+  operation?: "cloud_image_generation" | "cloud_image_edit" | null;
   prompt: string;
   ratio: string;
   quality: string;
@@ -1164,6 +1171,7 @@ export async function generateImage(input: {
 }) {
   const provider = await providerById(input.providerId);
   const outputCount = Math.min(Math.max(Math.round(Number(input.count) || 1), 1), 4);
+  const imageOperation = input.operation === "cloud_image_edit" ? "cloud_image_edit" : "cloud_image_generation";
   const estimatedQuotaUnits = Number.isFinite(Number(input.billingEstimatedQuotaUnits))
     ? Math.max(0, Math.round(Number(input.billingEstimatedQuotaUnits)))
     : estimateImageGenerationTotalQuota({
@@ -1172,6 +1180,7 @@ export async function generateImage(input: {
     });
   const billingFingerprint = generationBillingFingerprint({
     kind: "image",
+    operation: imageOperation,
     providerId: input.providerId,
     mode: input.mode,
     ratio: input.ratio,
@@ -1237,6 +1246,7 @@ export async function generateImage(input: {
         ...(batchTotal > 1 ? { imageBatchTotal: batchTotal, imageBatchIndex: index + 1 } : {}),
         ...(input.billingTaskId ? { billingTaskId: input.billingTaskId } : {}),
         ...(input.billingIdempotencyKey ? { billingIdempotencyKey: input.billingIdempotencyKey } : {}),
+        billingOperation: imageOperation,
         billingEstimatedQuotaUnits: actualQuotaUnits,
         billingRequestFingerprint: billingFingerprint,
         ...(actualOutputCount !== outputCount ? { partialBatch: true, requestedBatchTotal: outputCount } : {}),
@@ -1272,7 +1282,7 @@ export async function generateImage(input: {
       await restoreMembershipEntitlementOnFailure({
         localUserId: input.billingLocalUserId,
         taskId: input.billingTaskId,
-        operation: "cloud_image_generation",
+        operation: imageOperation,
       });
       throw new GenerationDiagnosticError({
         code: "TASK_CREATE_FAILED",
@@ -1285,7 +1295,7 @@ export async function generateImage(input: {
       await restoreMembershipEntitlementOnFailure({
         localUserId: input.billingLocalUserId,
         taskId: input.billingTaskId,
-        operation: "cloud_image_generation",
+        operation: imageOperation,
       });
       await settleGeneratedTaskBilling({
         localUserId: input.billingLocalUserId,

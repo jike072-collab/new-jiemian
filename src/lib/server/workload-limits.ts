@@ -2,10 +2,11 @@ import "server-only";
 
 export type WorkloadLimits = {
   userImageTasks: number;
+  userImageEditTasks: number;
   userVideoTasks: number;
   userLargeUploads: number;
-  processLargeVideoIo: number;
-  siteVideoUploadPhase: number;
+  userImageUpscaleTasks: number;
+  userVideoUpscaleTasks: number;
   failedLoginPerIp: number;
   failedLoginWindowMs: number;
   failedAdminPasswordPerIp: number;
@@ -17,10 +18,11 @@ export type WorkloadLimits = {
 
 export const defaultWorkloadLimits: WorkloadLimits = {
   userImageTasks: 4,
+  userImageEditTasks: 1,
   userVideoTasks: 1,
   userLargeUploads: 1,
-  processLargeVideoIo: 1,
-  siteVideoUploadPhase: 2,
+  userImageUpscaleTasks: 1,
+  userVideoUpscaleTasks: 1,
   failedLoginPerIp: 5,
   failedLoginWindowMs: 60_000,
   failedAdminPasswordPerIp: 3,
@@ -32,10 +34,11 @@ export const defaultWorkloadLimits: WorkloadLimits = {
 
 const envKeys = {
   userImageTasks: "WORKLOAD_USER_IMAGE_TASKS",
+  userImageEditTasks: "WORKLOAD_USER_IMAGE_EDIT_TASKS",
   userVideoTasks: "WORKLOAD_USER_VIDEO_TASKS",
   userLargeUploads: "WORKLOAD_USER_LARGE_UPLOADS",
-  processLargeVideoIo: "WORKLOAD_PROCESS_LARGE_VIDEO_IO",
-  siteVideoUploadPhase: "WORKLOAD_SITE_VIDEO_UPLOAD_PHASE",
+  userImageUpscaleTasks: "WORKLOAD_USER_IMAGE_UPSCALE_TASKS",
+  userVideoUpscaleTasks: "WORKLOAD_USER_VIDEO_UPSCALE_TASKS",
   failedLoginPerIp: "AUTH_LOGIN_FAILED_PER_IP_PER_MINUTE",
   failedAdminPasswordPerIp: "AUTH_ADMIN_PASSWORD_FAILED_PER_IP_PER_MINUTE",
   registerPerIp: "AUTH_REGISTER_PER_IP_PER_HOUR",
@@ -54,10 +57,11 @@ export function getWorkloadLimits(env: NodeJS.ProcessEnv = process.env): Workloa
   return {
     ...defaultWorkloadLimits,
     userImageTasks: loweredInteger(env[envKeys.userImageTasks], defaultWorkloadLimits.userImageTasks),
+    userImageEditTasks: loweredInteger(env[envKeys.userImageEditTasks], defaultWorkloadLimits.userImageEditTasks),
     userVideoTasks: loweredInteger(env[envKeys.userVideoTasks], defaultWorkloadLimits.userVideoTasks),
     userLargeUploads: loweredInteger(env[envKeys.userLargeUploads], defaultWorkloadLimits.userLargeUploads),
-    processLargeVideoIo: loweredInteger(env[envKeys.processLargeVideoIo], defaultWorkloadLimits.processLargeVideoIo),
-    siteVideoUploadPhase: loweredInteger(env[envKeys.siteVideoUploadPhase], defaultWorkloadLimits.siteVideoUploadPhase),
+    userImageUpscaleTasks: loweredInteger(env[envKeys.userImageUpscaleTasks], defaultWorkloadLimits.userImageUpscaleTasks),
+    userVideoUpscaleTasks: loweredInteger(env[envKeys.userVideoUpscaleTasks], defaultWorkloadLimits.userVideoUpscaleTasks),
     failedLoginPerIp: loweredInteger(env[envKeys.failedLoginPerIp], defaultWorkloadLimits.failedLoginPerIp),
     failedAdminPasswordPerIp: loweredInteger(
       env[envKeys.failedAdminPasswordPerIp],

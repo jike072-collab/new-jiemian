@@ -12,7 +12,7 @@ export type CachedMembershipSnapshot = {
   }>;
   membership: {
     active: { plan_id: string; ends_at: string } | null;
-    entitlements: Record<"prompt_optimize" | "image_generation" | "video_generation", {
+    entitlements: Record<"prompt_optimize" | "image_generation" | "video_generation" | "image_edit" | "image_upscale" | "video_upscale", {
       remaining: number;
       granted: number;
       used: number;

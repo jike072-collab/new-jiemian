@@ -8,7 +8,7 @@ import { getPlanStatusDisplay, getPlanTone, type CheckInStatus, type PlanStatus 
 import { cn } from "@/lib/utils";
 
 type AccountView = "center" | "recharge" | "usage" | "orders";
-type MembershipEntitlements = Record<"prompt_optimize" | "image_generation" | "video_generation", {
+type MembershipEntitlements = Record<"prompt_optimize" | "image_generation" | "video_generation" | "image_edit" | "image_upscale" | "video_upscale", {
   remaining: number;
   granted: number;
   used: number;
@@ -41,10 +41,13 @@ function formatQuota(value: number | null | undefined) {
 function createEntitlementItems(entitlements: MembershipEntitlements | null | undefined) {
   if (!entitlements) return [];
   return [
-    ["提示词优化", `${formatQuota(entitlements.prompt_optimize.remaining)} 次`],
-    ["生图额度", `${formatQuota(entitlements.image_generation.remaining)} 张`],
-    ["视频额度", `${formatQuota(entitlements.video_generation.remaining)} 次`],
-  ].filter(([, value]) => value !== "0 次" && value !== "0 张");
+    ["Prompt", `${formatQuota(entitlements.prompt_optimize.remaining)} uses`],
+    ["Image Gen", `${formatQuota(entitlements.image_generation.remaining)} items`],
+    ["Video Gen", `${formatQuota(entitlements.video_generation.remaining)} uses`],
+    ["Image Edit", `${formatQuota(entitlements.image_edit.remaining)} items`],
+    ["Image Upscale", `${formatQuota(entitlements.image_upscale.remaining)} items`],
+    ["Video Upscale", `${formatQuota(entitlements.video_upscale.remaining)} uses`],
+  ].filter(([, value]) => !value.startsWith("0 "));
 }
 
 function formatPlanDate(value: string | null | undefined) {

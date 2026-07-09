@@ -87,6 +87,7 @@ export type TaskBillingServiceDependencies = {
 
 const billableOperations = new Set<BillableOperation>([
   "cloud_image_generation",
+  "cloud_image_edit",
   "cloud_video_generation",
   "cloud_image_upscale",
   "cloud_video_upscale",
@@ -190,7 +191,10 @@ function extractNewApiUserQuota(payload: { data?: NewApiUserSelf; user?: NewApiU
 
 function membershipEntitlementKindForOperation(operation: BillableOperation): MembershipEntitlementKind | null {
   if (operation === "cloud_image_generation") return "image_generation";
+  if (operation === "cloud_image_edit") return "image_edit";
   if (operation === "cloud_video_generation") return "video_generation";
+  if (operation === "cloud_image_upscale") return "image_upscale";
+  if (operation === "cloud_video_upscale") return "video_upscale";
   return null;
 }
 

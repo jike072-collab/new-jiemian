@@ -1,7 +1,7 @@
 import { createAuthPersistenceRepositories } from "../auth/persistence";
 import { NewApiHttpClient, newApiAdminRequestContext } from "../integrations/new-api/client";
-import type { MembershipCycle, MembershipPlanId } from "./plans";
-import { getMembershipPlan, getMembershipSku } from "./plans";
+import type { MembershipCycle, MembershipEntitlementKind, MembershipPlanId } from "./plans";
+import { createEmptyMembershipEntitlements, getMembershipPlan, getMembershipSku } from "./plans";
 import type { MembershipStatusSnapshot, UserMembership } from "./types";
 
 type NewApiSubscriptionRecord = Record<string, unknown>;
@@ -231,11 +231,12 @@ export async function getNewApiSubscriptionMembershipStatus(
   if (!active) return null;
   const plan = getMembershipPlan(active.plan_id);
   const sku = getMembershipSku(active.plan_id, active.cycle);
-  const grantEntitlements = sku?.grant_entitlements || {
-    prompt_optimize: 0,
-    image_generation: 0,
-    video_generation: 0,
-  };
+  const grantEntitlements = createEmptyMembershipEntitlements();
+  if (sku) {
+    for (const kind of Object.keys(grantEntitlements) as MembershipEntitlementKind[]) {
+      grantEntitlements[kind] = sku.grant_entitlements[kind];
+    }
+  }
   return {
     active,
     queued: null,
@@ -244,6 +245,9 @@ export async function getNewApiSubscriptionMembershipStatus(
       prompt_optimize: { remaining: grantEntitlements.prompt_optimize, granted: grantEntitlements.prompt_optimize, used: 0 },
       image_generation: { remaining: grantEntitlements.image_generation, granted: grantEntitlements.image_generation, used: 0 },
       video_generation: { remaining: grantEntitlements.video_generation, granted: grantEntitlements.video_generation, used: 0 },
+      image_edit: { remaining: grantEntitlements.image_edit, granted: grantEntitlements.image_edit, used: 0 },
+      image_upscale: { remaining: grantEntitlements.image_upscale, granted: grantEntitlements.image_upscale, used: 0 },
+      video_upscale: { remaining: grantEntitlements.video_upscale, granted: grantEntitlements.video_upscale, used: 0 },
     },
   };
 }

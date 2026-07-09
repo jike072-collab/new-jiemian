@@ -19,6 +19,7 @@ export type UsageStatus =
 
 export type BillableOperation =
   | "cloud_image_generation"
+  | "cloud_image_edit"
   | "cloud_video_generation"
   | "cloud_image_upscale"
   | "cloud_video_upscale"

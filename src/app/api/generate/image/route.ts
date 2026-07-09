@@ -3,6 +3,7 @@ import { type NextRequest, NextResponse } from "next/server";
 import { authResultResponse, csrfFailure, requireAuthSession, requireCsrf } from "@/lib/server/auth";
 import { diagnosticErrorResponse } from "@/lib/server/error-diagnostics";
 import { generateImage, uploadedMediaFromForm } from "@/lib/server/provider-call";
+import { WorkloadLimitError, withUserImageEditWorkload, withUserImageWorkload, workloadLimitResponse } from "@/lib/server/workload-guard";
 
 export const runtime = "nodejs";
 
@@ -12,9 +13,13 @@ export async function POST(request: NextRequest) {
     const session = await requireAuthSession(request);
     if (!session.ok) return authResultResponse(request, session);
     const form = await request.formData();
-    const items = await generateImage({
+    const operation = String(form.get("operation") || "cloud_image_generation").trim() === "cloud_image_edit"
+      ? "cloud_image_edit"
+      : "cloud_image_generation";
+    const run = async () => generateImage({
       providerId: String(form.get("providerId") || ""),
       mode: String(form.get("mode") || "text-to-image") === "image-to-image" ? "image-to-image" : "text-to-image",
+      operation,
       prompt: String(form.get("prompt") || ""),
       ratio: String(form.get("ratio") || "1:1"),
       quality: String(form.get("quality") || "1k"),
@@ -27,8 +32,12 @@ export async function POST(request: NextRequest) {
       billingIdempotencyKey: String(form.get("idempotencyKey") || form.get("billingIdempotencyKey") || ""),
       billingEstimatedQuotaUnits: Number(form.get("estimatedQuotaUnits") || form.get("billingEstimatedQuotaUnits") || Number.NaN),
     });
+    const items = await (operation === "cloud_image_edit"
+      ? withUserImageEditWorkload(session.user.local_user_id, run)
+      : withUserImageWorkload(session.user.local_user_id, run));
     return NextResponse.json({ item: items[0] || null, items });
   } catch (error) {
+    if (error instanceof WorkloadLimitError) return workloadLimitResponse(error);
     return diagnosticErrorResponse(error, {
       requestId: request.headers.get("x-request-id"),
       fallbackMessage: "图片生成失败。",

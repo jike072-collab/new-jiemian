@@ -57,7 +57,7 @@ const contracts = [
     source: studioApp,
     checks: [
       "\"/api/quota/precheck\"",
-      "operation: \"cloud_image_generation\"",
+      "operation: snapshot.operation",
       "\"/api/generate/image\"",
       "method: \"POST\"",
       "form.set(\"providerId\", snapshot.providerId)",
@@ -68,8 +68,9 @@ const contracts = [
       "form.set(\"taskId\", taskId)",
       "form.set(\"idempotencyKey\", taskId)",
       "form.set(\"estimatedQuotaUnits\", String(snapshot.estimatedQuotaUnits))",
+      "form.set(\"operation\", snapshot.operation)",
       "snapshot.files.forEach((file) => form.append(\"files\", file))",
-      "items.forEach((item) => handleImageResult(item, { append: true }))",
+      "items.forEach((item) => handleImageResult(item, { append: true, scope: snapshot.scope }))",
     ],
   },
   {

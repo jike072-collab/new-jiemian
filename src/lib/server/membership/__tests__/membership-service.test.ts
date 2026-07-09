@@ -29,6 +29,9 @@ test("grants paid membership credits and entitlement counts by cycle", async () 
   assert.equal(status.entitlements.prompt_optimize.remaining, 90);
   assert.equal(status.entitlements.image_generation.remaining, 180);
   assert.equal(status.entitlements.video_generation.remaining, 3);
+  assert.equal(status.entitlements.image_edit.remaining, 180);
+  assert.equal(status.entitlements.image_upscale.remaining, 180);
+  assert.equal(status.entitlements.video_upscale.remaining, 3);
 });
 
 test("same tier renews, higher tier activates immediately, lower tier queues", async () => {
@@ -95,6 +98,9 @@ test("mirrors external New API membership into the local repository", async () =
         prompt_optimize: { remaining: 3, granted: 3, used: 0 },
         image_generation: { remaining: 4, granted: 4, used: 0 },
         video_generation: { remaining: 1, granted: 1, used: 0 },
+        image_edit: { remaining: 2, granted: 2, used: 0 },
+        image_upscale: { remaining: 2, granted: 2, used: 0 },
+        video_upscale: { remaining: 1, granted: 1, used: 0 },
       },
     }),
     now: () => new Date("2026-06-18T00:00:00.000Z"),
@@ -103,7 +109,7 @@ test("mirrors external New API membership into the local repository", async () =
   const status = await membership.getStatus("user-2");
   assert.equal(status.active?.plan_id, "pro");
   assert.equal((await repository.listMemberships("user-2")).length, 1);
-  assert.equal((await repository.listEntitlements("user-2")).length, 3);
+  assert.equal((await repository.listEntitlements("user-2")).length, 6);
 
   const consumed = await membership.consumeEntitlement({
     localUserId: "user-2",

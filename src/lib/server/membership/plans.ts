@@ -1,6 +1,12 @@
 export type MembershipPlanId = "basic" | "advanced" | "pro" | "enterprise";
 export type MembershipCycle = "monthly" | "quarterly" | "yearly";
-export type MembershipEntitlementKind = "prompt_optimize" | "image_generation" | "video_generation";
+export type MembershipEntitlementKind =
+  | "prompt_optimize"
+  | "image_generation"
+  | "video_generation"
+  | "image_edit"
+  | "image_upscale"
+  | "video_upscale";
 
 export type MembershipPlan = {
   id: MembershipPlanId;
@@ -22,6 +28,26 @@ export type MembershipSku = {
   grant_entitlements: Record<MembershipEntitlementKind, number>;
 };
 
+export const membershipEntitlementKinds: MembershipEntitlementKind[] = [
+  "prompt_optimize",
+  "image_generation",
+  "video_generation",
+  "image_edit",
+  "image_upscale",
+  "video_upscale",
+];
+
+export function createEmptyMembershipEntitlements() {
+  return {
+    prompt_optimize: 0,
+    image_generation: 0,
+    video_generation: 0,
+    image_edit: 0,
+    image_upscale: 0,
+    video_upscale: 0,
+  } satisfies Record<MembershipEntitlementKind, number>;
+}
+
 export const membershipPlans: MembershipPlan[] = [
   {
     id: "basic",
@@ -33,6 +59,9 @@ export const membershipPlans: MembershipPlan[] = [
       prompt_optimize: 10,
       image_generation: 10,
       video_generation: 0,
+      image_edit: 10,
+      image_upscale: 10,
+      video_upscale: 0,
     },
     prices: {
       monthly: 2990,
@@ -50,6 +79,9 @@ export const membershipPlans: MembershipPlan[] = [
       prompt_optimize: 30,
       image_generation: 30,
       video_generation: 1,
+      image_edit: 30,
+      image_upscale: 30,
+      video_upscale: 1,
     },
     prices: {
       monthly: 5990,
@@ -67,6 +99,9 @@ export const membershipPlans: MembershipPlan[] = [
       prompt_optimize: 80,
       image_generation: 60,
       video_generation: 3,
+      image_edit: 60,
+      image_upscale: 60,
+      video_upscale: 3,
     },
     prices: {
       monthly: 9990,
@@ -84,6 +119,9 @@ export const membershipPlans: MembershipPlan[] = [
       prompt_optimize: 200,
       image_generation: 150,
       video_generation: 8,
+      image_edit: 150,
+      image_upscale: 150,
+      video_upscale: 8,
     },
     prices: {
       monthly: 19900,
@@ -117,6 +155,10 @@ export function getMembershipSku(planId: string | null | undefined, cycle: unkno
   const plan = getMembershipPlan(planId);
   if (!plan || !isMembershipCycle(cycle)) return null;
   const months = cycleMonths[cycle];
+  const grantEntitlements = createEmptyMembershipEntitlements();
+  for (const kind of membershipEntitlementKinds) {
+    grantEntitlements[kind] = plan.monthly_entitlements[kind] * months;
+  }
   return {
     plan,
     cycle,
@@ -124,11 +166,7 @@ export function getMembershipSku(planId: string | null | undefined, cycle: unkno
     cycle_months: months,
     duration_days: cycleDays[cycle],
     grant_credits: plan.monthly_credits * months,
-    grant_entitlements: {
-      prompt_optimize: plan.monthly_entitlements.prompt_optimize * months,
-      image_generation: plan.monthly_entitlements.image_generation * months,
-      video_generation: plan.monthly_entitlements.video_generation * months,
-    },
+    grant_entitlements: grantEntitlements,
   };
 }
 
