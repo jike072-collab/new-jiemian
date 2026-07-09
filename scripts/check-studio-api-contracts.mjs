@@ -56,6 +56,10 @@ const contracts = [
     name: "image generation",
     source: studioApp,
     checks: [
+      "const [imageWorkspace, setImageWorkspace] = useState<ImageWorkspaceState>(() => createInitialImageWorkspaceState())",
+      "const [imageEditorWorkspace, setImageEditorWorkspace] = useState<ImageWorkspaceState>(() => createInitialImageWorkspaceState())",
+      "const imageEditorWorkspaceFilesRef = useRef<ImageWorkspaceFile[]>([])",
+      "const activeImageWorkspaceScope: ImageWorkspaceScope = activeWorkspaceToolId === \"image-editor\" ? \"image-editor\" : \"image\"",
       "\"/api/quota/precheck\"",
       "operation: snapshot.operation",
       "\"/api/generate/image\"",
@@ -71,6 +75,12 @@ const contracts = [
       "form.set(\"operation\", snapshot.operation)",
       "snapshot.files.forEach((file) => form.append(\"files\", file))",
       "items.forEach((item) => handleImageResult(item, { append: true, scope: snapshot.scope }))",
+      "const activeImageBillingOperation: ImageBillingOperation = activeImageWorkspaceScope === \"image-editor\"",
+      "? \"cloud_image_edit\"",
+      ": \"cloud_image_generation\"",
+      "const setWorkspace = item.mode === \"image-to-image\" ? setImageEditorWorkspace : setImageWorkspace",
+      "setActiveWorkspaceToolId(item.mode === \"image-to-image\" ? \"image-editor\" : \"image\")",
+      "setImageEditorWorkspace((prev) => ({",
     ],
   },
   {

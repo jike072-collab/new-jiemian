@@ -190,6 +190,7 @@ function extractNewApiUserQuota(payload: { data?: NewApiUserSelf; user?: NewApiU
 }
 
 function membershipEntitlementKindForOperation(operation: BillableOperation): MembershipEntitlementKind | null {
+  if (operation === "prompt_optimize") return "prompt_optimize";
   if (operation === "cloud_image_generation") return "image_generation";
   if (operation === "cloud_image_edit") return "image_edit";
   if (operation === "cloud_video_generation") return "video_generation";

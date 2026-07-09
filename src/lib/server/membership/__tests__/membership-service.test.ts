@@ -27,10 +27,10 @@ test("grants paid membership credits and entitlement counts by cycle", async () 
   assert.equal(status.active?.source_order_id, "order-advanced-quarterly");
   assert.equal(status.recharge_bonus_basis_points, 1000);
   assert.equal(status.entitlements.prompt_optimize.remaining, 90);
-  assert.equal(status.entitlements.image_generation.remaining, 180);
+  assert.equal(status.entitlements.image_generation.remaining, 90);
   assert.equal(status.entitlements.video_generation.remaining, 3);
-  assert.equal(status.entitlements.image_edit.remaining, 180);
-  assert.equal(status.entitlements.image_upscale.remaining, 180);
+  assert.equal(status.entitlements.image_edit.remaining, 90);
+  assert.equal(status.entitlements.image_upscale.remaining, 90);
   assert.equal(status.entitlements.video_upscale.remaining, 3);
 });
 

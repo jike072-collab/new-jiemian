@@ -7,8 +7,17 @@ import {
   type NewApiUserMapping,
 } from "../../integrations/new-api";
 import { createPostgresNewApiUserMappingRepository } from "../../integrations/new-api/postgres-user-mapping";
+import { createMemoryAuthRepository } from "../../auth/repository";
 import { createMemoryMembershipRepository } from "../../membership/repository";
 import { MembershipService } from "../../membership/service";
+import {
+  resetWorkloadLimiterForTests,
+  WorkloadLimitError,
+  withUserImageEditWorkload,
+  withUserImageWorkload,
+  withUserVideoWorkload,
+  withVideoUploadPhase,
+} from "../../workload-guard";
 import { createMemoryUsageLogRepository } from "../repository";
 import { createPostgresUsageLogRepository } from "../postgres-usage-repository";
 import { QuotaDisplayCache } from "../cache";
@@ -107,6 +116,16 @@ function service(overrides: {
   };
 }
 
+function deferred<T>() {
+  let resolve!: (value: T | PromiseLike<T>) => void;
+  let reject!: (reason?: unknown) => void;
+  const promise = new Promise<T>((res, rej) => {
+    resolve = res;
+    reject = rej;
+  });
+  return { promise, resolve, reject };
+}
+
 async function precheckAndAccept(harness = service(), taskId = "task-1") {
   const precheck = await harness.taskBilling.precheck({
     localUserId: "local-user",
@@ -190,7 +209,8 @@ test("uses membership image entitlement before charging quota", async () => {
   assert.equal(settled.record.final_quota_units, 0);
   assert.equal(harness.adjustments.length, 0);
   const status = await harness.membershipService.getStatus("local-user");
-  assert.equal(status.entitlements.image_generation.remaining, 19);
+  assert.equal(status.entitlements.image_generation.remaining, 9);
+  assert.equal(status.entitlements.image_edit.remaining, 10);
 });
 
 test("uses dedicated image edit entitlement before charging quota", async () => {
@@ -225,6 +245,303 @@ test("uses dedicated image edit entitlement before charging quota", async () => 
   assert.equal(harness.adjustments.length, 0);
   const status = await harness.membershipService.getStatus("local-user");
   assert.equal(status.entitlements.image_edit.remaining, 9);
+  assert.equal(status.entitlements.image_generation.remaining, 10);
+});
+
+test("uses prompt and upscale entitlements before charging quota", async () => {
+  const cases = [
+    {
+      operation: "prompt_optimize" as const,
+      planId: "basic",
+      kind: "prompt_optimize" as const,
+      remaining: 9,
+    },
+    {
+      operation: "cloud_image_upscale" as const,
+      planId: "basic",
+      kind: "image_upscale" as const,
+      remaining: 9,
+    },
+    {
+      operation: "cloud_video_upscale" as const,
+      planId: "advanced",
+      kind: "video_upscale" as const,
+      remaining: 0,
+    },
+  ];
+
+  for (const testCase of cases) {
+    const harness = service({ availableQuota: 0, providerQuota: 0 });
+    await harness.membershipService.applyPaidMembership({
+      localUserId: "local-user",
+      orderId: `membership-${testCase.operation}`,
+      planId: testCase.planId,
+      cycle: "monthly",
+      now: new Date("2026-06-18T00:00:00.000Z"),
+    });
+    const prechecked = await harness.taskBilling.precheck({
+      localUserId: "local-user",
+      taskId: `task-${testCase.operation}`,
+      operation: testCase.operation,
+      estimatedQuotaUnits: 10,
+      idempotencyKey: `task-${testCase.operation}`,
+    });
+    assert.equal(prechecked.ok, true);
+    if (!prechecked.ok) return;
+    assert.equal(prechecked.record.membership_entitlement_kind, testCase.kind, testCase.operation);
+    assert.equal(prechecked.record.membership_entitlement_units, 1, testCase.operation);
+
+    const settled = await harness.taskBilling.settleSuccess({
+      localUserId: "local-user",
+      taskId: `task-${testCase.operation}`,
+      actualQuotaUnits: 10,
+    });
+    assert.equal(settled.ok, true);
+    if (!settled.ok) return;
+    assert.equal(settled.record.final_quota_units, 0);
+    assert.equal(harness.adjustments.length, 0);
+
+    const status = await harness.membershipService.getStatus("local-user");
+    assert.equal(status.entitlements[testCase.kind].remaining, testCase.remaining, testCase.operation);
+    assert.equal(
+      await harness.membershipService.consumedForTask("local-user", `task-${testCase.operation}`),
+      1,
+      testCase.operation,
+    );
+  }
+});
+
+test("three accounts settle isolated entitlements in parallel without mixed charging", async () => {
+  const authRepository = createMemoryAuthRepository();
+  const [accountA, accountB, accountC] = await Promise.all([
+    authRepository.createUser({
+      localUserId: "parallel-a",
+      email: "parallel-a@example.com",
+      username: "pa001",
+      displayName: "Parallel A",
+      passwordHash: "hash",
+    }),
+    authRepository.createUser({
+      localUserId: "parallel-b",
+      email: "parallel-b@example.com",
+      username: "pb001",
+      displayName: "Parallel B",
+      passwordHash: "hash",
+    }),
+    authRepository.createUser({
+      localUserId: "parallel-c",
+      email: "parallel-c@example.com",
+      username: "pc001",
+      displayName: "Parallel C",
+      passwordHash: "hash",
+    }),
+  ]);
+  const quotaByUser = new Map([
+    [accountA.local_user_id, snapshot(0, accountA.local_user_id, "101")],
+    [accountB.local_user_id, snapshot(0, accountB.local_user_id, "102")],
+    [accountC.local_user_id, snapshot(0, accountC.local_user_id, "103")],
+  ]);
+  const adjustments: AdjustQuotaInput[] = [];
+  const membershipService = new MembershipService({
+    repository: createMemoryMembershipRepository(),
+    now: () => new Date("2026-06-18T00:00:00.000Z"),
+  });
+  await Promise.all([
+    membershipService.applyPaidMembership({
+      localUserId: accountA.local_user_id,
+      orderId: "parallel-order-a",
+      planId: "basic",
+      cycle: "monthly",
+      now: new Date("2026-06-18T00:00:00.000Z"),
+    }),
+    membershipService.applyPaidMembership({
+      localUserId: accountB.local_user_id,
+      orderId: "parallel-order-b",
+      planId: "basic",
+      cycle: "monthly",
+      now: new Date("2026-06-18T00:00:00.000Z"),
+    }),
+    membershipService.applyPaidMembership({
+      localUserId: accountC.local_user_id,
+      orderId: "parallel-order-c",
+      planId: "advanced",
+      cycle: "monthly",
+      now: new Date("2026-06-18T00:00:00.000Z"),
+    }),
+  ]);
+  const taskBilling = new TaskBillingService({
+    taskRepository: createMemoryTaskBillingRepository(),
+    usageRepository: createMemoryUsageLogRepository(),
+    mappingRepository: createMemoryNewApiUserMappingRepository([
+      ...mappingSeed(accountA.local_user_id, "101"),
+      ...mappingSeed(accountB.local_user_id, "102"),
+      ...mappingSeed(accountC.local_user_id, "103"),
+    ]),
+    membershipService,
+    quotaCache: new QuotaDisplayCache(15_000),
+    now: () => new Date("2026-06-18T00:00:00.000Z"),
+    getQuotaSnapshot: async (localUserId) => {
+      const current = quotaByUser.get(localUserId);
+      assert(current, `quota snapshot missing for ${localUserId}`);
+      return { ok: true, snapshot: current };
+    },
+    getProviderQuota: async (newApiUserId) => ({ ok: true, quota: Number(newApiUserId) }),
+    adjustQuota: async (input) => {
+      adjustments.push(input);
+      return { ok: true, providerAdjustmentId: `adjust:${input.idempotencyKey}` };
+    },
+  });
+
+  const [generationPrecheck, editPrecheck, videoPrecheck] = await Promise.all([
+    taskBilling.precheck({
+      localUserId: accountA.local_user_id,
+      taskId: "parallel-image-generation",
+      operation: "cloud_image_generation",
+      estimatedQuotaUnits: 10,
+      idempotencyKey: "parallel-image-generation",
+    }),
+    taskBilling.precheck({
+      localUserId: accountB.local_user_id,
+      taskId: "parallel-image-edit",
+      operation: "cloud_image_edit",
+      estimatedQuotaUnits: 10,
+      idempotencyKey: "parallel-image-edit",
+    }),
+    taskBilling.precheck({
+      localUserId: accountC.local_user_id,
+      taskId: "parallel-video-generation",
+      operation: "cloud_video_generation",
+      estimatedQuotaUnits: 10,
+      idempotencyKey: "parallel-video-generation",
+    }),
+  ]);
+
+  assert.equal(generationPrecheck.ok, true);
+  assert.equal(editPrecheck.ok, true);
+  assert.equal(videoPrecheck.ok, true);
+  if (!generationPrecheck.ok || !editPrecheck.ok || !videoPrecheck.ok) return;
+  assert.equal(generationPrecheck.record.membership_entitlement_kind, "image_generation");
+  assert.equal(editPrecheck.record.membership_entitlement_kind, "image_edit");
+  assert.equal(videoPrecheck.record.membership_entitlement_kind, "video_generation");
+
+  const [generationSettled, editSettled, videoSettled] = await Promise.all([
+    taskBilling.settleSuccess({
+      localUserId: accountA.local_user_id,
+      taskId: "parallel-image-generation",
+      actualQuotaUnits: 10,
+    }),
+    taskBilling.settleSuccess({
+      localUserId: accountB.local_user_id,
+      taskId: "parallel-image-edit",
+      actualQuotaUnits: 10,
+    }),
+    taskBilling.settleSuccess({
+      localUserId: accountC.local_user_id,
+      taskId: "parallel-video-generation",
+      actualQuotaUnits: 10,
+    }),
+  ]);
+
+  assert.equal(generationSettled.ok, true);
+  assert.equal(editSettled.ok, true);
+  assert.equal(videoSettled.ok, true);
+  assert.equal(adjustments.length, 0);
+
+  const [statusA, statusB, statusC] = await Promise.all([
+    membershipService.getStatus(accountA.local_user_id),
+    membershipService.getStatus(accountB.local_user_id),
+    membershipService.getStatus(accountC.local_user_id),
+  ]);
+  assert.equal(statusA.entitlements.image_generation.remaining, 9);
+  assert.equal(statusA.entitlements.image_edit.remaining, 10);
+  assert.equal(statusB.entitlements.image_edit.remaining, 9);
+  assert.equal(statusB.entitlements.image_generation.remaining, 10);
+  assert.equal(statusC.entitlements.video_generation.remaining, 0);
+});
+
+test("three-account workload runtime keeps same-user limits and allows cross-account overlap", async () => {
+  resetWorkloadLimiterForTests();
+  const accountA = "parallel-a";
+  const accountB = "parallel-b";
+  const accountC = "parallel-c";
+
+  const releaseVideoA = deferred<void>();
+  const releaseVideoB = deferred<void>();
+  const releaseUploadA = deferred<void>();
+  const releaseUploadC = deferred<void>();
+  const releaseImageA = deferred<void>();
+  const startedVideoA = deferred<number>();
+  const startedVideoB = deferred<number>();
+  const startedUploadC = deferred<number>();
+  const startedImageEditA = deferred<number>();
+
+  let videoAReleasedAt = 0;
+  let uploadAReleasedAt = 0;
+  let imageAReleasedAt = 0;
+
+  const videoA = withUserVideoWorkload(accountA, async () => {
+    startedVideoA.resolve(Date.now());
+    await releaseVideoA.promise;
+    videoAReleasedAt = Date.now();
+    return "video-a";
+  });
+  await startedVideoA.promise;
+
+  const sameAccountVideo = withUserVideoWorkload(accountA, async () => "video-a-duplicate");
+  await assert.rejects(
+    sameAccountVideo,
+    (error) => error instanceof WorkloadLimitError && /already running for this account/i.test(error.message),
+  );
+
+  const videoB = withUserVideoWorkload(accountB, async () => {
+    startedVideoB.resolve(Date.now());
+    await releaseVideoB.promise;
+    return "video-b";
+  });
+  const videoBStartedAt = await startedVideoB.promise;
+  assert.equal(videoBStartedAt <= videoAReleasedAt || videoAReleasedAt === 0, true);
+
+  const uploadA = withVideoUploadPhase(accountA, async () => {
+    await releaseUploadA.promise;
+    uploadAReleasedAt = Date.now();
+    return "upload-a";
+  });
+  const sameAccountUpload = withVideoUploadPhase(accountA, async () => "upload-a-duplicate");
+  await assert.rejects(
+    sameAccountUpload,
+    (error) => error instanceof WorkloadLimitError && /large upload is already running for this account/i.test(error.message),
+  );
+
+  const uploadC = withVideoUploadPhase(accountC, async () => {
+    startedUploadC.resolve(Date.now());
+    await releaseUploadC.promise;
+    return "upload-c";
+  });
+  const uploadCStartedAt = await startedUploadC.promise;
+  assert.equal(uploadCStartedAt <= uploadAReleasedAt || uploadAReleasedAt === 0, true);
+
+  const imageA = withUserImageWorkload(accountA, async () => {
+    await releaseImageA.promise;
+    imageAReleasedAt = Date.now();
+    return "image-a";
+  });
+  const imageEditA = withUserImageEditWorkload(accountA, async () => {
+    startedImageEditA.resolve(Date.now());
+    return "image-edit-a";
+  });
+  const imageEditAStartedAt = await startedImageEditA.promise;
+  assert.equal(imageEditAStartedAt <= imageAReleasedAt || imageAReleasedAt === 0, true);
+
+  releaseVideoA.resolve();
+  releaseVideoB.resolve();
+  releaseUploadA.resolve();
+  releaseUploadC.resolve();
+  releaseImageA.resolve();
+
+  assert.deepEqual(
+    await Promise.all([videoA, videoB, uploadA, uploadC, imageA, imageEditA]),
+    ["video-a", "video-b", "upload-a", "upload-c", "image-a", "image-edit-a"],
+  );
 });
 
 test("server-side generation requires a matching precheck record", async () => {
