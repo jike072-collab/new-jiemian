@@ -58,14 +58,6 @@ function formatPlanDate(value: string | null | undefined) {
   }).format(date);
 }
 
-function formatRemainingDays(value: string | null | undefined) {
-  if (!value) return "";
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return "";
-  const remaining = Math.max(0, Math.ceil((date.getTime() - Date.now()) / 86400000));
-  return `${formatQuota(remaining)} 天`;
-}
-
 export function WorkspaceAccountPanel({
   user,
   quota,
@@ -94,7 +86,6 @@ export function WorkspaceAccountPanel({
   const currentOrders = accountView === "orders";
   const entitlementItems = createEntitlementItems(membershipEntitlements);
   const planEndsAtLabel = formatPlanDate(membershipEndsAt);
-  const planRemainingLabel = formatRemainingDays(membershipEndsAt);
   const checkInButtonLabel = checkInStatus === "checked" ? "已签到" : "签到";
   const checkInButtonDisabled = !user || checkInStatus === "checked" || checkInStatus === "loading" || checkInStatus === "submitting";
   const handlePlanClick = planStatus.status === "error" ? onRefresh : onOpenRecharge;
@@ -138,11 +129,10 @@ export function WorkspaceAccountPanel({
             <Crown className="size-3.5" aria-hidden="true" />
             当前套餐
           </span>
-          <strong>{planDisplay.label}</strong>
           <span className="account-popover-plan-card__meta">
             {planEndsAtLabel ? <em>到期 {planEndsAtLabel}</em> : null}
-            {planRemainingLabel ? <em>剩余 {planRemainingLabel}</em> : null}
           </span>
+          <strong>{planDisplay.label}</strong>
           <ChevronRight className="size-4" aria-hidden="true" />
         </button>
       </div>

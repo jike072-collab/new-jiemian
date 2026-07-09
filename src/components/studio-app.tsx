@@ -2984,13 +2984,6 @@ function formatMembershipDate(value: string | null | undefined) {
   }).format(date);
 }
 
-function formatMembershipRemainingDays(value: string | null | undefined) {
-  if (!value) return "";
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return "";
-  return `${formatQuotaUnits(Math.max(0, Math.ceil((date.getTime() - Date.now()) / 86400000)))} 天`;
-}
-
 function UserCenterOverview({
   user,
   quota,
@@ -3032,7 +3025,6 @@ function UserCenterOverview({
   const planTone = getPlanTone(planDisplay.label);
   const activeMembership = membershipSnapshot?.membership.active ?? null;
   const planEndsAtLabel = formatMembershipDate(activeMembership?.ends_at);
-  const planRemainingLabel = formatMembershipRemainingDays(activeMembership?.ends_at);
   const checkInButtonLabel = checkInStatus === "checked" ? "已签到" : "签到";
   const checkInButtonDisabled = !user || checkInStatus === "checked" || checkInStatus === "loading" || checkInStatus === "submitting";
   const previousQuotaUnitsRef = useRef<number | null>(quotaUnits);
@@ -3133,25 +3125,18 @@ function UserCenterOverview({
                 </span>
                 <div>
                   <span>当前套餐</span>
-                  <strong className={cn("user-center-plan-name", `user-center-plan-name--${planTone}`)}>{planDisplay.label}</strong>
-                  {planEndsAtLabel || planRemainingLabel ? (
+                  {planEndsAtLabel ? (
                     <div className="user-center-plan-details">
-                      {planEndsAtLabel ? (
-                        <span>
-                          到期时间
-                          <strong>{planEndsAtLabel}</strong>
-                        </span>
-                      ) : null}
-                      {planRemainingLabel ? (
-                        <span>
-                          剩余天数
-                          <strong>{planRemainingLabel}</strong>
-                        </span>
-                      ) : null}
+                      <span>
+                        到期时间
+                        <strong>{planEndsAtLabel}</strong>
+                      </span>
                     </div>
-                  ) : (
+                  ) : null}
+                  <strong className={cn("user-center-plan-name", `user-center-plan-name--${planTone}`)}>{planDisplay.label}</strong>
+                  {!planEndsAtLabel ? (
                     <p>{planStatus.status === "active" ? "会员权益以账户数据为准。" : planDisplay.note}</p>
-                  )}
+                  ) : null}
                 </div>
                 <button
                   type="button"
