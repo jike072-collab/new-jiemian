@@ -5384,15 +5384,8 @@
 
   .user-center-entitlement-block {
     display: grid;
-    gap: 8px;
-    margin-top: 8px;
-  }
-
-  .user-center-entitlement-block > span {
-    color: rgba(255, 255, 255, 0.58);
-    font-size: 13px;
-    font-weight: 660;
-    line-height: 1.2;
+    gap: 0;
+    margin-top: 10px;
   }
 
   .user-center-entitlement-strip {
@@ -5404,13 +5397,13 @@
   .user-center-entitlement-pill {
     display: grid;
     min-width: 0;
-    min-height: 52px;
+    min-height: 54px;
     align-content: center;
-    gap: 5px;
+    gap: 4px;
     border: 1px solid rgba(255, 255, 255, 0.08);
     border-radius: 12px;
     background: linear-gradient(180deg, rgba(255, 255, 255, 0.052), rgba(255, 255, 255, 0.032));
-    padding: 9px 10px;
+    padding: 8px 10px;
   }
 
   .user-center-entitlement-pill em {
@@ -5427,7 +5420,7 @@
   .user-center-entitlement-pill strong {
     overflow: hidden;
     color: rgba(255, 255, 255, 0.95);
-    font-size: 17px;
+    font-size: 18px;
     font-weight: 800;
     line-height: 1.2;
     text-align: center;
@@ -5500,14 +5493,14 @@
     display: grid;
     grid-template-columns: 36px minmax(0, 1fr);
     align-items: start;
-    gap: 12px;
+    gap: 10px 12px;
     min-height: 172px;
-    align-content: start;
+    align-content: stretch;
     border-color: var(--member-border, rgba(255, 255, 255, 0.08));
     background:
       radial-gradient(circle at 18% 0%, var(--member-glow, transparent), transparent 44%),
       #141418;
-    padding: 18px 118px 14px 18px;
+    padding: 18px 18px 14px;
   }
 
   .user-center-mini-card div {
@@ -5516,12 +5509,18 @@
     gap: 5px;
   }
 
+  .user-center-mini-card__body {
+    grid-column: 1 / -1;
+    align-self: center;
+    padding: 6px 0 0;
+  }
+
   .user-center-plan-line {
-    display: flex;
+    display: grid;
     min-width: 0;
-    align-items: center;
-    gap: 8px;
-    flex-wrap: wrap;
+    justify-items: center;
+    gap: 7px;
+    text-align: center;
   }
 
   .user-center-plan-line > span {
@@ -5848,9 +5847,9 @@
 
   .user-center-plan-name {
     color: var(--member-fg, rgba(255, 255, 255, 0.92)) !important;
-    font-size: 25px;
+    font-size: 30px;
     font-weight: 850;
-    line-height: 1.08;
+    line-height: 1.02;
   }
 
   .user-center-plan-details {

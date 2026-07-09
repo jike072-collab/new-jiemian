@@ -2958,19 +2958,19 @@ function createMembershipEntitlementItems(entitlements: MembershipEntitlements |
     {
       key: "prompt_optimize",
       label: "提示词优化",
-      value: `剩余 ${formatQuotaUnits(entitlements.prompt_optimize.remaining)} 次`,
+      value: `${formatQuotaUnits(entitlements.prompt_optimize.remaining)} 次`,
       remaining: entitlements.prompt_optimize.remaining,
     },
     {
       key: "image_generation",
       label: "生图",
-      value: `剩余 ${formatQuotaUnits(entitlements.image_generation.remaining)} 张`,
+      value: `${formatQuotaUnits(entitlements.image_generation.remaining)} 张`,
       remaining: entitlements.image_generation.remaining,
     },
     {
       key: "video_generation",
       label: "视频",
-      value: `剩余 ${formatQuotaUnits(entitlements.video_generation.remaining)} 次`,
+      value: `${formatQuotaUnits(entitlements.video_generation.remaining)} 次`,
       remaining: entitlements.video_generation.remaining,
     },
   ].filter((item) => item.remaining > 0);
@@ -3088,18 +3088,16 @@ function UserCenterOverview({
                 <span className="user-center-card-icon">
                   <Crown className="size-4" aria-hidden="true" />
                 </span>
-                <div>
-                  <span>会员订阅</span>
+                <div className="user-center-mini-card__body">
                   <div className="user-center-plan-line">
-                    <span>{planEndsAtLabel ? `${planEndsAtLabel} 到期` : "暂未开通"}</span>
                     <strong className={cn("user-center-plan-name", `user-center-plan-name--${planTone}`)}>{planDisplay.label}</strong>
+                    <span>{planEndsAtLabel ? `${planEndsAtLabel} 到期` : "暂未开通"}</span>
                   </div>
                   {!planEndsAtLabel ? (
                     <p>{planStatus.status === "active" ? "会员权益以账户数据为准。" : planDisplay.note}</p>
                   ) : null}
                   {entitlementItems.length ? (
                     <div className="user-center-entitlement-block">
-                      <span>剩余额度</span>
                       <div className="user-center-entitlement-strip" aria-label="会员剩余次数">
                         {entitlementItems.map((item) => (
                           <span key={item.key} className="user-center-entitlement-pill">
