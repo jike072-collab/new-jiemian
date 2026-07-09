@@ -34,7 +34,6 @@
     background-size: 100% 100%, auto, 152% 100%, 142% 100%, auto, auto;
     opacity: 0.92;
     transform-origin: 34% 56%;
-    animation: auth-aura-breathe 21s ease-in-out infinite;
   }
 
   .auth-page::after {
@@ -46,7 +45,6 @@
     opacity: 0.9;
     -webkit-mask-image: linear-gradient(90deg, #000 0%, #000 70%, rgba(0, 0, 0, 0.44) 86%, transparent 100%);
     mask-image: linear-gradient(90deg, #000 0%, #000 70%, rgba(0, 0, 0, 0.44) 86%, transparent 100%);
-    animation: auth-ribbon-drift 22s ease-in-out infinite;
   }
 
   .auth-shader,

@@ -1,6 +1,5 @@
 "use client";
 
-import dynamic from "next/dynamic";
 import Image from "next/image";
 import Link from "next/link";
 import { memo, type FormEvent, type PointerEvent, useEffect, useState } from "react";
@@ -10,10 +9,6 @@ import { ArrowRight, Check, Eye, EyeOff, ImageIcon, Loader2, LockKeyhole, Mail, 
 import { ApiError, fetchJson, fetchJsonWithCsrf } from "@/lib/client/api";
 import { motionTokens } from "@/lib/motion-tokens";
 import { cn } from "@/lib/utils";
-
-const AuthShaderBackground = dynamic(() => import("@/components/auth-shader-background"), {
-  ssr: false,
-});
 
 type AuthMode = "login" | "register" | "reset";
 type LoginMethod = "password" | "verification_code";
@@ -174,8 +169,6 @@ export function CustomerLogin({ initialMode = "login" }: CustomerLoginProps) {
   const [rememberMe, setRememberMe] = useState(true);
   const [sendingCode, setSendingCode] = useState(false);
   const [codeCooldown, setCodeCooldown] = useState(0);
-  const [shaderReady, setShaderReady] = useState(false);
-  const [formFocused, setFormFocused] = useState(false);
   const [loading, setLoading] = useState(false);
   const [success, setSuccess] = useState(false);
   const [message, setMessage] = useState("");
@@ -191,11 +184,6 @@ export function CustomerLogin({ initialMode = "login" }: CustomerLoginProps) {
   const passwordMeetsRules = rules.every((rule) => rule.passed);
   const confirmMismatch = needsPasswordPolicy && confirmPassword.length > 0 && password !== confirmPassword;
   const positiveMessage = message === "验证码已发送，请查收" || message === "密码已重置，请使用新密码登录";
-
-  useEffect(() => {
-    const timer = window.setTimeout(() => setShaderReady(true), 900);
-    return () => window.clearTimeout(timer);
-  }, []);
 
   useEffect(() => {
     if (codeCooldown <= 0) return undefined;
@@ -383,7 +371,6 @@ export function CustomerLogin({ initialMode = "login" }: CustomerLoginProps) {
 
   return (
     <main className="auth-page">
-      {shaderReady && !formFocused ? <AuthShaderBackground /> : null}
       <div className="auth-page__shade" aria-hidden="true" />
       <div className="auth-page__noise" aria-hidden="true" />
 
@@ -396,10 +383,6 @@ export function CustomerLogin({ initialMode = "login" }: CustomerLoginProps) {
           <form
             className="auth-card"
             onPointerMove={updateSpotlight}
-            onFocusCapture={() => setFormFocused(true)}
-            onBlurCapture={(event) => {
-              if (!event.currentTarget.contains(event.relatedTarget)) setFormFocused(false);
-            }}
             onPointerLeave={(event) => {
               event.currentTarget.style.removeProperty("--spotlight-x");
               event.currentTarget.style.removeProperty("--spotlight-y");
