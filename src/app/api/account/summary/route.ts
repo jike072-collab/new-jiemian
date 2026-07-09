@@ -50,11 +50,16 @@ export async function GET(request: NextRequest) {
     membershipService.getStatus(localUserId).catch(() => emptyMembershipStatus()),
     checkInService.getStatus(localUserId).catch(() => emptyCheckInStatus()),
   ]);
+  const quota = quotaResult?.ok ? quotaResult.snapshot : null;
 
   return NextResponse.json({
     ok: true,
     user: session.user,
-    quota: quotaResult?.ok ? quotaResult.snapshot : null,
+    credits: quota?.quota_units ?? null,
+    expireAt: membership.active?.ends_at ?? null,
+    quotas: membership.entitlements,
+    checkinStatus: checkInResult.checkIn.status,
+    quota,
     membership: {
       ok: true,
       plans: membershipService.listPlans(),
@@ -64,6 +69,10 @@ export async function GET(request: NextRequest) {
       ok: true,
       checkIn: checkInResult.checkIn,
       records: checkInResult.records,
+    },
+  }, {
+    headers: {
+      "Cache-Control": "no-store",
     },
   });
 }
