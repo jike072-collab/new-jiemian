@@ -120,7 +120,7 @@ async function registerActiveAccount(harness = service()) {
   const verificationCode = harness.sentCodes.at(-1)?.code || "";
   return harness.service.register({
     email: "customer@example.com",
-    username: "customer",
+    username: "cust01",
     password: "StrongPass123",
     verificationCode,
     displayName: "Customer",
@@ -202,7 +202,7 @@ test("rejects duplicate registration without creating another account", async ()
   await registerActiveAccount(harness);
   const duplicate = await harness.service.register({
     email: "customer@example.com",
-    username: "customer",
+    username: "cust01",
     password: "StrongPass123",
     verificationCode: "000000",
   });
@@ -216,7 +216,7 @@ test("rejects duplicate registration without creating another account", async ()
 test("registration reuses an email after the mapped upstream account was cancelled", async () => {
   const harness = service({
     getNewApiUser: async () => ({
-      data: { data: { id: 100, username: "customer", status: 3 } },
+      data: { data: { id: 100, username: "cust01", status: 3 } },
       requestId: "test-upstream-deleted",
       upstreamStatus: 200,
     }),
@@ -238,11 +238,11 @@ test("registration reuses an email after the mapped upstream account was cancell
   });
   assert.equal(requested.ok, true);
   assert.equal(await harness.repository.getUserByIdentifier("customer@example.com"), null);
-  assert.equal(await harness.repository.getUserByIdentifier("customer"), null);
+  assert.equal(await harness.repository.getUserByIdentifier("cust01"), null);
 
   const second = await harness.service.register({
     email: "customer@example.com",
-    username: "customer",
+    username: "cust01",
     password: "StrongPass123",
     verificationCode: harness.sentCodes.at(-1)?.code || "",
     displayName: "Customer Again",
@@ -284,6 +284,20 @@ test("rejects weak password and invalid input", async () => {
     email: "not-an-email",
     username: "bad username",
     password: "weak",
+  });
+
+  assert.equal(result.ok, false);
+  if (result.ok) return;
+  assert.equal(result.status, 400);
+  assert.equal(result.uiState, "validation_error");
+});
+
+test("rejects registration usernames longer than six characters", async () => {
+  const result = await service().service.register({
+    email: "customer@example.com",
+    username: "toolong",
+    password: "StrongPass123",
+    verificationCode: "000000",
   });
 
   assert.equal(result.ok, false);
@@ -338,7 +352,7 @@ test("serializes concurrent duplicate registration to one local account", async 
   }
   const results = await Promise.all(codes.map((verificationCode) => harness.service.register({
     email: "customer@example.com",
-    username: "customer",
+    username: "cust01",
     password: "StrongPass123",
     verificationCode,
   })));
@@ -369,7 +383,7 @@ test("logs in with email or username and rotates any existing session", async ()
 
   const firstSession = registered.session?.token || "";
   const login = await harness.service.login({
-    identifier: "customer",
+    identifier: "cust01",
     password: "StrongPass123",
     existingSessionToken: firstSession,
   });
@@ -432,7 +446,7 @@ test("normalizes unsafe redirects to the app root", async () => {
   assert.equal(codeRequest.ok, true);
   const registered = await harness.service.register({
     email: "redirect@example.com",
-    username: "redirect-user",
+    username: "redir1",
     password: "StrongPass123",
     verificationCode: harness.sentCodes.at(-1)?.code || "",
     redirectTo: "https://evil.example/phish",

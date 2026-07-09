@@ -52,7 +52,7 @@ export function isValidEmail(value: string) {
 export function isValidUsername(value: string) {
   const username = normalizeUsername(value);
   return username.length >= 3
-    && username.length <= 32
+    && username.length <= 6
     && /^[a-z0-9_.-]+$/.test(username);
 }
 

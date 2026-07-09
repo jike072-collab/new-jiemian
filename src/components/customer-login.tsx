@@ -3,7 +3,7 @@
 import dynamic from "next/dynamic";
 import Image from "next/image";
 import Link from "next/link";
-import { type FormEvent, type PointerEvent, useEffect, useState } from "react";
+import { memo, type FormEvent, type PointerEvent, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { ArrowRight, Check, Eye, EyeOff, ImageIcon, Loader2, LockKeyhole, Mail, Play, Sparkles, UserRound, Video } from "lucide-react";
 
@@ -74,6 +74,58 @@ const authFeatures = [
   { label: "高清处理", icon: Sparkles },
 ];
 
+const AuthBrandPanel = memo(function AuthBrandPanel() {
+  return (
+    <div className="auth-brand">
+      <AuthBrandLockup />
+      <div className="auth-brand__copy">
+        <h1>
+          <span>让商品图片与视频</span>
+          <span>
+            创作<b>更简单</b>
+          </span>
+        </h1>
+        <div className="auth-feature-list" aria-label="核心能力">
+          {authFeatures.map((feature, index) => {
+            const Icon = feature.icon;
+            return (
+              <span key={feature.label} className="auth-feature-list__item">
+                {index > 0 ? <i aria-hidden="true" /> : null}
+                <Icon className="size-5" aria-hidden="true" />
+                {feature.label}
+              </span>
+            );
+          })}
+        </div>
+      </div>
+      <div className="auth-showcase" aria-hidden="true">
+        {showcaseCards.map((card) => (
+          <div key={card.title} className={cn("auth-showcase-card", card.className)}>
+            <Image
+              src={card.image}
+              alt=""
+              fill
+              sizes="280px"
+              loading="lazy"
+              decoding="async"
+              className="auth-showcase-card__image"
+            />
+            {card.kind === "video" ? (
+              <span className="auth-showcase-card__play" aria-hidden="true">
+                <Play className="size-5" fill="currentColor" strokeWidth={2.2} />
+              </span>
+            ) : null}
+            <div className="auth-showcase-card__footer">
+              <strong>{card.title}</strong>
+              <span>{card.subtitle}</span>
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+});
+
 function friendlyAuthError(error: unknown) {
   if (!(error instanceof ApiError)) {
     return "请求失败，请稍后重试";
@@ -92,8 +144,12 @@ function isValidEmail(value: string) {
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value);
 }
 
+function normalizeUsernameInput(value: string) {
+  return value.replace(/[^a-zA-Z0-9_.-]/g, "").slice(0, 6);
+}
+
 function isValidUsername(value: string) {
-  return /^[a-zA-Z0-9_.-]{3,32}$/.test(value);
+  return /^[a-zA-Z0-9_.-]{3,6}$/.test(value);
 }
 
 function passwordRules(password: string) {
@@ -119,6 +175,7 @@ export function CustomerLogin({ initialMode = "login" }: CustomerLoginProps) {
   const [sendingCode, setSendingCode] = useState(false);
   const [codeCooldown, setCodeCooldown] = useState(0);
   const [shaderReady, setShaderReady] = useState(false);
+  const [formFocused, setFormFocused] = useState(false);
   const [loading, setLoading] = useState(false);
   const [success, setSuccess] = useState(false);
   const [message, setMessage] = useState("");
@@ -136,7 +193,7 @@ export function CustomerLogin({ initialMode = "login" }: CustomerLoginProps) {
   const positiveMessage = message === "验证码已发送，请查收" || message === "密码已重置，请使用新密码登录";
 
   useEffect(() => {
-    const timer = window.setTimeout(() => setShaderReady(true), 250);
+    const timer = window.setTimeout(() => setShaderReady(true), 900);
     return () => window.clearTimeout(timer);
   }, []);
 
@@ -207,7 +264,7 @@ export function CustomerLogin({ initialMode = "login" }: CustomerLoginProps) {
       return "请填写用户名";
     }
     if (isRegister && !isValidUsername(username.trim())) {
-      return "用户名需为 3-32 位英文、数字、下划线、点或短横线";
+      return "用户名需为 3-6 位英文、数字、下划线、点或短横线";
     }
     if (needsVerificationCode && !/^\d{6}$/.test(verificationCode.trim())) {
       return "请填写 6 位验证码";
@@ -326,58 +383,12 @@ export function CustomerLogin({ initialMode = "login" }: CustomerLoginProps) {
 
   return (
     <main className="auth-page">
-      {shaderReady ? <AuthShaderBackground /> : null}
+      {shaderReady && !formFocused ? <AuthShaderBackground /> : null}
       <div className="auth-page__shade" aria-hidden="true" />
       <div className="auth-page__noise" aria-hidden="true" />
 
       <section className="auth-layout" aria-label={isLogin ? "登录" : isReset ? "重置密码" : "注册"}>
-        <div className="auth-brand">
-          <AuthBrandLockup />
-          <div className="auth-brand__copy">
-            <h1>
-              <span>让商品图片与视频</span>
-              <span>
-                创作<b>更简单</b>
-              </span>
-            </h1>
-            <div className="auth-feature-list" aria-label="核心能力">
-              {authFeatures.map((feature, index) => {
-                const Icon = feature.icon;
-                return (
-                  <span key={feature.label} className="auth-feature-list__item">
-                    {index > 0 ? <i aria-hidden="true" /> : null}
-                    <Icon className="size-5" aria-hidden="true" />
-                    {feature.label}
-                  </span>
-                );
-              })}
-            </div>
-          </div>
-          <div className="auth-showcase" aria-hidden="true">
-            {showcaseCards.map((card) => (
-              <div key={card.title} className={cn("auth-showcase-card", card.className)}>
-                <Image
-                  src={card.image}
-                  alt=""
-                  fill
-                  sizes="280px"
-                  loading="lazy"
-                  decoding="async"
-                  className="auth-showcase-card__image"
-                />
-                {card.kind === "video" ? (
-                  <span className="auth-showcase-card__play" aria-hidden="true">
-                    <Play className="size-5" fill="currentColor" strokeWidth={2.2} />
-                  </span>
-                ) : null}
-                <div className="auth-showcase-card__footer">
-                  <strong>{card.title}</strong>
-                  <span>{card.subtitle}</span>
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
+        <AuthBrandPanel />
 
         <div className="auth-form-shell">
           <AuthBrandLockup className="auth-mobile-logo" />
@@ -385,6 +396,10 @@ export function CustomerLogin({ initialMode = "login" }: CustomerLoginProps) {
           <form
             className="auth-card"
             onPointerMove={updateSpotlight}
+            onFocusCapture={() => setFormFocused(true)}
+            onBlurCapture={(event) => {
+              if (!event.currentTarget.contains(event.relatedTarget)) setFormFocused(false);
+            }}
             onPointerLeave={(event) => {
               event.currentTarget.style.removeProperty("--spotlight-x");
               event.currentTarget.style.removeProperty("--spotlight-y");
@@ -424,11 +439,12 @@ export function CustomerLogin({ initialMode = "login" }: CustomerLoginProps) {
                     <input
                       type="text"
                       value={username}
-                      onChange={(event) => setUsername(event.target.value)}
+                      onChange={(event) => setUsername(normalizeUsernameInput(event.target.value))}
                       autoComplete="username"
+                      maxLength={6}
                       disabled={disabled}
                       aria-invalid={Boolean(username.trim() && !isValidUsername(username.trim()))}
-                      placeholder="3-32 位英文、数字、._-"
+                      placeholder="3-6 位英文、数字、._-"
                     />
                   </span>
                 </label>
