@@ -3089,9 +3089,20 @@ function UserCenterOverview({
                   <Crown className="size-4" aria-hidden="true" />
                 </span>
                 <div className="user-center-mini-card__body">
-                  <div className="user-center-plan-line">
-                    <strong className={cn("user-center-plan-name", `user-center-plan-name--${planTone}`)}>{planDisplay.label}</strong>
-                    <span>{planEndsAtLabel ? `${planEndsAtLabel} 到期` : "暂未开通"}</span>
+                  <span className="user-center-membership-label">当前会员</span>
+                  <div className="user-center-mini-card__main">
+                    <div className="user-center-plan-line">
+                      <strong className={cn("user-center-plan-name", `user-center-plan-name--${planTone}`)}>{planDisplay.label}</strong>
+                      <span>{planEndsAtLabel ? `${planEndsAtLabel} 到期` : "暂未开通"}</span>
+                    </div>
+                    <button
+                      type="button"
+                      className="user-center-mini-card__action"
+                      onClick={() => onViewChange("recharge")}
+                      disabled={!user}
+                    >
+                      {planDisplay.actionLabel}
+                    </button>
                   </div>
                   {!planEndsAtLabel ? (
                     <p>{planStatus.status === "active" ? "会员权益以账户数据为准。" : planDisplay.note}</p>
@@ -3109,14 +3120,6 @@ function UserCenterOverview({
                     </div>
                   ) : null}
                 </div>
-                <button
-                  type="button"
-                  className="user-center-mini-card__action"
-                  onClick={() => onViewChange("recharge")}
-                  disabled={!user}
-                >
-                  {planDisplay.actionLabel}
-                </button>
               </article>
 
             </div>
