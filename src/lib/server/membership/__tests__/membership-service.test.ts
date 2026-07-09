@@ -113,3 +113,37 @@ test("mirrors external New API membership into the local repository", async () =
   });
   assert.equal(consumed.consumed, 1);
 });
+
+test("restores consumed entitlements for failed generation flows", async () => {
+  const repository = createMemoryMembershipRepository();
+  const membership = new MembershipService({
+    repository,
+    now: () => new Date("2026-06-18T00:00:00.000Z"),
+  });
+  await membership.applyPaidMembership({
+    localUserId: "user-3",
+    orderId: "order-pro-monthly",
+    planId: "pro",
+    cycle: "monthly",
+  });
+
+  const consumed = await membership.consumeEntitlement({
+    localUserId: "user-3",
+    kind: "image_generation",
+    amount: 1,
+    idempotencyKey: "task-failed",
+    taskId: "task-failed",
+  });
+  assert.equal(consumed.consumed, 1);
+
+  const restored = await membership.restoreEntitlement({
+    localUserId: "user-3",
+    kind: "image_generation",
+    amount: 1,
+    idempotencyKey: "restore-task-failed",
+    taskId: "task-failed",
+  });
+  assert.equal(restored.restored, 1);
+  const status = await membership.getStatus("user-3");
+  assert.equal(status.entitlements.image_generation.remaining, 60);
+});
