@@ -588,7 +588,7 @@ function VideoTutorialResultSlot({
             loop
             muted
             playsInline
-            preload="auto"
+            preload="metadata"
             onLoadedMetadata={markResultVideoReady}
             onCanPlay={markResultVideoReady}
             onLoadedData={markResultVideoReady}
