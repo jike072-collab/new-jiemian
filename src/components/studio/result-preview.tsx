@@ -303,10 +303,22 @@ function ImageGenerationTutorial() {
 }
 
 function ImageEditorTutorial() {
+  const [readyAssets, setReadyAssets] = useState<Set<string>>(() => new Set());
+  const imageEditorAssetsReady = readyAssets.size >= 5;
+  const markImageEditorAssetReady = useCallback((src: string) => {
+    setReadyAssets((current) => {
+      if (current.has(src)) return current;
+      const next = new Set(current);
+      next.add(src);
+      return next;
+    });
+  }, []);
+
   return (
     <PreviewState eyebrow="图片编辑示例" title="图片编辑示例" description="上传图片并描述修改要求，快速完成内容编辑与素材融合。">
-      <div className="image-editor-tutorial">
+      <div className={cn("image-editor-tutorial", imageEditorAssetsReady && "is-ready")} aria-busy={!imageEditorAssetsReady}>
         <div className="image-editor-tutorial__canvas" aria-label="图片编辑器示例图片">
+          <span className="image-editor-tutorial__loading" aria-hidden="true" />
           <svg className="image-editor-tutorial__path" viewBox="0 0 980 520" aria-hidden="true">
             <path className="image-editor-tutorial__dash" d="M18 425C98 190 238 330 365 265C487 202 575 262 690 170C750 122 810 82 862 52" />
             <g className="image-editor-plane-mark">
@@ -315,7 +327,7 @@ function ImageEditorTutorial() {
           </svg>
 
           <figure className="image-editor-photo image-editor-photo--input image-editor-photo--single-source">
-            <img src="/tutorials/image-editor/single-source.webp" alt="方形粉色香水瓶白底素材" loading="lazy" decoding="async" />
+            <img src="/tutorials/image-editor/single-source.webp" alt="方形粉色香水瓶白底素材" loading="eager" decoding="async" fetchPriority="high" onLoad={() => markImageEditorAssetReady("/tutorials/image-editor/single-source.webp")} onError={() => markImageEditorAssetReady("/tutorials/image-editor/single-source.webp")} />
           </figure>
           <svg className="image-editor-arrow image-editor-arrow--single" viewBox="0 0 128 74" aria-hidden="true" focusable="false">
             <defs>
@@ -332,14 +344,14 @@ function ImageEditorTutorial() {
             <span>提示词</span>
           </span>
           <figure className="image-editor-photo image-editor-photo--result image-editor-photo--single-result">
-            <img src="/tutorials/image-editor/single-result.webp" alt="女性手持同款香水瓶的编辑结果" loading="lazy" decoding="async" />
+            <img src="/tutorials/image-editor/single-result.webp" alt="女性手持同款香水瓶的编辑结果" loading="eager" decoding="async" fetchPriority="high" onLoad={() => markImageEditorAssetReady("/tutorials/image-editor/single-result.webp")} onError={() => markImageEditorAssetReady("/tutorials/image-editor/single-result.webp")} />
           </figure>
 
           <figure className="image-editor-photo image-editor-photo--input image-editor-photo--merge-product">
-            <img src="/tutorials/image-editor/merge-product.webp" alt="椭圆形粉色香水瓶白底素材" loading="lazy" decoding="async" />
+            <img src="/tutorials/image-editor/merge-product.webp" alt="椭圆形粉色香水瓶白底素材" loading="eager" decoding="async" fetchPriority="high" onLoad={() => markImageEditorAssetReady("/tutorials/image-editor/merge-product.webp")} onError={() => markImageEditorAssetReady("/tutorials/image-editor/merge-product.webp")} />
           </figure>
           <figure className="image-editor-photo image-editor-photo--input image-editor-photo--merge-scene">
-            <img src="/tutorials/image-editor/merge-scene.webp" alt="新中式牡丹场景素材" loading="lazy" decoding="async" />
+            <img src="/tutorials/image-editor/merge-scene.webp" alt="新中式牡丹场景素材" loading="eager" decoding="async" fetchPriority="high" onLoad={() => markImageEditorAssetReady("/tutorials/image-editor/merge-scene.webp")} onError={() => markImageEditorAssetReady("/tutorials/image-editor/merge-scene.webp")} />
           </figure>
           <svg className="image-editor-arrow image-editor-arrow--merge" viewBox="0 0 128 74" aria-hidden="true" focusable="false">
             <defs>
@@ -356,7 +368,7 @@ function ImageEditorTutorial() {
             <span>提示词</span>
           </span>
           <figure className="image-editor-photo image-editor-photo--result image-editor-photo--merge-result">
-            <img src="/tutorials/image-editor/merge-result.webp" alt="香水瓶放入新中式牡丹场景后的融合结果" loading="lazy" decoding="async" />
+            <img src="/tutorials/image-editor/merge-result.webp" alt="香水瓶放入新中式牡丹场景后的融合结果" loading="eager" decoding="async" fetchPriority="high" onLoad={() => markImageEditorAssetReady("/tutorials/image-editor/merge-result.webp")} onError={() => markImageEditorAssetReady("/tutorials/image-editor/merge-result.webp")} />
           </figure>
         </div>
       </div>
@@ -482,31 +494,34 @@ function VideoTutorialResultSlot({
   paused: boolean;
   onPlaybackEnd: () => void;
 }) {
-  const mediaRef = useRef<HTMLDivElement | null>(null);
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const wasPlayingRef = useRef(false);
-  const [isInView, setIsInView] = useState(typeof IntersectionObserver === "undefined");
-  const [videoReady, setVideoReady] = useState(false);
+  const [videoReady, setVideoReady] = useState(Boolean(videoTutorialResultVideoSrc));
   const resultPreviewActive = Boolean(videoTutorialResultVideoSrc && !paused);
-  const shouldPlay = Boolean(resultPreviewActive && isInView);
+  const shouldPlay = Boolean(resultPreviewActive);
 
-  useEffect(() => {
-    const node = mediaRef.current;
-    if (!node || typeof IntersectionObserver === "undefined") return undefined;
+  const playResultVideo = useCallback(() => {
+    const video = videoRef.current;
+    if (!video || !shouldPlay) return;
+    video.muted = true;
+    video.loop = true;
+    video.playsInline = true;
+    void video.play().catch(() => undefined);
+  }, [shouldPlay]);
 
-    const observer = new IntersectionObserver(([entry]) => {
-      setIsInView(entry.isIntersecting);
-    }, { threshold: 0.36 });
-
-    observer.observe(node);
-    return () => observer.disconnect();
-  }, []);
+  const markResultVideoReady = useCallback(() => {
+    setVideoReady(true);
+    playResultVideo();
+  }, [playResultVideo]);
 
   useEffect(() => {
     const video = videoRef.current;
     if (!video) return;
 
     if (shouldPlay) {
+      video.muted = true;
+      video.loop = true;
+      video.playsInline = true;
       if (!wasPlayingRef.current) {
         try {
           video.currentTime = Math.min(0.1, Number.isFinite(video.duration) && video.duration > 0 ? video.duration : 0.1);
@@ -515,13 +530,13 @@ function VideoTutorialResultSlot({
         }
         wasPlayingRef.current = true;
       }
-      void video.play().catch(() => undefined);
+      playResultVideo();
       return;
     }
 
     wasPlayingRef.current = false;
     video.pause();
-  }, [shouldPlay]);
+  }, [playResultVideo, shouldPlay]);
 
   return (
     <div className="video-tutorial-result-slot">
@@ -529,7 +544,6 @@ function VideoTutorialResultSlot({
         <img src={videoTutorialInputImageSrc} alt="" loading="lazy" decoding="async" />
       </div>
       <div
-          ref={mediaRef}
           className={cn(
             "video-tutorial-result-slot__media",
             (resultPreviewActive || isVideoTutorialResultVisibleState(playbackState)) && "is-visible",
@@ -550,8 +564,9 @@ function VideoTutorialResultSlot({
             muted
             playsInline
             preload="auto"
-            onCanPlay={() => setVideoReady(true)}
-            onLoadedData={() => setVideoReady(true)}
+            onLoadedMetadata={markResultVideoReady}
+            onCanPlay={markResultVideoReady}
+            onLoadedData={markResultVideoReady}
             onEnded={onPlaybackEnd}
             onError={onPlaybackEnd}
           />
@@ -630,8 +645,10 @@ function VideoGenerationTutorial({ paused = false }: { paused?: boolean }) {
       }
     };
 
-    setInputPlaybackState("idle");
-    setInputTypedText("");
+    timeline.wait(() => {
+      setInputPlaybackState("idle");
+      setInputTypedText("");
+    }, 0);
     timeline.wait(() => setInputPlaybackState("image-entering"), 80);
     timeline.wait(() => setInputPlaybackState("image-touching"), 820);
     timeline.wait(() => setInputPlaybackState("image-covered"), 1540);

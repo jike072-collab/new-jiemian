@@ -8,8 +8,11 @@ import { useCallback, useEffect, useMemo, useRef, useState, type PointerEvent as
 import { useRouter, useSearchParams } from "next/navigation";
 
 import { WorkbenchShell } from "@/components/workbench-shell";
-import { fetchJson } from "@/lib/client/api";
+import { WorkspaceAccountPanel } from "@/components/workspace-account-panel";
+import { getPlanStatusDisplay, type CheckInStatus, type PlanStatus } from "@/lib/account-status";
+import { fetchJson, fetchJsonWithCsrf } from "@/lib/client/api";
 import type { PublicAuthUser } from "@/lib/server/auth";
+import type { QuotaSnapshot } from "@/lib/server/quota";
 import { cn } from "@/lib/utils";
 import {
   imagePromptTemplates,
@@ -30,7 +33,28 @@ type AuthSessionResponse =
 
 type QuotaResponse = {
   ok: true;
-  quota: { quota_units: number; available_quota_units: number };
+  quota: QuotaSnapshot;
+};
+
+type MembershipStatusResponse = {
+  ok: true;
+  plans: Array<{
+    id: string;
+    name: string;
+  }>;
+  membership: {
+    active: { plan_id: string; ends_at: string } | null;
+    entitlements: Record<"prompt_optimize" | "image_generation" | "video_generation", {
+      remaining: number;
+      granted: number;
+      used: number;
+    }>;
+  };
+};
+
+type CheckInResponse = {
+  ok: true;
+  checkIn: { status: "available" | "checked" | string };
 };
 
 const templateRailDragThreshold = 12;
@@ -256,7 +280,11 @@ export function TemplateCenterView() {
   const [category, setCategory] = useState<TemplateFilter>("全部");
   const [favoriteIds, setFavoriteIds] = useState<Set<string>>(() => new Set());
   const [sessionUser, setSessionUser] = useState<PublicAuthUser | null>(null);
+  const [quotaSnapshot, setQuotaSnapshot] = useState<QuotaSnapshot | null>(null);
   const [quotaLabel, setQuotaLabel] = useState<string | null>(null);
+  const [membershipSnapshot, setMembershipSnapshot] = useState<MembershipStatusResponse | null>(null);
+  const [accountLoading, setAccountLoading] = useState(false);
+  const [checkInStatus, setCheckInStatus] = useState<CheckInStatus>("unavailable");
 
   const templates = scope === "image" ? imagePromptTemplates : videoPromptTemplates;
   const totalTemplateCount = templates.length;
@@ -321,6 +349,72 @@ export function TemplateCenterView() {
     router.push(`/?account=recharge${previewMode ? "&preview=1" : ""}`);
   };
 
+  const refreshAccountSnapshot = useCallback(async (user: PublicAuthUser | null) => {
+    if (!user) {
+      setQuotaSnapshot(null);
+      setQuotaLabel(null);
+      setMembershipSnapshot(null);
+      setCheckInStatus("unavailable");
+      return;
+    }
+
+    setAccountLoading(true);
+    setCheckInStatus("loading");
+    try {
+      const [quotaData, membershipData, checkInData] = await Promise.all([
+        fetchJson<QuotaResponse>("/api/quota").catch(() => null),
+        fetchJson<MembershipStatusResponse>("/api/membership/status").catch(() => null),
+        fetchJson<CheckInResponse>("/api/check-in").catch(() => null),
+      ]);
+
+      if (quotaData?.quota) {
+        setQuotaSnapshot(quotaData.quota);
+        setQuotaLabel(`${new Intl.NumberFormat("zh-CN").format(quotaData.quota.quota_units)} ✦`);
+      } else {
+        setQuotaSnapshot(null);
+        setQuotaLabel(null);
+      }
+      setMembershipSnapshot(membershipData);
+      setCheckInStatus(checkInData?.checkIn.status === "checked" ? "checked" : "available");
+    } finally {
+      setAccountLoading(false);
+    }
+  }, []);
+
+  const accountPlanStatus = useMemo<PlanStatus>(() => {
+    if (!sessionUser) return { status: "unavailable" };
+    if (accountLoading && !membershipSnapshot) return { status: "loading" };
+    const activeMembership = membershipSnapshot?.membership.active;
+    if (!activeMembership) return { status: "none" };
+    const activePlan = membershipSnapshot?.plans.find((plan) => plan.id === activeMembership.plan_id);
+    return { status: "active", name: activePlan?.name || "会员" };
+  }, [accountLoading, membershipSnapshot, sessionUser]);
+
+  const handleLogout = useCallback(async () => {
+    try {
+      await fetchJsonWithCsrf("/api/auth/logout", { method: "POST" });
+    } finally {
+      setSessionUser(null);
+      setQuotaSnapshot(null);
+      setQuotaLabel(null);
+      setMembershipSnapshot(null);
+      setCheckInStatus("unavailable");
+      router.replace("/login");
+    }
+  }, [router]);
+
+  const handleCheckIn = useCallback(async () => {
+    if (!sessionUser || checkInStatus === "checked" || checkInStatus === "submitting") return;
+    setCheckInStatus("submitting");
+    try {
+      const result = await fetchJsonWithCsrf<CheckInResponse>("/api/check-in", { method: "POST" });
+      setCheckInStatus(result.checkIn.status === "checked" ? "checked" : "available");
+      await refreshAccountSnapshot(sessionUser);
+    } catch {
+      setCheckInStatus("error");
+    }
+  }, [checkInStatus, refreshAccountSnapshot, sessionUser]);
+
   useEffect(() => {
     let cancelled = false;
 
@@ -330,20 +424,21 @@ export function TemplateCenterView() {
         if (cancelled) return;
         if ("ok" in session && session.ok) {
           setSessionUser(session.user);
-          try {
-            const quotaData = await fetchJson<QuotaResponse>("/api/quota");
-            if (!cancelled) setQuotaLabel(`${new Intl.NumberFormat("zh-CN").format(quotaData.quota.quota_units ?? quotaData.quota.available_quota_units)} ✦`);
-          } catch {
-            if (!cancelled) setQuotaLabel(null);
-          }
+          await refreshAccountSnapshot(session.user);
           return;
         }
         setSessionUser(null);
+        setQuotaSnapshot(null);
         setQuotaLabel(null);
+        setMembershipSnapshot(null);
+        setCheckInStatus("unavailable");
       } catch {
         if (!cancelled) {
           setSessionUser(null);
+          setQuotaSnapshot(null);
           setQuotaLabel(null);
+          setMembershipSnapshot(null);
+          setCheckInStatus("unavailable");
         }
       }
     })();
@@ -351,7 +446,7 @@ export function TemplateCenterView() {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [refreshAccountSnapshot]);
 
   useEffect(() => {
     const timer = window.setTimeout(() => {
@@ -376,8 +471,27 @@ export function TemplateCenterView() {
       canAccessAdmin={sessionUser?.role === "admin"}
       accountName={sessionUser?.display_name || sessionUser?.username || null}
       accountPointsLabel={quotaLabel}
+      accountPlanLabel={accountLoading ? "会员加载中" : getPlanStatusDisplay(accountPlanStatus).label}
       onOpenAccountCenter={handleOpenAccountCenter}
       onOpenAccountRecharge={handleOpenRechargeCenter}
+      accountSlot={(
+        <WorkspaceAccountPanel
+          user={sessionUser}
+          quota={quotaSnapshot}
+          membershipEntitlements={membershipSnapshot?.membership.entitlements ?? null}
+          loading={accountLoading}
+          planStatus={accountPlanStatus}
+          membershipEndsAt={membershipSnapshot?.membership.active?.ends_at ?? null}
+          checkInStatus={checkInStatus}
+          onRefresh={() => void refreshAccountSnapshot(sessionUser)}
+          onLogout={() => void handleLogout()}
+          onOpenCenter={handleOpenAccountCenter}
+          onOpenRecharge={handleOpenRechargeCenter}
+          onOpenUsage={() => router.push(`/?account=usage${previewMode ? "&preview=1" : ""}`)}
+          onOpenOrders={() => router.push(`/?account=orders${previewMode ? "&preview=1" : ""}`)}
+          onCheckInUnavailable={() => void handleCheckIn()}
+        />
+      )}
       toolTitle="模板中心"
       parameterSlot={null}
       previewSlot={

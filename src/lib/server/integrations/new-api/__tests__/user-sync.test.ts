@@ -73,20 +73,47 @@ test("creates a pending mapping then activates it after New API user creation", 
 
 test("converts initial app credits into New API quota on user creation", async () => {
   const repository = createMemoryNewApiUserMappingRepository();
+  const quotaWrites: Array<{ newApiUserId: number; quota: number }> = [];
   const service = new NewApiUserSyncService({
     repository,
     getQuotaDisplayConfig: async () => quotaDisplayConfig("CNY"),
     createUser: async (input) => {
       assert.equal(input.quota, 1_369_863);
-      return response({ success: true, data: user() });
+      return response({ success: true, data: user({ quota: 0 }) });
     },
     listUsers: async () => response({ data: [] }),
+    setUserQuota: async (input) => {
+      quotaWrites.push(input);
+      return response({ success: true, data: user({ id: input.newApiUserId, quota: input.quota }) });
+    },
   });
 
   const result = await service.ensureMapped(profile({ initialQuota: 200 }));
 
   assert.equal(result.action, "created_upstream");
   assert.equal(result.mapping.sync_status, "active");
+  assert.deepEqual(quotaWrites, [{ newApiUserId: 77, quota: 1_369_863 }]);
+});
+
+test("does not lower existing New API quota when it already exceeds signup credits", async () => {
+  const repository = createMemoryNewApiUserMappingRepository();
+  let quotaWrites = 0;
+  const service = new NewApiUserSyncService({
+    repository,
+    getQuotaDisplayConfig: async () => quotaDisplayConfig("TOKENS"),
+    createUser: async () => response({ success: true, data: user({ quota: 900 }) }),
+    listUsers: async () => response({ data: [] }),
+    setUserQuota: async (input) => {
+      quotaWrites += 1;
+      return response({ success: true, data: user({ id: input.newApiUserId, quota: input.quota }) });
+    },
+  });
+
+  const result = await service.ensureMapped(profile({ initialQuota: 500 }));
+
+  assert.equal(result.action, "created_upstream");
+  assert.equal(result.mapping.sync_status, "active");
+  assert.equal(quotaWrites, 0);
 });
 
 test("shortens New API username and display name to official field limits", async () => {

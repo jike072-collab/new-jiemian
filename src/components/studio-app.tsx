@@ -2762,10 +2762,8 @@ export function StudioApp() {
               billingOrders={billingOrders}
               accountView={accountView}
               planStatus={accountPlanStatus}
-              checkInStatus={accountCheckInStatus}
               checkInRecords={checkInRecords}
               onViewChange={setAccountView}
-              onCheckInUnavailable={() => void handleCheckIn()}
               onRefreshAccount={() => void refreshAccountSnapshot()}
             />
           ) : activeBusinessTool === "library" ? (
@@ -2887,10 +2885,8 @@ function UserCenterWorkspace({
   billingOrders,
   accountView,
   planStatus,
-  checkInStatus,
   checkInRecords,
   onViewChange,
-  onCheckInUnavailable,
   onRefreshAccount,
 }: {
   user: PublicAuthUser | null;
@@ -2901,10 +2897,8 @@ function UserCenterWorkspace({
   billingOrders: BillingOrder[];
   accountView: AccountView;
   planStatus: PlanStatus;
-  checkInStatus: CheckInStatus;
   checkInRecords: PublicDailyCheckInRecord[];
   onViewChange: (view: AccountView) => void;
-  onCheckInUnavailable: () => void;
   onRefreshAccount: () => void;
 }) {
   if (accountView === "recharge") {
@@ -2944,17 +2938,15 @@ function UserCenterWorkspace({
   }
 
   return (
-      <UserCenterOverview
-        user={user}
-        quota={quota}
-        membershipSnapshot={membershipSnapshot}
-        usage={usage}
+    <UserCenterOverview
+      user={user}
+      quota={quota}
+      membershipSnapshot={membershipSnapshot}
+      usage={usage}
       billingOrders={billingOrders}
       checkInRecords={checkInRecords}
       loading={loading}
       planStatus={planStatus}
-      checkInStatus={checkInStatus}
-      onCheckInUnavailable={onCheckInUnavailable}
       onViewChange={onViewChange}
     />
   );
@@ -3014,8 +3006,6 @@ function UserCenterOverview({
   checkInRecords,
   loading,
   planStatus,
-  checkInStatus,
-  onCheckInUnavailable,
   onViewChange,
 }: {
   user: PublicAuthUser | null;
@@ -3026,8 +3016,6 @@ function UserCenterOverview({
   checkInRecords: PublicDailyCheckInRecord[];
   loading: boolean;
   planStatus: PlanStatus;
-  checkInStatus: CheckInStatus;
-  onCheckInUnavailable: () => void;
   onViewChange: (view: AccountView) => void;
 }) {
   const recentRecords = useMemo(
@@ -3046,8 +3034,6 @@ function UserCenterOverview({
   const planTone = getPlanTone(planDisplay.label);
   const activeMembership = membershipSnapshot?.membership.active ?? null;
   const planEndsAtLabel = formatMembershipDate(activeMembership?.ends_at);
-  const checkInButtonLabel = checkInStatus === "checked" ? "已签到" : "签到";
-  const checkInButtonDisabled = !user || checkInStatus === "checked" || checkInStatus === "loading" || checkInStatus === "submitting";
   const previousQuotaUnitsRef = useRef<number | null>(quotaUnits);
   const [quotaChanged, setQuotaChanged] = useState(false);
 
@@ -3078,64 +3064,22 @@ function UserCenterOverview({
           <h2>用户中心</h2>
           <p>查看积分、套餐、签到与订单信息</p>
         </div>
-        <button
-          type="button"
-          className={cn("user-center-checkin-button", checkInStatus === "checked" && "is-checked")}
-          onClick={checkInButtonDisabled ? undefined : onCheckInUnavailable}
-          disabled={checkInButtonDisabled}
-        >
-          <CalendarCheck className="size-4" aria-hidden="true" />
-          {checkInButtonLabel}
-        </button>
       </header>
 
       <div className="user-center-page__grid">
         <div className="user-center-page__main">
           <div className="user-center-account-summary">
             <article className={cn("user-center-points-card", quotaChanged && "is-updated")}>
-              <span className="user-center-card-icon user-center-card-icon--primary">
-                <Sparkles className="size-5" aria-hidden="true" />
-              </span>
               <div className="user-center-points-card__copy">
-                <span>账户资产</span>
-                <em className="user-center-card-kicker">可用积分</em>
-                <strong className="user-center-points-card__value">{quotaValue}</strong>
-                <p>{quotaNote}</p>
-                {entitlementItems.length ? (
-                  <div className="user-center-entitlement-block">
-                    <span>剩余额度</span>
-                    <div className="user-center-entitlement-strip" aria-label="会员剩余次数">
-                      {entitlementItems.map((item) => (
-                        <span key={item.key} className="user-center-entitlement-pill">
-                          <em>{item.label}</em>
-                          <strong>{item.value}</strong>
-                        </span>
-                      ))}
-                    </div>
-                  </div>
-                ) : null}
-              </div>
-              <div className="user-center-points-card__actions">
-                <button type="button" className="user-center-action user-center-action--primary" onClick={() => onViewChange("recharge")} disabled={!user}>
-                  <WalletCards className="size-4" aria-hidden="true" />
-                  立即充值
-                </button>
-                <button type="button" className="user-center-action" onClick={() => onViewChange("usage")} disabled={!user}>
-                  <History className="size-4" aria-hidden="true" />
-                  积分明细
-                </button>
-              </div>
-              <div className="user-center-mobile-status">
-                <div className="user-center-mobile-status__item">
-                  <span>
-                    <Crown className="size-3.5" aria-hidden="true" />
-                    当前套餐
-                  </span>
-                  <strong className={cn("user-center-plan-name", `user-center-plan-name--${planTone}`)}>{planDisplay.label}</strong>
-                  <button type="button" onClick={() => onViewChange("recharge")} disabled={!user}>
-                    {planDisplay.actionLabel}
+                <span>可用积分</span>
+                <div className="user-center-points-card__main">
+                  <strong className="user-center-points-card__value">{quotaValue}</strong>
+                  <button type="button" className="user-center-action user-center-action--primary" onClick={() => onViewChange("recharge")} disabled={!user}>
+                    <WalletCards className="size-4" aria-hidden="true" />
+                    立即充值
                   </button>
                 </div>
+                <p>{quotaNote}</p>
               </div>
             </article>
 
@@ -3145,18 +3089,26 @@ function UserCenterOverview({
                   <Crown className="size-4" aria-hidden="true" />
                 </span>
                 <div>
-                  <span>当前套餐</span>
-                  {planEndsAtLabel ? (
-                    <div className="user-center-plan-details">
-                      <span>
-                        到期时间
-                        <strong>{planEndsAtLabel}</strong>
-                      </span>
-                    </div>
-                  ) : null}
-                  <strong className={cn("user-center-plan-name", `user-center-plan-name--${planTone}`)}>{planDisplay.label}</strong>
+                  <span>会员订阅</span>
+                  <div className="user-center-plan-line">
+                    <span>{planEndsAtLabel ? `${planEndsAtLabel} 到期` : "暂未开通"}</span>
+                    <strong className={cn("user-center-plan-name", `user-center-plan-name--${planTone}`)}>{planDisplay.label}</strong>
+                  </div>
                   {!planEndsAtLabel ? (
                     <p>{planStatus.status === "active" ? "会员权益以账户数据为准。" : planDisplay.note}</p>
+                  ) : null}
+                  {entitlementItems.length ? (
+                    <div className="user-center-entitlement-block">
+                      <span>剩余额度</span>
+                      <div className="user-center-entitlement-strip" aria-label="会员剩余次数">
+                        {entitlementItems.map((item) => (
+                          <span key={item.key} className="user-center-entitlement-pill">
+                            <em>{item.label}</em>
+                            <strong>{item.value}</strong>
+                          </span>
+                        ))}
+                      </div>
+                    </div>
                   ) : null}
                 </div>
                 <button

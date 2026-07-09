@@ -5243,7 +5243,7 @@
 
   .user-center-account-summary {
     display: grid;
-    grid-template-columns: minmax(0, 1.08fr) minmax(320px, 0.92fr);
+    grid-template-columns: repeat(2, minmax(0, 1fr));
     gap: 14px;
     align-items: stretch;
     min-width: 0;
@@ -5297,14 +5297,14 @@
 
   .user-center-points-card {
     display: grid;
-    min-height: 214px;
-    align-content: start;
-    gap: 14px;
+    min-height: 196px;
+    align-content: center;
+    gap: 12px;
     border-color: rgba(255, 43, 136, 0.2);
     background:
       radial-gradient(circle at 14% 0%, rgba(255, 43, 136, 0.16), transparent 42%),
       #141418;
-    padding: 24px;
+    padding: 22px;
   }
 
   .user-center-card-icon {
@@ -5328,8 +5328,15 @@
 
   .user-center-points-card__copy {
     display: grid;
-    gap: 9px;
+    gap: 10px;
     min-width: 0;
+  }
+
+  .user-center-points-card__main {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 14px;
+    align-items: center;
   }
 
   .user-center-points-card__copy > span,
@@ -5350,7 +5357,7 @@
   .user-center-points-card__value {
     overflow: hidden;
     color: #ff62a9;
-    font-size: clamp(34px, 3vw, 46px);
+    font-size: clamp(36px, 4vw, 52px);
     font-weight: 780;
     line-height: 1.05;
     text-overflow: ellipsis;
@@ -5377,8 +5384,8 @@
 
   .user-center-entitlement-block {
     display: grid;
-    gap: 9px;
-    margin-top: 4px;
+    gap: 8px;
+    margin-top: 8px;
   }
 
   .user-center-entitlement-block > span {
@@ -5392,15 +5399,14 @@
     display: grid;
     grid-template-columns: repeat(3, minmax(0, 1fr));
     gap: 8px;
-    max-width: 520px;
   }
 
   .user-center-entitlement-pill {
     display: grid;
     min-width: 0;
-    min-height: 58px;
+    min-height: 52px;
     align-content: center;
-    gap: 6px;
+    gap: 5px;
     border: 1px solid rgba(255, 255, 255, 0.08);
     border-radius: 12px;
     background: linear-gradient(180deg, rgba(255, 255, 255, 0.052), rgba(255, 255, 255, 0.032));
@@ -5428,16 +5434,6 @@
     text-overflow: ellipsis;
     white-space: nowrap;
     font-variant-numeric: tabular-nums;
-  }
-
-  .user-center-points-card__actions {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 10px;
-  }
-
-  .user-center-mobile-status {
-    display: none;
   }
 
   .user-center-action,
@@ -5501,7 +5497,7 @@
     grid-template-columns: 36px minmax(0, 1fr);
     align-items: start;
     gap: 12px;
-    min-height: 214px;
+    min-height: 196px;
     align-content: start;
     border-color: var(--member-border, rgba(255, 255, 255, 0.08));
     background:
@@ -5514,6 +5510,20 @@
     display: grid;
     min-width: 0;
     gap: 5px;
+  }
+
+  .user-center-plan-line {
+    display: flex;
+    min-width: 0;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+  }
+
+  .user-center-plan-line > span {
+    color: rgba(255, 255, 255, 0.62);
+    font-size: 13px;
+    font-weight: 650;
   }
 
   .user-center-mini-card strong {
@@ -9240,6 +9250,31 @@
     padding: 0;
   }
 
+  .image-editor-tutorial__loading {
+    position: absolute;
+    inset: 28% 31%;
+    z-index: 2;
+    border: 1px solid rgba(255, 255, 255, 0.06);
+    border-radius: 16px;
+    background:
+      radial-gradient(circle at 50% 42%, rgba(255, 43, 136, 0.14), transparent 46%),
+      linear-gradient(180deg, rgba(255, 255, 255, 0.045), rgba(255, 255, 255, 0.018));
+    opacity: 1;
+    pointer-events: none;
+    transition: opacity 220ms var(--ease-enter);
+  }
+
+  .image-editor-tutorial.is-ready .image-editor-tutorial__loading {
+    opacity: 0;
+  }
+
+  .image-editor-tutorial:not(.is-ready) .image-editor-photo,
+  .image-editor-tutorial:not(.is-ready) .image-editor-arrow,
+  .image-editor-tutorial:not(.is-ready) .image-editor-prompt,
+  .image-editor-tutorial:not(.is-ready) .image-editor-plane-mark {
+    visibility: hidden;
+  }
+
   .image-editor-tutorial__canvas {
     position: relative;
     isolation: isolate;
@@ -11641,73 +11676,17 @@
 
   .shell-panel--mobile-single .user-center-points-card {
     min-height: auto;
-    gap: 18px;
+    gap: 12px;
     padding: 16px;
+  }
+
+  .shell-panel--mobile-single .user-center-points-card__main {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 12px;
   }
 
   .shell-panel--mobile-single .user-center-points-card__value {
     font-size: 30px;
-  }
-
-  .shell-panel--mobile-single .user-center-points-card__actions {
-    display: grid;
-    grid-template-columns: minmax(0, 1fr);
-  }
-
-  .shell-panel--mobile-single .user-center-mobile-status {
-    display: grid;
-    gap: 10px;
-    border-top: 1px solid rgba(255, 255, 255, 0.075);
-    padding-top: 12px;
-  }
-
-  .shell-panel--mobile-single .user-center-mobile-status__item {
-    display: grid;
-    grid-template-columns: minmax(0, 1fr) auto;
-    gap: 6px 10px;
-    align-items: center;
-    border: 1px solid rgba(255, 255, 255, 0.075);
-    border-radius: 11px;
-    background: rgba(255, 255, 255, 0.035);
-    padding: 11px;
-  }
-
-  .shell-panel--mobile-single .user-center-mobile-status__item span {
-    display: inline-flex;
-    align-items: center;
-    gap: 6px;
-    color: rgba(255, 255, 255, 0.58);
-    font-size: 12px;
-    font-weight: 650;
-  }
-
-  .shell-panel--mobile-single .user-center-mobile-status__item span svg {
-    color: rgba(255, 43, 136, 0.86);
-  }
-
-  .shell-panel--mobile-single .user-center-mobile-status__item strong {
-    color: rgba(255, 255, 255, 0.9);
-    font-size: 14px;
-    line-height: 1.25;
-  }
-
-  .shell-panel--mobile-single .user-center-mobile-status__item button {
-    grid-row: 1 / span 2;
-    grid-column: 2;
-    min-height: 30px;
-    border: 1px solid rgba(255, 43, 136, 0.2);
-    border-radius: 999px;
-    background: rgba(255, 43, 136, 0.1);
-    color: rgba(255, 220, 238, 0.95);
-    padding: 0 10px;
-    font-size: 12px;
-    font-weight: 700;
-  }
-
-  .shell-panel--mobile-single .user-center-mobile-status__item button:disabled {
-    border-color: rgba(255, 255, 255, 0.07);
-    background: rgba(255, 255, 255, 0.04);
-    color: rgba(255, 255, 255, 0.38);
   }
 
   .shell-panel--mobile-single .user-center-mini-card {
@@ -11717,14 +11696,19 @@
     padding: 13px;
   }
 
+  .shell-panel--mobile-single .user-center-entitlement-strip {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
   .shell-panel--mobile-single .user-center-mini-card__action {
     grid-column: 2;
     width: fit-content;
     min-height: 32px;
   }
 
-  .shell-panel--mobile-single .user-center-plan-details {
-    grid-template-columns: minmax(0, 1fr);
+  .shell-panel--mobile-single .user-center-plan-line {
+    display: grid;
+    gap: 5px;
   }
 
   .shell-panel--mobile-single .user-center-stat {
@@ -12695,20 +12679,15 @@
   }
 
   .shell-root .shell-panel.shell-panel--mobile-single .user-center-side-cards {
-    display: none;
+    display: grid;
     grid-template-columns: minmax(0, 1fr);
   }
 
   .shell-root .shell-panel.shell-panel--mobile-single .user-center-points-card {
     width: 100%;
     min-height: auto;
-    gap: 18px;
+    gap: 12px;
     padding: 16px;
-  }
-
-  .shell-root .shell-panel.shell-panel--mobile-single .user-center-points-card__actions {
-    display: grid;
-    grid-template-columns: minmax(0, 1fr);
   }
 
   .shell-root .shell-panel.shell-panel--mobile-single .user-center-mini-card {

@@ -7,6 +7,7 @@ import {
   getNewApiQuotaDisplayConfig,
   type NewApiQuotaDisplayConfig,
 } from "./quota-display";
+import { adminSetNewApiUserQuota } from "./topup";
 import {
   createJsonNewApiUserMappingRepository,
   NewApiUserMappingError,
@@ -44,6 +45,7 @@ export type NewApiUserSyncDependencies = {
   createUser?: typeof adminCreateUser;
   listUsers?: typeof adminGetUsers;
   searchUsers?: typeof adminSearchUsers;
+  setUserQuota?: UserQuotaSetter;
   getQuotaDisplayConfig?: () => Promise<NewApiQuotaDisplayConfig>;
 };
 
@@ -55,6 +57,10 @@ type UpstreamCreateResult =
 
 type UserLookup = (profile: NewApiUserSyncProfile) => ReturnType<typeof adminGetUsers>;
 type QuotaDisplayConfigLoader = () => Promise<NewApiQuotaDisplayConfig>;
+type UserQuotaSetter = (input: {
+  newApiUserId: number;
+  quota: number;
+}) => ReturnType<typeof adminSetNewApiUserQuota>;
 
 const DEFAULT_GROUP = "default";
 const MAX_NEW_API_USER_FIELD_LENGTH = 20;
@@ -150,6 +156,32 @@ function errorMessage(error: unknown) {
   return "New API user sync failed.";
 }
 
+function numericQuota(user: NewApiUserRecord) {
+  const quota = Number(user.quota);
+  return Number.isFinite(quota) ? quota : null;
+}
+
+async function ensureInitialQuotaFloor(
+  profile: NewApiUserSyncProfile,
+  user: NewApiUserRecord,
+  setUserQuota: UserQuotaSetter,
+  getQuotaDisplayConfig: QuotaDisplayConfigLoader,
+  setWhenQuotaMissing: boolean,
+) {
+  const initialCredits = Math.max(0, Math.trunc(profile.initialQuota ?? 0));
+  if (initialCredits <= 0) return;
+
+  const targetQuota = creditsToNewApiQuota(initialCredits, await getQuotaDisplayConfig());
+  const currentQuota = numericQuota(user);
+  if (currentQuota !== null && currentQuota >= targetQuota) return;
+  if (currentQuota === null && !setWhenQuotaMissing) return;
+
+  await setUserQuota({
+    newApiUserId: user.id,
+    quota: targetQuota,
+  });
+}
+
 async function findUpstreamUser(
   profile: NewApiUserSyncProfile,
   lookupUsers: UserLookup,
@@ -209,6 +241,7 @@ export class NewApiUserSyncService {
   private readonly repository: NewApiUserMappingRepository;
   private readonly createUser: typeof adminCreateUser;
   private readonly lookupUsers: UserLookup;
+  private readonly setUserQuota: UserQuotaSetter;
   private readonly getQuotaDisplayConfig: QuotaDisplayConfigLoader;
   private readonly inFlight = new Map<string, Promise<NewApiUserSyncResult>>();
 
@@ -218,6 +251,7 @@ export class NewApiUserSyncService {
     this.lookupUsers = dependencies.listUsers
       ? () => dependencies.listUsers!()
       : (profile) => (dependencies.searchUsers || adminSearchUsers)(normalizeUsername(profile));
+    this.setUserQuota = dependencies.setUserQuota || adminSetNewApiUserQuota;
     this.getQuotaDisplayConfig = dependencies.getQuotaDisplayConfig || getNewApiQuotaDisplayConfig;
   }
 
@@ -275,6 +309,26 @@ export class NewApiUserSyncService {
       }
 
       const upstreamUser = upstream.user;
+      try {
+        await ensureInitialQuotaFloor(
+          profile,
+          upstreamUser,
+          this.setUserQuota,
+          this.getQuotaDisplayConfig,
+          upstream.kind === "created",
+        );
+      } catch (error) {
+        const repair = await this.repository.markFailed({
+          localUserId: profile.localUserId,
+          code: "NEW_API_INITIAL_QUOTA_FAILED",
+          message: errorMessage(error),
+          retryable: isRetryableError(error),
+          maxRetryCount: options.maxRetryCount,
+          expectedVersion: prepared.version,
+        });
+        return { mapping: repair, action: "repair_required" };
+      }
+
       const latest = await this.repository.getByLocalUserId(profile.localUserId);
       const upstreamUserId = String(upstreamUser.id);
       if (latest?.sync_status === "active" && latest.new_api_user_id === upstreamUserId) {

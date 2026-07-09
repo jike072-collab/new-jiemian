@@ -36,8 +36,8 @@ export function getPlanStatusDisplay(planStatus: PlanStatus): AccountStatusDispl
 
   if (planStatus.status === "none") {
     return {
-      label: "按需充值",
-      note: "当前使用积分模式，可升级会员享受充值加成与每月赠送。",
+      label: "会员未开通",
+      note: "当前可直接使用积分，也可以开通会员获得充值加成与每月赠送。",
       actionLabel: "查看会员",
       actionDisabled: false,
     };
