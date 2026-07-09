@@ -295,6 +295,50 @@ test("registration reuses an email after New API reports the old account missing
   assert.equal(audit.some((event) => event.event === "auth.register.identity_released" && event.details.reason === "upstream_missing"), true);
 });
 
+test("registration releases unmapped New API create-rejected identity", async () => {
+  const harness = service();
+  const first = await harness.repository.createUser({
+    localUserId: "create-rejected-local",
+    email: "customer@example.com",
+    username: "cust01",
+    displayName: "Customer",
+    passwordHash: await hashPassword("StrongPass123"),
+    status: "active",
+    role: "user",
+    now: new Date("2026-06-19T00:00:00.000Z"),
+  });
+
+  await harness.mappingRepository.createPending({
+    localUserId: first.local_user_id,
+    idempotencyKey: "register:create-rejected-local",
+  });
+  await harness.mappingRepository.scheduleRepair({
+    localUserId: first.local_user_id,
+    code: "NEW_API_USER_CREATE_REJECTED",
+    message: "duplicate upstream username",
+  });
+
+  const requested = await harness.service.requestVerificationCode({
+    identifier: "customer@example.com",
+    purpose: "register",
+  });
+  assert.equal(requested.ok, true);
+
+  const second = await harness.service.register({
+    email: "customer@example.com",
+    username: "cust01",
+    password: "StrongPass123",
+    verificationCode: harness.sentCodes.at(-1)?.code || "",
+    displayName: "Customer Again",
+  });
+  assert.equal(second.ok, true);
+  if (!second.ok) return;
+  assert.notEqual(second.user.local_user_id, first.local_user_id);
+
+  const audit = await harness.repository.listAuditEvents();
+  assert.equal(audit.some((event) => event.event === "auth.register.identity_released" && event.details.reason === "mapping_unmapped_create_rejected"), true);
+});
+
 test("registration does not release administrator identity from New API status", async () => {
   const harness = service({
     getNewApiUser: async () => ({

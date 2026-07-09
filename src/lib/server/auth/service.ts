@@ -577,6 +577,14 @@ export class AuthService {
       return `mapping_${mapping.sync_status}`;
     }
 
+    if (
+      mapping?.sync_status === "repair_required"
+      && !mapping.new_api_user_id
+      && mapping.last_error_code === "NEW_API_USER_CREATE_REJECTED"
+    ) {
+      return "mapping_unmapped_create_rejected";
+    }
+
     if (mapping?.sync_status === "active" && mapping.new_api_user_id) {
       const upstreamStatus = await this.getTerminalUpstreamUserStatus(mapping.new_api_user_id);
       if (upstreamStatus) return upstreamStatus;
