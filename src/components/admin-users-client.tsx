@@ -1,6 +1,6 @@
 "use client";
 
-import { ArrowLeft, Loader2, RefreshCw, Save, ShieldCheck, UsersRound } from "lucide-react";
+import { ArrowLeft, Loader2, RefreshCw, Save, ShieldCheck, UserX, UsersRound } from "lucide-react";
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 
@@ -31,6 +31,11 @@ type MembershipGrantResponse = {
   ok: true;
   membership_status: MembershipStatusSnapshot;
   credited_quota: number;
+};
+
+type AdminUserStatusResponse = {
+  ok: true;
+  user: Omit<AdminUser, "membership">;
 };
 
 const cycleLabels: Record<MembershipCycle, string> = {
@@ -130,6 +135,38 @@ export function AdminUsersClient() {
       setMessage(`${userName(user)} 已开通 ${planName(plans, planId)}，到账 ${formatCredits(data.credited_quota)} 积分。`);
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "套餐开通失败。");
+    } finally {
+      setSavingUserId(null);
+    }
+  }
+
+  async function releaseUserEmail(user: AdminUser) {
+    if (user.role === "admin") {
+      setMessage("管理员账号不能在这里注销释放邮箱，请先保留至少一个可用管理员。");
+      return;
+    }
+    const label = user.email || user.username || user.local_user_id;
+    const confirmed = window.confirm(`确认注销 ${label} 并释放邮箱吗？该用户会被禁用，邮箱和用户名可重新注册。`);
+    if (!confirmed) return;
+
+    setSavingUserId(user.local_user_id);
+    try {
+      const data = await fetchJsonWithCsrf<AdminUserStatusResponse>(`/api/admin/users/${encodeURIComponent(user.local_user_id)}/status`, {
+        method: "POST",
+        body: JSON.stringify({
+          status: "disabled",
+          reason: "admin release identity for re-registration",
+          releaseIdentity: true,
+        }),
+      });
+      setUsers((current) => current.map((entry) => (
+        entry.local_user_id === user.local_user_id
+          ? { ...entry, ...data.user }
+          : entry
+      )));
+      setMessage(`${label} 已注销并释放邮箱，可重新注册。`);
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "注销并释放邮箱失败。");
     } finally {
       setSavingUserId(null);
     }
@@ -243,6 +280,17 @@ export function AdminUsersClient() {
                             {savingUserId === user.local_user_id ? <Loader2 className="size-4 animate-spin" /> : <Save className="size-4" />}
                             开通
                           </button>
+                          {user.role !== "admin" ? (
+                            <button
+                              type="button"
+                              onClick={() => releaseUserEmail(user)}
+                              disabled={savingUserId === user.local_user_id}
+                              className="admin-secondary h-10 border-red-400/20 text-red-100 hover:border-red-300/40 hover:text-white"
+                            >
+                              {savingUserId === user.local_user_id ? <Loader2 className="size-4 animate-spin" /> : <UserX className="size-4" />}
+                              注销释放邮箱
+                            </button>
+                          ) : null}
                         </div>
                       </td>
                     </tr>

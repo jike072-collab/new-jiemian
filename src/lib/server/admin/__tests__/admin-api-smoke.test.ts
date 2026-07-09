@@ -302,6 +302,51 @@ test("admin account cancellation releases email for future registration", async 
   assert.equal(audit.some((event) => event.event === "admin.users.status_updated" && event.details.identity_released === true), true);
 });
 
+test("admin explicit release identity flag frees email for future registration", async () => {
+  const { service, authRepository } = harness();
+  const updated = await service.updateUserStatus(
+    adminActor,
+    "target-user",
+    "disabled",
+    "manual customer account closure",
+    {},
+    { releaseIdentity: true },
+  );
+  assert.equal(updated.ok, true);
+  if (!updated.ok) return;
+  assert.equal(updated.user.status, "disabled");
+  assert.equal(await authRepository.getUserByIdentifier("target@example.com"), null);
+  assert.equal(await authRepository.getUserByIdentifier("target"), null);
+
+  const recreated = await authRepository.createUser({
+    localUserId: "new-target-user",
+    email: "target@example.com",
+    username: "target",
+    displayName: "New Target",
+    passwordHash: "hash",
+    now: new Date("2026-06-19T00:02:00.000Z"),
+  });
+  assert.equal(recreated.local_user_id, "new-target-user");
+});
+
+test("only active admin cannot be disabled or released", async () => {
+  const { service, authRepository } = harness();
+  const blocked = await service.updateUserStatus(
+    adminActor,
+    "admin-user",
+    "disabled",
+    "manual admin account closure",
+    {},
+    { releaseIdentity: true },
+  );
+  assert.equal(blocked.ok, false);
+  if (!blocked.ok) {
+    assert.equal(blocked.status, 409);
+    assert.equal(blocked.code, "admin_conflict");
+  }
+  assert.equal((await authRepository.getUserByIdentifier("admin@example.com"))?.local_user_id, "admin-user");
+});
+
 test("quota adjustment is idempotent and does not create a second local balance", async () => {
   const harnessed = harness();
   const first = await harnessed.service.adjustQuota(adminActor, {

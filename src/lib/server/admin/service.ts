@@ -122,8 +122,9 @@ function failure(code: AdminFailureCode, status: number, message: string): Admin
   return { ok: false, code, status, message };
 }
 
-function shouldReleaseDisabledUserIdentity(status: string, reason: string) {
+function shouldReleaseDisabledUserIdentity(status: string, reason: string, releaseIdentity?: boolean) {
   if (status !== "disabled") return false;
+  if (releaseIdentity === true) return true;
   const normalized = reason.trim().toLowerCase();
   return /注销|释放邮箱|释放账号|释放登录|delete account|deleted account|release identity|release email/.test(normalized);
 }
@@ -305,22 +306,44 @@ export class AdminService {
     };
   }
 
-  async updateUserStatus(actor: AdminActor, localUserId: string, status: string, reason: string, context: AuthRequestContext = {}) {
+  private async isOnlyActiveAdmin(user: AuthUser) {
+    if (user.role !== "admin" || user.status !== "active") return false;
+    const admins = await this.authRepository.listUsersPage({
+      role: "admin",
+      status: "active",
+      page: 1,
+      pageSize: 2,
+    });
+    return admins.total <= 1;
+  }
+
+  async updateUserStatus(
+    actor: AdminActor,
+    localUserId: string,
+    status: string,
+    reason: string,
+    context: AuthRequestContext = {},
+    options: { releaseIdentity?: boolean } = {},
+  ) {
     if (!userStatuses.has(status as AuthUserStatus)) return failure("admin_invalid_request", 400, "User status is invalid.");
     if (!reason.trim()) return failure("admin_invalid_request", 400, "Reason is required.");
     const current = await this.authRepository.getUserById(localUserId);
     if (!current) return failure("admin_not_found", 404, "User was not found.");
+    const releaseIdentity = shouldReleaseDisabledUserIdentity(status, reason, options.releaseIdentity);
+    if (status === "disabled" && await this.isOnlyActiveAdmin(current)) {
+      return failure("admin_conflict", 409, "The only active administrator cannot be disabled.");
+    }
     let updated = current.status === status
       ? current
       : await this.authRepository.updateUser(localUserId, { status: status as AuthUserStatus }, this.now());
-    if (shouldReleaseDisabledUserIdentity(status, reason)) {
+    if (releaseIdentity) {
       updated = await this.authRepository.releaseUserIdentity(localUserId, this.now());
     }
     await this.audit("admin.users.status_updated", actor.localUserId, context, {
       target_user_id: localUserId,
       previous_status: current.status,
       status,
-      identity_released: shouldReleaseDisabledUserIdentity(status, reason),
+      identity_released: releaseIdentity,
       reason: sanitize(reason),
     });
     return { ok: true as const, status: 200, user: publicUser(updated) };

@@ -63,6 +63,7 @@ export async function adminUpdateUserStatusResponse(request: NextRequest, localU
     String(body.status || ""),
     String(body.reason || ""),
     authRequestContext(request),
+    { releaseIdentity: body.releaseIdentity === true || body.release_identity === true },
   ));
 }
 
