@@ -133,6 +133,10 @@ function nowIso(now: Date) {
   return now.toISOString();
 }
 
+function createGrantBillingOrderId() {
+  return `bo_${randomUUID().replace(/-/g, "").slice(0, 29)}`;
+}
+
 function page(value?: number) {
   return Math.max(1, Math.trunc(value || 1));
 }
@@ -425,6 +429,40 @@ export class AdminService {
     }
   }
 
+  private async recordAdminGrantOrder(input: {
+    localUserId: string;
+    newApiUserId: string;
+    creditedQuota: number;
+    idempotencyKey: string;
+  }) {
+    if (input.creditedQuota <= 0) return;
+    const existing = await this.billingRepository.getOrderByIdempotencyKey(input.localUserId, input.idempotencyKey);
+    if (existing) return;
+    const timestamp = nowIso(this.now());
+    await this.billingRepository.createOrder({
+      order_id: createGrantBillingOrderId(),
+      local_user_id: input.localUserId,
+      new_api_user_id: input.newApiUserId,
+      channel: "admin_grant",
+      currency: "CNY",
+      requested_amount: 0,
+      paid_amount: 0,
+      credited_quota: input.creditedQuota,
+      product_type: "credits",
+      product_plan_id: null,
+      product_cycle: null,
+      status: "paid",
+      idempotency_key: input.idempotencyKey,
+      provider_order_id: `admin-grant:${input.localUserId}:${input.idempotencyKey}`,
+      created_at: timestamp,
+      updated_at: timestamp,
+      paid_at: timestamp,
+      last_error: null,
+      quota_credit_applied_at: timestamp,
+      refunded_at: null,
+    });
+  }
+
   async adjustQuota(actor: AdminActor, input: { localUserId: string; quotaDelta: number; idempotencyKey: string; reason: string }, context: AuthRequestContext = {}) {
     if (!Number.isInteger(input.quotaDelta) || input.quotaDelta === 0) return failure("admin_invalid_request", 400, "Quota delta is invalid.");
     if (!input.idempotencyKey.trim() || !input.reason.trim()) return failure("admin_invalid_request", 400, "Idempotency key and reason are required.");
@@ -510,6 +548,12 @@ export class AdminService {
           reason: sanitize(input.reason),
           idempotency_key: input.idempotencyKey.trim(),
         });
+        await this.recordAdminGrantOrder({
+          localUserId: input.localUserId,
+          newApiUserId,
+          creditedQuota: input.quotaDelta,
+          idempotencyKey: `admin-grant:${input.idempotencyKey.trim()}`,
+        }).catch(() => undefined);
         return { ok: true, status: 200, adjustment: applied, original_quota: persistedOriginalQuota, target_quota: persistedTargetQuota };
       } catch (error) {
         await this.audit("admin.quota.adjustment_failed", actor.localUserId, context, {

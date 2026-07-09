@@ -369,6 +369,24 @@ test("quota adjustment is idempotent and does not create a second local balance"
   assert.equal(harnessed.providerWriteCount("100"), 1);
 });
 
+test("positive quota adjustment records a grant order once", async () => {
+  const harnessed = harness();
+  const result = await harnessed.service.adjustQuota(adminActor, {
+    localUserId: "target-user",
+    quotaDelta: 120,
+    idempotencyKey: "quota-admin-grant-order",
+    reason: "manual package grant",
+  });
+  assert.equal(result.ok, true);
+
+  const orders = await harnessed.billingRepository.listOrders({ localUserId: "target-user" });
+  const grantOrders = orders.filter((entry) => entry.channel === "admin_grant" && entry.idempotency_key === "admin-grant:quota-admin-grant-order");
+  assert.equal(grantOrders.length, 1);
+  assert.equal(grantOrders[0]?.status, "paid");
+  assert.equal(grantOrders[0]?.credited_quota, 120);
+  assert.equal(grantOrders[0]?.requested_amount, 0);
+});
+
 test("quota adjustment idempotency key is bound to the target user", async () => {
   const harnessed = harness();
   const first = await harnessed.service.adjustQuota(adminActor, {

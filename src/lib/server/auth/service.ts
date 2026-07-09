@@ -13,6 +13,8 @@ import { InMemoryRateLimiter } from "./rate-limit";
 import { hmacSha256, timingSafeStringEqual } from "./secrets";
 import { AuthVerificationSendError, sendAuthVerificationCode, type AuthVerificationSender } from "./verification-sender";
 import { getWorkloadLimits } from "../workload-limits";
+import { createBillingPersistenceRepository } from "../billing/persistence";
+import { type BillingRepository } from "../billing/repository";
 import {
   AuthRepositoryError,
   type AuthRepository,
@@ -79,6 +81,7 @@ export type PasswordResetInput = {
 export type AuthServiceDependencies = {
   repository?: AuthRepository;
   mappingRepository?: NewApiUserMappingRepository;
+  billingRepository?: BillingRepository;
   userSyncService?: Pick<NewApiUserSyncService, "ensureMapped">;
   getNewApiUser?: typeof adminGetNewApiUser;
   loginLimiter?: InMemoryRateLimiter;
@@ -142,6 +145,10 @@ function newUserInitialCredits() {
   return configured > 0 ? configured : DEFAULT_NEW_USER_INITIAL_CREDITS;
 }
 
+function createGrantBillingOrderId() {
+  return `bo_${randomUUID().replace(/-/g, "").slice(0, 29)}`;
+}
+
 function failure(input: Omit<AuthFailure, "ok">): AuthFailure {
   return { ok: false, ...input };
 }
@@ -193,6 +200,7 @@ function success(input: Omit<AuthSuccess, "ok">): AuthSuccess {
 export class AuthService {
   private readonly repository: AuthRepository;
   private readonly mappingRepository: NewApiUserMappingRepository;
+  private readonly billingRepository: BillingRepository;
   private readonly userSyncService: Pick<NewApiUserSyncService, "ensureMapped">;
   private readonly getNewApiUser: typeof adminGetNewApiUser;
   private readonly loginLimiter: InMemoryRateLimiter;
@@ -212,6 +220,7 @@ export class AuthService {
     }
     this.repository = repository;
     this.mappingRepository = mappingRepository;
+    this.billingRepository = dependencies.billingRepository || createBillingPersistenceRepository();
     this.userSyncService = dependencies.userSyncService || createNewApiUserSyncService({
       repository: this.mappingRepository,
     });
@@ -443,6 +452,14 @@ export class AuthService {
         uiState: "service_unavailable",
         message: "Registration could not safely create a mapping.",
       });
+    }
+
+    if (mapping.mapping.sync_status === "active" && mapping.mapping.new_api_user_id) {
+      await this.recordSignupGrantOrder({
+        localUserId: user.local_user_id,
+        newApiUserId: mapping.mapping.new_api_user_id,
+        creditedQuota: newUserInitialCredits(),
+      }).catch(() => undefined);
     }
 
     const session = await this.createSession(user, context);
@@ -771,6 +788,40 @@ export class AuthService {
       });
       return null;
     }
+  }
+
+  private async recordSignupGrantOrder(input: {
+    localUserId: string;
+    newApiUserId: string;
+    creditedQuota: number;
+  }) {
+    if (input.creditedQuota <= 0) return;
+    const idempotencyKey = `signup-grant:${input.localUserId}`;
+    const existing = await this.billingRepository.getOrderByIdempotencyKey(input.localUserId, idempotencyKey);
+    if (existing) return;
+    const timestamp = nowIso(this.now());
+    await this.billingRepository.createOrder({
+      order_id: createGrantBillingOrderId(),
+      local_user_id: input.localUserId,
+      new_api_user_id: input.newApiUserId,
+      channel: "signup_bonus",
+      currency: "CNY",
+      requested_amount: 0,
+      paid_amount: 0,
+      credited_quota: input.creditedQuota,
+      product_type: "credits",
+      product_plan_id: null,
+      product_cycle: null,
+      status: "paid",
+      idempotency_key: idempotencyKey,
+      provider_order_id: `signup-grant:${input.localUserId}`,
+      created_at: timestamp,
+      updated_at: timestamp,
+      paid_at: timestamp,
+      last_error: null,
+      quota_credit_applied_at: timestamp,
+      refunded_at: null,
+    });
   }
 
   private async consumeVerificationCode(input: {

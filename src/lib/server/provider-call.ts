@@ -1244,6 +1244,12 @@ export async function generateImage(input: {
         expectedCount: outputCount,
       });
       if (existingItems.length) return existingItems;
+      throw new GenerationDiagnosticError({
+        code: "TASK_CREATE_FAILED",
+        status: 409,
+        message: error.message,
+        publicMessage: "当前任务已在生成中，请稍候在作品库查看结果。",
+      });
     }
     if (!(error instanceof BillingSettlementRequiredError) && !(error instanceof BillingDispatchRejectedError)) {
       await settleGeneratedTaskBilling({
@@ -1438,6 +1444,14 @@ export async function submitVideo(input: {
     });
     return { item, job };
   } catch (error) {
+    if (error instanceof BillingDispatchRejectedError) {
+      throw new GenerationDiagnosticError({
+        code: "TASK_CREATE_FAILED",
+        status: 409,
+        message: error.message,
+        publicMessage: "当前任务已在生成中，请稍候在作品库查看结果。",
+      });
+    }
     if (!(error instanceof BillingSettlementRequiredError) && !(error instanceof BillingDispatchRejectedError)) {
       await settleGeneratedTaskBilling({
         localUserId: input.billingLocalUserId,

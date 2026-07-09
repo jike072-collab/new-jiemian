@@ -355,6 +355,8 @@ function createTaskId(prefix: string) {
   return `${prefix}-${suffix}`;
 }
 
+type ImageWorkspaceScope = "image" | "image-editor";
+
 function withPreviewParam(href: string, previewMode: boolean) {
   if (!previewMode || href.includes("preview=1")) return href;
   return `${href}${href.includes("?") ? "&" : "?"}preview=1`;
@@ -639,6 +641,8 @@ export function StudioApp() {
   const [generationProgressTick, setGenerationProgressTick] = useState(() => Date.now());
   const [outputs, setOutputs] = useState<Partial<Record<BusinessToolId, OutputState>>>({});
   const [imageOutputs, setImageOutputs] = useState<OutputItemState[]>([]);
+  const [imageRequestScope, setImageRequestScope] = useState<ImageWorkspaceScope | null>(null);
+  const [imageResultScope, setImageResultScope] = useState<ImageWorkspaceScope | null>(null);
   const [mobileAction, setMobileAction] = useState<MobileActionState>(null);
   const [mobilePreviewSignal, setMobilePreviewSignal] = useState(0);
   const [uploadLimits, setUploadLimits] = useState(defaultUploadLimits);
@@ -1029,6 +1033,20 @@ export function StudioApp() {
     accountUsageLoaded,
     accountView,
     refreshBillingOrdersSnapshot,
+    refreshQuotaSnapshot,
+    refreshUsageSnapshot,
+    sessionUser?.local_user_id,
+  ]);
+
+  const refreshAccountAfterPrecheck = useCallback(async () => {
+    const userId = sessionUser?.local_user_id || null;
+    await refreshQuotaSnapshot(userId);
+    if (accountCenterOpen || accountUsageLoaded) {
+      await refreshUsageSnapshot(userId);
+    }
+  }, [
+    accountCenterOpen,
+    accountUsageLoaded,
     refreshQuotaSnapshot,
     refreshUsageSnapshot,
     sessionUser?.local_user_id,
@@ -1441,9 +1459,10 @@ export function StudioApp() {
   );
   const membershipEntitlements = membershipSnapshot?.membership.entitlements ?? null;
 
-  const handleImageResult = useCallback((item: LibraryItem, options?: { append?: boolean }) => {
+  const handleImageResult = useCallback((item: LibraryItem, options?: { append?: boolean; scope?: ImageWorkspaceScope | null }) => {
     const nextOutput: OutputItemState = { item, title: "图片结果", tool: "image" };
     setOutputs((prev) => ({ ...prev, image: nextOutput }));
+    setImageResultScope(options?.scope || null);
     setImageOutputs((prev) => {
       if (!options?.append) return [nextOutput];
       const withoutDuplicate = prev.filter((output) => output.item.id !== item.id);
@@ -1463,6 +1482,7 @@ export function StudioApp() {
     return providers.image.find((provider) => provider.id === imageWorkspace.providerId) || providers.image[0];
   }, [imageWorkspace.providerId, providers.image]);
 
+  const activeImageWorkspaceScope: ImageWorkspaceScope = activeWorkspaceToolId === "image-editor" ? "image-editor" : "image";
   const imageWorkspaceFiles = imageWorkspace.files;
   const imageWorkspaceHasFiles = imageWorkspaceFiles.length > 0;
   const imageWorkspacePrompt = imageWorkspace.prompt.trim();
@@ -1483,6 +1503,11 @@ export function StudioApp() {
     && !imageWorkspace.loading
     && Boolean(imageWorkspacePrompt)
     && (!imageWorkspaceRequiresFile || imageWorkspaceHasFiles);
+  const scopedImageLoading = imageWorkspace.loading && imageRequestScope === activeImageWorkspaceScope;
+  const scopedImageSubmitError = imageRequestScope === activeImageWorkspaceScope ? imageWorkspace.submitError : "";
+  const scopedImageSubmitDiagnostic = imageRequestScope === activeImageWorkspaceScope ? imageWorkspace.submitDiagnostic : null;
+  const scopedImageOutputs = imageResultScope === activeImageWorkspaceScope ? imageOutputs : [];
+  const scopedActiveImageOutput = imageResultScope === activeImageWorkspaceScope ? activeOutput : null;
 
   const updateImageWorkspace = useCallback((patch: Partial<ImageWorkspaceState>) => {
     setImageWorkspace((prev) => ({
@@ -1691,6 +1716,7 @@ export function StudioApp() {
     const progressId = createTaskId("image-progress");
     const batchId = createTaskId("image-batch");
     const snapshot = {
+      scope: activeImageWorkspaceScope,
       providerId: selectedImageProvider.id,
       mode: activeImageMode,
       ratio: imageWorkspace.ratio,
@@ -1703,6 +1729,8 @@ export function StudioApp() {
     };
 
     updateImageInFlightState(imageInFlightCountRef.current + 1);
+    setImageRequestScope(snapshot.scope);
+    setImageResultScope(null);
     setImageOutputs([]);
     setOutputs((prev) => ({ ...prev, image: null }));
     setImageWorkspace((prev) => ({
@@ -1746,6 +1774,7 @@ export function StudioApp() {
           requestFingerprint,
         }),
       });
+      await refreshAccountAfterPrecheck();
 
       const form = new FormData();
       form.set("providerId", snapshot.providerId);
@@ -1772,7 +1801,7 @@ export function StudioApp() {
       if (!items.length) {
         throw new Error("图片生成未返回结果。");
       }
-      items.forEach((item) => handleImageResult(item, { append: true }));
+      items.forEach((item) => handleImageResult(item, { append: true, scope: snapshot.scope }));
 
       await refreshLibraryAfterMutation();
       await refreshAccountAfterGeneration();
@@ -1801,6 +1830,7 @@ export function StudioApp() {
       updateImageInFlightState(imageInFlightCountRef.current - 1);
     }
   }, [
+    activeImageWorkspaceScope,
     activeImageMode,
     handleImageResult,
     imageWorkspace.files,
@@ -1811,6 +1841,7 @@ export function StudioApp() {
     imageWorkspacePrompt,
     imageWorkspaceHasFiles,
     imageWorkspaceRequiresFile,
+    refreshAccountAfterPrecheck,
     refreshAccountAfterGeneration,
     refreshLibraryAfterMutation,
     selectedImageProvider,
@@ -2135,6 +2166,7 @@ export function StudioApp() {
           requestFingerprint,
         }),
       });
+      await refreshAccountAfterPrecheck();
       const form = new FormData();
       form.set("file", currentFile.file);
       form.set("scale", imageUpscaleWorkspace.scale);
@@ -2156,7 +2188,7 @@ export function StudioApp() {
       imageUpscaleInFlightRef.current = false;
       updateImageUpscaleWorkspace({ loading: false });
     }
-  }, [imageUpscaleWorkspace.availability?.ready, imageUpscaleWorkspace.file, imageUpscaleWorkspace.loading, imageUpscaleWorkspace.scale, refreshAccountAfterGeneration, refreshLibraryAfterMutation, setMessage, updateImageUpscaleWorkspace]);
+  }, [imageUpscaleWorkspace.availability?.ready, imageUpscaleWorkspace.file, imageUpscaleWorkspace.loading, imageUpscaleWorkspace.scale, refreshAccountAfterGeneration, refreshAccountAfterPrecheck, refreshLibraryAfterMutation, setMessage, updateImageUpscaleWorkspace]);
 
   const imageUpscaleCanSubmit = Boolean(imageUpscaleWorkspace.file)
     && Boolean(imageUpscaleWorkspace.availability?.ready)
@@ -2294,6 +2326,7 @@ export function StudioApp() {
           requestFingerprint,
         }),
       });
+      await refreshAccountAfterPrecheck();
       const form = new FormData();
       form.set("file", currentFile.file);
       form.set("scale", videoUpscaleWorkspace.scale);
@@ -2318,6 +2351,7 @@ export function StudioApp() {
     }
   }, [
     refreshAccountAfterGeneration,
+    refreshAccountAfterPrecheck,
     refreshLibraryAfterMutation,
     setMessage,
     updateVideoUpscaleWorkspace,
@@ -2576,6 +2610,7 @@ export function StudioApp() {
           requestFingerprint,
         }),
       });
+      await refreshAccountAfterPrecheck();
     } catch (error) {
       const text = error instanceof Error ? error.message : "额度预检失败。";
       updateVideoWorkspace({ submitError: text, submitDiagnostic: diagnosticFromError(error) });
@@ -2627,6 +2662,7 @@ export function StudioApp() {
     activeVideoMode,
     handleVideoResult,
     refreshAccountAfterGeneration,
+    refreshAccountAfterPrecheck,
     refreshLibraryAfterMutation,
     selectedVideoProvider,
     selectedVideoModelRequiresFile,
@@ -2827,12 +2863,12 @@ export function StudioApp() {
             activeBusinessTool === "image" ? (
               <ImagePreviewPanel
                 mode={activeImageMode}
-                output={activeOutput}
-                outputs={imageOutputs}
-                loading={imageWorkspace.loading}
+                output={scopedActiveImageOutput}
+                outputs={scopedImageOutputs}
+                loading={scopedImageLoading}
                 canSubmit={imageWorkspaceCanSubmit}
-                submitError={imageWorkspace.submitError}
-                submitDiagnostic={imageWorkspace.submitDiagnostic}
+                submitError={scopedImageSubmitError}
+                submitDiagnostic={scopedImageSubmitDiagnostic}
                 isEditor={activeWorkspaceToolId === "image-editor"}
                 promptFilled={Boolean(imageWorkspacePrompt)}
                 hasProvider={Boolean(selectedImageProvider)}
@@ -4181,7 +4217,7 @@ function createAccountRecords(
       kind: "recharge",
       typeLabel: "充值",
       quotaDelta: order.credited_quota,
-      description: `充值订单已到账，金额 ${formatMinorCurrency(order.paid_amount || order.requested_amount)}`,
+      description: describeAccountCreditOrder(order),
     }));
 
   const checkIns: AccountRecord[] = checkInRecords
@@ -4197,6 +4233,16 @@ function createAccountRecords(
     }));
 
   return [...usageRecords, ...paidOrders, ...checkIns].sort((a, b) => Number(new Date(b.createdAt)) - Number(new Date(a.createdAt)));
+}
+
+function describeAccountCreditOrder(order: BillingOrder) {
+  if (order.channel === "signup_bonus") {
+    return `新用户注册赠送到账，积分 ${formatQuotaUnits(order.credited_quota)}`;
+  }
+  if (order.channel === "admin_grant") {
+    return `后台赠送到账，积分 ${formatQuotaUnits(order.credited_quota)}`;
+  }
+  return `充值订单已到账，金额 ${formatMinorCurrency(order.paid_amount || order.requested_amount)}`;
 }
 
 function estimateRechargeBaseCredits(channel: PublicPaymentChannelConfig | null, amount: number) {
@@ -4410,10 +4456,13 @@ function formatAccountQuotaBalance(record: AccountRecord) {
 }
 
 function formatOrderType(order: BillingOrder) {
+  if (order.channel === "signup_bonus" || order.channel === "admin_grant") return "系统赠送";
   return order.product_type === "membership" ? "会员订单" : "积分充值";
 }
 
 function formatOrderContent(order: BillingOrder) {
+  if (order.channel === "signup_bonus") return `新用户注册赠送 ${formatQuotaUnits(order.credited_quota)} 积分`;
+  if (order.channel === "admin_grant") return `后台赠送 ${formatQuotaUnits(order.credited_quota)} 积分`;
   if (order.product_type === "membership") {
     const planName = planOptions.find((plan) => plan.id === order.product_plan_id)?.name || order.product_plan_id || "会员套餐";
     const cycleLabel = planCycleOptions.find((cycle) => cycle.id === order.product_cycle)?.label || order.product_cycle || "";

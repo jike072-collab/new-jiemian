@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
+import { createMemoryBillingRepository } from "../../billing";
 import { adminGetNewApiUser, createMemoryNewApiUserMappingRepository, type NewApiUserSyncProfile, type NewApiUserSyncResult } from "../../integrations/new-api";
 import { createCsrfToken, verifyCsrfToken } from "../csrf";
 import { hashPassword, validatePasswordStrength, verifyPassword } from "../password";
@@ -62,14 +63,17 @@ function service(overrides: {
 } = {}) {
   const repository = overrides.repository || createMemoryAuthRepository();
   const mappingRepository = createMemoryNewApiUserMappingRepository();
+  const billingRepository = createMemoryBillingRepository();
   const sentCodes: Array<{ destination: string; purpose: AuthVerificationPurpose; code: string }> = [];
   return {
     repository,
     mappingRepository,
+    billingRepository,
     sentCodes,
     service: new AuthService({
       repository,
       mappingRepository,
+      billingRepository,
       loginLimiter: overrides.loginLimiter,
       adminPasswordLimiter: overrides.adminPasswordLimiter,
       registerLimiter: overrides.registerLimiter,
@@ -195,6 +199,21 @@ test("register keeps the 500 credit signup grant when env is set to zero", async
     if (previous === undefined) delete process.env.NEW_USER_INITIAL_CREDITS;
     else process.env.NEW_USER_INITIAL_CREDITS = previous;
   }
+});
+
+test("register records the signup credit grant in order history", async () => {
+  const harness = service();
+  const result = await registerActiveAccount(harness);
+
+  assert.equal(result.ok, true);
+  if (!result.ok) return;
+
+  const orders = await harness.billingRepository.listOrders({ localUserId: result.user.local_user_id });
+  const signupGrant = orders.find((order) => order.channel === "signup_bonus");
+  assert.equal(Boolean(signupGrant), true);
+  assert.equal(signupGrant?.status, "paid");
+  assert.equal(signupGrant?.credited_quota, 500);
+  assert.equal(signupGrant?.requested_amount, 0);
 });
 
 test("rejects duplicate registration without creating another account", async () => {

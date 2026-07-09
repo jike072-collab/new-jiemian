@@ -31,6 +31,7 @@ function AuthBrandLockup({ className = "" }: { className?: string }) {
         width={58}
         height={58}
         priority
+        unoptimized
         className="auth-brand-lockup__icon"
       />
       <span className="auth-brand-lockup__text">
@@ -103,6 +104,7 @@ const AuthBrandPanel = memo(function AuthBrandPanel() {
               sizes="280px"
               loading="lazy"
               decoding="async"
+              unoptimized
               className="auth-showcase-card__image"
             />
             {card.kind === "video" ? (
