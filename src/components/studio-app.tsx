@@ -2691,6 +2691,7 @@ export function StudioApp() {
               selectedProvider={selectedImageProvider}
           templateCenterHref={imageTemplateCenterHref}
           state={imageWorkspace}
+          loading={scopedImageLoading}
           canSubmit={imageWorkspaceCanSubmit}
           estimatedQuotaUnits={imageEstimatedQuotaUnits}
           costLabel={imageGenerationCostLabel}

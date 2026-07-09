@@ -3,7 +3,7 @@
 /* eslint-disable @next/next/no-img-element */
 
 import { AlertTriangle, Download, ExternalLink, Pause, Play } from "lucide-react";
-import { useRef, useState, type MouseEvent, type PointerEvent, type WheelEvent } from "react";
+import { useEffect, useRef, useState, type MouseEvent, type PointerEvent, type WheelEvent } from "react";
 
 import type { LibraryItem } from "@/lib/server/types";
 import { cn } from "@/lib/utils";
@@ -73,6 +73,16 @@ export function MediaCard({
   const imageUrl = media?.url && item.type === "image" ? mediaPreviewUrl(media.url, large) : media?.url;
   const statusBadge = mediaExpired ? "已过期" : mediaMissing ? "文件失效" : libraryStatusBadgeLabel(item.status);
   const batchText = isImageGroup ? `${imageGroupItems.length} 张` : "";
+
+  useEffect(() => {
+    if (item.type !== "image" || !hasMediaUrl || !imageUrl) return undefined;
+    const warmImage = new Image();
+    warmImage.decoding = "async";
+    warmImage.src = imageUrl;
+    return () => {
+      warmImage.src = "";
+    };
+  }, [hasMediaUrl, imageUrl, item.type]);
 
   const detailFactItem = showLargeGallery ? activeImageItem || item : item;
   const detailFacts = showDetailFacts ? buildLibraryDetailFacts(detailFactItem) : [];

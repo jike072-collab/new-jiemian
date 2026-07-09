@@ -31,6 +31,7 @@ export function ImageGenerator({
   selectedProvider,
   templateCenterHref,
   state,
+  loading = state.loading,
   canSubmit,
   estimatedQuotaUnits,
   costLabel,
@@ -58,6 +59,7 @@ export function ImageGenerator({
   selectedProvider: FrontendProvider | null;
   templateCenterHref: string;
   state: ImageWorkspaceState;
+  loading?: boolean;
   canSubmit: boolean;
   estimatedQuotaUnits: number;
   costLabel?: string;
@@ -81,14 +83,14 @@ export function ImageGenerator({
 
   useEffect(() => {
     registerMobileAction({
-      label: state.loading ? meta.loadingLabel : meta.submitLabel,
+      label: loading ? meta.loadingLabel : meta.submitLabel,
       costLabel: costLabel || formatQuotaSymbolLabel(estimatedQuotaUnits),
-      loading: state.loading,
+      loading,
       disabled: !canSubmit,
       onClick: onSubmit,
     });
     return () => registerMobileAction(null);
-  }, [canSubmit, costLabel, estimatedQuotaUnits, meta.loadingLabel, meta.submitLabel, onSubmit, registerMobileAction, state.loading]);
+  }, [canSubmit, costLabel, estimatedQuotaUnits, loading, meta.loadingLabel, meta.submitLabel, onSubmit, registerMobileAction]);
 
   return (
     <FormPanel>
@@ -164,7 +166,7 @@ export function ImageGenerator({
       <StickyPrimaryAction>
         <SubmitButton
           disabled={!canSubmit}
-          loading={state.loading}
+          loading={loading}
           loadingLabel={meta.loadingLabel}
           costLabel={costLabel || formatQuotaSymbolLabel(estimatedQuotaUnits)}
           onClick={onSubmit}
