@@ -295,6 +295,42 @@ test("registration reuses an email after New API reports the old account missing
   assert.equal(audit.some((event) => event.event === "auth.register.identity_released" && event.details.reason === "upstream_missing"), true);
 });
 
+test("registration does not release administrator identity from New API status", async () => {
+  const harness = service({
+    getNewApiUser: async () => ({
+      data: { success: false, message: "record not found" },
+      requestId: "test-admin-upstream-missing",
+      upstreamStatus: 200,
+    }),
+  });
+  const admin = await harness.repository.createUser({
+    localUserId: "admin-local",
+    email: "admin@example.com",
+    username: "admin1",
+    displayName: "Admin",
+    passwordHash: "hash",
+    role: "admin",
+    now: new Date("2026-06-19T00:00:00.000Z"),
+  });
+  await harness.mappingRepository.createPending({
+    localUserId: admin.local_user_id,
+    idempotencyKey: "register:admin-local",
+  });
+  await harness.mappingRepository.markActive({
+    localUserId: admin.local_user_id,
+    newApiUserId: "100",
+  });
+
+  const requested = await harness.service.requestVerificationCode({
+    identifier: "admin@example.com",
+    purpose: "register",
+  });
+  assert.equal(requested.ok, false);
+  if (requested.ok) return;
+  assert.equal(requested.status, 409);
+  assert.equal((await harness.repository.getUserByIdentifier("admin@example.com"))?.local_user_id, "admin-local");
+});
+
 test("rejects phone-only registration until SMS verification is enabled", async () => {
   const harness = service();
   const requested = await harness.service.requestVerificationCode({

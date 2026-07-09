@@ -563,6 +563,7 @@ export class AuthService {
   }
 
   private async registrationIdentityReleaseReason(user: AuthUser) {
+    if (user.role === "admin") return null;
     if (user.status === "disabled") return "local_disabled";
 
     let mapping: NewApiUserMapping | null = null;
