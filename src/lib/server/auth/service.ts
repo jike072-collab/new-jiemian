@@ -115,18 +115,23 @@ function extractNewApiUser(payload: unknown) {
 
 function terminalNewApiUserStatusReason(user: Record<string, unknown> | null) {
   if (!user) return null;
+  const message = String(user.message ?? user.error ?? "").trim().toLowerCase();
+  if ((user.success === false || user.ok === false) && /record not found|not found|missing|不存在|未找到|已注销|注销/.test(message)) {
+    return "upstream_missing";
+  }
+
   const deletedAt = user.deleted_at ?? user.deletedAt ?? user.cancelled_at ?? user.canceled_at;
   if (deletedAt) return "upstream_deleted";
 
   const status = user.status;
   if (typeof status === "number") {
-    if (status === 3 || status === 4) return `upstream_status_${status}`;
+    if (status === 2 || status === 3 || status === 4) return `upstream_status_${status}`;
     return null;
   }
 
   const normalized = String(status ?? user.status_text ?? user.statusText ?? "").trim().toLowerCase();
   if (!normalized) return null;
-  if (/注销|已注销|deleted|deactivated|cancelled|canceled|closed/.test(normalized)) {
+  if (/注销|已注销|禁用|已禁用|deleted|disabled|deactivated|suspended|banned|blocked|inactive|cancelled|canceled|closed/.test(normalized)) {
     return `upstream_status_${normalized.slice(0, 40)}`;
   }
   return null;

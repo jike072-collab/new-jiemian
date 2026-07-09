@@ -11,6 +11,17 @@ export type NewApiUserSelf = {
   [key: string]: unknown;
 };
 
+export type NewApiUserLookupPayload =
+  | NewApiUserSelf
+  | {
+    success?: boolean;
+    message?: string;
+    error?: string;
+    data?: NewApiUserSelf;
+    user?: NewApiUserSelf;
+    [key: string]: unknown;
+  };
+
 export async function getNewApiUserSelf(input: {
   newApiUserId: number;
   accessToken: string;
@@ -71,7 +82,7 @@ export type NewApiLogListPayload = {
 export async function adminGetNewApiUser(input: {
   newApiUserId: number;
 }, client = new NewApiHttpClient()) {
-  return client.request<{ data?: NewApiUserSelf; user?: NewApiUserSelf } | NewApiUserSelf>({
+  return client.request<NewApiUserLookupPayload>({
     path: `/api/user/${input.newApiUserId}`,
     context: newApiAdminRequestContext(client.config),
   });

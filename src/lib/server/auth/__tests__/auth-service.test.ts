@@ -255,6 +255,46 @@ test("registration reuses an email after the mapped upstream account was cancell
   assert.equal(audit.some((event) => event.event === "auth.register.identity_released"), true);
 });
 
+test("registration reuses an email after New API reports the old account missing", async () => {
+  const harness = service({
+    getNewApiUser: async () => ({
+      data: { success: false, message: "record not found" },
+      requestId: "test-upstream-missing",
+      upstreamStatus: 200,
+    }),
+    sync: (localUserId) => ({
+      ...activeMapping(localUserId),
+      mapping: {
+        ...activeMapping(localUserId).mapping,
+        new_api_user_id: "102",
+      },
+    }),
+  });
+  const first = await registerActiveAccount(harness);
+  assert.equal(first.ok, true);
+  if (!first.ok) return;
+
+  const requested = await harness.service.requestVerificationCode({
+    identifier: "customer@example.com",
+    purpose: "register",
+  });
+  assert.equal(requested.ok, true);
+
+  const second = await harness.service.register({
+    email: "customer@example.com",
+    username: "cust01",
+    password: "StrongPass123",
+    verificationCode: harness.sentCodes.at(-1)?.code || "",
+    displayName: "Customer Again",
+  });
+  assert.equal(second.ok, true);
+  if (!second.ok) return;
+  assert.notEqual(second.user.local_user_id, first.user.local_user_id);
+
+  const audit = await harness.repository.listAuditEvents();
+  assert.equal(audit.some((event) => event.event === "auth.register.identity_released" && event.details.reason === "upstream_missing"), true);
+});
+
 test("rejects phone-only registration until SMS verification is enabled", async () => {
   const harness = service();
   const requested = await harness.service.requestVerificationCode({
