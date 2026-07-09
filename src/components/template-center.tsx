@@ -10,6 +10,12 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { WorkbenchShell } from "@/components/workbench-shell";
 import { WorkspaceAccountPanel } from "@/components/workspace-account-panel";
 import { getPlanStatusDisplay, type CheckInStatus, type PlanStatus } from "@/lib/account-status";
+import {
+  clearCachedAccountSnapshot,
+  readAnyCachedAccountSnapshot,
+  readCachedAccountSnapshot,
+  writeCachedAccountSnapshot,
+} from "@/lib/client/account-snapshot-cache";
 import { fetchJson, fetchJsonWithCsrf } from "@/lib/client/api";
 import type { PublicAuthUser } from "@/lib/server/auth";
 import type { QuotaSnapshot } from "@/lib/server/quota";
@@ -286,6 +292,32 @@ export function TemplateCenterView() {
   const [accountLoading, setAccountLoading] = useState(false);
   const [checkInStatus, setCheckInStatus] = useState<CheckInStatus>("unavailable");
 
+  const applyCachedAccountSnapshot = useCallback((userId: string | null | undefined) => {
+    const cached = readCachedAccountSnapshot(userId);
+    if (!cached) return false;
+
+    setQuotaSnapshot(cached.quota);
+    setQuotaLabel(cached.quota ? `${new Intl.NumberFormat("zh-CN").format(cached.quota.quota_units)} ✦` : null);
+    setMembershipSnapshot(cached.membership as MembershipStatusResponse | null);
+    if (cached.checkInStatus === "available" || cached.checkInStatus === "checked") {
+      setCheckInStatus(cached.checkInStatus);
+    }
+    return true;
+  }, []);
+
+  useEffect(() => {
+    const userId = sessionUser?.local_user_id || null;
+    if (!userId || (!quotaSnapshot && !membershipSnapshot)) return;
+
+    writeCachedAccountSnapshot({
+      userId,
+      user: sessionUser,
+      quota: quotaSnapshot,
+      membership: membershipSnapshot,
+      checkInStatus,
+    });
+  }, [checkInStatus, membershipSnapshot, quotaSnapshot, sessionUser, sessionUser?.local_user_id]);
+
   const templates = scope === "image" ? imagePromptTemplates : videoPromptTemplates;
   const totalTemplateCount = templates.length;
 
@@ -351,6 +383,7 @@ export function TemplateCenterView() {
 
   const refreshAccountSnapshot = useCallback(async (user: PublicAuthUser | null) => {
     if (!user) {
+      clearCachedAccountSnapshot();
       setQuotaSnapshot(null);
       setQuotaLabel(null);
       setMembershipSnapshot(null);
@@ -389,12 +422,14 @@ export function TemplateCenterView() {
     const activePlan = membershipSnapshot?.plans.find((plan) => plan.id === activeMembership.plan_id);
     return { status: "active", name: activePlan?.name || "会员" };
   }, [accountLoading, membershipSnapshot, sessionUser]);
+  const accountDisplayLoading = accountLoading && !quotaSnapshot && !membershipSnapshot;
 
   const handleLogout = useCallback(async () => {
     try {
       await fetchJsonWithCsrf("/api/auth/logout", { method: "POST" });
     } finally {
       setSessionUser(null);
+      clearCachedAccountSnapshot();
       setQuotaSnapshot(null);
       setQuotaLabel(null);
       setMembershipSnapshot(null);
@@ -417,6 +452,11 @@ export function TemplateCenterView() {
 
   useEffect(() => {
     let cancelled = false;
+    const cached = readAnyCachedAccountSnapshot();
+    if (cached?.user) {
+      setSessionUser(cached.user);
+      applyCachedAccountSnapshot(cached.user.local_user_id);
+    }
 
     void (async () => {
       try {
@@ -424,10 +464,12 @@ export function TemplateCenterView() {
         if (cancelled) return;
         if ("ok" in session && session.ok) {
           setSessionUser(session.user);
+          applyCachedAccountSnapshot(session.user.local_user_id);
           await refreshAccountSnapshot(session.user);
           return;
         }
         setSessionUser(null);
+        clearCachedAccountSnapshot();
         setQuotaSnapshot(null);
         setQuotaLabel(null);
         setMembershipSnapshot(null);
@@ -435,6 +477,7 @@ export function TemplateCenterView() {
       } catch {
         if (!cancelled) {
           setSessionUser(null);
+          clearCachedAccountSnapshot();
           setQuotaSnapshot(null);
           setQuotaLabel(null);
           setMembershipSnapshot(null);
@@ -446,7 +489,7 @@ export function TemplateCenterView() {
     return () => {
       cancelled = true;
     };
-  }, [refreshAccountSnapshot]);
+  }, [applyCachedAccountSnapshot, refreshAccountSnapshot]);
 
   useEffect(() => {
     const timer = window.setTimeout(() => {
@@ -471,7 +514,7 @@ export function TemplateCenterView() {
       canAccessAdmin={sessionUser?.role === "admin"}
       accountName={sessionUser?.display_name || sessionUser?.username || null}
       accountPointsLabel={quotaLabel}
-      accountPlanLabel={accountLoading ? "会员加载中" : getPlanStatusDisplay(accountPlanStatus).label}
+      accountPlanLabel={accountDisplayLoading ? "会员加载中" : getPlanStatusDisplay(accountPlanStatus).label}
       onOpenAccountCenter={handleOpenAccountCenter}
       onOpenAccountRecharge={handleOpenRechargeCenter}
       accountSlot={(
@@ -479,7 +522,7 @@ export function TemplateCenterView() {
           user={sessionUser}
           quota={quotaSnapshot}
           membershipEntitlements={membershipSnapshot?.membership.entitlements ?? null}
-          loading={accountLoading}
+          loading={accountDisplayLoading}
           planStatus={accountPlanStatus}
           membershipEndsAt={membershipSnapshot?.membership.active?.ends_at ?? null}
           checkInStatus={checkInStatus}

@@ -488,11 +488,9 @@ function VideoTutorialInputDemo({
 function VideoTutorialResultSlot({
   playbackState,
   paused,
-  onPlaybackEnd,
 }: {
   playbackState: VideoTutorialPlaybackState;
   paused: boolean;
-  onPlaybackEnd: () => void;
 }) {
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const wasPlayingRef = useRef(false);
@@ -538,6 +536,16 @@ function VideoTutorialResultSlot({
     video.pause();
   }, [playResultVideo, shouldPlay]);
 
+  useEffect(() => {
+    if (!shouldPlay) return undefined;
+    const timer = window.setInterval(() => {
+      const video = videoRef.current;
+      if (!video || !video.paused) return;
+      playResultVideo();
+    }, 1200);
+    return () => window.clearInterval(timer);
+  }, [playResultVideo, shouldPlay]);
+
   return (
     <div className="video-tutorial-result-slot">
       <div className="video-tutorial-result-slot__backdrop" aria-hidden="true">
@@ -567,8 +575,7 @@ function VideoTutorialResultSlot({
             onLoadedMetadata={markResultVideoReady}
             onCanPlay={markResultVideoReady}
             onLoadedData={markResultVideoReady}
-            onEnded={onPlaybackEnd}
-            onError={onPlaybackEnd}
+            onPause={playResultVideo}
           />
         ) : (
           <video poster={videoTutorialInputImageSrc} muted playsInline preload="metadata" aria-label="视频结果预留位" />
@@ -711,23 +718,6 @@ function VideoGenerationTutorial({ paused = false }: { paused?: boolean }) {
   }, [finishTutorialCycle, playbackStateState, reducedMotion, shouldPause]);
 
   useEffect(() => {
-    if (playbackStateState !== "resetting") return undefined;
-
-    const timer = window.setTimeout(() => {
-      const video = guideRef.current?.querySelector<HTMLVideoElement>(".video-tutorial-result-slot__media video");
-      if (!video) return;
-      try {
-        video.pause();
-        video.currentTime = 0.1;
-      } catch {
-        // The video may already be unloading between tutorial loops.
-      }
-    }, 260);
-
-    return () => window.clearTimeout(timer);
-  }, [playbackStateState]);
-
-  useEffect(() => {
     const node = guideRef.current;
     if (!node || typeof IntersectionObserver === "undefined") return undefined;
 
@@ -835,7 +825,7 @@ function VideoGenerationTutorial({ paused = false }: { paused?: boolean }) {
       id: "result",
       title: "生成视频并查看结果",
       description: "生成完成后在这里预览视频结果，需要时可以下载或重新生成。",
-      visual: <VideoTutorialResultSlot playbackState={playbackState} paused={shouldPause} onPlaybackEnd={finishTutorialCycle} />,
+      visual: <VideoTutorialResultSlot playbackState={playbackState} paused={shouldPause} />,
       visualSide: "left",
     },
   ];

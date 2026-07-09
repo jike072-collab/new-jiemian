@@ -67,6 +67,11 @@ import {
   type CheckInStatus,
   type PlanStatus,
 } from "@/lib/account-status";
+import {
+  clearCachedAccountSnapshot,
+  readCachedAccountSnapshot,
+  writeCachedAccountSnapshot,
+} from "@/lib/client/account-snapshot-cache";
 import { ApiError, fetchJson, fetchJsonWithCsrf } from "@/lib/client/api";
 import {
   estimateUpscaleQuota,
@@ -711,20 +716,45 @@ export function StudioApp() {
   const imageUpscaleInFlightRef = useRef(false);
   const videoUpscaleInFlightRef = useRef(false);
   const accountPlanStatus = useMemo<PlanStatus>(() => {
-    if (sessionLoading || accountSummaryLoading) return { status: "loading" };
+    if ((sessionLoading || accountSummaryLoading) && !membershipSnapshot) return { status: "loading" };
     const activePlanId = membershipSnapshot?.membership.active?.plan_id;
     const activePlan = activePlanId ? planOptions.find((plan) => plan.id === activePlanId) : null;
     if (activePlan) return { status: "active", name: activePlan.name };
     return sessionUser ? { status: "none" } : { status: "unavailable" };
-  }, [accountSummaryLoading, membershipSnapshot?.membership.active?.plan_id, sessionLoading, sessionUser]);
+  }, [accountSummaryLoading, membershipSnapshot, sessionLoading, sessionUser]);
   const accountCheckInStatus = useMemo<CheckInStatus>(() => {
     if (!sessionUser) return "unavailable";
-    if (sessionLoading || checkInLoading) return "loading";
+    if ((sessionLoading || checkInLoading) && !checkInLoaded && !checkInSnapshot) return "loading";
     if (checkInSubmitting) return "submitting";
     if (checkInError) return "error";
     if (!checkInLoaded && !checkInSnapshot) return "loading";
     return checkInSnapshot?.status === "checked" ? "checked" : "available";
   }, [checkInError, checkInLoaded, checkInLoading, checkInSnapshot, checkInSubmitting, sessionLoading, sessionUser]);
+  const applyCachedAccountSnapshot = useCallback((userId: string | null | undefined) => {
+    const cached = readCachedAccountSnapshot(userId);
+    if (!cached) return false;
+
+    setQuotaSnapshot(cached.quota);
+    setMembershipSnapshot(cached.membership as MembershipStatusResponse | null);
+    setAccountSummaryLoaded(Boolean(cached.quota || cached.membership));
+    if (cached.checkInStatus === "available") {
+      setCheckInLoaded(true);
+    }
+    return true;
+  }, []);
+
+  useEffect(() => {
+    const userId = sessionUser?.local_user_id || null;
+    if (!userId || !accountSummaryLoaded) return;
+
+    writeCachedAccountSnapshot({
+      userId,
+      user: sessionUser,
+      quota: quotaSnapshot,
+      membership: membershipSnapshot,
+      checkInStatus: accountCheckInStatus,
+    });
+  }, [accountCheckInStatus, accountSummaryLoaded, membershipSnapshot, quotaSnapshot, sessionUser, sessionUser?.local_user_id]);
   const resetLibraryState = useCallback(() => {
     setLibrary([]);
     setLibraryLoading(false);
@@ -897,6 +927,7 @@ export function StudioApp() {
       setMessage(error instanceof Error ? error.message : "退出失败。");
     } finally {
       setSessionUser(null);
+      clearCachedAccountSnapshot();
       resetAccountState();
       resetLibraryState();
       imageInFlightCountRef.current = 0;
@@ -914,15 +945,18 @@ export function StudioApp() {
       const result = await fetchJson<AuthSessionResponse>("/api/auth/session");
       if ("ok" in result && result.ok) {
         setSessionUser(result.user);
+        applyCachedAccountSnapshot(result.user.local_user_id);
         return;
       }
       setSessionUser(null);
+      clearCachedAccountSnapshot();
       resetAccountState();
       resetLibraryState();
       setImageGenerationProgress([]);
     } catch (error) {
       if (error instanceof ApiError && error.status === 401) {
         setSessionUser(null);
+        clearCachedAccountSnapshot();
         resetAccountState();
         resetLibraryState();
         setImageGenerationProgress([]);
@@ -934,7 +968,7 @@ export function StudioApp() {
     } finally {
       setSessionLoading(false);
     }
-  }, [resetAccountState, resetLibraryState]);
+  }, [applyCachedAccountSnapshot, resetAccountState, resetLibraryState]);
 
   const refreshAccountSnapshot = useCallback(async () => {
     await ensureAccountViewData(accountView, sessionUser?.local_user_id || null, { force: true });
@@ -944,12 +978,15 @@ export function StudioApp() {
     if (sessionLoading) return;
     const userId = sessionUser?.local_user_id || null;
     if (!userId) {
+      clearCachedAccountSnapshot();
       resetAccountState();
       return;
     }
+    applyCachedAccountSnapshot(userId);
     void refreshQuotaSnapshot(userId);
     void refreshCheckInSnapshot(userId);
   }, [
+    applyCachedAccountSnapshot,
     refreshCheckInSnapshot,
     refreshQuotaSnapshot,
     resetAccountState,
@@ -1397,7 +1434,7 @@ export function StudioApp() {
     () => library.find((item) => item.id === libraryDeleteConfirmItemId) || null,
     [library, libraryDeleteConfirmItemId],
   );
-  const accountSummaryBusy = sessionLoading || accountSummaryLoading;
+  const accountSummaryBusy = sessionLoading || (accountSummaryLoading && !quotaSnapshot && !membershipSnapshot);
   const accountViewLoading = sessionLoading
     || (accountView === "usage" || accountView === "orders"
       ? accountSummaryLoading || checkInLoading || accountUsageLoading || accountOrdersLoading
