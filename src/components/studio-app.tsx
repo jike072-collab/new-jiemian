@@ -2991,7 +2991,7 @@ function membershipEntitlementLabel(
   fallback: string,
 ) {
   const remaining = entitlements?.[kind]?.remaining ?? 0;
-  return remaining > 0 ? `会员权益 剩余 ${formatQuotaUnits(remaining)} ${unit}` : fallback;
+  return remaining > 0 ? `/ 剩余 ${formatQuotaUnits(remaining)} ${unit}` : fallback;
 }
 
 function formatMembershipDate(value: string | null | undefined) {
