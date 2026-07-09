@@ -377,7 +377,7 @@ function ImageEditorTutorial() {
 }
 
 const videoTutorialPromptText = "雨天城市街头，女生撑透明雨伞缓慢向前行走，并自然回头看向镜头。";
-const videoTutorialResultVideoSrc = "/tutorials/video-generator/demo-result-loop.mp4";
+const videoTutorialResultVideoSrc = "/tutorials/video-generator/demo-result.mp4";
 const videoTutorialInputImageSrc = "/tutorials/video-generator/input-person.webp";
 const videoTutorialResultPosterSrc = "/tutorials/video-generator/rain-umbrella.webp";
 
