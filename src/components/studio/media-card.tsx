@@ -3,7 +3,7 @@
 /* eslint-disable @next/next/no-img-element */
 
 import { AlertTriangle, Download, ExternalLink, Pause, Play } from "lucide-react";
-import { useEffect, useRef, useState, type MouseEvent, type PointerEvent, type WheelEvent } from "react";
+import { useRef, useState, type MouseEvent, type PointerEvent, type WheelEvent } from "react";
 
 import type { LibraryItem } from "@/lib/server/types";
 import { cn } from "@/lib/utils";
@@ -28,14 +28,25 @@ export function MediaCard({
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const dragStateRef = useRef<{ pointerId: number; startX: number; startY: number; originX: number; originY: number } | null>(null);
   const [previewPlaying, setPreviewPlaying] = useState(false);
-  const [activeImageIndex, setActiveImageIndex] = useState(0);
-  const [imageZoom, setImageZoom] = useState(1);
-  const [imageOffset, setImageOffset] = useState({ x: 0, y: 0 });
-  const [isDraggingImage, setIsDraggingImage] = useState(false);
+  const [activeImageState, setActiveImageState] = useState({ key: "", index: 0 });
+  const [imageViewportState, setImageViewportState] = useState({
+    key: "",
+    zoom: 1,
+    offset: { x: 0, y: 0 },
+    dragging: false,
+  });
   const media = item.output;
   const imageGroupItems = item.type === "image"
     ? (groupItems || [item]).filter((entry) => entry.type === "image" && entry.output?.url && !entry.expired).slice(0, 4)
     : [];
+  const imageGroupKey = `${item.id}:${imageGroupItems.map((entry) => entry.id).join(",")}`;
+  const activeImageIndex = activeImageState.key === imageGroupKey
+    ? Math.min(activeImageState.index, Math.max(0, imageGroupItems.length - 1))
+    : 0;
+  const imageViewportKey = `${item.id}:${activeImageIndex}:${large ? "large" : "tile"}`;
+  const imageZoom = imageViewportState.key === imageViewportKey ? imageViewportState.zoom : 1;
+  const imageOffset = imageViewportState.key === imageViewportKey ? imageViewportState.offset : { x: 0, y: 0 };
+  const isDraggingImage = imageViewportState.key === imageViewportKey ? imageViewportState.dragging : false;
   const isImageGroup = imageGroupItems.length > 1;
   const showLargeGallery = large && isImageGroup;
   const activeImageItem = showLargeGallery ? imageGroupItems[activeImageIndex] || imageGroupItems[0] : null;
@@ -66,16 +77,41 @@ export function MediaCard({
   const detailFactItem = showLargeGallery ? activeImageItem || item : item;
   const detailFacts = showDetailFacts ? buildLibraryDetailFacts(detailFactItem) : [];
 
-  useEffect(() => {
-    setActiveImageIndex(0);
-  }, [item.id, imageGroupItems.length]);
-
-  useEffect(() => {
-    setImageZoom(1);
-    setImageOffset({ x: 0, y: 0 });
-    setIsDraggingImage(false);
+  const setActiveImageIndex = (index: number) => {
     dragStateRef.current = null;
-  }, [item.id, activeImageIndex, large]);
+    setActiveImageState({ key: imageGroupKey, index });
+  };
+
+  const setImageZoom = (nextZoom: number | ((value: number) => number)) => {
+    setImageViewportState((current) => {
+      const currentZoom = current.key === imageViewportKey ? current.zoom : 1;
+      const zoom = typeof nextZoom === "function" ? nextZoom(currentZoom) : nextZoom;
+      return {
+        key: imageViewportKey,
+        zoom,
+        offset: current.key === imageViewportKey ? current.offset : { x: 0, y: 0 },
+        dragging: current.key === imageViewportKey ? current.dragging : false,
+      };
+    });
+  };
+
+  const setImageOffset = (offset: { x: number; y: number }) => {
+    setImageViewportState((current) => ({
+      key: imageViewportKey,
+      zoom: current.key === imageViewportKey ? current.zoom : 1,
+      offset,
+      dragging: current.key === imageViewportKey ? current.dragging : false,
+    }));
+  };
+
+  const setIsDraggingImage = (dragging: boolean) => {
+    setImageViewportState((current) => ({
+      key: imageViewportKey,
+      zoom: current.key === imageViewportKey ? current.zoom : 1,
+      offset: current.key === imageViewportKey ? current.offset : { x: 0, y: 0 },
+      dragging,
+    }));
+  };
 
   const togglePreviewPlayback = async (event: MouseEvent<HTMLButtonElement>) => {
     event.preventDefault();

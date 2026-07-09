@@ -68,6 +68,7 @@
     "check:docs": "node scripts/check-docs.mjs",
     "check:release-test-artifact-isolation": "node scripts/check-release-test-artifact-isolation.mjs",
     "audit:production-readiness": "node scripts/audit-production-readiness.mjs",
+    "audit:next-build": "node scripts/audit-next-build.mjs",
     "audit:database": "node scripts/audit-database-current-state.mjs",
     "check:database-docs": "node scripts/check-database-docs.mjs",
     "check:database-gate": "node scripts/check-database-implementation-gate.mjs",

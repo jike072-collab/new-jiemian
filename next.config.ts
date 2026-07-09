@@ -1,7 +1,10 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
+  compress: true,
   outputFileTracingRoot: process.cwd(),
+  poweredByHeader: false,
+  productionBrowserSourceMaps: false,
   turbopack: {
     root: process.cwd(),
   },

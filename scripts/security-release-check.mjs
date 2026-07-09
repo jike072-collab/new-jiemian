@@ -184,6 +184,7 @@ function backendReleaseReport() {
     DATA_DIR: "/var/lib/aohuang-ai/data",
     UPLOADS_DIR: "/var/lib/aohuang-ai/uploads",
     RUNTIME_DIR: "/var/lib/aohuang-ai/runtime",
+    REMOTE_MEDIA_ALLOWED_HOSTS: "media.aohuang.example",
     APP_DATABASE_URL: "postgresql://release_user:release_pass@127.0.0.1:5432/aohuang_app",
     APP_DATABASE_EXPECTED_NAME: "aohuang_app",
     APP_AUTH_PERSISTENCE_MODE: "postgres",
@@ -213,6 +214,7 @@ function bundleScanIfBuilt() {
     return { skipped: true, reason: ".next/static is not present; run npm run build before bundle scan." };
   }
   run("node", ["scripts/database/bundle-scan.mjs"]);
+  run("node", ["scripts/audit-next-build.mjs"]);
   return { skipped: false };
 }
 
@@ -246,10 +248,45 @@ function standardStartPreflight() {
   if (!String(scripts.start || "").includes("release:preflight")) {
     fail("npm start must run release:preflight before next start.");
   }
+  if (!String(scripts.start || "").includes("next start")) {
+    fail("npm start must use next start for production runtime.");
+  }
+  for (const name of ["start", "start:release", "service:start:production"]) {
+    if (/\bnext\s+dev\b|\bvite\b|vite\s+--host/i.test(String(scripts[name] || ""))) {
+      fail(`${name} must not use a development server in production.`);
+    }
+  }
   if (!String(scripts["release:preflight"] || "").includes("scripts/release-preflight.mjs")) {
     fail("release:preflight must run scripts/release-preflight.mjs.");
   }
   return { enforced: true };
+}
+
+function nextConfigStaticScan() {
+  const config = readFileSync(join(root, "next.config.ts"), "utf8");
+  const required = [
+    "productionBrowserSourceMaps: false",
+    "poweredByHeader: false",
+    "compress: true",
+  ];
+  const missing = required.filter((token) => !config.includes(token));
+  if (missing.length) fail(`next.config.ts is missing production hardening tokens:\n${missing.join("\n")}`);
+  return { productionBrowserSourceMaps: false, poweredByHeader: false, compress: true };
+}
+
+function nginxTemplateScan() {
+  const config = readFileSync(join(root, "deploy", "linux", "nginx-site.conf.example"), "utf8");
+  const required = [
+    "listen 443 ssl http2",
+    "gzip on;",
+    "gzip_types text/plain text/css application/json application/javascript text/xml application/xml image/svg+xml;",
+    "location ~* \\.map$",
+    "Cache-Control \"public, max-age=31536000, immutable\"",
+    "Cache-Control \"no-cache\"",
+  ];
+  const missing = required.filter((token) => !config.includes(token));
+  if (missing.length) fail(`Nginx production template is missing hardening tokens:\n${missing.join("\n")}`);
+  return { gzip: true, http2: true, mapDenied: true, immutableStaticCache: true, dynamicNoCache: true };
 }
 
 function main() {
@@ -264,6 +301,8 @@ function main() {
     backupRestoreScripts: backupRestoreScripts(),
     migrationScripts: migrationScripts(),
     standardStartPreflight: standardStartPreflight(),
+    nextConfig: nextConfigStaticScan(),
+    nginxTemplate: nginxTemplateScan(),
   };
   const outputPath = process.argv.includes("--write-report")
     ? join(root, "docs", "architecture", "auth-newapi", "BP_06_SECURITY_RELEASE_CHECK.json")

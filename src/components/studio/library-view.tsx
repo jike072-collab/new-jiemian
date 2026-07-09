@@ -71,9 +71,18 @@ export function LibraryWorkspace({
 }) {
   const filteredEmpty = !items.length && totalCount > 0;
   const displayEntries = useMemo(() => buildLibraryDisplayEntries(items), [items]);
-  const [page, setPage] = useState(1);
+  const pageKey = `${filter}:${sort}`;
+  const [pageState, setPageState] = useState({ key: pageKey, page: 1 });
+  const page = pageState.key === pageKey ? pageState.page : 1;
   const pageCount = Math.max(1, Math.ceil(displayEntries.length / libraryPageSize));
   const safePage = Math.min(page, pageCount);
+  const setPage = (nextPage: number | ((value: number) => number)) => {
+    setPageState((current) => {
+      const currentPage = current.key === pageKey ? current.page : 1;
+      const value = typeof nextPage === "function" ? nextPage(currentPage) : nextPage;
+      return { key: pageKey, page: Math.min(pageCount, Math.max(1, value)) };
+    });
+  };
   const visibleEntries = useMemo(
     () => displayEntries.slice((safePage - 1) * libraryPageSize, safePage * libraryPageSize),
     [displayEntries, safePage],
@@ -97,18 +106,6 @@ export function LibraryWorkspace({
   );
   const allVisibleSelected = visibleItemIds.length > 0 && visibleItemIds.every((id) => selectedIdSet.has(id));
   const [bulkDeleteConfirmOpen, setBulkDeleteConfirmOpen] = useState(false);
-
-  useEffect(() => {
-    setSelectedIds((current) => current.filter((id) => visibleItemIds.includes(id)));
-  }, [visibleItemIds]);
-
-  useEffect(() => {
-    setPage(1);
-  }, [filter, sort]);
-
-  useEffect(() => {
-    if (page !== safePage) setPage(safePage);
-  }, [page, safePage]);
 
   useEffect(() => {
     if (search.trim()) onSearchChange("");
