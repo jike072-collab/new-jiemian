@@ -494,6 +494,19 @@ function checkProductionBasics(issues: RuntimeEnvironmentIssue[], env: RuntimeEn
   checkRemoteMediaAllowedHosts(issues, env);
 }
 
+function checkProductionOnlyEnv(issues: RuntimeEnvironmentIssue[], env: RuntimeEnv) {
+  if (hasValue(env, "PAYMENT_SANDBOX_ENABLED")) {
+    issue(issues, "PAYMENT_SANDBOX_ENABLED", "must not be configured for production 3106.");
+  }
+  if (hasValue(env, "PAYMENT_SANDBOX_WEBHOOK_SECRET")) {
+    issue(issues, "PAYMENT_SANDBOX_WEBHOOK_SECRET", "must not be configured for production 3106.");
+  }
+  const testKeys = Object.keys(env).filter((key) => key.startsWith("AOHUANG_TEST_") && hasValue(env, key));
+  if (testKeys.length) {
+    issue(issues, "AOHUANG_TEST_*", "test failure-injection variables must not be configured for production 3106.");
+  }
+}
+
 export function validateProductionRuntimeEnv(
   env: RuntimeEnv = process.env,
   options: RuntimeEnvironmentOptions = {},
@@ -501,6 +514,7 @@ export function validateProductionRuntimeEnv(
   const issues: RuntimeEnvironmentIssue[] = [];
   const storagePlatform = productionStoragePlatform(env, options);
   checkProductionBasics(issues, env, options);
+  checkProductionOnlyEnv(issues, env);
   for (const name of ["DATA_DIR", "UPLOADS_DIR", "RUNTIME_DIR"]) {
     checkProductionRuntimePath(issues, env, name, storagePlatform);
   }

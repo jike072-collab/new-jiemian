@@ -122,6 +122,14 @@ function checkProductionPayment() {
   return item("payment.production", "fail", "Production payment configuration is inconsistent.");
 }
 
+function checkNoSandboxPaymentExposure() {
+  const sandboxChannels = publicPaymentChannels().filter((entry) => entry.channel.startsWith("sandbox_"));
+  if (process.env.NODE_ENV === "production" && process.env.PORT === "3106" && sandboxChannels.length) {
+    return item("payment.sandbox", "fail", "Sandbox payment channels must not be exposed in production 3106.");
+  }
+  return item("payment.sandbox", "pass", "Sandbox payment channels are not exposed for production 3106.");
+}
+
 function checkNewApiInfraConfig() {
   const composeExists = existsSync("infra/new-api/docker-compose.yml");
   const exampleExists = existsSync("infra/new-api/.env.example");
@@ -154,6 +162,7 @@ export function runBackendReleaseChecks(now = new Date()): ReleaseCheckReport {
     ...checkPersistenceModes(),
     checkNewApiConfig(),
     checkProductionPayment(),
+    checkNoSandboxPaymentExposure(),
     checkNewApiInfraConfig(),
   ];
   const summary = {

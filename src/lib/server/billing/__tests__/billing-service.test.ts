@@ -86,6 +86,29 @@ function withProductionPaymentEnv<T>(input: { enabled?: string; secret?: string 
   });
 }
 
+function withPaymentRuntimeEnv<T>(input: Record<string, string | undefined>, callback: () => T | Promise<T>) {
+  const keys = [
+    "NODE_ENV",
+    "PORT",
+    "PAYMENT_SANDBOX_ENABLED",
+    "PAYMENT_SANDBOX_WEBHOOK_SECRET",
+    "RUNTIME_STORAGE_ISOLATION",
+    "AOHUANG_ALLOW_RUNTIME_DIR_OVERRIDE",
+  ];
+  const previous = new Map(keys.map((key) => [key, process.env[key]]));
+  for (const key of keys) {
+    if (input[key] === undefined) delete process.env[key];
+    else process.env[key] = input[key];
+  }
+  return Promise.resolve(callback()).finally(() => {
+    for (const key of keys) {
+      const value = previous.get(key);
+      if (value === undefined) delete process.env[key];
+      else process.env[key] = value;
+    }
+  });
+}
+
 function withZpayEnv<T>(input: Record<string, string | undefined>, callback: () => T | Promise<T>) {
   const keys = [
     "ZPAY_PID",
@@ -312,6 +335,50 @@ test("returns sandbox payment channel configuration for the future UI", () => {
   assert.equal(production?.min_amount, 100);
   assert.equal(production?.fixed_amounts.includes(100), true);
   assert.equal(production?.estimated_quota_units_per_minor_unit, 1);
+});
+
+test("production 3106 hides and disables sandbox payment", async () => {
+  await withPaymentRuntimeEnv({
+    NODE_ENV: "production",
+    PORT: "3106",
+    PAYMENT_SANDBOX_ENABLED: "true",
+    PAYMENT_SANDBOX_WEBHOOK_SECRET: secret,
+  }, async () => {
+    const harness = service();
+    const channels = harness.billing.listPaymentChannels();
+    assert.equal(channels.some((channel) => channel.channel.startsWith("sandbox_")), false);
+
+    const created = await harness.billing.createOrder({
+      localUserId: "local-user",
+      channel: "sandbox_alipay",
+      currency: "CNY",
+      requestedAmount: 1000,
+      idempotencyKey: "prod-sandbox-disabled",
+    });
+    assert.equal(created.ok, false);
+    if (created.ok) return;
+    assert.equal(created.code, "payment_channel_unavailable");
+
+    const webhook = await harness.billing.handleSandboxWebhook({
+      rawBody: JSON.stringify({
+        event_id: "evt-prod-sandbox-disabled",
+        event_type: "payment_succeeded",
+        order_id: "bo_missing",
+        provider_order_id: "sandbox_bo_missing",
+        local_user_id: "local-user",
+        new_api_user_id: "100",
+        channel: "sandbox_alipay",
+        currency: "CNY",
+        paid_amount: 1000,
+        occurred_at: "2026-06-18T00:01:00.000Z",
+      } satisfies BillingWebhookPayload),
+      timestamp: "1781740800",
+      signature: signSandboxWebhook({ secret, timestamp: "1781740800", body: "{}" }),
+    });
+    assert.equal(webhook.ok, false);
+    if (webhook.ok) return;
+    assert.equal(webhook.code, "billing_disabled");
+  });
 });
 
 test("creates a pending order with server-side discount and quota calculation", async () => {

@@ -41,6 +41,15 @@ const sandboxChannels: PaymentChannelConfig[] = [
     quota_units_per_minor_unit: 10,
   },
 ];
+
+function sandboxPaymentAllowed(env: NodeJS.ProcessEnv = process.env) {
+  if (env.NODE_ENV !== "production") return true;
+  return env.PAYMENT_SANDBOX_ENABLED === "true"
+    && env.PORT === "3107"
+    && env.RUNTIME_STORAGE_ISOLATION === "strict"
+    && env.AOHUANG_ALLOW_RUNTIME_DIR_OVERRIDE === "1";
+}
+
 function productionChannels(): PaymentChannelConfig[] {
   return [
     {
@@ -76,7 +85,7 @@ function productionChannels(): PaymentChannelConfig[] {
 export const BILLING_WEBHOOK_TOLERANCE_SECONDS = 300;
 
 export function listPaymentChannels() {
-  return [...sandboxChannels, ...productionChannels()]
+  return [...(sandboxPaymentAllowed() ? sandboxChannels : []), ...productionChannels()]
     .slice()
     .sort((a, b) => a.sort_order - b.sort_order)
     .map((channel) => ({ ...channel, fixed_amounts: channel.fixed_amounts.slice(), discounts: channel.discounts.slice() }));
@@ -98,6 +107,9 @@ export function sandboxWebhookSecret() {
 }
 
 export function assertSandboxWebhookEnabled() {
+  if (!sandboxPaymentAllowed()) {
+    throw new Error("Sandbox payment is disabled in production.");
+  }
   const secret = sandboxWebhookSecret();
   if (!secret.trim()) {
     throw new Error("PAYMENT_SANDBOX_WEBHOOK_SECRET is required for sandbox webhooks.");

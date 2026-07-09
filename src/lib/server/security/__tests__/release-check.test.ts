@@ -55,6 +55,9 @@ const productionEnv: EnvPatch = {
   NEW_API_ADMIN_ACCESS_TOKEN: "release-test-admin-token",
   PAYMENT_PRODUCTION_ENABLED: undefined,
   PAYMENT_PRODUCTION_WEBHOOK_SECRET: undefined,
+  PAYMENT_SANDBOX_ENABLED: undefined,
+  PAYMENT_SANDBOX_WEBHOOK_SECRET: undefined,
+  AOHUANG_TEST_FAIL_MEDIA_EXPIRATION_UNLINK: undefined,
 };
 
 function expectProductionIssue(
@@ -304,6 +307,26 @@ test("production payment stays fail closed without a registered provider even wh
     const report = runBackendReleaseChecks(new Date("2026-06-19T00:00:00.000Z"));
     assert.equal(report.ok, true);
     assert.equal(report.items.find((entry) => entry.name === "payment.production")?.status, "pass");
+  });
+});
+
+test("production env rejects sandbox payment and test failure injection variables", () => {
+  expectProductionIssue({ PAYMENT_SANDBOX_ENABLED: "true" }, "PAYMENT_SANDBOX_ENABLED");
+  expectProductionIssue({ PAYMENT_SANDBOX_WEBHOOK_SECRET: "sandbox-secret" }, "PAYMENT_SANDBOX_WEBHOOK_SECRET");
+  expectProductionIssue({ AOHUANG_TEST_FAIL_MEDIA_EXPIRATION_UNLINK: "*:EACCES" }, "AOHUANG_TEST_*");
+});
+
+test("production 3106 does not expose sandbox payment channels", async () => {
+  await withEnv({
+    ...productionEnv,
+    PAYMENT_SANDBOX_ENABLED: "true",
+    PAYMENT_SANDBOX_WEBHOOK_SECRET: "sandbox-secret",
+  }, () => {
+    const channels = publicPaymentChannels();
+    assert.equal(channels.some((entry) => entry.channel.startsWith("sandbox_")), false);
+    const report = runBackendReleaseChecks(new Date("2026-06-19T00:00:00.000Z"));
+    assert.equal(report.ok, false);
+    assert.equal(report.items.find((entry) => entry.name === "payment.sandbox")?.status, "pass");
   });
 });
 
