@@ -54,6 +54,15 @@ function hasKey(value: string) {
   return Boolean(value && value.trim() && value.trim() !== "replace_me");
 }
 
+function isRetiredNianhuaImageProvider(provider: Pick<ProviderConfig, "kind" | "apiUrl">) {
+  if (provider.kind !== "image") return false;
+  try {
+    return new URL(String(provider.apiUrl || "").trim()).hostname.toLowerCase() === "nianhuaapi.com";
+  } catch {
+    return false;
+  }
+}
+
 function normalizeModels(value: unknown) {
   return Array.isArray(value)
     ? Array.from(new Set(value.map((item) => String(item || "").trim()).filter(Boolean)))
@@ -231,9 +240,9 @@ export function defaultProviders(): ProviderConfig[] {
       kind: "image",
       title: "img2 图片生成",
       role: "支持 1K、2K、4K 图片生成",
-      apiUrl: env("IMG2_IMAGE_API_URL", "https://nianhuaapi.com/v1/images/generations"),
+      apiUrl: env("IMG2_IMAGE_API_URL"),
       model: env("IMG2_IMAGE_MODEL", "gpt-image-2"),
-      displayName: env("IMG2_IMAGE_DISPLAY_NAME", "img2-4K"),
+      displayName: env("IMG2_IMAGE_DISPLAY_NAME", "img"),
       apiKey: env("IMG2_IMAGE_API_KEY"),
       fallbackApiKey: env("IMG2_IMAGE_FALLBACK_API_KEY"),
       fallbackProviderId: env("IMG2_IMAGE_FALLBACK_PROVIDER_ID", "custom-image-1"),
@@ -332,11 +341,16 @@ export function defaultProviders(): ProviderConfig[] {
 
 function normalizeProvider(provider: ProviderConfig): ProviderConfig {
   const legacyNormalized = normalizeLegacyUpscaleProvider(provider);
+  const apiUrl = String(legacyNormalized.apiUrl || "").trim();
   const models = normalizeModels(legacyNormalized.models);
   const enabledModels = normalizeModels(legacyNormalized.enabledModels);
+  const retired = isRetiredNianhuaImageProvider({
+    kind: legacyNormalized.kind,
+    apiUrl,
+  });
   return {
     ...legacyNormalized,
-    apiUrl: String(legacyNormalized.apiUrl || "").trim(),
+    apiUrl,
     model: String(legacyNormalized.model || "").trim(),
     models: models.length ? models : undefined,
     enabledModels: enabledModels.length
@@ -348,7 +362,7 @@ function normalizeProvider(provider: ProviderConfig): ProviderConfig {
     apiKey: String(legacyNormalized.apiKey || "").trim(),
     fallbackApiKey: fallbackApiKeyForProvider(legacyNormalized),
     fallbackProviderId: fallbackProviderIdForProvider(legacyNormalized),
-    enabled: Boolean(legacyNormalized.enabled),
+    enabled: retired ? false : Boolean(legacyNormalized.enabled),
     endpointType: normalizeEndpointType(legacyNormalized.endpointType, legacyNormalized.kind),
     custom: Boolean(legacyNormalized.custom),
   };

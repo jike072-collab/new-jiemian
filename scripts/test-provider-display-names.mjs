@@ -146,6 +146,44 @@ async function assertBlankDisplayNameFallsBackToModel() {
   assert.equal(enabled[0]?.displayName, "fallback-image-model");
 }
 
+async function assertRetiredNianhuaImageProviderIsHidden() {
+  await providersModule.updateProviders([
+    {
+      id: "image-img2-4k",
+      apiUrl: "https://nianhuaapi.com/v1/images/generations",
+      model: "retired-nianhua-model",
+      displayName: "Retired Nianhua",
+      endpointType: "images-generations",
+      enabled: true,
+      apiKey: "retired-provider-key",
+    },
+    {
+      id: "custom-image-1",
+      kind: "image",
+      title: "Current Image Provider",
+      role: "Current image provider",
+      apiUrl: "https://current-provider.example.test/v1/images/generations",
+      model: "img",
+      models: ["img", "banana"],
+      modelDisplayNames: {
+        img: "img",
+        banana: "banana",
+      },
+      enabledModels: ["img", "banana"],
+      displayName: "Current Image Provider",
+      endpointType: "images-generations",
+      enabled: true,
+      apiKey: "current-provider-key",
+      custom: true,
+    },
+  ]);
+
+  const enabled = await providersModule.readFrontendProviders("image");
+  assert.equal(enabled.some((provider) => provider.model === "retired-nianhua-model"), false);
+  assert.equal(enabled.some((provider) => provider.displayName === "img"), true);
+  assert.equal(enabled.some((provider) => provider.displayName === "banana"), true);
+}
+
 async function assertStoredVideoProviderExpansion() {
   await writeProviders([
     ...providersModule.defaultProviders(),
@@ -334,6 +372,7 @@ test("provider display-name persistence and legacy upscale compatibility", async
   await assertProviderDisplayNamesRoundTrip();
   await assertMissingDisplayNameFallsBackToModel();
   await assertBlankDisplayNameFallsBackToModel();
+  await assertRetiredNianhuaImageProviderIsHidden();
   await assertStoredVideoProviderExpansion();
   await assertLegacyLocalUpscaleMapsAtReadBoundary();
   await assertSavingProvidersWritesOnlyCurrentUpscaleTypes();
