@@ -75,6 +75,12 @@ export function defaultImagexOutputDomain(serviceId: string, region: string) {
   return `${normalizedServiceId}.veimagex-pub.${normalizedRegion}.volces.com`;
 }
 
+function defaultImagexUploadHost(serviceId: string) {
+  const normalizedServiceId = serviceId.trim();
+  if (!normalizedServiceId) return "";
+  return `${normalizedServiceId}.up.imagex-accelerate.volces.com`;
+}
+
 function asRecord(value: unknown): Record<string, unknown> {
   return value && typeof value === "object" && !Array.isArray(value)
     ? value as Record<string, unknown>
@@ -441,6 +447,7 @@ function imageConfig(provider: ProviderConfig | null) {
     endpoint: provider?.apiUrl || env("VOLCENGINE_IMAGEX_ENDPOINT", imagexDefaultEndpoint),
     region,
     serviceId,
+    uploadHost: env("VOLCENGINE_IMAGEX_UPLOAD_HOST") || defaultImagexUploadHost(serviceId),
     outputDomain: env("VOLCENGINE_IMAGEX_OUTPUT_DOMAIN") || defaultImagexOutputDomain(serviceId, region),
     outputTpl: env("VOLCENGINE_IMAGEX_OUTPUT_TPL"),
     workflowTemplateId: env("VOLCENGINE_IMAGEX_WORKFLOW_TEMPLATE_ID", "system_workflow_ai_super_resolution"),
@@ -577,6 +584,7 @@ async function uploadImageToImagex(file: UploadedUpscaleFile, config: ReturnType
       ServiceId: config.serviceId,
       UploadNum: 1,
       StoreKeys: storeKey,
+      ...(config.uploadHost ? { UploadHost: config.uploadHost } : {}),
     },
   });
   const address = apply.Result?.UploadAddress;
