@@ -758,6 +758,57 @@ test("zpay GET webhook verifies signature and credits quota", async () => {
   assert.equal((await harness.repository.getOrder(order.order_id))?.status, "paid");
 });
 
+test("zpay webhook binds the real trade number when order creation used the local fallback", async () => {
+  const harness = service();
+  const order = await createProductionOrder(harness, {
+    order_id: "bo_zpay_fallback",
+    provider_order_id: "bo_zpay_fallback",
+    requested_amount: 500,
+    credited_quota: 5000,
+    idempotency_key: "zpay-fallback",
+  });
+  const params = {
+    pid: "zpay-pid-test",
+    name: "奥皇AI积分充值",
+    money: "5.00",
+    out_trade_no: order.order_id,
+    trade_no: "zpay_real_trade_3",
+    param: createZpayPaymentParam({
+      localUserId: order.local_user_id,
+      newApiUserId: order.new_api_user_id,
+    }),
+    trade_status: "TRADE_SUCCESS",
+    type: "alipay",
+  };
+  const signed = new URLSearchParams({
+    ...params,
+    sign: signZpayParams(params, "zpay-key-test"),
+    sign_type: "MD5",
+  }).toString();
+
+  await withZpayEnv({
+    ZPAY_PID: "zpay-pid-test",
+    ZPAY_KEY: "zpay-key-test",
+    ZPAY_CHANNEL_ID: ZPAY_ZHU_SHENGYONG_CHANNEL_ID,
+    ZPAY_NOTIFY_URL: "https://example.com/api/billing/webhooks/production",
+    ZPAY_RETURN_URL: "https://example.com/",
+  }, () => withProductionPaymentEnv({ enabled: "true", secret }, async () => {
+    const result = await harness.billing.handleProductionWebhook({
+      rawBody: signed,
+      timestamp: null,
+      signature: null,
+    });
+    assert.equal(result.ok, true);
+    if (!result.ok) return;
+    assert.equal(result.action, "credited");
+    assert.equal(result.order.status, "paid");
+    assert.equal(result.order.provider_order_id, "zpay_real_trade_3");
+  }));
+
+  assert.equal(harness.creditCalls.length, 1);
+  assert.equal((await harness.repository.getOrder(order.order_id))?.quota_credit_applied_at !== null, true);
+});
+
 test("creates orders idempotently and rejects invalid amount or inactive mapping", async () => {
   const harness = service();
   const first = await createOrder(harness);

@@ -338,7 +338,7 @@ export function MediaCard({
           {fileSizeText ? <span>{fileSizeText}</span> : null}
           {expiryText ? <span>{expiryText}</span> : null}
         </div>
-        {large && item.error ? <p>{item.error}</p> : null}
+        {large && item.error && (item.status === "failed" || !item.output?.url) ? <p>{item.error}</p> : null}
         {mediaExpired ? <p className="studio-inline-error" role="alert">文件已超过保存期限，作品记录仍保留，可删除记录。</p> : null}
         {!mediaExpired && mediaMissing ? <p className="studio-inline-error" role="alert">结果文件不存在，作品记录仍保留，可刷新或删除。</p> : null}
         {showActions && media?.url && !unavailable ? (

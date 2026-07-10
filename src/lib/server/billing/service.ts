@@ -483,9 +483,21 @@ export class BillingService {
     let order = eventResult.order;
     const eventStatus = eventResult.event.status;
     const wasCompleted = eventResult.completed;
-    if (wasCompleted) {
+    const canBindFallbackProviderOrderId = (
+      order.provider_order_id === order.order_id
+      && payload.order_id === order.order_id
+      && Boolean(payload.provider_order_id.trim())
+    );
+    if (wasCompleted && !(
+      eventResult.event.safe_error === "Provider order id mismatch."
+      && canBindFallbackProviderOrderId
+    )) {
       await this.audit("billing.webhook.idempotent", order, context, { event_id: payload.event_id });
       return { ok: true, status: 200, order: publicOrder(order), action: "idempotent" };
+    }
+    if (wasCompleted) {
+      await this.repository.updateWebhookEventStatus(payload.event_id, "processing", null);
+      order = await this.repository.getOrder(payload.order_id) || order;
     }
     if (eventStatus === "received") {
       const claimed = await this.repository.updateWebhookEventStatus(payload.event_id, "processing");
@@ -498,7 +510,7 @@ export class BillingService {
       }
     }
 
-    const mismatch = this.webhookMismatch(order, payload);
+    const mismatch = this.webhookMismatch(order, payload, canBindFallbackProviderOrderId);
     if (mismatch) {
       const review = await this.updateStatus(order, "review", {
         paid_amount: payload.paid_amount,
@@ -507,6 +519,11 @@ export class BillingService {
       await this.repository.updateWebhookEventStatus(payload.event_id, "completed", mismatch);
       await this.audit("billing.webhook.review", review, context, { event_id: payload.event_id, reason: mismatch });
       return { ok: true, status: 202, order: publicOrder(review), action: "review" };
+    }
+    if (canBindFallbackProviderOrderId && order.provider_order_id !== payload.provider_order_id) {
+      order = await this.repository.updateOrder(order.order_id, {
+        provider_order_id: payload.provider_order_id,
+      }, order.version);
     }
 
     const targetStatus = statusFromEvent(payload.event_type);
@@ -639,8 +656,8 @@ export class BillingService {
     return Math.floor((baseQuota * (10000 + bonusBasisPoints)) / 10000);
   }
 
-  private webhookMismatch(order: BillingOrder, payload: BillingWebhookPayload) {
-    if (order.provider_order_id !== payload.provider_order_id) return "Provider order id mismatch.";
+  private webhookMismatch(order: BillingOrder, payload: BillingWebhookPayload, canBindFallbackProviderOrderId = false) {
+    if (order.provider_order_id !== payload.provider_order_id && !canBindFallbackProviderOrderId) return "Provider order id mismatch.";
     if (order.local_user_id !== payload.local_user_id) return "Local user mismatch.";
     if (order.new_api_user_id !== payload.new_api_user_id) return "New API user mismatch.";
     if (order.channel !== payload.channel) return "Payment channel mismatch.";
