@@ -589,7 +589,10 @@ async function uploadImageToImagex(file: UploadedUpscaleFile, config: ReturnType
   });
   const address = apply.Result?.UploadAddress;
   const storeInfo = address?.StoreInfos?.[0];
-  const uploadHosts = uniqueStrings(address?.UploadHosts || []);
+  const uploadHosts = uniqueStrings([
+    config.uploadHost,
+    ...(address?.UploadHosts || []),
+  ]);
   if (!storeInfo?.StoreUri || !storeInfo.Auth || !uploadHosts.length || !address?.SessionKey) {
     throw new GenerationDiagnosticError({ code: "PROVIDER_BAD_RESPONSE", safeDetails: { service: imagexServiceName, step: "apply-upload" } });
   }
