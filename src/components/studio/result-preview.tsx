@@ -1342,8 +1342,8 @@ export function VideoUpscalePreviewPanel({
             beforeAlt={source.file.name}
             afterAlt={output.item.title}
             mediaType="video"
-            autoPlayVideo={false}
-            videoPreload="metadata"
+            autoPlayVideo
+            videoPreload="auto"
           />
         ) : (
           <figure className="studio-upscale-preview__figure">
