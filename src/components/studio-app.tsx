@@ -1958,7 +1958,9 @@ export function StudioApp() {
     if (!selectedVideoProvider) return;
     setVideoWorkspace((prev) => {
       const ratioOptions = videoRatioOptions(selectedVideoProvider);
-      const nextDuration = preferredVideoDuration(selectedVideoProvider, prev.duration);
+      const nextDuration = isGrokVideoProvider(selectedVideoProvider)
+        ? preferredVideoDuration(selectedVideoProvider)
+        : preferredVideoDuration(selectedVideoProvider, prev.duration);
       const nextRatio = ratioOptions.includes(prev.ratio) ? prev.ratio : ratioOptions[0];
       const modelNeedsFile = videoProviderRequiresReferenceImage(selectedVideoProvider);
       const nextFileError = modelNeedsFile && !prev.files.length
