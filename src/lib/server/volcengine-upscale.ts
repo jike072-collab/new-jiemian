@@ -61,6 +61,8 @@ const vodDefaultEndpoint = "https://vod.volcengineapi.com";
 const defaultRegion = "cn-north-1";
 const imagexServiceName = "imagex";
 const vodServiceName = "vod";
+const imageUploadHostTimeoutMs = 90 * 1000;
+const defaultUploadHostTimeoutMs = 30 * 60 * 1000;
 
 function env(name: string, fallback = "") {
   return process.env[name] || fallback;
@@ -489,7 +491,13 @@ export async function readUpscaleStatus() {
   };
 }
 
-async function uploadByAddress(file: UploadedUpscaleFile, uploadHost: string, storeUri: string, auth: string) {
+async function uploadByAddress(
+  file: UploadedUpscaleFile,
+  uploadHost: string,
+  storeUri: string,
+  auth: string,
+  timeoutMs = defaultUploadHostTimeoutMs,
+) {
   const url = `https://${uploadHost.replace(/^https?:\/\//, "").replace(/\/+$/, "")}/upload/v1/${storeUri.replace(/^\/+/, "")}`;
   const response = await fetch(url, {
     method: "POST",
@@ -501,7 +509,7 @@ async function uploadByAddress(file: UploadedUpscaleFile, uploadHost: string, st
       "Content-Length": String(file.bytes.length),
     },
     body: new Uint8Array(file.bytes),
-    signal: AbortSignal.timeout(30 * 60 * 1000),
+    signal: AbortSignal.timeout(timeoutMs),
   });
   if (!response.ok) {
     throw new GenerationDiagnosticError({
@@ -581,7 +589,7 @@ async function uploadImageToImagex(file: UploadedUpscaleFile, config: ReturnType
   let lastUploadError: unknown = null;
   for (const host of uploadHosts) {
     try {
-      await uploadByAddress(file, host, storeInfo.StoreUri, storeInfo.Auth);
+      await uploadByAddress(file, host, storeInfo.StoreUri, storeInfo.Auth, imageUploadHostTimeoutMs);
       lastUploadError = null;
       break;
     } catch (error) {
