@@ -2579,7 +2579,13 @@ export function StudioApp() {
 
   useEffect(() => {
     const job = videoWorkspace.job;
-    if (!job || job.status === "done" || job.status === "failed") return;
+    if (!job || job.status === "failed") return;
+    const currentItem = outputs.video?.item;
+    const currentItemMatchesJob = Boolean(currentItem && (
+      currentItem.id === job.libraryItemId
+      || (job.billing_task_id && currentItem.params?.billingTaskId === job.billing_task_id)
+    ));
+    if (job.status === "done" && currentItemMatchesJob && currentItem?.status === "done") return;
     const timer = window.setInterval(async () => {
       try {
         const data = await jsonFetch<{ job: JobRecord | null }>(`/api/jobs/${job.id}`);
@@ -2610,7 +2616,7 @@ export function StudioApp() {
       }
     }, 5000);
     return () => window.clearInterval(timer);
-  }, [handleVideoResult, refreshAccountAfterGeneration, refreshLibraryAfterMutation, setMessage, updateVideoInFlightState, updateVideoWorkspace, videoWorkspace.job]);
+  }, [handleVideoResult, outputs.video, refreshAccountAfterGeneration, refreshLibraryAfterMutation, setMessage, updateVideoInFlightState, updateVideoWorkspace, videoWorkspace.job]);
 
   const submitVideoWorkspace = useCallback(async () => {
     if (!selectedVideoProvider) {
