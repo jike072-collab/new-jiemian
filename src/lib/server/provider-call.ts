@@ -1447,6 +1447,7 @@ export async function submitVideo(input: {
         ratio: input.ratio,
         duration: input.duration,
         referenceImages: input.files.length,
+        ...(input.billingTaskId ? { billingTaskId: input.billingTaskId } : {}),
       },
     });
     const jobId = output.jobId || randomUUID();
