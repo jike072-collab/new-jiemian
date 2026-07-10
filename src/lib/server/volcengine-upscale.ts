@@ -1376,6 +1376,7 @@ export async function refreshVideoUpscaleJob(jobId: string, localUserId?: string
     const currentItem = (await readLibrary()).find((item) => item.id === job.libraryItemId);
     await updateLibraryItem(job.libraryItemId, {
       status: "done",
+      error: undefined,
       output: stored,
       params: {
         ...(currentItem?.params || {}),

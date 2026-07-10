@@ -2547,24 +2547,38 @@ export function StudioApp() {
 
   useEffect(() => {
     const job = videoUpscaleWorkspace.job;
-    if (!job || job.status === "done" || job.status === "failed") return;
+    if (!job || job.status === "failed") return;
+    const currentItem = outputs["video-upscale"]?.item;
+    const currentItemMatchesJob = Boolean(currentItem && (
+      currentItem.id === job.libraryItemId
+      || (job.billing_task_id && currentItem.params?.billingTaskId === job.billing_task_id)
+    ));
+    if (job.status === "done" && currentItemMatchesJob && currentItem?.status === "done") return;
     const timer = window.setInterval(async () => {
       try {
         const data = await jsonFetch<{ job: JobRecord | null }>(`/api/jobs/${job.id}`);
         const nextJob = data.job || job;
-        updateVideoUpscaleWorkspace({ job: nextJob });
+        if (data.job) updateVideoUpscaleWorkspace({ job: data.job });
         const libraryData = await jsonFetch<{ items: LibraryItem[] }>("/api/library");
-        const updatedItem = libraryData.items.find((item) => item.id === job.libraryItemId);
+        const updatedItem = libraryData.items.find((item) => item.id === job.libraryItemId)
+          || libraryData.items.find((item) => (
+            item.mode === "video-upscale"
+            && item.params?.billingTaskId === job.billing_task_id
+          ));
+        const itemBackedJob = updatedItem && updatedItem.status !== "queued" && updatedItem.status !== "generating"
+          ? { ...nextJob, status: updatedItem.status === "failed" ? "failed" as const : "done" as const }
+          : nextJob;
         if (updatedItem) {
+          updateVideoUpscaleWorkspace({ job: itemBackedJob });
           setOutputs((prev) => ({
             ...prev,
-            "video-upscale": { item: updatedItem, job: nextJob, title: "视频高清增强结果", tool: "video-upscale" },
+            "video-upscale": { item: updatedItem, job: itemBackedJob, title: "视频高清增强结果", tool: "video-upscale" },
           }));
           if (updatedItem.status === "failed") {
-            updateVideoUpscaleWorkspace({ submitError: updatedItem.error || nextJob.error || "视频高清增强处理失败。" });
+            updateVideoUpscaleWorkspace({ submitError: updatedItem.error || itemBackedJob.error || "视频高清增强处理失败。" });
           }
         }
-        if (nextJob.status === "done" || nextJob.status === "failed") {
+        if (itemBackedJob.status === "done" || itemBackedJob.status === "failed") {
           await refreshAccountAfterGeneration();
         }
         await refreshLibraryAfterMutation();
@@ -2575,7 +2589,7 @@ export function StudioApp() {
       }
     }, 5000);
     return () => window.clearInterval(timer);
-  }, [refreshAccountAfterGeneration, refreshLibraryAfterMutation, setMessage, updateVideoUpscaleWorkspace, videoUpscaleWorkspace.job]);
+  }, [outputs["video-upscale"]?.item, refreshAccountAfterGeneration, refreshLibraryAfterMutation, setMessage, updateVideoUpscaleWorkspace, videoUpscaleWorkspace.job]);
 
   useEffect(() => {
     const job = videoWorkspace.job;
