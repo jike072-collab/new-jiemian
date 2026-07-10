@@ -50,6 +50,7 @@ class BillingDispatchRejectedError extends Error {
 
 const duplicateImageDispatchWaitMs = 180000;
 const duplicateImageDispatchPollMs = 2000;
+const imageProviderRequestTimeoutMs = 600000;
 
 const grokVideo10Durations = new Set([6, 8, 10, 12, 15]);
 const grokVideo15Durations = new Set([6, 8, 10, 12, 15]);
@@ -675,6 +676,28 @@ async function readBoundedText(response: Response, limitBytes: number) {
   }
 }
 
+function isProviderNetworkFetchError(error: unknown) {
+  if (!(error instanceof Error)) return false;
+  if (error.name === "AbortError" || error.name === "TimeoutError") return false;
+  const cause = error.cause instanceof Error ? error.cause : null;
+  const message = `${error.message} ${cause?.message || ""} ${String((cause as { code?: unknown } | null)?.code || "")}`;
+  return /fetch failed|ECONNRESET|ECONNREFUSED|EPIPE|ETIMEDOUT|EAI_AGAIN|ENOTFOUND|UND_ERR|socket|network/i.test(message);
+}
+
+async function fetchProviderWithNetworkRetry(input: string | URL | Request, init: RequestInit, attempts = 2) {
+  let lastError: unknown;
+  for (let attempt = 1; attempt <= attempts; attempt += 1) {
+    try {
+      return await fetch(input, init);
+    } catch (error) {
+      lastError = error;
+      if (attempt >= attempts || !isProviderNetworkFetchError(error)) throw error;
+      await new Promise((resolve) => setTimeout(resolve, 500 * attempt));
+    }
+  }
+  throw lastError;
+}
+
 function imageEndpoint(provider: ProviderConfig, useEdits: boolean) {
   const target = useEdits ? "edits" : "generations";
   if (/\/images\/(?:edits|generations)\/?$/i.test(provider.apiUrl)) {
@@ -901,7 +924,7 @@ async function callImageProviderOnce({
   const outputCount = Math.min(Math.max(Math.round(count || 1), 1), 4);
 
   if (isImg2ImageProvider(provider) && !useMultipart) {
-    const response = await fetch(apiUrl, {
+    const response = await fetchProviderWithNetworkRetry(apiUrl, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
@@ -913,7 +936,7 @@ async function callImageProviderOnce({
         size: img2ImageSize(ratio, quality),
         n: outputCount,
       }),
-      signal: AbortSignal.timeout(300000),
+      signal: AbortSignal.timeout(imageProviderRequestTimeoutMs),
     });
     return parseImageProviderOutputs(await readProviderJson(response, provider));
   }
@@ -936,17 +959,17 @@ async function callImageProviderOnce({
       );
     });
 
-    const response = await fetch(apiUrl, {
+    const response = await fetchProviderWithNetworkRetry(apiUrl, {
       method: "POST",
       headers: authHeaders(provider),
       body: form,
-      signal: AbortSignal.timeout(300000),
+      signal: AbortSignal.timeout(imageProviderRequestTimeoutMs),
     });
     return parseImageProviderOutputs(await readProviderJson(response, provider));
   }
 
   const upscale = imageUpscaleValue(quality);
-  const response = await fetch(apiUrl, {
+  const response = await fetchProviderWithNetworkRetry(apiUrl, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
@@ -961,7 +984,7 @@ async function callImageProviderOnce({
       response_format: looksLikeOpenAiImageModel(provider.model) ? "b64_json" : "url",
       ...(upscale ? { upscale } : {}),
     }),
-    signal: AbortSignal.timeout(300000),
+    signal: AbortSignal.timeout(imageProviderRequestTimeoutMs),
   });
   return parseImageProviderOutputs(await readProviderJson(response, provider));
 }
