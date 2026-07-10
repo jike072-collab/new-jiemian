@@ -2,7 +2,8 @@ import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 
 import { AUTH_SESSION_COOKIE, getAuthService } from "@/lib/server/auth";
-import { getNewApiConfig } from "@/lib/server/integrations/new-api/config";
+
+const NEW_API_ADMIN_USERS_URL = "https://newapi.aohuang888.com/console/user";
 
 export default async function AdminUsersPage() {
   const sessionToken = (await cookies()).get(AUTH_SESSION_COOKIE)?.value || null;
@@ -19,8 +20,7 @@ export default async function AdminUsersPage() {
   }
 
   if (canAccessAdmin) {
-    const newApiBaseUrl = getNewApiConfig().baseUrl;
-    redirect(`${newApiBaseUrl}/users`);
+    redirect(NEW_API_ADMIN_USERS_URL);
   }
   redirect("/?preview=1");
 }

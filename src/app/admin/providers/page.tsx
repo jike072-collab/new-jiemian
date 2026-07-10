@@ -1,8 +1,9 @@
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 
-import { AdminProvidersClient } from "@/components/admin-providers-client";
 import { AUTH_SESSION_COOKIE, getAuthService } from "@/lib/server/auth";
+
+const NEW_API_ADMIN_USERS_URL = "https://newapi.aohuang888.com/console/user";
 
 export default async function AdminProvidersPage() {
   const sessionToken = (await cookies()).get(AUTH_SESSION_COOKIE)?.value || null;
@@ -18,6 +19,8 @@ export default async function AdminProvidersPage() {
     canAccessAdmin = false;
   }
 
-  if (canAccessAdmin) return <AdminProvidersClient />;
+  if (canAccessAdmin) {
+    redirect(NEW_API_ADMIN_USERS_URL);
+  }
   redirect("/?preview=1");
 }

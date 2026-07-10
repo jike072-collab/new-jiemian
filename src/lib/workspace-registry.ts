@@ -4,12 +4,11 @@ import {
   Image as ImageIcon,
   ImageUp,
   LayoutGrid,
-  Settings,
   TrendingUp,
   Wand2,
 } from "lucide-react";
 
-export type WorkspaceToolGroup = "模板" | "创作工具" | "增强工具" | "作品" | "系统";
+export type WorkspaceToolGroup = "模板" | "创作工具" | "增强工具" | "作品";
 
 export type WorkspaceToolId =
   | "templates"
@@ -18,10 +17,9 @@ export type WorkspaceToolId =
   | "image-editor"
   | "image-upscale"
   | "video-upscale"
-  | "library"
-  | "admin-settings";
+  | "library";
 
-export type WorkspaceBusinessToolId = Exclude<WorkspaceToolId, "templates" | "image-editor" | "admin-settings">;
+export type WorkspaceBusinessToolId = Exclude<WorkspaceToolId, "templates" | "image-editor">;
 export type WorkspaceImageMode = "text-to-image" | "image-to-image";
 export type WorkspaceVideoMode = "text-to-video" | "image-to-video";
 
@@ -63,7 +61,6 @@ export const workspaceToolGroups: Array<{ title: WorkspaceToolGroup; items: Work
   { title: "增强工具", items: ["image-upscale", "video-upscale"] },
   { title: "模板", items: ["templates"] },
   { title: "作品", items: ["library"] },
-  { title: "系统", items: ["admin-settings"] },
 ];
 
 export const workspaceToolEntries: WorkspaceToolEntry[] = [
@@ -138,16 +135,6 @@ export const workspaceToolEntries: WorkspaceToolEntry[] = [
     action: { kind: "workspace", toolId: "library" },
     visible: true,
     requiresAuth: false,
-  },
-  {
-    id: "admin-settings",
-    label: "后台设置",
-    description: "系统配置",
-    icon: Settings,
-    group: "系统",
-    action: { kind: "route", href: "/admin/providers" },
-    visible: false,
-    requiresAuth: true,
   },
 ];
 

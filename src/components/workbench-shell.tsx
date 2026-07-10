@@ -772,7 +772,6 @@ function canShowWorkspaceTool(
 ): item is WorkspaceToolEntry {
   if (!item) return false;
   if (item.requiresAuth && !auth.isAuthenticated) return false;
-  if (item.id === "admin-settings") return auth.canAccessAdmin;
   return item.visible;
 }
 
