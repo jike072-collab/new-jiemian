@@ -437,26 +437,34 @@ function parseVirtualProviderId(id: string) {
 }
 
 function publicDisplayName(provider: ProviderConfig, model: string, hasMultipleModels: boolean) {
+  if (provider.endpointType === "grok-videos" && model.trim().toLowerCase() === "grok-video-1.5") return "grok";
   const modelDisplayName = normalizeModelDisplayNames(provider.modelDisplayNames)?.[model];
   if (modelDisplayName) return modelDisplayName;
   if (!hasMultipleModels) return provider.displayName || model;
   return `${provider.title} · ${model}`;
 }
 
+function isRetiredGrokVideoModel(model: string) {
+  return model.trim().toLowerCase() === "grok-video-1.0";
+}
+
 function expandProviderModels(provider: ProviderConfig) {
   const normalized = normalizeProvider(provider);
-  if (!shouldExpandProvider(normalized)) return [sanitizeProvider(normalized)];
+  if (!shouldExpandProvider(normalized)) {
+    return isRetiredGrokVideoModel(normalized.model) ? [] : [sanitizeProvider(normalized)];
+  }
   const models = normalizeModels(normalized.models);
-  if (!models.length) return [sanitizeProvider(normalized)];
+  if (!models.length) return isRetiredGrokVideoModel(normalized.model) ? [] : [sanitizeProvider(normalized)];
   const enabledModels = normalizeModels(normalized.enabledModels);
   const visibleModels = enabledModels.length
     ? models.filter((model) => enabledModels.includes(model))
     : models;
-  return visibleModels.map((model) => sanitizeProvider({
+  const activeModels = visibleModels.filter((model) => !isRetiredGrokVideoModel(model));
+  return activeModels.map((model) => sanitizeProvider({
     ...normalized,
     id: virtualProviderId(normalized.id, model),
     model,
-    displayName: publicDisplayName(normalized, model, visibleModels.length > 1),
+    displayName: publicDisplayName(normalized, model, activeModels.length > 1),
     videoOptions: providerVideoOptions({ ...normalized, model }),
   }));
 }
@@ -539,6 +547,7 @@ export async function providerById(id: string) {
   const direct = providers.find((provider) => provider.id === id);
   if (direct) {
     const normalized = normalizeProvider(direct);
+    if (isRetiredGrokVideoModel(normalized.model)) return null;
     if (!normalized.enabled) return null;
     const knownModels = normalizeModels(normalized.models);
     const enabledModels = normalizeModels(normalized.enabledModels);
@@ -547,6 +556,7 @@ export async function providerById(id: string) {
   }
   const virtual = parseVirtualProviderId(id);
   if (!virtual) return null;
+  if (isRetiredGrokVideoModel(virtual.model)) return null;
   const provider = providers.find((item) => item.id === virtual.providerId);
   if (!provider || !shouldExpandProvider(provider)) return null;
   if (!normalizeProvider(provider).enabled) return null;
