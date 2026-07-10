@@ -573,12 +573,37 @@ async function uploadImageToImagex(file: UploadedUpscaleFile, config: ReturnType
   });
   const address = apply.Result?.UploadAddress;
   const storeInfo = address?.StoreInfos?.[0];
-  const host = address?.UploadHosts?.[0];
-  if (!storeInfo?.StoreUri || !storeInfo.Auth || !host || !address?.SessionKey) {
+  const uploadHosts = uniqueStrings(address?.UploadHosts || []);
+  if (!storeInfo?.StoreUri || !storeInfo.Auth || !uploadHosts.length || !address?.SessionKey) {
     throw new GenerationDiagnosticError({ code: "PROVIDER_BAD_RESPONSE", safeDetails: { service: imagexServiceName, step: "apply-upload" } });
   }
   const imageSessionKey = address.SessionKey;
-  await uploadByAddress(file, host, storeInfo.StoreUri, storeInfo.Auth);
+  let lastUploadError: unknown = null;
+  for (const host of uploadHosts) {
+    try {
+      await uploadByAddress(file, host, storeInfo.StoreUri, storeInfo.Auth);
+      lastUploadError = null;
+      break;
+    } catch (error) {
+      lastUploadError = error;
+      console.warn(JSON.stringify({
+        event: "imagex_upload_host_failed",
+        host,
+        error: error instanceof Error ? error.message : "unknown",
+      }));
+    }
+  }
+  if (lastUploadError) {
+    throw new GenerationDiagnosticError({
+      code: "PROVIDER_NETWORK_ERROR",
+      cause: lastUploadError,
+      safeDetails: {
+        service: imagexServiceName,
+        step: "upload",
+        uploadHostsTried: uploadHosts.length,
+      },
+    });
+  }
   await openapiRequest({
     endpoint: config.endpoint,
     service: imagexServiceName,
