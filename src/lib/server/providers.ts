@@ -539,15 +539,17 @@ export async function providerById(id: string) {
   const direct = providers.find((provider) => provider.id === id);
   if (direct) {
     const normalized = normalizeProvider(direct);
+    if (!normalized.enabled) return null;
     const knownModels = normalizeModels(normalized.models);
     const enabledModels = normalizeModels(normalized.enabledModels);
     if (knownModels.length && enabledModels.length && !enabledModels.includes(normalized.model)) return null;
-    return direct;
+    return normalized;
   }
   const virtual = parseVirtualProviderId(id);
   if (!virtual) return null;
   const provider = providers.find((item) => item.id === virtual.providerId);
   if (!provider || !shouldExpandProvider(provider)) return null;
+  if (!normalizeProvider(provider).enabled) return null;
   const knownModels = normalizeModels(provider.models);
   if (knownModels.length && !knownModels.includes(virtual.model)) return null;
   const enabledModels = normalizeModels(provider.enabledModels);
