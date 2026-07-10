@@ -81,6 +81,12 @@ function defaultImagexUploadHost(serviceId: string) {
   return `${normalizedServiceId}.up.imagex-accelerate.volces.com`;
 }
 
+function imagexWorkflowTemplateId() {
+  const configured = env("VOLCENGINE_IMAGEX_WORKFLOW_TEMPLATE_ID", "system_workflow_sr").trim();
+  if (!configured || configured === "system_workflow_ai_super_resolution") return "system_workflow_sr";
+  return configured;
+}
+
 function asRecord(value: unknown): Record<string, unknown> {
   return value && typeof value === "object" && !Array.isArray(value)
     ? value as Record<string, unknown>
@@ -450,7 +456,7 @@ function imageConfig(provider: ProviderConfig | null) {
     uploadHost: env("VOLCENGINE_IMAGEX_UPLOAD_HOST") || defaultImagexUploadHost(serviceId),
     outputDomain: env("VOLCENGINE_IMAGEX_OUTPUT_DOMAIN") || defaultImagexOutputDomain(serviceId, region),
     outputTpl: env("VOLCENGINE_IMAGEX_OUTPUT_TPL"),
-    workflowTemplateId: env("VOLCENGINE_IMAGEX_WORKFLOW_TEMPLATE_ID", "system_workflow_ai_super_resolution"),
+    workflowTemplateId: imagexWorkflowTemplateId(),
     modelId: env("VOLCENGINE_IMAGEX_MODEL_ID", "ai_sr_model_v2"),
   };
 }
@@ -722,9 +728,16 @@ export async function upscaleImage(
         ObjectKey: inputKey.replace(/^tos-[^/]+\//, ""),
         DataType: "uri",
       },
-      GenDREnhanceParam: {
-        ModelId: config.modelId,
+      SrParam: {
+        Mode: 0,
         Multiple: Math.max(1, scale),
+        ShortMin: 16,
+        ShortMax: 1440,
+        LongMin: 16,
+        LongMax: 2160,
+        Policy: 0,
+        SharpRatio: 1.0,
+        DenoiseRatio: 0.7,
       },
     });
     const processed = await openapiRequest<{
