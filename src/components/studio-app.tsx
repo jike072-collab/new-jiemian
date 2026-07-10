@@ -590,11 +590,15 @@ function jimengVideoOptions(provider: WorkspacePublicProvider | null | undefined
 }
 
 function videoDurationOptions(provider: WorkspacePublicProvider | null | undefined) {
-  if (provider?.videoOptions?.durations?.length) return provider.videoOptions.durations;
   const jimengOptions = jimengVideoOptions(provider);
   if (jimengOptions) return jimengOptions.durations;
-  if (!isGrokVideoProvider(provider)) return defaultVideoDurations;
-  return provider?.model === "grok-video-1.5" ? grokVideo15Durations : grokVideo10Durations;
+  if (isGrokVideoProvider(provider)) {
+    const defaults = provider?.model === "grok-video-1.5" ? grokVideo15Durations : grokVideo10Durations;
+    const configured = provider?.videoOptions?.durations?.length ? provider.videoOptions.durations : defaults;
+    return Array.from(new Set([6, ...configured, ...defaults]));
+  }
+  if (provider?.videoOptions?.durations?.length) return provider.videoOptions.durations;
+  return defaultVideoDurations;
 }
 
 function preferredVideoDuration(provider: WorkspacePublicProvider | null | undefined, current?: number) {
