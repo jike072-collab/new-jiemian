@@ -597,6 +597,12 @@ function videoDurationOptions(provider: WorkspacePublicProvider | null | undefin
   return provider?.model === "grok-video-1.5" ? grokVideo15Durations : grokVideo10Durations;
 }
 
+function preferredVideoDuration(provider: WorkspacePublicProvider | null | undefined, current?: number) {
+  const options = videoDurationOptions(provider);
+  if (typeof current === "number" && options.includes(current)) return current;
+  return options.includes(6) ? 6 : options[0] || 6;
+}
+
 function videoRatioOptions(provider: WorkspacePublicProvider | null | undefined) {
   if (provider?.videoOptions?.ratios?.length) return provider.videoOptions.ratios;
   const jimengOptions = jimengVideoOptions(provider);
@@ -684,7 +690,7 @@ export function StudioApp() {
   const [videoWorkspace, setVideoWorkspace] = useState<VideoWorkspaceState>({
     providerId: "",
     ratio: "16:9",
-    duration: 5,
+    duration: 6,
     templateId: "",
     prompt: "",
     promptOptimizing: false,
@@ -1263,14 +1269,14 @@ export function StudioApp() {
       templateId: template.id,
       prompt: template.prompt,
       ratio: template.aspectRatio,
-      duration: template.duration,
+      duration: preferredVideoDuration(providers.video.find((item) => item.id === prev.providerId) || providers.video[0], template.duration),
       fileError: template.requiresImage && !prev.files.length ? "请先上传图像。" : "",
       promptOptimizeError: "",
       promptOptimizeUndo: "",
       submitError: "",
       submitDiagnostic: null,
     }));
-  }, []);
+  }, [providers.video]);
 
   useEffect(() => {
     if (!templateParam || appliedTemplateIdRef.current === templateParam) return;
@@ -1947,9 +1953,8 @@ export function StudioApp() {
   useEffect(() => {
     if (!selectedVideoProvider) return;
     setVideoWorkspace((prev) => {
-      const durationOptions = videoDurationOptions(selectedVideoProvider);
       const ratioOptions = videoRatioOptions(selectedVideoProvider);
-      const nextDuration = durationOptions.includes(prev.duration) ? prev.duration : durationOptions[0];
+      const nextDuration = preferredVideoDuration(selectedVideoProvider, prev.duration);
       const nextRatio = ratioOptions.includes(prev.ratio) ? prev.ratio : ratioOptions[0];
       const modelNeedsFile = videoProviderRequiresReferenceImage(selectedVideoProvider);
       const nextFileError = modelNeedsFile && !prev.files.length
@@ -2575,10 +2580,21 @@ export function StudioApp() {
         const nextJob = data.job || job;
         if (data.job) updateVideoWorkspace({ job: data.job });
         const libraryData = await jsonFetch<{ items: LibraryItem[] }>("/api/library");
-        const updatedItem = libraryData.items.find((item) => item.id === job.libraryItemId);
-        if (updatedItem) handleVideoResult(updatedItem, nextJob);
-        if (nextJob.status === "done" || nextJob.status === "failed") {
+        const updatedItem = libraryData.items.find((item) => item.id === job.libraryItemId)
+          || libraryData.items.find((item) => (
+            item.type === "video"
+            && item.params?.billingTaskId === job.billing_task_id
+          ));
+        const itemBackedJob = updatedItem && updatedItem.status !== "queued" && updatedItem.status !== "generating"
+          ? { ...nextJob, status: updatedItem.status === "failed" ? "failed" as const : "done" as const }
+          : nextJob;
+        if (updatedItem) {
+          updateVideoWorkspace({ job: itemBackedJob });
+          handleVideoResult(updatedItem, itemBackedJob);
+        }
+        if (itemBackedJob.status === "done" || itemBackedJob.status === "failed") {
           updateVideoInFlightState(0);
+          await refreshAccountAfterGeneration();
         }
         await refreshLibraryAfterMutation();
       } catch (error) {
@@ -2588,7 +2604,7 @@ export function StudioApp() {
       }
     }, 5000);
     return () => window.clearInterval(timer);
-  }, [handleVideoResult, refreshLibraryAfterMutation, setMessage, updateVideoInFlightState, updateVideoWorkspace, videoWorkspace.job]);
+  }, [handleVideoResult, refreshAccountAfterGeneration, refreshLibraryAfterMutation, setMessage, updateVideoInFlightState, updateVideoWorkspace, videoWorkspace.job]);
 
   const submitVideoWorkspace = useCallback(async () => {
     if (!selectedVideoProvider) {
@@ -2653,6 +2669,15 @@ export function StudioApp() {
       estimatedQuotaUnits: snapshot.estimatedQuotaUnits,
     });
 
+    updateVideoInFlightState(videoInFlightCountRef.current + 1);
+    updateVideoWorkspace({
+      loading: true,
+      submitError: "",
+      fileError: "",
+    });
+    setMobilePreviewSignal((value) => value + 1);
+    setMessage("");
+
     try {
       await fetchJsonWithCsrf("/api/quota/precheck", {
         method: "POST",
@@ -2669,17 +2694,11 @@ export function StudioApp() {
       const text = error instanceof Error ? error.message : "额度预检失败。";
       updateVideoWorkspace({ submitError: text, submitDiagnostic: diagnosticFromError(error) });
       setMessage(text);
+      updateVideoInFlightState(videoInFlightCountRef.current - 1);
+      updateVideoWorkspace({ loading: false });
       return;
     }
 
-    updateVideoInFlightState(videoInFlightCountRef.current + 1);
-    updateVideoWorkspace({
-      loading: true,
-      submitError: "",
-      fileError: "",
-    });
-    setMobilePreviewSignal((value) => value + 1);
-    setMessage("");
     let keepVideoSlotOccupied = false;
     try {
       const form = new FormData();
