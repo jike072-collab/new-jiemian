@@ -219,6 +219,31 @@ test("batch image generation retries once when upstream returns fewer outputs th
   }
 });
 
+test("image generation does not silently retry with fallback credentials after provider failure", async () => {
+  const originalFetch = globalThis.fetch;
+  let callCount = 0;
+  globalThis.fetch = (async () => {
+    callCount += 1;
+    return jsonResponse({ error: { message: "primary unavailable" } }, { status: 503 });
+  }) as typeof fetch;
+  try {
+    await assert.rejects(() => providerCallInternalsForTests.collectImageProviderOutputs({
+      provider: {
+        ...provider,
+        fallbackApiKey: "fallback-key-should-not-be-used",
+      },
+      prompt: "test prompt",
+      ratio: "1:1",
+      quality: "1k",
+      files: [],
+      count: 1,
+    }));
+    assert.equal(callCount, 1);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
 test("local Grok video provider sends reference images through the NewAPI videos endpoint", async () => {
   assert.equal(providerCallInternalsForTests.isLocalOpenAiCompatibleEndpoint("http://127.0.0.1:3000/v1/videos"), true);
   assert.equal(providerCallInternalsForTests.isLocalOpenAiCompatibleEndpoint("https://api.manxiaobai.online/v1/videos"), false);

@@ -214,19 +214,6 @@ function authHeaders(provider: ProviderConfig) {
   return { Authorization: `Bearer ${provider.apiKey}` };
 }
 
-function providerWithApiKey(provider: ProviderConfig, apiKey: string): ProviderConfig {
-  return { ...provider, apiKey };
-}
-
-async function fallbackImageProviderFor(provider: ProviderConfig) {
-  const fallbackProviderId = String(provider.fallbackProviderId || "").trim();
-  if (!fallbackProviderId || fallbackProviderId === provider.id) return null;
-  const fallback = await providerById(fallbackProviderId);
-  if (!fallback || fallback.kind !== "image") return null;
-  if (!fallback.apiUrl.trim() || !fallback.apiKey.trim() || !fallback.model.trim()) return null;
-  return fallback;
-}
-
 function assertProviderReady(
   provider: ProviderConfig | null | undefined,
   expectedKind: ProviderConfig["kind"],
@@ -876,31 +863,7 @@ async function callImageProvider({
   files: UploadedMedia[];
   count: number;
 }) {
-  const fallbackApiKey = String(provider.fallbackApiKey || "").trim();
-  try {
-    return await callImageProviderOnce({ provider, prompt, ratio, quality, files, count });
-  } catch (error) {
-    const fallbackProvider = await fallbackImageProviderFor(provider);
-    if (fallbackProvider) {
-      return callImageProviderOnce({
-        provider: fallbackProvider,
-        prompt,
-        ratio,
-        quality,
-        files,
-        count,
-      });
-    }
-    if (!fallbackApiKey || fallbackApiKey === provider.apiKey.trim()) throw error;
-    return callImageProviderOnce({
-      provider: providerWithApiKey(provider, fallbackApiKey),
-      prompt,
-      ratio,
-      quality,
-      files,
-      count,
-    });
-  }
+  return callImageProviderOnce({ provider, prompt, ratio, quality, files, count });
 }
 
 async function callImageProviderOnce({

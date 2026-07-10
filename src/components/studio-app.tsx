@@ -1630,6 +1630,7 @@ export function StudioApp() {
         promptOptimizeError: "",
         submitError: "",
       });
+      await refreshQuotaSnapshot(sessionUser?.local_user_id);
     } catch (error) {
       const text = error instanceof Error ? error.message : "优化失败，请稍后重试";
       updateImageWorkspace({
@@ -1638,6 +1639,7 @@ export function StudioApp() {
         promptOptimizeError: text,
       });
       setMessage(text);
+      await refreshQuotaSnapshot(sessionUser?.local_user_id).catch(() => undefined);
     }
   }, [
     activeWorkspaceToolId,
@@ -1647,6 +1649,8 @@ export function StudioApp() {
     activeImageWorkspace.ratio,
     activeImageWorkspace.templateId,
     imageWorkspaceHasFiles,
+    refreshQuotaSnapshot,
+    sessionUser?.local_user_id,
     updateImageWorkspace,
   ]);
 
@@ -2006,6 +2010,7 @@ export function StudioApp() {
         promptOptimizeError: "",
         submitError: "",
       });
+      await refreshQuotaSnapshot(sessionUser?.local_user_id);
     } catch (error) {
       const text = error instanceof Error ? error.message : "优化失败，请稍后重试";
       updateVideoWorkspace({
@@ -2014,8 +2019,11 @@ export function StudioApp() {
         promptOptimizeError: text,
       });
       setMessage(text);
+      await refreshQuotaSnapshot(sessionUser?.local_user_id).catch(() => undefined);
     }
   }, [
+    refreshQuotaSnapshot,
+    sessionUser?.local_user_id,
     updateVideoWorkspace,
     videoWorkspace.duration,
     videoWorkspace.prompt,

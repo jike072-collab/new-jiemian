@@ -64,17 +64,52 @@ export async function optimizePromptResponse(request: NextRequest) {
   const membershipStatus = await membership.getStatus(session.user.local_user_id);
   const hasPromptEntitlement = membershipStatus.entitlements.prompt_optimize.remaining > 0;
   const taskBilling = getTaskBillingService();
+  const requestFingerprint = `prompt_optimize:${idempotencyKey}`;
+  let promptEntitlementConsumed = 0;
+  let taskBillingEntitlementConsumed = 0;
+  let usedTaskBilling = false;
 
-  if (!hasPromptEntitlement) {
+  if (hasPromptEntitlement) {
+    promptEntitlementConsumed = (await membership.consumeEntitlement({
+      localUserId: session.user.local_user_id,
+      kind: "prompt_optimize",
+      amount: 1,
+      idempotencyKey: `membership:prompt_optimize:${idempotencyKey}`,
+      taskId: idempotencyKey,
+    })).consumed;
+  }
+
+  if (promptEntitlementConsumed <= 0) {
     const precheck = await taskBilling.precheck({
       localUserId: session.user.local_user_id,
       taskId: idempotencyKey,
       operation: "prompt_optimize",
       estimatedQuotaUnits: PROMPT_OPTIMIZE_QUOTA_UNITS,
       idempotencyKey,
-      requestFingerprint: `prompt_optimize:${idempotencyKey}`,
+      requestFingerprint,
     });
     if (!precheck.ok) return failureResponse(precheck);
+    taskBillingEntitlementConsumed = precheck.record.membership_entitlement_units || 0;
+    const claimed = await taskBilling.claimProviderDispatch({
+      localUserId: session.user.local_user_id,
+      taskId: idempotencyKey,
+      estimatedQuotaUnits: PROMPT_OPTIMIZE_QUOTA_UNITS,
+      idempotencyKey,
+      requestFingerprint,
+    });
+    if (!claimed.ok) {
+      if (taskBillingEntitlementConsumed > 0) {
+        await membership.restoreEntitlement({
+          localUserId: session.user.local_user_id,
+          kind: "prompt_optimize",
+          amount: taskBillingEntitlementConsumed,
+          idempotencyKey: `membership:restore:prompt_optimize:${idempotencyKey}`,
+          taskId: idempotencyKey,
+        }).catch(() => undefined);
+      }
+      return failureResponse(claimed);
+    }
+    usedTaskBilling = true;
   }
 
   const result = await getPromptOptimizeService().optimize(body, {
@@ -83,26 +118,35 @@ export async function optimizePromptResponse(request: NextRequest) {
   });
 
   if (!result.ok) {
-    if (!hasPromptEntitlement) {
+    if (promptEntitlementConsumed > 0) {
+      await membership.restoreEntitlement({
+        localUserId: session.user.local_user_id,
+        kind: "prompt_optimize",
+        amount: promptEntitlementConsumed,
+        idempotencyKey: `membership:restore:prompt_optimize:${idempotencyKey}`,
+        taskId: idempotencyKey,
+      }).catch(() => undefined);
+    }
+    if (usedTaskBilling) {
       await taskBilling.fail({
         localUserId: session.user.local_user_id,
         taskId: idempotencyKey,
         reason: result.message,
       }).catch(() => undefined);
+      if (taskBillingEntitlementConsumed > 0) {
+        await membership.restoreEntitlement({
+          localUserId: session.user.local_user_id,
+          kind: "prompt_optimize",
+          amount: taskBillingEntitlementConsumed,
+          idempotencyKey: `membership:restore:prompt_optimize:${idempotencyKey}`,
+          taskId: idempotencyKey,
+        }).catch(() => undefined);
+      }
     }
     return failureResponse(result);
   }
 
-  const entitlement = hasPromptEntitlement && idempotencyKey
-    ? await membership.consumeEntitlement({
-      localUserId: session.user.local_user_id,
-      kind: "prompt_optimize",
-      amount: 1,
-      idempotencyKey: `membership:prompt_optimize:${idempotencyKey}`,
-      taskId: idempotencyKey,
-    })
-    : { consumed: 0 };
-  if (!hasPromptEntitlement) {
+  if (usedTaskBilling) {
     const settled = await taskBilling.settleSuccess({
       localUserId: session.user.local_user_id,
       taskId: idempotencyKey,
@@ -113,6 +157,6 @@ export async function optimizePromptResponse(request: NextRequest) {
 
   return NextResponse.json({
     optimizedPrompt: result.optimizedPrompt,
-    membershipEntitlementConsumed: entitlement.consumed,
+    membershipEntitlementConsumed: promptEntitlementConsumed || taskBillingEntitlementConsumed,
   });
 }
