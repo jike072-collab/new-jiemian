@@ -2801,7 +2801,10 @@ export function StudioApp() {
           canSubmit={videoWorkspaceCanSubmit}
           estimatedQuotaUnits={videoEstimatedQuotaUnits}
           costLabel={videoGenerationCostLabel}
-          onProviderChange={(value) => updateVideoWorkspace({ providerId: value, submitError: "" })}
+          onProviderChange={(value) => {
+            const provider = providers.video.find((item) => item.id === value);
+            updateVideoWorkspace({ providerId: value, duration: preferredVideoDuration(provider), submitError: "" });
+          }}
           onRatioChange={(value) => updateVideoWorkspace({ ratio: value })}
           onDurationChange={(value) => updateVideoWorkspace({ duration: value })}
           onTemplateChange={applyVideoPromptTemplate}
