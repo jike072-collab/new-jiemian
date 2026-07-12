@@ -1161,7 +1161,46 @@ function UpscaleUnavailablePreview({ message }: { message?: string }) {
   );
 }
 
+const recordedImageUpscaleTutorialSrc = "/tutorials/image-upscale/image-upscale-tutorial.mp4";
+const recordedVideoUpscaleTutorialSrc = "/tutorials/video-upscale/video-upscale-tutorial.mp4";
+
+function TutorialRecordingDialog({
+  title,
+  src,
+  onClose,
+}: {
+  title: string;
+  src: string;
+  onClose: () => void;
+}) {
+  const titleId = `${title}-tutorial-recording-title`;
+  return (
+    <div className="video-tutorial-recording-modal" role="presentation">
+      <button
+        type="button"
+        className="video-tutorial-recording-modal__backdrop"
+        aria-label={`关闭${title}`}
+        onClick={onClose}
+      />
+      <section className="video-tutorial-recording-modal__card" role="dialog" aria-modal="true" aria-labelledby={titleId}>
+        <header className="video-tutorial-recording-modal__head">
+          <h4 id={titleId}>{title}</h4>
+          <button type="button" className="video-tutorial-recording-modal__close" aria-label={`关闭${title}`} onClick={onClose} autoFocus>
+            <X className="size-5" aria-hidden="true" />
+          </button>
+        </header>
+        <video controls playsInline preload="metadata">
+          <source src={src} type="video/mp4" />
+          当前浏览器不支持播放此视频。
+        </video>
+      </section>
+    </div>
+  );
+}
+
 function ImageUpscaleCompareTutorial() {
+  const [recordedTutorialOpen, setRecordedTutorialOpen] = useState(false);
+
   useEffect(() => {
     warmPublicAssetCache([
       "/tutorial/image-upscaler/image-before.jpg",
@@ -1169,21 +1208,45 @@ function ImageUpscaleCompareTutorial() {
     ]);
   }, []);
 
+  useEffect(() => {
+    if (!recordedTutorialOpen) return undefined;
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setRecordedTutorialOpen(false);
+    };
+    window.addEventListener("keydown", closeOnEscape);
+    return () => window.removeEventListener("keydown", closeOnEscape);
+  }, [recordedTutorialOpen]);
+
   return (
-    <PreviewState eyebrow="图片细节对比" title="图片细节对比" description="拖动分割线，查看高清前后的清晰度和细节变化。">
-      <BeforeAfterImageCompare
-        beforeSrc="/tutorial/image-upscaler/image-before.jpg"
-        afterSrc="/tutorial/image-upscaler/image-after.png"
-        beforeLabel="高清前"
-        afterLabel="高清后"
-        beforeAlt="高清前示例图"
-        afterAlt="高清后示例图"
-      />
-    </PreviewState>
+    <>
+      <PreviewState
+        eyebrow="图片细节对比"
+        title="图片细节对比"
+        description="拖动分割线，查看高清前后的清晰度和细节变化。"
+        action={(
+          <button type="button" className="studio-secondary-button video-tutorial-recording-button" onClick={() => setRecordedTutorialOpen(true)}>
+            <Video className="size-4" aria-hidden="true" />
+            观看完整教程
+          </button>
+        )}
+      >
+        <BeforeAfterImageCompare
+          beforeSrc="/tutorial/image-upscaler/image-before.jpg"
+          afterSrc="/tutorial/image-upscaler/image-after.png"
+          beforeLabel="高清前"
+          afterLabel="高清后"
+          beforeAlt="高清前示例图"
+          afterAlt="高清后示例图"
+        />
+      </PreviewState>
+      {recordedTutorialOpen ? <TutorialRecordingDialog title="图片高清完整教程" src={recordedImageUpscaleTutorialSrc} onClose={() => setRecordedTutorialOpen(false)} /> : null}
+    </>
   );
 }
 
 function VideoUpscaleCompareTutorial() {
+  const [recordedTutorialOpen, setRecordedTutorialOpen] = useState(false);
+
   useEffect(() => {
     warmPublicAssetCache([
       "/tutorial/video-upscaler/video-before.mp4",
@@ -1191,21 +1254,43 @@ function VideoUpscaleCompareTutorial() {
     ]);
   }, []);
 
+  useEffect(() => {
+    if (!recordedTutorialOpen) return undefined;
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setRecordedTutorialOpen(false);
+    };
+    window.addEventListener("keydown", closeOnEscape);
+    return () => window.removeEventListener("keydown", closeOnEscape);
+  }, [recordedTutorialOpen]);
+
   return (
-    <PreviewState eyebrow="视频细节对比" title="视频细节对比" description="拖动分割线，查看高清前后的视频清晰度和细节变化。">
-      <BeforeAfterImageCompare
-        beforeSrc="/tutorial/video-upscaler/video-before.mp4"
-        afterSrc="/tutorial/video-upscaler/video-after.mp4"
-        beforeLabel="高清前"
-        afterLabel="高清后"
-        beforeAlt="高清前示例视频"
-        afterAlt="高清后示例视频"
-        mediaType="video"
-        beforeEffect="blur"
-        autoPlayVideo
-        videoPreload="metadata"
-      />
-    </PreviewState>
+    <>
+      <PreviewState
+        eyebrow="视频细节对比"
+        title="视频细节对比"
+        description="拖动分割线，查看高清前后的视频清晰度和细节变化。"
+        action={(
+          <button type="button" className="studio-secondary-button video-tutorial-recording-button" onClick={() => setRecordedTutorialOpen(true)}>
+            <Video className="size-4" aria-hidden="true" />
+            观看完整教程
+          </button>
+        )}
+      >
+        <BeforeAfterImageCompare
+          beforeSrc="/tutorial/video-upscaler/video-before.mp4"
+          afterSrc="/tutorial/video-upscaler/video-after.mp4"
+          beforeLabel="高清前"
+          afterLabel="高清后"
+          beforeAlt="高清前示例视频"
+          afterAlt="高清后示例视频"
+          mediaType="video"
+          beforeEffect="blur"
+          autoPlayVideo
+          videoPreload="metadata"
+        />
+      </PreviewState>
+      {recordedTutorialOpen ? <TutorialRecordingDialog title="视频放大完整教程" src={recordedVideoUpscaleTutorialSrc} onClose={() => setRecordedTutorialOpen(false)} /> : null}
+    </>
   );
 }
 
