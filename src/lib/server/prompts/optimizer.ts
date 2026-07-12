@@ -73,6 +73,9 @@ type PromptProviderLoader = () => Promise<ProviderConfig | null>;
 const tools = new Set<PromptOptimizeTool>(["image-generator", "image-editor", "video-generator"]);
 const DEFAULT_MAX_INPUT_CHARS = 2000;
 const DEFAULT_TIMEOUT_MS = 15000;
+const DEFAULT_MAX_OUTPUT_TOKENS = 2400;
+const MIN_MAX_OUTPUT_TOKENS = 1200;
+const MAX_MAX_OUTPUT_TOKENS = 4000;
 const DEFAULT_MODEL = "gpt-4o-mini";
 const PROMPT_OPTIMIZER_PROVIDER_ID = "prompt-optimizer";
 const PROMPT_PROVIDER_RESPONSE_LIMIT_BYTES = 65536;
@@ -83,6 +86,7 @@ const strictChineseSystemPrompt = [
   "最终输出必须使用简体中文。",
   "品牌名、平台名、型号名等不可翻译的专有名词可以保留原文，但禁止输出整句英文。",
   "保留用户已经明确给出的商品、人物、场景、颜色、材质、结构、数量、品牌和动作事实。",
+  "按原始需求的顺序完整覆盖全部事实，尤其不能遗漏输入末尾的限制、细节或否定要求。",
   "不要臆造用户没有要求的新元素、新文字、新品牌、新人物或新装饰。",
   "只输出最终提示词，不要解释，不要标题，不要 Markdown，不要列表，不要额外客套话。",
 ].join("\n");
@@ -97,6 +101,15 @@ function envNumber(name: string, fallback: number, min: number, max: number) {
 
 function envText(name: string, fallback: string) {
   return process.env[name]?.trim() || fallback;
+}
+
+function promptOptimizerMaxTokens() {
+  return envNumber(
+    "PROMPT_OPTIMIZER_MAX_TOKENS",
+    DEFAULT_MAX_OUTPUT_TOKENS,
+    MIN_MAX_OUTPUT_TOKENS,
+    MAX_MAX_OUTPUT_TOKENS,
+  );
 }
 
 function text(value: unknown) {
@@ -426,7 +439,7 @@ async function callPromptProvider(provider: ProviderConfig, input: PromptModelCa
       body: JSON.stringify({
         model: provider.model,
         temperature: 0.2,
-        max_tokens: envNumber("PROMPT_OPTIMIZER_MAX_TOKENS", 500, 100, 1200),
+        max_tokens: promptOptimizerMaxTokens(),
         messages: [
           { role: "system", content: input.systemPrompt },
           { role: "user", content: input.userPrompt },
@@ -499,7 +512,7 @@ function createNewApiAdminPromptModelCaller(client: NewApiHttpClient): PromptMod
       body: {
         model: envText("PROMPT_OPTIMIZER_MODEL", DEFAULT_MODEL),
         temperature: 0.2,
-        max_tokens: envNumber("PROMPT_OPTIMIZER_MAX_TOKENS", 500, 100, 1200),
+        max_tokens: promptOptimizerMaxTokens(),
         messages: [
           { role: "system", content: input.systemPrompt },
           { role: "user", content: input.userPrompt },

@@ -189,6 +189,16 @@ test("returns only optimized prompt text and redacts secret-shaped output", asyn
   assert.equal(result.optimizedPrompt.includes("[REDACTED]"), true);
 });
 
+test("preserves the complete long optimized prompt", async () => {
+  const optimizedPrompt = `真丝睡衣商品主图，${"保留面料垂坠感、自然褶皱与柔和侧光，".repeat(120)}末尾限制：不要新增文字或品牌标识。`;
+  const result = await serviceWith(async () => optimizedPrompt).optimize(baseInput(), { localUserId: "user-1" });
+
+  assert.equal(result.ok, true);
+  if (!result.ok) return;
+  assert.equal(result.optimizedPrompt, optimizedPrompt);
+  assert.equal(result.optimizedPrompt.endsWith("末尾限制：不要新增文字或品牌标识。"), true);
+});
+
 test("falls back to local Chinese prompt when provider returns empty or non-Chinese content", async () => {
   const emptyService = createPromptOptimizeService({
     caller: async () => "",
@@ -231,6 +241,7 @@ test("provider caller uses prompt-optimizer provider configuration", async () =>
     for await (const chunk of request) chunks.push(Buffer.from(chunk));
     const body = JSON.parse(Buffer.concat(chunks).toString("utf8"));
     assert.equal(body.model, "deepseek-v4-pro");
+    assert.equal(body.max_tokens, 2400);
     assert.equal(body.messages[0].role, "system");
     assert.equal(body.messages[1].role, "user");
     json(response, 200, {
@@ -272,6 +283,7 @@ test("New API caller uses chat completions without exposing admin credentials", 
     for await (const chunk of request) chunks.push(Buffer.from(chunk));
     const body = JSON.parse(Buffer.concat(chunks).toString("utf8"));
     assert.equal(body.model, "prompt-test-model");
+    assert.equal(body.max_tokens, 2400);
     assert.equal(body.messages[0].role, "system");
     assert.equal(body.messages[1].role, "user");
     json(response, 200, {
