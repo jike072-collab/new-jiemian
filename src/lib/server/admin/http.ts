@@ -99,6 +99,7 @@ export async function adminAdjustQuotaResponse(request: NextRequest, localUserId
         localUserId,
         originalQuota: Number(body.originalQuota ?? body.original_quota),
         quotaDelta: Number(body.quotaDelta ?? body.quota_delta),
+        grantedAt: String(body.grantedAt || body.granted_at || ""),
         reference: String(body.reference || ""),
         reason: String(body.reason || ""),
       },

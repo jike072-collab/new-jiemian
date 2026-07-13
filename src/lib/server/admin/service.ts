@@ -591,7 +591,7 @@ export class AdminService {
 
   async reconcileExternalQuotaGrant(
     actor: AdminActor,
-    input: { localUserId: string; originalQuota: number; quotaDelta: number; reference: string; reason: string },
+    input: { localUserId: string; originalQuota: number; quotaDelta: number; grantedAt: string; reference: string; reason: string },
     context: AuthRequestContext = {},
   ) {
     if (!Number.isInteger(input.originalQuota) || input.originalQuota < 0) {
@@ -601,8 +601,9 @@ export class AdminService {
       return failure("admin_invalid_request", 400, "Quota delta must be a positive integer.");
     }
     const reference = input.reference.trim();
-    if (!/^[A-Za-z0-9:_-]{8,120}$/.test(reference) || !input.reason.trim()) {
-      return failure("admin_invalid_request", 400, "Reference and reason are required.");
+    const grantedAt = new Date(input.grantedAt);
+    if (!/^[A-Za-z0-9:_-]{8,120}$/.test(reference) || Number.isNaN(grantedAt.getTime()) || !input.reason.trim()) {
+      return failure("admin_invalid_request", 400, "Grant timestamp, reference, and reason are required.");
     }
     const mapping = await this.mappingRepository.getByLocalUserId(input.localUserId);
     if (!mapping || mapping.sync_status !== "active" || !mapping.new_api_user_id) {
@@ -611,7 +612,28 @@ export class AdminService {
     const operation = async () => {
       try {
         const currentQuota = await this.getProviderQuota(mapping.new_api_user_id!);
-        const expectedQuota = input.originalQuota + input.quotaDelta;
+        if (!this.taskRepository.listRecordsPage) {
+          return failure("admin_conflict", 409, "Task billing history is required for reconciliation.");
+        }
+        const taskPage = await this.taskRepository.listRecordsPage({
+          localUserId: input.localUserId,
+          page: 1,
+          pageSize: 100,
+        });
+        if (taskPage.total > taskPage.records.length) {
+          return failure("admin_conflict", 409, "Task billing history exceeds the reconciliation limit.");
+        }
+        const subsequentTasks = taskPage.records.filter((record) => new Date(record.created_at).getTime() >= grantedAt.getTime());
+        const nonterminalTask = subsequentTasks.find((record) => !["settled", "failed", "cancelled"].includes(record.billing_state));
+        if (nonterminalTask) {
+          return failure("admin_conflict", 409, "A subsequent task has not reached a reconcilable state.");
+        }
+        const subsequentSpentQuota = subsequentTasks.reduce((total, record) => (
+          record.billing_state === "settled" && record.membership_entitlement_units === 0
+            ? total + (record.final_quota_units || 0)
+            : total
+        ), 0);
+        const expectedQuota = input.originalQuota + input.quotaDelta - subsequentSpentQuota;
         if (currentQuota !== expectedQuota) {
           await this.audit("admin.quota.external_grant_mismatch", actor.localUserId, context, {
             target_user_id: input.localUserId,
@@ -619,6 +641,8 @@ export class AdminService {
             quota_delta: input.quotaDelta,
             expected_quota: expectedQuota,
             current_quota: currentQuota,
+            granted_at: grantedAt.toISOString(),
+            subsequent_spent_quota: subsequentSpentQuota,
             reference,
           });
           return failure("admin_conflict", 409, "Current quota does not match the external grant.");
@@ -635,6 +659,8 @@ export class AdminService {
           original_quota: input.originalQuota,
           quota_delta: input.quotaDelta,
           target_quota: expectedQuota,
+          granted_at: grantedAt.toISOString(),
+          subsequent_spent_quota: subsequentSpentQuota,
           reference,
           reason: sanitize(input.reason),
         });
@@ -645,6 +671,7 @@ export class AdminService {
           original_quota: input.originalQuota,
           target_quota: expectedQuota,
           credited_quota: input.quotaDelta,
+          subsequent_spent_quota: subsequentSpentQuota,
         };
       } catch (error) {
         await this.audit("admin.quota.external_grant_failed", actor.localUserId, context, {

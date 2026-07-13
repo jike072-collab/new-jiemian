@@ -428,6 +428,7 @@ test("external quota grant reconciliation records history without changing quota
     localUserId: "target-user",
     originalQuota: 1000,
     quotaDelta: 730,
+    grantedAt: "2026-06-19T01:00:00.000Z",
     reference: "newapi-admin-20260713T171221",
     reason: "manual New API grant",
   });
@@ -439,6 +440,7 @@ test("external quota grant reconciliation records history without changing quota
     localUserId: "target-user",
     originalQuota: 1000,
     quotaDelta: 730,
+    grantedAt: "2026-06-19T01:00:00.000Z",
     reference: "newapi-admin-20260713T171221",
     reason: "manual New API grant retry",
   });
@@ -455,6 +457,7 @@ test("external quota grant reconciliation rejects a balance mismatch", async () 
     localUserId: "target-user",
     originalQuota: 1000,
     quotaDelta: 730,
+    grantedAt: "2026-06-19T01:00:00.000Z",
     reference: "newapi-admin-mismatch",
     reason: "manual New API grant",
   });
@@ -462,6 +465,38 @@ test("external quota grant reconciliation rejects a balance mismatch", async () 
   if (!result.ok) assert.equal(result.code, "admin_conflict");
   const orders = await harnessed.billingRepository.listOrders({ localUserId: "target-user" });
   assert.equal(orders.some((entry) => entry.idempotency_key === "admin-external-grant:newapi-admin-mismatch"), false);
+});
+
+test("external quota grant reconciliation accounts for subsequent settled spending", async () => {
+  const harnessed = harness();
+  const taskRepository = harnessed.service["taskRepository"];
+  const task = await taskRepository.createPrecheck({
+    localUserId: "target-user",
+    taskId: "task-after-external-grant",
+    idempotencyKey: "task-after-external-grant",
+    estimatedQuotaUnits: 300,
+    now: new Date("2026-06-19T02:00:00.000Z"),
+  });
+  await taskRepository.update(task.id, {
+    billing_state: "settled",
+    final_quota_units: 300,
+    settled_at: "2026-06-19T02:05:00.000Z",
+    updated_at: "2026-06-19T02:05:00.000Z",
+  });
+  harnessed.providerQuota = 1430;
+
+  const result = await harnessed.service.reconcileExternalQuotaGrant(adminActor, {
+    localUserId: "target-user",
+    originalQuota: 1000,
+    quotaDelta: 730,
+    grantedAt: "2026-06-19T01:00:00.000Z",
+    reference: "newapi-admin-with-spend",
+    reason: "manual New API grant",
+  });
+  assert.equal(result.ok, true);
+  if (result.ok) assert.equal(result.subsequent_spent_quota, 300);
+  assert.equal(harnessed.providerQuota, 1430);
+  assert.equal(harnessed.providerWriteCount("100"), 0);
 });
 
 test("quota adjustment idempotency key is bound to the target user", async () => {
