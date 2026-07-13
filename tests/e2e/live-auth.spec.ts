@@ -54,6 +54,20 @@ test("account entitlements and library actions remain visible without mutating p
   test.skip(testInfo.project.name !== "chromium", "Authenticated production checks run once to avoid account rate-limit noise.");
   await login(page, userA.account, userA.password);
 
+  await page.goto("/", { waitUntil: "domcontentloaded" });
+  await page.getByRole("button", { name: "提示词优化设置" }).click();
+  const promptDialog = page.getByRole("dialog", { name: "提示词优化设置" });
+  await expect(promptDialog.getByLabel("快捷方案")).toHaveValue("image-free");
+  await promptDialog.getByRole("tab", { name: "图片编辑" }).click();
+  await expect(promptDialog.getByLabel("快捷方案")).toHaveValue("edit-precise");
+  await expect(promptDialog.getByRole("option", { name: "抠图透明背景" })).toHaveCount(2);
+  await expect(promptDialog.getByRole("option", { name: "商品纯白底" })).toHaveCount(2);
+  await expect(promptDialog.getByRole("option", { name: "图片文字翻译" })).toHaveCount(2);
+  await promptDialog.getByRole("tab", { name: "视频生成" }).click();
+  await expect(promptDialog.getByLabel("快捷方案")).toHaveValue("video-free");
+  await expect(promptDialog.getByRole("option", { name: "教程步骤" })).toHaveCount(2);
+  await promptDialog.getByRole("button", { name: "取消" }).click();
+
   await page.goto("/?account=usage", { waitUntil: "domcontentloaded" });
   const ledger = page.locator(".account-records");
   await expect(ledger.getByText("剩余权益", { exact: true })).toHaveCount(1);
