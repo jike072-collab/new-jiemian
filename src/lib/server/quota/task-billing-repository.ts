@@ -37,6 +37,7 @@ export type TaskBillingRecordListFilter = {
   localUserId?: string;
   states?: TaskBillingState[];
   taskId?: string;
+  updatedBefore?: string;
   page?: number;
   pageSize?: number;
 };
@@ -231,10 +232,12 @@ class StoreTaskBillingRepository implements TaskBillingRepository {
     const states = filter.states?.length ? new Set(filter.states) : null;
     const localUserId = filter.localUserId?.trim();
     const taskId = filter.taskId?.trim();
+    const updatedBefore = filter.updatedBefore?.trim();
     const records = (await this.storage.read())
       .filter((record) => !localUserId || record.local_user_id === localUserId)
       .filter((record) => !taskId || record.task_id === taskId)
       .filter((record) => !states || states.has(record.billing_state))
+      .filter((record) => !updatedBefore || record.updated_at < updatedBefore)
       .sort((a, b) => b.updated_at.localeCompare(a.updated_at))
       .map(cloneRecord);
     const start = (page - 1) * pageSize;

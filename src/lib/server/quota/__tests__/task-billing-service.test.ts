@@ -741,6 +741,53 @@ test("interrupted provider dispatch recovers before start and reconciles after s
   assert.equal(reconciled.record.billing_state, "reconciliation_required");
 });
 
+test("stale provider dispatches restore unconfirmed entitlements and retain upstream tasks for reconciliation", async () => {
+  const harness = service();
+  await harness.membershipService.applyPaidMembership({
+    localUserId: "local-user",
+    orderId: "stale-provider-membership",
+    planId: "basic",
+    cycle: "monthly",
+    now: new Date("2026-06-18T00:00:00.000Z"),
+  });
+
+  const unconfirmed = {
+    localUserId: "local-user",
+    taskId: "stale-unconfirmed-provider-task",
+    operation: "cloud_image_generation" as const,
+    estimatedQuotaUnits: 40,
+    idempotencyKey: "stale-unconfirmed-provider-task",
+  };
+  assert.equal((await harness.taskBilling.precheck(unconfirmed)).ok, true);
+  assert.equal((await harness.taskBilling.claimProviderDispatch(unconfirmed)).ok, true);
+  assert.equal((await harness.taskBilling.markProviderStarted({
+    localUserId: unconfirmed.localUserId,
+    taskId: unconfirmed.taskId,
+  })).ok, true);
+
+  const confirmed = { ...unconfirmed, taskId: "stale-confirmed-provider-task", idempotencyKey: "stale-confirmed-provider-task" };
+  assert.equal((await harness.taskBilling.precheck(confirmed)).ok, true);
+  assert.equal((await harness.taskBilling.claimProviderDispatch(confirmed)).ok, true);
+  assert.equal((await harness.taskBilling.markProviderStarted({
+    localUserId: confirmed.localUserId,
+    taskId: confirmed.taskId,
+    newApiTaskId: "upstream-task-1",
+  })).ok, true);
+
+  for (const taskId of [unconfirmed.taskId, confirmed.taskId]) {
+    const record = await harness.taskRepository.getByTaskId("local-user", taskId);
+    assert.ok(record);
+    await harness.taskRepository.update(record.id, { updated_at: "2026-06-17T23:40:00.000Z" }, record.version);
+  }
+
+  const result = await harness.taskBilling.reconcileStaleProviderDispatches();
+  assert.deepEqual(result, { scanned: 2, failedAndRestored: 1, reconciliationRequired: 1, skipped: 0 });
+  assert.equal((await harness.taskRepository.getByTaskId("local-user", unconfirmed.taskId))?.billing_state, "failed");
+  assert.equal((await harness.taskRepository.getByTaskId("local-user", confirmed.taskId))?.billing_state, "reconciliation_required");
+  const status = await harness.membershipService.getStatus("local-user");
+  assert.equal(status.entitlements.image_generation.remaining, 9);
+});
+
 test("precheck retries reject mismatched request parameters", async () => {
   const harness = service();
   const first = await harness.taskBilling.precheck({

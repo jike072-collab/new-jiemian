@@ -10,6 +10,7 @@ import { newApiHealthContext } from "../integrations/new-api/auth";
 import { safeNewApiError } from "../integrations/new-api/errors";
 import { type NewApiHealth } from "../integrations/new-api/types";
 import { getStorageCapacityStatus, storageStatusForPublicHealth } from "../storage-capacity";
+import { reconcileStaleTaskBillingInBackground } from "../quota/task-billing-watchdog";
 
 export type BackendHealthMode = "liveness" | "readiness";
 
@@ -112,6 +113,7 @@ export async function backendHealthHttpReport(
   requestId: string | undefined,
   now = new Date(),
 ) {
+  reconcileStaleTaskBillingInBackground(now.getTime());
   if (mode === "readiness") {
     const report = await backendReadinessReport(requestId, now);
     return { report, status: report.ok ? 200 : 503 };

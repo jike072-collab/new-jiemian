@@ -94,6 +94,14 @@ const billableOperations = new Set<BillableOperation>([
   "prompt_optimize",
 ]);
 const providerDispatchTimeoutMs = 2 * 60 * 1000;
+const staleProviderReconciliationTimeoutMs = 15 * 60 * 1000;
+
+export type StaleProviderDispatchReconciliation = {
+  scanned: number;
+  failedAndRestored: number;
+  reconciliationRequired: number;
+  skipped: number;
+};
 
 const quotaErrors: Record<QuotaErrorCode, { status: number; message: string; retryable: boolean }> = {
   invalid_quota_request: { status: 400, message: "Quota request is invalid.", retryable: false },
@@ -174,6 +182,11 @@ function isTaskBillingFailure(value: TaskBillingRecord | null | TaskBillingFailu
 function isDispatchStale(record: TaskBillingRecord, now: Date) {
   const updatedAt = Date.parse(record.updated_at);
   return Number.isFinite(updatedAt) && now.getTime() - updatedAt > providerDispatchTimeoutMs;
+}
+
+function isProviderReconciliationStale(record: TaskBillingRecord, now: Date) {
+  const updatedAt = Date.parse(record.updated_at);
+  return Number.isFinite(updatedAt) && now.getTime() - updatedAt > staleProviderReconciliationTimeoutMs;
 }
 
 function isNewApiUserSelf(value: unknown): value is NewApiUserSelf {
@@ -643,6 +656,51 @@ export class TaskBillingService {
 
   async cancel(input: TaskBillingFailInput): Promise<TaskBillingResult> {
     return this.finishWithoutCharge(input, "cancelled");
+  }
+
+  async reconcileStaleProviderDispatches(limit = 25): Promise<StaleProviderDispatchReconciliation> {
+    if (!this.taskRepository.listRecordsPage) {
+      return { scanned: 0, failedAndRestored: 0, reconciliationRequired: 0, skipped: 0 };
+    }
+
+    const now = this.now();
+    const page = await this.taskRepository.listRecordsPage({
+      states: ["provider_started"],
+      updatedBefore: new Date(now.getTime() - staleProviderReconciliationTimeoutMs).toISOString(),
+      pageSize: Math.min(Math.max(Math.trunc(limit), 1), 100),
+    });
+    const summary: StaleProviderDispatchReconciliation = {
+      scanned: page.records.length,
+      failedAndRestored: 0,
+      reconciliationRequired: 0,
+      skipped: 0,
+    };
+
+    for (const candidate of page.records) {
+      const outcome = await this.withTaskLock(candidate.local_user_id, candidate.task_id, async () => {
+        const record = await this.safeGetByTaskId(candidate.local_user_id, candidate.task_id);
+        if (isTaskBillingFailure(record) || !record || record.billing_state !== "provider_started" || !isProviderReconciliationStale(record, now)) {
+          return "skipped" as const;
+        }
+        if (record.new_api_task_id) {
+          const marked = await this.markReconciliationRequired(
+            record,
+            "Provider task exceeded the result timeout and requires upstream reconciliation.",
+          );
+          return marked.ok ? "reconciliation_required" as const : "skipped" as const;
+        }
+        const failed = await this.finishWithoutChargeLocked({
+          localUserId: record.local_user_id,
+          taskId: record.task_id,
+          reason: "Provider did not return a task or result before the timeout.",
+        }, "failed");
+        return failed.ok ? "failed_and_restored" as const : "skipped" as const;
+      });
+      if (outcome === "failed_and_restored") summary.failedAndRestored += 1;
+      else if (outcome === "reconciliation_required") summary.reconciliationRequired += 1;
+      else summary.skipped += 1;
+    }
+    return summary;
   }
 
   private async finishWithoutCharge(input: TaskBillingFailInput, state: "failed" | "cancelled"): Promise<TaskBillingResult> {

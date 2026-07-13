@@ -180,6 +180,10 @@ export class PostgresTaskBillingRepository implements TaskBillingRepository {
       values.push(filter.states);
       clauses.push(`billing_state = any($${values.length}::text[])`);
     }
+    if (filter.updatedBefore?.trim()) {
+      values.push(filter.updatedBefore.trim());
+      clauses.push(`updated_at < $${values.length}::timestamptz`);
+    }
     const whereClause = clauses.length ? `where ${clauses.join(" and ")}` : "";
     const count = await applicationQuery<{ count: string }>(
       `select count(*)::text as count from task_billing_records ${whereClause}`,
