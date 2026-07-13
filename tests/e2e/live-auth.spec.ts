@@ -54,6 +54,11 @@ test("account entitlements and library actions remain visible without mutating p
   test.skip(testInfo.project.name !== "chromium", "Authenticated production checks run once to avoid account rate-limit noise.");
   await login(page, userA.account, userA.password);
 
+  await page.goto("/?account=usage", { waitUntil: "domcontentloaded" });
+  const ledger = page.locator(".account-records");
+  await expect(ledger.getByText("剩余权益", { exact: true })).toHaveCount(1);
+  await expect(ledger.getByText("后台手动充值积分 +1", { exact: true })).toBeVisible();
+
   const membershipResponse = await page.request.get("/api/membership/status");
   expect(membershipResponse.status()).toBe(200);
   const membership = await membershipResponse.json() as { membership?: { active?: unknown } };
