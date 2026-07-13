@@ -23,7 +23,6 @@ export const grokVideo10Ratios = ["1:1", "16:9", "9:16", "4:3", "3:4", "3:2", "2
 export const grokVideo15Ratios = ["16:9", "9:16"];
 export const jimengVideoRatios = ["16:9", "9:16", "1:1"];
 export const upscaleUnavailableMessage = "高清处理暂时不可用，请稍后重试";
-export const promptOptimizationTargetPlatform = "TikTok Shop";
 export const PROMPT_OPTIMIZATION_QUOTA_UNITS = 100;
 export const quotaSymbol = "✦";
 

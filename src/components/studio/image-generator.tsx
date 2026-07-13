@@ -21,9 +21,11 @@ import {
   SubmitButton,
 } from "@/components/studio/shared";
 import type { ImageWorkspaceFile, ImageWorkspaceState, MobileActionState } from "@/components/studio/types";
+import type { PromptPreferences, PromptPreferenceTool } from "@/lib/prompt-preferences";
 
 export function ImageGenerator({
   mode,
+  promptTool,
   showTemplates,
   providers,
   providersLoading,
@@ -52,6 +54,7 @@ export function ImageGenerator({
   registerMobileAction,
 }: {
   mode: WorkspaceImageMode;
+  promptTool: Extract<PromptPreferenceTool, "image-generator" | "image-editor">;
   showTemplates: boolean;
   providers: FrontendProvider[];
   providersLoading: boolean;
@@ -69,7 +72,7 @@ export function ImageGenerator({
   onCountChange: (value: number) => void;
   onTemplateChange: (value: string) => void;
   onPromptChange: (value: string) => void;
-  onPromptOptimize: () => void;
+  onPromptOptimize: (preferences: PromptPreferences) => void;
   onPromptOptimizeUndo: () => void;
   promptOptimizeCostLabel?: string;
   onFilesChange: (files: File[]) => void;
@@ -151,6 +154,7 @@ export function ImageGenerator({
         </StackedControl>
       </div>
       <PromptBox
+        tool={promptTool}
         value={state.prompt}
         onChange={onPromptChange}
         optimizeCostLabel={promptOptimizeCostLabel || promptOptimizationCostLabel}

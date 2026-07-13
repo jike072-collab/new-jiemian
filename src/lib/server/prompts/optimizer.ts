@@ -4,8 +4,14 @@ import { newApiLogger } from "../integrations/new-api/logger";
 import { redactJson, redactSecret } from "../integrations/new-api/redaction";
 import { providerById } from "../providers";
 import { type ProviderConfig } from "../types";
+import {
+  normalizePromptPreferences,
+  promptPreferenceLines,
+  type PromptPreferences,
+  type PromptPreferenceTool,
+} from "../../prompt-preferences";
 
-export type PromptOptimizeTool = "image-generator" | "image-editor" | "video-generator";
+export type PromptOptimizeTool = PromptPreferenceTool;
 
 export type PromptOptimizeInput = {
   tool: PromptOptimizeTool;
@@ -14,7 +20,9 @@ export type PromptOptimizeInput = {
   hasImage: boolean;
   aspectRatio?: string;
   quality?: string;
+  duration?: number;
   targetPlatform?: string;
+  preferences?: PromptPreferences;
 };
 
 export type PromptOptimizeContext = {
@@ -82,11 +90,14 @@ const PROMPT_PROVIDER_RESPONSE_LIMIT_BYTES = 65536;
 const RETRYABLE_PROVIDER_STATUSES = new Set([408, 429, 500, 502, 503, 504]);
 
 const strictChineseSystemPrompt = [
-  "请把用户的原始需求整理成可直接提交给生成模型的最终提示词。",
+  "先在内部判断用户真正想完成的任务、主体、用途和限制，再把原始需求整理成可直接提交给生成模型的最终提示词；不要输出分析过程。",
   "最终输出必须使用简体中文。",
   "品牌名、平台名、型号名等不可翻译的专有名词可以保留原文，但禁止输出整句英文。",
   "保留用户已经明确给出的商品、人物、场景、颜色、材质、结构、数量、品牌和动作事实。",
   "按原始需求的顺序完整覆盖全部事实，尤其不能遗漏输入末尾的限制、细节或否定要求。",
+  "不要默认用户在做电商、带货或 TikTok 内容；只有原始需求或创作偏好明确要求时才加入平台和营销语境。",
+  "只补充当前任务真正需要的视觉、镜头、动作或保留约束，避免每次机械复用相同的构图、光线、材质和负向词。",
+  "画幅、清晰度、生成数量和视频时长由生成界面单独控制，最终提示词中不要重复这些参数。",
   "不要臆造用户没有要求的新元素、新文字、新品牌、新人物或新装饰。",
   "只输出最终提示词，不要解释，不要标题，不要 Markdown，不要列表，不要额外客套话。",
 ].join("\n");
@@ -145,8 +156,17 @@ function validateInput(input: Partial<PromptOptimizeInput>, maxInputChars: numbe
     hasImage,
     aspectRatio: boundedOptional(input.aspectRatio, 40),
     quality: boundedOptional(input.quality, 40),
+    duration: boundedOptionalNumber(input.duration, 1, 120),
     targetPlatform: boundedOptional(input.targetPlatform, 80),
+    preferences: normalizePromptPreferences(input.preferences),
   };
+}
+
+function boundedOptionalNumber(value: unknown, min: number, max: number) {
+  if (value === undefined || value === null || value === "") return undefined;
+  const normalized = Number(value);
+  if (!Number.isFinite(normalized)) return undefined;
+  return Math.min(max, Math.max(min, normalized));
 }
 
 function boundedOptional(value: unknown, max: number) {
@@ -228,32 +248,34 @@ function looksRelatedToInput(output: string, input: PromptOptimizeInput) {
 }
 
 function composeStrictChineseUserPrompt(input: PromptOptimizeInput) {
-  const targetPlatform = input.targetPlatform || "TikTok Shop";
   const scenarioGuidance = promptScenarioGuidance(input);
+  const preferences = promptPreferenceLines(input.tool, input.preferences || {});
   const scenario = input.tool === "image-editor"
-    ? "任务类型：图片编辑。基于参考图进行修改，必须明确写出保留项与修改项。"
+    ? "任务类型：图片编辑。基于参考图进行修改，按需要明确保留项、修改项与禁止改动项。"
     : input.tool === "video-generator"
-      ? "任务类型：视频生成。需要写清主体、镜头、动作、节奏、光线和场景连续性。"
-      : "任务类型：图片生成。需要写清主体、构图、背景、光线、材质和电商展示重点。";
+      ? "任务类型：视频生成。根据需求组织主体动作、镜头变化、节奏和场景连续性。"
+      : "任务类型：图片生成。根据需求补足主体、场景、构图和视觉风格，不限定商业用途。";
   const referenceInstruction = input.hasImage
     ? input.tool === "image-editor"
       ? "参考图：已提供。必须保留参考图主体事实，只调整用户明确要求修改的部分。"
       : "参考图：已提供。输出中要强调与参考主体保持一致。"
     : "参考图：未提供。不要声称看到了参考图。";
-  const qualityInstruction = input.tool === "video-generator"
-    ? "优化重点：主体清晰，动作自然，镜头运动明确，画面稳定，适合短视频传播。"
-    : "优化重点：主体突出，构图干净可信，光线自然，材质细节清晰，适合电商转化。";
+  const technicalConstraints = [
+    input.aspectRatio ? `界面画幅：${input.aspectRatio}` : "",
+    input.quality ? `界面清晰度：${input.quality}` : "",
+    input.duration ? `界面视频时长：${input.duration} 秒` : "",
+  ].filter(Boolean);
 
   return [
     scenario,
     referenceInstruction,
     scenarioGuidance,
-    `目标平台：${targetPlatform}`,
-    input.templateId ? `模板：${input.templateId}` : "",
-    input.aspectRatio ? `画幅：${input.aspectRatio}` : "",
-    input.quality ? `质量档位：${input.quality}` : "",
-    qualityInstruction,
-    "输出结构要求：把用户需求整理成一段自然提示词，必须覆盖主体与目标、场景与构图、光线与材质、镜头或动作、文字与品牌约束、负向约束。不要用列表或标题。",
+    preferences.length ? `用户创作偏好：\n${preferences.join("\n")}` : "用户创作偏好：自动判断，不限定平台或商业场景。",
+    input.targetPlatform ? `兼容旧版平台偏好：${input.targetPlatform}` : "",
+    technicalConstraints.length
+      ? `生成界面已单独设置以下参数，只用于把握构图和节奏，禁止在最终提示词中复述：${technicalConstraints.join("；")}`
+      : "",
+    "输出结构要求：整理成一段自然、具体且不过度堆砌的提示词。只覆盖与本次任务相关的主体、场景、构图、光线、镜头、动作、保留项和避免项；没有相关要求的维度不要硬加。不要用列表或标题。",
     "请直接输出一段可以提交给模型的简体中文提示词。",
     "用户原始要求：",
     input.prompt,
@@ -269,7 +291,10 @@ function promptScenarioGuidance(input: PromptOptimizeInput) {
     if (/开箱|拆箱|包装/u.test(prompt)) {
       return "场景策略：这是开箱类短视频，按包装外观、打开动作、取出商品、细节特写、完整展示的顺序组织镜头。";
     }
-    return "场景策略：这是短视频生成，写清楚首秒画面、镜头运动、主体动作、节奏变化、场景连续性和结尾停留画面。";
+    if (/剧情|故事|电影|叙事|角色/u.test(prompt)) {
+      return "场景策略：这是叙事或电影感短片，优先梳理角色目标、动作因果、镜头衔接、情绪变化与结尾画面。";
+    }
+    return "场景策略：根据用户内容判断是生活记录、创意短片、视觉实验还是商业视频，只补充该类型真正需要的镜头与动作信息。";
   }
   if (input.tool === "image-editor") {
     if (/抠图|透明|去背|透明背景/u.test(prompt)) {
@@ -289,17 +314,23 @@ function promptScenarioGuidance(input: PromptOptimizeInput) {
   if (/海报|促销|活动|品牌|主视觉/u.test(prompt)) {
     return "场景策略：这是海报或品牌主视觉，强调标题区、主体层级、活动氛围、版式秩序和不要出现乱码文字。";
   }
-  return "场景策略：这是图片生成任务，优先补足主体、构图、背景、光线、材质、风格边界和不希望出现的内容。";
+  if (/人像|肖像|人物|女孩|男孩|男人|女人/u.test(prompt)) {
+    return "场景策略：这是人物视觉，优先明确人物身份、姿态、表情、环境关系和镜头距离，避免擅自改变人物特征。";
+  }
+  if (/风景|森林|城市|建筑|宇宙|幻想|插画|动漫|艺术/u.test(prompt)) {
+    return "场景策略：这是非电商创作，优先保留世界观、主体关系、空间层次、色彩氛围与艺术方向。";
+  }
+  return "场景策略：先识别用户是自由创作、人物、场景、商品还是社媒视觉，再补充对应的必要信息，不默认任何平台。";
 }
 
 function localChineseOptimizedPrompt(input: PromptOptimizeInput) {
-  const targetPlatform = input.targetPlatform || "TikTok Shop";
   const scenarioGuidance = promptScenarioGuidance(input);
+  const preferences = promptPreferenceLines(input.tool, input.preferences || {});
   const scene = input.tool === "image-editor"
-    ? "基于参考图进行图片编辑，保留原有主体外观、颜色、材质、结构、品牌和数量，只修改用户明确指定的部分"
+    ? "基于参考图进行图片编辑，保留原有主体事实，只修改用户明确指定的部分"
     : input.tool === "video-generator"
-      ? "生成短视频画面，主体清晰，动作自然，镜头稳定，节奏适合短视频传播"
-      : "生成电商商品展示画面，主体突出，构图干净，背景可信，突出材质与细节";
+      ? "根据原始需求组织主体动作、镜头变化、节奏和场景连续性"
+      : "根据原始需求补足主体、场景、构图、光线和风格边界";
   const referenceInstruction = input.hasImage
     ? input.tool === "image-editor"
       ? "已提供参考图，输出中明确保留项与修改项"
@@ -309,12 +340,11 @@ function localChineseOptimizedPrompt(input: PromptOptimizeInput) {
     input.prompt,
     scene,
     referenceInstruction,
-    `适用平台：${targetPlatform}`,
-    input.aspectRatio ? `画幅 ${input.aspectRatio}` : "",
-    input.quality ? `质量 ${input.quality}` : "",
+    ...preferences,
+    input.targetPlatform ? `适用平台：${input.targetPlatform}` : "",
     scenarioGuidance,
-    "补全主体与目标、场景与构图、镜头或动作、光线与材质、文字与品牌约束、负向约束",
-    "使用简体中文表达，画面真实可信，光线自然，细节清晰，不额外添加用户未要求的文字、品牌、人物或装饰",
+    "仅补充当前任务需要的信息，不复述画幅、清晰度、数量或时长",
+    "使用简体中文表达，不额外添加用户未要求的文字、品牌、人物或装饰",
   ].filter(Boolean);
   return cleanOptimizedPrompt(parts.join("，"));
 }

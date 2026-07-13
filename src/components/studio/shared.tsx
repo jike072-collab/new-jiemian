@@ -6,7 +6,9 @@ import { useCallback, useEffect, useId, useRef, useState } from "react";
 import { Check, ChevronDown, ImageUp, Loader2, UploadCloud, Wand2, X } from "lucide-react";
 
 import { ratioShapeClass, ratios } from "@/components/studio/constants";
+import { PromptSettingsButton, usePromptPreferences } from "@/components/studio/prompt-settings";
 import type { SelectOption, StudioErrorDiagnostic, UploadFilePreview } from "@/components/studio/types";
+import type { PromptPreferences, PromptPreferenceTool } from "@/lib/prompt-preferences";
 import type { FrontendProvider } from "@/lib/server/types";
 import { cn } from "@/lib/utils";
 
@@ -633,6 +635,7 @@ function providerUseCase(model: string, displayName: string) {
 }
 
 export function PromptBox({
+  tool,
   value,
   onChange,
   placeholder,
@@ -644,6 +647,7 @@ export function PromptBox({
   onOptimize,
   onUndoOptimize,
 }: {
+  tool: PromptPreferenceTool;
   value: string;
   onChange: (value: string) => void;
   placeholder: string;
@@ -652,9 +656,11 @@ export function PromptBox({
   optimizeCostLabel?: string;
   optimizeError: string;
   canUndoOptimize: boolean;
-  onOptimize: () => void;
+  onOptimize: (preferences: PromptPreferences) => void;
   onUndoOptimize: () => void;
 }) {
+  const promptPreferences = usePromptPreferences(tool);
+
   return (
     <FieldFrame
       label="提示词"
@@ -673,7 +679,7 @@ export function PromptBox({
           <button
             type="button"
             className="studio-prompt-action"
-            onClick={onOptimize}
+            onClick={() => onOptimize(promptPreferences.preferences)}
             disabled={optimizing}
             aria-busy={optimizing}
           >
@@ -689,6 +695,7 @@ export function PromptBox({
               </span>
             )}
           </button>
+          <PromptSettingsButton tool={tool} store={promptPreferences.store} onChange={promptPreferences.saveStore} />
           {canUndoOptimize ? (
             <button type="button" className="studio-prompt-action" onClick={onUndoOptimize}>
               撤销优化

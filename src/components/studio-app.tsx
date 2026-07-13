@@ -36,7 +36,6 @@ import {
   maxReferenceImageSize,
   maxVideoFirstFrameCount,
   promptOptimizationCostLabel,
-  promptOptimizationTargetPlatform,
   ratios,
   upscaleUnavailableMessage,
   videoModelReferenceMessage,
@@ -62,6 +61,7 @@ import type {
   WorkspacePublicProvider,
   StudioErrorDiagnostic,
 } from "@/components/studio/types";
+import type { PromptPreferences } from "@/lib/prompt-preferences";
 import {
   getPlanStatusDisplay,
   getPlanTone,
@@ -233,6 +233,7 @@ type AccountRecord = {
   quotaDelta: number;
   entitlementUnits?: number;
   entitlementUnit?: "次" | "张";
+  entitlementRemaining?: number;
   balanceAfterQuotaUnits?: number | null;
   description: string;
 };
@@ -830,7 +831,7 @@ export function StudioApp() {
 
     setAccountUsageLoading(true);
     try {
-      const usageResult = await fetchJson<{ ok: true; usage: UsagePage }>("/api/usage?page=1&pageSize=10");
+      const usageResult = await fetchJson<{ ok: true; usage: UsagePage }>("/api/usage?page=1&pageSize=100");
       setUsagePage(usageResult.usage);
       setAccountUsageLoaded(true);
     } catch (error) {
@@ -852,7 +853,7 @@ export function StudioApp() {
 
     setAccountOrdersLoading(true);
     try {
-      const ordersResult = await fetchJson<BillingOrdersResponse>("/api/billing/orders?page=1&pageSize=20");
+      const ordersResult = await fetchJson<BillingOrdersResponse>("/api/billing/orders?page=1&pageSize=100");
       setBillingOrders(ordersResult.orders);
       setAccountOrdersLoaded(true);
     } catch (error) {
@@ -1605,7 +1606,7 @@ export function StudioApp() {
     applyTemplatePreset(templateId);
   }, [applyTemplatePreset]);
 
-  const optimizeImagePrompt = useCallback(async () => {
+  const optimizeImagePrompt = useCallback(async (preferences: PromptPreferences) => {
     const prompt = activeImageWorkspace.prompt.trim();
     if (!prompt) {
       const text = "请先填写提示词。";
@@ -1637,7 +1638,7 @@ export function StudioApp() {
           hasImage: imageWorkspaceHasFiles,
           aspectRatio: activeImageWorkspace.ratio,
           quality: activeImageWorkspace.quality,
-          targetPlatform: promptOptimizationTargetPlatform,
+          preferences,
         }),
       });
       const optimizedPrompt = String(data.optimizedPrompt || data.prompt || "").trim();
@@ -2016,7 +2017,7 @@ export function StudioApp() {
     });
   }, [selectedVideoProvider]);
 
-  const optimizeVideoPrompt = useCallback(async () => {
+  const optimizeVideoPrompt = useCallback(async (preferences: PromptPreferences) => {
     const prompt = videoWorkspace.prompt.trim();
     if (!prompt) {
       const text = "请先填写提示词。";
@@ -2048,7 +2049,7 @@ export function StudioApp() {
           hasImage: videoWorkspaceHasFiles,
           aspectRatio: videoWorkspace.ratio,
           duration: videoWorkspace.duration,
-          targetPlatform: promptOptimizationTargetPlatform,
+          preferences,
         }),
       });
       const optimizedPrompt = String(data.optimizedPrompt || data.prompt || "").trim();
@@ -2825,6 +2826,7 @@ export function StudioApp() {
       {activeBusinessTool === "image" ? (
         <ImageGenerator
           mode={activeImageMode}
+          promptTool={activeWorkspaceToolId === "image-editor" ? "image-editor" : "image-generator"}
           showTemplates={activeWorkspaceToolId !== "image-editor"}
           providers={providers.image}
               providersLoading={providersLoading}
@@ -3136,6 +3138,7 @@ function UserCenterWorkspace({
         billingOrders={billingOrders}
         checkInRecords={checkInRecords}
         currentQuotaUnits={quota?.quota_units ?? null}
+        entitlements={membershipSnapshot?.membership.entitlements ?? null}
         loading={loading}
         onViewChange={onViewChange}
       />
@@ -3219,8 +3222,14 @@ function UserCenterOverview({
   onViewChange: (view: AccountView) => void;
 }) {
   const recentRecords = useMemo(
-    () => createAccountRecords(usage?.entries || [], billingOrders, checkInRecords, quota?.quota_units ?? null).slice(0, 6),
-    [billingOrders, checkInRecords, quota?.quota_units, usage?.entries],
+    () => createAccountRecords(
+      usage?.entries || [],
+      billingOrders,
+      checkInRecords,
+      quota?.quota_units ?? null,
+      membershipSnapshot?.membership.entitlements ?? null,
+    ).slice(0, 6),
+    [billingOrders, checkInRecords, membershipSnapshot?.membership.entitlements, quota?.quota_units, usage?.entries],
   );
   const quotaUnits = quota?.quota_units ?? null;
   const quotaValue = loading ? "加载中" : quota ? `${formatQuotaUnits(quota.quota_units)} ✦` : "—";
@@ -3372,11 +3381,13 @@ function UserCenterOverview({
                   <span>时间</span>
                   <span>类型</span>
                   <span>积分变动</span>
+                  <span>剩余权益</span>
                   <span>积分余额</span>
                   <span>描述</span>
                 </div>
                 {Array.from({ length: 5 }).map((_, index) => (
                   <div key={index} className="user-center-usage__row user-center-usage__row--skeleton" aria-hidden="true">
+                    <span className="motion-skeleton-shimmer" />
                     <span className="motion-skeleton-shimmer" />
                     <span className="motion-skeleton-shimmer" />
                     <span className="motion-skeleton-shimmer" />
@@ -3391,6 +3402,7 @@ function UserCenterOverview({
                   <span>时间</span>
                   <span>类型</span>
                   <span>积分变动</span>
+                  <span>剩余权益</span>
                   <span>积分余额</span>
                   <span>描述</span>
                 </div>
@@ -3399,6 +3411,7 @@ function UserCenterOverview({
                     <span>{formatUsageDate(record.createdAt)}</span>
                     <strong>{record.typeLabel}</strong>
                     <em>{formatAccountQuotaChange(record)}</em>
+                    <span className="user-center-usage__entitlement">{formatAccountEntitlement(record)}</span>
                     <span className="user-center-usage__balance">{formatAccountQuotaBalance(record)}</span>
                     <span>{record.description}</span>
                   </div>
@@ -3823,6 +3836,7 @@ function UsageRecordsWorkspace({
   billingOrders,
   checkInRecords,
   currentQuotaUnits,
+  entitlements,
   loading,
   onViewChange,
 }: {
@@ -3830,13 +3844,14 @@ function UsageRecordsWorkspace({
   billingOrders: BillingOrder[];
   checkInRecords: PublicDailyCheckInRecord[];
   currentQuotaUnits: number | null;
+  entitlements: MembershipEntitlements | null;
   loading: boolean;
   onViewChange: (view: AccountView) => void;
 }) {
   const [filter, setFilter] = useState<AccountUsageFilter>("all");
   const records = useMemo(
-    () => createAccountRecords(usage?.entries || [], billingOrders, checkInRecords, currentQuotaUnits),
-    [billingOrders, checkInRecords, currentQuotaUnits, usage?.entries],
+    () => createAccountRecords(usage?.entries || [], billingOrders, checkInRecords, currentQuotaUnits, entitlements),
+    [billingOrders, checkInRecords, currentQuotaUnits, entitlements, usage?.entries],
   );
   const filteredRecords = filter === "all" ? records : records.filter((record) => record.kind === filter);
 
@@ -3875,11 +3890,13 @@ function UsageRecordsWorkspace({
               <span>时间</span>
               <span>类型</span>
               <span>积分变动</span>
+              <span>剩余权益</span>
               <span>积分余额</span>
               <span>描述</span>
             </div>
             {Array.from({ length: 5 }).map((_, index) => (
               <div key={index} className="user-center-usage__row user-center-usage__row--skeleton" aria-hidden="true">
+                <span className="motion-skeleton-shimmer" />
                 <span className="motion-skeleton-shimmer" />
                 <span className="motion-skeleton-shimmer" />
                 <span className="motion-skeleton-shimmer" />
@@ -3894,6 +3911,7 @@ function UsageRecordsWorkspace({
               <span>时间</span>
               <span>类型</span>
               <span>积分变动</span>
+              <span>剩余权益</span>
               <span>积分余额</span>
               <span>描述</span>
             </div>
@@ -3906,6 +3924,7 @@ function UsageRecordsWorkspace({
                 <span>{formatUsageDate(record.createdAt)}</span>
                 <strong>{record.typeLabel}</strong>
                 <em>{formatAccountQuotaChange(record)}</em>
+                <span className="user-center-usage__entitlement">{formatAccountEntitlement(record)}</span>
                 <span className="user-center-usage__balance">{formatAccountQuotaBalance(record)}</span>
                 <span>{record.description}</span>
               </div>
@@ -4402,6 +4421,7 @@ function createAccountRecords(
   billingOrders: BillingOrder[],
   checkInRecords: PublicDailyCheckInRecord[] = [],
   currentQuotaUnits: number | null = null,
+  entitlements: MembershipEntitlements | null = null,
 ) {
   const usageRecords: AccountRecord[] = usageEntries.map((entry) => {
     const quotaUsed = Math.abs(entry.actual_quota_units ?? entry.estimated_quota_units);
@@ -4411,13 +4431,18 @@ function createAccountRecords(
       || entry.operation === "cloud_image_upscale"
       ? "张"
       : "次";
+    const entitlementKind = membershipEntitlementKindForUsage(entry.operation);
     return {
       id: `usage-${entry.id}`,
       createdAt: entry.created_at,
       kind: "spend",
       typeLabel: entitlementUnits > 0 ? "权益抵扣" : "积分支出",
       quotaDelta: -quotaUsed,
-      ...(entitlementUnits > 0 ? { entitlementUnits, entitlementUnit } : {}),
+      ...(entitlementUnits > 0 ? {
+        entitlementUnits,
+        entitlementUnit,
+        entitlementRemaining: entitlementKind ? entitlements?.[entitlementKind]?.remaining : undefined,
+      } : {}),
       balanceAfterQuotaUnits: entry.balance_after_quota_units ?? null,
       description: entitlementUnits > 0
         ? `${usageOperationLabel(entry.operation)}：会员权益抵扣 ${entitlementUnits} ${entitlementUnit}，本次未扣积分`
@@ -4716,13 +4741,34 @@ function createRechargeConfirmState(input: {
 }
 
 function formatSignedQuota(value: number) {
+  if (value === 0) return "0";
   const prefix = value > 0 ? "+" : "";
   return `${prefix}${formatQuotaUnits(value)}`;
 }
 
 function formatAccountQuotaChange(record: AccountRecord) {
-  if (record.entitlementUnits) return `抵扣 ${record.entitlementUnits} ${record.entitlementUnit || "次"}`;
   return `${formatSignedQuota(record.quotaDelta)} 分`;
+}
+
+function formatAccountEntitlement(record: AccountRecord) {
+  if (!record.entitlementUnits) return "--";
+  const unit = record.entitlementUnit || "次";
+  const remaining = Number.isFinite(record.entitlementRemaining ?? Number.NaN)
+    ? `剩 ${formatQuotaUnits(record.entitlementRemaining || 0)} ${unit}`
+    : "剩余额度同步中";
+  return `${remaining} · 抵扣 ${record.entitlementUnits} ${unit}`;
+}
+
+function membershipEntitlementKindForUsage(operation: UsageLogEntry["operation"]): keyof MembershipEntitlements | null {
+  const kinds: Partial<Record<UsageLogEntry["operation"], keyof MembershipEntitlements>> = {
+    prompt_optimize: "prompt_optimize",
+    cloud_image_generation: "image_generation",
+    cloud_image_edit: "image_edit",
+    cloud_video_generation: "video_generation",
+    cloud_image_upscale: "image_upscale",
+    cloud_video_upscale: "video_upscale",
+  };
+  return kinds[operation] || null;
 }
 
 function formatAccountQuotaBalance(record: AccountRecord) {

@@ -26,6 +26,8 @@ import {
   SubmitButton,
 } from "@/components/studio/shared";
 import type { MobileActionState, VideoWorkspaceFile, VideoWorkspaceState, WorkspacePublicProvider } from "@/components/studio/types";
+import { PromptSettingsButton, usePromptPreferences } from "@/components/studio/prompt-settings";
+import type { PromptPreferences } from "@/lib/prompt-preferences";
 import { cn } from "@/lib/utils";
 
 export function VideoGenerator({
@@ -72,7 +74,7 @@ export function VideoGenerator({
   onDurationChange: (value: number) => void;
   onTemplateChange: (value: string) => void;
   onPromptChange: (value: string) => void;
-  onPromptOptimize: () => void;
+  onPromptOptimize: (preferences: PromptPreferences) => void;
   onPromptOptimizeUndo: () => void;
   promptOptimizeCostLabel?: string;
   onFilesChange: (files: File[]) => void;
@@ -254,10 +256,11 @@ function VideoPromptBox({
   optimizeCostLabel?: string;
   optimizeError: string;
   canUndoOptimize: boolean;
-  onOptimize: () => void;
+  onOptimize: (preferences: PromptPreferences) => void;
   onUndoOptimize: () => void;
 }) {
   const descriptionId = "video-prompt-counter";
+  const promptPreferences = usePromptPreferences("video-generator");
 
   return (
     <FieldFrame
@@ -277,7 +280,7 @@ function VideoPromptBox({
           <button
             type="button"
             className={cn("studio-prompt-action", !enableOptimization && "hidden")}
-            onClick={onOptimize}
+            onClick={() => onOptimize(promptPreferences.preferences)}
             disabled={optimizing || !enableOptimization}
             aria-busy={optimizing}
             aria-hidden={!enableOptimization}
@@ -294,6 +297,9 @@ function VideoPromptBox({
               </span>
             )}
           </button>
+          {enableOptimization ? (
+            <PromptSettingsButton tool="video-generator" store={promptPreferences.store} onChange={promptPreferences.saveStore} />
+          ) : null}
           {enableOptimization && canUndoOptimize ? (
             <button type="button" className="studio-prompt-action" onClick={onUndoOptimize}>
               撤销优化

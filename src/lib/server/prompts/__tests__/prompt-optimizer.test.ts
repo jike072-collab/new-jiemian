@@ -55,7 +55,6 @@ function baseInput(input: Partial<PromptOptimizeInput> = {}): PromptOptimizeInpu
     hasImage: false,
     aspectRatio: "1:1",
     quality: "high",
-    targetPlatform: "TikTok Shop",
     ...input,
   };
 }
@@ -97,9 +96,11 @@ test("optimizes common ecommerce image prompt scenarios", async () => {
   assert.equal(seen.length, cases.length);
   assert(seen.every((call) => call.systemPrompt.includes("最终输出必须使用简体中文")));
   assert(seen.every((call) => call.systemPrompt.includes("禁止输出整句英文")));
-  assert(seen.every((call) => call.userPrompt.includes("TikTok Shop")));
+  assert(seen.every((call) => !call.userPrompt.includes("TikTok Shop")));
+  assert(seen.every((call) => call.systemPrompt.includes("不要默认用户在做电商")));
+  assert(seen.every((call) => call.userPrompt.includes("禁止在最终提示词中复述")));
   assert(seen.some((call) => call.userPrompt.includes("任务类型：图片编辑")));
-  assert(seen.some((call) => call.userPrompt.includes("保留项与修改项")));
+  assert(seen.some((call) => call.userPrompt.includes("保留项、修改项")));
 });
 
 test("rejects empty and overlong prompt input before calling model", async () => {
@@ -174,8 +175,45 @@ test("can fall back to a local prompt when optimizer provider fails", async () =
   if (!result.ok) return;
   assert.match(result.optimizedPrompt, /白底商品主图/);
   assert.match(result.optimizedPrompt, /[\u4e00-\u9fff]/);
-  assert.match(result.optimizedPrompt, /TikTok Shop/);
+  assert.equal(result.optimizedPrompt.includes("TikTok Shop"), false);
+  assert.equal(result.optimizedPrompt.includes("画幅 1:1"), false);
+  assert.equal(result.optimizedPrompt.includes("质量 high"), false);
   assert.equal(result.optimizedPrompt.includes("sk-test-secret"), false);
+});
+
+test("uses mode preferences without forcing platform or repeating technical controls", async () => {
+  const seen: PromptModelCall[] = [];
+  const service = serviceWith(async (input) => {
+    seen.push(input);
+    return "一只小猫在雨后窗边观察水滴，电影质感，柔和逆光，安静而好奇。";
+  });
+
+  const result = await service.optimize(baseInput({
+    prompt: "一只小猫看窗外的雨",
+    aspectRatio: "16:9",
+    quality: "4k",
+    preferences: {
+      purpose: "free-create",
+      style: "cinematic",
+      lighting: "backlight",
+      platform: "none",
+      negativePrompt: "不要文字和水印",
+    },
+  }), { localUserId: "user-1" });
+
+  assert.equal(result.ok, true);
+  assert.equal(seen.length, 1);
+  assert.match(seen[0].userPrompt, /创作目的：自由创作/);
+  assert.match(seen[0].userPrompt, /视觉风格：电影质感/);
+  assert.match(seen[0].userPrompt, /用途平台：不限定平台/);
+  assert.match(seen[0].userPrompt, /避免内容：不要文字和水印/);
+  assert.match(seen[0].userPrompt, /界面画幅：16:9/);
+  assert.match(seen[0].userPrompt, /界面清晰度：4k/);
+  if (result.ok) {
+    assert.equal(result.optimizedPrompt.includes("16:9"), false);
+    assert.equal(result.optimizedPrompt.includes("4k"), false);
+    assert.equal(result.optimizedPrompt.includes("TikTok"), false);
+  }
 });
 
 test("returns only optimized prompt text and redacts secret-shaped output", async () => {
