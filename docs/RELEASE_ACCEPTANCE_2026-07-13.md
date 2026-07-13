@@ -46,6 +46,14 @@
 
 ## Release Blockers
 
+- P0: membership and quota are not consistently mapped between the application
+  and NewAPI. A newly supplied application test account showed no membership and
+  700 application credits. Its corresponding NewAPI user showed no plan and 958
+  NewAPI credits, while a different NewAPI user had the manually enabled
+  enterprise-month plan and 49,589 NewAPI credits. Do not run membership,
+  generation, or billing acceptance on this account until the authoritative user
+  mapping and entitlement synchronization are corrected and independently
+  reverified.
 - Administrator positive-path validation has not run because no dedicated admin
   test account has been provided. Public/unauthenticated administrator rejection
   remains covered by the existing browser and API checks.
