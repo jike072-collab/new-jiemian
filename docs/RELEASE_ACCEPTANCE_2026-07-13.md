@@ -24,6 +24,10 @@
   performance follow-up, not evidence of a functional failure.
 - Lighthouse homepage scan: performance 0.86, accessibility 1.00, best practices
   0.96, SEO 1.00, and largest contentful paint about 3.75 seconds.
+- Production k6 read-only smoke passed: 404 requests across homepage, login,
+  registration, templates, and the backend health endpoint; no failed requests;
+  P95 response duration was 170.07 ms at a maximum of 10 virtual users. It did
+  not use authenticated, generation, upload, payment, or provider routes.
 - `npm audit` reported zero production and development vulnerabilities after the
   test-tool dependency versions were pinned.
 - Authenticated production A/B browser check passed once in desktop Chromium:
@@ -31,6 +35,14 @@
   libraries; a direct request by B for an existing A media object returned HTTP
   404. The authenticated case deliberately runs in one project only, avoiding
   parallel login rate-limit noise across browser projects.
+- The real minimum credit purchase completed end to end: an Alipay payment of
+  ¥9.90 settled as a completed order for 1,306 credits. The account balance
+  changed from 519,460 to 520,766; the user-visible credit ledger and order
+  history both show the same completed credit-recharge event.
+- NewAPI administrator console access was confirmed with the supplied dedicated
+  administrator account. The account could access administrator-only channel,
+  subscription, model, user, and system-setting navigation. No API key, channel
+  secret, provider credential, or user dataset was exported.
 
 ## Release Blockers
 
@@ -40,9 +52,10 @@
 - Real provider calls, task-to-ledger verification, real payment callback and
   credit settlement have not run. A payment must have an explicitly approved
   amount cap and channel immediately before it is created.
-- k6 is not installed on this machine, so the checked-in read-only performance
-  script has not run. It must run only against an isolated target or explicitly
-  approved read-only production routes.
+- Both supplied A/B test accounts are already enterprise members, so the product
+  correctly disables the lowest membership plan for them. A dedicated account
+  without an active membership is required to validate the ¥29.90 base plan;
+  an enterprise renewal is not an equivalent substitute.
 - Do not deploy this candidate or claim full release acceptance until the above
   items have recorded evidence for dedicated accounts.
 
