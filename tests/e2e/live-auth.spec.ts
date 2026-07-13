@@ -58,11 +58,23 @@ test("account entitlements and library actions remain visible without mutating p
   expect(membershipResponse.status()).toBe(200);
   const membership = await membershipResponse.json() as { membership?: { active?: unknown } };
 
+  if (membership.membership?.active) {
+    await page.goto("/", { waitUntil: "domcontentloaded" });
+    await page.locator("button.shell-nav-account__main--button").click();
+    const entitlements = page.locator(".shell-nav-account__popover").getByLabel("会员剩余额度");
+    await expect(entitlements).toBeVisible();
+    await expect(entitlements).toContainText("图片放大");
+    await expect(entitlements).toContainText("视频放大");
+  }
+
   await page.goto("/?tool=library", { waitUntil: "domcontentloaded" });
   await expect(page.getByRole("heading", { name: "作品库", exact: true })).toBeVisible();
   const previewButtons = page.getByRole("button", { name: /^预览作品 / });
   const previewCount = await previewButtons.count();
-  test.skip(previewCount === 0, "The dedicated account has no library item to validate detail actions.");
+  if (previewCount === 0) {
+    testInfo.annotations.push({ type: "library", description: "The dedicated account has no library item to validate detail actions." });
+    return;
+  }
   await previewButtons.first().click();
 
   const modal = page.locator(".studio-library-modal");
@@ -95,11 +107,4 @@ test("account entitlements and library actions remain visible without mutating p
   await modal.getByRole("button", { name: "关闭预览", exact: true }).click();
   await expect(modal).toBeHidden();
 
-  if (membership.membership?.active) {
-    await page.locator("button.shell-account").click();
-    const entitlements = page.getByLabel("会员剩余额度");
-    await expect(entitlements).toBeVisible();
-    await expect(entitlements).toContainText("图片高清");
-    await expect(entitlements).toContainText("视频高清");
-  }
 });

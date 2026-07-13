@@ -509,9 +509,9 @@ export function LibraryDeleteConfirmDialog({
   onCancel: () => void;
   onConfirm: () => void;
 }) {
-  if (!item) return null;
+  if (!item || typeof document === "undefined") return null;
 
-  return (
+  return createPortal(
     <div className="studio-library-confirm" role="dialog" aria-modal="true" aria-labelledby="library-delete-confirm-title">
       <button
         type="button"
@@ -550,7 +550,8 @@ export function LibraryDeleteConfirmDialog({
           </button>
         </div>
       </section>
-    </div>
+    </div>,
+    document.body,
   );
 }
 
