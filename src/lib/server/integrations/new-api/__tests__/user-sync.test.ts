@@ -78,7 +78,7 @@ test("converts initial app credits into New API quota on user creation", async (
     repository,
     getQuotaDisplayConfig: async () => quotaDisplayConfig("CNY"),
     createUser: async (input) => {
-      assert.equal(input.quota, 1_369_863);
+      assert.equal(input.quota, 1_000_000);
       return response({ success: true, data: user({ quota: 0 }) });
     },
     listUsers: async () => response({ data: [] }),
@@ -92,7 +92,7 @@ test("converts initial app credits into New API quota on user creation", async (
 
   assert.equal(result.action, "created_upstream");
   assert.equal(result.mapping.sync_status, "active");
-  assert.deepEqual(quotaWrites, [{ newApiUserId: 77, quota: 1_369_863 }]);
+  assert.deepEqual(quotaWrites, [{ newApiUserId: 77, quota: 1_000_000 }]);
 });
 
 test("does not lower existing New API quota when it already exceeds signup credits", async () => {

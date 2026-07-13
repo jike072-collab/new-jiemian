@@ -300,12 +300,17 @@ export class AdminService {
     const user = await this.authRepository.getUserById(localUserId);
     if (!user) return failure("admin_not_found", 404, "User was not found.");
     const mapping = await this.mappingRepository.getByLocalUserId(localUserId);
+    let quotaUnits: number | null = null;
+    if (mapping?.sync_status === "active" && mapping.new_api_user_id) {
+      quotaUnits = await this.getProviderQuota(mapping.new_api_user_id).catch(() => null);
+    }
     await this.audit("admin.users.get", actor.localUserId, context, { target_user_id: localUserId });
     return {
       ok: true as const,
       status: 200,
       user: await this.publicUserWithMembership(user),
       mapping,
+      quota_units: quotaUnits,
       membership_plans: this.membershipService.listPlans(),
     };
   }
@@ -505,10 +510,17 @@ export class AdminService {
           return failure("admin_conflict", 409, "Idempotency key is already used for a different quota adjustment.");
         }
         if (adjustment.status === "applied") {
+          await this.recordAdminGrantOrder({
+            localUserId: input.localUserId,
+            newApiUserId,
+            creditedQuota: input.quotaDelta,
+            idempotencyKey: `admin-grant:${input.idempotencyKey.trim()}`,
+          });
           await this.audit("admin.quota.adjustment_idempotent", actor.localUserId, context, {
             target_user_id: input.localUserId,
             idempotency_key: input.idempotencyKey.trim(),
           });
+          getQuotaService().invalidateCache(input.localUserId);
           return { ok: true, status: 200, adjustment, original_quota: adjustment.original_quota ?? originalQuota, target_quota: adjustment.target_quota ?? targetQuota };
         }
         const persistedOriginalQuota = adjustment.original_quota ?? originalQuota;
@@ -519,10 +531,17 @@ export class AdminService {
             `new-api:admin:${input.idempotencyKey.trim()}:recovered`,
             this.now(),
           );
+          await this.recordAdminGrantOrder({
+            localUserId: input.localUserId,
+            newApiUserId,
+            creditedQuota: input.quotaDelta,
+            idempotencyKey: `admin-grant:${input.idempotencyKey.trim()}`,
+          });
           await this.audit("admin.quota.adjustment_recovered", actor.localUserId, context, {
             target_user_id: input.localUserId,
             idempotency_key: input.idempotencyKey.trim(),
           });
+          getQuotaService().invalidateCache(input.localUserId);
           return { ok: true, status: 200, adjustment: applied, original_quota: persistedOriginalQuota, target_quota: persistedTargetQuota };
         }
         if (!adjustment.created && currentQuota !== persistedOriginalQuota) {
@@ -553,7 +572,8 @@ export class AdminService {
           newApiUserId,
           creditedQuota: input.quotaDelta,
           idempotencyKey: `admin-grant:${input.idempotencyKey.trim()}`,
-        }).catch(() => undefined);
+        });
+        getQuotaService().invalidateCache(input.localUserId);
         return { ok: true, status: 200, adjustment: applied, original_quota: persistedOriginalQuota, target_quota: persistedTargetQuota };
       } catch (error) {
         await this.audit("admin.quota.adjustment_failed", actor.localUserId, context, {
@@ -565,6 +585,77 @@ export class AdminService {
     };
     if (this.taskRepository.withQuotaAdjustmentLock) {
       return this.taskRepository.withQuotaAdjustmentLock(activeNewApiUserId, operation);
+    }
+    return operation();
+  }
+
+  async reconcileExternalQuotaGrant(
+    actor: AdminActor,
+    input: { localUserId: string; originalQuota: number; quotaDelta: number; reference: string; reason: string },
+    context: AuthRequestContext = {},
+  ) {
+    if (!Number.isInteger(input.originalQuota) || input.originalQuota < 0) {
+      return failure("admin_invalid_request", 400, "Original quota is invalid.");
+    }
+    if (!Number.isInteger(input.quotaDelta) || input.quotaDelta <= 0) {
+      return failure("admin_invalid_request", 400, "Quota delta must be a positive integer.");
+    }
+    const reference = input.reference.trim();
+    if (!/^[A-Za-z0-9:_-]{8,120}$/.test(reference) || !input.reason.trim()) {
+      return failure("admin_invalid_request", 400, "Reference and reason are required.");
+    }
+    const mapping = await this.mappingRepository.getByLocalUserId(input.localUserId);
+    if (!mapping || mapping.sync_status !== "active" || !mapping.new_api_user_id) {
+      return failure("admin_conflict", 409, "Active New API mapping is required.");
+    }
+    const operation = async () => {
+      try {
+        const currentQuota = await this.getProviderQuota(mapping.new_api_user_id!);
+        const expectedQuota = input.originalQuota + input.quotaDelta;
+        if (currentQuota !== expectedQuota) {
+          await this.audit("admin.quota.external_grant_mismatch", actor.localUserId, context, {
+            target_user_id: input.localUserId,
+            original_quota: input.originalQuota,
+            quota_delta: input.quotaDelta,
+            expected_quota: expectedQuota,
+            current_quota: currentQuota,
+            reference,
+          });
+          return failure("admin_conflict", 409, "Current quota does not match the external grant.");
+        }
+        const idempotencyKey = `admin-external-grant:${reference}`;
+        await this.recordAdminGrantOrder({
+          localUserId: input.localUserId,
+          newApiUserId: mapping.new_api_user_id!,
+          creditedQuota: input.quotaDelta,
+          idempotencyKey,
+        });
+        await this.audit("admin.quota.external_grant_reconciled", actor.localUserId, context, {
+          target_user_id: input.localUserId,
+          original_quota: input.originalQuota,
+          quota_delta: input.quotaDelta,
+          target_quota: expectedQuota,
+          reference,
+          reason: sanitize(input.reason),
+        });
+        getQuotaService().invalidateCache(input.localUserId);
+        return {
+          ok: true as const,
+          status: 200,
+          original_quota: input.originalQuota,
+          target_quota: expectedQuota,
+          credited_quota: input.quotaDelta,
+        };
+      } catch (error) {
+        await this.audit("admin.quota.external_grant_failed", actor.localUserId, context, {
+          target_user_id: input.localUserId,
+          error: sanitize(error instanceof Error ? error.message : "external grant reconciliation failed"),
+        });
+        return failure("admin_upstream_unavailable", 503, "External quota reconciliation is unavailable.");
+      }
+    };
+    if (this.taskRepository.withQuotaAdjustmentLock) {
+      return this.taskRepository.withQuotaAdjustmentLock(mapping.new_api_user_id, operation);
     }
     return operation();
   }

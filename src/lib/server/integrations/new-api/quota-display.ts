@@ -11,7 +11,7 @@ export type NewApiQuotaDisplayConfig = {
 };
 
 const STATUS_CACHE_TTL_MS = 15_000;
-const APP_CREDITS_PER_CNY = 10;
+const APP_CREDITS_PER_NEW_API_USD = 100;
 const defaultQuotaDisplayConfig: NewApiQuotaDisplayConfig = {
   quotaPerUnit: 500_000,
   usdExchangeRate: 7.3,
@@ -56,11 +56,6 @@ function displayCurrencyRate(config: NewApiQuotaDisplayConfig) {
   return 1;
 }
 
-function creditsToCnyAmount(credits: number, config: NewApiQuotaDisplayConfig) {
-  if (config.quotaDisplayType === "TOKENS") return credits;
-  return credits / APP_CREDITS_PER_CNY;
-}
-
 export async function getNewApiQuotaDisplayConfig(options: { now?: Date } = {}): Promise<NewApiQuotaDisplayConfig> {
   const now = options.now || new Date();
   if (cachedQuotaDisplayConfig && cachedQuotaDisplayConfig.expiresAt > now.getTime()) {
@@ -100,22 +95,13 @@ export function newApiQuotaToDisplayAmount(rawQuota: number, config: NewApiQuota
 export function newApiQuotaToCredits(rawQuota: number, config: NewApiQuotaDisplayConfig) {
   const quota = finiteNumber(rawQuota, 0);
   if (config.quotaDisplayType === "TOKENS") return Math.round(quota);
-
-  const displayAmount = newApiQuotaToDisplayAmount(quota, config);
-  const cnyAmount = config.quotaDisplayType === "USD"
-    ? displayAmount * config.usdExchangeRate
-    : displayAmount;
-  return Math.round(cnyAmount * APP_CREDITS_PER_CNY);
+  const usdAmount = quota / positiveNumber(config.quotaPerUnit, defaultQuotaDisplayConfig.quotaPerUnit);
+  return Math.floor(usdAmount * APP_CREDITS_PER_NEW_API_USD);
 }
 
 export function creditsToNewApiQuota(credits: number, config: NewApiQuotaDisplayConfig) {
   const normalizedCredits = finiteNumber(credits, 0);
   if (config.quotaDisplayType === "TOKENS") return Math.round(normalizedCredits);
-
-  const cnyAmount = creditsToCnyAmount(normalizedCredits, config);
-  const displayAmount = config.quotaDisplayType === "USD"
-    ? cnyAmount / positiveNumber(config.usdExchangeRate, defaultQuotaDisplayConfig.usdExchangeRate)
-    : cnyAmount;
-  const usdAmount = displayAmount / displayCurrencyRate(config);
+  const usdAmount = normalizedCredits / APP_CREDITS_PER_NEW_API_USD;
   return Math.round(usdAmount * positiveNumber(config.quotaPerUnit, defaultQuotaDisplayConfig.quotaPerUnit));
 }

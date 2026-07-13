@@ -92,6 +92,19 @@ export async function adminRepairMappingResponse(request: NextRequest, localUser
 export async function adminAdjustQuotaResponse(request: NextRequest, localUserId: string) {
   if (!requireCsrf(request)) return json(csrfFailureForAdmin());
   const body = await readJsonBody(request);
+  if (body.mode === "reconcile_external_grant") {
+    return adminResponse(request, (actor) => getAdminService().reconcileExternalQuotaGrant(
+      actor,
+      {
+        localUserId,
+        originalQuota: Number(body.originalQuota ?? body.original_quota),
+        quotaDelta: Number(body.quotaDelta ?? body.quota_delta),
+        reference: String(body.reference || ""),
+        reason: String(body.reason || ""),
+      },
+      authRequestContext(request),
+    ));
+  }
   return adminResponse(request, (actor) => getAdminService().adjustQuota(
     actor,
     {

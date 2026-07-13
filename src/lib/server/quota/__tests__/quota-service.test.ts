@@ -153,7 +153,7 @@ test("allows large quota values without precision loss for safe integers", async
   assert.equal(result.snapshot.available_quota_units, maxSafe);
 });
 
-test("converts CNY-displayed New API quota into frontend credits", async () => {
+test("keeps New API points and frontend credits numerically aligned", async () => {
   const rawQuota = 1_369_863;
   const result = await service({
     quota: rawQuota,
@@ -163,9 +163,9 @@ test("converts CNY-displayed New API quota into frontend credits", async () => {
 
   assert.equal(result.ok, true);
   if (!result.ok) return;
-  assert.equal(result.snapshot.quota_units, 200);
-  assert.equal(result.snapshot.used_quota_units, 100);
-  assert.equal(result.snapshot.available_quota_units, 200);
+  assert.equal(result.snapshot.quota_units, 273);
+  assert.equal(result.snapshot.used_quota_units, 136);
+  assert.equal(result.snapshot.available_quota_units, 273);
 });
 
 test("records successful precheck idempotently and invalidates display cache", async () => {

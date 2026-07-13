@@ -17,12 +17,12 @@ function quotaDisplayConfig(type: NewApiQuotaDisplayConfig["quotaDisplayType"]):
   };
 }
 
-test("maps a CNY-displayed New API quota value to frontend credits", () => {
+test("maps New API quota points to the same frontend credit count", () => {
   const config = quotaDisplayConfig("CNY");
   const rawQuota = 1_369_863;
 
-  assert.equal(newApiQuotaToCredits(rawQuota, config), 200);
-  assert.equal(creditsToNewApiQuota(200, config), rawQuota);
+  assert.equal(newApiQuotaToCredits(rawQuota, config), 273);
+  assert.equal(creditsToNewApiQuota(200, config), 1_000_000);
 });
 
 test("keeps token-display quota as an identity mapping", () => {
