@@ -1949,6 +1949,7 @@ export function StudioApp() {
         completedAt: Date.now(),
         message: text,
       }));
+      await refreshAccountAfterGeneration().catch(() => undefined);
     } finally {
       const countRef = snapshot.scope === "image-editor" ? imageEditorInFlightCountRef : imageInFlightCountRef;
       updateImageInFlightState(countRef.current - 1, snapshot.scope);

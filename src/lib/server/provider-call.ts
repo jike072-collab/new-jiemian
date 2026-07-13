@@ -1383,16 +1383,16 @@ export async function generateImage(input: {
       count: outputCount,
     });
     if (!output.length) throw new Error("Image provider returned no outputs.");
-    const actualOutputCount = output.length;
-    const actualQuotaUnits = estimateImageGenerationTotalQuota({
+    const providerOutputCount = output.length;
+    const providerQuotaUnits = estimateImageGenerationTotalQuota({
       quality: input.quality,
-      count: actualOutputCount,
+      count: providerOutputCount,
       model: readyProvider.model,
     });
     const batchTotal = Number.isFinite(Number(input.batchTotal)) && Number(input.batchTotal) > 1
       ? Math.min(Math.max(Math.round(Number(input.batchTotal)), 1), 4)
-      : Math.min(Math.max(Math.max(actualOutputCount, outputCount), 1), 4);
-    const items = await Promise.all(output.map(async (entry, index) => {
+      : Math.min(Math.max(Math.max(providerOutputCount, outputCount), 1), 4);
+    const itemResults = await Promise.allSettled(output.map(async (entry, index) => {
       const stored = await outputToLibrary(entry, "image", "image");
       return addLibraryItem({
       ownerLocalUserId: input.billingLocalUserId || null,
@@ -1413,12 +1413,31 @@ export async function generateImage(input: {
         ...(input.billingTaskId ? { billingTaskId: input.billingTaskId } : {}),
         ...(input.billingIdempotencyKey ? { billingIdempotencyKey: input.billingIdempotencyKey } : {}),
         billingOperation: imageOperation,
-        billingEstimatedQuotaUnits: actualQuotaUnits,
+        billingEstimatedQuotaUnits: providerQuotaUnits,
         billingRequestFingerprint: billingFingerprint,
-        ...(actualOutputCount !== outputCount ? { partialBatch: true, requestedBatchTotal: outputCount } : {}),
+        ...(providerOutputCount !== outputCount ? { partialBatch: true, requestedBatchTotal: outputCount } : {}),
       },
       });
     }));
+    const items = itemResults.flatMap((result) => result.status === "fulfilled" ? [result.value] : []);
+    if (!items.length) {
+      const rejected = itemResults.find((result) => result.status === "rejected");
+      throw rejected?.reason instanceof Error ? rejected.reason : new Error("Image results could not be saved.");
+    }
+    const actualOutputCount = items.length;
+    const actualQuotaUnits = estimateImageGenerationTotalQuota({
+      quality: input.quality,
+      count: actualOutputCount,
+      model: readyProvider.model,
+    });
+    if (actualOutputCount < outputCount) {
+      await restoreMembershipEntitlementOnFailure({
+        localUserId: input.billingLocalUserId,
+        taskId: input.billingTaskId,
+        operation: imageOperation,
+        amount: outputCount - actualOutputCount,
+      });
+    }
     await acceptGenerationBilling({
       localUserId: input.billingLocalUserId,
       taskId: input.billingTaskId,
