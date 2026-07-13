@@ -53,7 +53,9 @@ const templateRailDragThreshold = 12;
 const templateRailLongPressDelay = 180;
 const templatePageSize = 12;
 const favoriteTemplateStorageKey = "aohuang-template-favorites";
-const templateThumbnailWarmupConcurrency = 3;
+const favoriteTemplateChangeEvent = "aohuang-template-favorites-change";
+const templateThumbnailWarmupConcurrency = 1;
+const templateThumbnailWarmupGapMs = 300;
 const defaultTemplateCategoryIds: TemplateFilter[] = [
   "全部",
   "收藏",
@@ -85,7 +87,7 @@ function warmTemplateThumbnailCache(templates: TemplatePromptTemplate[]) {
         activeCount += 1;
         void fetch(url, { cache: "force-cache" }).catch(() => undefined).finally(() => {
           activeCount -= 1;
-          runNext();
+          window.setTimeout(runNext, templateThumbnailWarmupGapMs);
         });
       }
     };
@@ -119,6 +121,7 @@ function TemplateThumbnail({
 }
 
 type TemplateRailProps = {
+  scope: TemplateScope;
   title?: string;
   viewAllHref?: string;
   viewAllLabel?: string;
@@ -128,6 +131,7 @@ type TemplateRailProps = {
 };
 
 export function TemplateRail({
+  scope,
   title = "模板",
   viewAllHref,
   viewAllLabel = "查看全部",
@@ -135,6 +139,7 @@ export function TemplateRail({
   activeTemplateId,
   onSelect,
 }: TemplateRailProps) {
+  const [favoriteIds, setFavoriteIds] = useState<string[]>([]);
   const scrollRef = useRef<HTMLDivElement | null>(null);
   const dragStateRef = useRef({
     pointerId: -1,
@@ -219,6 +224,37 @@ export function TemplateRail({
     dragStateRef.current.suppressClick = false;
   }, []);
 
+  useEffect(() => {
+    const readFavorites = () => {
+      try {
+        const raw = window.localStorage.getItem(favoriteTemplateStorageKey);
+        const ids = raw ? JSON.parse(raw) : [];
+        setFavoriteIds(Array.isArray(ids) ? ids.filter((id): id is string => typeof id === "string") : []);
+      } catch {
+        setFavoriteIds([]);
+      }
+    };
+    readFavorites();
+    window.addEventListener("storage", readFavorites);
+    window.addEventListener(favoriteTemplateChangeEvent, readFavorites);
+    return () => {
+      window.removeEventListener("storage", readFavorites);
+      window.removeEventListener(favoriteTemplateChangeEvent, readFavorites);
+    };
+  }, []);
+
+  const visibleTemplates = useMemo(() => {
+    const candidates = scope === "image"
+      ? imagePromptTemplates.filter((template) => template.targetToolId === "image")
+      : videoPromptTemplates;
+    const candidateById = new Map(candidates.map((template) => [template.id, template]));
+    const favorites = favoriteIds
+      .map((id) => candidateById.get(id))
+      .filter((template): template is TemplatePromptTemplate => Boolean(template));
+    const favoriteSet = new Set(favorites.map((template) => template.id));
+    return [...favorites, ...templates.filter((template) => !favoriteSet.has(template.id))].slice(0, 8);
+  }, [favoriteIds, scope, templates]);
+
   return (
     <section className="studio-template-section" aria-label={title}>
       <div className="studio-template-section__head">
@@ -242,7 +278,7 @@ export function TemplateRail({
         onClickCapture={handleClickCapture}
       >
         <div className="studio-template-track">
-          {templates.map((template, index) => (
+          {visibleTemplates.map((template, index) => (
             <button
               key={template.id}
               type="button"
@@ -345,6 +381,7 @@ export function TemplateCenterView() {
         next.add(id);
       }
       window.localStorage.setItem(favoriteTemplateStorageKey, JSON.stringify(Array.from(next)));
+      window.dispatchEvent(new Event(favoriteTemplateChangeEvent));
       return next;
     });
   };

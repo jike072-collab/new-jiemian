@@ -174,6 +174,69 @@ export class BillingService {
     return publicPaymentChannels();
   }
 
+  async fulfillExternalMembership(input: {
+    localUserId: string;
+    sourceOrderId: string;
+    planId: string;
+    cycle: string;
+    startsAt?: string | null;
+  }, context: BillingRequestContext = {}) {
+    const sourceOrderId = input.sourceOrderId.trim();
+    const sku = this.membershipService.getSku(input.planId, input.cycle);
+    if (!sourceOrderId || !sku) {
+      return billingFailure("invalid_billing_request", 400, "External membership is invalid.");
+    }
+
+    const mapping = await this.mappingRepository.getByLocalUserId(input.localUserId);
+    if (!mapping || mapping.sync_status !== "active" || !mapping.new_api_user_id) {
+      return billingFailure("mapping_pending", 409, "New API mapping is not active.");
+    }
+
+    let order = await this.repository.getOrder(sourceOrderId);
+    if (order) {
+      const matches = order.local_user_id === input.localUserId
+        && order.product_type === "membership"
+        && order.product_plan_id === sku.plan.id
+        && order.product_cycle === sku.cycle
+        && order.credited_quota === sku.grant_credits;
+      if (!matches || order.status === "refunded") {
+        return billingFailure("invalid_billing_request", 409, "External membership order conflicts with existing billing evidence.");
+      }
+    } else {
+      const timestamp = nowIso(this.now());
+      const paidAt = input.startsAt && Number.isFinite(Date.parse(input.startsAt)) ? input.startsAt : timestamp;
+      order = await this.repository.createOrder({
+        order_id: sourceOrderId,
+        local_user_id: input.localUserId,
+        new_api_user_id: mapping.new_api_user_id,
+        channel: "new_api_subscription",
+        currency: "CNY",
+        requested_amount: sku.price_amount,
+        paid_amount: 0,
+        credited_quota: sku.grant_credits,
+        product_type: "membership",
+        product_plan_id: sku.plan.id,
+        product_cycle: sku.cycle,
+        status: "processing",
+        idempotency_key: `new-api-subscription:${sourceOrderId}`,
+        provider_order_id: sourceOrderId,
+        created_at: paidAt,
+        updated_at: timestamp,
+        paid_at: paidAt,
+        last_error: null,
+        quota_credit_applied_at: null,
+        refunded_at: null,
+      });
+      await this.audit("billing.membership.external_detected", order, context, {
+        credited_quota: sku.grant_credits,
+        plan_id: sku.plan.id,
+        cycle: sku.cycle,
+      });
+    }
+
+    return this.fulfillMembershipOrder(order, context, `new-api-subscription:${sourceOrderId}`);
+  }
+
   async createOrder(input: CreateBillingOrderInput, context: BillingRequestContext = {}): Promise<CreateBillingOrderResult> {
     const channel = getPaymentChannel(input.channel);
     if (!channel || !channel.enabled) {

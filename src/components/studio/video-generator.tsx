@@ -109,6 +109,7 @@ export function VideoGenerator({
         onReload={onReloadProviders}
       />
       <TemplateRail
+        scope="video"
         title="模板"
         viewAllHref={templateCenterHref}
         templates={featuredVideoPromptTemplates}

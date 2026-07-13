@@ -274,35 +274,93 @@ const toolTutorials: Record<ToolTutorialKind, {
   },
 };
 
+const recordedImageTutorialSrc = "/tutorials/image-generator/image-generation-tutorial.mp4";
+
 function ImageGenerationTutorial() {
+  const [recordedTutorialOpen, setRecordedTutorialOpen] = useState(false);
+
+  useEffect(() => {
+    if (!recordedTutorialOpen) return undefined;
+
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setRecordedTutorialOpen(false);
+    };
+
+    window.addEventListener("keydown", closeOnEscape);
+    return () => window.removeEventListener("keydown", closeOnEscape);
+  }, [recordedTutorialOpen]);
+
   return (
-    <PreviewState eyebrow="快速教程" title="快速教程" description="输入描述，选择比例，即可生成图片。">
-      <div className="image-tutorial-simple">
-        <div className="image-tutorial-simple__stage">
-          <div className="image-tutorial-simple__image-shell">
-            <img
-              className="image-tutorial-simple__image"
-              src="/tutorials/image-generator/perfume-result.webp"
-              alt="新中式香水产品图，粉色牡丹花、香水瓶、大理石台面和中式窗棂背景"
-              decoding="async"
-            />
-          </div>
-          <div className="image-tutorial-simple__overlay image-tutorial-simple__overlay--prompt">
-            <span>提示词</span>
-            <p>新中式香水产品摄影，粉色牡丹花簇拥，香水瓶置于大理石台面，背景带有中式窗棂元素，光影柔和，画面干净高级，细节丰富，商业产品图风格。</p>
-          </div>
-          <div className="image-tutorial-simple__overlay image-tutorial-simple__overlay--ratio">
-            <span>比例</span>
-            <i aria-hidden="true" />
-            <strong>16:9</strong>
+    <>
+      <PreviewState
+        eyebrow="快速教程"
+        title="快速教程"
+        description="输入描述，选择比例，即可生成图片。"
+        action={(
+          <button type="button" className="studio-secondary-button video-tutorial-recording-button" onClick={() => setRecordedTutorialOpen(true)}>
+            <Video className="size-4" aria-hidden="true" />
+            观看完整教程
+          </button>
+        )}
+      >
+        <div className="image-tutorial-simple">
+          <div className="image-tutorial-simple__stage">
+            <div className="image-tutorial-simple__image-shell">
+              <img
+                className="image-tutorial-simple__image"
+                src="/tutorials/image-generator/perfume-result.webp"
+                alt="新中式香水产品图，粉色牡丹花、香水瓶、大理石台面和中式窗棂背景"
+                decoding="async"
+              />
+            </div>
+            <div className="image-tutorial-simple__overlay image-tutorial-simple__overlay--prompt">
+              <span>提示词</span>
+              <p>新中式香水产品摄影，粉色牡丹花簇拥，香水瓶置于大理石台面，背景带有中式窗棂元素，光影柔和，画面干净高级，细节丰富，商业产品图风格。</p>
+            </div>
+            <div className="image-tutorial-simple__overlay image-tutorial-simple__overlay--ratio">
+              <span>比例</span>
+              <i aria-hidden="true" />
+              <strong>16:9</strong>
+            </div>
           </div>
         </div>
-      </div>
-    </PreviewState>
+      </PreviewState>
+      {recordedTutorialOpen ? (
+        <div className="video-tutorial-recording-modal" role="presentation">
+          <button
+            type="button"
+            className="video-tutorial-recording-modal__backdrop"
+            aria-label="关闭图片生成完整教程"
+            onClick={() => setRecordedTutorialOpen(false)}
+          />
+          <section className="video-tutorial-recording-modal__card" role="dialog" aria-modal="true" aria-labelledby="image-tutorial-recording-title">
+            <header className="video-tutorial-recording-modal__head">
+              <h4 id="image-tutorial-recording-title">图片生成完整教程</h4>
+              <button
+                type="button"
+                className="video-tutorial-recording-modal__close"
+                aria-label="关闭图片生成完整教程"
+                onClick={() => setRecordedTutorialOpen(false)}
+                autoFocus
+              >
+                <X className="size-5" aria-hidden="true" />
+              </button>
+            </header>
+            <video controls playsInline preload="metadata">
+              <source src={recordedImageTutorialSrc} type="video/mp4" />
+              当前浏览器不支持播放此视频。
+            </video>
+          </section>
+        </div>
+      ) : null}
+    </>
   );
 }
 
+const recordedImageEditorTutorialSrc = "/tutorials/image-editor/image-editing-tutorial.mp4";
+
 function ImageEditorTutorial() {
+  const [recordedTutorialOpen, setRecordedTutorialOpen] = useState(false);
   const [readyAssets, setReadyAssets] = useState<Set<string>>(() => new Set());
   const imageEditorAssetsReady = readyAssets.size >= 5;
   const markImageEditorAssetReady = useCallback((src: string) => {
@@ -314,9 +372,31 @@ function ImageEditorTutorial() {
     });
   }, []);
 
+  useEffect(() => {
+    if (!recordedTutorialOpen) return undefined;
+
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setRecordedTutorialOpen(false);
+    };
+
+    window.addEventListener("keydown", closeOnEscape);
+    return () => window.removeEventListener("keydown", closeOnEscape);
+  }, [recordedTutorialOpen]);
+
   return (
-    <PreviewState eyebrow="图片编辑示例" title="图片编辑示例" description="上传图片并描述修改要求，快速完成内容编辑与素材融合。">
-      <div className={cn("image-editor-tutorial", imageEditorAssetsReady && "is-ready")} aria-busy={!imageEditorAssetsReady}>
+    <>
+      <PreviewState
+        eyebrow="图片编辑示例"
+        title="图片编辑示例"
+        description="上传图片并描述修改要求，快速完成内容编辑与素材融合。"
+        action={(
+          <button type="button" className="studio-secondary-button video-tutorial-recording-button" onClick={() => setRecordedTutorialOpen(true)}>
+            <Video className="size-4" aria-hidden="true" />
+            观看完整教程
+          </button>
+        )}
+      >
+        <div className={cn("image-editor-tutorial", imageEditorAssetsReady && "is-ready")} aria-busy={!imageEditorAssetsReady}>
         <div className="image-editor-tutorial__canvas" aria-label="图片编辑器示例图片">
           <span className="image-editor-tutorial__loading" aria-hidden="true" />
           <svg className="image-editor-tutorial__path" viewBox="0 0 980 520" aria-hidden="true">
@@ -372,7 +452,36 @@ function ImageEditorTutorial() {
           </figure>
         </div>
       </div>
-    </PreviewState>
+      </PreviewState>
+      {recordedTutorialOpen ? (
+        <div className="video-tutorial-recording-modal" role="presentation">
+          <button
+            type="button"
+            className="video-tutorial-recording-modal__backdrop"
+            aria-label="关闭图片编辑完整教程"
+            onClick={() => setRecordedTutorialOpen(false)}
+          />
+          <section className="video-tutorial-recording-modal__card" role="dialog" aria-modal="true" aria-labelledby="image-editor-tutorial-recording-title">
+            <header className="video-tutorial-recording-modal__head">
+              <h4 id="image-editor-tutorial-recording-title">图片编辑完整教程</h4>
+              <button
+                type="button"
+                className="video-tutorial-recording-modal__close"
+                aria-label="关闭图片编辑完整教程"
+                onClick={() => setRecordedTutorialOpen(false)}
+                autoFocus
+              >
+                <X className="size-5" aria-hidden="true" />
+              </button>
+            </header>
+            <video controls playsInline preload="metadata">
+              <source src={recordedImageEditorTutorialSrc} type="video/mp4" />
+              当前浏览器不支持播放此视频。
+            </video>
+          </section>
+        </div>
+      ) : null}
+    </>
   );
 }
 
@@ -380,6 +489,7 @@ const videoTutorialPromptText = "雨天城市街头，女生撑透明雨伞缓�
 const videoTutorialResultVideoSrc = "/tutorials/video-generator/demo-result.mp4";
 const videoTutorialInputImageSrc = "/tutorials/video-generator/input-person.webp";
 const videoTutorialResultPosterSrc = "/tutorials/video-generator/rain-umbrella.webp";
+const recordedVideoTutorialSrc = "/tutorials/video-generator/video-generation-tutorial.mp4";
 
 type VideoTutorialImagePhase = "hidden" | "dragging" | "landed";
 type VideoTutorialPlaybackState =
@@ -638,6 +748,7 @@ function VideoGenerationTutorial({ paused = false }: { paused?: boolean }) {
   const guideRef = useRef<HTMLDivElement | null>(null);
   const replayTimerRef = useRef<number | undefined>(undefined);
   const reducedMotion = useReducedMotion();
+  const [recordedTutorialOpen, setRecordedTutorialOpen] = useState(false);
   const [playbackStateState, setPlaybackState] = useState<VideoTutorialPlaybackState>("idle");
   const [, setTypedText] = useState("");
   const [isInView, setIsInView] = useState(true);
@@ -825,6 +936,17 @@ function VideoGenerationTutorial({ paused = false }: { paused?: boolean }) {
 
   useEffect(() => () => clearReplayTimer(), [clearReplayTimer]);
 
+  useEffect(() => {
+    if (!recordedTutorialOpen) return undefined;
+
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setRecordedTutorialOpen(false);
+    };
+
+    window.addEventListener("keydown", closeOnEscape);
+    return () => window.removeEventListener("keydown", closeOnEscape);
+  }, [recordedTutorialOpen]);
+
   const steps = [
     {
       id: "upload",
@@ -854,7 +976,18 @@ function VideoGenerationTutorial({ paused = false }: { paused?: boolean }) {
   const secondArrowDrawn = ["result-preparing", "result-entering", "result-playing", "complete", "resetting", "fading-out", "final"].includes(playbackState);
 
   return (
-    <PreviewState eyebrow="快速教程" title="视频生成快速教程" description="上传参考图，输入提示词，确认比例后生成视频。">
+    <>
+      <PreviewState
+        eyebrow="快速教程"
+        title="视频生成快速教程"
+        description="上传参考图，输入提示词，确认比例后生成视频。"
+        action={(
+          <button type="button" className="studio-secondary-button video-tutorial-recording-button" onClick={() => setRecordedTutorialOpen(true)}>
+            <Video className="size-4" aria-hidden="true" />
+            观看完整教程
+          </button>
+        )}
+      >
       <div
         ref={guideRef}
         className={cn(
@@ -886,7 +1019,36 @@ function VideoGenerationTutorial({ paused = false }: { paused?: boolean }) {
           </article>
         ))}
       </div>
-    </PreviewState>
+      </PreviewState>
+      {recordedTutorialOpen ? (
+        <div className="video-tutorial-recording-modal" role="presentation">
+          <button
+            type="button"
+            className="video-tutorial-recording-modal__backdrop"
+            aria-label="关闭完整视频教程"
+            onClick={() => setRecordedTutorialOpen(false)}
+          />
+          <section className="video-tutorial-recording-modal__card" role="dialog" aria-modal="true" aria-labelledby="video-tutorial-recording-title">
+            <header className="video-tutorial-recording-modal__head">
+              <h4 id="video-tutorial-recording-title">视频生成完整教程</h4>
+              <button
+                type="button"
+                className="video-tutorial-recording-modal__close"
+                aria-label="关闭完整视频教程"
+                onClick={() => setRecordedTutorialOpen(false)}
+                autoFocus
+              >
+                <X className="size-5" aria-hidden="true" />
+              </button>
+            </header>
+            <video controls playsInline preload="metadata">
+              <source src={recordedVideoTutorialSrc} type="video/mp4" />
+              当前浏览器不支持播放此视频。
+            </video>
+          </section>
+        </div>
+      ) : null}
+    </>
   );
 }
 
@@ -1021,10 +1183,10 @@ function ProcessingPreview({
   label: string;
   detail?: string;
   progress?: number;
-  startedAt?: string | null;
+  startedAt?: string | number | null;
 }) {
   const [fallbackStartedAt] = useState(() => Date.now());
-  const startedAtMs = startedAt ? taskStartMs(startedAt) : fallbackStartedAt;
+  const startedAtMs = typeof startedAt === "number" ? startedAt : startedAt ? taskStartMs(startedAt) : fallbackStartedAt;
   const [now, setNow] = useState(() => Date.now());
   const elapsedMs = Math.max(0, now - startedAtMs);
   const progressValue = Math.round(animatedTaskProgress(elapsedMs, Math.max(0, progress / 100), 0.94) * 100);
@@ -1045,7 +1207,7 @@ function ProcessingPreview({
         </div>
         <div className="studio-processing-state__copy">
           <p>{label}</p>
-          <small>已等待 {elapsedText}</small>
+          <small>已等待 {elapsedText} · 进度 {progressValue}%</small>
         </div>
         <div className="studio-processing-state__track" aria-hidden="true">
           <span style={{ width: `${progressValue}%` }} />
@@ -1470,6 +1632,7 @@ export function ImagePreviewPanel({
   output,
   outputs = output ? [output] : [],
   loading,
+  generationStartedAt,
   canSubmit,
   submitError,
   submitDiagnostic,
@@ -1487,6 +1650,7 @@ export function ImagePreviewPanel({
   output: OutputState;
   outputs?: OutputItemState[];
   loading: boolean;
+  generationStartedAt?: number | null;
   canSubmit: boolean;
   submitError: string;
   submitDiagnostic?: StudioErrorDiagnostic | null;
@@ -1504,7 +1668,7 @@ export function ImagePreviewPanel({
   const resultOutputs = outputs.length ? outputs : output ? [output] : [];
 
   if (loading && !resultOutputs.length) {
-    return <ProcessingPreview label="正在生成图片" detail="生成多张图片时会逐张完成，完成的结果会先出现在这里。" progress={48} />;
+    return <ProcessingPreview label="正在生成图片" detail="生成多张图片时会逐张完成，完成的结果会先出现在这里。" progress={0} startedAt={generationStartedAt} />;
   }
 
   if (submitError && !resultOutputs.length) {
@@ -1782,16 +1946,9 @@ export function ImageGenerationProgressToast({
   onClose: (id: string) => void;
 }) {
   const visibleProgress = useMemo(
-    () => [...progress].sort((a, b) => b.startedAt - a.startedAt).slice(0, 2),
+    () => [...progress].sort((a, b) => a.startedAt - b.startedAt).slice(0, 1),
     [progress],
   );
-
-  useEffect(() => {
-    const timers = visibleProgress
-      .filter((item) => item.status !== "running")
-      .map((item) => window.setTimeout(() => onClose(item.id), 5200));
-    return () => timers.forEach((timer) => window.clearTimeout(timer));
-  }, [onClose, visibleProgress]);
 
   const baseBottom = stacked ? 122 : 26;
 
@@ -1805,6 +1962,7 @@ export function ImageGenerationProgressToast({
       : item.status === "failed"
         ? Math.min(Math.max(completed / total, 0), 1)
         : animatedTaskProgress(elapsedMs, completed / total, 0.94);
+    const progressPercent = Math.round(progressRatio * 100);
     const title = item.status === "done"
       ? "生成已完成"
       : item.status === "failed"
@@ -1822,6 +1980,7 @@ export function ImageGenerationProgressToast({
         className={cn("image-generation-progress", `is-${item.status}`)}
         role="status"
         aria-live="polite"
+        onClick={item.status === "running" ? undefined : () => onClose(item.id)}
         style={{ bottom: `${baseBottom + index * 116}px` }}
       >
         <span className="image-generation-progress__icon" aria-hidden="true">
@@ -1832,17 +1991,20 @@ export function ImageGenerationProgressToast({
         <span className="image-generation-progress__body">
           <span className="image-generation-progress__head">
             <strong>{title}</strong>
-            <button type="button" aria-label="关闭生成进度" onClick={() => onClose(item.id)}>
+            <button type="button" aria-label="关闭生成进度" onClick={(event) => {
+              event.stopPropagation();
+              onClose(item.id);
+            }}>
               <X className="size-3.5" aria-hidden="true" />
             </button>
           </span>
           <small>{item.message || statusText}</small>
           <span className="image-generation-progress__meta">
             <span>{statusText}</span>
-            <span>用时 {formatElapsedClock(elapsedMs)}</span>
+            <span>进度 {progressPercent}% · 用时 {formatElapsedClock(elapsedMs)}</span>
           </span>
           <span className="image-generation-progress__track" aria-hidden="true">
-            <span style={{ width: `${Math.round(progressRatio * 100)}%` }} />
+            <span style={{ width: `${progressPercent}%` }} />
           </span>
         </span>
       </div>

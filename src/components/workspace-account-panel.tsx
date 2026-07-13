@@ -41,13 +41,12 @@ function formatQuota(value: number | null | undefined) {
 function createEntitlementItems(entitlements: MembershipEntitlements | null | undefined) {
   if (!entitlements) return [];
   return [
-    ["Prompt", `${formatQuota(entitlements.prompt_optimize.remaining)} uses`],
-    ["Image Gen", `${formatQuota(entitlements.image_generation.remaining)} items`],
-    ["Video Gen", `${formatQuota(entitlements.video_generation.remaining)} uses`],
-    ["Image Edit", `${formatQuota(entitlements.image_edit.remaining)} items`],
-    ["Image Upscale", `${formatQuota(entitlements.image_upscale.remaining)} items`],
-    ["Video Upscale", `${formatQuota(entitlements.video_upscale.remaining)} uses`],
-  ].filter(([, value]) => !value.startsWith("0 "));
+    ["提示词优化", `${formatQuota(entitlements.prompt_optimize.remaining)} 次`],
+    ["图片生成", `${formatQuota(entitlements.image_generation.remaining)} 张`],
+    ["视频生成", `${formatQuota(entitlements.video_generation.remaining)} 次`],
+    ["图片放大", `${formatQuota(entitlements.image_upscale.remaining)} 张`],
+    ["视频放大", `${formatQuota(entitlements.video_upscale.remaining)} 次`],
+  ];
 }
 
 function formatPlanDate(value: string | null | undefined) {

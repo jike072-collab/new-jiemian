@@ -3,7 +3,11 @@ import { randomBytes, randomInt, randomUUID } from "node:crypto";
 import {
   adminGetNewApiUser,
   createNewApiUserSyncService,
+  extractNewApiPasswordLoginUser,
   isNewApiError,
+  loginNewApiWithPassword,
+  type NewApiPasswordLoginPayload,
+  type NewApiPasswordLoginUser,
   type NewApiUserMapping,
   type NewApiUserMappingRepository,
   type NewApiUserSyncService,
@@ -89,6 +93,7 @@ export type AuthServiceDependencies = {
   registerLimiter?: InMemoryRateLimiter;
   verificationLimiter?: InMemoryRateLimiter;
   verificationSender?: AuthVerificationSender;
+  newApiPasswordLogin?: typeof loginNewApiWithPassword;
   now?: () => Date;
 };
 
@@ -208,6 +213,7 @@ export class AuthService {
   private readonly registerLimiter: InMemoryRateLimiter;
   private readonly verificationLimiter: InMemoryRateLimiter;
   private readonly verificationSender: AuthVerificationSender;
+  private readonly newApiPasswordLogin: typeof loginNewApiWithPassword;
   private readonly now: () => Date;
 
   constructor(dependencies: AuthServiceDependencies = {}) {
@@ -234,6 +240,7 @@ export class AuthService {
     this.registerLimiter = dependencies.registerLimiter || new InMemoryRateLimiter(limits.registerPerIp, limits.registerWindowMs);
     this.verificationLimiter = dependencies.verificationLimiter || new InMemoryRateLimiter(5, 10 * 60 * 1000);
     this.verificationSender = dependencies.verificationSender || sendAuthVerificationCode;
+    this.newApiPasswordLogin = dependencies.newApiPasswordLogin || loginNewApiWithPassword;
     this.now = dependencies.now || (() => new Date());
   }
 
@@ -510,6 +517,12 @@ export class AuthService {
       return this.completeLogin(user, input, context, redirectTo);
     }
 
+    const newApiLogin = await this.loginWithNewApiPassword(identifier, input.password || "", context);
+    if (newApiLogin.ok) {
+      return this.completeLogin(newApiLogin.user, input, context, redirectTo);
+    }
+    if (newApiLogin.serviceUnavailable) return newApiLogin.failure;
+
     const passwordOk = await verifyPassword(input.password || "", user?.password_hash);
     if (!user || !passwordOk) {
       await this.audit("auth.login.failed", user?.local_user_id || null, context, { reason: "invalid_credentials" });
@@ -544,6 +557,157 @@ export class AuthService {
     }
 
     return this.completeLogin(user, input, context, redirectTo);
+  }
+
+  private async loginWithNewApiPassword(identifier: string, password: string, context: AuthRequestContext): Promise<
+    | { ok: true; user: AuthUser }
+    | { ok: false; serviceUnavailable: boolean; failure: AuthFailure }
+  > {
+    if (!identifier || !password) {
+      return {
+        ok: false,
+        serviceUnavailable: false,
+        failure: this.invalidCredentialsFailure(),
+      };
+    }
+
+    let payload: NewApiPasswordLoginPayload;
+    try {
+      payload = await this.newApiPasswordLogin({
+        username: identifier,
+        password,
+      }, context.requestId || randomUUID());
+    } catch (error) {
+      if (isNewApiError(error) && error.code === "NEW_API_DISABLED") {
+        return {
+          ok: false,
+          serviceUnavailable: false,
+          failure: this.invalidCredentialsFailure(),
+        };
+      }
+      if (isNewApiError(error) && (error.status === 503 || error.status >= 500)) {
+        return {
+          ok: false,
+          serviceUnavailable: true,
+          failure: failure({
+            status: 503,
+            code: "AUTH_SERVICE_UNAVAILABLE",
+            uiState: "service_unavailable",
+            message: "Login service is unavailable.",
+          }),
+        };
+      }
+      return {
+        ok: false,
+        serviceUnavailable: false,
+        failure: this.invalidCredentialsFailure(),
+      };
+    }
+
+    if (payload.success !== true) {
+      return {
+        ok: false,
+        serviceUnavailable: false,
+        failure: this.invalidCredentialsFailure(),
+      };
+    }
+
+    const newApiUser = extractNewApiPasswordLoginUser(payload);
+    if (!newApiUser) {
+      return {
+        ok: false,
+        serviceUnavailable: true,
+        failure: failure({
+          status: 503,
+          code: "AUTH_SERVICE_UNAVAILABLE",
+          uiState: "service_unavailable",
+          message: "Login service returned an incomplete profile.",
+        }),
+      };
+    }
+
+    const localUser = await this.ensureLocalUserForNewApiLogin(identifier, newApiUser);
+    await this.audit("auth.login.new_api_success", localUser.local_user_id, context, {
+      new_api_user_id: newApiUser.id,
+    });
+    return { ok: true, user: localUser };
+  }
+
+  private invalidCredentialsFailure(): AuthFailure {
+    return failure({
+      status: 401,
+      code: "AUTH_INVALID_CREDENTIALS",
+      uiState: "invalid_credentials",
+      message: genericInvalidCredentials,
+    });
+  }
+
+  private async ensureLocalUserForNewApiLogin(identifier: string, newApiUser: NewApiPasswordLoginUser) {
+    const newApiUserId = String(newApiUser.id);
+    const existingMapping = await this.mappingRepository.getByNewApiUserId(newApiUserId);
+    if (existingMapping) {
+      const mappedUser = await this.repository.getUserById(existingMapping.local_user_id);
+      if (mappedUser) return mappedUser;
+    }
+
+    const existingUser = await this.repository.getUserByIdentifier(identifier);
+    if (existingUser) {
+      const mapping = await this.mappingRepository.getByLocalUserId(existingUser.local_user_id);
+      if (!mapping) {
+        await this.mappingRepository.createPending({
+          localUserId: existingUser.local_user_id,
+          idempotencyKey: `newapi-login:${newApiUserId}`,
+        });
+      }
+      await this.mappingRepository.markActive({
+        localUserId: existingUser.local_user_id,
+        newApiUserId,
+      });
+      return existingUser;
+    }
+
+    const email = this.emailForNewApiShadowUser(identifier, newApiUser);
+    const username = this.newApiShadowUsername(identifier, newApiUser);
+    const displayName = publicSafeString(newApiUser.display_name || newApiUser.username || identifier, 80) || username;
+    const user = await this.repository.createUser({
+      email,
+      username,
+      displayName,
+      passwordHash: await hashPassword(`new-api-authority:${newApiUserId}:${randomUUID()}`),
+      status: "active",
+      role: "user",
+      now: this.now(),
+    });
+    await this.mappingRepository.createPending({
+      localUserId: user.local_user_id,
+      idempotencyKey: `newapi-login:${newApiUserId}`,
+      now: this.now(),
+    });
+    await this.mappingRepository.markActive({
+      localUserId: user.local_user_id,
+      newApiUserId,
+      now: this.now(),
+    });
+    return user;
+  }
+
+  private emailForNewApiShadowUser(identifier: string, newApiUser: NewApiPasswordLoginUser) {
+    const newApiEmail = typeof newApiUser.email === "string" ? normalizeEmail(newApiUser.email) : "";
+    if (isValidEmail(newApiEmail)) return newApiEmail;
+    if (isValidEmail(identifier)) return normalizeEmail(identifier);
+    return `newapi-${newApiUser.id}@newapi.local`;
+  }
+
+  private newApiShadowUsername(identifier: string, newApiUser: NewApiPasswordLoginUser) {
+    const explicit = publicSafeString(newApiUser.username || "", 32).replace(/[^a-z0-9_.-]+/gi, "").toLowerCase();
+    if (isValidUsername(explicit)) return explicit;
+
+    const emailPrefix = normalizeIdentifier(identifier).split("@")[0].replace(/[^a-z0-9_.-]+/g, "");
+    const compact = (emailPrefix || `newapi${String(newApiUser.id)}`).toLowerCase().replace(/[^a-z0-9_.-]+/g, "");
+    if (compact.length >= 3 && compact.length <= 6 && isValidUsername(compact)) return compact;
+
+    const fallback = `u${sha256(`${identifier}:${newApiUser.id}`).slice(0, 5)}`.toLowerCase();
+    return fallback.slice(0, 6);
   }
 
   private async firstUnreleasedRegistrationDuplicate(users: AuthUser[], context: AuthRequestContext) {

@@ -2,7 +2,7 @@ import { type NextRequest, NextResponse } from "next/server";
 
 import { authResultResponse, csrfFailure, requireAuthSession, requireCsrf } from "@/lib/server/auth";
 import { diagnosticErrorResponse } from "@/lib/server/error-diagnostics";
-import { submitVideo, uploadedMediaFromForm } from "@/lib/server/provider-call";
+import { failVideoGenerationBeforeSubmit, submitVideo, uploadedMediaFromForm } from "@/lib/server/provider-call";
 import { WorkloadLimitError, withUserVideoWorkload, withVideoUploadPhase, workloadLimitResponse } from "@/lib/server/workload-guard";
 
 export const runtime = "nodejs";
@@ -23,12 +23,25 @@ export async function POST(request: NextRequest) {
       throw new Error(files.length ? "图生视频模式只能上传 1 张首帧图片。" : "图生视频模式需要上传 1 张首帧图片。");
     }
     const result = await withUserVideoWorkload(session.user.local_user_id, async () => {
-      const guardedFiles = files.length
-        ? await withVideoUploadPhase(
-          session.user.local_user_id,
-          () => uploadedMediaFromForm(form, "files", "video-generation-upload"),
-        )
-        : await uploadedMediaFromForm(form, "files", "video-generation-upload");
+      const billingTaskId = String(form.get("taskId") || form.get("billingTaskId") || "");
+      const billingEstimatedQuotaUnits = Number(form.get("estimatedQuotaUnits") || form.get("billingEstimatedQuotaUnits") || Number.NaN);
+      let guardedFiles;
+      try {
+        guardedFiles = files.length
+          ? await withVideoUploadPhase(
+            session.user.local_user_id,
+            () => uploadedMediaFromForm(form, "files", "video-generation-upload"),
+          )
+          : await uploadedMediaFromForm(form, "files", "video-generation-upload");
+      } catch (error) {
+        await failVideoGenerationBeforeSubmit({
+          localUserId: session.user.local_user_id,
+          taskId: billingTaskId,
+          estimatedQuotaUnits: billingEstimatedQuotaUnits,
+          reason: error instanceof Error ? error.message : "video upload validation failed",
+        });
+        throw error;
+      }
       return submitVideo({
       providerId: String(form.get("providerId") || ""),
       mode,
@@ -37,9 +50,9 @@ export async function POST(request: NextRequest) {
       duration: Number.isFinite(duration) ? duration : 5,
       files: guardedFiles,
       billingLocalUserId: session.user.local_user_id,
-      billingTaskId: String(form.get("taskId") || form.get("billingTaskId") || ""),
+      billingTaskId,
       billingIdempotencyKey: String(form.get("idempotencyKey") || form.get("billingIdempotencyKey") || ""),
-      billingEstimatedQuotaUnits: Number(form.get("estimatedQuotaUnits") || form.get("billingEstimatedQuotaUnits") || Number.NaN),
+      billingEstimatedQuotaUnits,
       });
     });
     return NextResponse.json(result);

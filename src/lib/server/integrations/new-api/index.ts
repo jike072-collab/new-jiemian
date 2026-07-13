@@ -2,6 +2,7 @@ export { adminCreateUser, adminGetModels, adminGetUsers } from "./admin";
 export { newApiAdminContext, newApiHealthContext, newApiUserContext } from "./auth";
 export { createNewApiHttpClient, NewApiHttpClient, newApiAdminRequestContext } from "./client";
 export { getNewApiConfig, normalizeNewApiBaseUrl } from "./config";
+export { extractNewApiPasswordLoginUser, loginNewApiWithPassword } from "./credentials";
 export { NewApiError, isNewApiError, safeNewApiError } from "./errors";
 export { checkNewApiHealth } from "./health";
 export {
@@ -37,6 +38,10 @@ export type {
   NewApiLogRecord,
   NewApiUserSelf,
 } from "./user";
+export type {
+  NewApiPasswordLoginPayload,
+  NewApiPasswordLoginUser,
+} from "./credentials";
 export type {
   NewApiAuthContext,
   NewApiConfig,

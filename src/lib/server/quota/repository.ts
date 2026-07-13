@@ -17,6 +17,7 @@ export type RecordUsageInput = {
   status: UsageStatus;
   estimatedQuotaUnits: number;
   actualQuotaUnits?: number | null;
+  membershipEntitlementUnits?: number;
   upstreamLogId?: string | null;
   upstreamRequestId?: string | null;
   upstreamModel?: string | null;
@@ -103,6 +104,7 @@ class StoreUsageLogRepository implements UsageLogRepository {
         status: input.status,
         estimated_quota_units: input.estimatedQuotaUnits,
         actual_quota_units: input.actualQuotaUnits === undefined ? null : input.actualQuotaUnits,
+        membership_entitlement_units: input.membershipEntitlementUnits ?? 0,
         upstream_log_id: input.upstreamLogId || null,
         upstream_request_id: input.upstreamRequestId || null,
         upstream_model: input.upstreamModel || null,

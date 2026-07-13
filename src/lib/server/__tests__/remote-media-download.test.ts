@@ -345,6 +345,17 @@ test("production allowlist is fail-closed and rejects suffix bypasses and unlist
   });
 });
 
+test("GetToken result storage allows only the exact production CDN host", async () => {
+  await withEnv({ NODE_ENV: "production", REMOTE_MEDIA_ALLOWED_HOSTS: undefined }, async () => {
+    assert.doesNotThrow(() => remoteMediaDownloadInternalsForTests.assertAllowedRemoteHost(
+      "gettoken-jp.oss-accelerate.aliyuncs.com",
+    ));
+    assert.throws(() => remoteMediaDownloadInternalsForTests.assertAllowedRemoteHost(
+      "other.gettoken-jp.oss-accelerate.aliyuncs.com",
+    ));
+  });
+});
+
 test("same-origin redirects keep auth headers but cross-origin redirects reject them", async () => {
   const authHeader = "Bearer test-token";
   await withEnv({ NODE_ENV: "production", REMOTE_MEDIA_ALLOWED_HOSTS: "media.example.test,*.media.example.test" }, async () => {

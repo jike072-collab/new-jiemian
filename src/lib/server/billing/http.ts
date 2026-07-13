@@ -8,6 +8,7 @@ import {
   requireCsrf,
   readJsonBody,
 } from "../auth";
+import { getMembershipService } from "../membership/service";
 import { getBillingService } from "./service";
 import { type BillingErrorCode, type BillingOrderStatus, type BillingProductType } from "./types";
 
@@ -108,6 +109,7 @@ export async function listBillingOrdersResponse(request: NextRequest) {
   const auth = await requireLocalUser(request);
   if (!auth.ok) return auth.response;
 
+  await getMembershipService().getStatus(auth.localUserId).catch(() => undefined);
   const url = new URL(request.url);
   const result = await getBillingService().listOrdersForUser({
     localUserId: auth.localUserId,
@@ -123,7 +125,10 @@ export async function listBillingOrdersResponse(request: NextRequest) {
     page_size: result.page_size,
     total: result.total,
     has_more: result.has_more,
-  }, { status: result.status });
+  }, {
+    status: result.status,
+    headers: { "Cache-Control": "no-store" },
+  });
 }
 
 export async function getBillingOrderResponse(request: NextRequest, orderId: string) {

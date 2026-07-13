@@ -63,6 +63,7 @@ export type MembershipRepository = {
   createMembership(input: CreateMembershipInput): Promise<UserMembership>;
   updateMembership(id: string, patch: MembershipPatch, expectedVersion?: number): Promise<UserMembership>;
   listEntitlements(localUserId: string, now?: string): Promise<MembershipEntitlementGrant[]>;
+  getEntitlementBySourceOrderAndKind(localUserId: string, sourceOrderId: string, kind: MembershipEntitlementKind): Promise<MembershipEntitlementGrant | null>;
   grantEntitlement(input: GrantEntitlementInput): Promise<MembershipEntitlementGrant | null>;
   expireEntitlementsBySourceOrder(localUserId: string, sourceOrderIds: string[], now?: string): Promise<number>;
   consumeEntitlement(input: ConsumeEntitlementInput): Promise<{ consumed: number; ledger: MembershipEntitlementLedger | null }>;
@@ -202,6 +203,16 @@ class StoreMembershipRepository implements MembershipRepository {
       .map(cloneEntitlement);
   }
 
+  async getEntitlementBySourceOrderAndKind(localUserId: string, sourceOrderId: string, kind: MembershipEntitlementKind) {
+    const store = await this.storage.read();
+    const found = store.entitlements.find((record) => (
+      record.local_user_id === localUserId.trim()
+      && record.source_order_id === sourceOrderId.trim()
+      && record.kind === kind
+    ));
+    return found ? cloneEntitlement(found) : null;
+  }
+
   async grantEntitlement(input: GrantEntitlementInput) {
     if (input.amount <= 0) return null;
     const timestamp = nowIso(input.now);
@@ -290,6 +301,8 @@ class StoreMembershipRepository implements MembershipRepository {
         .filter((record) => record.local_user_id === input.localUserId.trim())
         .filter((record) => record.kind === input.kind && record.remaining > 0 && record.expires_at > timestamp)
         .sort((a, b) => a.expires_at.localeCompare(b.expires_at));
+      const available = active.reduce((total, grant) => total + grant.remaining, 0);
+      if (available < input.amount) return { consumed: 0, ledger: null };
       for (const grant of active) {
         if (remaining <= 0) break;
         const use = Math.min(remaining, grant.remaining);

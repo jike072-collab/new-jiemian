@@ -27,16 +27,16 @@ for (const source of [libraryRoute, filesRoute]) {
 
 assert(authService.includes("status: 401"), "auth service must use 401 for missing or invalid sessions");
 
-assert(libraryRoute.includes("readLibraryForOwner(session.user.local_user_id)"), "/api/library GET must list only the current owner");
-assert(libraryRoute.includes("deleteLibraryItemForOwner(body.id, session.user.local_user_id)"), "/api/library DELETE must delete only the current owner");
+assert(libraryRoute.includes("readLibraryMetadataForOwner(session.user.local_user_id)"), "/api/library GET must list metadata only for the current owner");
+assert(libraryRoute.includes("deleteLibraryItemForOwner(body.id!, session.user.local_user_id)"), "/api/library DELETE must delete only the current owner");
 assert(!libraryRoute.includes("readLibrary()"), "/api/library route must not read the full library");
 assert(!libraryRoute.includes("deleteLibraryItem(body.id)"), "/api/library route must not use ownerless delete");
 
-assert(filesRoute.includes("readStoredFileForOwner(name, session.user.local_user_id)"), "/api/files route must read files through owner-aware helper");
+assert(filesRoute.includes("resolveStoredFileForOwner(name, session.user.local_user_id)"), "/api/files route must resolve files through owner-aware helper");
 assert(!filesRoute.includes("readStoredFile(name)"), "/api/files route must not read files without owner");
 assert(!filesRoute.includes("resolveUploadPath"), "/api/files route must not resolve upload paths directly");
 assert(!filesRoute.includes("join("), "/api/files route must not raw-join file paths");
-assert(filesRoute.includes("\"Cache-Control\": \"private, no-store\""), "/api/files route must not publicly cache private assets");
+assert(filesRoute.includes("private, max-age="), "/api/files route may cache assets only as private responses");
 
 assert(types.includes("ownerLocalUserId?: string | null"), "LibraryItem must include ownerLocalUserId");
 assert(library.includes("item.ownerLocalUserId === ownerLocalUserId"), "owner checks must use exact owner equality");
@@ -45,12 +45,14 @@ assert(library.includes("deleteLibraryItemForOwner(id: string, ownerLocalUserId:
 assert(library.includes("readStoredFileForOwner(storedName: string, ownerLocalUserId: string)"), "library must expose owner-aware file read");
 assert(library.includes("candidate.output?.storedName === storedName"), "file authz must bind storedName to the current owner item");
 assert(library.includes("if (!safeName || safeName !== storedName) return null"), "invalid storedName must be rejected before reading disk");
-assertSequence("file owner check before disk read", library, [
-  "export async function readStoredFileForOwner",
+assert(library.includes("resolveStoredFileForOwner(storedName: string, ownerLocalUserId: string)"), "library must expose owner-aware file resolution");
+assertSequence("file owner check before disk resolution", library, [
+  "export async function resolveStoredFileForOwner",
   "if (!safeName || safeName !== storedName) return null",
-  "const item = (await readLibrary()).find",
+  "const item = (await readLibraryMetadata()).find",
   "if (!item) return null",
-  "return readStoredFile(storedName)",
+  "const path = resolveUploadPath(safeName)",
+  "const metadata = await stat(path)",
 ]);
 
 for (const unsafeName of ["../x", "..%2Fx", "..%5Cx", "a/b", "a\\b", "C:\\x", "/tmp/x", ""]) {

@@ -3,6 +3,7 @@ export type ProviderKind = "image" | "video" | "prompt" | "image-upscale" | "vid
 export type EndpointType =
   | "images-generations"
   | "images-edits"
+  | "gettoken-banana"
   | "chat-completions"
   | "videos-generations"
   | "grok-videos"

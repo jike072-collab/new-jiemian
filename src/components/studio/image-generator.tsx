@@ -104,6 +104,7 @@ export function ImageGenerator({
       />
       {showTemplates ? (
         <TemplateRail
+          scope="image"
           title="模板"
           viewAllHref={templateCenterHref}
           templates={featuredImageGenerationPromptTemplates}

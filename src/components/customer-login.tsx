@@ -13,6 +13,11 @@ import { cn } from "@/lib/utils";
 type AuthMode = "login" | "register" | "reset";
 type LoginMethod = "password" | "verification_code";
 
+type VerificationFeedback = {
+  tone: "pending" | "success" | "error";
+  text: string;
+};
+
 type SessionProbe = {
   ok: true;
   user: unknown;
@@ -131,9 +136,15 @@ function friendlyAuthError(error: unknown) {
   if (error.code === "AUTH_DUPLICATE_ACCOUNT") return "邮箱或用户名已注册";
   if (error.code === "AUTH_VERIFICATION_CODE_INVALID") return "验证码不正确或已过期";
   if (error.code === "AUTH_VERIFICATION_SEND_UNAVAILABLE") return "验证码发送服务暂不可用";
-  if (error.code === "AUTH_RATE_LIMITED") return "操作太频繁，请稍后再试";
+  if (error.code === "AUTH_RATE_LIMITED") {
+    return error.retryAfterSeconds
+      ? `操作太频繁，请 ${error.retryAfterSeconds} 秒后再试`
+      : "操作太频繁，请稍后再试";
+  }
+  if (error.code === "AUTH_CSRF_REQUIRED") return "页面已过期，请刷新后重试";
   if (error.code === "AUTH_VALIDATION_ERROR") return "请检查账号和密码格式";
   if (error.code === "AUTH_SERVICE_UNAVAILABLE") return "注册暂时不可用，请稍后重试";
+  if (error.status >= 500) return "验证码发送失败，请稍后重试";
   return error.message || "请求失败，请稍后重试";
 }
 
@@ -171,6 +182,7 @@ export function CustomerLogin({ initialMode = "login" }: CustomerLoginProps) {
   const [rememberMe, setRememberMe] = useState(true);
   const [sendingCode, setSendingCode] = useState(false);
   const [codeCooldown, setCodeCooldown] = useState(0);
+  const [verificationFeedback, setVerificationFeedback] = useState<VerificationFeedback | null>(null);
   const [loading, setLoading] = useState(false);
   const [success, setSuccess] = useState(false);
   const [message, setMessage] = useState("");
@@ -185,7 +197,7 @@ export function CustomerLogin({ initialMode = "login" }: CustomerLoginProps) {
   const rules = passwordRules(password);
   const passwordMeetsRules = rules.every((rule) => rule.passed);
   const confirmMismatch = needsPasswordPolicy && confirmPassword.length > 0 && password !== confirmPassword;
-  const positiveMessage = message === "验证码已发送，请查收" || message === "密码已重置，请使用新密码登录";
+  const positiveMessage = message === "密码已重置，请使用新密码登录";
 
   useEffect(() => {
     if (codeCooldown <= 0) return undefined;
@@ -214,6 +226,7 @@ export function CustomerLogin({ initialMode = "login" }: CustomerLoginProps) {
       setMode(nextMode);
       setLoginMethod("password");
       setMessage("");
+      setVerificationFeedback(null);
       setSuccess(false);
       setVerificationCode("");
       if (nextMode !== "register") setUsername("");
@@ -227,6 +240,7 @@ export function CustomerLogin({ initialMode = "login" }: CustomerLoginProps) {
     if (disabled) return;
     setMode(nextMode);
     setMessage("");
+    setVerificationFeedback(null);
     setSuccess(false);
     setVerificationCode("");
     setConfirmPassword("");
@@ -272,12 +286,13 @@ export function CustomerLogin({ initialMode = "login" }: CustomerLoginProps) {
     if (disabled || codeCooldown > 0) return;
     const trimmedIdentifier = identifier.trim();
     if (!isValidEmail(trimmedIdentifier)) {
-      setMessage("请先填写有效邮箱");
+      setVerificationFeedback({ tone: "error", text: "请先填写有效邮箱" });
       return;
     }
 
     setSendingCode(true);
     setMessage("");
+    setVerificationFeedback({ tone: "pending", text: "正在发送验证码..." });
     try {
       await fetchJsonWithCsrf("/api/auth/verification-code", {
         method: "POST",
@@ -287,9 +302,9 @@ export function CustomerLogin({ initialMode = "login" }: CustomerLoginProps) {
         }),
       });
       setCodeCooldown(60);
-      setMessage("验证码已发送，请查收");
+      setVerificationFeedback({ tone: "success", text: "验证码已发送，请检查收件箱和垃圾邮件" });
     } catch (error) {
-      setMessage(friendlyAuthError(error));
+      setVerificationFeedback({ tone: "error", text: friendlyAuthError(error) });
     } finally {
       setSendingCode(false);
     }
@@ -366,6 +381,7 @@ export function CustomerLogin({ initialMode = "login" }: CustomerLoginProps) {
 
   function updateSpotlight(event: PointerEvent<HTMLFormElement>) {
     if (event.pointerType !== "mouse") return;
+    if (event.currentTarget.matches(":focus-within")) return;
     const rect = event.currentTarget.getBoundingClientRect();
     event.currentTarget.style.setProperty("--spotlight-x", `${event.clientX - rect.left}px`);
     event.currentTarget.style.setProperty("--spotlight-y", `${event.clientY - rect.top}px`);
@@ -384,6 +400,14 @@ export function CustomerLogin({ initialMode = "login" }: CustomerLoginProps) {
 
           <form
             className="auth-card"
+            onFocusCapture={(event) => {
+              event.currentTarget.closest(".auth-page")?.setAttribute("data-input-active", "true");
+            }}
+            onBlurCapture={(event) => {
+              if (!event.currentTarget.contains(event.relatedTarget)) {
+                event.currentTarget.closest(".auth-page")?.removeAttribute("data-input-active");
+              }
+            }}
             onPointerMove={updateSpotlight}
             onPointerLeave={(event) => {
               event.currentTarget.style.removeProperty("--spotlight-x");
@@ -407,7 +431,10 @@ export function CustomerLogin({ initialMode = "login" }: CustomerLoginProps) {
                   <input
                     type="text"
                     value={identifier}
-                    onChange={(event) => setIdentifier(event.target.value)}
+                    onChange={(event) => {
+                      setIdentifier(event.target.value);
+                      setVerificationFeedback(null);
+                    }}
                     autoComplete={isLogin && !isCodeLogin ? "username" : "email"}
                     disabled={disabled}
                     aria-invalid={Boolean(message && !identifier.trim())}
@@ -446,6 +473,7 @@ export function CustomerLogin({ initialMode = "login" }: CustomerLoginProps) {
                         onClick={() => {
                           setLoginMethod("password");
                           setMessage("");
+                          setVerificationFeedback(null);
                           setVerificationCode("");
                         }}
                         disabled={disabled}
@@ -479,6 +507,16 @@ export function CustomerLogin({ initialMode = "login" }: CustomerLoginProps) {
                       {sendingCode ? "发送中" : codeCooldown > 0 ? `${codeCooldown}s` : "获取验证码"}
                     </button>
                   </span>
+                  {verificationFeedback ? (
+                    <p
+                      className="auth-code-feedback"
+                      data-tone={verificationFeedback.tone}
+                      role={verificationFeedback.tone === "error" ? "alert" : "status"}
+                      aria-live="polite"
+                    >
+                      {verificationFeedback.text}
+                    </p>
+                  ) : null}
                 </div>
               ) : null}
 
@@ -493,6 +531,7 @@ export function CustomerLogin({ initialMode = "login" }: CustomerLoginProps) {
                         onClick={() => {
                           setLoginMethod("verification_code");
                           setMessage("");
+                          setVerificationFeedback(null);
                           setVerificationCode("");
                         }}
                         disabled={disabled}

@@ -2,7 +2,7 @@
 
 /* eslint-disable @next/next/no-img-element */
 
-import { Pause, Play } from "lucide-react";
+import { Loader2, Pause, Play } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { CSSProperties, KeyboardEvent, PointerEvent } from "react";
 
@@ -64,7 +64,11 @@ export function BeforeAfterImageCompare({
   const [dragging, setDragging] = useState(false);
   const [playing, setPlaying] = useState(mediaType === "video" && autoPlayVideo);
   const [hintVisible, setHintVisible] = useState(false);
+  const [readyAfterSrc, setReadyAfterSrc] = useState("");
+  const [videoBuffering, setVideoBuffering] = useState(false);
   const hintStorageKey = `${compareHintStoragePrefix}:${mediaType}`;
+  const afterVideoReady = mediaType !== "video" || readyAfterSrc === afterSrc;
+  const videoLoading = mediaType === "video" && (!afterVideoReady || videoBuffering);
 
   useEffect(() => {
     if (window.sessionStorage.getItem(hintStorageKey)) return undefined;
@@ -152,10 +156,8 @@ export function BeforeAfterImageCompare({
     const beforeVideo = beforeVideoRef.current;
     if (!video) return;
 
-    void Promise.all([
-      video.play(),
-      beforeVideo ? beforeVideo.play() : Promise.resolve(),
-    ]).then(() => {
+    void video.play().then(() => {
+      if (beforeVideo) void beforeVideo.play().catch(() => undefined);
       resumeOnVisibleRef.current = true;
       setPlaying(true);
     }).catch(() => setPlaying(false));
@@ -179,6 +181,7 @@ export function BeforeAfterImageCompare({
   }, [dismissHint, pauseVideos, playVideos]);
 
   const handlePrimaryVideoPlay = useCallback(() => {
+    setVideoBuffering(false);
     setPlaying(true);
   }, []);
 
@@ -204,6 +207,14 @@ export function BeforeAfterImageCompare({
       }
     }
   }, []);
+
+  const handlePrimaryVideoReady = useCallback(() => {
+    handleVideoLoaded(videoRef.current);
+    setReadyAfterSrc(afterSrc);
+    setVideoBuffering(false);
+    syncBeforeVideo();
+    if (autoPlayVideo && !userPausedRef.current) playVideos();
+  }, [afterSrc, autoPlayVideo, handleVideoLoaded, playVideos, syncBeforeVideo]);
 
   useEffect(() => {
     if (mediaType !== "video") return undefined;
@@ -239,6 +250,8 @@ export function BeforeAfterImageCompare({
         beforeEffect === "blur" && "has-blurred-before",
         dragging && "is-dragging",
         hintVisible && "is-hint-visible",
+        afterVideoReady && "is-after-video-ready",
+        videoLoading && "is-video-loading",
       )}
       style={{ "--compare-position": `${position}%` } as CSSProperties}
       role="slider"
@@ -268,9 +281,16 @@ export function BeforeAfterImageCompare({
             playsInline
             preload={videoPreload}
             onLoadedMetadata={() => handleVideoLoaded(videoRef.current)}
-            onLoadedData={syncBeforeVideo}
+            onLoadedData={handlePrimaryVideoReady}
+            onCanPlay={handlePrimaryVideoReady}
             onPlay={handlePrimaryVideoPlay}
             onPause={handlePrimaryVideoPause}
+            onWaiting={() => setVideoBuffering(true)}
+            onError={() => {
+              setReadyAfterSrc("");
+              setVideoBuffering(false);
+              setPlaying(false);
+            }}
             onSeeking={syncBeforeVideo}
             onSeeked={syncBeforeVideo}
             onTimeUpdate={syncBeforeVideo}
@@ -303,6 +323,12 @@ export function BeforeAfterImageCompare({
         <span>›</span>
       </span>
       <span className="compare-hint" aria-hidden="true">拖动查看对比</span>
+      {videoLoading ? (
+        <span className="compare-video-loading" role="status">
+          <Loader2 className="size-5" aria-hidden="true" />
+          高清视频载入中
+        </span>
+      ) : null}
       {mediaType === "video" ? (
         <button
           type="button"

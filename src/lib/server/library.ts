@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { join } from "node:path";
-import { access, readFile, rename, unlink, writeFile } from "node:fs/promises";
+import { access, readFile, rename, stat, unlink, writeFile } from "node:fs/promises";
 
 import {
   dataRoot,
@@ -672,10 +672,34 @@ export async function readStoredFile(storedName: string) {
 export async function readStoredFileForOwner(storedName: string, ownerLocalUserId: string) {
   const safeName = safeStoredName(storedName);
   if (!safeName || safeName !== storedName) return null;
-  const item = (await readLibrary()).find((candidate) => (
+  const item = (await readLibraryMetadata()).find((candidate) => (
     isOwnedBy(candidate, ownerLocalUserId)
     && candidate.output?.storedName === storedName
   ));
   if (!item) return null;
   return readStoredFile(storedName);
+}
+
+export async function resolveStoredFileForOwner(storedName: string, ownerLocalUserId: string) {
+  const safeName = safeStoredName(storedName);
+  if (!safeName || safeName !== storedName) return null;
+  const item = (await readLibraryMetadata()).find((candidate) => (
+    isOwnedBy(candidate, ownerLocalUserId)
+    && candidate.output?.storedName === storedName
+  ));
+  if (!item) return null;
+
+  const path = resolveUploadPath(safeName);
+  try {
+    const metadata = await stat(path);
+    if (!metadata.isFile()) return null;
+    return {
+      path,
+      size: metadata.size,
+      modifiedAtMs: metadata.mtimeMs,
+    };
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") return null;
+    throw error;
+  }
 }

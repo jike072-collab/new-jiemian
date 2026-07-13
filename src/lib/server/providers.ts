@@ -15,6 +15,7 @@ const virtualModelSeparator = "::model::";
 const endpointTypes = [
   "images-generations",
   "images-edits",
+  "gettoken-banana",
   "chat-completions",
   "videos-generations",
   "grok-videos",
@@ -269,6 +270,25 @@ export function defaultProviders(): ProviderConfig[] {
       custom: false,
     },
     {
+      id: "image-gettoken-banana",
+      kind: "image",
+      title: "GetToken Banana 图片生成",
+      role: "支持 Banana2 与 Banana Pro 文生图、图生图和 4K 图片生成",
+      apiUrl: env("GETTOKEN_BANANA_API_URL", "https://nb.gettoken.cn/openapi/v1"),
+      model: env("GETTOKEN_BANANA_MODEL", "banana-pro"),
+      models: ["banana2", "banana-pro"],
+      modelDisplayNames: {
+        banana2: "banana2",
+        "banana-pro": "banana pro",
+      },
+      enabledModels: ["banana2", "banana-pro"],
+      displayName: env("GETTOKEN_BANANA_DISPLAY_NAME", "banana pro"),
+      apiKey: env("GETTOKEN_BANANA_API_KEY"),
+      enabled: hasKey(env("GETTOKEN_BANANA_API_KEY")),
+      endpointType: "gettoken-banana",
+      custom: false,
+    },
+    {
       id: "video-main",
       kind: "video",
       title: "视频生成",
@@ -409,6 +429,7 @@ export function sanitizeProvider(provider: ProviderConfig): PublicProvider {
 function capabilitiesFor(provider: Pick<ProviderConfig, "endpointType">) {
   if (provider.endpointType === "images-edits") return ["image", "image-edit"];
   if (provider.endpointType === "images-generations") return ["image"];
+  if (provider.endpointType === "gettoken-banana") return ["image", "image-edit"];
   if (provider.endpointType === "videos-generations" || provider.endpointType === "grok-videos") return ["video"];
   if (provider.endpointType === "volcengine-imagex-upscale") return ["image-upscale"];
   if (provider.endpointType === "volcengine-vod-upscale") return ["video-upscale"];

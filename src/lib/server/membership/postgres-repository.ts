@@ -206,6 +206,16 @@ export class PostgresMembershipRepository implements MembershipRepository {
     return result.rows.map(entitlementFromRow);
   }
 
+  async getEntitlementBySourceOrderAndKind(localUserId: string, sourceOrderId: string, kind: MembershipEntitlementKind) {
+    const result = await applicationQuery<EntitlementRow>(`
+      select * from membership_entitlements
+      where local_user_id = $1 and source_order_id = $2 and kind = $3
+      order by created_at desc
+      limit 1
+    `, [localUserId.trim(), sourceOrderId.trim(), kind]);
+    return result.rows[0] ? entitlementFromRow(result.rows[0]) : null;
+  }
+
   async grantEntitlement(input: GrantEntitlementInput) {
     if (input.amount <= 0) return null;
     const timestamp = input.now || new Date().toISOString();
@@ -313,6 +323,8 @@ export class PostgresMembershipRepository implements MembershipRepository {
         order by expires_at asc, created_at asc
         for update
       `, [input.localUserId.trim(), input.kind, timestamp]);
+      const available = grants.rows.reduce((total, grant) => total + Number(grant.remaining), 0);
+      if (available < input.amount) return { consumed: 0, ledger: null };
       let remaining = input.amount;
       let consumed = 0;
       for (const grant of grants.rows) {

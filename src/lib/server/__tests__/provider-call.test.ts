@@ -177,6 +177,163 @@ test("img2 special request format is only used for legacy image4k models", () =>
   }), true);
 });
 
+test("OpenAI-compatible image edits send every reference as image[]", async () => {
+  const originalFetch = globalThis.fetch;
+  const captured: { body?: FormData } = {};
+  globalThis.fetch = (async (_url, init) => {
+    captured.body = init?.body as FormData;
+    return jsonResponse({ data: [{ url: "https://cdn.example.test/merged.png" }] });
+  }) as typeof fetch;
+  try {
+    await providerCallInternalsForTests.callImageProviderOnce({
+      provider: {
+        ...provider,
+        apiUrl: "https://provider.example.test/v1/images/generations",
+        model: "banana-img2",
+      },
+      prompt: "place the product into the scene",
+      ratio: "4:3",
+      quality: "1k",
+      files: [
+        { bytes: Buffer.from("product"), mimeType: "image/png", fileName: "product.png" },
+        { bytes: Buffer.from("scene"), mimeType: "image/png", fileName: "scene.png" },
+      ],
+      count: 1,
+    });
+    assert.equal(captured.body?.getAll("image[]").length, 2);
+    assert.equal(captured.body?.has("image"), false);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test("GetToken Banana2 submits and polls the documented task endpoints", async () => {
+  const getTokenProvider = {
+    ...provider,
+    id: "image-gettoken-banana::model::banana2",
+    apiUrl: "https://nb.gettoken.cn/openapi/v1",
+    model: "banana2",
+    endpointType: "gettoken-banana",
+  } as const;
+  const originalFetch = globalThis.fetch;
+  const requests: Array<{ url: string; body: Record<string, unknown>; authorization: string }> = [];
+  globalThis.fetch = (async (url, init) => {
+    requests.push({
+      url: String(url),
+      body: JSON.parse(String(init?.body || "{}")),
+      authorization: new Headers(init?.headers).get("authorization") || "",
+    });
+    if (requests.length === 1) return jsonResponse({ taskId: "banana-task-1", status: "RUNNING", results: null });
+    return jsonResponse({
+      taskId: "banana-task-1",
+      status: "SUCCESS",
+      results: [{ url: "https://cdn.example.test/banana2.png", outputType: "png" }],
+    });
+  }) as typeof fetch;
+  try {
+    const outputs = await providerCallInternalsForTests.callGetTokenBananaProvider({
+      provider: getTokenProvider,
+      prompt: "green product on white background",
+      ratio: "1:1",
+      quality: "1k",
+      files: [],
+      count: 1,
+    });
+    assert.equal(outputs[0]?.url, "https://cdn.example.test/banana2.png");
+    assert.equal(outputs[0]?.jobId, "banana-task-1");
+    assert.equal(requests[0]?.url, "https://nb.gettoken.cn/openapi/v1/banana2/text-to-image");
+    assert.equal(requests[1]?.url, "https://nb.gettoken.cn/openapi/v1/query");
+    assert.equal(requests[0]?.body.resolution, "1k");
+    assert.equal(requests[0]?.body.aspectRatio, "1:1");
+    assert.equal(requests[1]?.body.taskId, "banana-task-1");
+    assert.equal(requests[0]?.authorization, "Bearer masked-test-key");
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test("GetToken Banana Pro image edit sends 4K and reference data URIs", async () => {
+  const getTokenProvider = {
+    ...provider,
+    id: "image-gettoken-banana::model::banana-pro",
+    apiUrl: "https://nb.gettoken.cn/openapi/v1",
+    model: "banana-pro",
+    endpointType: "gettoken-banana",
+  } as const;
+  const originalFetch = globalThis.fetch;
+  let requestedUrl = "";
+  let requestedBody: Record<string, unknown> = {};
+  globalThis.fetch = (async (url, init) => {
+    requestedUrl = String(url);
+    requestedBody = JSON.parse(String(init?.body || "{}"));
+    return jsonResponse({
+      taskId: "banana-pro-task-1",
+      status: "SUCCESS",
+      results: [{ url: "https://cdn.example.test/banana-pro.png", outputType: "png" }],
+    });
+  }) as typeof fetch;
+  try {
+    const outputs = await providerCallInternalsForTests.callGetTokenBananaProvider({
+      provider: getTokenProvider,
+      prompt: "keep composition and improve materials",
+      ratio: "16:9",
+      quality: "4k",
+      files: [{ bytes: Buffer.from("image-bytes"), mimeType: "image/png", fileName: "reference.png" }],
+      count: 1,
+    });
+    assert.equal(outputs[0]?.url, "https://cdn.example.test/banana-pro.png");
+    assert.equal(requestedUrl, "https://nb.gettoken.cn/openapi/v1/banana_pro/image-to-image");
+    assert.equal(requestedBody.resolution, "4k");
+    assert.deepEqual(requestedBody.imageUrls, [`data:image/png;base64,${Buffer.from("image-bytes").toString("base64")}`]);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test("GetToken retries only the failed image when upstream capacity is temporarily unavailable", async () => {
+  const getTokenProvider = {
+    ...provider,
+    id: "image-gettoken-banana::model::banana2",
+    apiUrl: "https://nb.gettoken.cn/openapi/v1",
+    model: "banana2",
+    endpointType: "gettoken-banana",
+  } as const;
+  const originalFetch = globalThis.fetch;
+  let submitCount = 0;
+  globalThis.fetch = (async (url) => {
+    if (String(url).endsWith("/banana2/text-to-image")) {
+      submitCount += 1;
+      if (submitCount === 1) {
+        return jsonResponse({
+          taskId: "banana-capacity-failure",
+          status: "FAILED",
+          failedReason: { message: "all channels failed: status 599 No available account" },
+        });
+      }
+      return jsonResponse({
+        taskId: "banana-retry-success",
+        status: "SUCCESS",
+        results: [{ url: "https://cdn.example.test/banana-retry.png" }],
+      });
+    }
+    throw new Error(`Unexpected URL: ${String(url)}`);
+  }) as typeof fetch;
+  try {
+    const outputs = await providerCallInternalsForTests.callGetTokenBananaProvider({
+      provider: getTokenProvider,
+      prompt: "retry capacity test",
+      ratio: "1:1",
+      quality: "1k",
+      files: [],
+      count: 1,
+    });
+    assert.equal(outputs[0]?.url, "https://cdn.example.test/banana-retry.png");
+    assert.equal(submitCount, 2);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
 test("batch image generation retries once when upstream returns fewer outputs than requested", async () => {
   const originalFetch = globalThis.fetch;
   let callCount = 0;
@@ -219,11 +376,13 @@ test("batch image generation retries once when upstream returns fewer outputs th
   }
 });
 
-test("image generation does not silently retry with fallback credentials after provider failure", async () => {
+test("image generation retries transient failures without switching to fallback credentials", async () => {
   const originalFetch = globalThis.fetch;
   let callCount = 0;
-  globalThis.fetch = (async () => {
+  const authorizationHeaders: string[] = [];
+  globalThis.fetch = (async (_input, init) => {
     callCount += 1;
+    authorizationHeaders.push(new Headers(init?.headers).get("authorization") || "");
     return jsonResponse({ error: { message: "primary unavailable" } }, { status: 503 });
   }) as typeof fetch;
   try {
@@ -238,7 +397,43 @@ test("image generation does not silently retry with fallback credentials after p
       files: [],
       count: 1,
     }));
-    assert.equal(callCount, 1);
+    assert.equal(callCount, 2);
+    assert.deepEqual(authorizationHeaders, [
+      "Bearer masked-test-key",
+      "Bearer masked-test-key",
+    ]);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test("image generation retries once when upstream stalls before generation starts", async () => {
+  const originalFetch = globalThis.fetch;
+  let callCount = 0;
+  globalThis.fetch = (async () => {
+    callCount += 1;
+    if (callCount === 1) {
+      return jsonResponse({
+        error: {
+          message: "pre_resolve_stall_timeout: no image_ref_resolve_start",
+        },
+      }, { status: 504 });
+    }
+    return jsonResponse({
+      data: [{ url: "https://cdn.example.test/retried-result.png" }],
+    });
+  }) as typeof fetch;
+  try {
+    const outputs = await providerCallInternalsForTests.collectImageProviderOutputs({
+      provider,
+      prompt: "retry test",
+      ratio: "1:1",
+      quality: "1k",
+      files: [],
+      count: 1,
+    });
+    assert.equal(callCount, 2);
+    assert.equal(outputs[0]?.url, "https://cdn.example.test/retried-result.png");
   } finally {
     globalThis.fetch = originalFetch;
   }

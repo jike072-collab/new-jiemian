@@ -1,7 +1,8 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
-import { ArrowLeft, CalendarCheck, Check, Crown, CreditCard, History, LogOut, Sparkles, WalletCards, X } from "lucide-react";
+import { createPortal } from "react-dom";
+import { ArrowLeft, CalendarCheck, Check, CheckCircle2, Crown, CreditCard, History, LogOut, Sparkles, WalletCards, X } from "lucide-react";
 import { useRouter, useSearchParams } from "next/navigation";
 import dynamic from "next/dynamic";
 
@@ -73,6 +74,7 @@ import {
   writeCachedAccountSnapshot,
 } from "@/lib/client/account-snapshot-cache";
 import { ApiError, fetchJson, fetchJsonWithCsrf } from "@/lib/client/api";
+import { removeLibraryMediaCache, scheduleLibraryMediaCache } from "@/lib/client/media-cache";
 import {
   estimateUpscaleQuota,
   estimateImageGenerationTotalQuota,
@@ -145,6 +147,7 @@ type MembershipStatusResponse = {
 };
 type MembershipEntitlements = MembershipStatusResponse["membership"]["entitlements"];
 type ImageBillingOperation = "cloud_image_generation" | "cloud_image_edit";
+const imageGenerationResultWaitMs = 620000;
 
 type CheckInResponse = {
   ok: true;
@@ -206,9 +209,10 @@ type PlanOption = {
   price: number;
   cyclePrices: Record<PlanCycle, number>;
   monthlyCredits: number;
+  monthlyEntitlements: Record<keyof MembershipEntitlements, number>;
   description: string;
   highlight: string;
-  bonusLabel: string;
+  rechargeBonusPercent: number;
   perks: string[];
   cyclePriceLabels?: Partial<Record<PlanCycle, string>>;
   recommended?: boolean;
@@ -228,9 +232,24 @@ type AccountRecord = {
   kind: AccountRecordKind;
   typeLabel: string;
   quotaDelta: number;
+  entitlementUnits?: number;
+  entitlementUnit?: "次" | "张";
   balanceAfterQuotaUnits?: number | null;
   description: string;
 };
+
+const membershipEntitlementDefinitions: Array<{
+  key: keyof MembershipEntitlements;
+  label: string;
+  compactLabel: string;
+  unit: "次" | "张";
+}> = [
+  { key: "prompt_optimize", label: "提示词优化", compactLabel: "提示词", unit: "次" },
+  { key: "image_generation", label: "图片生成", compactLabel: "生图", unit: "张" },
+  { key: "video_generation", label: "视频生成", compactLabel: "视频", unit: "次" },
+  { key: "image_upscale", label: "图片放大", compactLabel: "图片放大", unit: "张" },
+  { key: "video_upscale", label: "视频放大", compactLabel: "视频放大", unit: "次" },
+];
 
 const planOptions: PlanOption[] = [
   {
@@ -240,10 +259,11 @@ const planOptions: PlanOption[] = [
     price: 29.9,
     cyclePrices: { monthly: 29.9, quarterly: 79, yearly: 299 },
     monthlyCredits: 3600,
+    monthlyEntitlements: { prompt_optimize: 10, image_generation: 10, video_generation: 0, image_edit: 0, image_upscale: 10, video_upscale: 0 },
     description: "适合电商日常出图与首批客户试用",
     highlight: "新客友好",
-    bonusLabel: "此后每月发放 3,600 积分",
-    perks: ["会员有效期内，积分充值额外加赠 5%", "送 10 次提示词优化", "送 10 张生图额度", "首屏生成与模板优先体验"],
+    rechargeBonusPercent: 5,
+    perks: ["模板优先体验"],
     cyclePriceLabels: { monthly: "¥29.9 / 月", quarterly: "¥79 / 季", yearly: "¥299 / 年" },
   },
   {
@@ -253,10 +273,11 @@ const planOptions: PlanOption[] = [
     price: 59.9,
     cyclePrices: { monthly: 59.9, quarterly: 159, yearly: 599 },
     monthlyCredits: 9000,
+    monthlyEntitlements: { prompt_optimize: 30, image_generation: 30, video_generation: 1, image_edit: 0, image_upscale: 30, video_upscale: 1 },
     description: "面向持续产出商品图、海报与短视频素材",
     highlight: "创作者常用",
-    bonusLabel: "此后每月发放 9,000 积分",
-    perks: ["会员有效期内，积分充值额外加赠 10%", "送 30 次提示词优化", "送 30 张生图额度", "送 1 次视频生成"],
+    rechargeBonusPercent: 10,
+    perks: ["持续创作优先体验"],
     cyclePriceLabels: { monthly: "¥59.9 / 月", quarterly: "¥159 / 季", yearly: "¥599 / 年" },
     recommended: true,
   },
@@ -267,10 +288,11 @@ const planOptions: PlanOption[] = [
     price: 99.9,
     cyclePrices: { monthly: 99.9, quarterly: 279, yearly: 999 },
     monthlyCredits: 16000,
+    monthlyEntitlements: { prompt_optimize: 80, image_generation: 60, video_generation: 3, image_edit: 0, image_upscale: 60, video_upscale: 3 },
     description: "适合高频商用创作与图片视频混合生产",
     highlight: "商用高频",
-    bonusLabel: "此后每月发放 16,000 积分",
-    perks: ["会员有效期内，积分充值额外加赠 15%", "送 80 次提示词优化", "送 60 张生图额度", "送 3 次视频生成"],
+    rechargeBonusPercent: 15,
+    perks: ["高频商用优先体验"],
     cyclePriceLabels: { monthly: "¥99.9 / 月", quarterly: "¥279 / 季", yearly: "¥999 / 年" },
   },
   {
@@ -280,10 +302,11 @@ const planOptions: PlanOption[] = [
     price: 199,
     cyclePrices: { monthly: 199, quarterly: 549, yearly: 1999 },
     monthlyCredits: 36000,
+    monthlyEntitlements: { prompt_optimize: 200, image_generation: 150, video_generation: 8, image_edit: 0, image_upscale: 150, video_upscale: 8 },
     description: "适合团队协作、批量出图和持续视频投放",
     highlight: "团队定向",
-    bonusLabel: "此后每月发放 36,000 积分",
-    perks: ["会员有效期内，积分充值额外加赠 20%", "送 200 次提示词优化", "送 150 张生图额度", "送 8 次视频生成", "适合团队协作", "支持批量出图", "更高积分额度", "更多视频生成次数", "适合中视频投放"],
+    rechargeBonusPercent: 20,
+    perks: ["团队批量创作优先体验"],
     cyclePriceLabels: { monthly: "¥199 / 月", quarterly: "¥549 / 季", yearly: "¥1,999 / 年" },
   },
 ];
@@ -318,12 +341,11 @@ const membershipFaqItems = [
   { title: "支付未到账", description: "支付成功后页面会重新同步积分、会员和订单；若仍未到账，请带订单号联系管理员。" },
 ];
 const CLIENT_VIDEO_SUBMISSION_LIMIT = 1;
-const LIBRARY_THUMB_CACHE_WARMUP_CONCURRENCY = 4;
-const LIBRARY_FULL_MEDIA_CACHE_WARMUP_DELAY_MS = 5000;
-const LIBRARY_FULL_MEDIA_CACHE_WARMUP_CONCURRENCY = 1;
+
+const loadLibraryPane = () => import("@/components/studio/library-pane").then((module) => ({ default: module.LibraryPane }));
 
 const LibraryPane = dynamic(
-  () => import("@/components/studio/library-pane").then((module) => ({ default: module.LibraryPane })),
+  loadLibraryPane,
   { loading: () => <LibraryWorkspaceLoadingFallback /> },
 );
 
@@ -360,6 +382,8 @@ function createTaskId(prefix: string) {
 }
 
 type ImageWorkspaceScope = "image" | "image-editor";
+
+const imageGenerationSubmissionLimit = 4;
 
 function createInitialImageWorkspaceState(): ImageWorkspaceState {
   return {
@@ -517,66 +541,6 @@ async function fileFromLibraryOutput(item: LibraryItem, fallbackExtension: strin
   return new File([blob], safeName, { type: mimeType });
 }
 
-function appendQueryParam(url: string, key: string, value: string) {
-  return `${url}${url.includes("?") ? "&" : "?"}${encodeURIComponent(key)}=${encodeURIComponent(value)}`;
-}
-
-function warmLibraryMediaCache(items: LibraryItem[]) {
-  if (typeof window === "undefined") return;
-
-  const thumbnailUrls: string[] = [];
-  const fullMediaUrls: string[] = [];
-  for (const item of items) {
-    if (item.status !== "done" || item.expired || !item.output?.url?.startsWith("/api/files/")) continue;
-    if (item.type === "image") {
-      thumbnailUrls.push(appendQueryParam(item.output.url, "view", "thumb"));
-    }
-    fullMediaUrls.push(item.output.url);
-  }
-
-  const uniqueThumbnailUrls = Array.from(new Set(thumbnailUrls));
-  const uniqueFullMediaUrls = Array.from(new Set(fullMediaUrls));
-  if (!uniqueThumbnailUrls.length && !uniqueFullMediaUrls.length) return;
-
-  const warmUrls = (urls: string[], concurrency: number) => {
-    let nextIndex = 0;
-    let activeCount = 0;
-
-    const runNext = () => {
-      while (activeCount < concurrency && nextIndex < urls.length) {
-        const url = urls[nextIndex];
-        nextIndex += 1;
-        activeCount += 1;
-        void fetch(url, {
-          credentials: "same-origin",
-          cache: "force-cache",
-        }).catch(() => undefined).finally(() => {
-          activeCount -= 1;
-          runNext();
-        });
-      }
-    };
-
-    runNext();
-  };
-
-  const warm = () => {
-    warmUrls(uniqueThumbnailUrls, LIBRARY_THUMB_CACHE_WARMUP_CONCURRENCY);
-    window.setTimeout(() => {
-      warmUrls(uniqueFullMediaUrls, LIBRARY_FULL_MEDIA_CACHE_WARMUP_CONCURRENCY);
-    }, LIBRARY_FULL_MEDIA_CACHE_WARMUP_DELAY_MS);
-  };
-
-  const idleWindow = window as Window & {
-    requestIdleCallback?: (callback: () => void, options?: { timeout: number }) => number;
-  };
-  if (idleWindow.requestIdleCallback) {
-    idleWindow.requestIdleCallback(warm, { timeout: 1500 });
-  } else {
-    window.setTimeout(warm, 500);
-  }
-}
-
 function isGrokVideoProvider(provider: WorkspacePublicProvider | null | undefined) {
   return provider?.endpointType === "grok-videos" || Boolean(provider?.model.startsWith("grok-video-"));
 }
@@ -645,6 +609,7 @@ export function StudioApp() {
   const [libraryLoading, setLibraryLoading] = useState(false);
   const [libraryLoaded, setLibraryLoaded] = useState(false);
   const [libraryNeedsRefresh, setLibraryNeedsRefresh] = useState(false);
+  const libraryRefreshInFlightRef = useRef(false);
   const [libraryError, setLibraryError] = useState("");
   const [sessionUser, setSessionUser] = useState<PublicAuthUser | null>(null);
   const [sessionLoading, setSessionLoading] = useState(true);
@@ -741,6 +706,10 @@ export function StudioApp() {
   const appliedTemplateIdRef = useRef<string | null>(null);
   const imageInFlightCountRef = useRef(0);
   const imageEditorInFlightCountRef = useRef(0);
+  const latestImageDisplayRef = useRef<Record<ImageWorkspaceScope, { taskId: string; progressId: string } | null>>({
+    image: null,
+    "image-editor": null,
+  });
   const videoInFlightCountRef = useRef(0);
   const imageUpscaleInFlightRef = useRef(false);
   const videoUpscaleInFlightRef = useRef(false);
@@ -943,6 +912,7 @@ export function StudioApp() {
       resetLibraryState();
       imageInFlightCountRef.current = 0;
       imageEditorInFlightCountRef.current = 0;
+      latestImageDisplayRef.current = { image: null, "image-editor": null };
       videoInFlightCountRef.current = 0;
       setImageGenerationProgress([]);
       setLogoutConfirmOpen(false);
@@ -1011,8 +981,9 @@ export function StudioApp() {
       resetLibraryState();
       return;
     }
-    if (!options?.force && libraryLoaded && !libraryNeedsRefresh) return;
+    if (libraryRefreshInFlightRef.current || libraryLoading || (!options?.force && libraryLoaded && !libraryNeedsRefresh)) return;
 
+    libraryRefreshInFlightRef.current = true;
     setLibraryLoading(true);
     setLibraryError("");
     try {
@@ -1021,15 +992,27 @@ export function StudioApp() {
       setMissingLibraryMediaIds(new Set());
       setLibraryLoaded(true);
       setLibraryNeedsRefresh(false);
-      warmLibraryMediaCache(data.items);
+      scheduleLibraryMediaCache(sessionUser.local_user_id, data.items);
     } catch (error) {
       const text = error instanceof Error ? error.message : "作品库加载失败。";
       setLibraryError(text);
       throw error;
     } finally {
+      libraryRefreshInFlightRef.current = false;
       setLibraryLoading(false);
     }
-  }, [libraryLoaded, libraryNeedsRefresh, resetLibraryState, sessionUser?.local_user_id]);
+  }, [libraryLoaded, libraryLoading, libraryNeedsRefresh, resetLibraryState, sessionUser]);
+
+  useEffect(() => {
+    void loadLibraryPane();
+    router.prefetch("/templates");
+  }, [router]);
+
+  useEffect(() => {
+    if (sessionLoading || !sessionUser?.local_user_id || libraryLoading) return;
+    if (libraryLoaded && !libraryNeedsRefresh) return;
+    void refreshLibrary({ force: libraryNeedsRefresh }).catch(() => undefined);
+  }, [libraryLoaded, libraryLoading, libraryNeedsRefresh, refreshLibrary, sessionLoading, sessionUser?.local_user_id]);
 
   const refreshLibraryAfterMutation = useCallback(async () => {
     if (!sessionUser?.local_user_id) return;
@@ -1409,6 +1392,7 @@ export function StudioApp() {
   const handleConfirmDeleteLibraryItem = useCallback(async () => {
     if (!libraryDeleteConfirmItemId || deletingLibraryItemId) return;
     const id = libraryDeleteConfirmItemId;
+    const deletedUrl = library.find((item) => item.id === id)?.output?.url;
 
     setDeletingLibraryItemId(id);
     setLibraryError("");
@@ -1425,6 +1409,9 @@ export function StudioApp() {
         await new Promise((resolve) => window.setTimeout(resolve, 220));
       }
       setLibrary((current) => current.filter((item) => item.id !== id));
+      if (deletedUrl && sessionUser?.local_user_id) {
+        void removeLibraryMediaCache(sessionUser.local_user_id, [deletedUrl]);
+      }
       setMissingLibraryMediaIds((current) => {
         if (!current.has(id)) return current;
         const next = new Set(current);
@@ -1439,11 +1426,14 @@ export function StudioApp() {
       setDeletingLibraryItemId(null);
       setRemovingLibraryItemId(null);
     }
-  }, [deletingLibraryItemId, libraryDeleteConfirmItemId, prefersReducedMotion]);
+  }, [deletingLibraryItemId, library, libraryDeleteConfirmItemId, prefersReducedMotion, sessionUser?.local_user_id]);
 
   const handleDeleteManyLibraryItems = useCallback(async (ids: string[]) => {
     const deleteIds = Array.from(new Set(ids.map((value) => value.trim()).filter(Boolean)));
     if (!deleteIds.length || bulkDeletingLibrary) return;
+    const deletedUrls = library
+      .filter((item) => deleteIds.includes(item.id) && item.output?.url)
+      .map((item) => item.output!.url);
 
     setBulkDeletingLibrary(true);
     setLibraryError("");
@@ -1456,6 +1446,9 @@ export function StudioApp() {
       const deletedIds = Array.isArray(result.deletedIds) && result.deletedIds.length ? result.deletedIds : deleteIds;
       setSelectedLibraryItemId((current) => (current && deletedIds.includes(current) ? null : current));
       setLibrary((current) => current.filter((item) => !deletedIds.includes(item.id)));
+      if (deletedUrls.length && sessionUser?.local_user_id) {
+        void removeLibraryMediaCache(sessionUser.local_user_id, deletedUrls);
+      }
       setMissingLibraryMediaIds((current) => {
         const next = new Set(current);
         deletedIds.forEach((id) => next.delete(id));
@@ -1468,7 +1461,7 @@ export function StudioApp() {
     } finally {
       setBulkDeletingLibrary(false);
     }
-  }, [bulkDeletingLibrary]);
+  }, [bulkDeletingLibrary, library, sessionUser?.local_user_id]);
 
   const libraryCounts = useMemo(() => ({
     all: library.length,
@@ -1501,6 +1494,7 @@ export function StudioApp() {
   const membershipEntitlements = membershipSnapshot?.membership.entitlements ?? null;
 
   const handleImageResult = useCallback((item: LibraryItem, options?: { append?: boolean; scope?: ImageWorkspaceScope | null }) => {
+    if (sessionUser?.local_user_id) scheduleLibraryMediaCache(sessionUser.local_user_id, [item]);
     const nextOutput: OutputItemState = { item, title: "图片结果", tool: "image" };
     setOutputs((prev) => ({ ...prev, image: nextOutput }));
     setImageResultScope(options?.scope || null);
@@ -1509,7 +1503,7 @@ export function StudioApp() {
       const withoutDuplicate = prev.filter((output) => output.item.id !== item.id);
       return [...withoutDuplicate, nextOutput];
     });
-  }, []);
+  }, [sessionUser?.local_user_id]);
 
   useEffect(() => {
     if (!imageGenerationProgress.some((progress) => progress.status === "running")) return undefined;
@@ -1531,26 +1525,35 @@ export function StudioApp() {
   const imageEstimatedQuotaUnits = estimateImageGenerationTotalQuota({
     quality: activeImageWorkspace.quality,
     count: imageGenerationCount,
+    model: selectedImageProvider?.model,
   });
   const activeImageBillingOperation: ImageBillingOperation = activeImageWorkspaceScope === "image-editor"
     ? "cloud_image_edit"
     : "cloud_image_generation";
   const imageGenerationCostLabel = membershipEntitlementLabel(
     membershipEntitlements,
-    activeImageWorkspaceScope === "image-editor" ? "image_edit" : "image_generation",
+    "image_generation",
     "张",
     formatQuotaSymbolLabel(imageEstimatedQuotaUnits),
   );
+  const imageWorkspaceAtSubmissionLimit = activeImageWorkspace.inFlightCount >= (
+    activeImageWorkspaceScope === "image" ? imageGenerationSubmissionLimit : 1
+  );
   const imageWorkspaceCanSubmit = Boolean(selectedImageProvider)
     && !providersLoading
-    && !activeImageWorkspace.loading
+    && !imageWorkspaceAtSubmissionLimit
     && Boolean(imageWorkspacePrompt)
     && (!imageWorkspaceRequiresFile || imageWorkspaceHasFiles);
-  const scopedImageLoading = activeImageWorkspace.loading && imageRequestScope === activeImageWorkspaceScope;
+  const scopedImageProgress = imageGenerationProgress.find((progress) => (
+    progress.id === latestImageDisplayRef.current[activeImageWorkspaceScope]?.progressId
+  ));
+  const scopedImageLoading = scopedImageProgress?.status === "running" && imageRequestScope === activeImageWorkspaceScope;
+  const imageSubmitLoading = activeImageWorkspaceScope === "image" ? imageWorkspaceAtSubmissionLimit : scopedImageLoading;
   const scopedImageSubmitError = imageRequestScope === activeImageWorkspaceScope ? activeImageWorkspace.submitError : "";
   const scopedImageSubmitDiagnostic = imageRequestScope === activeImageWorkspaceScope ? activeImageWorkspace.submitDiagnostic : null;
   const scopedImageOutputs = imageResultScope === activeImageWorkspaceScope ? imageOutputs : [];
   const scopedActiveImageOutput = imageResultScope === activeImageWorkspaceScope ? activeOutput : null;
+  const scopedImageGenerationStartedAt = scopedImageLoading ? scopedImageProgress.startedAt : null;
 
   const updateImageWorkspace = useCallback((patch: Partial<ImageWorkspaceState>) => {
     activeImageWorkspaceSetter((prev) => ({
@@ -1731,7 +1734,8 @@ export function StudioApp() {
   }, [activeImageWorkspaceFilesRef, activeImageWorkspaceSetter]);
 
   const submitImageWorkspace = useCallback(async () => {
-    if (activeImageInFlightCountRef.current > 0) return;
+    const submissionLimit = activeImageWorkspaceScope === "image" ? imageGenerationSubmissionLimit : 1;
+    if (activeImageInFlightCountRef.current >= submissionLimit) return;
     if (!selectedImageProvider) {
       activeImageWorkspaceSetter((prev) => ({
         ...prev,
@@ -1761,9 +1765,11 @@ export function StudioApp() {
     const estimatedQuotaUnits = estimateImageGenerationTotalQuota({
       quality: activeImageWorkspace.quality,
       count: totalCount,
+      model: selectedImageProvider.model,
     });
     const progressId = createTaskId("image-progress");
     const batchId = createTaskId("image-batch");
+    const taskId = createTaskId("image");
     const snapshot = {
       scope: activeImageWorkspaceScope,
       providerId: selectedImageProvider.id,
@@ -1778,11 +1784,12 @@ export function StudioApp() {
       batchId,
     };
 
+    latestImageDisplayRef.current[snapshot.scope] = { taskId, progressId };
+    setImageOutputs([]);
+    setImageResultScope(snapshot.scope);
+    setOutputs((prev) => ({ ...prev, image: null }));
     updateImageInFlightState(activeImageInFlightCountRef.current + 1, snapshot.scope);
     setImageRequestScope(snapshot.scope);
-    setImageResultScope(null);
-    setImageOutputs([]);
-    setOutputs((prev) => ({ ...prev, image: null }));
     activeImageWorkspaceSetter((prev) => ({
       ...prev,
       submitError: "",
@@ -1795,14 +1802,35 @@ export function StudioApp() {
     setGenerationProgressTick(startedAt);
     setImageGenerationProgress((prev) => [...prev, {
       id: progressId,
+      scope: snapshot.scope,
       status: "running",
       current: 0,
       total: totalCount,
       startedAt,
       message: totalCount > 1 ? `正在同时生成 ${totalCount} 张图片` : "正在生成图片",
     }]);
+    const findTaskItems = () => fetchJson<{ items: LibraryItem[] }>("/api/library")
+      .then((data) => data.items.filter((item) => (
+        item.type === "image"
+        && item.status === "done"
+        && item.params?.billingTaskId === taskId
+        && item.output?.url
+      )));
+    let recoveryDeadline = 0;
+    let recovery: Promise<LibraryItem[]> | null = null;
+    const waitForTaskItems = async () => {
+      while (Date.now() < recoveryDeadline) {
+        await new Promise((resolve) => window.setTimeout(resolve, 2000));
+        if (Date.now() >= recoveryDeadline) break;
+        const items = await Promise.race([
+          findTaskItems().catch(() => []),
+          new Promise<LibraryItem[]>((resolve) => window.setTimeout(() => resolve([]), 5000)),
+        ]);
+        if (items.length) return items;
+      }
+      return [];
+    };
     try {
-      const taskId = createTaskId("image");
       const requestFingerprint = generationBillingFingerprint({
         kind: "image",
         operation: snapshot.operation,
@@ -1822,6 +1850,7 @@ export function StudioApp() {
           taskId,
           idempotencyKey: taskId,
           estimatedQuotaUnits: snapshot.estimatedQuotaUnits,
+          membershipEntitlementAmount: snapshot.totalCount,
           requestFingerprint,
         }),
       });
@@ -1841,19 +1870,40 @@ export function StudioApp() {
       form.set("estimatedQuotaUnits", String(snapshot.estimatedQuotaUnits));
       form.set("operation", snapshot.operation);
       snapshot.files.forEach((file) => form.append("files", file));
-      const data = await fetchJsonWithCsrf<{ item: LibraryItem | null; items?: LibraryItem[] }>("/api/generate/image", {
-        method: "POST",
-        body: form,
-      });
-      const items = Array.isArray(data.items) && data.items.length
+      recoveryDeadline = Date.now() + imageGenerationResultWaitMs;
+      let requestSucceeded = false;
+      recovery = (async () => {
+        const items = await waitForTaskItems();
+        return requestSucceeded ? [] : items;
+      })();
+      const outcome = await Promise.race([
+        fetchJsonWithCsrf<{ item: LibraryItem | null; items?: LibraryItem[] }>("/api/generate/image", {
+          method: "POST",
+          body: form,
+        }).then((data) => {
+          requestSucceeded = true;
+          return { data, recoveredItems: [] as LibraryItem[] };
+        }),
+        recovery.then((recoveredItems) => ({ data: null, recoveredItems })),
+        new Promise<{ data: null; recoveredItems: LibraryItem[] }>((resolve) => {
+          window.setTimeout(() => resolve({ data: null, recoveredItems: [] }), imageGenerationResultWaitMs);
+        }),
+      ]);
+      if (!outcome.data && !outcome.recoveredItems.length) {
+        throw new Error("图片生成等待超时，请在作品库确认结果后重试。");
+      }
+      const data = outcome.data;
+      const items = data && Array.isArray(data.items) && data.items.length
         ? data.items
-        : data.item
+        : data?.item
           ? [data.item]
-          : [];
+          : outcome.recoveredItems;
       if (!items.length) {
         throw new Error("图片生成未返回结果。");
       }
-      items.forEach((item) => handleImageResult(item, { append: true, scope: snapshot.scope }));
+      if (latestImageDisplayRef.current[snapshot.scope]?.taskId === taskId) {
+        items.forEach((item) => handleImageResult(item, { append: true, scope: snapshot.scope }));
+      }
 
       await refreshLibraryAfterMutation();
       await refreshAccountAfterGeneration();
@@ -1865,21 +1915,43 @@ export function StudioApp() {
         message: items.length > 1 ? `${items.length} 张图片已生成` : "图片已生成",
       }));
     } catch (error) {
+      const shouldWaitForRecovery = !(error instanceof ApiError && error.status >= 400 && error.status < 500 && error.status !== 409);
+      const recoveredItems = shouldWaitForRecovery && recovery
+        ? await recovery
+        : await findTaskItems().catch(() => []);
+      if (recoveredItems.length) {
+        if (latestImageDisplayRef.current[snapshot.scope]?.taskId === taskId) {
+          recoveredItems.forEach((item) => handleImageResult(item, { append: true, scope: snapshot.scope }));
+        }
+        await refreshLibraryAfterMutation();
+        await refreshAccountAfterGeneration();
+        updateImageGenerationProgress(progressId, (current) => ({
+          ...current,
+          status: "done",
+          current: recoveredItems.length,
+          completedAt: Date.now(),
+          message: recoveredItems.length > 1 ? `${recoveredItems.length} 张图片已找回` : "图片已找回",
+        }));
+        return;
+      }
       const text = error instanceof Error ? error.message : "图片生成失败。";
-      activeImageWorkspaceSetter((prev) => ({
-        ...prev,
-        submitError: text,
-        submitDiagnostic: diagnosticFromError(error),
-      }));
+      if (latestImageDisplayRef.current[snapshot.scope]?.taskId === taskId) {
+        activeImageWorkspaceSetter((prev) => ({
+          ...prev,
+          submitError: text,
+          submitDiagnostic: diagnosticFromError(error),
+        }));
+        setMessage(text);
+      }
       updateImageGenerationProgress(progressId, (current) => ({
         ...current,
         status: "failed",
         completedAt: Date.now(),
         message: text,
       }));
-      setMessage(text);
     } finally {
-      updateImageInFlightState(activeImageInFlightCountRef.current - 1, activeImageWorkspaceScope);
+      const countRef = snapshot.scope === "image-editor" ? imageEditorInFlightCountRef : imageInFlightCountRef;
+      updateImageInFlightState(countRef.current - 1, snapshot.scope);
     }
   }, [
     activeImageBillingOperation,
@@ -1906,8 +1978,9 @@ export function StudioApp() {
   ]);
 
   const handleVideoResult = useCallback((item: LibraryItem, job?: JobRecord | null) => {
+    if (sessionUser?.local_user_id) scheduleLibraryMediaCache(sessionUser.local_user_id, [item]);
     setOutputs((prev) => ({ ...prev, video: { item, job, title: "视频结果", tool: "video" } }));
-  }, []);
+  }, [sessionUser?.local_user_id]);
 
   const selectedVideoProvider = useMemo<WorkspacePublicProvider | null>(() => {
     if (!providers.video.length) return null;
@@ -2545,10 +2618,12 @@ export function StudioApp() {
     setActiveWorkspaceToolId(item.mode === "image-to-image" ? "image-editor" : "image");
   }, []);
 
+  const videoUpscaleOutputItem = outputs["video-upscale"]?.item;
+
   useEffect(() => {
     const job = videoUpscaleWorkspace.job;
     if (!job || job.status === "failed") return;
-    const currentItem = outputs["video-upscale"]?.item;
+    const currentItem = videoUpscaleOutputItem;
     const currentItemMatchesJob = Boolean(currentItem && (
       currentItem.id === job.libraryItemId
       || (job.billing_task_id && currentItem.params?.billingTaskId === job.billing_task_id)
@@ -2589,7 +2664,7 @@ export function StudioApp() {
       }
     }, 5000);
     return () => window.clearInterval(timer);
-  }, [outputs["video-upscale"]?.item, refreshAccountAfterGeneration, refreshLibraryAfterMutation, setMessage, updateVideoUpscaleWorkspace, videoUpscaleWorkspace.job]);
+  }, [refreshAccountAfterGeneration, refreshLibraryAfterMutation, setMessage, updateVideoUpscaleWorkspace, videoUpscaleOutputItem, videoUpscaleWorkspace.job]);
 
   useEffect(() => {
     const job = videoWorkspace.job;
@@ -2754,6 +2829,7 @@ export function StudioApp() {
       updateVideoWorkspace({ submitError: text, submitDiagnostic: diagnosticFromError(error) });
       setMessage(text);
       updateVideoInFlightState(videoInFlightCountRef.current - 1);
+      await refreshAccountAfterGeneration().catch(() => undefined);
     } finally {
       updateVideoWorkspace({ loading: false });
     }
@@ -2790,7 +2866,7 @@ export function StudioApp() {
               selectedProvider={selectedImageProvider}
           templateCenterHref={imageTemplateCenterHref}
           state={activeImageWorkspace}
-          loading={scopedImageLoading}
+          loading={imageSubmitLoading}
           canSubmit={imageWorkspaceCanSubmit}
           estimatedQuotaUnits={imageEstimatedQuotaUnits}
           costLabel={imageGenerationCostLabel}
@@ -2930,6 +3006,7 @@ export function StudioApp() {
             />
           ) : activeBusinessTool === "library" ? (
             <LibraryPane
+              cacheOwnerId={sessionUser?.local_user_id || null}
               items={currentLibraryItems}
               totalCount={library.length}
               count={libraryCounts}
@@ -2969,6 +3046,7 @@ export function StudioApp() {
                 output={scopedActiveImageOutput}
                 outputs={scopedImageOutputs}
                 loading={scopedImageLoading}
+                generationStartedAt={scopedImageGenerationStartedAt}
                 canSubmit={imageWorkspaceCanSubmit}
                 submitError={scopedImageSubmitError}
                 submitDiagnostic={scopedImageSubmitDiagnostic}
@@ -3083,6 +3161,7 @@ function UserCenterWorkspace({
         usage={usage}
         billingOrders={billingOrders}
         checkInRecords={checkInRecords}
+        currentQuotaUnits={quota?.quota_units ?? null}
         loading={loading}
         onViewChange={onViewChange}
       />
@@ -3116,44 +3195,11 @@ function UserCenterWorkspace({
 
 function createMembershipEntitlementItems(entitlements: MembershipEntitlements | null) {
   if (!entitlements) return [];
-  return [
-    {
-      key: "prompt_optimize",
-      label: "Prompt Optimize",
-      value: `${formatQuotaUnits(entitlements.prompt_optimize.remaining)} uses`,
-      remaining: entitlements.prompt_optimize.remaining,
-    },
-    {
-      key: "image_generation",
-      label: "Image Generation",
-      value: `${formatQuotaUnits(entitlements.image_generation.remaining)} items`,
-      remaining: entitlements.image_generation.remaining,
-    },
-    {
-      key: "video_generation",
-      label: "Video Generation",
-      value: `${formatQuotaUnits(entitlements.video_generation.remaining)} uses`,
-      remaining: entitlements.video_generation.remaining,
-    },
-    {
-      key: "image_edit",
-      label: "Image Edit",
-      value: `${formatQuotaUnits(entitlements.image_edit.remaining)} items`,
-      remaining: entitlements.image_edit.remaining,
-    },
-    {
-      key: "image_upscale",
-      label: "Image Upscale",
-      value: `${formatQuotaUnits(entitlements.image_upscale.remaining)} items`,
-      remaining: entitlements.image_upscale.remaining,
-    },
-    {
-      key: "video_upscale",
-      label: "Video Upscale",
-      value: `${formatQuotaUnits(entitlements.video_upscale.remaining)} uses`,
-      remaining: entitlements.video_upscale.remaining,
-    },
-  ].filter((item) => item.remaining > 0);
+  return membershipEntitlementDefinitions.map((definition) => ({
+    ...definition,
+    value: `${formatQuotaUnits(entitlements[definition.key].remaining)} ${definition.unit}`,
+    remaining: entitlements[definition.key].remaining,
+  }));
 }
 
 function membershipEntitlementLabel(
@@ -3199,8 +3245,8 @@ function UserCenterOverview({
   onViewChange: (view: AccountView) => void;
 }) {
   const recentRecords = useMemo(
-    () => createAccountRecords(usage?.entries || [], billingOrders, checkInRecords).slice(0, 6),
-    [billingOrders, checkInRecords, usage?.entries],
+    () => createAccountRecords(usage?.entries || [], billingOrders, checkInRecords, quota?.quota_units ?? null).slice(0, 6),
+    [billingOrders, checkInRecords, quota?.quota_units, usage?.entries],
   );
   const quotaUnits = quota?.quota_units ?? null;
   const quotaValue = loading ? "加载中" : quota ? `${formatQuotaUnits(quota.quota_units)} ✦` : "—";
@@ -3209,10 +3255,12 @@ function UserCenterOverview({
     : quota
       ? "积分用于图片和视频创作。"
       : "登录后将显示真实账户积分。";
-  const entitlementItems = createMembershipEntitlementItems(membershipSnapshot?.membership.entitlements ?? null);
   const planDisplay = getPlanStatusDisplay(planStatus);
   const planTone = getPlanTone(planDisplay.label);
   const activeMembership = membershipSnapshot?.membership.active ?? null;
+  const entitlementItems = activeMembership
+    ? createMembershipEntitlementItems(membershipSnapshot?.membership.entitlements ?? null)
+    : [];
   const planEndsAtLabel = formatMembershipDate(activeMembership?.ends_at);
   const previousQuotaUnitsRef = useRef<number | null>(quotaUnits);
   const [quotaChanged, setQuotaChanged] = useState(false);
@@ -3265,11 +3313,13 @@ function UserCenterOverview({
 
             <div className="user-center-side-cards">
               <article className={cn("user-center-mini-card", `user-center-mini-card--${planTone}`)}>
-                <span className="user-center-card-icon">
-                  <Crown className="size-4" aria-hidden="true" />
-                </span>
                 <div className="user-center-mini-card__body">
-                  <span className="user-center-membership-label">当前会员</span>
+                  <div className="user-center-membership-heading">
+                    <span className="user-center-card-icon">
+                      <Crown className="size-4" aria-hidden="true" />
+                    </span>
+                    <span className="user-center-membership-label">当前会员</span>
+                  </div>
                   <div className="user-center-mini-card__main">
                     <div className="user-center-plan-line">
                       <strong className={cn("user-center-plan-name", `user-center-plan-name--${planTone}`)}>{planDisplay.label}</strong>
@@ -3287,23 +3337,31 @@ function UserCenterOverview({
                   {!planEndsAtLabel ? (
                     <p>{planStatus.status === "active" ? "会员权益以账户数据为准。" : planDisplay.note}</p>
                   ) : null}
-                  {entitlementItems.length ? (
-                    <div className="user-center-entitlement-block">
-                      <div className="user-center-entitlement-strip" aria-label="会员剩余次数">
-                        {entitlementItems.map((item) => (
-                          <span key={item.key} className="user-center-entitlement-pill">
-                            <em>{item.label}</em>
-                            <strong>{item.value}</strong>
-                          </span>
-                        ))}
-                      </div>
-                    </div>
-                  ) : null}
                 </div>
               </article>
 
             </div>
           </div>
+
+          {entitlementItems.length ? (
+            <section className="user-center-entitlements-card" aria-label="五项会员权益">
+              <div className="user-center-entitlements-card__head">
+                <span>
+                  <Sparkles className="size-4" aria-hidden="true" />
+                  五项会员权益
+                </span>
+                <p>创作时优先抵扣，图片类按实际生成张数扣减。</p>
+              </div>
+              <div className="user-center-entitlement-strip">
+                {entitlementItems.map((item) => (
+                  <span key={item.key} className="user-center-entitlement-pill">
+                    <em>{item.label}</em>
+                    <strong>{item.value}</strong>
+                  </span>
+                ))}
+              </div>
+            </section>
+          ) : null}
 
           <section className="user-center-quick-links" aria-label="快捷入口">
             {[
@@ -3430,7 +3488,10 @@ function RechargeCenterWorkspace({
   const customAmountValue = Number(customAmount);
   const customAmountEntered = customAmount.trim() !== "";
   const customAmountValid = customAmountEntered && Number.isFinite(customAmountValue) && customAmountValue >= CUSTOM_RECHARGE_MIN_AMOUNT;
-  const customCredits = customAmountValid ? estimateRechargeCredits(selectedPaymentChannelConfig, customAmountValue) : 0;
+  const membershipRechargeBonusBasisPoints = Math.max(0, membershipSnapshot?.membership.recharge_bonus_basis_points ?? 0);
+  const customCreditsBeforeMembership = customAmountValid ? estimateRechargeCredits(selectedPaymentChannelConfig, customAmountValue) : 0;
+  const customMembershipBonusCredits = calculateMembershipRechargeBonus(customCreditsBeforeMembership, membershipRechargeBonusBasisPoints);
+  const customCredits = customCreditsBeforeMembership + customMembershipBonusCredits;
   const customRechargeActive = customAmount.trim() !== "";
   const customAmountError = customAmountEntered && !customAmountValid
     ? `最低充值金额 ¥${CUSTOM_RECHARGE_MIN_AMOUNT}`
@@ -3441,8 +3502,8 @@ function RechargeCenterWorkspace({
   const planStatusLabel = getPlanStatusDisplay(planStatus).label;
   const membershipStatusLabel = planStatus.status === "active" ? planStatusLabel : "暂无会员";
   const creditSummaryLines = customRechargeActive
-    ? createCustomCreditSummaryLines(customAmount, customAmountValid, customCredits)
-    : createFixedCreditSummaryLines(selectedCredit, selectedPaymentChannelConfig);
+    ? createCustomCreditSummaryLines(customAmount, customAmountValid, selectedPaymentChannelConfig, membershipRechargeBonusBasisPoints)
+    : createFixedCreditSummaryLines(selectedCredit, selectedPaymentChannelConfig, membershipRechargeBonusBasisPoints);
   const creditSummaryReady = customRechargeActive ? customAmountValid : Boolean(selectedCredit);
   const creditPayableAmount = customRechargeActive && customAmountValid
     ? customAmount
@@ -3559,14 +3620,13 @@ function RechargeCenterWorkspace({
     <>
     <section className="user-center-page account-subpage account-subpage--recharge" aria-label="会员订阅">
       <header className="recharge-pricing-header">
-        <div className="recharge-pricing-header__main">
-          <button type="button" className="account-subpage-back" onClick={() => onViewChange("center")}>
-            <ArrowLeft className="size-4" aria-hidden="true" />
-            返回用户中心
-          </button>
-          <div>
-            <h2>会员订阅</h2>
-          </div>
+        <button type="button" className="account-subpage-back" onClick={() => onViewChange("center")}>
+          <ArrowLeft className="size-4" aria-hidden="true" />
+          返回用户中心
+        </button>
+        <div className="recharge-pricing-header__title">
+          <h2>订阅计划</h2>
+          <p>选择适合当前创作量的会员方案</p>
         </div>
         <div className="recharge-account-meta" aria-label="账户概览">
           <span className="recharge-account-meta__item recharge-account-meta__item--points">
@@ -3619,7 +3679,14 @@ function RechargeCenterWorkspace({
                   {planOptions.map((plan) => {
                     const selected = selectedPlan?.id === plan.id;
                     const planPrice = getPlanCyclePrice(plan, selectedPlanCycle);
-                    const planCredits = plan.monthlyCredits;
+                    const cycleMonths = selectedPlanCycle === "yearly" ? 12 : selectedPlanCycle === "quarterly" ? 3 : 1;
+                    const planCredits = plan.monthlyCredits * cycleMonths;
+                    const planEntitlements = membershipEntitlementDefinitions
+                      .map((definition) => ({
+                        ...definition,
+                        amount: plan.monthlyEntitlements[definition.key] * cycleMonths,
+                      }))
+                      .filter((definition) => definition.amount > 0);
                     const priceMeta = createPlanPriceMeta(plan, selectedPlanCycle);
                     const planCardAmountAllowed = selectedPaymentChannelConfig
                       ? paymentChannelAllowsAmount(selectedPaymentChannelConfig, rechargeAmountToMinor(planPrice))
@@ -3637,7 +3704,12 @@ function RechargeCenterWorkspace({
                     return (
                       <article
                         key={plan.id}
-                        className={cn("recharge-plan-card", selected && "is-selected", planCardDisabled && "is-disabled")}
+                        className={cn(
+                          "recharge-plan-card",
+                          selected && "is-selected",
+                          plan.recommended && "is-recommended",
+                          planCardDisabled && "is-disabled",
+                        )}
                         onClick={() => setSelectedPlanId(plan.id)}
                       >
                         <span className="recharge-plan-card__top">
@@ -3647,27 +3719,9 @@ function RechargeCenterWorkspace({
                         <span className="recharge-plan-card__name">{plan.name}</span>
                         <span className="recharge-plan-card__price">
                           <em>¥</em>{formatRechargeAmount(planPrice)}<small>/{selectedPlanCycle === "yearly" ? "年" : selectedPlanCycle === "quarterly" ? "季" : "月"}</small>
+                          {priceMeta ? <del>{priceMeta.original}</del> : null}
                         </span>
-                        {priceMeta ? (
-                          <span className="recharge-plan-card__price-meta">
-                            <span>原价 {priceMeta.original}</span>
-                            <span>折合 {priceMeta.monthly} / 月</span>
-                          </span>
-                        ) : null}
                         <span className="recharge-plan-card__desc">{plan.description}</span>
-                        <span className="recharge-plan-card__credits">
-                          <Sparkles className="size-4" aria-hidden="true" />
-                          首月立即到账 {formatQuotaUnits(planCredits)} 积分
-                        </span>
-                        <span className="recharge-plan-card__facts" role="list" aria-label={`${plan.name}套餐信息`}>
-                          {[plan.bonusLabel, ...plan.perks].slice(0, 5).map((item) => (
-                            <span key={item} role="listitem">
-                              <Check className="size-3.5" aria-hidden="true" />
-                              <span>{item}</span>
-                            </span>
-                          ))}
-                        </span>
-                        {purchaseState.reason ? <span className="recharge-plan-card__reason">{purchaseState.reason}</span> : null}
                         <button
                           type="button"
                           className="recharge-plan-card__action"
@@ -3687,6 +3741,29 @@ function RechargeCenterWorkspace({
                         >
                           {purchaseState.label}
                         </button>
+                        <span className="recharge-plan-card__benefits-title">套餐包含</span>
+                        <span className="recharge-plan-card__facts" role="list" aria-label={`${plan.name}套餐信息`}>
+                          <span className="recharge-plan-card__fact-credit" role="listitem">
+                            <Sparkles className="size-3.5" aria-hidden="true" />
+                            <span>积分</span>
+                            <strong>{formatQuotaUnits(planCredits)}</strong>
+                          </span>
+                          {[`会员期内积分充值额外加赠 ${plan.rechargeBonusPercent}%`, ...plan.perks].map((item) => (
+                            <span key={item} role="listitem">
+                              <Check className="size-3.5" aria-hidden="true" />
+                              <span>{item}</span>
+                            </span>
+                          ))}
+                        </span>
+                        <span className="recharge-plan-card__entitlements" role="list" aria-label={`${plan.name}五项赠送权益`}>
+                          {planEntitlements.map((item) => (
+                            <span key={item.key} role="listitem">
+                              <Check className="size-3.5" aria-hidden="true" />
+                              <em>{item.label}</em>
+                              <strong>{`${formatQuotaUnits(item.amount)} ${item.unit}`}</strong>
+                            </span>
+                          ))}
+                        </span>
                       </article>
                     );
                   })}
@@ -3717,7 +3794,7 @@ function RechargeCenterWorkspace({
         </section>
       </div>
     </section>
-    {creditsDialogOpen ? (
+    {creditsDialogOpen ? createPortal(
       <CreditsPurchaseDialog
         user={user}
         pointsStatusLabel={pointsStatusLabel}
@@ -3730,6 +3807,7 @@ function RechargeCenterWorkspace({
         customAmountErrorId={customAmountErrorId}
         customAmountValid={customAmountValid}
         customCredits={customCredits}
+        membershipRechargeBonusBasisPoints={membershipRechargeBonusBasisPoints}
         creditSummaryLines={creditSummaryLines}
         creditPaymentNote={creditPaymentNote}
         creditConfirmState={creditConfirmState}
@@ -3748,9 +3826,10 @@ function RechargeCenterWorkspace({
           setLatestPayment(null);
         }}
         onConfirm={handleCreditPayment}
-      />
+      />,
+      document.body,
     ) : null}
-    {latestPayment && latestPaymentDisplay ? (
+    {latestPayment && latestPaymentDisplay ? createPortal(
       <PaymentQrDialog
         orderId={latestPayment.order.order_id}
         display={latestPaymentDisplay}
@@ -3758,7 +3837,8 @@ function RechargeCenterWorkspace({
         creditsLabel={formatQuotaUnits(latestPayment.order.credited_quota)}
         onPaid={onRefreshAccount}
         onClose={() => setLatestPayment(null)}
-      />
+      />,
+      document.body,
     ) : null}
     </>
   );
@@ -3768,17 +3848,22 @@ function UsageRecordsWorkspace({
   usage,
   billingOrders,
   checkInRecords,
+  currentQuotaUnits,
   loading,
   onViewChange,
 }: {
   usage: UsagePage | null;
   billingOrders: BillingOrder[];
   checkInRecords: PublicDailyCheckInRecord[];
+  currentQuotaUnits: number | null;
   loading: boolean;
   onViewChange: (view: AccountView) => void;
 }) {
   const [filter, setFilter] = useState<AccountUsageFilter>("all");
-  const records = useMemo(() => createAccountRecords(usage?.entries || [], billingOrders, checkInRecords), [billingOrders, checkInRecords, usage?.entries]);
+  const records = useMemo(
+    () => createAccountRecords(usage?.entries || [], billingOrders, checkInRecords, currentQuotaUnits),
+    [billingOrders, checkInRecords, currentQuotaUnits, usage?.entries],
+  );
   const filteredRecords = filter === "all" ? records : records.filter((record) => record.kind === filter);
 
   return (
@@ -4034,6 +4119,7 @@ function CreditsPurchaseDialog({
   customAmountErrorId,
   customAmountValid,
   customCredits,
+  membershipRechargeBonusBasisPoints,
   creditSummaryLines,
   creditPaymentNote,
   creditConfirmState,
@@ -4054,6 +4140,7 @@ function CreditsPurchaseDialog({
   customAmountErrorId: string;
   customAmountValid: boolean;
   customCredits: number;
+  membershipRechargeBonusBasisPoints: number;
   creditSummaryLines: Array<[string, string]>;
   creditPaymentNote?: string;
   creditConfirmState: ReturnType<typeof createRechargeConfirmState>;
@@ -4093,12 +4180,17 @@ function CreditsPurchaseDialog({
           <div className="credits-dialog__picker">
             <div className="credits-dialog__section-head">
               <span>积分购买</span>
+              {membershipRechargeBonusBasisPoints > 0 ? (
+                <small>会员充值额外加赠 {formatBasisPointsPercent(membershipRechargeBonusBasisPoints)}，已计入到账积分</small>
+              ) : null}
             </div>
             <div className="credit-topup-grid credits-dialog__grid">
               {creditTopUpOptions.map((option) => {
                 const selected = !customRechargeActive && selectedCredit?.amount === option.amount;
-                const credits = estimateRechargeCredits(selectedPaymentChannelConfig, option.amount, option.credits);
-                const giftCredits = getCreditTopUpGift(option, selectedPaymentChannelConfig);
+                const creditsBeforeMembership = estimateRechargeCredits(selectedPaymentChannelConfig, option.amount, option.credits);
+                const membershipBonusCredits = calculateMembershipRechargeBonus(creditsBeforeMembership, membershipRechargeBonusBasisPoints);
+                const credits = creditsBeforeMembership + membershipBonusCredits;
+                const giftCredits = getCreditTopUpGift(option, selectedPaymentChannelConfig) + membershipBonusCredits;
                 const badge = getCreditTopUpBadge(option, creditTopUpOptions, selectedPaymentChannelConfig);
                 return (
                   <button
@@ -4205,17 +4297,25 @@ function PaymentQrDialog({
   display: PaymentDisplay;
   amountLabel: string;
   creditsLabel: string;
-  onPaid: () => void;
+  onPaid: () => void | Promise<void>;
   onClose: () => void;
 }) {
   const [failedImageUrl, setFailedImageUrl] = useState("");
   const [orderStatus, setOrderStatus] = useState<BillingOrder["status"] | "checking">("checking");
+  const onPaidRef = useRef(onPaid);
+  const onCloseRef = useRef(onClose);
 
   const showImage = Boolean(display.qrImageUrl && failedImageUrl !== display.qrImageUrl);
 
   useEffect(() => {
+    onPaidRef.current = onPaid;
+    onCloseRef.current = onClose;
+  }, [onClose, onPaid]);
+
+  useEffect(() => {
     let cancelled = false;
     let paidHandled = false;
+    let closeTimer: number | null = null;
     const pollOrder = async () => {
       try {
         const result = await fetchJson<BillingOrderResponse>(`/api/billing/orders/${encodeURIComponent(orderId)}`);
@@ -4223,19 +4323,22 @@ function PaymentQrDialog({
         setOrderStatus(result.order.status);
         if (result.order.status === "paid" && !paidHandled) {
           paidHandled = true;
-          onPaid();
+          await Promise.resolve(onPaidRef.current()).catch(() => undefined);
+          if (cancelled) return;
+          closeTimer = window.setTimeout(() => onCloseRef.current(), 1500);
         }
       } catch {
         if (!cancelled) setOrderStatus("checking");
       }
     };
     void pollOrder();
-    const timer = window.setInterval(() => void pollOrder(), 4000);
+    const timer = window.setInterval(() => void pollOrder(), 2000);
     return () => {
       cancelled = true;
       window.clearInterval(timer);
+      if (closeTimer !== null) window.clearTimeout(closeTimer);
     };
-  }, [onPaid, orderId]);
+  }, [orderId]);
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
@@ -4260,7 +4363,12 @@ function PaymentQrDialog({
         </div>
         <div className="recharge-payment-qr" role="status" aria-label="支付二维码">
           <div className="recharge-payment-qr__image">
-            {showImage ? (
+            {orderStatus === "paid" ? (
+              <span className="recharge-payment-qr__success">
+                <CheckCircle2 className="size-12" aria-hidden="true" />
+                <strong>充值成功</strong>
+              </span>
+            ) : showImage ? (
               // eslint-disable-next-line @next/next/no-img-element -- Z-Pay returns a runtime QR image URL outside Next image config.
               <img
                 src={display.qrImageUrl}
@@ -4272,9 +4380,9 @@ function PaymentQrDialog({
             )}
           </div>
           <div className="recharge-payment-qr__copy">
-            <strong>支付宝扫码支付</strong>
+            <strong>{orderStatus === "paid" ? "充值成功" : "支付宝扫码支付"}</strong>
             <span>金额 {amountLabel}，预计到账 {creditsLabel} 积分。</span>
-            <span>{orderStatus === "paid" ? "支付已到账，账户信息已重新同步。" : "付款后等待积分自动到账，请勿重复付款。"}</span>
+            <span>{orderStatus === "paid" ? "支付已到账，账户信息已重新同步，窗口即将关闭。" : "付款后等待积分自动到账，请勿重复付款。"}</span>
           </div>
         </div>
       </div>
@@ -4319,24 +4427,41 @@ function createAccountRecords(
   usageEntries: UsageLogEntry[],
   billingOrders: BillingOrder[],
   checkInRecords: PublicDailyCheckInRecord[] = [],
+  currentQuotaUnits: number | null = null,
 ) {
-  const usageRecords: AccountRecord[] = usageEntries.map((entry) => ({
-    id: `usage-${entry.id}`,
-    createdAt: entry.created_at,
-    kind: "spend",
-    typeLabel: "支出",
-    quotaDelta: -Math.abs(entry.actual_quota_units ?? entry.estimated_quota_units),
-    balanceAfterQuotaUnits: entry.balance_after_quota_units ?? null,
-    description: `${usageOperationLabel(entry.operation)}：${usageDescription(entry)}`,
-  }));
+  const usageRecords: AccountRecord[] = usageEntries.map((entry) => {
+    const quotaUsed = Math.abs(entry.actual_quota_units ?? entry.estimated_quota_units);
+    const entitlementUnits = entry.status === "succeeded" ? entry.membership_entitlement_units || 0 : 0;
+    const entitlementUnit = entry.operation === "cloud_image_generation"
+      || entry.operation === "cloud_image_edit"
+      || entry.operation === "cloud_image_upscale"
+      ? "张"
+      : "次";
+    return {
+      id: `usage-${entry.id}`,
+      createdAt: entry.created_at,
+      kind: "spend",
+      typeLabel: entitlementUnits > 0 ? "权益抵扣" : "积分支出",
+      quotaDelta: -quotaUsed,
+      ...(entitlementUnits > 0 ? { entitlementUnits, entitlementUnit } : {}),
+      balanceAfterQuotaUnits: entry.balance_after_quota_units ?? null,
+      description: entitlementUnits > 0
+        ? `${usageOperationLabel(entry.operation)}：会员权益抵扣 ${entitlementUnits} ${entitlementUnit}，本次未扣积分`
+        : `${usageOperationLabel(entry.operation)}：${usageDescription(entry)}`,
+    };
+  });
 
   const paidOrders: AccountRecord[] = billingOrders
     .filter((order) => order.status === "paid" && order.credited_quota > 0)
     .map((order) => ({
       id: `order-${order.order_id}`,
-      createdAt: order.paid_at || order.updated_at || order.created_at,
+      createdAt: order.quota_credit_applied_at || order.paid_at || order.updated_at || order.created_at,
       kind: "recharge",
-      typeLabel: "充值",
+      typeLabel: isMembershipCreditOrder(order)
+        ? "会员积分"
+        : order.channel === "admin_grant"
+          ? "手动充值"
+          : "积分充值",
       quotaDelta: order.credited_quota,
       description: describeAccountCreditOrder(order),
     }));
@@ -4347,23 +4472,44 @@ function createAccountRecords(
       id: `checkin-${record.id}`,
       createdAt: record.created_at,
       kind: "checkin",
-      typeLabel: "签到",
+      typeLabel: "签到赠送",
       quotaDelta: record.quota_delta,
       balanceAfterQuotaUnits: record.balance_after_quota_units ?? null,
-      description: `每日签到奖励 ${record.quota_delta} 积分`,
+      description: `签到赠送积分 +${formatQuotaUnits(record.quota_delta)}`,
     }));
 
-  return [...usageRecords, ...paidOrders, ...checkIns].sort((a, b) => Number(new Date(b.createdAt)) - Number(new Date(a.createdAt)));
+  const records = [...usageRecords, ...paidOrders, ...checkIns]
+    .sort((a, b) => Number(new Date(b.createdAt)) - Number(new Date(a.createdAt)));
+  let runningBalance = Number.isFinite(currentQuotaUnits ?? Number.NaN) ? currentQuotaUnits : null;
+
+  return records.map((record) => {
+    const storedBalance = Number.isFinite(record.balanceAfterQuotaUnits ?? Number.NaN)
+      ? record.balanceAfterQuotaUnits!
+      : null;
+    const balanceAfterQuotaUnits = storedBalance ?? runningBalance;
+    if (balanceAfterQuotaUnits !== null) {
+      const quotaDelta = record.entitlementUnits ? 0 : record.quotaDelta;
+      runningBalance = balanceAfterQuotaUnits - quotaDelta;
+    }
+    return { ...record, balanceAfterQuotaUnits };
+  });
+}
+
+function isMembershipCreditOrder(order: BillingOrder) {
+  return order.product_type === "membership" || order.idempotency_key.includes("membership:");
 }
 
 function describeAccountCreditOrder(order: BillingOrder) {
+  if (isMembershipCreditOrder(order)) {
+    return `充值会员积分 +${formatQuotaUnits(order.credited_quota)}`;
+  }
   if (order.channel === "signup_bonus") {
-    return `新用户注册赠送到账，积分 ${formatQuotaUnits(order.credited_quota)}`;
+    return `新用户注册赠送积分 +${formatQuotaUnits(order.credited_quota)}`;
   }
   if (order.channel === "admin_grant") {
-    return `后台赠送到账，积分 ${formatQuotaUnits(order.credited_quota)}`;
+    return `后台手动充值积分 +${formatQuotaUnits(order.credited_quota)}`;
   }
-  return `充值订单已到账，金额 ${formatMinorCurrency(order.paid_amount || order.requested_amount)}`;
+  return `积分充值到账 +${formatQuotaUnits(order.credited_quota)}`;
 }
 
 function estimateRechargeBaseCredits(channel: PublicPaymentChannelConfig | null, amount: number) {
@@ -4389,6 +4535,14 @@ function getCreditTopUpGift(option: CreditTopUpOption, channel: PublicPaymentCha
     0,
     estimateRechargeCredits(channel, option.amount, option.credits) - estimateRechargeBaseCredits(channel, option.amount),
   );
+}
+
+function calculateMembershipRechargeBonus(credits: number, bonusBasisPoints: number) {
+  return Math.floor((Math.max(0, credits) * Math.max(0, bonusBasisPoints)) / 10000);
+}
+
+function formatBasisPointsPercent(basisPoints: number) {
+  return `${new Intl.NumberFormat("zh-CN", { maximumFractionDigits: 2 }).format(Math.max(0, basisPoints) / 100)}%`;
 }
 
 function getCreditTopUpRate(option: CreditTopUpOption, channel: PublicPaymentChannelConfig | null) {
@@ -4441,11 +4595,9 @@ function getPlanRank(planId?: string | null) {
 function createPlanPriceMeta(plan: PlanOption, cycle: PlanCycle) {
   if (cycle === "monthly") return null;
   const months = planCycleMonths[cycle];
-  const cyclePrice = getPlanCyclePrice(plan, cycle);
   const originalPrice = getPlanCyclePrice(plan, "monthly") * months;
   return {
     original: `¥${formatRechargeAmount(originalPrice)}`,
-    monthly: `¥${formatRechargeAmount(cyclePrice / months)}`,
   };
 }
 
@@ -4486,7 +4638,11 @@ function createPlanPurchaseState(input: {
   return { disabled: false, label: "立即开通", reason: "" };
 }
 
-function createFixedCreditSummaryLines(option: CreditTopUpOption | null, channel: PublicPaymentChannelConfig | null): Array<[string, string]> {
+function createFixedCreditSummaryLines(
+  option: CreditTopUpOption | null,
+  channel: PublicPaymentChannelConfig | null,
+  membershipBonusBasisPoints: number,
+): Array<[string, string]> {
   if (!option) {
     return [
       ["当前选择", "未选择"],
@@ -4496,8 +4652,10 @@ function createFixedCreditSummaryLines(option: CreditTopUpOption | null, channel
     ];
   }
 
-  const credits = estimateRechargeCredits(channel, option.amount, option.credits);
-  const giftCredits = getCreditTopUpGift(option, channel);
+  const creditsBeforeMembership = estimateRechargeCredits(channel, option.amount, option.credits);
+  const packageGiftCredits = getCreditTopUpGift(option, channel);
+  const membershipGiftCredits = calculateMembershipRechargeBonus(creditsBeforeMembership, membershipBonusBasisPoints);
+  const credits = creditsBeforeMembership + membershipGiftCredits;
   const baseCredits = estimateRechargeBaseCredits(channel, option.amount);
   const lines: Array<[string, string]> = [
     ["当前选择", `¥${formatRechargeAmount(option.amount)} 积分档位`],
@@ -4505,8 +4663,12 @@ function createFixedCreditSummaryLines(option: CreditTopUpOption | null, channel
     ["基础积分", `${formatQuotaUnits(baseCredits)} 积分`],
   ];
 
-  if (giftCredits > 0) {
-    lines.push(["赠送积分", `${formatQuotaUnits(giftCredits)} 积分`]);
+  if (packageGiftCredits > 0) {
+    lines.push(["档位赠送", `${formatQuotaUnits(packageGiftCredits)} 积分`]);
+  }
+
+  if (membershipGiftCredits > 0) {
+    lines.push([`会员加赠 ${formatBasisPointsPercent(membershipBonusBasisPoints)}`, `${formatQuotaUnits(membershipGiftCredits)} 积分`]);
   }
 
   lines.push(["预计到账", `${formatQuotaUnits(credits)} 积分`]);
@@ -4514,15 +4676,32 @@ function createFixedCreditSummaryLines(option: CreditTopUpOption | null, channel
   return lines;
 }
 
-function createCustomCreditSummaryLines(amountText: string, valid: boolean, credits: number): Array<[string, string]> {
+function createCustomCreditSummaryLines(
+  amountText: string,
+  valid: boolean,
+  channel: PublicPaymentChannelConfig | null,
+  membershipBonusBasisPoints: number,
+): Array<[string, string]> {
   const amount = amountText.trim();
-  return [
+  const amountValue = Number(amount);
+  const creditsBeforeMembership = valid ? estimateRechargeCredits(channel, amountValue) : 0;
+  const membershipGiftCredits = valid
+    ? calculateMembershipRechargeBonus(creditsBeforeMembership, membershipBonusBasisPoints)
+    : 0;
+  const credits = creditsBeforeMembership + membershipGiftCredits;
+  const lines: Array<[string, string]> = [
     ["当前选择", "自定义充值"],
     ["充值金额", valid ? `¥${formatRechargeAmount(amount)}` : "未完成"],
-    ["预计积分", valid ? `${formatQuotaUnits(credits)} 积分` : "—"],
-    ["预计到账", valid ? `${formatQuotaUnits(credits)} 积分` : `请输入不低于 ¥${CUSTOM_RECHARGE_MIN_AMOUNT} 的金额`],
-    ["应付金额", valid ? `¥${formatRechargeAmount(amount)}` : "—"],
+    ["基础积分", valid ? `${formatQuotaUnits(creditsBeforeMembership)} 积分` : "—"],
   ];
+
+  if (membershipGiftCredits > 0) {
+    lines.push([`会员加赠 ${formatBasisPointsPercent(membershipBonusBasisPoints)}`, `${formatQuotaUnits(membershipGiftCredits)} 积分`]);
+  }
+
+  lines.push(["预计到账", valid ? `${formatQuotaUnits(credits)} 积分` : `请输入不低于 ¥${CUSTOM_RECHARGE_MIN_AMOUNT} 的金额`]);
+  lines.push(["应付金额", valid ? `¥${formatRechargeAmount(amount)}` : "—"]);
+  return lines;
 }
 
 function createRechargeConfirmState(input: {
@@ -4568,6 +4747,7 @@ function formatSignedQuota(value: number) {
 }
 
 function formatAccountQuotaChange(record: AccountRecord) {
+  if (record.entitlementUnits) return `抵扣 ${record.entitlementUnits} ${record.entitlementUnit || "次"}`;
   return `${formatSignedQuota(record.quotaDelta)} 分`;
 }
 
@@ -4577,13 +4757,16 @@ function formatAccountQuotaBalance(record: AccountRecord) {
 }
 
 function formatOrderType(order: BillingOrder) {
-  if (order.channel === "signup_bonus" || order.channel === "admin_grant") return "系统赠送";
+  if (isMembershipCreditOrder(order)) return "会员积分";
+  if (order.channel === "signup_bonus") return "注册赠送";
+  if (order.channel === "admin_grant") return "手动充值";
   return order.product_type === "membership" ? "会员订单" : "积分充值";
 }
 
 function formatOrderContent(order: BillingOrder) {
+  if (isMembershipCreditOrder(order)) return `充值会员积分 +${formatQuotaUnits(order.credited_quota)}`;
   if (order.channel === "signup_bonus") return `新用户注册赠送 ${formatQuotaUnits(order.credited_quota)} 积分`;
-  if (order.channel === "admin_grant") return `后台赠送 ${formatQuotaUnits(order.credited_quota)} 积分`;
+  if (order.channel === "admin_grant") return `后台手动充值积分 +${formatQuotaUnits(order.credited_quota)}`;
   if (order.product_type === "membership") {
     const planName = planOptions.find((plan) => plan.id === order.product_plan_id)?.name || order.product_plan_id || "会员套餐";
     const cycleLabel = planCycleOptions.find((cycle) => cycle.id === order.product_cycle)?.label || order.product_cycle || "";
@@ -4644,26 +4827,26 @@ function formatUsageDate(value: string) {
 
 function usageOperationLabel(operation: UsageLogEntry["operation"]) {
   const labels: Record<UsageLogEntry["operation"], string> = {
-    cloud_image_generation: "AI Image Generator",
-    cloud_image_edit: "AI Image Editor",
-    cloud_video_generation: "AI Video Generator",
-    cloud_image_upscale: "Image Upscale",
-    cloud_video_upscale: "Video Upscale",
-    prompt_optimize: "Prompt Optimize",
+    cloud_image_generation: "图片生成",
+    cloud_image_edit: "图片编辑",
+    cloud_video_generation: "视频生成",
+    cloud_image_upscale: "图片高清增强",
+    cloud_video_upscale: "视频高清增强",
+    prompt_optimize: "提示词优化",
   };
-  return labels[operation] || "AI Tool";
+  return labels[operation] || "AI 工具";
 }
 
 function usageDescription(entry: UsageLogEntry) {
   const descriptions: Record<UsageLogEntry["operation"], string> = {
-    cloud_image_generation: "Generate image",
-    cloud_image_edit: "Edit image",
-    cloud_video_generation: "Generate video",
-    cloud_image_upscale: "Run image upscale",
-    cloud_video_upscale: "Run video upscale",
-    prompt_optimize: "Optimize prompt",
+    cloud_image_generation: "生成图片",
+    cloud_image_edit: "编辑图片",
+    cloud_video_generation: "生成视频",
+    cloud_image_upscale: "处理图片高清增强",
+    cloud_video_upscale: "处理视频高清增强",
+    prompt_optimize: "优化提示词",
   };
-  if (entry.status === "failed") return `${descriptions[entry.operation] || "Tool action"} failed`;
-  if (entry.status === "refunded") return `${descriptions[entry.operation] || "Tool action"} refunded`;
-  return descriptions[entry.operation] || "Tool action";
+  if (entry.status === "failed") return `${descriptions[entry.operation] || "工具操作"}失败，未扣积分`;
+  if (entry.status === "refunded") return `${descriptions[entry.operation] || "工具操作"}已退回积分`;
+  return descriptions[entry.operation] || "工具操作";
 }

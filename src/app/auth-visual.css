@@ -489,6 +489,14 @@
     animation: auth-form-enter var(--motion-entrance) 120ms var(--ease-enter) both;
   }
 
+  .auth-page[data-input-active="true"] .auth-showcase-card {
+    animation-play-state: paused;
+  }
+
+  .auth-page[data-input-active="true"] .auth-card {
+    backdrop-filter: none;
+  }
+
   .auth-card__spotlight {
     position: absolute;
     inset: 0;
@@ -779,6 +787,24 @@
   .auth-login-options button:disabled {
     cursor: not-allowed;
     opacity: 0.56;
+  }
+
+  .auth-code-feedback {
+    position: relative;
+    z-index: 1;
+    min-height: 18px;
+    margin: 6px 0 0;
+    color: rgba(255, 255, 255, 0.68);
+    font-size: 12px;
+    line-height: 1.5;
+  }
+
+  .auth-code-feedback[data-tone="success"] {
+    color: #bbf7d0;
+  }
+
+  .auth-code-feedback[data-tone="error"] {
+    color: #fecdd3;
   }
 
   .auth-login-options {

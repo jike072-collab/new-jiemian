@@ -17,6 +17,7 @@ type UsageRow = QueryResultRow & {
   status: UsageStatus;
   estimated_quota_units: number;
   actual_quota_units: number | null;
+  membership_entitlement_units?: number | null;
   upstream_log_id: string | null;
   upstream_request_id: string | null;
   upstream_model: string | null;
@@ -49,6 +50,7 @@ function fromRow(row: UsageRow): UsageLogEntry {
     status: row.status,
     estimated_quota_units: Number(row.estimated_quota_units),
     actual_quota_units: row.actual_quota_units === null ? null : Number(row.actual_quota_units),
+    membership_entitlement_units: Number(row.membership_entitlement_units || 0),
     upstream_log_id: row.upstream_log_id,
     upstream_request_id: row.upstream_request_id,
     upstream_model: row.upstream_model,
@@ -113,6 +115,7 @@ export class PostgresUsageLogRepository implements UsageLogRepository {
     ]);
     return {
       ...fromRow(result.rows[0]),
+      membership_entitlement_units: input.membershipEntitlementUnits ?? 0,
       balance_after_quota_units: input.balanceAfterQuotaUnits === undefined ? null : input.balanceAfterQuotaUnits,
     };
   }
@@ -125,8 +128,13 @@ export class PostgresUsageLogRepository implements UsageLogRepository {
       [localUserId.trim()],
     );
     const result = await applicationQuery<UsageRow>(`
-      select usage_records.*, adjustment.target_quota as balance_after_quota_units
+      select usage_records.*,
+        task_billing_records.membership_entitlement_units,
+        adjustment.target_quota as balance_after_quota_units
       from usage_records
+      left join task_billing_records
+        on task_billing_records.local_user_id = usage_records.local_user_id
+        and task_billing_records.task_id = usage_records.task_id
       left join lateral (
         select target_quota
         from task_quota_adjustments
@@ -150,9 +158,12 @@ export class PostgresUsageLogRepository implements UsageLogRepository {
 
   async getByTaskId(localUserId: string, taskId: string) {
     const result = await applicationQuery<UsageRow>(`
-      select *
+      select usage_records.*, task_billing_records.membership_entitlement_units
       from usage_records
-      where local_user_id = $1 and task_id = $2
+      left join task_billing_records
+        on task_billing_records.local_user_id = usage_records.local_user_id
+        and task_billing_records.task_id = usage_records.task_id
+      where usage_records.local_user_id = $1 and usage_records.task_id = $2
     `, [localUserId.trim(), taskId.trim()]);
     return result.rows[0] ? fromRow(result.rows[0]) : null;
   }

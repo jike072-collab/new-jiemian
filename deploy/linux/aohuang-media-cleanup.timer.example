@@ -3,8 +3,8 @@ Description=Run Aohuang AI expired media cleanup hourly
 Documentation=https://github.com/jike072-collab/new-jiemian
 
 [Timer]
-OnCalendar=hourly
-RandomizedDelaySec=5m
+OnCalendar=*:0/10
+RandomizedDelaySec=1m
 Persistent=true
 Unit=aohuang-media-cleanup.service
 

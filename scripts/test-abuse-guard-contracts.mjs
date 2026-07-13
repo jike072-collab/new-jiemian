@@ -265,7 +265,7 @@ function checkExistingAbuseGuards() {
   assertFunctionIncludes(source.promptHttp, "optimizePromptResponse", "const rate = limiter.consume(rateKey)", "prompt optimizer must consume limiter");
   assertFunctionIncludes(source.promptHttp, "optimizePromptResponse", "status: 429", "prompt optimizer limiter must return 429");
 
-  assert(source.workloadLimits.includes("userImageTasks: 2"), "workload defaults must allow two concurrent image tasks per user");
+  assert(source.workloadLimits.includes("userImageTasks: 4"), "workload defaults must allow four concurrent image tasks per user");
   assert(source.workloadLimits.includes("userVideoTasks: 1"), "workload defaults must allow one concurrent video task per user");
   assert(source.workloadLimits.includes("userLargeUploads: 1"), "workload defaults must allow one large upload per user");
   assert(source.workloadLimits.includes("processLargeVideoIo: 1"), "workload defaults must allow one process-wide large video IO operation");

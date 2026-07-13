@@ -84,6 +84,8 @@ async function loadCleanupModule() {
       files: [
         join(root, "src/lib/server/media-retention-cleanup.ts"),
       ],
+      include: [],
+      exclude: [],
     }));
 
     const tsc = spawnSync(process.execPath, [join(root, "node_modules/typescript/bin/tsc"), "-p", tsconfigPath], {
@@ -92,7 +94,11 @@ async function loadCleanupModule() {
       shell: false,
     });
     if (tsc.error || tsc.status !== 0) {
-      throw new CleanupCliError("cleanup_compile_failed", "Expired media cleanup module could not be prepared.");
+      const diagnostic = sanitizeCompilerDiagnostic(tsc.stderr || tsc.stdout || tsc.error?.message || "");
+      throw new CleanupCliError(
+        "cleanup_compile_failed",
+        `Expired media cleanup module could not be prepared.${diagnostic ? ` ${diagnostic}` : ""}`,
+      );
     }
 
     const compiled = await import(pathToFileURL(join(outDir, "src/lib/server/media-retention-cleanup.js")).href);
@@ -111,6 +117,15 @@ async function loadCleanupModule() {
     await rm(compileRoot, { recursive: true, force: true });
     throw error;
   }
+}
+
+function sanitizeCompilerDiagnostic(value) {
+  return String(value)
+    .replace(/(token|password|secret|key|signature)=([^&\s]+)/gi, "$1=[REDACTED]")
+    .replace(/[\r\n]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim()
+    .slice(0, 1800);
 }
 
 function redactArg(arg) {

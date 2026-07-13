@@ -1,9 +1,11 @@
 "use client";
 
-import { useEffect, useMemo, useState, type KeyboardEvent, type MouseEvent } from "react";
-import { ArrowDownUp, ArrowLeft, ArrowRight, Check, Download, ImageUp, Loader2, RefreshCw, Trash2, Video, Wand2, X } from "lucide-react";
+import { useEffect, useMemo, useRef, useState, type KeyboardEvent, type MouseEvent } from "react";
+import { createPortal } from "react-dom";
+import { ArrowLeft, ArrowRight, Check, Download, ImageUp, Loader2, RefreshCw, SlidersHorizontal, Trash2, Video, Wand2, X } from "lucide-react";
 
 import { MediaCard } from "@/components/studio/media-card";
+import { cachedMediaObjectUrl } from "@/lib/client/media-cache";
 import type { LibraryFilter, LibrarySort } from "@/components/studio/types";
 import type { LibraryItem } from "@/lib/server/types";
 import { cn } from "@/lib/utils";
@@ -11,6 +13,7 @@ import { cn } from "@/lib/utils";
 const libraryPageSize = 18;
 
 export function LibraryWorkspace({
+  cacheOwnerId,
   items,
   totalCount,
   count,
@@ -40,6 +43,7 @@ export function LibraryWorkspace({
   onLogin,
   onStartCreate,
 }: {
+  cacheOwnerId: string | null;
   items: LibraryItem[];
   totalCount: number;
   count: { all: number; image: number; video: number };
@@ -259,6 +263,7 @@ export function LibraryWorkspace({
                     aria-label={`预览作品 ${item.title}`}
                   >
                     <MediaCard
+                      cacheOwnerId={cacheOwnerId}
                       item={item}
                       mediaMissing={itemMissing}
                       onMediaMissing={() => onMediaMissing(item.id)}
@@ -272,6 +277,7 @@ export function LibraryWorkspace({
                     aria-label={`预览作品 ${item.title}`}
                   >
                     <MediaCard
+                      cacheOwnerId={cacheOwnerId}
                       item={item}
                       groupItems={entry.items}
                       mediaMissing={itemMissing}
@@ -321,7 +327,7 @@ export function LibraryWorkspace({
         </div>
       ) : null}
 
-      {selectedItem ? (
+      {selectedItem && typeof document !== "undefined" ? createPortal(
         <div className="studio-library-modal" role="dialog" aria-modal="true" aria-label={selectedItem.title}>
           <div className="studio-library-modal__backdrop" onClick={() => onSelectItem(null)} />
           <div className="studio-library-detail">
@@ -329,6 +335,7 @@ export function LibraryWorkspace({
               <X className="size-4" aria-hidden="true" />
             </button>
             <MediaCard
+              cacheOwnerId={cacheOwnerId}
               item={selectedItem}
               groupItems={selectedEntry?.items}
               large
@@ -373,10 +380,12 @@ export function LibraryWorkspace({
                 </>
               ) : null}
               {selectedCanDownloadStoredFile ? (
-                <a className="studio-library-detail__action" href={selectedItem.output?.url} download>
-                  <Download className="size-4" aria-hidden="true" />
-                  下载
-                </a>
+                <CachedDownloadLink
+                  cacheOwnerId={cacheOwnerId}
+                  url={selectedItem.output?.url || ""}
+                  fileName={selectedItem.output?.storedName || selectedItem.title}
+                  preferCached={selectedItem.type === "image"}
+                />
               ) : null}
               <button type="button" className="studio-library-detail__action" onClick={() => void onRefresh()}>
                 <RefreshCw className="size-4" aria-hidden="true" />
@@ -393,7 +402,8 @@ export function LibraryWorkspace({
               </button>
             </div>
           </div>
-        </div>
+        </div>,
+        document.body,
       ) : null}
       {bulkDeleteConfirmOpen ? (
         <div className="studio-library-confirm" role="dialog" aria-modal="true" aria-labelledby="library-bulk-delete-confirm-title">
@@ -445,6 +455,46 @@ export function LibraryWorkspace({
         </div>
       ) : null}
     </div>
+  );
+}
+
+function CachedDownloadLink({
+  cacheOwnerId,
+  url,
+  fileName,
+  preferCached,
+}: {
+  cacheOwnerId: string | null;
+  url: string;
+  fileName: string;
+  preferCached: boolean;
+}) {
+  const [cachedUrl, setCachedUrl] = useState("");
+
+  useEffect(() => {
+    let cancelled = false;
+    let objectUrl = "";
+    if (!preferCached) return undefined;
+    void cachedMediaObjectUrl(cacheOwnerId, url).then((result) => {
+      if (!result) return;
+      if (cancelled) {
+        URL.revokeObjectURL(result);
+        return;
+      }
+      objectUrl = result;
+      setCachedUrl(result);
+    }).catch(() => undefined);
+    return () => {
+      cancelled = true;
+      if (objectUrl) URL.revokeObjectURL(objectUrl);
+    };
+  }, [cacheOwnerId, preferCached, url]);
+
+  return (
+    <a className="studio-library-detail__action" href={cachedUrl || url} download={fileName}>
+      <Download className="size-4" aria-hidden="true" />
+      下载
+    </a>
   );
 }
 
@@ -609,8 +659,29 @@ function LibraryToolbar({
   onToggleSelectAll: () => void;
   onDeleteSelected: () => void;
 }) {
-  const timeSort = sort === "created-asc" ? "created-asc" : "created-desc";
-  const sizeSort = sort === "size-asc" ? "size-asc" : "size-desc";
+  const [sortMenuOpen, setSortMenuOpen] = useState(false);
+  const sortMenuRef = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    if (!sortMenuOpen) return undefined;
+    const closeOnOutsideClick = (event: globalThis.PointerEvent) => {
+      if (!sortMenuRef.current?.contains(event.target as Node)) setSortMenuOpen(false);
+    };
+    const closeOnEscape = (event: globalThis.KeyboardEvent) => {
+      if (event.key === "Escape") setSortMenuOpen(false);
+    };
+    window.addEventListener("pointerdown", closeOnOutsideClick);
+    window.addEventListener("keydown", closeOnEscape);
+    return () => {
+      window.removeEventListener("pointerdown", closeOnOutsideClick);
+      window.removeEventListener("keydown", closeOnEscape);
+    };
+  }, [sortMenuOpen]);
+
+  const selectSort = (value: LibrarySort) => {
+    onSortChange(value);
+    setSortMenuOpen(false);
+  };
 
   return (
     <div className="studio-library-toolbar">
@@ -633,30 +704,45 @@ function LibraryToolbar({
           ) : (
             <>
               <Trash2 className="size-4" aria-hidden="true" />
-              {selectedCount ? `删除已选 (${selectedCount})` : "删除已选"}
+              删除
             </>
           )}
         </button>
       </div>
-      <div className="studio-library-toolbar__sorts" role="group" aria-label="作品排序">
+      <div ref={sortMenuRef} className="studio-library-toolbar__sorts">
         <button
           type="button"
-          className={cn("studio-library-toolbar__sort", sort.startsWith("created") && "is-active")}
-          onClick={() => onSortChange(timeSort === "created-desc" ? "created-asc" : "created-desc")}
-          aria-pressed={sort.startsWith("created")}
+          className={cn("studio-library-toolbar__sort", sortMenuOpen && "is-active")}
+          onClick={() => setSortMenuOpen((value) => !value)}
+          aria-label="筛选和排序"
+          title="筛选和排序"
+          aria-expanded={sortMenuOpen}
+          aria-haspopup="menu"
         >
-          <ArrowDownUp className="size-4" aria-hidden="true" />
-          {timeSort === "created-desc" ? "时间 最新" : "时间 最久"}
+          <SlidersHorizontal className="size-4" aria-hidden="true" />
         </button>
-        <button
-          type="button"
-          className={cn("studio-library-toolbar__sort", sort.startsWith("size") && "is-active")}
-          onClick={() => onSortChange(sizeSort === "size-desc" ? "size-asc" : "size-desc")}
-          aria-pressed={sort.startsWith("size")}
-        >
-          <ArrowDownUp className="size-4" aria-hidden="true" />
-          {sizeSort === "size-desc" ? "文件大小 最大" : "文件大小 最小"}
-        </button>
+        {sortMenuOpen ? (
+          <div className="studio-library-toolbar__sort-menu" role="menu" aria-label="作品排序">
+            {([
+              ["created-desc", "时间 最新"],
+              ["created-asc", "时间 最久"],
+              ["size-desc", "文件大小 最大"],
+              ["size-asc", "文件大小 最小"],
+            ] as const).map(([value, label]) => (
+              <button
+                key={value}
+                type="button"
+                role="menuitemradio"
+                aria-checked={sort === value}
+                className={cn(sort === value && "is-active")}
+                onClick={() => selectSort(value)}
+              >
+                <span>{label}</span>
+                {sort === value ? <Check className="size-4" aria-hidden="true" /> : null}
+              </button>
+            ))}
+          </div>
+        ) : null}
       </div>
     </div>
   );

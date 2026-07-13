@@ -47,6 +47,7 @@ const weakAdminPasswords = new Set([
 const endpointTypes = new Set([
   "images-generations",
   "images-edits",
+  "gettoken-banana",
   "chat-completions",
   "videos-generations",
   "grok-videos",

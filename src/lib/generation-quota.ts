@@ -8,17 +8,19 @@ export function estimateImageGenerationQuota(input: {
   mode: WorkspaceImageMode;
   quality: string;
   referenceImages: number;
+  model?: string | null;
 }) {
-  return applyImageQualityMultiplier(300, input.quality);
+  return applyBanana2Discount(applyImageQualityMultiplier(300, input.quality), input.model);
 }
 
 export function estimateImageGenerationTotalQuota(input: {
   quality: string;
   count: number;
+  model?: string | null;
 }) {
   const count = Math.min(Math.max(Math.round(Number(input.count) || 1), 1), 4);
   const base = count === 4 ? 1000 : 300 * count;
-  return applyImageQualityMultiplier(base, input.quality);
+  return applyBanana2Discount(applyImageQualityMultiplier(base, input.quality), input.model);
 }
 
 export function estimateVideoGenerationQuota(input: {
@@ -45,6 +47,7 @@ export type GenerationBillingIntent =
       ratio: string;
       quality: string;
       referenceImages: number;
+      model?: string | null;
     }
   | {
       kind: "video";
@@ -66,6 +69,7 @@ export function estimateGenerationQuota(input: GenerationBillingIntent) {
       mode: input.mode,
       quality: input.quality,
       referenceImages: input.referenceImages,
+      model: input.model,
     })
     : estimateVideoGenerationQuota({
       mode: input.mode,
@@ -145,6 +149,12 @@ function applyImageQualityMultiplier(base: number, quality: string) {
   if (quality === "4k") return Math.round(base * 1.2);
   if (quality === "2k") return Math.round(base * 1.1);
   return base;
+}
+
+function applyBanana2Discount(base: number, model?: string | null) {
+  return String(model || "").trim().toLowerCase() === "banana2"
+    ? Math.round(base * 0.85)
+    : base;
 }
 
 function applyGrokVideoModelDiscount(base: number, model?: string | null) {

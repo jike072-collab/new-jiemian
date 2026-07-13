@@ -214,6 +214,7 @@ test("dual mode keeps JSON registration and login working when PostgreSQL shadow
       registerLimiter: new InMemoryRateLimiter(20, 60 * 60 * 1000),
       loginLimiter: new InMemoryRateLimiter(20, 60 * 60 * 1000),
       verificationSender: verification.verificationSender,
+      newApiPasswordLogin: async () => ({ success: false }),
       userSyncService: {
         ensureMapped: async (profile: NewApiUserSyncProfile) => {
           const result = activeMapping(profile.localUserId);
@@ -229,7 +230,7 @@ test("dual mode keeps JSON registration and login working when PostgreSQL shadow
 
     const registered = await verifiedRegister(auth, verification.sentCodes, {
       email: "dual-ok@example.com",
-      username: "dual-ok",
+      username: "dualok",
       password: "StrongPass123",
       displayName: "Dual OK",
     });
@@ -282,6 +283,7 @@ test("dual mode keeps JSON auth working when shadow and repair storage both fail
       registerLimiter: new InMemoryRateLimiter(20, 60 * 60 * 1000),
       loginLimiter: new InMemoryRateLimiter(20, 60 * 60 * 1000),
       verificationSender: verification.verificationSender,
+      newApiPasswordLogin: async () => ({ success: false }),
       userSyncService: {
         ensureMapped: async (profile: NewApiUserSyncProfile) => {
           const result = activeMapping(profile.localUserId);
@@ -297,7 +299,7 @@ test("dual mode keeps JSON auth working when shadow and repair storage both fail
 
     const registered = await verifiedRegister(auth, verification.sentCodes, {
       email: "dual-repair-fail@example.com",
-      username: "dual-repair-fail",
+      username: "dualfx",
       password: "StrongPass123",
       displayName: "Dual Repair Fail",
     });

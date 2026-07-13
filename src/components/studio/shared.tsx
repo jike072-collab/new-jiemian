@@ -325,6 +325,7 @@ export function PreviewState({
   title,
   description,
   badge,
+  action,
   role,
   live,
   children,
@@ -333,6 +334,7 @@ export function PreviewState({
   title: string;
   description?: string;
   badge?: string;
+  action?: React.ReactNode;
   role?: "status" | "alert";
   live?: boolean;
   children: React.ReactNode;
@@ -344,7 +346,12 @@ export function PreviewState({
           <h3>{title}</h3>
           {description ? <p>{description}</p> : null}
         </div>
-        {badge ? <span className="shell-chip">{badge}</span> : null}
+        {badge || action ? (
+          <div className="studio-preview__meta">
+            {badge ? <span className="shell-chip">{badge}</span> : null}
+            {action}
+          </div>
+        ) : null}
       </div>
       <div className="studio-preview__content">{children}</div>
     </div>
@@ -497,7 +504,10 @@ export function CustomSelect({
         }}
       >
         {icon ? <span className="studio-custom-select__icon" aria-hidden="true">{icon}</span> : null}
-        <span className="studio-custom-select__value">{selectedOption?.label || placeholder}</span>
+        <span className="studio-custom-select__value">
+          <span>{selectedOption?.label || placeholder}</span>
+          {selectedOption?.description ? <small>{selectedOption.description}</small> : null}
+        </span>
         <ChevronDown className={cn("size-4 transition", open && "rotate-180")} aria-hidden="true" />
       </button>
       <div
@@ -533,7 +543,10 @@ export function CustomSelect({
               }}
               onClick={() => chooseOption(option)}
             >
-              <span>{option.label}</span>
+              <span className="studio-custom-select__option-copy">
+                <span>{option.label}</span>
+                {option.description ? <small>{option.description}</small> : null}
+              </span>
               {selected ? <Check className="size-4" aria-hidden="true" /> : null}
             </button>
           );
@@ -562,7 +575,8 @@ export function ProviderSelect({
 }) {
   const options = providers.map((provider) => ({
     value: provider.id,
-    label: provider.displayName || provider.model,
+    label: providerModelName(provider.model, provider.displayName),
+    description: providerUseCase(provider.model, provider.displayName),
   }));
 
   return (
@@ -595,6 +609,27 @@ export function ProviderSelect({
       </div>
     </FieldFrame>
   );
+}
+
+function providerModelName(model: string, displayName: string) {
+  const normalized = model.trim().toLowerCase();
+  if (normalized === "image" || normalized === "banana-img2") return "Image";
+  if (normalized === "banana2") return "Banana2";
+  if (normalized === "banana-pro") return "Banana Pro";
+  if (normalized === "grok-video-1.5") return "Grok";
+  return displayName || model;
+}
+
+function providerUseCase(model: string, displayName: string) {
+  const normalized = model.trim().toLowerCase();
+  const normalizedDisplayName = displayName.trim().toLowerCase();
+  if (normalized === "image" || normalized === "banana-img2" || normalizedDisplayName === "image") {
+    return "全风格兼容·创意测试通用款";
+  }
+  if (normalized === "banana2") return "极速省积分·批量草图首选";
+  if (normalized === "banana-pro") return "电商质感专项优化·商用成品直出";
+  if (normalized === "grok-video-1.5") return "动态影像直出·商品短片一键生成";
+  return undefined;
 }
 
 export function PromptBox({

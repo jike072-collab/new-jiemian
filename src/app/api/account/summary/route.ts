@@ -48,11 +48,11 @@ export async function GET(request: NextRequest) {
   const membershipService = getMembershipService();
   const checkInService = getDailyCheckInService();
 
-  const [quotaResult, membership, checkInResult] = await Promise.all([
-    quotaService.getCurrentQuota(localUserId, { allowCached: false }).catch(() => null),
+  const [membership, checkInResult] = await Promise.all([
     membershipService.getStatus(localUserId).catch(() => emptyMembershipStatus()),
     checkInService.getStatus(localUserId).catch(() => emptyCheckInStatus()),
   ]);
+  const quotaResult = await quotaService.getCurrentQuota(localUserId, { allowCached: false }).catch(() => null);
   const quota = quotaResult?.ok ? quotaResult.snapshot : null;
 
   return NextResponse.json({

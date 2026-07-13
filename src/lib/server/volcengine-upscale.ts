@@ -63,9 +63,58 @@ const imagexServiceName = "imagex";
 const vodServiceName = "vod";
 const imageUploadHostTimeoutMs = 90 * 1000;
 const defaultUploadHostTimeoutMs = 30 * 60 * 1000;
+const imageProcessRetryDelaysMs = [2_000, 5_000, 10_000];
+const videoUploadRetryDelaysMs = [5_000, 15_000];
+const resultDownloadRetryDelaysMs = [2_000, 5_000, 10_000];
+let imageProcessQueue = Promise.resolve();
 
 function env(name: string, fallback = "") {
   return process.env[name] || fallback;
+}
+
+function transientProviderError(error: unknown) {
+  if (error instanceof GenerationDiagnosticError) {
+    return ["PROVIDER_RATE_LIMITED", "PROVIDER_TIMEOUT", "PROVIDER_NETWORK_ERROR", "PROVIDER_UPSTREAM_5XX"].includes(error.code);
+  }
+  const message = error instanceof Error ? `${error.name} ${error.message}` : String(error || "");
+  return /abort|timeout|timed out|fetch failed|ECONN|ENOTFOUND|EAI_AGAIN|network|socket|TLS|certificate/i.test(message);
+}
+
+async function retryTransientProviderCall<T>(
+  action: (attempt: number) => Promise<T>,
+  delaysMs: readonly number[],
+  sleep: (delayMs: number) => Promise<void> = (delayMs) => new Promise((resolve) => setTimeout(resolve, delayMs)),
+) {
+  for (let attempt = 1; ; attempt += 1) {
+    try {
+      return await action(attempt);
+    } catch (error) {
+      const retryDelayMs = delaysMs[attempt - 1];
+      if (retryDelayMs === undefined || !transientProviderError(error)) throw error;
+      console.warn(JSON.stringify({
+        event: "upscale_provider_retry",
+        attempt,
+        nextAttempt: attempt + 1,
+        delayMs: retryDelayMs,
+        code: error instanceof GenerationDiagnosticError ? error.code : "PROVIDER_NETWORK_ERROR",
+      }));
+      await sleep(retryDelayMs);
+    }
+  }
+}
+
+async function serializeImageProcess<T>(action: () => Promise<T>) {
+  const previous = imageProcessQueue;
+  let release: () => void;
+  imageProcessQueue = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  await previous.catch(() => undefined);
+  try {
+    return await action();
+  } finally {
+    release!();
+  }
 }
 
 export function defaultImagexOutputDomain(serviceId: string, region: string) {
@@ -740,7 +789,7 @@ export async function upscaleImage(
         DenoiseRatio: 0.7,
       },
     });
-    const processed = await openapiRequest<{
+    const processed = await serializeImageProcess(() => retryTransientProviderCall(() => openapiRequest<{
       Result?: { Output?: string };
     }>({
       endpoint: config.endpoint,
@@ -758,7 +807,7 @@ export async function upscaleImage(
         WorkflowParameter: workflowParameter,
       },
       timeoutMs: 10 * 60 * 1000,
-    });
+    }), imageProcessRetryDelaysMs));
     const output = parseJsonString(processed.Result?.Output);
     const objectKey = firstString(output.ObjectKey, output.objectKey, output.URI, output.Uri);
     if (!objectKey) throw new GenerationDiagnosticError({ code: "PROVIDER_BAD_RESPONSE", providerId: provider.id, model: provider.model });
@@ -780,7 +829,10 @@ export async function upscaleImage(
     let lastStoreError: unknown = null;
     for (const candidateUrl of outputUrls) {
       try {
-        stored = await storeRemoteUrl(candidateUrl, "image-upscale", "image/png");
+        stored = await retryTransientProviderCall(
+          () => storeRemoteUrl(candidateUrl, "image-upscale", "image/png"),
+          resultDownloadRetryDelaysMs,
+        );
         outputUrl = candidateUrl;
         break;
       } catch (error) {
@@ -947,7 +999,10 @@ export async function submitVideoUpscale(
     estimatedQuotaUnits = await claimUpscaleBillingDispatch({ kind: "video", scale, billing: billingContext });
     await markUpscaleProviderStarted({ billing: billingContext, upstreamModel: provider.model });
     const config = videoConfig(provider);
-    const uploaded = await uploadVideoToVod(file, config);
+    const uploaded = await retryTransientProviderCall(
+      () => uploadVideoToVod(file, config),
+      videoUploadRetryDelaysMs,
+    );
     const vid = uploaded.Vid;
     const sourceInfo = asRecord(uploaded.SourceInfo);
     const start = await openapiRequest<{ Result?: { RunId?: string } }>({
@@ -1338,7 +1393,10 @@ export async function refreshVideoUpscaleJob(jobId: string, localUserId?: string
     let stored: Awaited<ReturnType<typeof storeRemoteUrl>> | null = null;
     for (const candidateUrl of outputUrls) {
       try {
-        stored = await storeRemoteUrl(candidateUrl, "video-upscale", "video/mp4");
+        stored = await retryTransientProviderCall(
+          () => storeRemoteUrl(candidateUrl, "video-upscale", "video/mp4"),
+          resultDownloadRetryDelaysMs,
+        );
         outputUrl = candidateUrl;
         break;
       } catch {
@@ -1455,5 +1513,8 @@ export const volcengineUpscaleInternalsForTests = {
   collectNestedRecords,
   findVideoOutputFile,
   playInfoLookupVid,
+  retryTransientProviderCall,
   scoreVideoOutputCandidate,
+  serializeImageProcess,
+  transientProviderError,
 };

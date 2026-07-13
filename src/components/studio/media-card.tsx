@@ -2,13 +2,15 @@
 
 /* eslint-disable @next/next/no-img-element */
 
-import { AlertTriangle, Download, ExternalLink, Pause, Play } from "lucide-react";
-import { useEffect, useRef, useState, type MouseEvent, type PointerEvent, type WheelEvent } from "react";
+import { AlertTriangle, Download, ExternalLink, Pause, Play, Video } from "lucide-react";
+import { useEffect, useRef, useState, type MouseEvent, type PointerEvent } from "react";
 
+import { cachedMediaObjectUrl } from "@/lib/client/media-cache";
 import type { LibraryItem } from "@/lib/server/types";
 import { cn } from "@/lib/utils";
 
 export function MediaCard({
+  cacheOwnerId,
   item,
   groupItems,
   large = false,
@@ -17,6 +19,7 @@ export function MediaCard({
   mediaMissing = false,
   onMediaMissing,
 }: {
+  cacheOwnerId?: string | null;
   item: LibraryItem;
   groupItems?: LibraryItem[];
   large?: boolean;
@@ -26,8 +29,10 @@ export function MediaCard({
   onMediaMissing?: () => void;
 }) {
   const videoRef = useRef<HTMLVideoElement | null>(null);
+  const zoomSurfaceRef = useRef<HTMLDivElement | null>(null);
   const dragStateRef = useRef<{ pointerId: number; startX: number; startY: number; originX: number; originY: number } | null>(null);
   const [previewPlaying, setPreviewPlaying] = useState(false);
+  const [readyVideoSource, setReadyVideoSource] = useState("");
   const [activeImageState, setActiveImageState] = useState({ key: "", index: 0 });
   const [imageViewportState, setImageViewportState] = useState({
     key: "",
@@ -54,14 +59,15 @@ export function MediaCard({
   const unavailable = mediaMissing || mediaExpired;
   const hasMediaUrl = Boolean(media?.url) && !unavailable;
   const typeLabel = libraryModeLabel(item);
+  const displayTitle = item.title === typeLabel || item.mode === "image-upscale" || item.mode === "video-upscale"
+    ? ""
+    : item.title;
   const createdAt = formatDateTime(item.createdAt);
-  const expiresAt = item.expiredAt || item.expiresAt;
-  const expiryText = expiresAt ? `${mediaExpired ? "已过期" : "过期"} ${formatDateTime(expiresAt)}` : "";
-  const dimensionText = libraryDimensions(item);
   const scaleText = typeof item.params.scale === "number" || typeof item.params.scale === "string"
-    ? `${item.params.scale}x`
+    ? `x${item.params.scale}`
     : "";
   const fileSizeText = typeof media?.size === "number" ? formatBytes(media.size) : "";
+  const ratioText = libraryRatio(item);
   const durationText = libraryDuration(item);
   const canDownloadStoredFile = Boolean(media?.storedName);
   const showActions = large && !compact;
@@ -69,10 +75,12 @@ export function MediaCard({
   const showBody = !compact;
   const imageLoading = large ? "eager" : "lazy";
   const imageFetchPriority = large ? "high" : "low";
-  const videoPreload = large ? "auto" : "metadata";
   const imageUrl = media?.url && item.type === "image" ? mediaPreviewUrl(media.url, large) : media?.url;
+  const videoSource = item.type === "video" ? media?.url || "" : "";
+  const resolvedMediaUrl = useCachedMediaSource(cacheOwnerId, item.type === "image" ? imageUrl : videoSource);
+  const resolvedVideoSource = item.type === "video" ? resolvedMediaUrl || videoSource : "";
+  const videoReady = Boolean(resolvedVideoSource) && readyVideoSource === resolvedVideoSource;
   const statusBadge = mediaExpired ? "已过期" : mediaMissing ? "文件失效" : libraryStatusBadgeLabel(item.status);
-  const batchText = isImageGroup ? `${imageGroupItems.length} 张` : "";
 
   useEffect(() => {
     if (item.type !== "image" || !hasMediaUrl || !imageUrl) return undefined;
@@ -90,19 +98,6 @@ export function MediaCard({
   const setActiveImageIndex = (index: number) => {
     dragStateRef.current = null;
     setActiveImageState({ key: imageGroupKey, index });
-  };
-
-  const setImageZoom = (nextZoom: number | ((value: number) => number)) => {
-    setImageViewportState((current) => {
-      const currentZoom = current.key === imageViewportKey ? current.zoom : 1;
-      const zoom = typeof nextZoom === "function" ? nextZoom(currentZoom) : nextZoom;
-      return {
-        key: imageViewportKey,
-        zoom,
-        offset: current.key === imageViewportKey ? current.offset : { x: 0, y: 0 },
-        dragging: current.key === imageViewportKey ? current.dragging : false,
-      };
-    });
   };
 
   const setImageOffset = (offset: { x: number; y: number }) => {
@@ -123,6 +118,30 @@ export function MediaCard({
     }));
   };
 
+  useEffect(() => {
+    const element = zoomSurfaceRef.current;
+    if (!element || !large || item.type !== "image") return undefined;
+    const handleWheel = (event: globalThis.WheelEvent) => {
+      event.preventDefault();
+      event.stopPropagation();
+      const direction = Math.sign(event.deltaY);
+      if (!direction) return;
+      setImageViewportState((current) => {
+        const currentZoom = current.key === imageViewportKey ? current.zoom : 1;
+        const next = currentZoom + (direction < 0 ? 0.2 : -0.2);
+        const zoom = Math.min(4, Math.max(0.5, Number(next.toFixed(2))));
+        return {
+          key: imageViewportKey,
+          zoom,
+          offset: current.key === imageViewportKey ? current.offset : { x: 0, y: 0 },
+          dragging: false,
+        };
+      });
+    };
+    element.addEventListener("wheel", handleWheel, { passive: false });
+    return () => element.removeEventListener("wheel", handleWheel);
+  }, [imageViewportKey, item.type, large]);
+
   const togglePreviewPlayback = async (event: MouseEvent<HTMLButtonElement>) => {
     event.preventDefault();
     event.stopPropagation();
@@ -130,31 +149,23 @@ export function MediaCard({
     if (!video) return;
     if (video.paused) {
       video.muted = true;
-      await video.play();
-      setPreviewPlaying(true);
+      try {
+        await video.play();
+        setPreviewPlaying(true);
+      } catch {
+        setPreviewPlaying(false);
+      }
       return;
     }
     video.pause();
     setPreviewPlaying(false);
   };
 
-  const handleImageWheelZoom = (event: WheelEvent<HTMLDivElement>) => {
-    if (!large || item.type !== "image") return;
-    event.preventDefault();
-    event.stopPropagation();
-    const direction = Math.sign(event.deltaY);
-    if (!direction) return;
-    setImageZoom((current) => {
-      const next = current + (direction < 0 ? 0.2 : -0.2);
-      return Math.min(4, Math.max(1, Number(next.toFixed(2))));
-    });
-  };
-
   const clampImageOffset = (value: { x: number; y: number }, element: HTMLDivElement) => {
-    if (imageZoom <= 1) return { x: 0, y: 0 };
     const rect = element.getBoundingClientRect();
-    const maxX = ((imageZoom - 1) * rect.width) / 2;
-    const maxY = ((imageZoom - 1) * rect.height) / 2;
+    const movementRatio = Math.max(0.15, Math.abs(imageZoom - 1) / 2);
+    const maxX = rect.width * movementRatio;
+    const maxY = rect.height * movementRatio;
     return {
       x: Math.max(-maxX, Math.min(maxX, value.x)),
       y: Math.max(-maxY, Math.min(maxY, value.y)),
@@ -185,8 +196,7 @@ export function MediaCard({
       x: dragState.originX + (event.clientX - dragState.startX),
       y: dragState.originY + (event.clientY - dragState.startY),
     };
-    const next = imageZoom > 1 ? clampImageOffset(rawOffset, event.currentTarget) : rawOffset;
-    setImageOffset(next);
+    setImageOffset(clampImageOffset(rawOffset, event.currentTarget));
   };
 
   const handleImagePointerEnd = (event: PointerEvent<HTMLDivElement>) => {
@@ -202,6 +212,7 @@ export function MediaCard({
   return (
     <article className={cn("studio-media-card", compact && "is-compact")}>
       <div className={cn("studio-media-card__frame", large && "is-large")}>
+        {!large && scaleText ? <span className="studio-media-card__scale-badge">{scaleText}</span> : null}
         {detailFacts.length ? (
           <div className="studio-media-card__facts-overlay" aria-label="Detail facts">
             {detailFacts.map((fact, index) => (
@@ -213,8 +224,9 @@ export function MediaCard({
           <div className="studio-media-card__gallery-single">
             {activeImageItem ? (
               <div
-                className={cn("studio-media-card__zoom-surface", imageZoom > 1 && "is-zoomed", isDraggingImage && "is-dragging")}
-                onWheel={handleImageWheelZoom}
+                ref={zoomSurfaceRef}
+                className={cn("studio-media-card__zoom-surface", "is-draggable", isDraggingImage && "is-dragging")}
+                style={{ position: "relative" }}
                 onPointerDown={handleImagePointerDown}
                 onPointerMove={handleImagePointerMove}
                 onPointerUp={handleImagePointerEnd}
@@ -228,7 +240,14 @@ export function MediaCard({
                   decoding="async"
                   fetchPriority={imageFetchPriority}
                   onError={activeImageItem.id === item.id ? onMediaMissing : undefined}
-                  style={{ transform: `translate3d(${imageOffset.x}px, ${imageOffset.y}px, 0) scale(${imageZoom})` }}
+                  style={{
+                    position: "absolute",
+                    inset: 0,
+                    width: "100%",
+                    height: "100%",
+                    objectFit: "contain",
+                    transform: `translate3d(${imageOffset.x}px, ${imageOffset.y}px, 0) scale(${imageZoom})`,
+                  }}
                 />
               </div>
             ) : null}
@@ -268,40 +287,58 @@ export function MediaCard({
         ) : hasMediaUrl && imageUrl && item.type === "image" ? (
           large ? (
             <div
-              className={cn("studio-media-card__zoom-surface", imageZoom > 1 && "is-zoomed", isDraggingImage && "is-dragging")}
-              onWheel={handleImageWheelZoom}
+              ref={zoomSurfaceRef}
+              className={cn("studio-media-card__zoom-surface", "is-draggable", isDraggingImage && "is-dragging")}
+              style={{ position: "relative" }}
               onPointerDown={handleImagePointerDown}
               onPointerMove={handleImagePointerMove}
               onPointerUp={handleImagePointerEnd}
               onPointerCancel={handleImagePointerEnd}
             >
               <img
-                src={imageUrl}
+                src={resolvedMediaUrl || imageUrl}
                 alt={item.title}
                 loading={imageLoading}
                 decoding="async"
                 fetchPriority={imageFetchPriority}
                 onError={onMediaMissing}
-                style={{ transform: `translate3d(${imageOffset.x}px, ${imageOffset.y}px, 0) scale(${imageZoom})` }}
+                style={{
+                  position: "absolute",
+                  inset: 0,
+                  width: "100%",
+                  height: "100%",
+                  objectFit: "contain",
+                  transform: `translate3d(${imageOffset.x}px, ${imageOffset.y}px, 0) scale(${imageZoom})`,
+                }}
               />
             </div>
           ) : (
-            <img src={imageUrl} alt={item.title} loading={imageLoading} decoding="async" fetchPriority={imageFetchPriority} onError={onMediaMissing} />
+            <img src={resolvedMediaUrl || imageUrl} alt={item.title} loading={imageLoading} decoding="async" fetchPriority={imageFetchPriority} onError={onMediaMissing} />
           )
         ) : null}
         {hasMediaUrl && media?.url && item.type === "video" ? (
-          <video
-            ref={videoRef}
-            src={media.url}
-            controls={showMediaControls}
-            muted={!large}
-            playsInline
-            preload={videoPreload}
-            onError={onMediaMissing}
-            onPause={() => setPreviewPlaying(false)}
-            onPlay={() => setPreviewPlaying(true)}
-            onEnded={() => setPreviewPlaying(false)}
-          />
+          <>
+            {!videoReady ? (
+              <div className="studio-media-card__video-placeholder" aria-hidden="true">
+                <Video className="size-7" />
+                <span>{item.title}</span>
+              </div>
+            ) : null}
+            <video
+              ref={videoRef}
+              className={cn("studio-media-card__video", videoReady && "is-ready")}
+              src={resolvedVideoSource}
+              controls={showMediaControls}
+              muted={!large}
+              playsInline
+              preload={large ? "metadata" : "auto"}
+              onLoadedData={() => setReadyVideoSource(resolvedVideoSource)}
+              onError={onMediaMissing}
+              onPause={() => setPreviewPlaying(false)}
+              onPlay={() => setPreviewPlaying(true)}
+              onEnded={() => setPreviewPlaying(false)}
+            />
+          </>
         ) : null}
         {!hasMediaUrl ? (
           <div className={cn("studio-media-card__missing", unavailable && "is-missing")}>
@@ -309,7 +346,7 @@ export function MediaCard({
             <span>{mediaExpired ? "文件已过期" : mediaMissing ? "文件失效" : libraryStatusLabel(item.status)}</span>
           </div>
         ) : null}
-        {!large && item.type === "video" && hasMediaUrl ? (
+        {item.type === "video" && hasMediaUrl && (!large || !videoReady) ? (
           <>
             <button
               type="button"
@@ -324,31 +361,26 @@ export function MediaCard({
         ) : null}
       </div>
       {showBody ? <div className="studio-media-card__body">
-        <div className="studio-media-card__head">
-          <strong>{item.title}</strong>
-          {batchText ? <span>{batchText}</span> : statusBadge ? <span>{statusBadge}</span> : null}
-        </div>
+        {displayTitle || statusBadge ? <div className="studio-media-card__head">
+          {displayTitle ? <strong>{displayTitle}</strong> : <span />}
+          {statusBadge ? <span>{statusBadge}</span> : null}
+        </div> : null}
         <div className="studio-media-card__meta" aria-label="Item info">
-          <span>{typeLabel}</span>
-          {batchText ? <span>{batchText}</span> : null}
           <span>{createdAt}</span>
-          {durationText ? <span>{durationText}</span> : null}
-          {scaleText ? <span>{scaleText}</span> : null}
-          {dimensionText ? <span>{dimensionText}</span> : null}
-          {fileSizeText ? <span>{fileSizeText}</span> : null}
-          {expiryText ? <span>{expiryText}</span> : null}
+          <span>{fileSizeText || "大小未知"}</span>
+          <span>{ratioText || "比例未知"}</span>
         </div>
         {large && item.error && (item.status === "failed" || !item.output?.url) ? <p>{item.error}</p> : null}
         {mediaExpired ? <p className="studio-inline-error" role="alert">文件已超过保存期限，作品记录仍保留，可删除记录。</p> : null}
         {!mediaExpired && mediaMissing ? <p className="studio-inline-error" role="alert">结果文件不存在，作品记录仍保留，可刷新或删除。</p> : null}
         {showActions && media?.url && !unavailable ? (
           <div className="studio-media-card__actions">
-            <a href={media.url} target="_blank" rel="noreferrer">
+            <a href={resolvedMediaUrl || media.url} target="_blank" rel="noreferrer">
               <ExternalLink className="size-4" aria-hidden="true" />
               预览
             </a>
             {canDownloadStoredFile ? (
-              <a href={media.url} download>
+              <a href={resolvedMediaUrl || media.url} download={media.storedName || true}>
                 <Download className="size-4" aria-hidden="true" />
                 下载
               </a>
@@ -358,6 +390,33 @@ export function MediaCard({
       </div> : null}
     </article>
   );
+}
+
+function useCachedMediaSource(ownerLocalUserId: string | null | undefined, url: string | null | undefined) {
+  const [cachedSource, setCachedSource] = useState<{ source: string; url: string } | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    let objectUrl = "";
+    if (!url) return undefined;
+
+    void cachedMediaObjectUrl(ownerLocalUserId, url).then((cachedUrl) => {
+      if (!cachedUrl) return;
+      if (cancelled) {
+        URL.revokeObjectURL(cachedUrl);
+        return;
+      }
+      objectUrl = cachedUrl;
+      setCachedSource({ source: cachedUrl, url });
+    }).catch(() => undefined);
+
+    return () => {
+      cancelled = true;
+      if (objectUrl) URL.revokeObjectURL(objectUrl);
+    };
+  }, [ownerLocalUserId, url]);
+
+  return cachedSource && cachedSource.url === url ? cachedSource.source : "";
 }
 
 export function buildLibraryDetailFacts(item: LibraryItem) {
@@ -370,7 +429,7 @@ export function buildLibraryDetailFacts(item: LibraryItem) {
   const dimensionText = libraryDimensions(item);
   if (dimensionText) facts.push(dimensionText);
   const scaleText = typeof item.params.scale === "number" || typeof item.params.scale === "string"
-    ? `${item.params.scale}x`
+    ? `x${item.params.scale}`
     : "";
   if (scaleText) facts.push(scaleText);
   const fileSizeText = typeof item.output?.size === "number" ? formatBytes(item.output.size) : "";

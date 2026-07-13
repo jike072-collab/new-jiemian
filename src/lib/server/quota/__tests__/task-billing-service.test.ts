@@ -210,10 +210,40 @@ test("uses membership image entitlement before charging quota", async () => {
   assert.equal(harness.adjustments.length, 0);
   const status = await harness.membershipService.getStatus("local-user");
   assert.equal(status.entitlements.image_generation.remaining, 9);
-  assert.equal(status.entitlements.image_edit.remaining, 10);
+  assert.equal(status.entitlements.image_edit.remaining, 0);
 });
 
-test("uses dedicated image edit entitlement before charging quota", async () => {
+test("uses one image entitlement per requested batch item", async () => {
+  const harness = service({ availableQuota: 0, providerQuota: 0 });
+  await harness.membershipService.applyPaidMembership({
+    localUserId: "local-user",
+    orderId: "membership-image-batch",
+    planId: "basic",
+    cycle: "monthly",
+    now: new Date("2026-06-18T00:00:00.000Z"),
+  });
+  const prechecked = await harness.taskBilling.precheck({
+    localUserId: "local-user",
+    taskId: "member-image-batch-task",
+    operation: "cloud_image_generation",
+    estimatedQuotaUnits: 1000,
+    membershipEntitlementAmount: 4,
+    idempotencyKey: "member-image-batch-task",
+  });
+  assert.equal(prechecked.ok, true);
+  if (!prechecked.ok) return;
+  assert.equal(prechecked.record.membership_entitlement_kind, "image_generation");
+  assert.equal(prechecked.record.membership_entitlement_units, 4);
+  assert.equal(prechecked.usage?.membership_entitlement_units, 4);
+  assert.equal(
+    (await harness.usageRepository.getByTaskId("local-user", "member-image-batch-task"))?.membership_entitlement_units,
+    4,
+  );
+  const status = await harness.membershipService.getStatus("local-user");
+  assert.equal(status.entitlements.image_generation.remaining, 6);
+});
+
+test("uses the shared image generation entitlement for image editing", async () => {
   const harness = service({ availableQuota: 0, providerQuota: 0 });
   await harness.membershipService.applyPaidMembership({
     localUserId: "local-user",
@@ -231,7 +261,7 @@ test("uses dedicated image edit entitlement before charging quota", async () => 
   });
   assert.equal(prechecked.ok, true);
   if (!prechecked.ok) return;
-  assert.equal(prechecked.record.membership_entitlement_kind, "image_edit");
+  assert.equal(prechecked.record.membership_entitlement_kind, "image_generation");
   assert.equal(prechecked.record.membership_entitlement_units, 1);
 
   const settled = await harness.taskBilling.settleSuccess({
@@ -244,8 +274,8 @@ test("uses dedicated image edit entitlement before charging quota", async () => 
   assert.equal(settled.record.final_quota_units, 0);
   assert.equal(harness.adjustments.length, 0);
   const status = await harness.membershipService.getStatus("local-user");
-  assert.equal(status.entitlements.image_edit.remaining, 9);
-  assert.equal(status.entitlements.image_generation.remaining, 10);
+  assert.equal(status.entitlements.image_edit.remaining, 0);
+  assert.equal(status.entitlements.image_generation.remaining, 9);
 });
 
 test("uses prompt and upscale entitlements before charging quota", async () => {
@@ -421,7 +451,7 @@ test("three accounts settle isolated entitlements in parallel without mixed char
   assert.equal(videoPrecheck.ok, true);
   if (!generationPrecheck.ok || !editPrecheck.ok || !videoPrecheck.ok) return;
   assert.equal(generationPrecheck.record.membership_entitlement_kind, "image_generation");
-  assert.equal(editPrecheck.record.membership_entitlement_kind, "image_edit");
+  assert.equal(editPrecheck.record.membership_entitlement_kind, "image_generation");
   assert.equal(videoPrecheck.record.membership_entitlement_kind, "video_generation");
 
   const [generationSettled, editSettled, videoSettled] = await Promise.all([
@@ -453,9 +483,9 @@ test("three accounts settle isolated entitlements in parallel without mixed char
     membershipService.getStatus(accountC.local_user_id),
   ]);
   assert.equal(statusA.entitlements.image_generation.remaining, 9);
-  assert.equal(statusA.entitlements.image_edit.remaining, 10);
-  assert.equal(statusB.entitlements.image_edit.remaining, 9);
-  assert.equal(statusB.entitlements.image_generation.remaining, 10);
+  assert.equal(statusA.entitlements.image_edit.remaining, 0);
+  assert.equal(statusB.entitlements.image_edit.remaining, 0);
+  assert.equal(statusB.entitlements.image_generation.remaining, 9);
   assert.equal(statusC.entitlements.video_generation.remaining, 0);
 });
 

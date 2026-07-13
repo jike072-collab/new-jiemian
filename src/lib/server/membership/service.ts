@@ -12,6 +12,7 @@ import { createMembershipPersistenceRepository } from "./persistence";
 import type { MembershipRepository } from "./repository";
 import type { MembershipStatusSnapshot, UserMembership } from "./types";
 import { getNewApiSubscriptionMembershipStatus } from "./new-api-subscription";
+import { getBillingService } from "../billing/service";
 
 export type MembershipGrantInput = {
   localUserId: string;
@@ -35,6 +36,13 @@ export type MembershipConsumeInput = {
 export type MembershipServiceDependencies = {
   repository?: MembershipRepository;
   externalStatus?: (localUserId: string, at: Date) => Promise<MembershipStatusSnapshot | null>;
+  externalMembershipFulfillment?: (input: {
+    localUserId: string;
+    sourceOrderId: string;
+    planId: string;
+    cycle: string;
+    startsAt: string;
+  }) => Promise<void>;
   now?: () => Date;
 };
 
@@ -89,11 +97,18 @@ function cloneEmptyEntitlements() {
 export class MembershipService {
   private readonly repository: MembershipRepository;
   private readonly externalStatus: (localUserId: string, at: Date) => Promise<MembershipStatusSnapshot | null>;
+  private readonly externalMembershipFulfillment: NonNullable<MembershipServiceDependencies["externalMembershipFulfillment"]>;
   private readonly now: () => Date;
 
   constructor(dependencies: MembershipServiceDependencies = {}) {
     this.repository = dependencies.repository || createMembershipPersistenceRepository();
     this.externalStatus = dependencies.externalStatus || getNewApiSubscriptionMembershipStatus;
+    this.externalMembershipFulfillment = dependencies.externalMembershipFulfillment || (async (input) => {
+      const result = await getBillingService().fulfillExternalMembership(input);
+      if (!result.ok || result.action === "review") {
+        throw new Error(result.ok ? "External membership credit requires reconciliation." : result.message);
+      }
+    });
     this.now = dependencies.now || (() => new Date());
   }
 
@@ -133,8 +148,43 @@ export class MembershipService {
           now: nowIso(now),
         });
       }
+      await this.ensureExternalMembershipFulfillment(status.active);
     } catch {
       return;
+    }
+  }
+
+  private async ensureExternalMembershipFulfillment(active: UserMembership) {
+    if (!active.source_order_id.startsWith("new-api-subscription:")) return;
+    await this.externalMembershipFulfillment({
+      localUserId: active.local_user_id,
+      sourceOrderId: active.source_order_id,
+      planId: active.plan_id,
+      cycle: active.cycle,
+      startsAt: active.starts_at,
+    });
+  }
+
+  private async backfillMissingEntitlements(active: UserMembership, timestamp: string) {
+    const sku = getMembershipSku(active.plan_id, active.cycle);
+    if (!sku) return;
+    for (const [kind, amount] of Object.entries(sku.grant_entitlements) as Array<[MembershipEntitlementKind, number]>) {
+      if (amount <= 0) continue;
+      const existing = await this.repository.getEntitlementBySourceOrderAndKind(
+        active.local_user_id,
+        active.source_order_id,
+        kind,
+      );
+      if (existing) continue;
+      await this.repository.grantEntitlement({
+        localUserId: active.local_user_id,
+        kind,
+        amount,
+        sourceOrderId: active.source_order_id,
+        expiresAt: active.ends_at,
+        idempotencyKey: `membership-backfill-v2:${active.source_order_id}:${kind}`,
+        now: timestamp,
+      });
     }
   }
 
@@ -146,6 +196,15 @@ export class MembershipService {
       .filter(byActiveRankAt(timestamp))
       .sort((a, b) => (getMembershipPlan(b.plan_id)?.rank || 0) - (getMembershipPlan(a.plan_id)?.rank || 0) || compareEndsDesc(a, b))[0] || null;
     const queued = memberships.filter(byQueued).sort(compareStarts)[0] || null;
+    if (active) {
+      await this.backfillMissingEntitlements(active, timestamp).catch((error) => {
+        const code = error && typeof error === "object" && "code" in error ? String(error.code) : "unknown";
+        console.error("membership.entitlement_backfill_failed", {
+          code,
+          name: error instanceof Error ? error.name : "unknown",
+        });
+      });
+    }
     const entitlements = cloneEmptyEntitlements();
     for (const grant of await this.repository.listEntitlements(localUserId, timestamp)) {
       addEntitlements(entitlements, grant.kind, {
@@ -160,7 +219,10 @@ export class MembershipService {
       recharge_bonus_basis_points: active ? getMembershipPlan(active.plan_id)?.recharge_bonus_basis_points || 0 : 0,
       entitlements,
     };
-    if (active) return localStatus;
+    if (active) {
+      await this.ensureExternalMembershipFulfillment(active).catch(() => undefined);
+      return localStatus;
+    }
     try {
       const external = await this.externalStatus(localUserId, at);
       if (external) await this.mirrorExternalStatus(localUserId, external, at);

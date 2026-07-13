@@ -192,7 +192,7 @@ function extractNewApiUserQuota(payload: { data?: NewApiUserSelf; user?: NewApiU
 function membershipEntitlementKindForOperation(operation: BillableOperation): MembershipEntitlementKind | null {
   if (operation === "prompt_optimize") return "prompt_optimize";
   if (operation === "cloud_image_generation") return "image_generation";
-  if (operation === "cloud_image_edit") return "image_edit";
+  if (operation === "cloud_image_edit") return "image_generation";
   if (operation === "cloud_video_generation") return "video_generation";
   if (operation === "cloud_image_upscale") return "image_upscale";
   if (operation === "cloud_video_upscale") return "video_upscale";
@@ -317,11 +317,21 @@ export class TaskBillingService {
     const quota = await this.getQuotaSnapshot(input.localUserId);
     if (!quota.ok) return quota;
     const requestedMembershipEntitlementKind = membershipEntitlementKindForOperation(input.operation);
+    const requestedMembershipEntitlementAmount = input.operation === "cloud_image_generation" || input.operation === "cloud_image_edit"
+      ? (input.membershipEntitlementAmount ?? 1)
+      : 1;
+    if (
+      !Number.isInteger(requestedMembershipEntitlementAmount)
+      || requestedMembershipEntitlementAmount < 1
+      || requestedMembershipEntitlementAmount > 4
+    ) {
+      return invalidTaskBillingRequest();
+    }
     const membershipEntitlementUnits = requestedMembershipEntitlementKind
       ? (await this.membershipService.consumeEntitlement({
         localUserId: input.localUserId,
         kind: requestedMembershipEntitlementKind,
-        amount: 1,
+        amount: requestedMembershipEntitlementAmount,
         idempotencyKey: `membership:${requestedMembershipEntitlementKind}:${input.taskId}`,
         taskId: input.taskId,
         now: this.now(),
@@ -338,6 +348,7 @@ export class TaskBillingService {
         status: "failed",
         estimatedQuotaUnits: chargeableEstimatedQuotaUnits,
         actualQuotaUnits: null,
+        membershipEntitlementUnits,
         idempotencyKey: input.idempotencyKey,
         errorCode: "insufficient_quota",
         errorMessage: "Insufficient quota for estimated task cost.",
@@ -354,6 +365,7 @@ export class TaskBillingService {
         status: "prechecked",
         estimatedQuotaUnits: chargeableEstimatedQuotaUnits,
         actualQuotaUnits: null,
+        membershipEntitlementUnits,
         idempotencyKey: input.idempotencyKey,
       });
       const record = await this.taskRepository.createPrecheck({
@@ -423,15 +435,18 @@ export class TaskBillingService {
     const record = await this.safeGetByTaskId(input.localUserId, input.taskId);
     if (isTaskBillingFailure(record)) return record;
     if (!record) return this.notFound();
-    if (
-      record.idempotency_key !== input.idempotencyKey.trim()
-      || record.estimated_quota_units !== input.estimatedQuotaUnits
-      || (record.request_fingerprint || null) !== (input.requestFingerprint || null)
-    ) {
+    const conflictReason = record.idempotency_key !== input.idempotencyKey.trim()
+      ? "idempotency key"
+      : record.estimated_quota_units !== input.estimatedQuotaUnits
+        ? "estimated quota"
+        : (record.request_fingerprint || null) !== (input.requestFingerprint || null)
+          ? "request fingerprint"
+          : null;
+    if (conflictReason) {
       return failure({
         code: "task_billing_conflict",
         status: 409,
-        message: "Task billing precheck does not match the generation request.",
+        message: `Task billing precheck ${conflictReason} does not match the generation request.`,
         retryable: false,
       });
     }
@@ -973,6 +988,7 @@ export class TaskBillingService {
       status: patch.status || existingUsage?.status || "prechecked",
       estimatedQuotaUnits: chargeableQuotaForRecord(record, record.estimated_quota_units),
       actualQuotaUnits: patch.actualQuotaUnits === undefined ? existingUsage?.actual_quota_units ?? null : patch.actualQuotaUnits,
+      membershipEntitlementUnits: record.membership_entitlement_units,
       upstreamLogId: patch.upstreamLogId === undefined ? existingUsage?.upstream_log_id || null : patch.upstreamLogId,
       upstreamRequestId: patch.upstreamRequestId === undefined ? existingUsage?.upstream_request_id || null : patch.upstreamRequestId,
       upstreamModel: patch.upstreamModel === undefined ? existingUsage?.upstream_model || null : patch.upstreamModel,

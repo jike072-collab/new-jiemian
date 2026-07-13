@@ -59,6 +59,7 @@ export type UploadFilePreview = {
 export type SelectOption = {
   value: string;
   label: string;
+  description?: string;
   disabled?: boolean;
 };
 
@@ -105,6 +106,7 @@ export type VideoWorkspaceState = {
 
 export type ImageGenerationProgressItem = {
   id: string;
+  scope: "image" | "image-editor";
   status: "running" | "done" | "failed";
   current: number;
   total: number;

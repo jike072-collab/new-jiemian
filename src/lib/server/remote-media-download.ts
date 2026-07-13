@@ -41,7 +41,10 @@ const defaultIdleTimeoutMs = 30000;
 const defaultMaxRedirects = 5;
 const metadataHost = "169.254.169.254";
 const allowedHostsEnvName = "REMOTE_MEDIA_ALLOWED_HOSTS";
-const builtInRemoteMediaHosts = ["image.codesonline.dev"];
+const builtInRemoteMediaHosts = [
+  "image.codesonline.dev",
+  "gettoken-jp.oss-accelerate.aliyuncs.com",
+];
 
 export async function storeRemoteUrlStreamed(url: string, options: RemoteMediaDownloadOptions) {
   await ensureRuntimeDirs();

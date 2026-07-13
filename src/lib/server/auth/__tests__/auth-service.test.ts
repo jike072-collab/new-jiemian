@@ -2,7 +2,12 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 
 import { createMemoryBillingRepository } from "../../billing";
-import { adminGetNewApiUser, createMemoryNewApiUserMappingRepository, type NewApiUserSyncProfile, type NewApiUserSyncResult } from "../../integrations/new-api";
+import {
+  adminGetNewApiUser,
+  createMemoryNewApiUserMappingRepository,
+  type NewApiUserSyncProfile,
+  type NewApiUserSyncResult,
+} from "../../integrations/new-api";
 import { createCsrfToken, verifyCsrfToken } from "../csrf";
 import { hashPassword, validatePasswordStrength, verifyPassword } from "../password";
 import { InMemoryRateLimiter } from "../rate-limit";
@@ -60,6 +65,10 @@ function service(overrides: {
   registerLimiter?: InMemoryRateLimiter;
   verificationLimiter?: InMemoryRateLimiter;
   getNewApiUser?: typeof adminGetNewApiUser;
+  newApiPasswordLogin?: (input: { username: string; password: string }, requestId?: string) => Promise<{
+    success?: boolean;
+    data?: { id: number; username: string; display_name?: string };
+  }>;
 } = {}) {
   const repository = overrides.repository || createMemoryAuthRepository();
   const mappingRepository = createMemoryNewApiUserMappingRepository();
@@ -79,6 +88,7 @@ function service(overrides: {
       registerLimiter: overrides.registerLimiter,
       verificationLimiter: overrides.verificationLimiter,
       getNewApiUser: overrides.getNewApiUser,
+      newApiPasswordLogin: overrides.newApiPasswordLogin,
       verificationSender: async (payload) => {
         sentCodes.push(payload);
       },
@@ -536,6 +546,29 @@ test("logs in with email or username and rotates any existing session", async ()
   assert.equal(oldSession.ok, false);
   if (oldSession.ok) return;
   assert.equal(oldSession.uiState, "session_expired");
+});
+
+test("New API login creates the local business shadow and mapping", async () => {
+  const harness = service({
+    newApiPasswordLogin: async () => ({
+      success: true,
+      data: {
+        id: 3,
+        username: "2411897106-0b7894",
+        display_name: "Test account",
+      },
+    }),
+  });
+
+  const result = await harness.service.login({
+    identifier: "2411897106@qq.com",
+    password: "managed-by-new-api",
+  });
+
+  assert.equal(result.ok, true);
+  const user = await harness.repository.getUserByIdentifier("2411897106@qq.com");
+  assert.equal(user?.email, "2411897106@qq.com");
+  assert.equal((await harness.mappingRepository.getByNewApiUserId("3"))?.local_user_id, user?.local_user_id);
 });
 
 test("logs in with an email verification code", async () => {

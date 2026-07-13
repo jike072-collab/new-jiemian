@@ -77,3 +77,61 @@ test("play info lookup falls back to the execution input vid when output vid is 
   const playInfoVid = volcengineUpscaleInternalsForTests.playInfoLookupVid(result, output?.vid);
   assert.equal(playInfoVid, "source-vid");
 });
+
+test("transient provider calls retry network failures and then succeed", async () => {
+  const attempts: number[] = [];
+  const delays: number[] = [];
+  const result = await volcengineUpscaleInternalsForTests.retryTransientProviderCall(
+    async (attempt) => {
+      attempts.push(attempt);
+      if (attempt < 3) throw new TypeError("fetch failed");
+      return "done";
+    },
+    [10, 20],
+    async (delayMs) => {
+      delays.push(delayMs);
+    },
+  );
+
+  assert.equal(result, "done");
+  assert.deepEqual(attempts, [1, 2, 3]);
+  assert.deepEqual(delays, [10, 20]);
+});
+
+test("non-transient provider failures are not retried", async () => {
+  let attempts = 0;
+  await assert.rejects(
+    volcengineUpscaleInternalsForTests.retryTransientProviderCall(
+      async () => {
+        attempts += 1;
+        throw new Error("invalid provider response");
+      },
+      [0, 0],
+    ),
+    /invalid provider response/,
+  );
+  assert.equal(attempts, 1);
+});
+
+test("image process dispatches are serialized", async () => {
+  const events: string[] = [];
+  let releaseFirst: () => void;
+  const firstGate = new Promise<void>((resolve) => {
+    releaseFirst = resolve;
+  });
+  const first = volcengineUpscaleInternalsForTests.serializeImageProcess(async () => {
+    events.push("first:start");
+    await firstGate;
+    events.push("first:end");
+  });
+  const second = volcengineUpscaleInternalsForTests.serializeImageProcess(async () => {
+    events.push("second:start");
+    events.push("second:end");
+  });
+
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.deepEqual(events, ["first:start"]);
+  releaseFirst!();
+  await Promise.all([first, second]);
+  assert.deepEqual(events, ["first:start", "first:end", "second:start", "second:end"]);
+});

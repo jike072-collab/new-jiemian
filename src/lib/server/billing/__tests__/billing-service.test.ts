@@ -170,6 +170,7 @@ function service(overrides: {
   const mappingRepository = createMemoryNewApiUserMappingRepository(overrides.mappings || mappingSeed());
   const membership = new MembershipService({
     repository: createMemoryMembershipRepository(),
+    externalMembershipFulfillment: async () => undefined,
     now: overrides.now || (() => new Date("2026-06-18T00:00:00.000Z")),
   });
   const creditCalls: CreditQuotaInput[] = [];
@@ -455,6 +456,39 @@ test("paid membership order credits quota and grants entitlements once", async (
   const duplicate = await withSecret(() => signedWebhook(harness.billing, payloadFor(order)));
   assert.equal(duplicate.ok, true);
   assert.equal(harness.creditCalls.length, 1);
+});
+
+test("external New API membership creates one paid credit record", async () => {
+  const harness = service();
+  const input = {
+    localUserId: "local-user",
+    sourceOrderId: "new-api-subscription:enterprise-yearly-1",
+    planId: "enterprise",
+    cycle: "yearly",
+    startsAt: "2026-06-18T00:00:00.000Z",
+  };
+
+  const first = await harness.billing.fulfillExternalMembership(input);
+  assert.equal(first.ok, true);
+  if (!first.ok) return;
+  assert.equal(first.action, "credited");
+  assert.equal(first.order.status, "paid");
+  assert.equal(first.order.channel, "new_api_subscription");
+  assert.equal(first.order.product_type, "membership");
+  assert.equal(first.order.credited_quota, 432000);
+  assert.equal(harness.creditCalls.length, 1);
+  assert.equal(harness.creditCalls[0].quotaUnits, 432000);
+
+  const duplicate = await harness.billing.fulfillExternalMembership(input);
+  assert.equal(duplicate.ok, true);
+  if (!duplicate.ok) return;
+  assert.equal(duplicate.action, "idempotent");
+  assert.equal(harness.creditCalls.length, 1);
+  assert.equal((await harness.repository.listOrders()).length, 1);
+
+  const membership = await harness.membership.getStatus("local-user");
+  assert.equal(membership.active?.source_order_id, input.sourceOrderId);
+  assert.equal(membership.entitlements.image_generation.remaining, 1800);
 });
 
 test("credit package applies active membership recharge bonus", async () => {

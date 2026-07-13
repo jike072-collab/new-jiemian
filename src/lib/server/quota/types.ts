@@ -47,6 +47,7 @@ export type UsageLogEntry = {
   status: UsageStatus;
   estimated_quota_units: number;
   actual_quota_units: number | null;
+  membership_entitlement_units?: number;
   upstream_log_id: string | null;
   upstream_request_id: string | null;
   upstream_model: string | null;

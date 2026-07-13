@@ -29,9 +29,71 @@ test("grants paid membership credits and entitlement counts by cycle", async () 
   assert.equal(status.entitlements.prompt_optimize.remaining, 90);
   assert.equal(status.entitlements.image_generation.remaining, 90);
   assert.equal(status.entitlements.video_generation.remaining, 3);
-  assert.equal(status.entitlements.image_edit.remaining, 90);
+  assert.equal(status.entitlements.image_edit.remaining, 0);
   assert.equal(status.entitlements.image_upscale.remaining, 90);
   assert.equal(status.entitlements.video_upscale.remaining, 3);
+});
+
+test("backfills only missing entitlement kinds for an active membership", async () => {
+  const repository = createMemoryMembershipRepository();
+  await repository.createMembership({
+    localUserId: "legacy-user",
+    planId: "pro",
+    cycle: "monthly",
+    status: "active",
+    startsAt: "2026-06-18T00:00:00.000Z",
+    endsAt: "2026-07-18T00:00:00.000Z",
+    sourceOrderId: "legacy-order",
+    now: "2026-06-18T00:00:00.000Z",
+  });
+  for (const [kind, amount] of [["prompt_optimize", 80], ["image_generation", 60], ["video_generation", 3]] as const) {
+    await repository.grantEntitlement({
+      localUserId: "legacy-user",
+      kind,
+      amount,
+      sourceOrderId: "legacy-order",
+      expiresAt: "2026-07-18T00:00:00.000Z",
+      idempotencyKey: `legacy-v1:legacy-order:${kind}`,
+      now: "2026-06-18T00:00:00.000Z",
+    });
+  }
+  const membership = new MembershipService({
+    repository,
+    now: () => new Date("2026-06-18T00:00:00.000Z"),
+  });
+  const status = await membership.getStatus("legacy-user");
+  assert.equal(status.entitlements.prompt_optimize.remaining, 80);
+  assert.equal(status.entitlements.image_generation.remaining, 60);
+  assert.equal(status.entitlements.video_generation.remaining, 3);
+  assert.equal(status.entitlements.image_edit.remaining, 0);
+  assert.equal(status.entitlements.image_upscale.remaining, 60);
+  assert.equal(status.entitlements.video_upscale.remaining, 3);
+});
+
+test("does not partially consume a multi-image entitlement request", async () => {
+  const membership = service();
+  await membership.applyPaidMembership({
+    localUserId: "user-partial",
+    orderId: "order-basic-partial",
+    planId: "basic",
+    cycle: "monthly",
+  });
+  const first = await membership.consumeEntitlement({
+    localUserId: "user-partial",
+    kind: "image_generation",
+    amount: 8,
+    idempotencyKey: "consume-eight",
+  });
+  assert.equal(first.consumed, 8);
+  const rejected = await membership.consumeEntitlement({
+    localUserId: "user-partial",
+    kind: "image_generation",
+    amount: 4,
+    idempotencyKey: "consume-four",
+  });
+  assert.equal(rejected.consumed, 0);
+  const status = await membership.getStatus("user-partial");
+  assert.equal(status.entitlements.image_generation.remaining, 2);
 });
 
 test("same tier renews, higher tier activates immediately, lower tier queues", async () => {
@@ -75,8 +137,18 @@ test("same tier renews, higher tier activates immediately, lower tier queues", a
 
 test("mirrors external New API membership into the local repository", async () => {
   const repository = createMemoryMembershipRepository();
+  const fulfillmentCalls: Array<{
+    localUserId: string;
+    sourceOrderId: string;
+    planId: string;
+    cycle: string;
+    startsAt: string;
+  }> = [];
   const membership = new MembershipService({
     repository,
+    externalMembershipFulfillment: async (input) => {
+      fulfillmentCalls.push(input);
+    },
     externalStatus: async () => ({
       active: {
         id: "new-api-subscription:mirror-1",
@@ -110,6 +182,16 @@ test("mirrors external New API membership into the local repository", async () =
   assert.equal(status.active?.plan_id, "pro");
   assert.equal((await repository.listMemberships("user-2")).length, 1);
   assert.equal((await repository.listEntitlements("user-2")).length, 6);
+  assert.deepEqual(fulfillmentCalls[0], {
+    localUserId: "user-2",
+    sourceOrderId: "new-api-subscription:mirror-1",
+    planId: "pro",
+    cycle: "monthly",
+    startsAt: "2026-06-18T00:00:00.000Z",
+  });
+
+  await membership.getStatus("user-2");
+  assert.equal(fulfillmentCalls.length, 2);
 
   const consumed = await membership.consumeEntitlement({
     localUserId: "user-2",

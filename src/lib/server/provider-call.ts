@@ -51,13 +51,14 @@ class BillingDispatchRejectedError extends Error {
 const duplicateImageDispatchWaitMs = 180000;
 const duplicateImageDispatchPollMs = 2000;
 const imageProviderRequestTimeoutMs = 600000;
+const getTokenBananaPollIntervalMs = 2800;
+const getTokenBananaTaskAttempts = 3;
 
 const grokVideo10Durations = new Set([6, 8, 10, 12, 15]);
 const grokVideo15Durations = new Set([6, 8, 10, 12, 15]);
 const grokVideo10Ratios = new Set(["1:1", "16:9", "9:16", "4:3", "3:4", "3:2", "2:3"]);
 const grokVideo15Ratios = new Set(["16:9", "9:16"]);
 const defaultVideoRatios = new Set(["1:1", "16:9", "9:16", "4:3", "3:4", "3:2", "2:3"]);
-const manxiaobaiGrokVideosApiUrl = "https://api.manxiaobai.online/v1/videos";
 
 function asRecord(value: unknown): Record<string, unknown> {
   return value && typeof value === "object" && !Array.isArray(value)
@@ -274,6 +275,167 @@ function imageUpscaleValue(quality: string) {
 
 function isImg2ImageProvider(provider: ProviderConfig) {
   return provider.model === "image4k";
+}
+
+function isGetTokenBananaProvider(provider: ProviderConfig) {
+  return provider.endpointType === "gettoken-banana";
+}
+
+function getTokenBananaBaseUrl(provider: ProviderConfig) {
+  return provider.apiUrl.replace(/\/+$/, "");
+}
+
+function getTokenBananaModelPath(provider: ProviderConfig) {
+  if (provider.model === "banana2") return "banana2";
+  if (provider.model === "banana-pro") return "banana_pro";
+  throw new GenerationDiagnosticError({
+    code: "MODEL_MISSING_IMAGE",
+    providerId: provider.id,
+    model: provider.model,
+    publicMessage: "当前 Banana 图片模型配置无效。",
+  });
+}
+
+function getTokenBananaSubmitEndpoint(provider: ProviderConfig, useEdits: boolean) {
+  const mode = useEdits ? "image-to-image" : "text-to-image";
+  return `${getTokenBananaBaseUrl(provider)}/${getTokenBananaModelPath(provider)}/${mode}`;
+}
+
+function getTokenBananaQueryEndpoint(provider: ProviderConfig) {
+  return `${getTokenBananaBaseUrl(provider)}/query`;
+}
+
+function getTokenTaskStatus(payload: unknown) {
+  return firstString(asRecord(payload).status).toUpperCase();
+}
+
+function getTokenTaskError(payload: unknown) {
+  const root = asRecord(payload);
+  const failedReason = asRecord(root.failedReason);
+  return firstString(root.errorMessage, failedReason.message, root.errorCode, failedReason.code)
+    || "GetToken Banana 任务执行失败。";
+}
+
+function isGetTokenTaskSuccess(status: string) {
+  return ["SUCCESS", "SUCCEEDED", "COMPLETED", "DONE", "FINISHED"].includes(status);
+}
+
+function isGetTokenTaskFailure(status: string) {
+  return ["FAILED", "FAIL", "ERROR", "TIMEOUT", "TIMED_OUT", "EXPIRED", "CANCELED", "CANCELLED"].includes(status);
+}
+
+async function callGetTokenBananaTask(input: {
+  provider: ProviderConfig;
+  prompt: string;
+  ratio: string;
+  quality: string;
+  files: UploadedMedia[];
+}) {
+  if (!["1k", "2k", "4k"].includes(input.quality)) {
+    throw new GenerationDiagnosticError({
+      code: "INPUT_INVALID_PARAMETERS",
+      providerId: input.provider.id,
+      model: input.provider.model,
+      publicMessage: "Banana 图片模型只支持 1K、2K 和 4K。",
+    });
+  }
+  const useEdits = input.files.length > 0;
+  const response = await fetchProviderWithNetworkRetry(getTokenBananaSubmitEndpoint(input.provider, useEdits), {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      ...authHeaders(input.provider),
+    },
+    body: JSON.stringify({
+      prompt: input.prompt,
+      aspectRatio: input.ratio,
+      resolution: input.quality,
+      clientTaskId: randomUUID(),
+      ...(useEdits ? {
+        imageUrls: input.files.map((file) => `data:${file.mimeType};base64,${file.bytes.toString("base64")}`),
+      } : {}),
+    }),
+    signal: AbortSignal.timeout(imageProviderRequestTimeoutMs),
+  });
+  let payload = await readProviderJson(response, input.provider);
+  const taskId = firstString(asRecord(payload).taskId, asRecord(payload).task_id);
+  if (!taskId) {
+    throw new GenerationDiagnosticError({
+      code: "PROVIDER_BAD_RESPONSE",
+      providerId: input.provider.id,
+      model: input.provider.model,
+      publicMessage: "GetToken Banana 没有返回任务编号。",
+    });
+  }
+
+  const deadline = Date.now() + imageProviderRequestTimeoutMs;
+  while (Date.now() < deadline) {
+    const status = getTokenTaskStatus(payload);
+    const output = parseProviderOutput(payload);
+    if ((isGetTokenTaskSuccess(status) || (!status && output.url)) && output.url) {
+      return { ...output, jobId: taskId, status: status || "SUCCESS" };
+    }
+    if (isGetTokenTaskFailure(status)) {
+      throw new GenerationDiagnosticError({
+        code: "TASK_CREATE_FAILED",
+        providerId: input.provider.id,
+        model: input.provider.model,
+        message: getTokenTaskError(payload),
+      });
+    }
+    await wait(getTokenBananaPollIntervalMs);
+    const queryResponse = await fetchProviderWithNetworkRetry(getTokenBananaQueryEndpoint(input.provider), {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        ...authHeaders(input.provider),
+      },
+      body: JSON.stringify({ taskId }),
+      signal: AbortSignal.timeout(imageProviderRequestTimeoutMs),
+    });
+    payload = await readProviderJson(queryResponse, input.provider);
+  }
+  throw new GenerationDiagnosticError({
+    code: "PROVIDER_TIMEOUT",
+    providerId: input.provider.id,
+    model: input.provider.model,
+    publicMessage: "GetToken Banana 生成超时，请稍后在作品库查看。",
+  });
+}
+
+function isRetryableGetTokenBananaError(error: unknown) {
+  if (!(error instanceof GenerationDiagnosticError)) return false;
+  if (error.upstreamStatus === 429 || (error.upstreamStatus !== undefined && error.upstreamStatus >= 500)) {
+    return true;
+  }
+  return error.code === "TASK_CREATE_FAILED"
+    && /all channels failed|no available account|status 5\d\d|temporarily unavailable|\bunavailable\b/i.test(error.message);
+}
+
+async function callGetTokenBananaTaskWithRetry(input: Parameters<typeof callGetTokenBananaTask>[0]) {
+  let lastError: unknown;
+  for (let attempt = 1; attempt <= getTokenBananaTaskAttempts; attempt += 1) {
+    try {
+      return await callGetTokenBananaTask(input);
+    } catch (error) {
+      lastError = error;
+      if (attempt >= getTokenBananaTaskAttempts || !isRetryableGetTokenBananaError(error)) throw error;
+      await wait((attempt * 750) + Math.floor(Math.random() * 250));
+    }
+  }
+  throw lastError;
+}
+
+async function callGetTokenBananaProvider(input: {
+  provider: ProviderConfig;
+  prompt: string;
+  ratio: string;
+  quality: string;
+  files: UploadedMedia[];
+  count: number;
+}) {
+  const outputCount = Math.min(Math.max(Math.round(input.count || 1), 1), 4);
+  return Promise.all(Array.from({ length: outputCount }, () => callGetTokenBananaTaskWithRetry(input)));
 }
 
 function img2ImageSize(ratio: string, quality: string) {
@@ -543,29 +705,6 @@ async function callOpenAiCompatibleGrokVideoProvider(provider: ProviderConfig, i
   duration: number;
   files: UploadedMedia[];
 }) {
-  if (provider.model === "grok-video-1.5" && input.files.length === 1) {
-    const referenceUploadProvider = { ...provider, apiUrl: manxiaobaiGrokVideosApiUrl };
-    const form = new FormData();
-    form.append("model", provider.model);
-    form.append("prompt", input.prompt);
-    form.append("seconds", String(input.duration));
-    form.append("aspect_ratio", input.ratio);
-    form.append("resolution", "720p");
-    form.append("input_reference[image_url]", await uploadGrokReferenceImage(referenceUploadProvider, input.files[0]));
-
-    const response = await fetch(grokVideosEndpoint(provider.apiUrl), {
-      method: "POST",
-      headers: authHeaders(provider),
-      body: form,
-      signal: AbortSignal.timeout(180000),
-    });
-    const output = parseProviderOutput(await readProviderJson(response, provider));
-    return {
-      ...output,
-      statusUrl: output.statusUrl || grokOpenAiVideoStatusUrl(provider.apiUrl, output.jobId || ""),
-    };
-  }
-
   const payload: Record<string, string | number> = {
     model: provider.model,
     prompt: input.prompt,
@@ -579,7 +718,7 @@ async function callOpenAiCompatibleGrokVideoProvider(provider: ProviderConfig, i
     payload.image = `data:${file.mimeType};base64,${file.bytes.toString("base64")}`;
   }
 
-  const response = await fetch(grokVideoGenerationsEndpoint(provider.apiUrl), {
+  const response = await fetch(grokVideosEndpoint(provider.apiUrl), {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
@@ -588,7 +727,11 @@ async function callOpenAiCompatibleGrokVideoProvider(provider: ProviderConfig, i
     body: JSON.stringify(payload),
     signal: AbortSignal.timeout(180000),
   });
-  return parseProviderOutput(await readProviderJson(response, provider));
+  const output = parseProviderOutput(await readProviderJson(response, provider));
+  return {
+    ...output,
+    statusUrl: output.statusUrl || grokOpenAiVideoStatusUrl(provider.apiUrl, output.jobId || ""),
+  };
 }
 
 async function callGrokVideoProvider(provider: ProviderConfig, input: {
@@ -863,7 +1006,18 @@ async function callImageProvider({
   files: UploadedMedia[];
   count: number;
 }) {
-  return callImageProviderOnce({ provider, prompt, ratio, quality, files, count });
+  try {
+    return await callImageProviderOnce({ provider, prompt, ratio, quality, files, count });
+  } catch (error) {
+    const transientStatus = error instanceof GenerationDiagnosticError
+      && [429, 502, 503].includes(error.upstreamStatus || 0);
+    const stalledBeforeGeneration = error instanceof GenerationDiagnosticError
+      && error.upstreamStatus === 504
+      && /pre_resolve_stall_timeout|no image_ref_resolve_start/i.test(error.message);
+    if (!transientStatus && !stalledBeforeGeneration) throw error;
+    await wait(1000);
+    return callImageProviderOnce({ provider, prompt, ratio, quality, files, count });
+  }
 }
 
 async function callImageProviderOnce({
@@ -883,8 +1037,13 @@ async function callImageProviderOnce({
 }) {
   const size = ratioToSize(ratio);
   const useMultipart = files.length > 0;
-  const apiUrl = imageEndpoint(provider, useMultipart);
   const outputCount = Math.min(Math.max(Math.round(count || 1), 1), 4);
+
+  if (isGetTokenBananaProvider(provider)) {
+    return callGetTokenBananaProvider({ provider, prompt, ratio, quality, files, count: outputCount });
+  }
+
+  const apiUrl = imageEndpoint(provider, useMultipart);
 
   if (isImg2ImageProvider(provider) && !useMultipart) {
     const response = await fetchProviderWithNetworkRetry(apiUrl, {
@@ -914,9 +1073,9 @@ async function callImageProviderOnce({
     form.append("quality", imageQualityLabel(quality));
     form.append("response_format", looksLikeOpenAiImageModel(provider.model) ? "b64_json" : "url");
     if (upscale) form.append("upscale", upscale);
-    files.forEach((file, index) => {
+    files.forEach((file) => {
       form.append(
-        index === 0 ? "image" : "image[]",
+        "image[]",
         new Blob([new Uint8Array(file.bytes)], { type: file.mimeType }),
         file.fileName,
       );
@@ -1065,6 +1224,7 @@ async function restoreMembershipEntitlementOnFailure(input: {
   localUserId?: string | null;
   taskId?: string | null;
   operation?: "cloud_image_generation" | "cloud_image_edit" | "cloud_video_generation" | "cloud_image_upscale" | "cloud_video_upscale" | "prompt_optimize" | null;
+  amount?: number | null;
 }) {
   if (!input.localUserId || !input.taskId || !input.operation) return;
   const kind = input.operation === "cloud_video_generation"
@@ -1081,10 +1241,30 @@ async function restoreMembershipEntitlementOnFailure(input: {
   await getMembershipService().restoreEntitlement({
     localUserId: input.localUserId,
     kind,
-    amount: 1,
+    amount: Math.min(Math.max(Math.round(Number(input.amount) || 1), 1), 4),
     idempotencyKey: `membership:restore:${kind}:${input.taskId}`,
     taskId: input.taskId,
   }).catch(() => undefined);
+}
+
+export async function failVideoGenerationBeforeSubmit(input: {
+  localUserId?: string | null;
+  taskId?: string | null;
+  estimatedQuotaUnits?: number | null;
+  reason?: string | null;
+}) {
+  await restoreMembershipEntitlementOnFailure({
+    localUserId: input.localUserId,
+    taskId: input.taskId,
+    operation: "cloud_video_generation",
+  });
+  return settleGeneratedTaskBilling({
+    localUserId: input.localUserId,
+    taskId: input.taskId,
+    estimatedQuotaUnits: input.estimatedQuotaUnits,
+    outcome: "failed",
+    reason: input.reason || "video upload validation failed",
+  });
 }
 
 async function claimGenerationBillingDispatch(input: {
@@ -1158,12 +1338,11 @@ export async function generateImage(input: {
   const provider = await providerById(input.providerId);
   const outputCount = Math.min(Math.max(Math.round(Number(input.count) || 1), 1), 4);
   const imageOperation = input.operation === "cloud_image_edit" ? "cloud_image_edit" : "cloud_image_generation";
-  const estimatedQuotaUnits = Number.isFinite(Number(input.billingEstimatedQuotaUnits))
-    ? Math.max(0, Math.round(Number(input.billingEstimatedQuotaUnits)))
-    : estimateImageGenerationTotalQuota({
-      quality: input.quality,
-      count: outputCount,
-    });
+  const estimatedQuotaUnits = estimateImageGenerationTotalQuota({
+    quality: input.quality,
+    count: outputCount,
+    model: provider?.model,
+  });
   const billingFingerprint = generationBillingFingerprint({
     kind: "image",
     operation: imageOperation,
@@ -1208,6 +1387,7 @@ export async function generateImage(input: {
     const actualQuotaUnits = estimateImageGenerationTotalQuota({
       quality: input.quality,
       count: actualOutputCount,
+      model: readyProvider.model,
     });
     const batchTotal = Number.isFinite(Number(input.batchTotal)) && Number(input.batchTotal) > 1
       ? Math.min(Math.max(Math.round(Number(input.batchTotal)), 1), 4)
@@ -1253,8 +1433,8 @@ export async function generateImage(input: {
       upstreamModel: readyProvider.model,
       newApiTaskId: output[0]?.jobId || items[0]?.id,
     });
-    if (!settled.ok) {
-      throw new BillingSettlementRequiredError(settled.status === 202 ? "生成已完成，但计费结算需要人工对账。" : settled.message);
+    if (!settled.ok && settled.status !== 202) {
+      throw new BillingSettlementRequiredError(settled.message);
     }
     return items;
   } catch (error) {
@@ -1269,6 +1449,7 @@ export async function generateImage(input: {
         localUserId: input.billingLocalUserId,
         taskId: input.billingTaskId,
         operation: imageOperation,
+        amount: outputCount,
       });
       throw new GenerationDiagnosticError({
         code: "TASK_CREATE_FAILED",
@@ -1282,6 +1463,7 @@ export async function generateImage(input: {
         localUserId: input.billingLocalUserId,
         taskId: input.billingTaskId,
         operation: imageOperation,
+        amount: outputCount,
       });
       await settleGeneratedTaskBilling({
         localUserId: input.billingLocalUserId,
@@ -1704,7 +1886,12 @@ export async function uploadedMediaFromForm(
 export const providerCallInternalsForTests = {
   validateGrokVideoInput,
   callOpenAiCompatibleGrokVideoProvider,
+  callImageProviderOnce,
   collectImageProviderOutputs,
+  callGetTokenBananaProvider,
+  getTokenBananaQueryEndpoint,
+  getTokenBananaSubmitEndpoint,
+  isGetTokenBananaProvider,
   isImg2ImageProvider,
   isLocalOpenAiCompatibleEndpoint,
   parseProviderOutput,

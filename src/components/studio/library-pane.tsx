@@ -5,6 +5,7 @@ import type { LibraryFilter, LibrarySort } from "@/components/studio/types";
 import type { LibraryItem } from "@/lib/server/types";
 
 export function LibraryPane({
+  cacheOwnerId,
   items,
   totalCount,
   count,
@@ -37,6 +38,7 @@ export function LibraryPane({
   onCancelDelete,
   onConfirmDelete,
 }: {
+  cacheOwnerId: string | null;
   items: LibraryItem[];
   totalCount: number;
   count: { all: number; image: number; video: number };
@@ -72,6 +74,7 @@ export function LibraryPane({
   return (
     <>
       <LibraryWorkspace
+        cacheOwnerId={cacheOwnerId}
         items={items}
         totalCount={totalCount}
         count={count}
