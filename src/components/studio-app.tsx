@@ -1915,7 +1915,7 @@ export function StudioApp() {
         message: items.length > 1 ? `${items.length} 张图片已生成` : "图片已生成",
       }));
     } catch (error) {
-      const shouldWaitForRecovery = !(error instanceof ApiError && error.status >= 400 && error.status < 500 && error.status !== 409);
+      const shouldWaitForRecovery = !(error instanceof ApiError) || error.status === 409;
       const recoveredItems = shouldWaitForRecovery && recovery
         ? await recovery
         : await findTaskItems().catch(() => []);
