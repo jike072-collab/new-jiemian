@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState, useSyncExternalStore } from "react";
 import { createPortal } from "react-dom";
 import { Save, Settings2, Trash2, X } from "lucide-react";
 
@@ -31,6 +31,9 @@ type PromptSettingsStore = {
 
 const storageKey = "aohuang-prompt-settings-v1";
 const tools: PromptPreferenceTool[] = ["image-generator", "image-editor", "video-generator"];
+const subscribeToHydration = () => () => undefined;
+const hydratedSnapshot = () => true;
+const serverHydratedSnapshot = () => false;
 
 function createDefaultStore(): PromptSettingsStore {
   return {
@@ -111,6 +114,7 @@ export function PromptSettingsButton({
   store: PromptSettingsStore;
   onChange: (store: PromptSettingsStore) => void;
 }) {
+  const hydrated = useSyncExternalStore(subscribeToHydration, hydratedSnapshot, serverHydratedSnapshot);
   const [open, setOpen] = useState(false);
 
   return (
@@ -120,6 +124,7 @@ export function PromptSettingsButton({
         className="studio-prompt-action studio-prompt-settings-trigger"
         aria-label="提示词优化设置"
         title="提示词优化设置"
+        disabled={!hydrated}
         onClick={() => setOpen(true)}
       >
         <Settings2 className="size-4" aria-hidden="true" />
