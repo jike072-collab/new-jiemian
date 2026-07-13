@@ -15,10 +15,18 @@ for (const path of publicRoutes) {
 }
 
 test("login page has no automatically detectable serious accessibility violations", async ({ page }) => {
+  test.slow();
   await page.goto("/login", { waitUntil: "networkidle" });
   const results = await new AxeBuilder({ page })
     .disableRules(["color-contrast"])
     .analyze();
   const serious = results.violations.filter((violation) => ["serious", "critical"].includes(violation.impact || ""));
   expect(serious).toEqual([]);
+});
+
+test("login form becomes interactive only after client hydration", async ({ page }) => {
+  await page.goto("/login", { waitUntil: "domcontentloaded" });
+  await expect(page.getByRole("button", { name: "登录", exact: true })).toBeEnabled();
+  await expect(page.getByPlaceholder("请输入邮箱或账号")).toBeEnabled();
+  await expect(page.getByPlaceholder("请输入密码")).toBeEnabled();
 });

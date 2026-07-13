@@ -100,14 +100,14 @@ const AuthBrandPanel = memo(function AuthBrandPanel() {
         </div>
       </div>
       <div className="auth-showcase" aria-hidden="true">
-        {showcaseCards.map((card) => (
+        {showcaseCards.map((card, index) => (
           <div key={card.title} className={cn("auth-showcase-card", card.className)}>
             <Image
               src={card.image}
               alt=""
               fill
               sizes="280px"
-              loading="lazy"
+              loading={index < 2 ? "eager" : "lazy"}
               decoding="async"
               unoptimized
               className="auth-showcase-card__image"
@@ -170,6 +170,7 @@ function passwordRules(password: string) {
 
 export function CustomerLogin({ initialMode = "login" }: CustomerLoginProps) {
   const router = useRouter();
+  const [hydrated, setHydrated] = useState(false);
   const [mode, setMode] = useState<AuthMode>(initialMode);
   const [identifier, setIdentifier] = useState("");
   const [username, setUsername] = useState("");
@@ -186,7 +187,7 @@ export function CustomerLogin({ initialMode = "login" }: CustomerLoginProps) {
   const [loading, setLoading] = useState(false);
   const [success, setSuccess] = useState(false);
   const [message, setMessage] = useState("");
-  const disabled = loading || success || sendingCode;
+  const disabled = !hydrated || loading || success || sendingCode;
   const isLogin = mode === "login";
   const isRegister = mode === "register";
   const isReset = mode === "reset";
@@ -198,6 +199,10 @@ export function CustomerLogin({ initialMode = "login" }: CustomerLoginProps) {
   const passwordMeetsRules = rules.every((rule) => rule.passed);
   const confirmMismatch = needsPasswordPolicy && confirmPassword.length > 0 && password !== confirmPassword;
   const positiveMessage = message === "密码已重置，请使用新密码登录";
+
+  useEffect(() => {
+    setHydrated(true);
+  }, []);
 
   useEffect(() => {
     if (codeCooldown <= 0) return undefined;

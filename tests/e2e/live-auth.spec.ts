@@ -9,9 +9,15 @@ test.skip(!enabled, "Set LIVE_E2E=true to allow authenticated checks against the
 async function login(page: Page, account: string | undefined, password: string | undefined) {
   if (!account || !password) throw new Error("E2E_USER_A_ACCOUNT/E2E_USER_A_PASSWORD and E2E_USER_B_ACCOUNT/E2E_USER_B_PASSWORD are required.");
   await page.goto("/login", { waitUntil: "domcontentloaded" });
-  await page.getByPlaceholder("请输入邮箱或账号").fill(account);
-  await page.getByPlaceholder("请输入密码").fill(password);
-  await page.getByRole("button", { name: "登录", exact: true }).click();
+  const accountInput = page.getByPlaceholder("请输入邮箱或账号");
+  const passwordInput = page.getByPlaceholder("请输入密码");
+  const loginButton = page.getByRole("button", { name: "登录", exact: true });
+  await expect(loginButton).toBeEnabled();
+  await accountInput.fill(account);
+  await passwordInput.fill(password);
+  await expect(accountInput).toHaveValue(account);
+  await expect(passwordInput).toHaveValue(password);
+  await loginButton.click();
   await expect(page).not.toHaveURL(/\/login$/);
 }
 
@@ -41,5 +47,59 @@ test("dedicated users have independent sessions and cannot fetch each other's me
   } finally {
     await contextA.close();
     await contextB.close();
+  }
+});
+
+test("account entitlements and library actions remain visible without mutating production data", async ({ page }, testInfo: TestInfo) => {
+  test.skip(testInfo.project.name !== "chromium", "Authenticated production checks run once to avoid account rate-limit noise.");
+  await login(page, userA.account, userA.password);
+
+  const membershipResponse = await page.request.get("/api/membership/status");
+  expect(membershipResponse.status()).toBe(200);
+  const membership = await membershipResponse.json() as { membership?: { active?: unknown } };
+
+  await page.goto("/?tool=library", { waitUntil: "domcontentloaded" });
+  await expect(page.getByRole("heading", { name: "作品库", exact: true })).toBeVisible();
+  const previewButtons = page.getByRole("button", { name: /^预览作品 / });
+  const previewCount = await previewButtons.count();
+  test.skip(previewCount === 0, "The dedicated account has no library item to validate detail actions.");
+  await previewButtons.first().click();
+
+  const modal = page.locator(".studio-library-modal");
+  await expect(modal).toBeVisible();
+  const modalMetrics = await modal.evaluate((element) => {
+    const panel = element.querySelector(".studio-library-detail");
+    const rect = panel?.getBoundingClientRect();
+    return {
+      zIndex: Number.parseInt(getComputedStyle(element).zIndex || "0", 10),
+      top: rect?.top ?? -1,
+      bottom: rect?.bottom ?? -1,
+      viewportHeight: window.innerHeight,
+    };
+  });
+  expect(modalMetrics.zIndex).toBeGreaterThanOrEqual(40);
+  expect(modalMetrics.top).toBeGreaterThanOrEqual(0);
+  expect(modalMetrics.bottom).toBeLessThanOrEqual(modalMetrics.viewportHeight + 1);
+
+  const actions = modal.getByLabel("作品操作");
+  await expect(actions.getByRole("button", { name: "重新生成", exact: true })).toBeVisible();
+  await expect(actions.getByRole("button", { name: /放大/ })).toBeVisible();
+  await expect(actions.getByRole("button", { name: "刷新", exact: true })).toBeVisible();
+  await expect(actions.getByRole("button", { name: "删除", exact: true })).toBeVisible();
+  await actions.getByRole("button", { name: "删除", exact: true }).click();
+  const deleteConfirm = page.getByRole("dialog", { name: /确认删除这个作品/ });
+  await expect(deleteConfirm).toBeVisible();
+  await deleteConfirm.getByRole("button", { name: "取消", exact: true }).click();
+  await expect(deleteConfirm).toBeHidden();
+
+  await modal.getByRole("button", { name: "关闭预览", exact: true }).click();
+  await expect(modal).toBeHidden();
+
+  if (membership.membership?.active) {
+    await page.locator("button.shell-account").click();
+    const entitlements = page.getByLabel("会员剩余额度");
+    await expect(entitlements).toBeVisible();
+    await expect(entitlements).toContainText("图片高清");
+    await expect(entitlements).toContainText("视频高清");
   }
 });
