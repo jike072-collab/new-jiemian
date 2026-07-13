@@ -679,6 +679,26 @@ export class TaskBillingService {
       return refunded;
     }
 
+    if (record.membership_entitlement_kind && record.membership_entitlement_units > 0) {
+      try {
+        await this.membershipService.restoreEntitlement({
+          localUserId: record.local_user_id,
+          kind: record.membership_entitlement_kind,
+          amount: record.membership_entitlement_units,
+          idempotencyKey: `membership:restore:${record.membership_entitlement_kind}:${record.task_id}`,
+          taskId: record.task_id,
+          now: this.now(),
+        });
+      } catch {
+        return failure({
+          code: "membership_restore_unavailable",
+          status: 503,
+          message: "Membership entitlement restoration is unavailable.",
+          retryable: true,
+        });
+      }
+    }
+
     const usage = await this.updateUsageForRecord(record, {
       status: state,
       actualQuotaUnits: 0,

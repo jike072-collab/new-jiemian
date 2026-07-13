@@ -28,7 +28,8 @@ export type TaskBillingErrorCode =
   | "invalid_task_billing_request"
   | "task_billing_not_found"
   | "task_billing_conflict"
-  | "task_billing_unavailable";
+  | "task_billing_unavailable"
+  | "membership_restore_unavailable";
 
 export type TaskBillingRecord = {
   id: string;

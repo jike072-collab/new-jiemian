@@ -147,7 +147,6 @@ type MembershipStatusResponse = {
 };
 type MembershipEntitlements = MembershipStatusResponse["membership"]["entitlements"];
 type ImageBillingOperation = "cloud_image_generation" | "cloud_image_edit";
-const imageGenerationResultWaitMs = 620000;
 
 type CheckInResponse = {
   ok: true;
@@ -636,6 +635,7 @@ export function StudioApp() {
   const [accountCloseSignal, setAccountCloseSignal] = useState(0);
   const [logoutConfirmOpen, setLogoutConfirmOpen] = useState(false);
   const [message, setMessage] = useState("");
+  const [generationNotice, setGenerationNotice] = useState("");
   const [imageGenerationProgress, setImageGenerationProgress] = useState<ImageGenerationProgressState>([]);
   const [generationProgressTick, setGenerationProgressTick] = useState(() => Date.now());
   const [outputs, setOutputs] = useState<Partial<Record<BusinessToolId, OutputState>>>({});
@@ -1505,6 +1505,11 @@ export function StudioApp() {
     });
   }, [sessionUser?.local_user_id]);
 
+  const dismissImageResult = useCallback((itemId: string) => {
+    setImageOutputs((prev) => prev.filter((output) => output.item.id !== itemId));
+    setOutputs((prev) => prev.image?.item.id === itemId ? { ...prev, image: null } : prev);
+  }, []);
+
   useEffect(() => {
     if (!imageGenerationProgress.some((progress) => progress.status === "running")) return undefined;
 
@@ -1536,7 +1541,7 @@ export function StudioApp() {
     "张",
     formatQuotaSymbolLabel(imageEstimatedQuotaUnits),
   );
-  const imageWorkspaceAtSubmissionLimit = activeImageWorkspace.inFlightCount >= (
+  const imageWorkspaceAtSubmissionLimit = activeImageWorkspace.inFlightCount + imageGenerationCount > (
     activeImageWorkspaceScope === "image" ? imageGenerationSubmissionLimit : 1
   );
   const imageWorkspaceCanSubmit = Boolean(selectedImageProvider)
@@ -1762,14 +1767,8 @@ export function StudioApp() {
     }
 
     const totalCount = imageGenerationCount;
-    const estimatedQuotaUnits = estimateImageGenerationTotalQuota({
-      quality: activeImageWorkspace.quality,
-      count: totalCount,
-      model: selectedImageProvider.model,
-    });
     const progressId = createTaskId("image-progress");
     const batchId = createTaskId("image-batch");
-    const taskId = createTaskId("image");
     const snapshot = {
       scope: activeImageWorkspaceScope,
       providerId: selectedImageProvider.id,
@@ -1779,16 +1778,20 @@ export function StudioApp() {
       quality: activeImageWorkspace.quality,
       prompt: activeImageWorkspace.prompt,
       files: activeImageWorkspace.files.map((attachment) => attachment.file),
-      estimatedQuotaUnits,
+      perImageQuotaUnits: estimateImageGenerationTotalQuota({
+        quality: activeImageWorkspace.quality,
+        count: 1,
+        model: selectedImageProvider.model,
+      }),
       totalCount,
       batchId,
     };
 
-    latestImageDisplayRef.current[snapshot.scope] = { taskId, progressId };
-    setImageOutputs([]);
+    latestImageDisplayRef.current[snapshot.scope] = { taskId: batchId, progressId };
+    if (snapshot.scope === "image-editor") setImageOutputs([]);
     setImageResultScope(snapshot.scope);
-    setOutputs((prev) => ({ ...prev, image: null }));
-    updateImageInFlightState(activeImageInFlightCountRef.current + 1, snapshot.scope);
+    if (snapshot.scope === "image-editor") setOutputs((prev) => ({ ...prev, image: null }));
+    updateImageInFlightState(activeImageInFlightCountRef.current + snapshot.totalCount, snapshot.scope);
     setImageRequestScope(snapshot.scope);
     activeImageWorkspaceSetter((prev) => ({
       ...prev,
@@ -1809,133 +1812,93 @@ export function StudioApp() {
       startedAt,
       message: totalCount > 1 ? `正在同时生成 ${totalCount} 张图片` : "正在生成图片",
     }]);
-    const findTaskItems = () => fetchJson<{ items: LibraryItem[] }>("/api/library")
+    const findTaskItems = (taskId: string) => fetchJson<{ items: LibraryItem[] }>("/api/library")
       .then((data) => data.items.filter((item) => (
         item.type === "image"
         && item.status === "done"
         && item.params?.billingTaskId === taskId
         && item.output?.url
       )));
-    let recoveryDeadline = 0;
-    let recovery: Promise<LibraryItem[]> | null = null;
-    const waitForTaskItems = async () => {
-      while (Date.now() < recoveryDeadline) {
-        await new Promise((resolve) => window.setTimeout(resolve, 2000));
-        if (Date.now() >= recoveryDeadline) break;
-        const items = await Promise.race([
-          findTaskItems().catch(() => []),
-          new Promise<LibraryItem[]>((resolve) => window.setTimeout(() => resolve([]), 5000)),
-        ]);
-        if (items.length) return items;
-      }
-      return [];
-    };
     try {
-      const requestFingerprint = generationBillingFingerprint({
-        kind: "image",
-        operation: snapshot.operation,
-        providerId: snapshot.providerId,
-        mode: snapshot.mode,
-        ratio: snapshot.ratio,
-        quality: snapshot.quality,
-        referenceImages: snapshot.files.length,
-        taskId,
-        estimatedQuotaUnits: snapshot.estimatedQuotaUnits,
-      });
-
-      await fetchJsonWithCsrf("/api/quota/precheck", {
-        method: "POST",
-        body: JSON.stringify({
+      const taskIds = Array.from({ length: snapshot.totalCount }, () => createTaskId("image"));
+      const runImageTask = async (taskId: string) => {
+        const requestFingerprint = generationBillingFingerprint({
+          kind: "image",
           operation: snapshot.operation,
+          providerId: snapshot.providerId,
+          mode: snapshot.mode,
+          ratio: snapshot.ratio,
+          quality: snapshot.quality,
+          referenceImages: snapshot.files.length,
           taskId,
-          idempotencyKey: taskId,
-          estimatedQuotaUnits: snapshot.estimatedQuotaUnits,
-          membershipEntitlementAmount: snapshot.totalCount,
-          requestFingerprint,
-        }),
-      });
-      await refreshAccountAfterPrecheck();
-
-      const form = new FormData();
-      form.set("providerId", snapshot.providerId);
-      form.set("mode", snapshot.mode);
-      form.set("ratio", snapshot.ratio);
-      form.set("quality", snapshot.quality);
-      form.set("prompt", snapshot.prompt);
-      form.set("taskId", taskId);
-      form.set("idempotencyKey", taskId);
-      form.set("batchId", snapshot.batchId);
-      form.set("batchTotal", String(snapshot.totalCount));
-      form.set("count", String(snapshot.totalCount));
-      form.set("estimatedQuotaUnits", String(snapshot.estimatedQuotaUnits));
-      form.set("operation", snapshot.operation);
-      snapshot.files.forEach((file) => form.append("files", file));
-      recoveryDeadline = Date.now() + imageGenerationResultWaitMs;
-      let requestSucceeded = false;
-      recovery = (async () => {
-        const items = await waitForTaskItems();
-        return requestSucceeded ? [] : items;
-      })();
-      const outcome = await Promise.race([
-        fetchJsonWithCsrf<{ item: LibraryItem | null; items?: LibraryItem[] }>("/api/generate/image", {
+          estimatedQuotaUnits: snapshot.perImageQuotaUnits,
+        });
+        await fetchJsonWithCsrf("/api/quota/precheck", {
           method: "POST",
-          body: form,
-        }).then((data) => {
-          requestSucceeded = true;
-          return { data, recoveredItems: [] as LibraryItem[] };
-        }),
-        recovery.then((recoveredItems) => ({ data: null, recoveredItems })),
-        new Promise<{ data: null; recoveredItems: LibraryItem[] }>((resolve) => {
-          window.setTimeout(() => resolve({ data: null, recoveredItems: [] }), imageGenerationResultWaitMs);
-        }),
-      ]);
-      if (!outcome.data && !outcome.recoveredItems.length) {
-        throw new Error("图片生成等待超时，请在作品库确认结果后重试。");
-      }
-      const data = outcome.data;
-      const items = data && Array.isArray(data.items) && data.items.length
-        ? data.items
-        : data?.item
-          ? [data.item]
-          : outcome.recoveredItems;
-      if (!items.length) {
-        throw new Error("图片生成未返回结果。");
-      }
-      if (latestImageDisplayRef.current[snapshot.scope]?.taskId === taskId) {
-        items.forEach((item) => handleImageResult(item, { append: true, scope: snapshot.scope }));
-      }
-
+          body: JSON.stringify({
+            operation: snapshot.operation,
+            taskId,
+            idempotencyKey: taskId,
+            estimatedQuotaUnits: snapshot.perImageQuotaUnits,
+            membershipEntitlementAmount: 1,
+            requestFingerprint,
+          }),
+        });
+        const form = new FormData();
+        form.set("providerId", snapshot.providerId);
+        form.set("mode", snapshot.mode);
+        form.set("ratio", snapshot.ratio);
+        form.set("quality", snapshot.quality);
+        form.set("prompt", snapshot.prompt);
+        form.set("taskId", taskId);
+        form.set("idempotencyKey", taskId);
+        form.set("batchId", snapshot.batchId);
+        form.set("batchTotal", String(snapshot.totalCount));
+        form.set("count", "1");
+        form.set("estimatedQuotaUnits", String(snapshot.perImageQuotaUnits));
+        form.set("operation", snapshot.operation);
+        snapshot.files.forEach((file) => form.append("files", file));
+        try {
+          const data = await fetchJsonWithCsrf<{ item: LibraryItem | null; items?: LibraryItem[] }>("/api/generate/image", {
+            method: "POST",
+            body: form,
+          });
+          const items = data.items?.length ? data.items : data.item ? [data.item] : [];
+          if (!items.length) throw new Error("图片生成未返回结果。");
+          if (latestImageDisplayRef.current[snapshot.scope]?.taskId === snapshot.batchId) {
+            items.forEach((item) => handleImageResult(item, { append: true, scope: snapshot.scope }));
+          }
+          updateImageGenerationProgress(progressId, (current) => ({
+            ...current,
+            current: Math.min(current.total, current.current + items.length),
+            message: `${Math.min(current.total, current.current + items.length)}/${current.total} 张图片已完成`,
+          }));
+          return items;
+        } catch (error) {
+          const recoveredItems = await findTaskItems(taskId).catch(() => []);
+          if (recoveredItems.length) return recoveredItems;
+          throw error;
+        }
+      };
+      const results = await Promise.allSettled(taskIds.map(runImageTask));
+      const items = results.flatMap((result) => result.status === "fulfilled" ? result.value : []);
+      const failures = results.filter((result): result is PromiseRejectedResult => result.status === "rejected");
+      if (!items.length) throw failures[0]?.reason || new Error("图片生成未返回结果。");
       await refreshLibraryAfterMutation();
       await refreshAccountAfterGeneration();
+      const failureMessage = failures.length ? `${failures.length} 张生成失败，已自动恢复对应次数。` : "";
+      if (failureMessage) setMessage(failureMessage);
+      else setGenerationNotice(items.length > 1 ? `${items.length} 张图片已生成` : "图片已生成");
       updateImageGenerationProgress(progressId, (current) => ({
         ...current,
         status: "done",
         current: items.length,
         completedAt: Date.now(),
-        message: items.length > 1 ? `${items.length} 张图片已生成` : "图片已生成",
+        message: failureMessage || (items.length > 1 ? `${items.length} 张图片已生成` : "图片已生成"),
       }));
     } catch (error) {
-      const shouldWaitForRecovery = !(error instanceof ApiError) || error.status === 409;
-      const recoveredItems = shouldWaitForRecovery && recovery
-        ? await recovery
-        : await findTaskItems().catch(() => []);
-      if (recoveredItems.length) {
-        if (latestImageDisplayRef.current[snapshot.scope]?.taskId === taskId) {
-          recoveredItems.forEach((item) => handleImageResult(item, { append: true, scope: snapshot.scope }));
-        }
-        await refreshLibraryAfterMutation();
-        await refreshAccountAfterGeneration();
-        updateImageGenerationProgress(progressId, (current) => ({
-          ...current,
-          status: "done",
-          current: recoveredItems.length,
-          completedAt: Date.now(),
-          message: recoveredItems.length > 1 ? `${recoveredItems.length} 张图片已找回` : "图片已找回",
-        }));
-        return;
-      }
       const text = error instanceof Error ? error.message : "图片生成失败。";
-      if (latestImageDisplayRef.current[snapshot.scope]?.taskId === taskId) {
+      if (latestImageDisplayRef.current[snapshot.scope]?.taskId === snapshot.batchId) {
         activeImageWorkspaceSetter((prev) => ({
           ...prev,
           submitError: text,
@@ -1952,7 +1915,7 @@ export function StudioApp() {
       await refreshAccountAfterGeneration().catch(() => undefined);
     } finally {
       const countRef = snapshot.scope === "image-editor" ? imageEditorInFlightCountRef : imageInFlightCountRef;
-      updateImageInFlightState(countRef.current - 1, snapshot.scope);
+      updateImageInFlightState(countRef.current - snapshot.totalCount, snapshot.scope);
     }
   }, [
     activeImageBillingOperation,
@@ -3047,7 +3010,7 @@ export function StudioApp() {
                 output={scopedActiveImageOutput}
                 outputs={scopedImageOutputs}
                 loading={scopedImageLoading}
-                generationStartedAt={scopedImageGenerationStartedAt}
+                expectedCount={scopedImageProgress?.total || 1}
                 canSubmit={imageWorkspaceCanSubmit}
                 submitError={scopedImageSubmitError}
                 submitDiagnostic={scopedImageSubmitDiagnostic}
@@ -3060,6 +3023,7 @@ export function StudioApp() {
                 onUpscale={sendResultToUpscale}
                 onCreateVideo={sendImageResultToVideo}
                 onEdit={sendImageResultToEditor}
+                onDismiss={dismissImageResult}
               />
             ) : activeBusinessTool === "video" ? (
               <VideoPreviewPanel
@@ -3105,7 +3069,13 @@ export function StudioApp() {
           onClose={closeImageGenerationProgress}
         />
       ) : null}
-      {message ? <Toast message={message} onClose={() => setMessage("")} /> : null}
+      {message || generationNotice ? (
+        <Toast
+          message={message || generationNotice}
+          tone={message ? "error" : "success"}
+          onClose={() => message ? setMessage("") : setGenerationNotice("")}
+        />
+      ) : null}
       {logoutConfirmOpen ? (
         <LogoutConfirmDialog
           loading={accountSummaryBusy}

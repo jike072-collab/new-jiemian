@@ -1632,7 +1632,7 @@ export function ImagePreviewPanel({
   output,
   outputs = output ? [output] : [],
   loading,
-  generationStartedAt,
+  expectedCount = 1,
   canSubmit,
   submitError,
   submitDiagnostic,
@@ -1645,12 +1645,13 @@ export function ImagePreviewPanel({
   onUpscale,
   onCreateVideo,
   onEdit,
+  onDismiss,
 }: {
   mode: WorkspaceImageMode;
   output: OutputState;
   outputs?: OutputItemState[];
   loading: boolean;
-  generationStartedAt?: number | null;
+  expectedCount?: number;
   canSubmit: boolean;
   submitError: string;
   submitDiagnostic?: StudioErrorDiagnostic | null;
@@ -1663,12 +1664,17 @@ export function ImagePreviewPanel({
   onUpscale: (item: LibraryItem) => void;
   onCreateVideo: (item: LibraryItem) => void;
   onEdit: (item: LibraryItem) => void;
+  onDismiss: (itemId: string) => void;
 }) {
   const canRetry = canSubmit && hasProvider && promptFilled && (mode === "text-to-image" || hasFiles);
   const resultOutputs = outputs.length ? outputs : output ? [output] : [];
 
   if (loading && !resultOutputs.length) {
-    return <ProcessingPreview label="正在生成图片" detail="生成多张图片时会逐张完成，完成的结果会先出现在这里。" progress={0} startedAt={generationStartedAt} />;
+    return (
+      <PreviewState eyebrow="结果" title="正在生成图片" description="完成的图片会立即替换对应位置。" badge="生成中" role="status" live>
+        <ImageResultGrid outputs={[]} expectedCount={expectedCount} canRetry={false} loading onSubmit={onSubmit} onUpscale={onUpscale} onCreateVideo={onCreateVideo} onEdit={onEdit} onDismiss={onDismiss} />
+      </PreviewState>
+    );
   }
 
   if (submitError && !resultOutputs.length) {
@@ -1685,14 +1691,16 @@ export function ImagePreviewPanel({
 
   if (resultOutputs.length) {
     const resultContent = (
-      <ImageResultGrid
-        outputs={resultOutputs}
-        canRetry={canRetry}
+        <ImageResultGrid
+          outputs={resultOutputs}
+          expectedCount={expectedCount}
+          canRetry={canRetry}
         loading={loading}
         onSubmit={onSubmit}
         onUpscale={onUpscale}
-        onCreateVideo={onCreateVideo}
-        onEdit={onEdit}
+          onCreateVideo={onCreateVideo}
+          onEdit={onEdit}
+          onDismiss={onDismiss}
       />
     );
 
@@ -1715,28 +1723,35 @@ export function ImagePreviewPanel({
 
 function ImageResultGrid({
   outputs,
+  expectedCount,
   canRetry,
   loading,
   onSubmit,
   onUpscale,
   onCreateVideo,
   onEdit,
+  onDismiss,
 }: {
   outputs: OutputItemState[];
+  expectedCount: number;
   canRetry: boolean;
   loading: boolean;
   onSubmit: () => void;
   onUpscale: (item: LibraryItem) => void;
   onCreateVideo: (item: LibraryItem) => void;
   onEdit: (item: LibraryItem) => void;
+  onDismiss: (itemId: string) => void;
 }) {
   return (
-    <div className={cn("studio-image-results", `is-count-${Math.min(outputs.length, 4)}`)}>
+    <div className={cn("studio-image-results", `is-count-${Math.min(Math.max(expectedCount, outputs.length), 4)}`)}>
       {outputs.map((output, index) => (
         <article key={output.item.id} className="studio-image-result-card">
           <div className="studio-image-result-card__head">
             <span>图片 {index + 1}</span>
             {libraryStatusBadgeLabel(output.item.status) ? <strong>{libraryStatusBadgeLabel(output.item.status)}</strong> : null}
+            <button type="button" className="studio-icon-button studio-image-result-card__close" aria-label={`关闭图片 ${index + 1}`} onClick={() => onDismiss(output.item.id)}>
+              <X className="size-4" aria-hidden="true" />
+            </button>
           </div>
           <MediaCard item={output.item} large compact />
           {imageResultFacts(output.item).length ? (
@@ -1770,17 +1785,17 @@ function ImageResultGrid({
           </div>
         </article>
       ))}
-      {loading ? (
-        <article className="studio-image-result-card studio-image-result-card--pending" aria-live="polite">
+      {Array.from({ length: Math.max(0, expectedCount - outputs.length) }).map((_, index) => (
+        <article key={`pending-${index}`} className="studio-image-result-card studio-image-result-card--pending" aria-live="polite">
           <div className="studio-processing-orbit" aria-hidden="true">
             <span />
             <span />
             <Loader2 className="size-5" />
           </div>
-          <p>剩余图片生成中</p>
+          <p>{loading ? "图片生成中" : "图片未生成"}</p>
           <small>完成后会自动补到这里。</small>
         </article>
-      ) : null}
+      ))}
     </div>
   );
 }
@@ -2012,20 +2027,20 @@ export function ImageGenerationProgressToast({
   });
 }
 
-export function Toast({ message, onClose }: { message: string; onClose: () => void }) {
+export function Toast({ message, tone = "error", onClose }: { message: string; tone?: "error" | "success"; onClose: () => void }) {
   useEffect(() => {
     const timer = window.setTimeout(onClose, 4500);
     return () => window.clearTimeout(timer);
   }, [onClose]);
 
   return (
-    <div className="studio-toast" role="status" aria-live="polite">
+    <div className={cn("studio-toast", tone === "success" && "is-success")} role="status" aria-live="polite">
       <span className="studio-toast__icon" aria-hidden="true">
-        <AlertTriangle className="size-4" />
+        {tone === "success" ? <Check className="size-4" /> : <AlertTriangle className="size-4" />}
       </span>
       <span className="studio-toast__body">
         <strong>{message}</strong>
-        <small>请根据提示处理当前操作，必要时稍后再试。</small>
+        <small>{tone === "success" ? "结果已保存到作品库。" : "请根据提示处理当前操作，必要时稍后再试。"}</small>
       </span>
     </div>
   );
