@@ -642,6 +642,7 @@ export function StudioApp() {
   const [imageOutputs, setImageOutputs] = useState<OutputItemState[]>([]);
   const [imageRequestScope, setImageRequestScope] = useState<ImageWorkspaceScope | null>(null);
   const [imageResultScope, setImageResultScope] = useState<ImageWorkspaceScope | null>(null);
+  const [imageResultBatchId, setImageResultBatchId] = useState<string | null>(null);
   const [mobileAction, setMobileAction] = useState<MobileActionState>(null);
   const [mobilePreviewSignal, setMobilePreviewSignal] = useState(0);
   const [uploadLimits, setUploadLimits] = useState(defaultUploadLimits);
@@ -1790,6 +1791,7 @@ export function StudioApp() {
     latestImageDisplayRef.current[snapshot.scope] = { taskId: batchId, progressId };
     if (snapshot.scope === "image-editor") setImageOutputs([]);
     setImageResultScope(snapshot.scope);
+    setImageResultBatchId(batchId);
     if (snapshot.scope === "image-editor") setOutputs((prev) => ({ ...prev, image: null }));
     updateImageInFlightState(activeImageInFlightCountRef.current + snapshot.totalCount, snapshot.scope);
     setImageRequestScope(snapshot.scope);
@@ -3011,6 +3013,7 @@ export function StudioApp() {
                 outputs={scopedImageOutputs}
                 loading={scopedImageLoading}
                 expectedCount={scopedImageProgress?.total || 1}
+                activeBatchId={imageResultBatchId}
                 canSubmit={imageWorkspaceCanSubmit}
                 submitError={scopedImageSubmitError}
                 submitDiagnostic={scopedImageSubmitDiagnostic}

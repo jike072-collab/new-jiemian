@@ -1633,6 +1633,7 @@ export function ImagePreviewPanel({
   outputs = output ? [output] : [],
   loading,
   expectedCount = 1,
+  activeBatchId,
   canSubmit,
   submitError,
   submitDiagnostic,
@@ -1652,6 +1653,7 @@ export function ImagePreviewPanel({
   outputs?: OutputItemState[];
   loading: boolean;
   expectedCount?: number;
+  activeBatchId?: string | null;
   canSubmit: boolean;
   submitError: string;
   submitDiagnostic?: StudioErrorDiagnostic | null;
@@ -1672,7 +1674,7 @@ export function ImagePreviewPanel({
   if (loading && !resultOutputs.length) {
     return (
       <PreviewState eyebrow="结果" title="正在生成图片" description="完成的图片会立即替换对应位置。" badge="生成中" role="status" live>
-        <ImageResultGrid outputs={[]} expectedCount={expectedCount} canRetry={false} loading onSubmit={onSubmit} onUpscale={onUpscale} onCreateVideo={onCreateVideo} onEdit={onEdit} onDismiss={onDismiss} />
+        <ImageResultGrid outputs={[]} expectedCount={expectedCount} activeBatchId={activeBatchId} canRetry={false} loading onSubmit={onSubmit} onUpscale={onUpscale} onCreateVideo={onCreateVideo} onEdit={onEdit} onDismiss={onDismiss} />
       </PreviewState>
     );
   }
@@ -1694,6 +1696,7 @@ export function ImagePreviewPanel({
         <ImageResultGrid
           outputs={resultOutputs}
           expectedCount={expectedCount}
+          activeBatchId={activeBatchId}
           canRetry={canRetry}
         loading={loading}
         onSubmit={onSubmit}
@@ -1724,6 +1727,7 @@ export function ImagePreviewPanel({
 function ImageResultGrid({
   outputs,
   expectedCount,
+  activeBatchId,
   canRetry,
   loading,
   onSubmit,
@@ -1734,6 +1738,7 @@ function ImageResultGrid({
 }: {
   outputs: OutputItemState[];
   expectedCount: number;
+  activeBatchId?: string | null;
   canRetry: boolean;
   loading: boolean;
   onSubmit: () => void;
@@ -1742,10 +1747,17 @@ function ImageResultGrid({
   onEdit: (item: LibraryItem) => void;
   onDismiss: (itemId: string) => void;
 }) {
+  const currentOutputs = activeBatchId
+    ? outputs.filter((output) => output.item.params?.imageBatchId === activeBatchId)
+    : outputs;
+  const historicOutputs = activeBatchId
+    ? outputs.filter((output) => output.item.params?.imageBatchId !== activeBatchId)
+    : [];
+  const pendingCount = loading ? Math.max(0, expectedCount - currentOutputs.length) : 0;
   return (
     <div className={cn("studio-image-results", `is-count-${Math.min(Math.max(expectedCount, outputs.length), 4)}`)}>
-      {outputs.map((output, index) => (
-        <article key={output.item.id} className="studio-image-result-card">
+      {[...currentOutputs, ...historicOutputs].map((output, index) => (
+        <article key={output.item.id} className={cn("studio-image-result-card", activeBatchId && output.item.params?.imageBatchId !== activeBatchId && "is-historic")}>
           <div className="studio-image-result-card__head">
             <span>图片 {index + 1}</span>
             {libraryStatusBadgeLabel(output.item.status) ? <strong>{libraryStatusBadgeLabel(output.item.status)}</strong> : null}
@@ -1785,7 +1797,7 @@ function ImageResultGrid({
           </div>
         </article>
       ))}
-      {Array.from({ length: Math.max(0, expectedCount - outputs.length) }).map((_, index) => (
+      {Array.from({ length: pendingCount }).map((_, index) => (
         <article key={`pending-${index}`} className="studio-image-result-card studio-image-result-card--pending" aria-live="polite">
           <div className="studio-processing-orbit" aria-hidden="true">
             <span />

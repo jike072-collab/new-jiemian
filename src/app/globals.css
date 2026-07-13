@@ -3421,11 +3421,16 @@
   }
 
   .studio-image-result-card--pending {
+    order: 1;
     min-height: 220px;
     place-items: center;
     align-content: center;
     color: var(--muted);
     text-align: center;
+  }
+
+  .studio-image-result-card.is-historic {
+    order: 2;
   }
 
   .studio-image-result-card--pending p {
