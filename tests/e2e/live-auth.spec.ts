@@ -1,4 +1,4 @@
-import { expect, test, type BrowserContext, type Page } from "@playwright/test";
+import { expect, test, type BrowserContext, type Page, type TestInfo } from "@playwright/test";
 
 const enabled = process.env.LIVE_E2E === "true";
 const userA = { account: process.env.E2E_USER_A_ACCOUNT, password: process.env.E2E_USER_A_PASSWORD };
@@ -21,7 +21,8 @@ async function libraryItems(context: BrowserContext) {
   return (await response.json()) as { items: Array<{ output?: { storedName?: string } }> };
 }
 
-test("dedicated users have independent sessions and cannot fetch each other's media", async ({ browser, baseURL }) => {
+test("dedicated users have independent sessions and cannot fetch each other's media", async ({ browser, baseURL }, testInfo: TestInfo) => {
+  test.skip(testInfo.project.name !== "chromium", "Authenticated production checks run once to avoid account rate-limit noise.");
   const contextA = await browser.newContext({ baseURL });
   const contextB = await browser.newContext({ baseURL });
   try {

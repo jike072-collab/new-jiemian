@@ -26,13 +26,20 @@
   0.96, SEO 1.00, and largest contentful paint about 3.75 seconds.
 - `npm audit` reported zero production and development vulnerabilities after the
   test-tool dependency versions were pinned.
+- Authenticated production A/B browser check passed once in desktop Chromium:
+  both dedicated accounts established independent sessions and loaded their own
+  libraries; a direct request by B for an existing A media object returned HTTP
+  404. The authenticated case deliberately runs in one project only, avoiding
+  parallel login rate-limit noise across browser projects.
 
 ## Release Blockers
 
-- Authenticated user A/B/admin validation has not run because this environment has
-  no dedicated test-account credentials or reusable logged-in browser session.
+- Administrator positive-path validation has not run because no dedicated admin
+  test account has been provided. Public/unauthenticated administrator rejection
+  remains covered by the existing browser and API checks.
 - Real provider calls, task-to-ledger verification, real payment callback and
-  credit settlement have not run for the same reason.
+  credit settlement have not run. A payment must have an explicitly approved
+  amount cap and channel immediately before it is created.
 - k6 is not installed on this machine, so the checked-in read-only performance
   script has not run. It must run only against an isolated target or explicitly
   approved read-only production routes.
