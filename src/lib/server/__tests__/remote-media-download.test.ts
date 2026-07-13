@@ -19,7 +19,10 @@ async function withServer(handler: TestHandler, callback: (baseUrl: string) => P
   try {
     const address = server.address();
     assert(address && typeof address === "object");
-    await callback(`http://mock-provider.test:${address.port}`);
+    await withEnv({
+      NODE_ENV: "test",
+      REMOTE_MEDIA_ALLOWED_HOSTS: "mock-provider.test,media.example.test,*.media.example.test,loopback.test,private.test,metadata.test,evil.test",
+    }, () => callback(`http://mock-provider.test:${address.port}`));
   } finally {
     await closeServer(server);
   }
@@ -233,9 +236,14 @@ test("total timeout covers response body and closes the connection", async () =>
   const uploadsDir = process.env.UPLOADS_DIR;
   assert(uploadsDir);
   let closed = false;
+  let resolveClosed: (() => void) | null = null;
+  const closedPromise = new Promise<void>((resolve) => {
+    resolveClosed = resolve;
+  });
   await withServer((_request, response) => {
     response.on("close", () => {
       closed = true;
+      resolveClosed?.();
     });
     response.writeHead(200, { "content-type": "image/png" });
     response.write(Buffer.from([0x89, 0x50]));
@@ -251,6 +259,10 @@ test("total timeout covers response body and closes the connection", async () =>
       }),
     );
   });
+  await Promise.race([
+    closedPromise,
+    new Promise((resolve) => setTimeout(resolve, 100)),
+  ]);
   assert.equal(closed, true);
   const leftovers = (await readdir(uploadsDir)).filter((name) => name.includes(".remote-"));
   assert.deepEqual(leftovers, []);

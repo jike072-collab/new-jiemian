@@ -368,23 +368,14 @@ test("admin provider health route is protected by the existing admin gate", asyn
   assert.equal(allowedAdmin.ok, true);
 });
 
-test("admin provider health frontend contains safe states and no generation call wiring", () => {
-  const source = readFileSync(join(process.cwd(), "src", "components", "admin-providers-client.tsx"), "utf8");
-  assert(source.includes("data-stage4-provider-health"));
-  assert(source.includes("静态检测"));
-  assert(source.includes("连接检测"));
-  assert(source.includes("模型列表检测"));
-  assert(source.includes("尚未检测"));
-  assert(source.includes("正常"));
-  assert(source.includes("警告"));
-  assert(source.includes("错误"));
-  assert(source.includes("图片生成"));
-  assert(source.includes("图片编辑"));
-  assert(source.includes("视频生成"));
-  assert(source.includes("图片高清增强"));
-  assert(source.includes("视频高清增强"));
-  assert(source.includes("Loader2"));
-  assert(source.includes("/api/admin/provider-health"));
+test("admin provider entry is server protected and has no generation call wiring", () => {
+  const source = readFileSync(join(process.cwd(), "src", "app", "admin", "providers", "page.tsx"), "utf8");
+  assert(source.includes("AUTH_SESSION_COOKIE"));
+  assert(source.includes("getAuthService"));
+  assert(source.includes('session.user.role === "admin"'));
+  assert(source.includes("NEW_API_ADMIN_USERS_URL"));
+  assert(source.includes("newapi.aohuang888.com/console/user"));
+  assert(source.includes('redirect("/?preview=1")'));
   assert.equal(source.includes("/api/generate/"), false);
   assert.equal(source.includes("/api/upscale/image"), false);
   assert.equal(source.includes("/api/upscale/video"), false);

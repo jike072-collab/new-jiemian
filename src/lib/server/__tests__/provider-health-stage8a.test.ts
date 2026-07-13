@@ -161,7 +161,6 @@ test("Stage 8A admin routes and page keep admin gate and read-only contracts", (
   const providerRoute = readFileSync(join(process.cwd(), "src", "app", "api", "admin", "provider-health", "route.ts"), "utf8");
   const modelRoute = readFileSync(join(process.cwd(), "src", "app", "api", "admin", "models", "health", "route.ts"), "utf8");
   const page = readFileSync(join(process.cwd(), "src", "app", "admin", "providers", "page.tsx"), "utf8");
-  const client = readFileSync(join(process.cwd(), "src", "components", "admin-providers-client.tsx"), "utf8");
 
   for (const source of [providerRoute, modelRoute]) {
     assert(source.includes("adminResponse"));
@@ -173,12 +172,10 @@ test("Stage 8A admin routes and page keep admin gate and read-only contracts", (
   }
 
   assert(page.includes("session.user.role === \"admin\""));
+  assert(page.includes("NEW_API_ADMIN_USERS_URL"));
+  assert(page.includes("newapi.aohuang888.com/console/user"));
   assert(page.includes("redirect(\"/?preview=1\")"));
-  assert(client.includes("data-stage4-provider-health"));
-  assert(client.includes("NewAPI"));
-  assert(client.includes("模型可用性"));
-  assert(client.includes("不会提交图片、视频或高清生成任务"));
-  assert.equal(client.includes("/api/generate/"), false);
-  assert.equal(client.includes("/api/upscale/image"), false);
-  assert.equal(client.includes("/api/upscale/video"), false);
+  assert.equal(page.includes("/api/generate/"), false);
+  assert.equal(page.includes("/api/upscale/image"), false);
+  assert.equal(page.includes("/api/upscale/video"), false);
 });

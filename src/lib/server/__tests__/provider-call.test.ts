@@ -492,7 +492,7 @@ test("grok video validation keeps model-specific duration rules", () => {
   }, {
     mode: "text-to-video",
     ratio: "16:9",
-    duration: 5,
+    duration: 6,
     files: [],
   }));
   assert.doesNotThrow(() => providerCallInternalsForTests.validateGrokVideoInput({
@@ -547,7 +547,7 @@ test("grok video validation keeps model-specific duration rules", () => {
   }, {
     mode: "text-to-video",
     ratio: "16:9",
-    duration: 6,
+    duration: 5,
     files: [],
   }));
 });

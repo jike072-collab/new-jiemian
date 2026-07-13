@@ -139,7 +139,7 @@ The handoff document adds one more documentation file.
 | `src/lib/server/volcengine-upscale.ts` | 当前图片/视频高清调用火山 ImageX/VOD。 | Yes | `upscaleImage`, `submitVideoUpscale`, `uploadedUpscaleFile` |
 | `src/app/api/upscale/image/route.ts` | 图片高清API进入当前火山流程和并发保护。 | Yes | `POST` |
 | `src/app/api/upscale/video/route.ts` | 视频高清API进入当前火山流程和并发保护。 | Yes | `POST` |
-| `src/components/admin-providers-client.tsx` | 管理端展示当前高清供应商标签。 | Yes | Provider UI |
+| `src/app/admin/providers/page.tsx` | 管理端展示当前高清供应商标签。 | Yes | Provider UI |
 | `src/components/studio/constants.ts` | 统一高清增强标签。 | Yes | `upscaleTargetLabel`, `videoUpscaleScaleLabel` |
 | Archived retired local image/video HD module docs | 仅作历史资料保存，不代表当前实现。 | No | Archive docs |
 | `scripts/test-provider-display-names.mjs` | 测试旧类型映射后不再泄漏到当前展示。 | No | Provider display tests |

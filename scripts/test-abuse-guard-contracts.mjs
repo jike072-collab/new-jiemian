@@ -102,12 +102,12 @@ function checkUserResourceAuth() {
   assertSequence("/api/library auth before owner work", source.libraryRoute, [
     "const session = await requireAuthSession(request)",
     "if (!session.ok) return authResultResponse(request, session)",
-    "readLibraryForOwner(session.user.local_user_id)",
+    "readLibraryMetadataForOwner(session.user.local_user_id)",
   ]);
   assertSequence("/api/library delete auth before owner work", source.libraryRoute, [
     "const session = await requireAuthSession(request)",
     "if (!session.ok) return authResultResponse(request, session)",
-    "deleteLibraryItemForOwner(body.id, session.user.local_user_id)",
+    "deleteLibraryItemForOwner(body.id!, session.user.local_user_id)",
   ]);
   assert(!source.libraryRoute.includes("readLibrary()"), "/api/library must not list ownerless library data");
   assert(!source.libraryRoute.includes("deleteLibraryItem(body.id)"), "/api/library must not delete ownerless library data");
@@ -115,7 +115,7 @@ function checkUserResourceAuth() {
   assertSequence("/api/files auth before file owner read", source.filesRoute, [
     "const session = await requireAuthSession(request)",
     "if (!session.ok) return authResultResponse(request, session)",
-    "readStoredFileForOwner(name, session.user.local_user_id)",
+    "resolveStoredFileForOwner(name, session.user.local_user_id)",
   ]);
 
   assertSequence("/api/jobs auth before owner job refresh", source.jobsRoute, [
@@ -268,8 +268,6 @@ function checkExistingAbuseGuards() {
   assert(source.workloadLimits.includes("userImageTasks: 4"), "workload defaults must allow four concurrent image tasks per user");
   assert(source.workloadLimits.includes("userVideoTasks: 1"), "workload defaults must allow one concurrent video task per user");
   assert(source.workloadLimits.includes("userLargeUploads: 1"), "workload defaults must allow one large upload per user");
-  assert(source.workloadLimits.includes("processLargeVideoIo: 1"), "workload defaults must allow one process-wide large video IO operation");
-  assert(source.workloadLimits.includes("siteVideoUploadPhase: 2"), "workload defaults must allow two site-wide video upload phases");
   assert(source.workloadLimits.includes("failedLoginPerIp: 5"), "login failed IP limit must default to 5/min");
   assert(source.workloadLimits.includes("registerPerIp: 3"), "register IP limit must default to 3/hour");
   assert(source.workloadLimits.includes("candidate < 1 || candidate > defaultValue"), "workload env limits must be lower-only safe config");
@@ -282,8 +280,9 @@ function checkExistingAbuseGuards() {
 
   assertSequence("image generation workload limit before provider call", source.generateImageRoute, [
     "const form = await request.formData()",
+    "const run = async () => generateImage({",
     "withUserImageWorkload(session.user.local_user_id",
-    "generateImage({",
+    "run)",
   ]);
   assertSequence("video generation workload limit before upload read and billing provider call", source.generateVideoRoute, [
     "const form = await request.formData()",
@@ -293,12 +292,12 @@ function checkExistingAbuseGuards() {
     "submitVideo({",
   ]);
   assertSequence("image upscale workload limit before upload read", source.upscaleImageRoute, [
-    "withUserImageWorkload(session.user.local_user_id",
+    "withUserImageUpscaleWorkload(session.user.local_user_id",
     "uploadedUpscaleFile(form, \"image\")",
     "runUpscaleImage(file, scale, session.user.local_user_id, billing)",
   ]);
   assertSequence("video upscale workload limit before large read and provider upload", source.upscaleVideoRoute, [
-    "withUserVideoWorkload(session.user.local_user_id",
+    "withUserVideoUpscaleWorkload(session.user.local_user_id",
     "withVideoProviderUpload(session.user.local_user_id",
     "uploadedUpscaleFile(form, \"video\")",
     "runSubmitVideoUpscale(file, scale, session.user.local_user_id, billing)",

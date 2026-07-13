@@ -16,11 +16,8 @@ document.
 
 Sensitive credentials are intentionally kept out of the repo.
 
-Local operators should use the private desktop note:
-
-- `C:\Users\Administrator\Desktop\aohuang-ai-运维说明.md`
-
-That private note records where the SSH credential reference file is stored and
+Local operators should use the private, untracked operations note. That note
+records where the SSH credential reference file is stored and
 how the current manual production deployment is performed.
 
 ## Scope
