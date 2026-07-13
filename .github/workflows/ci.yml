@@ -42,6 +42,9 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      - name: Install Playwright browsers
+        run: npx playwright install --with-deps chromium firefox webkit
+
       - name: Install PostgreSQL client
         run: sudo apt-get update && sudo apt-get install -y postgresql-client
 
@@ -190,6 +193,9 @@ jobs:
           STUDIO_TEST_MANAGE_SERVER: "1"
           STUDIO_TEST_PORT: 43109
 
+      - name: Public browser smoke
+        run: npm run test:e2e:smoke
+
   windows-quality:
     runs-on: windows-latest
     timeout-minutes: 20
@@ -206,6 +212,9 @@ jobs:
 
       - name: Install dependencies
         run: npm ci
+
+      - name: Install Playwright browsers
+        run: npx playwright install chromium firefox webkit
 
       - name: Lint
         run: npm run lint
@@ -227,6 +236,9 @@ jobs:
 
       - name: Stage 3 Studio regression logic
         run: npm run test:stage3-studio-regression -- --skip-runtime
+
+      - name: Public browser smoke
+        run: npm run test:e2e:smoke
 
       - name: Stage 4 provider health
         run: npm run test:stage4-provider-health
