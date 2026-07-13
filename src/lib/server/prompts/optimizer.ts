@@ -97,6 +97,8 @@ const strictChineseSystemPrompt = [
   "按原始需求的顺序完整覆盖全部事实，尤其不能遗漏输入末尾的限制、细节或否定要求。",
   "不要默认用户在做电商、带货或 TikTok 内容；只有原始需求或创作偏好明确要求时才加入平台和营销语境。",
   "只补充当前任务真正需要的视觉、镜头、动作或保留约束，避免每次机械复用相同的构图、光线、材质和负向词。",
+  "禁止把‘高清细节、柔和自然光、电影感、专业构图、氛围感’等泛化词固定添加到每次结果；原始需求和所选任务不需要时必须省略。",
+  "图片编辑提示词应以编辑动作、作用区域、保留项和禁止改动项为核心，不要把参考图重新描述成一张新图；视频提示词应以动作时间关系、镜头变化和连续性为核心；图片生成提示词才补充必要的画面信息。",
   "画幅、清晰度、生成数量和视频时长由生成界面单独控制，最终提示词中不要重复这些参数。",
   "不要臆造用户没有要求的新元素、新文字、新品牌、新人物或新装饰。",
   "只输出最终提示词，不要解释，不要标题，不要 Markdown，不要列表，不要额外客套话。",
@@ -265,6 +267,11 @@ function composeStrictChineseUserPrompt(input: PromptOptimizeInput) {
     input.quality ? `界面清晰度：${input.quality}` : "",
     input.duration ? `界面视频时长：${input.duration} 秒` : "",
   ].filter(Boolean);
+  const outputStructure = input.tool === "image-editor"
+    ? "输出结构要求：先写清编辑动作和作用区域，再写必须保留与禁止改动的内容；只在任务需要时补充边缘、阴影、排版或衔接要求，不要重新创作整张图。"
+    : input.tool === "video-generator"
+      ? "输出结构要求：写清主体起始状态、关键动作、镜头运动、前后连续性和结束状态；只补充本次视频需要的节奏与声音，不要堆砌静态摄影词。"
+      : "输出结构要求：围绕主体、用途和场景补充必要的构图与视觉信息；没有相关要求的光线、镜头、文字、营销和负向词不要硬加。";
 
   return [
     scenario,
@@ -275,7 +282,8 @@ function composeStrictChineseUserPrompt(input: PromptOptimizeInput) {
     technicalConstraints.length
       ? `生成界面已单独设置以下参数，只用于把握构图和节奏，禁止在最终提示词中复述：${technicalConstraints.join("；")}`
       : "",
-    "输出结构要求：整理成一段自然、具体且不过度堆砌的提示词。只覆盖与本次任务相关的主体、场景、构图、光线、镜头、动作、保留项和避免项；没有相关要求的维度不要硬加。不要用列表或标题。",
+    outputStructure,
+    "表达要求：整理成一段自然、具体且不过度堆砌的提示词，不使用列表或标题；避免与其他任务复用固定开头、固定结尾和成套形容词。",
     "请直接输出一段可以提交给模型的简体中文提示词。",
     "用户原始要求：",
     input.prompt,
@@ -284,9 +292,41 @@ function composeStrictChineseUserPrompt(input: PromptOptimizeInput) {
 
 function promptScenarioGuidance(input: PromptOptimizeInput) {
   const prompt = input.prompt;
+  const preferences = normalizePromptPreferences(input.preferences);
   if (input.tool === "video-generator") {
+    const videoType = preferences.videoType === "free-create" ? "" : preferences.videoType;
+    if (videoType === "talking-head" || videoType === "ugc") {
+      return "场景策略：这是口播或真人分享视频，强调开场信息、人物自然表情、手势克制、镜头稳定和真实环境；仅在原始需求涉及商品时安排商品露出。";
+    }
+    if (videoType === "unboxing") {
+      return "场景策略：这是开箱类短视频，按包装外观、打开动作、取出商品、细节特写、完整展示的顺序组织镜头。";
+    }
+    if (videoType === "tutorial") {
+      return "场景策略：这是教程视频，按实际操作先后拆分关键步骤，确保手部动作、工具、对象状态和步骤衔接清楚，不跳步也不增加不存在的操作。";
+    }
+    if (videoType === "before-after") {
+      return "场景策略：这是前后对比视频，保持机位、主体尺度和环境条件可比较，清楚呈现初始状态、变化过程与最终状态。";
+    }
+    if (videoType === "product-demo" || videoType === "product-closeup") {
+      return "场景策略：这是商品演示视频，围绕真实使用动作、关键功能、材质细节和结果反馈组织镜头，不虚构功能、参数或人物口播。";
+    }
+    if (videoType === "seamless-loop") {
+      return "场景策略：这是无缝循环视频，设计可自然回到起始状态的主体动作和镜头路径，首尾构图、光线与运动方向必须连续。";
+    }
+    if (videoType === "social-hook") {
+      return "场景策略：这是社媒短视频，开场直接呈现核心动作或结果，随后快速交代过程并收束到清楚的结束画面，不臆造促销信息。";
+    }
+    if (videoType === "lifestyle") {
+      return "场景策略：这是生活方式视频，用真实环境和自然动作呈现人物或物品的使用关系，避免棚拍式僵硬展示。";
+    }
+    if (videoType === "motion-design") {
+      return "场景策略：这是动态图形视频，明确图形元素的出现、变形、转场、层级和收束方式，保持运动规律与视觉节奏一致。";
+    }
+    if (videoType === "cinematic") {
+      return "场景策略：这是叙事或电影感短片，优先梳理角色目标、动作因果、镜头衔接、情绪变化与结尾画面。";
+    }
     if (/口播|讲解|带货|达人|主播|真人/u.test(prompt)) {
-      return "场景策略：这是口播或带货类短视频，强调首秒钩子、人物自然表情、手势克制、商品露出节奏、镜头稳定和真实生活背景。";
+      return "场景策略：这是口播或真人分享视频，强调开场信息、人物自然表情、手势克制、镜头稳定和真实环境；仅在原始需求涉及商品时安排商品露出。";
     }
     if (/开箱|拆箱|包装/u.test(prompt)) {
       return "场景策略：这是开箱类短视频，按包装外观、打开动作、取出商品、细节特写、完整展示的顺序组织镜头。";
@@ -297,21 +337,53 @@ function promptScenarioGuidance(input: PromptOptimizeInput) {
     return "场景策略：根据用户内容判断是生活记录、创意短片、视觉实验还是商业视频，只补充该类型真正需要的镜头与动作信息。";
   }
   if (input.tool === "image-editor") {
-    if (/抠图|透明|去背|透明背景/u.test(prompt)) {
-      return "场景策略：这是透明素材或抠图任务，重点写清保留主体事实、边缘干净、透明背景、真实阴影和不改变商品结构。";
+    const editMode = preferences.editMode;
+    if (editMode === "background-remove" || /抠图|透明|去背|透明背景/u.test(prompt)) {
+      return "场景策略：这是透明素材或抠图任务，重点写清保留主体事实、边缘干净、背景透明、不新增阴影并且不改变主体结构。";
     }
-    if (/文字|翻译|改字|替换文案/u.test(prompt)) {
+    if (editMode === "background-white" || /白底|纯白背景/u.test(prompt)) {
+      return "场景策略：这是商品白底任务，将背景处理为均匀纯白，只保留合理的接触阴影和真实边缘；商品结构、颜色、材质、Logo 与数量不得改变。";
+    }
+    if (editMode === "background-replace") {
+      return "场景策略：这是替换背景任务，先锁定主体轮廓与真实比例，再按用户要求更换环境，并让透视、光向、接触阴影和景深自然衔接。";
+    }
+    if (editMode === "background-cleanup") {
+      return "场景策略：这是背景清理任务，只移除指定杂物、污点或干扰元素，使用邻近纹理自然补全，主体与未指定背景保持不变。";
+    }
+    if (editMode === "text-translate" || editMode === "text-replace" || /文字|翻译|改字|替换文案/u.test(prompt)) {
       return "场景策略：这是文字编辑任务，重点写清只改指定文字，保留原排版、字体风格、透视、背景和主体不变。";
+    }
+    if (editMode === "object-remove") {
+      return "场景策略：这是去除物体任务，只移除用户指定对象，并按周围纹理、光线和遮挡关系自然补全空缺，其他元素位置不变。";
+    }
+    if (editMode === "object-add" || editMode === "composite") {
+      return "场景策略：这是添加或合成元素任务，新元素必须符合原图比例、透视、遮挡、光向、颗粒和景深，原有主体不得被重绘。";
+    }
+    if (editMode === "color-change") {
+      return "场景策略：这是局部改色任务，只改变指定区域的颜色，同时保留原有材质纹理、高光、阴影、透明度和未选区域。";
+    }
+    if (editMode === "outpaint") {
+      return "场景策略：这是扩图任务，只在画面边界外延续已有空间、透视、光线和纹理，原图中心内容与主体尺度保持不变。";
+    }
+    if (editMode === "restore") {
+      return "场景策略：这是老图修复任务，修复划痕、折痕、噪点和缺损，恢复可辨细节但不改变人物身份、年代特征和原始构图。";
     }
     return "场景策略：这是图生图编辑任务，必须区分保留项、修改项和禁止改动项，避免模型重绘无关内容。";
   }
-  if (/详情|长图|卖点|参数|对比/u.test(prompt)) {
+  const purpose = preferences.purpose;
+  if (purpose === "detail-page" || /详情|长图|卖点|参数|对比/u.test(prompt)) {
     return "场景策略：这是电商详情或卖点图，强调信息层级、卖点拆解、对比关系、参数区、留白和中文可读性。";
   }
-  if (/封面|小红书|社媒|笔记|UGC|种草/u.test(prompt)) {
+  if (purpose === "product-main") {
+    return "场景策略：这是电商商品主图，主体必须完整清晰、比例真实、背景干净、边缘和接触阴影自然，不臆造赠品、文字、Logo 或功能。";
+  }
+  if (purpose === "product-scene") {
+    return "场景策略：这是商品场景图，把商品放入符合真实用途的环境，保持商品结构、颜色、数量和品牌事实，场景只服务于使用关系。";
+  }
+  if (purpose === "social-cover" || /封面|小红书|社媒|笔记|UGC|种草/u.test(prompt)) {
     return "场景策略：这是社媒封面或种草图，强调首屏吸引力、真实生活感、标题预留区、点击动机和不过度广告化。";
   }
-  if (/海报|促销|活动|品牌|主视觉/u.test(prompt)) {
+  if (purpose === "advertising" || purpose === "poster" || /海报|促销|活动|品牌|主视觉/u.test(prompt)) {
     return "场景策略：这是海报或品牌主视觉，强调标题区、主体层级、活动氛围、版式秩序和不要出现乱码文字。";
   }
   if (/人像|肖像|人物|女孩|男孩|男人|女人/u.test(prompt)) {

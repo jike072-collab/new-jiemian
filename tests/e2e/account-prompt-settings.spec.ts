@@ -150,7 +150,21 @@ test("prompt gear stores per-tool presets and sends selected preferences", async
   await expect(dialog.getByText("图片编辑", { exact: true })).toBeVisible();
   await expect(dialog.getByText("视频生成", { exact: true })).toBeVisible();
 
-  await dialog.getByLabel("快捷方案").selectOption({ label: "写实摄影" });
+  const presetSelect = dialog.getByLabel("快捷方案");
+  await expect(presetSelect).toHaveValue("image-free");
+  await expect(dialog.getByRole("option", { name: "电商商品主图" })).toHaveCount(2);
+  await dialog.getByRole("tab", { name: "图片编辑" }).click();
+  await expect(presetSelect).toHaveValue("edit-precise");
+  await expect(dialog.getByRole("option", { name: "抠图透明背景" })).toHaveCount(2);
+  await expect(dialog.getByRole("option", { name: "商品纯白底" })).toHaveCount(2);
+  await expect(dialog.getByRole("option", { name: "图片文字翻译" })).toHaveCount(2);
+  await dialog.getByRole("tab", { name: "视频生成" }).click();
+  await expect(presetSelect).toHaveValue("video-free");
+  await expect(dialog.getByRole("option", { name: "教程步骤" })).toHaveCount(2);
+  await expect(dialog.getByRole("option", { name: "前后对比" })).toHaveCount(2);
+  await dialog.getByRole("tab", { name: "图片生成" }).click();
+
+  await presetSelect.selectOption({ label: "写实摄影" });
   await dialog.getByLabel("方案名称").fill("我的写实方案");
   await dialog.getByRole("button", { name: "保存方案" }).click();
   await expect(dialog.getByLabel("快捷方案")).toHaveValue(/custom-/);

@@ -6,6 +6,8 @@ import { Save, Settings2, Trash2, X } from "lucide-react";
 
 import {
   builtInPromptPresets,
+  defaultPromptPreferences,
+  defaultPromptPresetIds,
   emptyPromptPreferences,
   normalizePromptPreferences,
   promptPreferenceFields,
@@ -23,7 +25,7 @@ type CustomPromptPreset = {
 };
 
 type PromptSettingsStore = {
-  version: 1;
+  version: 2;
   settings: Record<PromptPreferenceTool, PromptPreferences>;
   activePresetIds: Partial<Record<PromptPreferenceTool, string>>;
   customPresets: CustomPromptPreset[];
@@ -37,13 +39,13 @@ const serverHydratedSnapshot = () => false;
 
 function createDefaultStore(): PromptSettingsStore {
   return {
-    version: 1,
+    version: 2,
     settings: {
-      "image-generator": emptyPromptPreferences(),
-      "image-editor": emptyPromptPreferences(),
-      "video-generator": emptyPromptPreferences(),
+      "image-generator": defaultPromptPreferences("image-generator"),
+      "image-editor": defaultPromptPreferences("image-editor"),
+      "video-generator": defaultPromptPreferences("video-generator"),
     },
-    activePresetIds: {},
+    activePresetIds: { ...defaultPromptPresetIds },
     customPresets: [],
   };
 }
@@ -51,16 +53,25 @@ function createDefaultStore(): PromptSettingsStore {
 function readStore(): PromptSettingsStore {
   if (typeof window === "undefined") return createDefaultStore();
   try {
-    const parsed = JSON.parse(window.localStorage.getItem(storageKey) || "null") as Partial<PromptSettingsStore> | null;
-    if (!parsed || parsed.version !== 1) return createDefaultStore();
+    const parsed = JSON.parse(window.localStorage.getItem(storageKey) || "null") as (
+      Partial<Omit<PromptSettingsStore, "version">> & { version?: number }
+    ) | null;
+    if (!parsed || (parsed.version !== 1 && parsed.version !== 2)) return createDefaultStore();
     const defaults = createDefaultStore();
+    const normalizedSettings = Object.fromEntries(tools.map((tool) => {
+      const normalized = normalizePromptPreferences(parsed.settings?.[tool]);
+      const migrateToDefault = parsed.version === 1 && Object.keys(normalized).length === 0;
+      return [tool, migrateToDefault ? defaults.settings[tool] : normalized];
+    })) as PromptSettingsStore["settings"];
+    const activePresetIds = Object.fromEntries(tools.flatMap((tool) => {
+      const migrateToDefault = parsed.version === 1 && Object.keys(normalizePromptPreferences(parsed.settings?.[tool])).length === 0;
+      const presetId = migrateToDefault ? defaults.activePresetIds[tool] : parsed.activePresetIds?.[tool];
+      return presetId ? [[tool, presetId]] : [];
+    })) as PromptSettingsStore["activePresetIds"];
     return {
-      version: 1,
-      settings: Object.fromEntries(tools.map((tool) => [
-        tool,
-        normalizePromptPreferences(parsed.settings?.[tool]),
-      ])) as PromptSettingsStore["settings"],
-      activePresetIds: parsed.activePresetIds || {},
+      version: 2,
+      settings: normalizedSettings,
+      activePresetIds,
       customPresets: Array.isArray(parsed.customPresets)
         ? parsed.customPresets.flatMap((preset) => (
           preset

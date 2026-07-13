@@ -6,6 +6,12 @@ import { NewApiHttpClient } from "../../integrations/new-api/client";
 import { NewApiError } from "../../integrations/new-api/errors";
 import { type ProviderConfig } from "../../types";
 import {
+  builtInPromptPresets,
+  defaultPromptPreferences,
+  defaultPromptPresetIds,
+  promptPreferenceFields,
+} from "../../../prompt-preferences";
+import {
   createNewApiPromptModelCaller,
   createProviderPromptModelCaller,
   createPromptOptimizeService,
@@ -66,6 +72,83 @@ function serviceWith(caller: PromptModelCaller) {
     timeoutMs: 25,
   });
 }
+
+test("provides tool-specific defaults and practical task presets", () => {
+  assert.equal(new Set(builtInPromptPresets.map((preset) => preset.id)).size, builtInPromptPresets.length);
+  for (const [tool, fields] of Object.entries(promptPreferenceFields)) {
+    assert.equal(new Set(fields.map((field) => field.key)).size, fields.length, `${tool} has duplicate fields`);
+    for (const field of fields) {
+      assert.equal(
+        new Set(field.options.map((option) => option.value)).size,
+        field.options.length,
+        `${tool}.${field.key} has duplicate option values`,
+      );
+    }
+  }
+
+  assert.deepEqual(defaultPromptPreferences("image-generator"), { purpose: "free-create", platform: "none" });
+  assert.deepEqual(defaultPromptPreferences("image-editor"), { editMode: "precise", preserve: "unmodified", platform: "none" });
+  assert.deepEqual(defaultPromptPreferences("video-generator"), { videoType: "free-create", platform: "none" });
+  assert.equal(defaultPromptPresetIds["image-editor"], "edit-precise");
+
+  const editModes = promptPreferenceFields["image-editor"]
+    .find((field) => field.key === "editMode")?.options.map((option) => option.value) || [];
+  for (const expected of ["background-remove", "background-white", "background-replace", "text-translate", "text-replace", "object-remove", "outpaint", "restore"]) {
+    assert(editModes.includes(expected), `missing image edit mode: ${expected}`);
+  }
+
+  const videoTypes = promptPreferenceFields["video-generator"]
+    .find((field) => field.key === "videoType")?.options.map((option) => option.value) || [];
+  for (const expected of ["talking-head", "tutorial", "before-after", "product-closeup", "seamless-loop"]) {
+    assert(videoTypes.includes(expected), `missing video type: ${expected}`);
+  }
+
+  assert(builtInPromptPresets.some((preset) => preset.id === "edit-cutout"));
+  assert(builtInPromptPresets.some((preset) => preset.id === "edit-translate"));
+  assert(builtInPromptPresets.some((preset) => preset.id === "video-tutorial"));
+});
+
+test("builds distinct instructions for image generation, image editing, and video generation", async () => {
+  const seen: PromptModelCall[] = [];
+  const service = serviceWith(async (input) => {
+    seen.push(input);
+    return seen.length === 1
+      ? "陶瓷杯商品主图，主体完整，纯净背景，不添加文字。"
+      : seen.length === 2
+        ? "将杯子从原图中干净抠出，背景透明，保留杯身颜色、釉面、Logo 和轮廓，不新增阴影。"
+        : "双手依次打开咖啡机包装、取出主机并展示操作面板，动作连续，保留真实包装与商品结构。";
+  });
+
+  await service.optimize(baseInput({
+    prompt: "陶瓷杯主图",
+    preferences: { purpose: "product-main", market: "united-states", platform: "amazon", language: "none" },
+  }), { localUserId: "user-1" });
+  await service.optimize(baseInput({
+    tool: "image-editor",
+    hasImage: true,
+    prompt: "把杯子抠出来",
+    preferences: { editMode: "background-remove", preserve: "product", platform: "none" },
+  }), { localUserId: "user-1" });
+  await service.optimize(baseInput({
+    tool: "video-generator",
+    prompt: "展示咖啡机开箱过程",
+    preferences: { videoType: "tutorial", motion: "static", pace: "steady", audio: "product-sfx", platform: "none" },
+  }), { localUserId: "user-1" });
+
+  assert.equal(seen.length, 3);
+  assert.match(seen[0].userPrompt, /电商商品主图/);
+  assert.match(seen[0].userPrompt, /目标国家\/地区：美国/);
+  assert.match(seen[0].userPrompt, /用途平台：Amazon/);
+  assert.match(seen[0].userPrompt, /图片生成/);
+  assert.match(seen[1].userPrompt, /抠图透明背景/);
+  assert.match(seen[1].userPrompt, /背景透明、不新增阴影/);
+  assert.match(seen[1].userPrompt, /编辑动作和作用区域/);
+  assert.match(seen[2].userPrompt, /教程视频/);
+  assert.match(seen[2].userPrompt, /实际操作先后/);
+  assert.match(seen[2].userPrompt, /主体起始状态、关键动作、镜头运动、前后连续性/);
+  assert.notEqual(seen[0].userPrompt, seen[1].userPrompt);
+  assert.notEqual(seen[1].userPrompt, seen[2].userPrompt);
+});
 
 test("optimizes common ecommerce image prompt scenarios", async () => {
   const seen: PromptModelCall[] = [];
