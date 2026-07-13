@@ -143,6 +143,20 @@ async function assertConstraints() {
       created_at, updated_at
     ) values ('bo_test',$1,'100','sandbox_alipay','CNY',1000,0,1000,'pending','idem-order','sandbox_bo_test',now(),now())
   `, [userId]);
+  await q(`
+    insert into billing_orders(
+      order_id, local_user_id, new_api_user_id, channel, currency, requested_amount,
+      paid_amount, credited_quota, status, idempotency_key, provider_order_id,
+      created_at, updated_at
+    ) values ('bo_admin_grant',$1,'100','admin_grant','CNY',0,0,1000,'paid','idem-admin-grant','admin-grant-test',now(),now())
+  `, [userId]);
+  await expectRejects("zero amount is reserved for admin grants", () => q(`
+    insert into billing_orders(
+      order_id, local_user_id, new_api_user_id, channel, currency, requested_amount,
+      paid_amount, credited_quota, status, idempotency_key, provider_order_id,
+      created_at, updated_at
+    ) values ('bo_zero_payment',$1,'100','sandbox_alipay','CNY',0,0,1000,'paid','idem-zero-payment','sandbox_bo_zero',now(),now())
+  `, [userId]));
   await expectRejects("order amount integer/minor units", () => q(`
     insert into billing_orders(
       order_id, local_user_id, new_api_user_id, channel, currency, requested_amount,
