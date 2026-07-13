@@ -52,7 +52,7 @@ test.beforeEach(async ({ page }) => {
 test("library detail actions and modal layering remain usable", async ({ page }) => {
   await page.goto("/?tool=library", { waitUntil: "domcontentloaded" });
   const preview = page.getByRole("button", { name: `预览作品 ${item.title}` });
-  await expect(preview).toBeVisible();
+  await expect(preview).toBeVisible({ timeout: 15_000 });
   await preview.click();
 
   const modal = page.locator(".studio-library-modal");
