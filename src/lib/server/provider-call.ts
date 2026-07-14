@@ -331,6 +331,8 @@ async function callGetTokenBananaTask(input: {
   ratio: string;
   quality: string;
   files: UploadedMedia[];
+  clientTaskId: string;
+  onTaskAccepted?: (taskId: string) => Promise<void>;
 }) {
   if (!["1k", "2k", "4k"].includes(input.quality)) {
     throw new GenerationDiagnosticError({
@@ -351,7 +353,7 @@ async function callGetTokenBananaTask(input: {
       prompt: input.prompt,
       aspectRatio: input.ratio,
       resolution: input.quality,
-      clientTaskId: randomUUID(),
+      clientTaskId: input.clientTaskId,
       ...(useEdits ? {
         imageUrls: input.files.map((file) => `data:${file.mimeType};base64,${file.bytes.toString("base64")}`),
       } : {}),
@@ -368,6 +370,7 @@ async function callGetTokenBananaTask(input: {
       publicMessage: "GetToken Banana 没有返回任务编号。",
     });
   }
+  await input.onTaskAccepted?.(taskId);
 
   const deadline = Date.now() + imageProviderRequestTimeoutMs;
   while (Date.now() < deadline) {
@@ -382,29 +385,36 @@ async function callGetTokenBananaTask(input: {
         providerId: input.provider.id,
         model: input.provider.model,
         message: getTokenTaskError(payload),
+        safeDetails: { upstreamTaskId: taskId },
       });
     }
     await wait(getTokenBananaPollIntervalMs);
-    const queryResponse = await fetchProviderWithNetworkRetry(getTokenBananaQueryEndpoint(input.provider), {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        ...authHeaders(input.provider),
-      },
-      body: JSON.stringify({ taskId }),
-      signal: AbortSignal.timeout(imageProviderRequestTimeoutMs),
-    });
-    payload = await readProviderJson(queryResponse, input.provider);
+    try {
+      const queryResponse = await fetchProviderWithNetworkRetry(getTokenBananaQueryEndpoint(input.provider), {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          ...authHeaders(input.provider),
+        },
+        body: JSON.stringify({ taskId }),
+        signal: AbortSignal.timeout(imageProviderRequestTimeoutMs),
+      });
+      payload = await readProviderJson(queryResponse, input.provider);
+    } catch (error) {
+      if (!isRetryableGetTokenBananaError(error) && !isProviderNetworkFetchError(error)) throw error;
+    }
   }
   throw new GenerationDiagnosticError({
     code: "PROVIDER_TIMEOUT",
     providerId: input.provider.id,
     model: input.provider.model,
     publicMessage: "GetToken Banana 生成超时，请稍后在作品库查看。",
+    safeDetails: { upstreamTaskId: taskId },
   });
 }
 
 function isRetryableGetTokenBananaError(error: unknown) {
+  if (isProviderNetworkFetchError(error)) return true;
   if (!(error instanceof GenerationDiagnosticError)) return false;
   if (error.upstreamStatus === 429 || (error.upstreamStatus !== undefined && error.upstreamStatus >= 500)) {
     return true;
@@ -418,13 +428,25 @@ function isGetTokenBananaPeakCapacityError(error: unknown) {
     && /no available account|status 599[^]*\bunavailable\b|temporarily unavailable/i.test(error.message);
 }
 
-async function callGetTokenBananaTaskWithRetry(input: Parameters<typeof callGetTokenBananaTask>[0]) {
+async function callGetTokenBananaTaskWithRetry(
+  input: Omit<Parameters<typeof callGetTokenBananaTask>[0], "clientTaskId">,
+) {
+  const clientTaskId = randomUUID();
+  let upstreamTaskId = "";
   let lastError: unknown;
   for (let attempt = 1; attempt <= getTokenBananaPeakTaskAttempts; attempt += 1) {
     try {
-      return await callGetTokenBananaTask(input);
+      return await callGetTokenBananaTask({
+        ...input,
+        clientTaskId,
+        onTaskAccepted: async (taskId) => {
+          upstreamTaskId = taskId;
+          await input.onTaskAccepted?.(taskId);
+        },
+      });
     } catch (error) {
       lastError = error;
+      if (upstreamTaskId) throw error;
       const peakCapacityError = isGetTokenBananaPeakCapacityError(error);
       const maximumAttempts = peakCapacityError ? getTokenBananaPeakTaskAttempts : getTokenBananaTaskAttempts;
       if (attempt >= maximumAttempts || !isRetryableGetTokenBananaError(error)) throw error;
@@ -444,6 +466,7 @@ async function callGetTokenBananaProvider(input: {
   quality: string;
   files: UploadedMedia[];
   count: number;
+  onTaskAccepted?: (taskId: string) => Promise<void>;
 }) {
   const outputCount = Math.min(Math.max(Math.round(input.count || 1), 1), 4);
   return Promise.all(Array.from({ length: outputCount }, () => callGetTokenBananaTaskWithRetry(input)));
@@ -1009,6 +1032,7 @@ async function callImageProvider({
   quality,
   files,
   count,
+  onTaskAccepted,
 }: {
   provider: ProviderConfig;
   prompt: string;
@@ -1016,10 +1040,12 @@ async function callImageProvider({
   quality: string;
   files: UploadedMedia[];
   count: number;
+  onTaskAccepted?: (taskId: string) => Promise<void>;
 }) {
   try {
-    return await callImageProviderOnce({ provider, prompt, ratio, quality, files, count });
+    return await callImageProviderOnce({ provider, prompt, ratio, quality, files, count, onTaskAccepted });
   } catch (error) {
+    if (isGetTokenBananaProvider(provider)) throw error;
     const transientStatus = error instanceof GenerationDiagnosticError
       && [429, 502, 503].includes(error.upstreamStatus || 0);
     const stalledBeforeGeneration = error instanceof GenerationDiagnosticError
@@ -1027,7 +1053,7 @@ async function callImageProvider({
       && /pre_resolve_stall_timeout|no image_ref_resolve_start/i.test(error.message);
     if (!transientStatus && !stalledBeforeGeneration) throw error;
     await wait(1000);
-    return callImageProviderOnce({ provider, prompt, ratio, quality, files, count });
+    return callImageProviderOnce({ provider, prompt, ratio, quality, files, count, onTaskAccepted });
   }
 }
 
@@ -1038,6 +1064,7 @@ async function callImageProviderOnce({
   quality,
   files,
   count,
+  onTaskAccepted,
 }: {
   provider: ProviderConfig;
   prompt: string;
@@ -1045,13 +1072,14 @@ async function callImageProviderOnce({
   quality: string;
   files: UploadedMedia[];
   count: number;
+  onTaskAccepted?: (taskId: string) => Promise<void>;
 }) {
   const size = ratioToSize(ratio);
   const useMultipart = files.length > 0;
   const outputCount = Math.min(Math.max(Math.round(count || 1), 1), 4);
 
   if (isGetTokenBananaProvider(provider)) {
-    return callGetTokenBananaProvider({ provider, prompt, ratio, quality, files, count: outputCount });
+    return callGetTokenBananaProvider({ provider, prompt, ratio, quality, files, count: outputCount, onTaskAccepted });
   }
 
   const apiUrl = imageEndpoint(provider, useMultipart);
@@ -1129,6 +1157,7 @@ async function collectImageProviderOutputs(input: {
   quality: string;
   files: UploadedMedia[];
   count: number;
+  onTaskAccepted?: (taskId: string) => Promise<void>;
 }) {
   const targetCount = Math.min(Math.max(Math.round(input.count || 1), 1), 4);
   const outputs = await callImageProvider({ ...input, count: targetCount });
@@ -1414,6 +1443,12 @@ export async function generateImage(input: {
       quality: input.quality,
       files: input.files,
       count: outputCount,
+      onTaskAccepted: (taskId) => acceptGenerationBilling({
+        localUserId: input.billingLocalUserId,
+        taskId: input.billingTaskId,
+        newApiTaskId: taskId,
+        upstreamModel: readyProvider.model,
+      }),
     });
     if (!output.length) throw new Error("Image provider returned no outputs.");
     const providerOutputCount = output.length;

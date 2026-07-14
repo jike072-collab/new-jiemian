@@ -290,7 +290,7 @@ test("GetToken Banana Pro image edit sends 4K and reference data URIs", async ()
   }
 });
 
-test("GetToken retries only the failed image when upstream capacity is temporarily unavailable", async () => {
+test("GetToken does not create a replacement after upstream accepts a terminally failed task", async () => {
   const getTokenProvider = {
     ...provider,
     id: "image-gettoken-banana::model::banana2",
@@ -300,20 +300,105 @@ test("GetToken retries only the failed image when upstream capacity is temporari
   } as const;
   const originalFetch = globalThis.fetch;
   let submitCount = 0;
+  const acceptedTaskIds: string[] = [];
   globalThis.fetch = (async (url) => {
     if (String(url).endsWith("/banana2/text-to-image")) {
       submitCount += 1;
-      if (submitCount === 1) {
-        return jsonResponse({
-          taskId: "banana-capacity-failure",
-          status: "FAILED",
-          failedReason: { message: "all channels failed: status 599 No available account" },
-        });
+      return jsonResponse({
+        taskId: "banana-capacity-failure",
+        status: "FAILED",
+        failedReason: { message: "all channels failed: status 599 No available account" },
+      });
+    }
+    throw new Error(`Unexpected URL: ${String(url)}`);
+  }) as typeof fetch;
+  try {
+    await assert.rejects(() => providerCallInternalsForTests.collectImageProviderOutputs({
+      provider: getTokenProvider,
+      prompt: "no replacement task test",
+      ratio: "1:1",
+      quality: "1k",
+      files: [],
+      count: 1,
+      onTaskAccepted: async (taskId) => {
+        acceptedTaskIds.push(taskId);
+      },
+    }), /all channels failed/);
+    assert.equal(submitCount, 1);
+    assert.deepEqual(acceptedTaskIds, ["banana-capacity-failure"]);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test("GetToken reuses one client task id when submit retries before upstream acceptance", async () => {
+  const getTokenProvider = {
+    ...provider,
+    id: "image-gettoken-banana::model::banana2",
+    apiUrl: "https://nb.gettoken.cn/openapi/v1",
+    model: "banana2",
+    endpointType: "gettoken-banana",
+  } as const;
+  const originalFetch = globalThis.fetch;
+  const clientTaskIds: string[] = [];
+  globalThis.fetch = (async (url, init) => {
+    if (!String(url).endsWith("/banana2/text-to-image")) {
+      throw new Error(`Unexpected URL: ${String(url)}`);
+    }
+    clientTaskIds.push(String(JSON.parse(String(init?.body || "{}")).clientTaskId || ""));
+    if (clientTaskIds.length === 1) {
+      return jsonResponse({ message: "temporarily unavailable" }, { status: 503 });
+    }
+    return jsonResponse({
+      taskId: "banana-submit-retry-success",
+      status: "SUCCESS",
+      results: [{ url: "https://cdn.example.test/banana-submit-retry.png" }],
+    });
+  }) as typeof fetch;
+  try {
+    const outputs = await providerCallInternalsForTests.callGetTokenBananaProvider({
+      provider: getTokenProvider,
+      prompt: "stable client task id test",
+      ratio: "1:1",
+      quality: "1k",
+      files: [],
+      count: 1,
+    });
+    assert.equal(outputs[0]?.jobId, "banana-submit-retry-success");
+    assert.equal(clientTaskIds.length, 2);
+    assert.ok(clientTaskIds[0]);
+    assert.equal(clientTaskIds[0], clientTaskIds[1]);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test("GetToken retries query for the accepted upstream task without resubmitting", async () => {
+  const getTokenProvider = {
+    ...provider,
+    id: "image-gettoken-banana::model::banana2",
+    apiUrl: "https://nb.gettoken.cn/openapi/v1",
+    model: "banana2",
+    endpointType: "gettoken-banana",
+  } as const;
+  const originalFetch = globalThis.fetch;
+  let submitCount = 0;
+  const queriedTaskIds: string[] = [];
+  const acceptedTaskIds: string[] = [];
+  globalThis.fetch = (async (url, init) => {
+    if (String(url).endsWith("/banana2/text-to-image")) {
+      submitCount += 1;
+      return jsonResponse({ taskId: "banana-query-retry", status: "PROCESSING" });
+    }
+    if (String(url).endsWith("/query")) {
+      queriedTaskIds.push(String(JSON.parse(String(init?.body || "{}")).taskId || ""));
+      if (queriedTaskIds.length === 1) {
+        return jsonResponse({ message: "temporary query failure" }, { status: 503 });
       }
       return jsonResponse({
-        taskId: "banana-retry-success",
+        taskId: "banana-query-retry",
         status: "SUCCESS",
-        results: [{ url: "https://cdn.example.test/banana-retry.png" }],
+        results: [{ url: "https://cdn.example.test/banana-query-retry.png" }],
       });
     }
     throw new Error(`Unexpected URL: ${String(url)}`);
@@ -321,14 +406,19 @@ test("GetToken retries only the failed image when upstream capacity is temporari
   try {
     const outputs = await providerCallInternalsForTests.callGetTokenBananaProvider({
       provider: getTokenProvider,
-      prompt: "retry capacity test",
+      prompt: "same upstream query retry test",
       ratio: "1:1",
       quality: "1k",
       files: [],
       count: 1,
+      onTaskAccepted: async (taskId) => {
+        acceptedTaskIds.push(taskId);
+      },
     });
-    assert.equal(outputs[0]?.url, "https://cdn.example.test/banana-retry.png");
-    assert.equal(submitCount, 2);
+    assert.equal(outputs[0]?.url, "https://cdn.example.test/banana-query-retry.png");
+    assert.equal(submitCount, 1);
+    assert.deepEqual(queriedTaskIds, ["banana-query-retry", "banana-query-retry"]);
+    assert.deepEqual(acceptedTaskIds, ["banana-query-retry"]);
   } finally {
     globalThis.fetch = originalFetch;
   }
@@ -346,11 +436,14 @@ test("GetToken keeps four image tasks concurrent when upstream accepts them", as
   let active = 0;
   let maximumActive = 0;
   let submitCount = 0;
-  globalThis.fetch = (async (url) => {
+  const clientTaskIds = new Set<string>();
+  const acceptedTaskIds: string[] = [];
+  globalThis.fetch = (async (url, init) => {
     if (!String(url).endsWith("/banana2/text-to-image")) {
       throw new Error(`Unexpected URL: ${String(url)}`);
     }
     submitCount += 1;
+    clientTaskIds.add(String(JSON.parse(String(init?.body || "{}")).clientTaskId || ""));
     active += 1;
     maximumActive = Math.max(maximumActive, active);
     await new Promise((resolve) => setTimeout(resolve, 10));
@@ -369,9 +462,14 @@ test("GetToken keeps four image tasks concurrent when upstream accepts them", as
       quality: "1k",
       files: [],
       count: 4,
+      onTaskAccepted: async (taskId) => {
+        acceptedTaskIds.push(taskId);
+      },
     });
     assert.equal(outputs.length, 4);
     assert.equal(submitCount, 4);
+    assert.equal(clientTaskIds.size, 4);
+    assert.equal(acceptedTaskIds.length, 4);
     assert.equal(maximumActive, 4);
   } finally {
     globalThis.fetch = originalFetch;
