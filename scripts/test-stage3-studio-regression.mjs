@@ -186,8 +186,8 @@ async function runJsonFetchBehaviorTests() {
 }
 
 async function runImageGenerationQueueTests() {
-  const { createClientTaskRunner } = await import("../src/lib/client/task-runner.ts");
-  const runWithSlot = createClientTaskRunner(4);
+  const { createTaskRunner } = await import("../src/lib/task-runner.ts");
+  const runWithSlot = createTaskRunner(4);
   let active = 0;
   let maximumActive = 0;
   const tasks = Array.from({ length: 12 }, (_, index) => runWithSlot(async () => {

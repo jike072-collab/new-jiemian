@@ -334,6 +334,50 @@ test("GetToken retries only the failed image when upstream capacity is temporari
   }
 });
 
+test("GetToken queues four image tasks within the two-account upstream capacity", async () => {
+  const getTokenProvider = {
+    ...provider,
+    id: "image-gettoken-banana::model::banana2",
+    apiUrl: "https://nb.gettoken.cn/openapi/v1",
+    model: "banana2",
+    endpointType: "gettoken-banana",
+  } as const;
+  const originalFetch = globalThis.fetch;
+  let active = 0;
+  let maximumActive = 0;
+  let submitCount = 0;
+  globalThis.fetch = (async (url) => {
+    if (!String(url).endsWith("/banana2/text-to-image")) {
+      throw new Error(`Unexpected URL: ${String(url)}`);
+    }
+    submitCount += 1;
+    active += 1;
+    maximumActive = Math.max(maximumActive, active);
+    await new Promise((resolve) => setTimeout(resolve, 10));
+    active -= 1;
+    return jsonResponse({
+      taskId: `banana-capacity-${submitCount}`,
+      status: "SUCCESS",
+      results: [{ url: `https://cdn.example.test/banana-capacity-${submitCount}.png` }],
+    });
+  }) as typeof fetch;
+  try {
+    const outputs = await providerCallInternalsForTests.callGetTokenBananaProvider({
+      provider: getTokenProvider,
+      prompt: "four image capacity test",
+      ratio: "1:1",
+      quality: "1k",
+      files: [],
+      count: 4,
+    });
+    assert.equal(outputs.length, 4);
+    assert.equal(submitCount, 4);
+    assert.equal(maximumActive, 2);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
 test("batch image generation retries once when upstream returns fewer outputs than requested", async () => {
   const originalFetch = globalThis.fetch;
   let callCount = 0;

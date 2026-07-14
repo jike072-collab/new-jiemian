@@ -5,6 +5,7 @@ import {
   estimateImageGenerationTotalQuota,
   generationBillingFingerprint,
 } from "../generation-quota";
+import { createTaskRunner } from "../task-runner";
 import { getMembershipService } from "./membership";
 
 import { addJob, addLibraryItem, readLibraryMetadataForOwner, storeDataUrl, storeRemoteUrl, updateJob, updateLibraryItem } from "./library";
@@ -53,6 +54,7 @@ const duplicateImageDispatchPollMs = 2000;
 const imageProviderRequestTimeoutMs = 600000;
 const getTokenBananaPollIntervalMs = 2800;
 const getTokenBananaTaskAttempts = 3;
+const runGetTokenBananaTaskWithSlot = createTaskRunner(2);
 
 const grokVideo10Durations = new Set([6, 8, 10, 12, 15]);
 const grokVideo15Durations = new Set([6, 8, 10, 12, 15]);
@@ -435,7 +437,10 @@ async function callGetTokenBananaProvider(input: {
   count: number;
 }) {
   const outputCount = Math.min(Math.max(Math.round(input.count || 1), 1), 4);
-  return Promise.all(Array.from({ length: outputCount }, () => callGetTokenBananaTaskWithRetry(input)));
+  return Promise.all(Array.from(
+    { length: outputCount },
+    () => runGetTokenBananaTaskWithSlot(() => callGetTokenBananaTaskWithRetry(input)),
+  ));
 }
 
 function img2ImageSize(ratio: string, quality: string) {

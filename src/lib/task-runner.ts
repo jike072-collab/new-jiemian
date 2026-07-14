@@ -1,4 +1,4 @@
-export function createClientTaskRunner(limit: number) {
+export function createTaskRunner(limit: number) {
   let active = 0;
   const waiting: Array<() => void> = [];
 

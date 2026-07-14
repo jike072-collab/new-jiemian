@@ -10,7 +10,7 @@ import { FormPanelLoadingFallback, LibraryWorkspaceLoadingFallback, PreviewPanel
 import { WorkbenchShell } from "@/components/workbench-shell";
 import { ImageGenerator } from "@/components/studio/image-generator";
 import { jsonFetch } from "@/components/studio/json-fetch";
-import { createClientTaskRunner } from "@/lib/client/task-runner";
+import { createTaskRunner } from "@/lib/task-runner";
 import {
   ImageGenerationProgressToast,
   ImagePreviewPanel,
@@ -409,7 +409,7 @@ type ImageWorkspaceScope = "image" | "image-editor";
 
 const imageGenerationExecutionLimit = 4;
 
-const runImageGenerationWithSlot = createClientTaskRunner(imageGenerationExecutionLimit);
+const runImageGenerationWithSlot = createTaskRunner(imageGenerationExecutionLimit);
 
 function createInitialImageWorkspaceState(): ImageWorkspaceState {
   return {
