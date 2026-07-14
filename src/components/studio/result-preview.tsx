@@ -1632,7 +1632,7 @@ export function ImagePreviewPanel({
   output,
   outputs = output ? [output] : [],
   loading,
-  expectedCount = 1,
+  pendingCount = 0,
   activeBatchId,
   canSubmit,
   submitError,
@@ -1652,7 +1652,7 @@ export function ImagePreviewPanel({
   output: OutputState;
   outputs?: OutputItemState[];
   loading: boolean;
-  expectedCount?: number;
+  pendingCount?: number;
   activeBatchId?: string | null;
   canSubmit: boolean;
   submitError: string;
@@ -1674,7 +1674,7 @@ export function ImagePreviewPanel({
   if (loading && !resultOutputs.length) {
     return (
       <PreviewState eyebrow="结果" title="正在生成图片" description="完成的图片会立即替换对应位置。" badge="生成中" role="status" live>
-        <ImageResultGrid outputs={[]} expectedCount={expectedCount} activeBatchId={activeBatchId} canRetry={false} loading onSubmit={onSubmit} onUpscale={onUpscale} onCreateVideo={onCreateVideo} onEdit={onEdit} onDismiss={onDismiss} />
+        <ImageResultGrid outputs={[]} pendingCount={pendingCount} activeBatchId={activeBatchId} canRetry={false} loading onSubmit={onSubmit} onUpscale={onUpscale} onCreateVideo={onCreateVideo} onEdit={onEdit} onDismiss={onDismiss} />
       </PreviewState>
     );
   }
@@ -1695,7 +1695,7 @@ export function ImagePreviewPanel({
     const resultContent = (
         <ImageResultGrid
           outputs={resultOutputs}
-          expectedCount={expectedCount}
+          pendingCount={pendingCount}
           activeBatchId={activeBatchId}
           canRetry={canRetry}
         loading={loading}
@@ -1710,7 +1710,7 @@ export function ImagePreviewPanel({
     return (
       <PreviewState
         eyebrow="结果"
-        title={resultOutputs.length > 1 ? `本次生成 ${resultOutputs.length} 张` : "结果"}
+        title={resultOutputs.length > 1 ? `已生成 ${resultOutputs.length} 张` : "结果"}
         description={loading ? "还有图片在生成中，已完成的结果可以先操作。" : undefined}
         badge={loading ? "生成中" : libraryStatusBadgeLabel(resultOutputs[resultOutputs.length - 1].item.status)}
         role="status"
@@ -1726,7 +1726,7 @@ export function ImagePreviewPanel({
 
 function ImageResultGrid({
   outputs,
-  expectedCount,
+  pendingCount,
   activeBatchId,
   canRetry,
   loading,
@@ -1737,7 +1737,7 @@ function ImageResultGrid({
   onDismiss,
 }: {
   outputs: OutputItemState[];
-  expectedCount: number;
+  pendingCount: number;
   activeBatchId?: string | null;
   canRetry: boolean;
   loading: boolean;
@@ -1753,9 +1753,8 @@ function ImageResultGrid({
   const historicOutputs = activeBatchId
     ? outputs.filter((output) => output.item.params?.imageBatchId !== activeBatchId)
     : [];
-  const pendingCount = loading ? Math.max(0, expectedCount - currentOutputs.length) : 0;
   return (
-    <div className={cn("studio-image-results", `is-count-${Math.min(Math.max(expectedCount, outputs.length), 4)}`)}>
+    <div className={cn("studio-image-results", `is-count-${Math.min(Math.max(pendingCount + outputs.length, 1), 4)}`)}>
       {[...currentOutputs, ...historicOutputs].map((output, index) => (
         <article key={output.item.id} className={cn("studio-image-result-card", activeBatchId && output.item.params?.imageBatchId !== activeBatchId && "is-historic")}>
           <div className="studio-image-result-card__head">
@@ -1973,13 +1972,48 @@ export function ImageGenerationProgressToast({
   onClose: (id: string) => void;
 }) {
   const visibleProgress = useMemo(
-    () => [...progress].sort((a, b) => a.startedAt - b.startedAt).slice(0, 1),
+    () => [...progress]
+      .sort((a, b) => Number(b.status === "running") - Number(a.status === "running") || b.startedAt - a.startedAt)
+      .slice(0, 3),
     [progress],
   );
 
   const baseBottom = stacked ? 122 : 26;
 
-  return visibleProgress.map((item, index) => {
+  return visibleProgress.map((item, index) => (
+    <ImageGenerationProgressItem
+      key={item.id}
+      item={item}
+      tick={tick}
+      bottom={baseBottom + index * 116}
+      onClose={onClose}
+    />
+  ));
+}
+
+function ImageGenerationProgressItem({
+  item,
+  tick,
+  bottom,
+  onClose,
+}: {
+  item: ImageGenerationProgressState[number];
+  tick: number;
+  bottom: number;
+  onClose: (id: string) => void;
+}) {
+  const [leaving, setLeaving] = useState(false);
+
+  useEffect(() => {
+    if (item.status !== "done") return undefined;
+    const fadeTimer = window.setTimeout(() => setLeaving(true), 3200);
+    const closeTimer = window.setTimeout(() => onClose(item.id), 3900);
+    return () => {
+      window.clearTimeout(fadeTimer);
+      window.clearTimeout(closeTimer);
+    };
+  }, [item.id, item.status, onClose]);
+
     const total = Math.max(item.total, 1);
     const completed = Math.min(Math.max(item.current, 0), total);
     const activeIndex = item.status === "running" ? Math.min(completed + 1, total) : completed;
@@ -2003,12 +2037,11 @@ export function ImageGenerationProgressToast({
 
     return (
       <div
-        key={item.id}
-        className={cn("image-generation-progress", `is-${item.status}`)}
+        className={cn("image-generation-progress", `is-${item.status}`, leaving && "is-leaving")}
         role="status"
         aria-live="polite"
         onClick={item.status === "running" ? undefined : () => onClose(item.id)}
-        style={{ bottom: `${baseBottom + index * 116}px` }}
+        style={{ bottom: `${bottom}px` }}
       >
         <span className="image-generation-progress__icon" aria-hidden="true">
           {item.status === "done" ? <Check className="size-4" /> : null}
@@ -2036,7 +2069,6 @@ export function ImageGenerationProgressToast({
         </span>
       </div>
     );
-  });
 }
 
 export function Toast({ message, tone = "error", onClose }: { message: string; tone?: "error" | "success"; onClose: () => void }) {

@@ -1267,6 +1267,28 @@ export async function failVideoGenerationBeforeSubmit(input: {
   });
 }
 
+export async function failImageGenerationBeforeSubmit(input: {
+  localUserId?: string | null;
+  taskId?: string | null;
+  operation?: "cloud_image_generation" | "cloud_image_edit" | null;
+  estimatedQuotaUnits?: number | null;
+  reason?: string | null;
+}) {
+  const operation = input.operation === "cloud_image_edit" ? "cloud_image_edit" : "cloud_image_generation";
+  await restoreMembershipEntitlementOnFailure({
+    localUserId: input.localUserId,
+    taskId: input.taskId,
+    operation,
+  });
+  return settleGeneratedTaskBilling({
+    localUserId: input.localUserId,
+    taskId: input.taskId,
+    estimatedQuotaUnits: input.estimatedQuotaUnits,
+    outcome: "failed",
+    reason: input.reason || "image generation rejected before provider submission",
+  });
+}
+
 async function claimGenerationBillingDispatch(input: {
   localUserId?: string | null;
   taskId?: string | null;

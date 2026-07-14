@@ -10,6 +10,7 @@ import { FormPanelLoadingFallback, LibraryWorkspaceLoadingFallback, PreviewPanel
 import { WorkbenchShell } from "@/components/workbench-shell";
 import { ImageGenerator } from "@/components/studio/image-generator";
 import { jsonFetch } from "@/components/studio/json-fetch";
+import { createClientTaskRunner } from "@/lib/client/task-runner";
 import {
   ImageGenerationProgressToast,
   ImagePreviewPanel,
@@ -406,7 +407,9 @@ function createTaskId(prefix: string) {
 
 type ImageWorkspaceScope = "image" | "image-editor";
 
-const imageGenerationSubmissionLimit = 4;
+const imageGenerationExecutionLimit = 4;
+
+const runImageGenerationWithSlot = createClientTaskRunner(imageGenerationExecutionLimit);
 
 function createInitialImageWorkspaceState(): ImageWorkspaceState {
   return {
@@ -1566,24 +1569,22 @@ export function StudioApp() {
     "张",
     formatQuotaSymbolLabel(imageEstimatedQuotaUnits),
   );
-  const imageWorkspaceAtSubmissionLimit = activeImageWorkspace.inFlightCount + imageGenerationCount > (
-    activeImageWorkspaceScope === "image" ? imageGenerationSubmissionLimit : 1
-  );
+  const imageWorkspaceAtSubmissionLimit = activeImageWorkspaceScope === "image-editor"
+    && activeImageWorkspace.inFlightCount + imageGenerationCount > 1;
   const imageWorkspaceCanSubmit = Boolean(selectedImageProvider)
     && !providersLoading
     && !imageWorkspaceAtSubmissionLimit
     && Boolean(imageWorkspacePrompt)
     && (!imageWorkspaceRequiresFile || imageWorkspaceHasFiles);
-  const scopedImageProgress = imageGenerationProgress.find((progress) => (
-    progress.id === latestImageDisplayRef.current[activeImageWorkspaceScope]?.progressId
-  ));
-  const scopedImageLoading = scopedImageProgress?.status === "running" && imageRequestScope === activeImageWorkspaceScope;
-  const imageSubmitLoading = activeImageWorkspaceScope === "image" ? imageWorkspaceAtSubmissionLimit : scopedImageLoading;
+  const scopedImagePendingCount = imageGenerationProgress
+    .filter((progress) => progress.scope === activeImageWorkspaceScope && progress.status === "running")
+    .reduce((total, progress) => total + Math.max(0, progress.total - progress.current), 0);
+  const scopedImageLoading = scopedImagePendingCount > 0;
+  const imageSubmitLoading = activeImageWorkspaceScope === "image-editor" && scopedImageLoading;
   const scopedImageSubmitError = imageRequestScope === activeImageWorkspaceScope ? activeImageWorkspace.submitError : "";
   const scopedImageSubmitDiagnostic = imageRequestScope === activeImageWorkspaceScope ? activeImageWorkspace.submitDiagnostic : null;
   const scopedImageOutputs = imageResultScope === activeImageWorkspaceScope ? imageOutputs : [];
   const scopedActiveImageOutput = imageResultScope === activeImageWorkspaceScope ? activeOutput : null;
-  const scopedImageGenerationStartedAt = scopedImageLoading ? scopedImageProgress.startedAt : null;
 
   const updateImageWorkspace = useCallback((patch: Partial<ImageWorkspaceState>) => {
     activeImageWorkspaceSetter((prev) => ({
@@ -1764,8 +1765,7 @@ export function StudioApp() {
   }, [activeImageWorkspaceFilesRef, activeImageWorkspaceSetter]);
 
   const submitImageWorkspace = useCallback(async () => {
-    const submissionLimit = activeImageWorkspaceScope === "image" ? imageGenerationSubmissionLimit : 1;
-    if (activeImageInFlightCountRef.current >= submissionLimit) return;
+    if (activeImageWorkspaceScope === "image-editor" && activeImageInFlightCountRef.current >= 1) return;
     if (!selectedImageProvider) {
       activeImageWorkspaceSetter((prev) => ({
         ...prev,
@@ -1847,7 +1847,16 @@ export function StudioApp() {
       )));
     try {
       const taskIds = Array.from({ length: snapshot.totalCount }, () => createTaskId("image"));
-      const runImageTask = async (taskId: string) => {
+      const runImageTask = async (taskId: string) => runImageGenerationWithSlot(async () => {
+        const publishItems = (items: LibraryItem[]) => {
+          items.forEach((item) => handleImageResult(item, { append: true, scope: snapshot.scope }));
+          updateImageGenerationProgress(progressId, (current) => ({
+            ...current,
+            current: Math.min(current.total, current.current + items.length),
+            message: `${Math.min(current.total, current.current + items.length)}/${current.total} 张图片已完成`,
+          }));
+          return items;
+        };
         const requestFingerprint = generationBillingFingerprint({
           kind: "image",
           operation: snapshot.operation,
@@ -1891,21 +1900,13 @@ export function StudioApp() {
           });
           const items = data.items?.length ? data.items : data.item ? [data.item] : [];
           if (!items.length) throw new Error("图片生成未返回结果。");
-          if (latestImageDisplayRef.current[snapshot.scope]?.taskId === snapshot.batchId) {
-            items.forEach((item) => handleImageResult(item, { append: true, scope: snapshot.scope }));
-          }
-          updateImageGenerationProgress(progressId, (current) => ({
-            ...current,
-            current: Math.min(current.total, current.current + items.length),
-            message: `${Math.min(current.total, current.current + items.length)}/${current.total} 张图片已完成`,
-          }));
-          return items;
+          return publishItems(items);
         } catch (error) {
           const recoveredItems = await findTaskItems(taskId).catch(() => []);
-          if (recoveredItems.length) return recoveredItems;
+          if (recoveredItems.length) return publishItems(recoveredItems);
           throw error;
         }
-      };
+      });
       const results = await Promise.allSettled(taskIds.map(runImageTask));
       const items = results.flatMap((result) => result.status === "fulfilled" ? result.value : []);
       const failures = results.filter((result): result is PromiseRejectedResult => result.status === "rejected");
@@ -1958,7 +1959,6 @@ export function StudioApp() {
     imageWorkspacePrompt,
     imageWorkspaceHasFiles,
     imageWorkspaceRequiresFile,
-    refreshAccountAfterPrecheck,
     refreshAccountAfterGeneration,
     refreshLibraryAfterMutation,
     selectedImageProvider,
@@ -3037,7 +3037,7 @@ export function StudioApp() {
                 output={scopedActiveImageOutput}
                 outputs={scopedImageOutputs}
                 loading={scopedImageLoading}
-                expectedCount={scopedImageProgress?.total || 1}
+                pendingCount={scopedImagePendingCount}
                 activeBatchId={imageResultBatchId}
                 canSubmit={imageWorkspaceCanSubmit}
                 submitError={scopedImageSubmitError}
@@ -3773,12 +3773,6 @@ function RechargeCenterWorkspace({
                               <span>{item}</span>
                             </span>
                           ))}
-                          {plan.id !== "basic" && planCycleGrantBonusPercent[selectedPlanCycle] > 0 ? (
-                            <span role="listitem">
-                              <Check className="size-3.5" aria-hidden="true" />
-                              <span>{`${selectedPlanCycle === "yearly" ? "年付" : "季付"}长期加赠 ${planCycleGrantBonusPercent[selectedPlanCycle]}%`}</span>
-                            </span>
-                          ) : null}
                         </span>
                         <span className="recharge-plan-card__entitlements" role="list" aria-label={`${plan.name}五项赠送权益`}>
                           {planEntitlements.map((item) => (

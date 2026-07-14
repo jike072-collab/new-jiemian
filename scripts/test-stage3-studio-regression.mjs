@@ -33,6 +33,8 @@ const lazyPanelSourceTokens = [
 const allowedAdminStatuses = [200, 302, 303, 307, 308, 401, 403];
 
 await runJsonFetchBehaviorTests();
+await runImageGenerationQueueTests();
+runImageGenerationSourceChecks();
 
 const skipRuntime = process.env.STUDIO_TEST_SKIP_RUNTIME === "1" || process.argv.includes("--skip-runtime");
 let runtimeResult = { skipped: true, reason: "STUDIO_TEST_SKIP_RUNTIME=1 or --skip-runtime" };
@@ -42,6 +44,8 @@ if (!skipRuntime) {
 
 console.log(JSON.stringify({
   jsonFetchBehavior: "passed",
+  imageGenerationQueue: "passed",
+  imageGenerationSourceChecks: "passed",
   runtime: runtimeResult,
   generationEndpointsCalled: false,
   newApiCalled: false,
@@ -179,6 +183,37 @@ async function runJsonFetchBehaviorTests() {
       (error) => error instanceof Error && error.message === "network unavailable",
     );
   });
+}
+
+async function runImageGenerationQueueTests() {
+  const { createClientTaskRunner } = await import("../src/lib/client/task-runner.ts");
+  const runWithSlot = createClientTaskRunner(4);
+  let active = 0;
+  let maximumActive = 0;
+  const tasks = Array.from({ length: 12 }, (_, index) => runWithSlot(async () => {
+    active += 1;
+    maximumActive = Math.max(maximumActive, active);
+    await new Promise((resolve) => setTimeout(resolve, 3));
+    active -= 1;
+    return index;
+  }));
+
+  assert.deepEqual(await Promise.all(tasks), Array.from({ length: 12 }, (_, index) => index));
+  assert.equal(maximumActive, 4, "all submissions finish through the four-slot execution pool");
+}
+
+function runImageGenerationSourceChecks() {
+  const studioSource = readFileSync(join(root, "src/components/studio-app.tsx"), "utf8");
+  const previewSource = readFileSync(join(root, "src/components/studio/result-preview.tsx"), "utf8");
+  const imageRouteSource = readFileSync(join(root, "src/app/api/generate/image/route.ts"), "utf8");
+
+  assert(studioSource.includes("activeImageWorkspaceScope === \"image-editor\" && activeImageInFlightCountRef.current >= 1"));
+  assert(studioSource.includes("runImageGenerationWithSlot(async () =>"));
+  assert(studioSource.includes("progress.total - progress.current"));
+  assert(studioSource.includes("if (recoveredItems.length) return publishItems(recoveredItems)"));
+  assert(previewSource.includes("window.setTimeout(() => setLeaving(true), 3200)"));
+  assert(previewSource.includes(".slice(0, 3)"));
+  assert(imageRouteSource.includes("if (error instanceof WorkloadLimitError) await failBeforeSubmit(error)"));
 }
 
 async function withMockFetch(fetchImpl, callback) {
