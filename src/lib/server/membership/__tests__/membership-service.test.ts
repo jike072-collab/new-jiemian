@@ -26,12 +26,22 @@ test("grants paid membership credits and entitlement counts by cycle", async () 
   const status = await membership.getStatus("user-1");
   assert.equal(status.active?.source_order_id, "order-advanced-quarterly");
   assert.equal(status.recharge_bonus_basis_points, 1000);
-  assert.equal(status.entitlements.prompt_optimize.remaining, 90);
-  assert.equal(status.entitlements.image_generation.remaining, 90);
-  assert.equal(status.entitlements.video_generation.remaining, 3);
+  assert.equal(status.first_purchase_reward_claimed, true);
+  assert.equal(status.entitlements.prompt_optimize.remaining, 99);
+  assert.equal(status.entitlements.image_generation.remaining, 99);
+  assert.equal(status.entitlements.video_generation.remaining, 4);
   assert.equal(status.entitlements.image_edit.remaining, 0);
-  assert.equal(status.entitlements.image_upscale.remaining, 90);
-  assert.equal(status.entitlements.video_upscale.remaining, 3);
+  assert.equal(status.entitlements.image_upscale.remaining, 99);
+  assert.equal(status.entitlements.video_upscale.remaining, 4);
+});
+
+test("keeps the basic plan regular entitlement counts unchanged across cycles", async () => {
+  const membership = service();
+  const yearly = membership.getSku("basic", "yearly");
+  assert.equal(yearly?.grant_credits, 43_200);
+  assert.equal(yearly?.grant_entitlements.image_generation, 120);
+  assert.equal(yearly?.grant_entitlements.prompt_optimize, 120);
+  assert.equal(yearly?.cycle_bonus_basis_points, 0);
 });
 
 test("backfills only missing entitlement kinds for an active membership", async () => {
@@ -93,7 +103,7 @@ test("does not partially consume a multi-image entitlement request", async () =>
   });
   assert.equal(rejected.consumed, 0);
   const status = await membership.getStatus("user-partial");
-  assert.equal(status.entitlements.image_generation.remaining, 2);
+  assert.equal(status.entitlements.image_generation.remaining, 3);
 });
 
 test("same tier renews, higher tier activates immediately, lower tier queues", async () => {
@@ -166,6 +176,7 @@ test("mirrors external New API membership into the local repository", async () =
       },
       queued: null,
       recharge_bonus_basis_points: 0,
+      first_purchase_reward_claimed: false,
       entitlements: {
         prompt_optimize: { remaining: 3, granted: 3, used: 0 },
         image_generation: { remaining: 4, granted: 4, used: 0 },
@@ -233,5 +244,59 @@ test("restores consumed entitlements for failed generation flows", async () => {
   });
   assert.equal(restored.restored, 1);
   const status = await membership.getStatus("user-3");
-  assert.equal(status.entitlements.image_generation.remaining, 60);
+  assert.equal(status.entitlements.image_generation.remaining, 64);
+});
+
+test("first paid membership reward is owned by one order and grows by tier and cycle", async () => {
+  const membership = service();
+  const basicMonthly = await membership.claimFirstPurchaseReward({
+    localUserId: "first-basic",
+    orderId: "basic-monthly",
+    planId: "basic",
+    cycle: "monthly",
+  });
+  const enterpriseYearly = await membership.claimFirstPurchaseReward({
+    localUserId: "first-enterprise",
+    orderId: "enterprise-yearly",
+    planId: "enterprise",
+    cycle: "yearly",
+  });
+  assert.equal(basicMonthly.isOwner, true);
+  assert.equal(enterpriseYearly.isOwner, true);
+  assert.ok(enterpriseYearly.reward.bonus_credits > basicMonthly.reward.bonus_credits);
+  assert.ok(enterpriseYearly.reward.bonus_entitlements.image_generation > basicMonthly.reward.bonus_entitlements.image_generation);
+
+  const retry = await membership.claimFirstPurchaseReward({
+    localUserId: "first-basic",
+    orderId: "basic-monthly",
+    planId: "basic",
+    cycle: "monthly",
+  });
+  const later = await membership.claimFirstPurchaseReward({
+    localUserId: "first-basic",
+    orderId: "basic-yearly-later",
+    planId: "basic",
+    cycle: "yearly",
+  });
+  assert.equal(retry.isOwner, true);
+  assert.equal(later.isOwner, false);
+  assert.equal(later.reward.source_order_id, "basic-monthly");
+});
+
+test("manual membership does not consume the paid first-purchase reward", async () => {
+  const membership = service();
+  await membership.applyManualMembership({
+    localUserId: "manual-first",
+    orderId: "admin-membership:manual-first:one",
+    planId: "basic",
+    cycle: "monthly",
+  });
+  assert.equal((await membership.getStatus("manual-first")).first_purchase_reward_claimed, false);
+  const paid = await membership.claimFirstPurchaseReward({
+    localUserId: "manual-first",
+    orderId: "paid-after-manual",
+    planId: "advanced",
+    cycle: "quarterly",
+  });
+  assert.equal(paid.isOwner, true);
 });

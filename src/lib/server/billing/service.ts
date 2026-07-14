@@ -198,7 +198,7 @@ export class BillingService {
         && order.product_type === "membership"
         && order.product_plan_id === sku.plan.id
         && order.product_cycle === sku.cycle
-        && order.credited_quota === sku.grant_credits;
+        && order.credited_quota >= sku.grant_credits;
       if (!matches || order.status === "refunded") {
         return billingFailure("invalid_billing_request", 409, "External membership order conflicts with existing billing evidence.");
       }
@@ -875,11 +875,23 @@ export class BillingService {
       return { ok: true as const, status: 202, order: publicOrder(review), action: "review" as const };
     }
 
+    const firstPurchaseReward = await this.membershipService.claimFirstPurchaseReward({
+      localUserId: order.local_user_id,
+      orderId: order.order_id,
+      planId: order.product_plan_id,
+      cycle: order.product_cycle,
+      now: this.now(),
+    });
+    const firstPurchaseBonusCredits = firstPurchaseReward.isOwner
+      ? firstPurchaseReward.reward.bonus_credits
+      : 0;
+    const creditedQuota = sku.grant_credits + firstPurchaseBonusCredits;
+
     const credit = await this.creditQuota({
       orderId: order.order_id,
       localUserId: order.local_user_id,
       newApiUserId: order.new_api_user_id,
-      quotaUnits: order.credited_quota,
+      quotaUnits: creditedQuota,
       idempotencyKey: `membership-credit:${order.order_id}`,
     });
     if (!credit.ok) {
@@ -916,6 +928,7 @@ export class BillingService {
     }
 
     const paid = await this.updateStatusWithRetry(order, "paid", {
+      credited_quota: creditedQuota,
       quota_credit_applied_at: nowIso(this.now()),
       last_error: null,
     });
@@ -924,6 +937,7 @@ export class BillingService {
       event_id: eventId,
       provider_credit_id: credit.providerCreditId,
       credited_quota: paid.credited_quota,
+      first_purchase_bonus_credits: firstPurchaseBonusCredits,
     });
     return { ok: true as const, status: 200, order: publicOrder(paid), action: "credited" as const };
   }

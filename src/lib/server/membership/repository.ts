@@ -2,13 +2,14 @@ import { randomUUID } from "node:crypto";
 import { join } from "node:path";
 
 import { dataRoot, readJsonFile, writeJsonFile } from "../paths";
-import type { MembershipEntitlementKind, MembershipPlanId, MembershipCycle } from "./plans";
-import type { MembershipEntitlementGrant, MembershipEntitlementLedger, UserMembership, UserMembershipStatus } from "./types";
+import { createEmptyMembershipEntitlements, type MembershipEntitlementKind, type MembershipPlanId, type MembershipCycle } from "./plans";
+import type { MembershipEntitlementGrant, MembershipEntitlementLedger, MembershipFirstPurchaseRewardRecord, UserMembership, UserMembershipStatus } from "./types";
 
 type MembershipStore = {
   memberships: UserMembership[];
   entitlements: MembershipEntitlementGrant[];
   ledger: MembershipEntitlementLedger[];
+  firstPurchaseRewards: MembershipFirstPurchaseRewardRecord[];
 };
 
 type MembershipStorage = {
@@ -57,9 +58,21 @@ export type RestoreEntitlementInput = {
   now?: string;
 };
 
+export type ClaimFirstPurchaseRewardInput = {
+  localUserId: string;
+  sourceOrderId: string;
+  planId: MembershipPlanId;
+  cycle: MembershipCycle;
+  bonusCredits: number;
+  bonusEntitlements: Record<MembershipEntitlementKind, number>;
+  now?: string;
+};
+
 export type MembershipRepository = {
   listMemberships(localUserId: string): Promise<UserMembership[]>;
   getMembershipByOrder(sourceOrderId: string): Promise<UserMembership | null>;
+  getFirstPurchaseReward(localUserId: string): Promise<MembershipFirstPurchaseRewardRecord | null>;
+  claimFirstPurchaseReward(input: ClaimFirstPurchaseRewardInput): Promise<{ reward: MembershipFirstPurchaseRewardRecord; isOwner: boolean }>;
   createMembership(input: CreateMembershipInput): Promise<UserMembership>;
   updateMembership(id: string, patch: MembershipPatch, expectedVersion?: number): Promise<UserMembership>;
   listEntitlements(localUserId: string, now?: string): Promise<MembershipEntitlementGrant[]>;
@@ -96,11 +109,18 @@ function cloneLedger(record: MembershipEntitlementLedger): MembershipEntitlement
   return { ...record };
 }
 
+function cloneFirstPurchaseReward(record: MembershipFirstPurchaseRewardRecord): MembershipFirstPurchaseRewardRecord {
+  return { ...record, bonus_entitlements: { ...record.bonus_entitlements } };
+}
+
 function normalizeStore(store: Partial<MembershipStore> | null): MembershipStore {
   return {
     memberships: Array.isArray(store?.memberships) ? store.memberships.map((record) => ({ ...record })) : [],
     entitlements: Array.isArray(store?.entitlements) ? store.entitlements.map((record) => ({ ...record })) : [],
     ledger: Array.isArray(store?.ledger) ? store.ledger.map((record) => ({ ...record })) : [],
+    firstPurchaseRewards: Array.isArray(store?.firstPurchaseRewards)
+      ? store.firstPurchaseRewards.map(cloneFirstPurchaseReward)
+      : [],
   };
 }
 
@@ -109,6 +129,7 @@ function cloneStore(store: MembershipStore): MembershipStore {
     memberships: store.memberships.map(cloneMembership),
     entitlements: store.entitlements.map(cloneEntitlement),
     ledger: store.ledger.map(cloneLedger),
+    firstPurchaseRewards: store.firstPurchaseRewards.map(cloneFirstPurchaseReward),
   };
 }
 
@@ -152,6 +173,43 @@ class StoreMembershipRepository implements MembershipRepository {
     const store = await this.storage.read();
     const found = store.memberships.find((record) => record.source_order_id === sourceOrderId.trim());
     return found ? cloneMembership(found) : null;
+  }
+
+  async getFirstPurchaseReward(localUserId: string) {
+    const store = await this.storage.read();
+    const found = store.firstPurchaseRewards.find((record) => record.local_user_id === localUserId.trim());
+    return found ? cloneFirstPurchaseReward(found) : null;
+  }
+
+  async claimFirstPurchaseReward(input: ClaimFirstPurchaseRewardInput) {
+    const timestamp = nowIso(input.now);
+    return this.mutate((store) => {
+      const owner = input.localUserId.trim();
+      const existing = store.firstPurchaseRewards.find((record) => record.local_user_id === owner);
+      if (existing) return { reward: cloneFirstPurchaseReward(existing), isOwner: existing.source_order_id === input.sourceOrderId.trim() };
+      const previousPaidMembership = store.memberships
+        .filter((record) => record.local_user_id === owner && !record.source_order_id.startsWith("admin-membership:"))
+        .sort((a, b) => a.created_at.localeCompare(b.created_at))[0];
+      const reward: MembershipFirstPurchaseRewardRecord = previousPaidMembership ? {
+        local_user_id: owner,
+        source_order_id: previousPaidMembership.source_order_id,
+        plan_id: previousPaidMembership.plan_id,
+        cycle: previousPaidMembership.cycle,
+        bonus_credits: 0,
+        bonus_entitlements: createEmptyMembershipEntitlements(),
+        created_at: previousPaidMembership.created_at,
+      } : {
+        local_user_id: owner,
+        source_order_id: input.sourceOrderId.trim(),
+        plan_id: input.planId,
+        cycle: input.cycle,
+        bonus_credits: input.bonusCredits,
+        bonus_entitlements: { ...input.bonusEntitlements },
+        created_at: timestamp,
+      };
+      store.firstPurchaseRewards.push(reward);
+      return { reward: cloneFirstPurchaseReward(reward), isOwner: reward.source_order_id === input.sourceOrderId.trim() };
+    });
   }
 
   async createMembership(input: CreateMembershipInput) {

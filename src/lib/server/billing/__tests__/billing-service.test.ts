@@ -444,18 +444,31 @@ test("paid membership order credits quota and grants entitlements once", async (
   assert.equal(paid.order.status, "paid");
   assert.equal(harness.creditCalls.length, 1);
   assert.equal(harness.creditCalls[0].idempotencyKey, `membership-credit:${order.order_id}`);
-  assert.equal(harness.creditCalls[0].quotaUnits, 9000);
+  assert.equal(harness.creditCalls[0].quotaUnits, 9540);
 
   const status = await harness.membership.getStatus("local-user");
   assert.equal(status.active?.plan_id, "advanced");
   assert.equal(status.recharge_bonus_basis_points, 1000);
-  assert.equal(status.entitlements.prompt_optimize.remaining, 30);
-  assert.equal(status.entitlements.image_generation.remaining, 30);
-  assert.equal(status.entitlements.video_generation.remaining, 1);
+  assert.equal(status.first_purchase_reward_claimed, true);
+  assert.equal(status.entitlements.prompt_optimize.remaining, 31);
+  assert.equal(status.entitlements.image_generation.remaining, 31);
+  assert.equal(status.entitlements.video_generation.remaining, 2);
 
   const duplicate = await withSecret(() => signedWebhook(harness.billing, payloadFor(order)));
   assert.equal(duplicate.ok, true);
   assert.equal(harness.creditCalls.length, 1);
+
+  const renewal = await createOrder(harness, {
+    requestedAmount: 5990,
+    productType: "membership",
+    planId: "advanced",
+    cycle: "monthly",
+    idempotencyKey: "membership-renewal",
+  });
+  const renewed = await withSecret(() => signedWebhook(harness.billing, payloadFor(renewal, { event_id: "evt-membership-renewal" })));
+  assert.equal(renewed.ok, true);
+  assert.equal(harness.creditCalls.length, 2);
+  assert.equal(harness.creditCalls[1].quotaUnits, 9000);
 });
 
 test("external New API membership creates one paid credit record", async () => {
@@ -475,9 +488,9 @@ test("external New API membership creates one paid credit record", async () => {
   assert.equal(first.order.status, "paid");
   assert.equal(first.order.channel, "new_api_subscription");
   assert.equal(first.order.product_type, "membership");
-  assert.equal(first.order.credited_quota, 432000);
+  assert.equal(first.order.credited_quota, 527212);
   assert.equal(harness.creditCalls.length, 1);
-  assert.equal(harness.creditCalls[0].quotaUnits, 432000);
+  assert.equal(harness.creditCalls[0].quotaUnits, 527212);
 
   const duplicate = await harness.billing.fulfillExternalMembership(input);
   assert.equal(duplicate.ok, true);
@@ -488,7 +501,7 @@ test("external New API membership creates one paid credit record", async () => {
 
   const membership = await harness.membership.getStatus("local-user");
   assert.equal(membership.active?.source_order_id, input.sourceOrderId);
-  assert.equal(membership.entitlements.image_generation.remaining, 1800);
+  assert.equal(membership.entitlements.image_generation.remaining, 2196);
 });
 
 test("credit package applies active membership recharge bonus", async () => {

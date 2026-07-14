@@ -13,6 +13,7 @@ export type MembershipPlan = {
   name: string;
   rank: number;
   recharge_bonus_basis_points: number;
+  first_purchase_bonus_basis_points: number;
   monthly_credits: number;
   monthly_entitlements: Record<MembershipEntitlementKind, number>;
   prices: Record<MembershipCycle, number>;
@@ -24,8 +25,15 @@ export type MembershipSku = {
   price_amount: number;
   cycle_months: number;
   duration_days: number;
+  cycle_bonus_basis_points: number;
   grant_credits: number;
   grant_entitlements: Record<MembershipEntitlementKind, number>;
+};
+
+export type MembershipFirstPurchaseReward = {
+  bonus_basis_points: number;
+  bonus_credits: number;
+  bonus_entitlements: Record<MembershipEntitlementKind, number>;
 };
 
 export const membershipEntitlementKinds: MembershipEntitlementKind[] = [
@@ -54,6 +62,7 @@ export const membershipPlans: MembershipPlan[] = [
     name: "基础会员",
     rank: 10,
     recharge_bonus_basis_points: 500,
+    first_purchase_bonus_basis_points: 500,
     monthly_credits: 3600,
     monthly_entitlements: {
       prompt_optimize: 10,
@@ -74,6 +83,7 @@ export const membershipPlans: MembershipPlan[] = [
     name: "进阶会员",
     rank: 20,
     recharge_bonus_basis_points: 1000,
+    first_purchase_bonus_basis_points: 600,
     monthly_credits: 9000,
     monthly_entitlements: {
       prompt_optimize: 30,
@@ -94,6 +104,7 @@ export const membershipPlans: MembershipPlan[] = [
     name: "专业会员",
     rank: 30,
     recharge_bonus_basis_points: 1500,
+    first_purchase_bonus_basis_points: 700,
     monthly_credits: 16000,
     monthly_entitlements: {
       prompt_optimize: 80,
@@ -114,6 +125,7 @@ export const membershipPlans: MembershipPlan[] = [
     name: "企业会员",
     rank: 40,
     recharge_bonus_basis_points: 2000,
+    first_purchase_bonus_basis_points: 800,
     monthly_credits: 36000,
     monthly_entitlements: {
       prompt_optimize: 200,
@@ -143,6 +155,23 @@ const cycleDays: Record<MembershipCycle, number> = {
   yearly: 365,
 };
 
+export const membershipCycleBonusBasisPoints: Record<MembershipCycle, number> = {
+  monthly: 0,
+  quarterly: 300,
+  yearly: 800,
+};
+
+const firstPurchaseCycleBonusBasisPoints: Record<MembershipCycle, number> = {
+  monthly: 0,
+  quarterly: 200,
+  yearly: 500,
+};
+
+function applyBonus(amount: number, basisPoints: number) {
+  if (amount <= 0) return 0;
+  return Math.floor((amount * (10000 + basisPoints)) / 10000);
+}
+
 export function getMembershipPlan(planId: string | null | undefined) {
   return membershipPlans.find((plan) => plan.id === planId) || null;
 }
@@ -155,9 +184,10 @@ export function getMembershipSku(planId: string | null | undefined, cycle: unkno
   const plan = getMembershipPlan(planId);
   if (!plan || !isMembershipCycle(cycle)) return null;
   const months = cycleMonths[cycle];
+  const cycleBonusBasisPoints = plan.id === "basic" ? 0 : membershipCycleBonusBasisPoints[cycle];
   const grantEntitlements = createEmptyMembershipEntitlements();
   for (const kind of membershipEntitlementKinds) {
-    grantEntitlements[kind] = plan.monthly_entitlements[kind] * months;
+    grantEntitlements[kind] = applyBonus(plan.monthly_entitlements[kind] * months, cycleBonusBasisPoints);
   }
   return {
     plan,
@@ -165,8 +195,31 @@ export function getMembershipSku(planId: string | null | undefined, cycle: unkno
     price_amount: plan.prices[cycle],
     cycle_months: months,
     duration_days: cycleDays[cycle],
-    grant_credits: plan.monthly_credits * months,
+    cycle_bonus_basis_points: cycleBonusBasisPoints,
+    grant_credits: applyBonus(plan.monthly_credits * months, cycleBonusBasisPoints),
     grant_entitlements: grantEntitlements,
+  };
+}
+
+export function getMembershipFirstPurchaseReward(
+  planId: string | null | undefined,
+  cycle: unknown,
+): MembershipFirstPurchaseReward | null {
+  const sku = getMembershipSku(planId, cycle);
+  if (!sku) return null;
+  const bonusBasisPoints = sku.plan.first_purchase_bonus_basis_points
+    + firstPurchaseCycleBonusBasisPoints[sku.cycle];
+  const bonusEntitlements = createEmptyMembershipEntitlements();
+  for (const kind of membershipEntitlementKinds) {
+    const grant = sku.grant_entitlements[kind];
+    bonusEntitlements[kind] = grant > 0
+      ? Math.max(1, Math.floor((grant * bonusBasisPoints) / 10000))
+      : 0;
+  }
+  return {
+    bonus_basis_points: bonusBasisPoints,
+    bonus_credits: Math.floor((sku.grant_credits * bonusBasisPoints) / 10000),
+    bonus_entitlements: bonusEntitlements,
   };
 }
 

@@ -209,7 +209,7 @@ test("uses membership image entitlement before charging quota", async () => {
   assert.equal(settled.record.final_quota_units, 0);
   assert.equal(harness.adjustments.length, 0);
   const status = await harness.membershipService.getStatus("local-user");
-  assert.equal(status.entitlements.image_generation.remaining, 9);
+  assert.equal(status.entitlements.image_generation.remaining, 10);
   assert.equal(status.entitlements.image_edit.remaining, 0);
 });
 
@@ -240,7 +240,7 @@ test("uses one image entitlement per requested batch item", async () => {
     4,
   );
   const status = await harness.membershipService.getStatus("local-user");
-  assert.equal(status.entitlements.image_generation.remaining, 6);
+  assert.equal(status.entitlements.image_generation.remaining, 7);
 });
 
 test("uses the shared image generation entitlement for image editing", async () => {
@@ -275,7 +275,7 @@ test("uses the shared image generation entitlement for image editing", async () 
   assert.equal(harness.adjustments.length, 0);
   const status = await harness.membershipService.getStatus("local-user");
   assert.equal(status.entitlements.image_edit.remaining, 0);
-  assert.equal(status.entitlements.image_generation.remaining, 9);
+  assert.equal(status.entitlements.image_generation.remaining, 10);
 });
 
 test("uses prompt and upscale entitlements before charging quota", async () => {
@@ -284,19 +284,19 @@ test("uses prompt and upscale entitlements before charging quota", async () => {
       operation: "prompt_optimize" as const,
       planId: "basic",
       kind: "prompt_optimize" as const,
-      remaining: 9,
+      remaining: 10,
     },
     {
       operation: "cloud_image_upscale" as const,
       planId: "basic",
       kind: "image_upscale" as const,
-      remaining: 9,
+      remaining: 10,
     },
     {
       operation: "cloud_video_upscale" as const,
       planId: "advanced",
       kind: "video_upscale" as const,
-      remaining: 0,
+      remaining: 1,
     },
   ];
 
@@ -482,11 +482,11 @@ test("three accounts settle isolated entitlements in parallel without mixed char
     membershipService.getStatus(accountB.local_user_id),
     membershipService.getStatus(accountC.local_user_id),
   ]);
-  assert.equal(statusA.entitlements.image_generation.remaining, 9);
+  assert.equal(statusA.entitlements.image_generation.remaining, 10);
   assert.equal(statusA.entitlements.image_edit.remaining, 0);
   assert.equal(statusB.entitlements.image_edit.remaining, 0);
-  assert.equal(statusB.entitlements.image_generation.remaining, 9);
-  assert.equal(statusC.entitlements.video_generation.remaining, 0);
+  assert.equal(statusB.entitlements.image_generation.remaining, 10);
+  assert.equal(statusC.entitlements.video_generation.remaining, 1);
 });
 
 test("three-account workload runtime keeps same-user limits and allows cross-account overlap", async () => {
@@ -785,7 +785,7 @@ test("stale provider dispatches restore unconfirmed entitlements and retain upst
   assert.equal((await harness.taskRepository.getByTaskId("local-user", unconfirmed.taskId))?.billing_state, "failed");
   assert.equal((await harness.taskRepository.getByTaskId("local-user", confirmed.taskId))?.billing_state, "reconciliation_required");
   const status = await harness.membershipService.getStatus("local-user");
-  assert.equal(status.entitlements.image_generation.remaining, 9);
+  assert.equal(status.entitlements.image_generation.remaining, 10);
 });
 
 test("precheck retries reject mismatched request parameters", async () => {

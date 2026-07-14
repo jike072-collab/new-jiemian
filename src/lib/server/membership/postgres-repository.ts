@@ -8,6 +8,7 @@ import { applicationQuery, getApplicationDatabaseConfig, withApplicationTransact
 import type { MembershipEntitlementKind, MembershipCycle, MembershipPlanId } from "./plans";
 import {
   MembershipRepositoryError,
+  type ClaimFirstPurchaseRewardInput,
   type ConsumeEntitlementInput,
   type CreateMembershipInput,
   type GrantEntitlementInput,
@@ -15,7 +16,7 @@ import {
   type MembershipRepository,
   type RestoreEntitlementInput,
 } from "./repository";
-import type { MembershipEntitlementGrant, MembershipEntitlementLedger, UserMembership, UserMembershipStatus } from "./types";
+import type { MembershipEntitlementGrant, MembershipEntitlementLedger, MembershipFirstPurchaseRewardRecord, UserMembership, UserMembershipStatus } from "./types";
 
 type MembershipRow = QueryResultRow & {
   id: string;
@@ -54,6 +55,16 @@ type LedgerRow = QueryResultRow & {
   idempotency_key: string;
   source_order_id: string | null;
   task_id: string | null;
+  created_at: Date | string;
+};
+
+type FirstPurchaseRewardRow = QueryResultRow & {
+  local_user_id: string;
+  source_order_id: string;
+  plan_id: MembershipPlanId;
+  cycle: MembershipCycle;
+  bonus_credits: number;
+  bonus_entitlements: Record<MembershipEntitlementKind, number>;
   created_at: Date | string;
 };
 
@@ -113,6 +124,18 @@ function ledgerFromRow(row: LedgerRow): MembershipEntitlementLedger {
   };
 }
 
+function firstPurchaseRewardFromRow(row: FirstPurchaseRewardRow): MembershipFirstPurchaseRewardRecord {
+  return {
+    local_user_id: row.local_user_id,
+    source_order_id: row.source_order_id,
+    plan_id: row.plan_id,
+    cycle: row.cycle,
+    bonus_credits: Number(row.bonus_credits),
+    bonus_entitlements: { ...row.bonus_entitlements },
+    created_at: iso(row.created_at),
+  };
+}
+
 function isUniqueViolation(error: unknown) {
   return typeof error === "object"
     && error !== null
@@ -141,6 +164,66 @@ export class PostgresMembershipRepository implements MembershipRepository {
       limit 1
     `, [sourceOrderId.trim()]);
     return result.rows[0] ? membershipFromRow(result.rows[0]) : null;
+  }
+
+  async getFirstPurchaseReward(localUserId: string) {
+    const result = await applicationQuery<FirstPurchaseRewardRow>(`
+      select * from membership_first_purchase_rewards
+      where local_user_id = $1
+      limit 1
+    `, [localUserId.trim()]);
+    return result.rows[0] ? firstPurchaseRewardFromRow(result.rows[0]) : null;
+  }
+
+  async claimFirstPurchaseReward(input: ClaimFirstPurchaseRewardInput) {
+    const timestamp = input.now || new Date().toISOString();
+    return withApplicationTransaction(async (client) => {
+      const owner = input.localUserId.trim();
+      const existing = await client.query<FirstPurchaseRewardRow>(`
+        select * from membership_first_purchase_rewards
+        where local_user_id = $1
+        limit 1
+      `, [owner]);
+      if (existing.rows[0]) {
+        const reward = firstPurchaseRewardFromRow(existing.rows[0]);
+        return { reward, isOwner: reward.source_order_id === input.sourceOrderId.trim() };
+      }
+      const previous = await client.query<MembershipRow>(`
+        select * from user_memberships
+        where local_user_id = $1 and source_order_id not like 'admin-membership:%'
+        order by created_at asc
+        limit 1
+      `, [owner]);
+      const previousMembership = previous.rows[0] ? membershipFromRow(previous.rows[0]) : null;
+      const values = previousMembership ? {
+        sourceOrderId: previousMembership.source_order_id,
+        planId: previousMembership.plan_id,
+        cycle: previousMembership.cycle,
+        bonusCredits: 0,
+        bonusEntitlements: {},
+        createdAt: previousMembership.created_at,
+      } : {
+        sourceOrderId: input.sourceOrderId.trim(),
+        planId: input.planId,
+        cycle: input.cycle,
+        bonusCredits: input.bonusCredits,
+        bonusEntitlements: input.bonusEntitlements,
+        createdAt: timestamp,
+      };
+      const inserted = await client.query<FirstPurchaseRewardRow>(`
+        insert into membership_first_purchase_rewards (
+          local_user_id, source_order_id, plan_id, cycle, bonus_credits, bonus_entitlements, created_at
+        ) values ($1, $2, $3, $4, $5, $6::jsonb, $7)
+        on conflict (local_user_id) do nothing
+        returning *
+      `, [owner, values.sourceOrderId, values.planId, values.cycle, values.bonusCredits, JSON.stringify(values.bonusEntitlements), values.createdAt]);
+      const row = inserted.rows[0] || (await client.query<FirstPurchaseRewardRow>(`
+        select * from membership_first_purchase_rewards where local_user_id = $1 limit 1
+      `, [owner])).rows[0];
+      if (!row) throw new Error("First purchase reward claim was not persisted.");
+      const reward = firstPurchaseRewardFromRow(row);
+      return { reward, isOwner: reward.source_order_id === input.sourceOrderId.trim() };
+    });
   }
 
   async createMembership(input: CreateMembershipInput) {

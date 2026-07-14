@@ -39,7 +39,7 @@ function accountSummary() {
     membership: {
       ok: true,
       plans: [],
-      membership: { active: null, queued: null, recharge_bonus_basis_points: 0, entitlements },
+      membership: { active: null, queued: null, recharge_bonus_basis_points: 0, first_purchase_reward_claimed: false, entitlements },
     },
     checkIn: { ok: true, checkIn: { status: "unavailable" }, records: [] },
   };

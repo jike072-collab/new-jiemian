@@ -42,10 +42,21 @@ export type MembershipEntitlementLedger = {
   created_at: string;
 };
 
+export type MembershipFirstPurchaseRewardRecord = {
+  local_user_id: string;
+  source_order_id: string;
+  plan_id: MembershipPlanId;
+  cycle: MembershipCycle;
+  bonus_credits: number;
+  bonus_entitlements: Record<MembershipEntitlementKind, number>;
+  created_at: string;
+};
+
 export type MembershipStatusSnapshot = {
   active: UserMembership | null;
   queued: UserMembership | null;
   recharge_bonus_basis_points: number;
+  first_purchase_reward_claimed: boolean;
   entitlements: Record<MembershipEntitlementKind, {
     remaining: number;
     granted: number;

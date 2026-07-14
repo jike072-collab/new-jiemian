@@ -241,6 +241,7 @@ export async function getNewApiSubscriptionMembershipStatus(
     active,
     queued: null,
     recharge_bonus_basis_points: plan?.recharge_bonus_basis_points || 0,
+    first_purchase_reward_claimed: false,
     entitlements: {
       prompt_optimize: { remaining: grantEntitlements.prompt_optimize, granted: grantEntitlements.prompt_optimize, used: 0 },
       image_generation: { remaining: grantEntitlements.image_generation, granted: grantEntitlements.image_generation, used: 0 },

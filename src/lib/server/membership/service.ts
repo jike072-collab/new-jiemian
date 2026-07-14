@@ -3,6 +3,7 @@ import { randomUUID } from "node:crypto";
 import {
   createEmptyMembershipEntitlements,
   addMembershipDuration,
+  getMembershipFirstPurchaseReward,
   getMembershipPlan,
   getMembershipSku,
   membershipPlans,
@@ -213,10 +214,12 @@ export class MembershipService {
         used: grant.used,
       });
     }
+    const firstPurchaseReward = await this.repository.getFirstPurchaseReward(localUserId);
     const localStatus = {
       active,
       queued,
       recharge_bonus_basis_points: active ? getMembershipPlan(active.plan_id)?.recharge_bonus_basis_points || 0 : 0,
+      first_purchase_reward_claimed: Boolean(firstPurchaseReward),
       entitlements,
     };
     if (active) {
@@ -239,6 +242,7 @@ export class MembershipService {
     if (existing) return existing;
     const sku = getMembershipSku(input.planId, input.cycle);
     if (!sku) throw new Error("Invalid membership SKU.");
+    const firstPurchaseReward = await this.claimFirstPurchaseReward(input);
     await this.refreshExpired(input.localUserId, now);
     const memberships = await this.repository.listMemberships(input.localUserId);
     const active = memberships
@@ -266,7 +270,33 @@ export class MembershipService {
       }, active.version);
     }
     await this.grantMembershipEntitlements(input.localUserId, input.orderId, sku.grant_entitlements, record.ends_at, timestamp);
+    if (firstPurchaseReward.isOwner) {
+      await this.grantMembershipEntitlements(
+        input.localUserId,
+        input.orderId,
+        firstPurchaseReward.reward.bonus_entitlements,
+        record.ends_at,
+        timestamp,
+        "membership-first-purchase-grant",
+      );
+    }
     return record;
+  }
+
+  async claimFirstPurchaseReward(input: MembershipGrantInput) {
+    const sku = getMembershipSku(input.planId, input.cycle);
+    const reward = getMembershipFirstPurchaseReward(input.planId, input.cycle);
+    if (!sku || !reward) throw new Error("Invalid membership SKU.");
+    const now = input.now || this.now();
+    return this.repository.claimFirstPurchaseReward({
+      localUserId: input.localUserId,
+      sourceOrderId: input.orderId,
+      planId: sku.plan.id,
+      cycle: sku.cycle,
+      bonusCredits: reward.bonus_credits,
+      bonusEntitlements: reward.bonus_entitlements,
+      now: nowIso(now),
+    });
   }
 
   async applyManualMembership(input: ManualMembershipGrantInput) {
@@ -386,6 +416,7 @@ export class MembershipService {
     entitlements: Record<MembershipEntitlementKind, number>,
     expiresAt: string,
     timestamp: string,
+    idempotencyPrefix = "membership-grant",
   ) {
     for (const [kind, amount] of Object.entries(entitlements) as Array<[MembershipEntitlementKind, number]>) {
       if (amount <= 0) continue;
@@ -395,7 +426,7 @@ export class MembershipService {
         amount,
         sourceOrderId: orderId,
         expiresAt,
-        idempotencyKey: `membership-grant:${orderId}:${kind}`,
+        idempotencyKey: `${idempotencyPrefix}:${orderId}:${kind}`,
         now: timestamp,
       });
     }

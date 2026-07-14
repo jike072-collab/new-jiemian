@@ -125,6 +125,7 @@ type MembershipStatusResponse = {
     prices: Record<PlanCycle, number>;
     monthly_credits: number;
     recharge_bonus_basis_points: number;
+    first_purchase_bonus_basis_points: number;
     monthly_entitlements: {
       prompt_optimize: number;
       image_generation: number;
@@ -138,6 +139,7 @@ type MembershipStatusResponse = {
     active: { plan_id: string; ends_at: string } | null;
     queued: { plan_id: string; starts_at: string; ends_at: string } | null;
     recharge_bonus_basis_points: number;
+    first_purchase_reward_claimed: boolean;
     entitlements: Record<"prompt_optimize" | "image_generation" | "video_generation" | "image_edit" | "image_upscale" | "video_upscale", {
       remaining: number;
       granted: number;
@@ -212,6 +214,7 @@ type PlanOption = {
   description: string;
   highlight: string;
   rechargeBonusPercent: number;
+  firstPurchaseBonusPercent: number;
   perks: string[];
   cyclePriceLabels?: Partial<Record<PlanCycle, string>>;
   recommended?: boolean;
@@ -263,6 +266,7 @@ const planOptions: PlanOption[] = [
     description: "适合电商日常出图与首批客户试用",
     highlight: "新客友好",
     rechargeBonusPercent: 5,
+    firstPurchaseBonusPercent: 5,
     perks: ["模板优先体验"],
     cyclePriceLabels: { monthly: "¥29.9 / 月", quarterly: "¥79 / 季", yearly: "¥299 / 年" },
   },
@@ -277,6 +281,7 @@ const planOptions: PlanOption[] = [
     description: "面向持续产出商品图、海报与短视频素材",
     highlight: "创作者常用",
     rechargeBonusPercent: 10,
+    firstPurchaseBonusPercent: 6,
     perks: ["持续创作优先体验"],
     cyclePriceLabels: { monthly: "¥59.9 / 月", quarterly: "¥159 / 季", yearly: "¥599 / 年" },
     recommended: true,
@@ -292,6 +297,7 @@ const planOptions: PlanOption[] = [
     description: "适合高频商用创作与图片视频混合生产",
     highlight: "商用高频",
     rechargeBonusPercent: 15,
+    firstPurchaseBonusPercent: 7,
     perks: ["高频商用优先体验"],
     cyclePriceLabels: { monthly: "¥99.9 / 月", quarterly: "¥279 / 季", yearly: "¥999 / 年" },
   },
@@ -306,6 +312,7 @@ const planOptions: PlanOption[] = [
     description: "适合团队协作、批量出图和持续视频投放",
     highlight: "团队定向",
     rechargeBonusPercent: 20,
+    firstPurchaseBonusPercent: 8,
     perks: ["团队批量创作优先体验"],
     cyclePriceLabels: { monthly: "¥199 / 月", quarterly: "¥549 / 季", yearly: "¥1,999 / 年" },
   },
@@ -332,6 +339,22 @@ const planCycleMonths: Record<PlanCycle, number> = {
   quarterly: 3,
   yearly: 12,
 };
+const planCycleGrantBonusPercent: Record<PlanCycle, number> = {
+  monthly: 0,
+  quarterly: 3,
+  yearly: 8,
+};
+const firstPurchaseCycleBonusPercent: Record<PlanCycle, number> = {
+  monthly: 0,
+  quarterly: 2,
+  yearly: 5,
+};
+
+function calculateMembershipGrant(amount: number, cycle: PlanCycle, planId?: string) {
+  const base = amount * planCycleMonths[cycle];
+  const bonusPercent = planId === "basic" ? 0 : planCycleGrantBonusPercent[cycle];
+  return Math.floor((base * (100 + bonusPercent)) / 100);
+}
 const membershipFaqItems = [
   { title: "有效期怎么算", description: "会员从开通日开始按自然月顺延，续费同套餐会接在当前到期时间之后。" },
   { title: "会不会自动续费", description: "当前不自动续费，也不需要取消自动续费；到期前可手动续费。" },
@@ -3666,12 +3689,21 @@ function RechargeCenterWorkspace({
                   {planOptions.map((plan) => {
                     const selected = selectedPlan?.id === plan.id;
                     const planPrice = getPlanCyclePrice(plan, selectedPlanCycle);
-                    const cycleMonths = selectedPlanCycle === "yearly" ? 12 : selectedPlanCycle === "quarterly" ? 3 : 1;
-                    const planCredits = plan.monthlyCredits * cycleMonths;
+                    const planCredits = calculateMembershipGrant(plan.monthlyCredits, selectedPlanCycle, plan.id);
                     const planEntitlements = membershipEntitlementDefinitions
                       .map((definition) => ({
                         ...definition,
-                        amount: plan.monthlyEntitlements[definition.key] * cycleMonths,
+                        amount: calculateMembershipGrant(plan.monthlyEntitlements[definition.key], selectedPlanCycle, plan.id),
+                      }))
+                      .filter((definition) => definition.amount > 0);
+                    const showFirstPurchaseReward = membershipSnapshot?.membership.first_purchase_reward_claimed !== true;
+                    const firstPurchaseBonusPercent = plan.firstPurchaseBonusPercent
+                      + firstPurchaseCycleBonusPercent[selectedPlanCycle];
+                    const firstPurchaseBonusCredits = Math.floor((planCredits * firstPurchaseBonusPercent) / 100);
+                    const firstPurchaseBonusEntitlements = planEntitlements
+                      .map((definition) => ({
+                        ...definition,
+                        amount: Math.max(1, Math.floor((definition.amount * firstPurchaseBonusPercent) / 100)),
                       }))
                       .filter((definition) => definition.amount > 0);
                     const priceMeta = createPlanPriceMeta(plan, selectedPlanCycle);
@@ -3741,6 +3773,12 @@ function RechargeCenterWorkspace({
                               <span>{item}</span>
                             </span>
                           ))}
+                          {plan.id !== "basic" && planCycleGrantBonusPercent[selectedPlanCycle] > 0 ? (
+                            <span role="listitem">
+                              <Check className="size-3.5" aria-hidden="true" />
+                              <span>{`${selectedPlanCycle === "yearly" ? "年付" : "季付"}长期加赠 ${planCycleGrantBonusPercent[selectedPlanCycle]}%`}</span>
+                            </span>
+                          ) : null}
                         </span>
                         <span className="recharge-plan-card__entitlements" role="list" aria-label={`${plan.name}五项赠送权益`}>
                           {planEntitlements.map((item) => (
@@ -3751,6 +3789,24 @@ function RechargeCenterWorkspace({
                             </span>
                           ))}
                         </span>
+                        {showFirstPurchaseReward ? (
+                          <>
+                            <span className="recharge-plan-card__benefits-title">首次开通额外赠送（仅一次）</span>
+                            <span className="recharge-plan-card__facts" role="list" aria-label={`${plan.name}首购额外赠送`}>
+                              <span className="recharge-plan-card__fact-credit" role="listitem">
+                                <Sparkles className="size-3.5" aria-hidden="true" />
+                                <span>额外积分</span>
+                                <strong>{formatQuotaUnits(firstPurchaseBonusCredits)}</strong>
+                              </span>
+                              {firstPurchaseBonusEntitlements.map((item) => (
+                                <span key={item.key} role="listitem">
+                                  <Check className="size-3.5" aria-hidden="true" />
+                                  <span>{`额外${item.compactLabel} ${formatQuotaUnits(item.amount)} ${item.unit}`}</span>
+                                </span>
+                              ))}
+                            </span>
+                          </>
+                        ) : null}
                       </article>
                     );
                   })}
