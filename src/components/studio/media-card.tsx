@@ -5,6 +5,7 @@
 import { AlertTriangle, Download, ExternalLink, Pause, Play, Video } from "lucide-react";
 import { useEffect, useRef, useState, type MouseEvent, type PointerEvent } from "react";
 
+import { DotRippleLoader } from "@/components/studio/dot-ripple-loader";
 import { cachedMediaObjectUrl } from "@/lib/client/media-cache";
 import type { LibraryItem } from "@/lib/server/types";
 import { cn } from "@/lib/utils";
@@ -15,6 +16,7 @@ export function MediaCard({
   groupItems,
   large = false,
   compact = false,
+  smoothReveal = false,
   showDetailFacts = false,
   mediaMissing = false,
   onMediaMissing,
@@ -24,6 +26,7 @@ export function MediaCard({
   groupItems?: LibraryItem[];
   large?: boolean;
   compact?: boolean;
+  smoothReveal?: boolean;
   showDetailFacts?: boolean;
   mediaMissing?: boolean;
   onMediaMissing?: () => void;
@@ -33,6 +36,7 @@ export function MediaCard({
   const dragStateRef = useRef<{ pointerId: number; startX: number; startY: number; originX: number; originY: number } | null>(null);
   const [previewPlaying, setPreviewPlaying] = useState(false);
   const [readyVideoSource, setReadyVideoSource] = useState("");
+  const [readyImageSource, setReadyImageSource] = useState("");
   const [activeImageState, setActiveImageState] = useState({ key: "", index: 0 });
   const [imageViewportState, setImageViewportState] = useState({
     key: "",
@@ -78,6 +82,10 @@ export function MediaCard({
   const imageUrl = media?.url && item.type === "image" ? mediaPreviewUrl(media.url, large) : media?.url;
   const videoSource = item.type === "video" ? media?.url || "" : "";
   const resolvedMediaUrl = useCachedMediaSource(cacheOwnerId, item.type === "image" ? imageUrl : videoSource);
+  const displayedImageSource = item.type === "image" && !showLargeGallery && !isImageGroup && hasMediaUrl
+    ? resolvedMediaUrl || imageUrl || ""
+    : "";
+  const imageReady = !smoothReveal || !displayedImageSource || readyImageSource === displayedImageSource;
   const resolvedVideoSource = item.type === "video" ? resolvedMediaUrl || videoSource : "";
   const videoReady = Boolean(resolvedVideoSource) && readyVideoSource === resolvedVideoSource;
   const statusBadge = mediaExpired ? "已过期" : mediaMissing ? "文件失效" : libraryStatusBadgeLabel(item.status);
@@ -211,7 +219,15 @@ export function MediaCard({
 
   return (
     <article className={cn("studio-media-card", compact && "is-compact")}>
-      <div className={cn("studio-media-card__frame", large && "is-large")}>
+      <div
+        className={cn(
+          "studio-media-card__frame",
+          large && "is-large",
+          smoothReveal && displayedImageSource && "has-smooth-image-reveal",
+          smoothReveal && displayedImageSource && imageReady && "is-image-ready",
+        )}
+        data-image-reveal-state={smoothReveal && displayedImageSource ? (imageReady ? "ready" : "loading") : undefined}
+      >
         {!large && scaleText ? <span className="studio-media-card__scale-badge">{scaleText}</span> : null}
         {detailFacts.length ? (
           <div className="studio-media-card__facts-overlay" aria-label="Detail facts">
@@ -301,6 +317,7 @@ export function MediaCard({
                 loading={imageLoading}
                 decoding="async"
                 fetchPriority={imageFetchPriority}
+                onLoad={() => setReadyImageSource(displayedImageSource)}
                 onError={onMediaMissing}
                 style={{
                   position: "absolute",
@@ -313,8 +330,13 @@ export function MediaCard({
               />
             </div>
           ) : (
-            <img src={resolvedMediaUrl || imageUrl} alt={item.title} loading={imageLoading} decoding="async" fetchPriority={imageFetchPriority} onError={onMediaMissing} />
+            <img src={resolvedMediaUrl || imageUrl} alt={item.title} loading={imageLoading} decoding="async" fetchPriority={imageFetchPriority} onLoad={() => setReadyImageSource(displayedImageSource)} onError={onMediaMissing} />
           )
+        ) : null}
+        {smoothReveal && displayedImageSource ? (
+          <div className="studio-media-card__image-reveal-overlay">
+            <DotRippleLoader fill />
+          </div>
         ) : null}
         {hasMediaUrl && media?.url && item.type === "video" ? (
           <>

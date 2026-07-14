@@ -2317,10 +2317,15 @@ export function StudioApp() {
     && Boolean(imageUpscaleWorkspace.availability?.ready)
     && !imageUpscaleWorkspace.loading
     && !imageUpscaleWorkspace.statusLoading;
-  const imageUpscaleCostLabel = formatQuotaSymbolLabel(estimateUpscaleQuota({
-    kind: "image",
-    scale: imageUpscaleWorkspace.scale,
-  }));
+  const imageUpscaleCostLabel = membershipSingleEntitlementLabel(
+    membershipEntitlements,
+    "image_upscale",
+    "张",
+    formatQuotaSymbolLabel(estimateUpscaleQuota({
+      kind: "image",
+      scale: imageUpscaleWorkspace.scale,
+    })),
+  );
 
   const updateVideoUpscaleWorkspace = useCallback((patch: Partial<VideoUpscaleWorkspaceState>) => {
     setVideoUpscaleWorkspace((prev) => ({
@@ -2493,10 +2498,15 @@ export function StudioApp() {
     && !videoUpscaleWorkspace.loading
     && !videoUpscaleWorkspace.statusLoading
     && !videoUpscaleProcessing;
-  const videoUpscaleCostLabel = formatQuotaSymbolLabel(estimateUpscaleQuota({
-    kind: "video",
-    scale: videoUpscaleWorkspace.scale,
-  }));
+  const videoUpscaleCostLabel = membershipSingleEntitlementLabel(
+    membershipEntitlements,
+    "video_upscale",
+    "次",
+    formatQuotaSymbolLabel(estimateUpscaleQuota({
+      kind: "video",
+      scale: videoUpscaleWorkspace.scale,
+    })),
+  );
 
   const sendResultToUpscale = useCallback(async (item: LibraryItem) => {
     if (!item.output?.url) {
@@ -2866,7 +2876,7 @@ export function StudioApp() {
           onQualityChange={(value) => updateImageWorkspace({ quality: value })}
           onCountChange={(value) => updateImageWorkspace({ count: value })}
           onTemplateChange={applyImagePromptTemplate}
-          onPromptChange={(value) => updateImageWorkspace({ prompt: value, promptOptimizeError: "", submitError: "" })}
+          onPromptChange={(value) => updateImageWorkspace({ prompt: value, promptOptimizeUndo: "", promptOptimizeError: "", submitError: "" })}
           onPromptOptimize={optimizeImagePrompt}
           onPromptOptimizeUndo={undoImagePromptOptimization}
           promptOptimizeCostLabel={membershipEntitlementLabel(membershipEntitlements, "prompt_optimize", "次", promptOptimizationCostLabel)}
@@ -2897,7 +2907,7 @@ export function StudioApp() {
           onRatioChange={(value) => updateVideoWorkspace({ ratio: value })}
           onDurationChange={(value) => updateVideoWorkspace({ duration: value })}
           onTemplateChange={applyVideoPromptTemplate}
-          onPromptChange={(value) => updateVideoWorkspace({ prompt: value, promptOptimizeError: "", submitError: "" })}
+          onPromptChange={(value) => updateVideoWorkspace({ prompt: value, promptOptimizeUndo: "", promptOptimizeError: "", submitError: "" })}
           onPromptOptimize={optimizeVideoPrompt}
           onPromptOptimizeUndo={undoVideoPromptOptimization}
           promptOptimizeCostLabel={membershipEntitlementLabel(membershipEntitlements, "prompt_optimize", "次", promptOptimizationCostLabel)}
@@ -3210,6 +3220,16 @@ function membershipEntitlementLabel(
 ) {
   const remaining = entitlements?.[kind]?.remaining ?? 0;
   return remaining > 0 ? `/ 剩余 ${formatQuotaUnits(remaining)} ${unit}` : fallback;
+}
+
+function membershipSingleEntitlementLabel(
+  entitlements: MembershipEntitlements | null | undefined,
+  kind: keyof MembershipEntitlements,
+  unit: "次" | "张",
+  fallback: string,
+) {
+  const remaining = entitlements?.[kind]?.remaining ?? 0;
+  return remaining > 0 ? `抵扣 1 ${unit} · 剩余 ${formatQuotaUnits(remaining)} ${unit}` : fallback;
 }
 
 function formatMembershipDate(value: string | null | undefined) {

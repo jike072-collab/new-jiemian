@@ -55,6 +55,25 @@ test.beforeEach(async ({ page }) => {
   await page.route("**/api/library", (route) => route.fulfill({ json: { items: [] } }));
 });
 
+test("upscale actions show membership deduction before point cost", async ({ page }) => {
+  await page.route("**/api/upscale/status", (route) => route.fulfill({
+    json: {
+      image: { ready: true, detail: "image upscale ready" },
+      video: { ready: true, detail: "video upscale ready" },
+    },
+  }));
+
+  await page.goto("/?tool=image-upscale", { waitUntil: "domcontentloaded" });
+  const imageAction = page.getByTestId("primary-submit");
+  await expect(imageAction).toContainText("抵扣 1 张 · 剩余 150 张", { timeout: navigationTimeout });
+  await expect(imageAction).not.toContainText("200");
+
+  await page.goto("/?tool=video-upscale", { waitUntil: "domcontentloaded" });
+  const videoAction = page.getByTestId("primary-submit");
+  await expect(videoAction).toContainText("抵扣 1 次 · 剩余 8 次", { timeout: navigationTimeout });
+  await expect(videoAction).not.toContainText("200");
+});
+
 test("account ledger includes admin grants and separates entitlement balance", async ({ page }) => {
   await page.route("**/api/usage?**", async (route) => {
     expect(new URL(route.request().url()).searchParams.get("pageSize")).toBe("100");
@@ -182,6 +201,13 @@ test("prompt gear stores per-tool presets and sends selected preferences", async
   await expect(page.getByRole("button", { name: /优化提示词/ })).toHaveCount(0);
   await page.getByRole("button", { name: "撤销优化", exact: true }).click();
   await expect(page.getByTestId("prompt-input")).toHaveValue("一只小猫看窗外的雨");
+  await page.getByRole("button", { name: /优化提示词/ }).click();
+  await expect(page.getByRole("button", { name: "撤销优化", exact: true })).toBeVisible();
+  await page.getByTestId("prompt-input").fill("");
+  await expect(page.getByRole("button", { name: "撤销优化", exact: true })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: /优化提示词/ })).toBeVisible();
+  await page.getByTestId("prompt-input").fill("雨后街道上的霓虹灯");
+  await expect(page.getByRole("button", { name: /优化提示词/ })).toBeEnabled();
   const payload = optimizePayload as Record<string, unknown> | null;
   expect(payload).not.toBeNull();
   expect(payload).not.toHaveProperty("targetPlatform");

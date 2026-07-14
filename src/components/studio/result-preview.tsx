@@ -8,6 +8,7 @@ import { AlertTriangle, Check, Download, ImageUp, Loader2, RefreshCw, UploadClou
 import { BeforeAfterImageCompare } from "@/components/before-after-image-compare";
 import { ResultReveal } from "@/components/motion";
 import { upscaleTargetLabel, videoUpscaleScaleLabel } from "@/components/studio/constants";
+import { DotRippleLoader } from "@/components/studio/dot-ripple-loader";
 import { MediaCard, libraryStatusBadgeLabel } from "@/components/studio/media-card";
 import { PreviewState, StudioErrorAlert } from "@/components/studio/shared";
 import type { BusinessToolId, ImageGenerationProgressState, ImageUpscaleWorkspaceState, OutputItemState, OutputState, StudioErrorDiagnostic, VideoUpscaleWorkspaceState } from "@/components/studio/types";
@@ -1200,11 +1201,7 @@ function ProcessingPreview({
   return (
     <PreviewState eyebrow="处理中" title={label} description={detail} role="status" live>
       <div className="studio-processing-state">
-        <div className="studio-processing-orbit" aria-hidden="true">
-          <span />
-          <span />
-          <Loader2 className="size-6" />
-        </div>
+        <DotRippleLoader />
         <div className="studio-processing-state__copy">
           <p>{label}</p>
           <small>已等待 {elapsedText} · 进度 {progressValue}%</small>
@@ -1263,6 +1260,15 @@ function imageResultFacts(item: LibraryItem) {
   return facts;
 }
 
+function imageResultModelName(item: LibraryItem) {
+  const model = item.model.trim();
+  const normalized = model.toLowerCase();
+  if (normalized === "image" || normalized === "banana-img2") return "Image";
+  if (normalized === "banana2") return "Banana2";
+  if (normalized === "banana-pro") return "Banana Pro";
+  return model || "Image";
+}
+
 function videoResultFacts(item: LibraryItem) {
   const facts: string[] = [];
   const ratio = typeof item.params.ratio === "string" ? item.params.ratio : "";
@@ -1294,11 +1300,7 @@ function JobStatusPreview({
   return (
     <PreviewState eyebrow="结果" title={title} description={detail} badge={badge} role="status" live>
       <div className="studio-job-status-card" aria-live="polite">
-        <div className="studio-processing-orbit" aria-hidden="true">
-          <span />
-          <span />
-          <Loader2 className="size-5" />
-        </div>
+        <DotRippleLoader />
         <div className="studio-job-status-card__copy">
           <strong>{title}</strong>
           <p>{detail}</p>
@@ -1757,19 +1759,17 @@ function ImageResultGrid({
     <div className={cn("studio-image-results", `is-count-${Math.min(Math.max(pendingCount + outputs.length, 1), 4)}`)}>
       {[...currentOutputs, ...historicOutputs].map((output, index) => (
         <article key={output.item.id} className={cn("studio-image-result-card", activeBatchId && output.item.params?.imageBatchId !== activeBatchId && "is-historic")}>
-          <div className="studio-image-result-card__head">
-            <span>图片 {index + 1}</span>
-            {libraryStatusBadgeLabel(output.item.status) ? <strong>{libraryStatusBadgeLabel(output.item.status)}</strong> : null}
+          <div className="studio-image-result-card__media">
+            <MediaCard item={output.item} large compact smoothReveal />
+            <div className="studio-image-result-card__overlay" aria-label={`图片 ${index + 1} 参数`}>
+              <span className="studio-image-result-card__label">{imageResultModelName(output.item)} · 图片 {index + 1}</span>
+              {imageResultFacts(output.item).map((fact) => <span key={`${output.item.id}-${fact}`}>{fact}</span>)}
+              {libraryStatusBadgeLabel(output.item.status) ? <strong>{libraryStatusBadgeLabel(output.item.status)}</strong> : null}
+            </div>
             <button type="button" className="studio-icon-button studio-image-result-card__close" aria-label={`关闭图片 ${index + 1}`} onClick={() => onDismiss(output.item.id)}>
               <X className="size-4" aria-hidden="true" />
             </button>
           </div>
-          <MediaCard item={output.item} large compact />
-          {imageResultFacts(output.item).length ? (
-            <div className="studio-result-facts" aria-label="任务参数">
-              {imageResultFacts(output.item).map((fact) => <span key={`${output.item.id}-${fact}`}>{fact}</span>)}
-            </div>
-          ) : null}
           <div className="studio-image-result-card__actions">
             <button type="button" className="studio-secondary-button" onClick={onSubmit} disabled={!canRetry || loading}>
               <RefreshCw className="size-4" aria-hidden="true" />
@@ -1798,11 +1798,7 @@ function ImageResultGrid({
       ))}
       {Array.from({ length: pendingCount }).map((_, index) => (
         <article key={`pending-${index}`} className="studio-image-result-card studio-image-result-card--pending" aria-live="polite">
-          <div className="studio-processing-orbit" aria-hidden="true">
-            <span />
-            <span />
-            <Loader2 className="size-5" />
-          </div>
+          <DotRippleLoader fill />
           <p>{loading ? "图片生成中" : "图片未生成"}</p>
           <small>完成后会自动补到这里。</small>
         </article>
