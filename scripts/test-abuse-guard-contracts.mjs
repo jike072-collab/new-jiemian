@@ -278,9 +278,12 @@ function checkExistingAbuseGuards() {
   assert(source.workloadGuardTest.includes("expires leaked slots with a controllable clock"), "workload tests must cover TTL without real waits");
   assert(source.workloadGuardTest.includes("releases slots on success and thrown errors"), "workload tests must cover release on error");
 
-  assertSequence("image generation workload limit before provider call", source.generateImageRoute, [
+  assertSequence("image generation workload wrapper owns upload and provider call callback", source.generateImageRoute, [
     "const form = await request.formData()",
-    "const run = async () => generateImage({",
+    "const run = async () => {",
+    "files = await uploadedMediaFromForm(form)",
+    "return generateImage({",
+    "withUserImageEditWorkload(session.user.local_user_id, run)",
     "withUserImageWorkload(session.user.local_user_id",
     "run)",
   ]);
