@@ -5,7 +5,6 @@ import {
   estimateImageGenerationTotalQuota,
   generationBillingFingerprint,
 } from "../generation-quota";
-import { createTaskRunner } from "../task-runner";
 import { getMembershipService } from "./membership";
 
 import { addJob, addLibraryItem, readLibraryMetadataForOwner, storeDataUrl, storeRemoteUrl, updateJob, updateLibraryItem } from "./library";
@@ -54,7 +53,7 @@ const duplicateImageDispatchPollMs = 2000;
 const imageProviderRequestTimeoutMs = 600000;
 const getTokenBananaPollIntervalMs = 2800;
 const getTokenBananaTaskAttempts = 3;
-const runGetTokenBananaTaskWithSlot = createTaskRunner(2);
+const getTokenBananaPeakTaskAttempts = 8;
 
 const grokVideo10Durations = new Set([6, 8, 10, 12, 15]);
 const grokVideo15Durations = new Set([6, 8, 10, 12, 15]);
@@ -414,15 +413,25 @@ function isRetryableGetTokenBananaError(error: unknown) {
     && /all channels failed|no available account|status 5\d\d|temporarily unavailable|\bunavailable\b/i.test(error.message);
 }
 
+function isGetTokenBananaPeakCapacityError(error: unknown) {
+  return error instanceof GenerationDiagnosticError
+    && /no available account|status 599[^]*\bunavailable\b|temporarily unavailable/i.test(error.message);
+}
+
 async function callGetTokenBananaTaskWithRetry(input: Parameters<typeof callGetTokenBananaTask>[0]) {
   let lastError: unknown;
-  for (let attempt = 1; attempt <= getTokenBananaTaskAttempts; attempt += 1) {
+  for (let attempt = 1; attempt <= getTokenBananaPeakTaskAttempts; attempt += 1) {
     try {
       return await callGetTokenBananaTask(input);
     } catch (error) {
       lastError = error;
-      if (attempt >= getTokenBananaTaskAttempts || !isRetryableGetTokenBananaError(error)) throw error;
-      await wait((attempt * 750) + Math.floor(Math.random() * 250));
+      const peakCapacityError = isGetTokenBananaPeakCapacityError(error);
+      const maximumAttempts = peakCapacityError ? getTokenBananaPeakTaskAttempts : getTokenBananaTaskAttempts;
+      if (attempt >= maximumAttempts || !isRetryableGetTokenBananaError(error)) throw error;
+      const delayMs = peakCapacityError
+        ? Math.min(1500 * (2 ** (attempt - 1)), 15000) + Math.floor(Math.random() * 1000)
+        : (attempt * 750) + Math.floor(Math.random() * 250);
+      await wait(delayMs);
     }
   }
   throw lastError;
@@ -437,10 +446,7 @@ async function callGetTokenBananaProvider(input: {
   count: number;
 }) {
   const outputCount = Math.min(Math.max(Math.round(input.count || 1), 1), 4);
-  return Promise.all(Array.from(
-    { length: outputCount },
-    () => runGetTokenBananaTaskWithSlot(() => callGetTokenBananaTaskWithRetry(input)),
-  ));
+  return Promise.all(Array.from({ length: outputCount }, () => callGetTokenBananaTaskWithRetry(input)));
 }
 
 function img2ImageSize(ratio: string, quality: string) {

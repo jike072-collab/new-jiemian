@@ -334,7 +334,7 @@ test("GetToken retries only the failed image when upstream capacity is temporari
   }
 });
 
-test("GetToken queues four image tasks within the two-account upstream capacity", async () => {
+test("GetToken keeps four image tasks concurrent when upstream accepts them", async () => {
   const getTokenProvider = {
     ...provider,
     id: "image-gettoken-banana::model::banana2",
@@ -372,7 +372,7 @@ test("GetToken queues four image tasks within the two-account upstream capacity"
     });
     assert.equal(outputs.length, 4);
     assert.equal(submitCount, 4);
-    assert.equal(maximumActive, 2);
+    assert.equal(maximumActive, 4);
   } finally {
     globalThis.fetch = originalFetch;
   }
