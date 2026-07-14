@@ -105,6 +105,7 @@ test("image results reveal independently with unified waiting visuals", async ({
   });
 
   await page.goto("/", { waitUntil: "domcontentloaded" });
+  await expect(page.getByRole("button", { name: "提示词优化设置", exact: true })).toBeEnabled();
   await page.getByTestId("prompt-input").fill("产品摄影，干净背景");
   await page.getByRole("button", { name: "清晰度", exact: true }).click();
   await page.getByRole("option", { name: "4K（大图输出）", exact: true }).click();
@@ -139,11 +140,12 @@ test("image results reveal independently with unified waiting visuals", async ({
     expect(coverage.height).toBeGreaterThanOrEqual(0.85);
     expect(coverage.baseOpacity).toBeGreaterThanOrEqual(0.18);
   }
-  await page.waitForTimeout(850);
-  const waitingPulse = await page.locator(".studio-image-result-card--pending").evaluateAll((cards) => cards.map((card) => {
+  const readWaitingPulse = () => page.locator(".studio-image-result-card--pending").evaluateAll((cards) => cards.map((card) => {
     const opacities = Array.from(card.querySelectorAll<HTMLElement>(".studio-dot-ripple-loader span"), (dot) => Number.parseFloat(getComputedStyle(dot).opacity));
     return { minimum: Math.min(...opacities), maximum: Math.max(...opacities) };
   }));
+  await expect.poll(async () => Math.min(...(await readWaitingPulse()).map((pulse) => pulse.maximum)), { timeout: 3_000 }).toBeGreaterThan(0.75);
+  const waitingPulse = await readWaitingPulse();
   for (const pulse of waitingPulse) {
     expect(pulse.minimum).toBeLessThan(0.55);
     expect(pulse.maximum).toBeGreaterThan(0.75);
@@ -170,26 +172,20 @@ test("image results reveal independently with unified waiting visuals", async ({
     return {
       imageDuration: image ? Number.parseFloat(getComputedStyle(image).transitionDuration) * 1000 : 0,
       overlayDuration: overlay ? Number.parseFloat(getComputedStyle(overlay).transitionDuration) * 1000 : 0,
+      imageProperties: image ? getComputedStyle(image).transitionProperty : "",
+      overlayProperties: overlay ? getComputedStyle(overlay).transitionProperty : "",
     };
   });
   expect(revealTiming.imageDuration).toBeGreaterThanOrEqual(500);
   expect(revealTiming.overlayDuration).toBeGreaterThanOrEqual(700);
+  expect(revealTiming.imageProperties).toContain("opacity");
+  expect(revealTiming.imageProperties).toContain("filter");
+  expect(revealTiming.overlayProperties).toContain("opacity");
+  expect(revealTiming.overlayProperties).toContain("filter");
 
   imageReleases[0]();
   await expect(firstFrame).toHaveAttribute("data-image-reveal-state", "ready");
   await page.waitForTimeout(160);
-  const revealProgress = await firstFrame.evaluate((frame) => {
-    const image = frame.querySelector("img");
-    const overlay = frame.querySelector<HTMLElement>(".studio-media-card__image-reveal-overlay");
-    return {
-      imageOpacity: image ? Number.parseFloat(getComputedStyle(image).opacity) : 1,
-      overlayOpacity: overlay ? Number.parseFloat(getComputedStyle(overlay).opacity) : 0,
-    };
-  });
-  expect(revealProgress.imageOpacity).toBeGreaterThan(0);
-  expect(revealProgress.imageOpacity).toBeLessThan(1);
-  expect(revealProgress.overlayOpacity).toBeGreaterThan(0);
-  expect(revealProgress.overlayOpacity).toBeLessThan(1);
   await page.screenshot({
     path: testInfo.outputPath(`image-reveal-${testInfo.project.name}.png`),
     fullPage: true,

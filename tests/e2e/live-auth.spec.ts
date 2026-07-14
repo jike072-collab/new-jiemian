@@ -55,7 +55,9 @@ test("account entitlements and library actions remain visible without mutating p
   await login(page, userA.account, userA.password);
 
   await page.goto("/", { waitUntil: "domcontentloaded" });
-  await page.getByRole("button", { name: "提示词优化设置" }).click();
+  const promptSettingsButton = page.getByRole("button", { name: "提示词优化设置" });
+  await expect(promptSettingsButton).toBeEnabled();
+  await promptSettingsButton.click();
   const promptDialog = page.getByRole("dialog", { name: "图片生成提示词设置" });
   await expect(promptDialog.getByRole("tab")).toHaveCount(0);
   await expect(promptDialog.getByRole("button", { name: "快捷方案" })).toContainText("自定义设置");

@@ -164,7 +164,9 @@ test("prompt gear stores per-tool presets and sends selected preferences", async
   });
 
   await page.goto("/", { waitUntil: "domcontentloaded" });
-  await page.getByRole("button", { name: "提示词优化设置" }).click();
+  const promptSettingsButton = page.getByRole("button", { name: "提示词优化设置" });
+  await expect(promptSettingsButton).toBeEnabled();
+  await promptSettingsButton.click();
   const dialog = page.getByRole("dialog", { name: "图片生成提示词设置" });
   await expect(dialog).toBeVisible();
   await expect(dialog.getByRole("tab")).toHaveCount(0);

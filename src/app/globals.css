@@ -3803,10 +3803,8 @@
 
   .studio-image-result-card--pending .studio-dot-ripple-loader.is-fill {
     position: absolute;
-    inset: 18px;
+    inset: 12px;
     z-index: 0;
-    align-self: stretch;
-    justify-self: stretch;
   }
 
   .studio-image-result-card.is-historic {
@@ -11520,7 +11518,7 @@
   .studio-media-card__image-reveal-overlay .studio-dot-ripple-loader.is-fill {
     align-self: stretch;
     justify-self: stretch;
-    margin: 16px;
+    margin: 12px;
   }
 
   .studio-media-card__frame.is-image-ready .studio-media-card__image-reveal-overlay {
