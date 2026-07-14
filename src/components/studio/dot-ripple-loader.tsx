@@ -16,7 +16,7 @@ function createDotRippleDelays(size: number) {
 }
 
 const compactDotRippleDelays = createDotRippleDelays(8);
-const fillDotRippleDelays = createDotRippleDelays(14);
+const fillDotRippleDelays = createDotRippleDelays(18);
 
 export function DotRippleLoader({ fill = false, className }: { fill?: boolean; className?: string }) {
   const delays = fill ? fillDotRippleDelays : compactDotRippleDelays;

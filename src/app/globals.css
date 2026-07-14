@@ -3844,13 +3844,12 @@
     width: 6px;
     aspect-ratio: 1;
     border-radius: 50%;
-    background: color-mix(in srgb, var(--foreground) 68%, var(--primary) 32%);
-    box-shadow: 0 0 10px color-mix(in srgb, var(--primary) 18%, transparent);
-    opacity: 0.13;
-    transform: scale(0.42);
-    animation: studio-dot-ripple 1.72s var(--ease-toggle) infinite;
+    background: color-mix(in srgb, var(--foreground) 56%, var(--primary) 44%);
+    box-shadow: 0 0 9px color-mix(in srgb, var(--primary) 22%, transparent);
+    opacity: 0.2;
+    transform: scale(0.54);
+    animation: studio-dot-ripple 1.86s var(--ease-toggle) infinite;
     animation-delay: var(--dot-ripple-delay, 0ms);
-    will-change: transform, opacity;
   }
 
   .studio-dot-ripple-loader span:nth-child(3n) {
@@ -3858,8 +3857,8 @@
   }
 
   .studio-dot-ripple-loader.is-fill {
-    grid-template-columns: repeat(14, minmax(0, 1fr));
-    grid-template-rows: repeat(14, minmax(0, 1fr));
+    grid-template-columns: repeat(18, minmax(0, 1fr));
+    grid-template-rows: repeat(18, minmax(0, 1fr));
     width: auto;
     padding: 0;
     place-items: center;
@@ -3867,24 +3866,24 @@
   }
 
   .studio-dot-ripple-loader.is-fill span {
-    width: 5px;
+    width: 4px;
   }
 
   @keyframes studio-dot-ripple {
     0%,
     100% {
-      opacity: 0.13;
-      transform: scale(0.42);
+      opacity: 0.2;
+      transform: scale(0.54);
     }
 
     44% {
-      opacity: 0.88;
-      transform: scale(1);
+      opacity: 0.94;
+      transform: scale(1.08);
     }
 
     68% {
-      opacity: 0.3;
-      transform: scale(0.7);
+      opacity: 0.38;
+      transform: scale(0.76);
     }
   }
 
@@ -11482,13 +11481,13 @@
 
   .studio-media-card__frame.has-smooth-image-reveal img {
     opacity: 0;
-    filter: blur(8px) saturate(0.82);
-    scale: 0.992;
+    filter: blur(10px) saturate(0.78);
+    scale: 0.986;
     animation: none;
     transition:
-      opacity 560ms var(--ease-enter),
-      filter 720ms var(--ease-enter),
-      scale 720ms var(--ease-enter),
+      opacity 640ms var(--ease-enter),
+      filter 840ms var(--ease-enter),
+      scale 840ms var(--ease-enter),
       transform var(--motion-fast) var(--ease-enter);
     will-change: opacity, filter, scale, transform;
   }
@@ -11508,9 +11507,13 @@
     background: color-mix(in srgb, var(--background) 92%, var(--panel-2));
     opacity: 1;
     visibility: visible;
+    filter: blur(0);
+    transform: scale(1);
     pointer-events: none;
     transition:
-      opacity 680ms var(--ease-enter) 80ms,
+      opacity 720ms var(--ease-enter) 40ms,
+      filter 760ms var(--ease-enter),
+      transform 760ms var(--ease-enter),
       visibility 0s linear 760ms;
   }
 
@@ -11522,6 +11525,8 @@
 
   .studio-media-card__frame.is-image-ready .studio-media-card__image-reveal-overlay {
     opacity: 0;
+    filter: blur(6px);
+    transform: scale(1.018);
     visibility: hidden;
   }
 

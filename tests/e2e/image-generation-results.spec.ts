@@ -122,18 +122,32 @@ test("image results reveal independently with unified waiting visuals", async ({
   expect(precheckPayloads.every((payload) => payload.membershipEntitlementAmount === 2)).toBe(true);
   await expect(page.locator(".studio-image-result-card--pending")).toHaveCount(4);
   await expect(page.locator(".studio-dot-ripple-loader")).toHaveCount(4);
+  await expect(page.locator(".studio-image-result-card--pending .studio-dot-ripple-loader span")).toHaveCount(18 * 18 * 4);
   const waitingCoverage = await page.locator(".studio-image-result-card--pending").evaluateAll((cards) => cards.map((card) => {
     const dots = card.querySelector<HTMLElement>(".studio-dot-ripple-loader");
+    const dot = dots?.querySelector<HTMLElement>("span");
     const cardRect = card.getBoundingClientRect();
     const dotsRect = dots?.getBoundingClientRect();
     return {
       width: dotsRect ? dotsRect.width / cardRect.width : 0,
       height: dotsRect ? dotsRect.height / cardRect.height : 0,
+      baseOpacity: dot ? Number.parseFloat(getComputedStyle(dot).opacity) : 0,
     };
   }));
   for (const coverage of waitingCoverage) {
     expect(coverage.width).toBeGreaterThanOrEqual(0.85);
     expect(coverage.height).toBeGreaterThanOrEqual(0.85);
+    expect(coverage.baseOpacity).toBeGreaterThanOrEqual(0.18);
+  }
+  await page.waitForTimeout(850);
+  const waitingPulse = await page.locator(".studio-image-result-card--pending").evaluateAll((cards) => cards.map((card) => {
+    const opacities = Array.from(card.querySelectorAll<HTMLElement>(".studio-dot-ripple-loader span"), (dot) => Number.parseFloat(getComputedStyle(dot).opacity));
+    return { minimum: Math.min(...opacities), maximum: Math.max(...opacities) };
+  }));
+  for (const pulse of waitingPulse) {
+    expect(pulse.minimum).toBeLessThan(0.55);
+    expect(pulse.maximum).toBeGreaterThan(0.75);
+    expect(pulse.maximum - pulse.minimum).toBeGreaterThan(0.25);
   }
   await page.screenshot({
     path: testInfo.outputPath(`image-waiting-${testInfo.project.name}.png`),
@@ -159,10 +173,27 @@ test("image results reveal independently with unified waiting visuals", async ({
     };
   });
   expect(revealTiming.imageDuration).toBeGreaterThanOrEqual(500);
-  expect(revealTiming.overlayDuration).toBeGreaterThanOrEqual(600);
+  expect(revealTiming.overlayDuration).toBeGreaterThanOrEqual(700);
 
   imageReleases[0]();
   await expect(firstFrame).toHaveAttribute("data-image-reveal-state", "ready");
+  await page.waitForTimeout(160);
+  const revealProgress = await firstFrame.evaluate((frame) => {
+    const image = frame.querySelector("img");
+    const overlay = frame.querySelector<HTMLElement>(".studio-media-card__image-reveal-overlay");
+    return {
+      imageOpacity: image ? Number.parseFloat(getComputedStyle(image).opacity) : 1,
+      overlayOpacity: overlay ? Number.parseFloat(getComputedStyle(overlay).opacity) : 0,
+    };
+  });
+  expect(revealProgress.imageOpacity).toBeGreaterThan(0);
+  expect(revealProgress.imageOpacity).toBeLessThan(1);
+  expect(revealProgress.overlayOpacity).toBeGreaterThan(0);
+  expect(revealProgress.overlayOpacity).toBeLessThan(1);
+  await page.screenshot({
+    path: testInfo.outputPath(`image-reveal-${testInfo.project.name}.png`),
+    fullPage: true,
+  });
   await expect(firstImage).toHaveCSS("opacity", "1");
   await expect(firstRevealOverlay).toHaveCSS("visibility", "hidden");
   const firstOverlay = page.locator(".studio-image-result-card__overlay");
