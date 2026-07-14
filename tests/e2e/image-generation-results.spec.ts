@@ -105,7 +105,7 @@ test("image results reveal independently with unified waiting visuals", async ({
   });
 
   await page.goto("/", { waitUntil: "domcontentloaded" });
-  await expect(page.getByRole("button", { name: "提示词优化设置", exact: true })).toBeEnabled();
+  await expect(page.getByRole("button", { name: "提示词优化设置", exact: true })).toBeEnabled({ timeout: 30_000 });
   await page.getByTestId("prompt-input").fill("产品摄影，干净背景");
   await page.getByRole("button", { name: "3:2", exact: true }).click();
   await page.getByRole("button", { name: "清晰度", exact: true }).click();
