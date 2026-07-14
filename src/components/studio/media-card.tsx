@@ -10,6 +10,17 @@ import { cachedMediaObjectUrl } from "@/lib/client/media-cache";
 import type { LibraryItem } from "@/lib/server/types";
 import { cn } from "@/lib/utils";
 
+const revealedImageKeys = new Set<string>();
+
+function rememberRevealedImage(key: string) {
+  if (revealedImageKeys.has(key)) return;
+  if (revealedImageKeys.size >= 256) {
+    const oldestKey = revealedImageKeys.values().next().value;
+    if (oldestKey) revealedImageKeys.delete(oldestKey);
+  }
+  revealedImageKeys.add(key);
+}
+
 export function MediaCard({
   cacheOwnerId,
   item,
@@ -35,10 +46,12 @@ export function MediaCard({
   const zoomSurfaceRef = useRef<HTMLDivElement | null>(null);
   const imageRevealFrameRef = useRef<number | null>(null);
   const imageRevealTimeoutRef = useRef<number | null>(null);
+  const imageRevealFinishTimeoutRef = useRef<number | null>(null);
   const dragStateRef = useRef<{ pointerId: number; startX: number; startY: number; originX: number; originY: number } | null>(null);
   const [previewPlaying, setPreviewPlaying] = useState(false);
   const [readyVideoSource, setReadyVideoSource] = useState("");
   const [readyImageSource, setReadyImageSource] = useState("");
+  const [finishedImageRevealKey, setFinishedImageRevealKey] = useState("");
   const [activeImageState, setActiveImageState] = useState({ key: "", index: 0 });
   const [imageViewportState, setImageViewportState] = useState({
     key: "",
@@ -87,7 +100,10 @@ export function MediaCard({
   const displayedImageSource = item.type === "image" && !showLargeGallery && !isImageGroup && hasMediaUrl
     ? resolvedMediaUrl || imageUrl || ""
     : "";
-  const imageReady = !smoothReveal || !displayedImageSource || readyImageSource === displayedImageSource;
+  const imageRevealKey = displayedImageSource ? `${item.id}:${imageUrl || displayedImageSource}` : "";
+  const imageRevealPreviouslyFinished = Boolean(imageRevealKey) && revealedImageKeys.has(imageRevealKey);
+  const imageReady = !smoothReveal || !displayedImageSource || imageRevealPreviouslyFinished || readyImageSource === displayedImageSource;
+  const imageRevealFinished = !smoothReveal || !displayedImageSource || imageRevealPreviouslyFinished || finishedImageRevealKey === imageRevealKey;
   const resolvedVideoSource = item.type === "video" ? resolvedMediaUrl || videoSource : "";
   const videoReady = Boolean(resolvedVideoSource) && readyVideoSource === resolvedVideoSource;
   const statusBadge = mediaExpired ? "已过期" : mediaMissing ? "文件失效" : libraryStatusBadgeLabel(item.status);
@@ -101,11 +117,15 @@ export function MediaCard({
       window.clearTimeout(imageRevealTimeoutRef.current);
       imageRevealTimeoutRef.current = null;
     }
+    if (imageRevealFinishTimeoutRef.current !== null) {
+      window.clearTimeout(imageRevealFinishTimeoutRef.current);
+      imageRevealFinishTimeoutRef.current = null;
+    }
   }, []);
 
   const handleImageLoad = useCallback(() => {
     if (!displayedImageSource) return;
-    if (!smoothReveal) {
+    if (!smoothReveal || imageRevealPreviouslyFinished) {
       setReadyImageSource(displayedImageSource);
       return;
     }
@@ -115,10 +135,15 @@ export function MediaCard({
         imageRevealTimeoutRef.current = window.setTimeout(() => {
           setReadyImageSource(displayedImageSource);
           imageRevealTimeoutRef.current = null;
+          imageRevealFinishTimeoutRef.current = window.setTimeout(() => {
+            rememberRevealedImage(imageRevealKey);
+            setFinishedImageRevealKey(imageRevealKey);
+            imageRevealFinishTimeoutRef.current = null;
+          }, 1_160);
         }, 72);
       });
     });
-  }, [cancelScheduledImageReveal, displayedImageSource, smoothReveal]);
+  }, [cancelScheduledImageReveal, displayedImageSource, imageRevealKey, imageRevealPreviouslyFinished, smoothReveal]);
 
   useEffect(() => cancelScheduledImageReveal, [cancelScheduledImageReveal, displayedImageSource]);
 
@@ -258,7 +283,9 @@ export function MediaCard({
           smoothReveal && displayedImageSource && "has-smooth-image-reveal",
           smoothReveal && displayedImageSource && imageReady && "is-image-ready",
         )}
-        data-image-reveal-state={smoothReveal && displayedImageSource ? (imageReady ? "ready" : "loading") : undefined}
+        data-image-reveal-state={smoothReveal && displayedImageSource
+          ? imageRevealFinished ? "ready" : imageReady ? "revealing" : "loading"
+          : undefined}
       >
         {!large && scaleText ? <span className="studio-media-card__scale-badge">{scaleText}</span> : null}
         {detailFacts.length ? (
@@ -365,9 +392,9 @@ export function MediaCard({
             <img src={resolvedMediaUrl || imageUrl} alt={item.title} loading={imageLoading} decoding="async" fetchPriority={imageFetchPriority} onLoad={handleImageLoad} onError={onMediaMissing} />
           )
         ) : null}
-        {smoothReveal && displayedImageSource ? (
+        {smoothReveal && displayedImageSource && !imageRevealFinished ? (
           <div className="studio-media-card__image-reveal-overlay">
-            <DotRippleLoader fill />
+            <DotRippleLoader fill imageSource={displayedImageSource} />
           </div>
         ) : null}
         {hasMediaUrl && media?.url && item.type === "video" ? (

@@ -3839,8 +3839,10 @@
   }
 
   .studio-dot-ripple-loader span {
+    position: relative;
     width: 6px;
     aspect-ratio: 1;
+    overflow: hidden;
     border-radius: 50%;
     background: color-mix(in srgb, var(--foreground) 56%, var(--primary) 44%);
     box-shadow: 0 0 9px color-mix(in srgb, var(--primary) 22%, transparent);
@@ -3849,6 +3851,18 @@
     animation: studio-dot-ripple 1.86s var(--ease-toggle) infinite;
     animation-delay: var(--dot-ripple-delay, 0ms);
     will-change: opacity, transform, filter;
+  }
+
+  .studio-dot-ripple-loader span::before {
+    position: absolute;
+    inset: 0;
+    border-radius: inherit;
+    background-image: var(--dot-image-source, none);
+    background-position: var(--dot-image-position, center);
+    background-size: var(--dot-image-size, cover);
+    background-repeat: no-repeat;
+    content: "";
+    opacity: 0;
   }
 
   .studio-dot-ripple-loader span:nth-child(3n) {
@@ -11518,26 +11532,20 @@
 
   .studio-media-card__frame.has-smooth-image-reveal img {
     opacity: 0;
-    filter: blur(14px) saturate(0.72);
-    clip-path: circle(8% at 50% 50%);
-    -webkit-clip-path: circle(8% at 50% 50%);
-    scale: 0.978;
+    filter: blur(10px) saturate(0.76);
+    scale: 0.988;
     animation: none;
     transition:
-      opacity 840ms var(--ease-enter),
-      filter 1040ms var(--ease-enter),
-      clip-path 980ms var(--ease-enter),
-      -webkit-clip-path 980ms var(--ease-enter),
-      scale 1040ms var(--ease-enter),
+      opacity 520ms var(--ease-enter) 500ms,
+      filter 760ms var(--ease-enter) 360ms,
+      scale 760ms var(--ease-enter) 360ms,
       transform var(--motion-fast) var(--ease-enter);
-    will-change: opacity, filter, clip-path, scale, transform;
+    will-change: opacity, filter, scale, transform;
   }
 
   .studio-media-card__frame.has-smooth-image-reveal.is-image-ready img {
     opacity: 1;
     filter: blur(0) saturate(1);
-    clip-path: circle(100% at 50% 50%);
-    -webkit-clip-path: circle(100% at 50% 50%);
     scale: 1;
   }
 
@@ -11549,7 +11557,7 @@
     overflow: hidden;
     visibility: visible;
     pointer-events: none;
-    transition: visibility 0s linear 1040ms;
+    transition: visibility 0s linear 1120ms;
   }
 
   .studio-media-card__image-reveal-overlay::before {
@@ -11561,9 +11569,9 @@
     filter: blur(0);
     transform: scale(1);
     transition:
-      opacity 880ms var(--ease-enter) 80ms,
-      filter 980ms var(--ease-enter),
-      transform 980ms var(--ease-enter);
+      opacity 620ms var(--ease-enter) 380ms,
+      filter 760ms var(--ease-enter) 300ms,
+      transform 760ms var(--ease-enter) 300ms;
   }
 
   .studio-media-card__image-reveal-overlay .studio-dot-ripple-loader.is-fill {
@@ -11583,28 +11591,48 @@
     transform: scale(1.025);
   }
 
+  .studio-media-card__frame.is-image-ready .studio-dot-ripple-loader.has-image-fragments {
+    mask-image: none;
+    -webkit-mask-image: none;
+    animation: none;
+  }
+
   .studio-media-card__frame.is-image-ready .studio-media-card__image-reveal-overlay span {
-    animation: studio-dot-reveal 620ms var(--ease-enter) both;
+    width: calc(100% - 2px);
+    height: calc(100% - 2px);
+    aspect-ratio: auto;
+    border-radius: 2px;
+    animation: studio-image-mosaic-reveal 760ms var(--ease-enter) both;
     animation-delay: var(--dot-reveal-delay, 0ms);
   }
 
-  @keyframes studio-dot-reveal {
+  .studio-media-card__frame.is-image-ready .studio-media-card__image-reveal-overlay span::before {
+    opacity: 1;
+  }
+
+  @keyframes studio-image-mosaic-reveal {
     0% {
-      opacity: 0.84;
-      transform: scale(0.9);
+      opacity: 0.38;
+      transform: scale(0.34);
       filter: blur(0);
     }
 
-    36% {
+    42% {
       opacity: 1;
-      transform: scale(1.48);
+      transform: scale(0.88);
+      filter: blur(0);
+    }
+
+    70% {
+      opacity: 1;
+      transform: scale(1.06);
       filter: blur(0);
     }
 
     100% {
       opacity: 0;
-      transform: scale(0.08);
-      filter: blur(2px);
+      transform: scale(1.06);
+      filter: blur(0.6px);
     }
   }
 

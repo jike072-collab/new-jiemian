@@ -12,6 +12,8 @@ function createDotRippleDots(size: number) {
     const distance = Math.hypot(row - center, column - center);
     const naturalOffset = (row * 17 + column * 29) % 34;
     return {
+      row,
+      column,
       rippleDelay: Math.round(distance * 58 + naturalOffset),
       revealDelay: Math.round(distance * 19 + naturalOffset * 0.3),
     };
@@ -21,16 +23,33 @@ function createDotRippleDots(size: number) {
 const compactDotRippleDots = createDotRippleDots(8);
 const fillDotRippleDots = createDotRippleDots(20);
 
-export function DotRippleLoader({ fill = false, className }: { fill?: boolean; className?: string }) {
+export function DotRippleLoader({
+  fill = false,
+  imageSource,
+  className,
+}: {
+  fill?: boolean;
+  imageSource?: string;
+  className?: string;
+}) {
   const dots = fill ? fillDotRippleDots : compactDotRippleDots;
+  const size = fill ? 20 : 8;
   return (
-    <div className={cn("studio-dot-ripple-loader", fill && "is-fill", className)} aria-hidden="true">
+    <div
+      className={cn("studio-dot-ripple-loader", fill && "is-fill", imageSource && "has-image-fragments", className)}
+      style={imageSource ? {
+        "--dot-image-source": `url(${JSON.stringify(imageSource)})`,
+        "--dot-image-size": `${size * 100}% ${size * 100}%`,
+      } as CSSProperties : undefined}
+      aria-hidden="true"
+    >
       {dots.map((dot, index) => (
         <span
           key={index}
           style={{
             "--dot-ripple-delay": `${dot.rippleDelay}ms`,
             "--dot-reveal-delay": `${dot.revealDelay}ms`,
+            "--dot-image-position": `${(dot.column / (size - 1)) * 100}% ${(dot.row / (size - 1)) * 100}%`,
           } as CSSProperties}
         />
       ))}

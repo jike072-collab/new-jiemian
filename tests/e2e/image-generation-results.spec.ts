@@ -186,38 +186,43 @@ test("image results reveal independently with unified waiting visuals", async ({
       imageDuration: image ? Number.parseFloat(getComputedStyle(image).transitionDuration) * 1000 : 0,
       overlayHideDelay: overlay ? Number.parseFloat(getComputedStyle(overlay).transitionDelay) * 1000 : 0,
       imageProperties: image ? getComputedStyle(image).transitionProperty : "",
-      imageClipPath: image ? getComputedStyle(image).clipPath : "",
     };
   });
-  expect(revealTiming.imageDuration).toBeGreaterThanOrEqual(800);
+  expect(revealTiming.imageDuration).toBeGreaterThanOrEqual(520);
   expect(revealTiming.overlayHideDelay).toBeGreaterThanOrEqual(1_000);
   expect(revealTiming.imageProperties).toContain("opacity");
   expect(revealTiming.imageProperties).toContain("filter");
-  expect(revealTiming.imageProperties).toContain("clip-path");
-  expect(revealTiming.imageClipPath).not.toBe("none");
+  expect(revealTiming.imageProperties).not.toContain("clip-path");
 
   imageReleases[0]();
-  await page.waitForTimeout(50);
-  await expect(firstFrame).toHaveAttribute("data-image-reveal-state", "loading");
-  await expect(firstFrame).toHaveAttribute("data-image-reveal-state", "ready");
-  await page.waitForTimeout(160);
+  await expect(firstFrame).toHaveAttribute("data-image-reveal-state", "revealing");
   const revealProgress = await firstFrame.evaluate((frame) => {
-    const image = frame.querySelector("img");
     const dot = frame.querySelector<HTMLElement>(".studio-media-card__image-reveal-overlay span");
+    const fragment = dot ? getComputedStyle(dot, "::before") : null;
     return {
-      imageOpacity: image ? Number.parseFloat(getComputedStyle(image).opacity) : 1,
       dotAnimation: dot ? getComputedStyle(dot).animationName : "",
+      fragmentCellWidth: dot ? Number.parseFloat(getComputedStyle(dot).width) : 0,
+      fragmentImage: fragment?.backgroundImage || "",
+      fragmentSize: fragment?.backgroundSize || "",
     };
   });
-  expect(revealProgress.imageOpacity).toBeGreaterThan(0);
-  expect(revealProgress.imageOpacity).toBeLessThan(1);
-  expect(revealProgress.dotAnimation).toBe("studio-dot-reveal");
+  expect(revealProgress.dotAnimation).toBe("studio-image-mosaic-reveal");
+  expect(revealProgress.fragmentCellWidth).toBeGreaterThan(0);
+  expect(revealProgress.fragmentImage).not.toBe("none");
+  expect(revealProgress.fragmentSize).toContain("2000%");
+  await page.waitForTimeout(160);
+  await page.screenshot({
+    path: testInfo.outputPath(`image-mosaic-${testInfo.project.name}.png`),
+    fullPage: true,
+  });
+  await page.waitForTimeout(520);
   await page.screenshot({
     path: testInfo.outputPath(`image-reveal-${testInfo.project.name}.png`),
     fullPage: true,
   });
+  await expect(firstFrame).toHaveAttribute("data-image-reveal-state", "ready");
   await expect(firstImage).toHaveCSS("opacity", "1");
-  await expect(firstRevealOverlay).toHaveCSS("visibility", "hidden");
+  await expect(firstRevealOverlay).toHaveCount(0);
   const firstOverlay = page.locator(".studio-image-result-card__overlay");
   await expect(firstOverlay.getByText("Banana2 · 图片 1", { exact: true })).toBeVisible();
   await expect(firstOverlay.getByText("1:1", { exact: true })).toBeVisible();
@@ -229,6 +234,17 @@ test("image results reveal independently with unified waiting visuals", async ({
   await expect.poll(() => imageReleases.length).toBe(4);
   imageReleases.slice(1).forEach((release) => release());
   await expect(page.locator('[data-image-reveal-state="ready"]')).toHaveCount(4);
+
+  if (testInfo.project.name === "chromium") {
+    const videoTool = page.locator("button.shell-nav-item:visible").filter({ hasText: "AI 视频生成器" });
+    const imageTool = page.locator("button.shell-nav-item:visible").filter({ hasText: "AI 图像生成器" });
+    await expect(videoTool).toHaveCount(1);
+    await expect(imageTool).toHaveCount(1);
+    await videoTool.click();
+    await imageTool.click();
+    await expect(page.locator('[data-image-reveal-state="ready"]')).toHaveCount(4);
+    await expect(page.locator(".studio-media-card__image-reveal-overlay")).toHaveCount(0);
+  }
 
   const cardMetrics = await page.locator(".studio-image-result-card").evaluateAll((cards) => cards.map((card) => {
     const frame = card.querySelector<HTMLElement>(".studio-media-card__frame");
