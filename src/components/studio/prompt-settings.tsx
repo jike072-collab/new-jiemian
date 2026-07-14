@@ -4,10 +4,9 @@ import { useCallback, useEffect, useMemo, useState, useSyncExternalStore } from 
 import { createPortal } from "react-dom";
 import { Save, Settings2, Trash2, X } from "lucide-react";
 
+import { CustomSelect } from "@/components/studio/custom-select";
 import {
   builtInPromptPresets,
-  defaultPromptPreferences,
-  defaultPromptPresetIds,
   emptyPromptPreferences,
   normalizePromptPreferences,
   promptPreferenceFields,
@@ -15,7 +14,6 @@ import {
   type PromptPreferences,
   type PromptPreferenceTool,
 } from "@/lib/prompt-preferences";
-import { cn } from "@/lib/utils";
 
 type CustomPromptPreset = {
   id: string;
@@ -41,11 +39,11 @@ function createDefaultStore(): PromptSettingsStore {
   return {
     version: 2,
     settings: {
-      "image-generator": defaultPromptPreferences("image-generator"),
-      "image-editor": defaultPromptPreferences("image-editor"),
-      "video-generator": defaultPromptPreferences("video-generator"),
+      "image-generator": emptyPromptPreferences(),
+      "image-editor": emptyPromptPreferences(),
+      "video-generator": emptyPromptPreferences(),
     },
-    activePresetIds: { ...defaultPromptPresetIds },
+    activePresetIds: {},
     customPresets: [],
   };
 }
@@ -65,7 +63,7 @@ function readStore(): PromptSettingsStore {
     })) as PromptSettingsStore["settings"];
     const activePresetIds = Object.fromEntries(tools.flatMap((tool) => {
       const migrateToDefault = parsed.version === 1 && Object.keys(normalizePromptPreferences(parsed.settings?.[tool])).length === 0;
-      const presetId = migrateToDefault ? defaults.activePresetIds[tool] : parsed.activePresetIds?.[tool];
+      const presetId = migrateToDefault ? undefined : parsed.activePresetIds?.[tool];
       return presetId ? [[tool, presetId]] : [];
     })) as PromptSettingsStore["activePresetIds"];
     return {
@@ -166,7 +164,7 @@ function PromptSettingsDialog({
   onCancel: () => void;
   onApply: (store: PromptSettingsStore) => void;
 }) {
-  const [activeTool, setActiveTool] = useState<PromptPreferenceTool>(initialTool);
+  const activeTool = initialTool;
   const [draft, setDraft] = useState<PromptSettingsStore>(() => structuredClone(store));
   const [presetName, setPresetName] = useState(() => {
     const activeId = store.activePresetIds[initialTool];
@@ -213,12 +211,6 @@ function PromptSettingsDialog({
     }));
   };
 
-  const switchTool = (tool: PromptPreferenceTool) => {
-    setActiveTool(tool);
-    const presetId = draft.activePresetIds[tool];
-    setPresetName(draft.customPresets.find((preset) => preset.id === presetId && preset.tool === tool)?.name || "");
-  };
-
   const savePreset = () => {
     const name = presetName.trim().slice(0, 30);
     if (!name) return;
@@ -260,36 +252,23 @@ function PromptSettingsDialog({
         <header className="prompt-settings-dialog__header">
           <div>
             <span className="shell-eyebrow">PROMPT PROFILE</span>
-            <h2 id="prompt-settings-title">提示词优化设置</h2>
+            <h2 id="prompt-settings-title">{promptPreferenceToolLabels[activeTool]}提示词设置</h2>
           </div>
           <button type="button" className="prompt-settings-dialog__close" aria-label="关闭提示词设置" onClick={onCancel}>
             <X className="size-5" aria-hidden="true" />
           </button>
         </header>
 
-        <div className="prompt-settings-dialog__tabs" role="tablist" aria-label="提示词类型">
-          {tools.map((entry) => (
-            <button
-              key={entry}
-              type="button"
-              role="tab"
-              aria-selected={activeTool === entry}
-              className={cn(activeTool === entry && "is-active")}
-              onClick={() => switchTool(entry)}
-            >
-              {promptPreferenceToolLabels[entry]}
-            </button>
-          ))}
-        </div>
-
         <div className="prompt-settings-dialog__body">
           <div className="prompt-settings-preset-row">
             <label>
               <span>快捷方案</span>
-              <select value={activePresetId} onChange={(event) => applyPreset(event.target.value)}>
-                <option value="">自定义设置</option>
-                {presets.map((preset) => <option key={preset.id} value={preset.id}>{preset.name}</option>)}
-              </select>
+              <CustomSelect
+                label="快捷方案"
+                value={activePresetId}
+                options={[{ value: "", label: "自定义设置" }, ...presets.map((preset) => ({ value: preset.id, label: preset.name }))]}
+                onChange={applyPreset}
+              />
             </label>
             <button type="button" className="prompt-settings-reset" onClick={() => applyPreset("")}>恢复自动</button>
           </div>
@@ -298,12 +277,12 @@ function PromptSettingsDialog({
             {promptPreferenceFields[activeTool].map((field) => (
               <label key={field.key} className="prompt-settings-field">
                 <span>{field.label}</span>
-                <select
+                <CustomSelect
+                  label={field.label}
                   value={currentSettings[field.key] || ""}
-                  onChange={(event) => updateSettings({ [field.key]: event.target.value })}
-                >
-                  {field.options.map((option) => <option key={option.value || "auto"} value={option.value}>{option.label}</option>)}
-                </select>
+                  options={field.options}
+                  onChange={(value) => updateSettings({ [field.key]: value })}
+                />
               </label>
             ))}
           </div>

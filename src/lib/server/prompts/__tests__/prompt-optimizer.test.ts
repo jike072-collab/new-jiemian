@@ -7,8 +7,7 @@ import { NewApiError } from "../../integrations/new-api/errors";
 import { type ProviderConfig } from "../../types";
 import {
   builtInPromptPresets,
-  defaultPromptPreferences,
-  defaultPromptPresetIds,
+  emptyPromptPreferences,
   promptPreferenceFields,
 } from "../../../prompt-preferences";
 import {
@@ -86,10 +85,7 @@ test("provides tool-specific defaults and practical task presets", () => {
     }
   }
 
-  assert.deepEqual(defaultPromptPreferences("image-generator"), { purpose: "free-create", platform: "none" });
-  assert.deepEqual(defaultPromptPreferences("image-editor"), { editMode: "precise", preserve: "unmodified", platform: "none" });
-  assert.deepEqual(defaultPromptPreferences("video-generator"), { videoType: "free-create", platform: "none" });
-  assert.equal(defaultPromptPresetIds["image-editor"], "edit-precise");
+  assert.deepEqual(emptyPromptPreferences(), {});
 
   const editModes = promptPreferenceFields["image-editor"]
     .find((field) => field.key === "editMode")?.options.map((option) => option.value) || [];

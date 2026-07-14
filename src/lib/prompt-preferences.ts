@@ -386,17 +386,6 @@ export const builtInPromptPresets: BuiltInPromptPreset[] = [
   { id: "video-loop", name: "无缝循环", tool: "video-generator", settings: { videoType: "seamless-loop", motion: "orbit", pace: "steady", audio: "ambient", platform: "none" } },
 ];
 
-export const defaultPromptPresetIds: Record<PromptPreferenceTool, string> = {
-  "image-generator": "image-free",
-  "image-editor": "edit-precise",
-  "video-generator": "video-free",
-};
-
-export function defaultPromptPreferences(tool: PromptPreferenceTool): PromptPreferences {
-  const preset = builtInPromptPresets.find((entry) => entry.id === defaultPromptPresetIds[tool] && entry.tool === tool);
-  return normalizePromptPreferences(preset?.settings || {});
-}
-
 export function emptyPromptPreferences(): PromptPreferences {
   return {};
 }

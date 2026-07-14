@@ -2220,7 +2220,7 @@
   .prompt-settings-dialog__panel {
     position: relative;
     display: grid;
-    grid-template-rows: auto auto minmax(0, 1fr) auto;
+    grid-template-rows: auto minmax(0, 1fr) auto;
     width: min(880px, calc(100vw - 40px));
     max-height: min(820px, calc(100dvh - 40px));
     overflow: hidden;
@@ -2340,8 +2340,8 @@
     font-weight: 620;
   }
 
-  .prompt-settings-field select,
-  .prompt-settings-preset-row select,
+  .prompt-settings-field .studio-custom-select__button,
+  .prompt-settings-preset-row .studio-custom-select__button,
   .prompt-settings-save-row input,
   .prompt-settings-textareas textarea {
     width: 100%;
@@ -2352,11 +2352,21 @@
     outline: none;
   }
 
-  .prompt-settings-field select,
-  .prompt-settings-preset-row select,
+  .prompt-settings-field .studio-custom-select__button,
+  .prompt-settings-preset-row .studio-custom-select__button,
   .prompt-settings-save-row input {
-    height: 42px;
-    padding: 0 11px;
+    min-height: 46px;
+    padding: 0 14px;
+    font-size: 15px;
+    font-weight: 650;
+  }
+
+  .prompt-settings-field .studio-custom-select__option,
+  .prompt-settings-preset-row .studio-custom-select__option {
+    min-height: 44px;
+    padding: 0 12px;
+    font-size: 15px;
+    font-weight: 600;
   }
 
   .prompt-settings-textareas textarea {
@@ -2366,8 +2376,6 @@
     line-height: 1.5;
   }
 
-  .prompt-settings-field select:focus,
-  .prompt-settings-preset-row select:focus,
   .prompt-settings-save-row input:focus,
   .prompt-settings-textareas textarea:focus {
     border-color: color-mix(in srgb, var(--primary) 58%, transparent);

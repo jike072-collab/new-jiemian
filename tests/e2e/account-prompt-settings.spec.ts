@@ -144,36 +144,32 @@ test("prompt gear stores per-tool presets and sends selected preferences", async
 
   await page.goto("/", { waitUntil: "domcontentloaded" });
   await page.getByRole("button", { name: "提示词优化设置" }).click();
-  const dialog = page.getByRole("dialog", { name: "提示词优化设置" });
+  const dialog = page.getByRole("dialog", { name: "图片生成提示词设置" });
   await expect(dialog).toBeVisible();
-  await expect(dialog.getByText("图片生成", { exact: true })).toBeVisible();
-  await expect(dialog.getByText("图片编辑", { exact: true })).toBeVisible();
-  await expect(dialog.getByText("视频生成", { exact: true })).toBeVisible();
+  await expect(dialog.getByRole("tab")).toHaveCount(0);
+  await expect(dialog.getByRole("button", { name: "创作目的" })).toBeVisible();
+  await expect(dialog.getByLabel("编辑任务")).toHaveCount(0);
+  await expect(dialog.getByLabel("视频类型")).toHaveCount(0);
 
-  const presetSelect = dialog.getByLabel("快捷方案");
-  await expect(presetSelect).toHaveValue("image-free");
-  await expect(dialog.getByRole("option", { name: "电商商品主图" })).toHaveCount(2);
-  await dialog.getByRole("tab", { name: "图片编辑" }).click();
-  await expect(presetSelect).toHaveValue("edit-precise");
-  await expect(dialog.getByRole("option", { name: "抠图透明背景" })).toHaveCount(2);
-  await expect(dialog.getByRole("option", { name: "商品纯白底" })).toHaveCount(2);
-  await expect(dialog.getByRole("option", { name: "图片文字翻译" })).toHaveCount(2);
-  await dialog.getByRole("tab", { name: "视频生成" }).click();
-  await expect(presetSelect).toHaveValue("video-free");
-  await expect(dialog.getByRole("option", { name: "教程步骤" })).toHaveCount(2);
-  await expect(dialog.getByRole("option", { name: "前后对比" })).toHaveCount(2);
-  await dialog.getByRole("tab", { name: "图片生成" }).click();
-
-  await presetSelect.selectOption({ label: "写实摄影" });
+  const presetSelect = dialog.getByRole("button", { name: "快捷方案" });
+  await expect(presetSelect).toContainText("自定义设置");
+  await expect(dialog.locator("select")).toHaveCount(0);
+  const selectFontSize = await presetSelect.evaluate((element) => Number.parseFloat(getComputedStyle(element).fontSize));
+  expect(selectFontSize).toBeGreaterThanOrEqual(15);
+  await expect(dialog.getByRole("button", { name: "创作目的" })).toContainText("自动判断");
+  await expect(dialog.getByRole("button", { name: "视觉风格" })).toContainText("自动判断");
+  await presetSelect.click();
+  const presetList = dialog.getByRole("listbox", { name: "快捷方案" });
+  await expect(presetList).toBeVisible();
+  const menuMotion = await presetList.evaluate((element) => ({
+    transitionDuration: getComputedStyle(element).transitionDuration,
+  }));
+  await expect(presetList).toHaveAttribute("aria-hidden", "false");
+  expect(menuMotion.transitionDuration).not.toBe("0s");
+  await presetList.getByRole("option", { name: "写实摄影" }).click();
   await dialog.getByLabel("方案名称").fill("我的写实方案");
   await dialog.getByRole("button", { name: "保存方案" }).click();
-  await expect(dialog.getByLabel("快捷方案")).toHaveValue(/custom-/);
-
-  await dialog.getByRole("tab", { name: "视频生成" }).click();
-  await expect(dialog.getByLabel("视频类型")).toBeVisible();
-  await expect(dialog.getByLabel("镜头运动")).toBeVisible();
-  await expect(dialog.getByLabel("编辑任务")).toHaveCount(0);
-  await dialog.getByRole("tab", { name: "图片生成" }).click();
+  await expect(presetSelect).toContainText("我的写实方案");
   await dialog.getByRole("button", { name: "应用设置" }).click();
   await expect(dialog).toBeHidden();
 
@@ -193,6 +189,9 @@ test("prompt gear stores per-tool presets and sends selected preferences", async
 
   await page.reload({ waitUntil: "domcontentloaded" });
   await page.getByRole("button", { name: "提示词优化设置" }).click();
-  const persistedDialog = page.getByRole("dialog", { name: "提示词优化设置" });
-  await expect(persistedDialog.getByRole("option", { name: "我的写实方案" })).toHaveCount(1);
+  const persistedDialog = page.getByRole("dialog", { name: "图片生成提示词设置" });
+  const persistedPreset = persistedDialog.getByRole("button", { name: "快捷方案" });
+  await expect(persistedPreset).toContainText("我的写实方案");
+  await persistedPreset.click();
+  await expect(persistedDialog.getByRole("listbox", { name: "快捷方案" }).getByRole("option", { name: "我的写实方案" })).toHaveCount(1);
 });
