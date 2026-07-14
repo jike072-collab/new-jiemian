@@ -123,7 +123,7 @@ test("image results reveal independently with unified waiting visuals", async ({
   expect(precheckPayloads.every((payload) => payload.membershipEntitlementAmount === 2)).toBe(true);
   await expect(page.locator(".studio-image-result-card--pending")).toHaveCount(4);
   await expect(page.locator(".studio-dot-ripple-loader")).toHaveCount(4);
-  await expect(page.locator(".studio-image-result-card--pending .studio-dot-ripple-loader span")).toHaveCount(18 * 18 * 4);
+  await expect(page.locator(".studio-image-result-card--pending .studio-dot-ripple-loader span")).toHaveCount(20 * 20 * 4);
   const waitingCoverage = await page.locator(".studio-image-result-card--pending").evaluateAll((cards) => cards.map((card) => {
     const dots = card.querySelector<HTMLElement>(".studio-dot-ripple-loader");
     const dot = dots?.querySelector<HTMLElement>("span");
@@ -133,13 +133,21 @@ test("image results reveal independently with unified waiting visuals", async ({
       width: dotsRect ? dotsRect.width / cardRect.width : 0,
       height: dotsRect ? dotsRect.height / cardRect.height : 0,
       baseOpacity: dot ? Number.parseFloat(getComputedStyle(dot).opacity) : 0,
+      maskImage: dots ? getComputedStyle(dots).maskImage : "",
+      maskSize: dots ? getComputedStyle(dots).maskSize : "",
+      maskPosition: dots ? getComputedStyle(dots).maskPosition : "",
+      animationName: dots ? getComputedStyle(dots).animationName : "",
     };
   }));
   for (const coverage of waitingCoverage) {
     expect(coverage.width).toBeGreaterThanOrEqual(0.85);
     expect(coverage.height).toBeGreaterThanOrEqual(0.85);
     expect(coverage.baseOpacity).toBeGreaterThanOrEqual(0.18);
+    expect(coverage.maskImage).not.toBe("none");
+    expect(coverage.maskSize).toContain("62%");
+    expect(coverage.animationName).toContain("studio-dot-window");
   }
+  const initialMaskPositions = waitingCoverage.map((coverage) => coverage.maskPosition);
   const readWaitingPulse = () => page.locator(".studio-image-result-card--pending").evaluateAll((cards) => cards.map((card) => {
     const opacities = Array.from(card.querySelectorAll<HTMLElement>(".studio-dot-ripple-loader span"), (dot) => Number.parseFloat(getComputedStyle(dot).opacity));
     return { minimum: Math.min(...opacities), maximum: Math.max(...opacities) };
@@ -151,6 +159,11 @@ test("image results reveal independently with unified waiting visuals", async ({
     expect(pulse.maximum).toBeGreaterThan(0.75);
     expect(pulse.maximum - pulse.minimum).toBeGreaterThan(0.25);
   }
+  await page.waitForTimeout(180);
+  const movedMaskPositions = await page.locator(".studio-image-result-card--pending .studio-dot-ripple-loader").evaluateAll((loaders) => (
+    loaders.map((loader) => getComputedStyle(loader).maskPosition)
+  ));
+  expect(movedMaskPositions.some((position, index) => position !== initialMaskPositions[index])).toBe(true);
   await page.screenshot({
     path: testInfo.outputPath(`image-waiting-${testInfo.project.name}.png`),
     fullPage: true,
@@ -171,21 +184,34 @@ test("image results reveal independently with unified waiting visuals", async ({
     const overlay = frame.querySelector<HTMLElement>(".studio-media-card__image-reveal-overlay");
     return {
       imageDuration: image ? Number.parseFloat(getComputedStyle(image).transitionDuration) * 1000 : 0,
-      overlayDuration: overlay ? Number.parseFloat(getComputedStyle(overlay).transitionDuration) * 1000 : 0,
+      overlayHideDelay: overlay ? Number.parseFloat(getComputedStyle(overlay).transitionDelay) * 1000 : 0,
       imageProperties: image ? getComputedStyle(image).transitionProperty : "",
-      overlayProperties: overlay ? getComputedStyle(overlay).transitionProperty : "",
+      imageClipPath: image ? getComputedStyle(image).clipPath : "",
     };
   });
-  expect(revealTiming.imageDuration).toBeGreaterThanOrEqual(500);
-  expect(revealTiming.overlayDuration).toBeGreaterThanOrEqual(700);
+  expect(revealTiming.imageDuration).toBeGreaterThanOrEqual(800);
+  expect(revealTiming.overlayHideDelay).toBeGreaterThanOrEqual(1_000);
   expect(revealTiming.imageProperties).toContain("opacity");
   expect(revealTiming.imageProperties).toContain("filter");
-  expect(revealTiming.overlayProperties).toContain("opacity");
-  expect(revealTiming.overlayProperties).toContain("filter");
+  expect(revealTiming.imageProperties).toContain("clip-path");
+  expect(revealTiming.imageClipPath).not.toBe("none");
 
   imageReleases[0]();
+  await page.waitForTimeout(50);
+  await expect(firstFrame).toHaveAttribute("data-image-reveal-state", "loading");
   await expect(firstFrame).toHaveAttribute("data-image-reveal-state", "ready");
   await page.waitForTimeout(160);
+  const revealProgress = await firstFrame.evaluate((frame) => {
+    const image = frame.querySelector("img");
+    const dot = frame.querySelector<HTMLElement>(".studio-media-card__image-reveal-overlay span");
+    return {
+      imageOpacity: image ? Number.parseFloat(getComputedStyle(image).opacity) : 1,
+      dotAnimation: dot ? getComputedStyle(dot).animationName : "",
+    };
+  });
+  expect(revealProgress.imageOpacity).toBeGreaterThan(0);
+  expect(revealProgress.imageOpacity).toBeLessThan(1);
+  expect(revealProgress.dotAnimation).toBe("studio-dot-reveal");
   await page.screenshot({
     path: testInfo.outputPath(`image-reveal-${testInfo.project.name}.png`),
     fullPage: true,

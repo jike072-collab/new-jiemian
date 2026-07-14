@@ -3,7 +3,7 @@
 /* eslint-disable @next/next/no-img-element */
 
 import { AlertTriangle, Download, ExternalLink, Pause, Play, Video } from "lucide-react";
-import { useEffect, useRef, useState, type MouseEvent, type PointerEvent } from "react";
+import { useCallback, useEffect, useRef, useState, type MouseEvent, type PointerEvent } from "react";
 
 import { DotRippleLoader } from "@/components/studio/dot-ripple-loader";
 import { cachedMediaObjectUrl } from "@/lib/client/media-cache";
@@ -33,6 +33,8 @@ export function MediaCard({
 }) {
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const zoomSurfaceRef = useRef<HTMLDivElement | null>(null);
+  const imageRevealFrameRef = useRef<number | null>(null);
+  const imageRevealTimeoutRef = useRef<number | null>(null);
   const dragStateRef = useRef<{ pointerId: number; startX: number; startY: number; originX: number; originY: number } | null>(null);
   const [previewPlaying, setPreviewPlaying] = useState(false);
   const [readyVideoSource, setReadyVideoSource] = useState("");
@@ -89,6 +91,36 @@ export function MediaCard({
   const resolvedVideoSource = item.type === "video" ? resolvedMediaUrl || videoSource : "";
   const videoReady = Boolean(resolvedVideoSource) && readyVideoSource === resolvedVideoSource;
   const statusBadge = mediaExpired ? "已过期" : mediaMissing ? "文件失效" : libraryStatusBadgeLabel(item.status);
+
+  const cancelScheduledImageReveal = useCallback(() => {
+    if (imageRevealFrameRef.current !== null) {
+      window.cancelAnimationFrame(imageRevealFrameRef.current);
+      imageRevealFrameRef.current = null;
+    }
+    if (imageRevealTimeoutRef.current !== null) {
+      window.clearTimeout(imageRevealTimeoutRef.current);
+      imageRevealTimeoutRef.current = null;
+    }
+  }, []);
+
+  const handleImageLoad = useCallback(() => {
+    if (!displayedImageSource) return;
+    if (!smoothReveal) {
+      setReadyImageSource(displayedImageSource);
+      return;
+    }
+    cancelScheduledImageReveal();
+    imageRevealFrameRef.current = window.requestAnimationFrame(() => {
+      imageRevealFrameRef.current = window.requestAnimationFrame(() => {
+        imageRevealTimeoutRef.current = window.setTimeout(() => {
+          setReadyImageSource(displayedImageSource);
+          imageRevealTimeoutRef.current = null;
+        }, 72);
+      });
+    });
+  }, [cancelScheduledImageReveal, displayedImageSource, smoothReveal]);
+
+  useEffect(() => cancelScheduledImageReveal, [cancelScheduledImageReveal, displayedImageSource]);
 
   useEffect(() => {
     if (item.type !== "image" || !hasMediaUrl || !imageUrl) return undefined;
@@ -317,7 +349,7 @@ export function MediaCard({
                 loading={imageLoading}
                 decoding="async"
                 fetchPriority={imageFetchPriority}
-                onLoad={() => setReadyImageSource(displayedImageSource)}
+                onLoad={handleImageLoad}
                 onError={onMediaMissing}
                 style={{
                   position: "absolute",
@@ -330,7 +362,7 @@ export function MediaCard({
               />
             </div>
           ) : (
-            <img src={resolvedMediaUrl || imageUrl} alt={item.title} loading={imageLoading} decoding="async" fetchPriority={imageFetchPriority} onLoad={() => setReadyImageSource(displayedImageSource)} onError={onMediaMissing} />
+            <img src={resolvedMediaUrl || imageUrl} alt={item.title} loading={imageLoading} decoding="async" fetchPriority={imageFetchPriority} onLoad={handleImageLoad} onError={onMediaMissing} />
           )
         ) : null}
         {smoothReveal && displayedImageSource ? (
