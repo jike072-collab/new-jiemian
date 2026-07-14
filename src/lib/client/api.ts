@@ -67,22 +67,49 @@ export async function fetchJson<T>(url: string, options: RequestInit = {}): Prom
   return payload as T;
 }
 
+let cachedCsrfToken: string | null = null;
+let csrfTokenRequest: Promise<string> | null = null;
+
 export async function getCsrfToken() {
-  const data = await fetchJson<{ ok: true; csrfToken: string }>("/api/auth/csrf");
-  return data.csrfToken;
+  if (cachedCsrfToken) return cachedCsrfToken;
+  if (!csrfTokenRequest) {
+    csrfTokenRequest = fetchJson<{ ok: true; csrfToken: string }>("/api/auth/csrf")
+      .then((data) => {
+        cachedCsrfToken = data.csrfToken;
+        return data.csrfToken;
+      })
+      .finally(() => {
+        csrfTokenRequest = null;
+      });
+  }
+  return csrfTokenRequest;
 }
 
 export async function fetchJsonWithCsrf<T>(url: string, options: RequestInit = {}): Promise<T> {
   const csrfToken = await getCsrfToken();
-  const headers = new Headers(options.headers || {});
-  headers.set("x-csrf-token", csrfToken);
-  if (options.body instanceof FormData) {
-    headers.delete("content-type");
-  } else if (options.body !== undefined && !headers.has("content-type")) {
-    headers.set("Content-Type", "application/json");
+  const send = (token: string) => {
+    const headers = new Headers(options.headers || {});
+    headers.set("x-csrf-token", token);
+    if (options.body instanceof FormData) {
+      headers.delete("content-type");
+    } else if (options.body !== undefined && !headers.has("content-type")) {
+      headers.set("Content-Type", "application/json");
+    }
+    return fetchJson<T>(url, {
+      ...options,
+      headers,
+    });
+  };
+  try {
+    return await send(csrfToken);
+  } catch (error) {
+    if (!(error instanceof ApiError) || error.status !== 403 || error.code !== "AUTH_CSRF_REQUIRED") throw error;
+    if (cachedCsrfToken === csrfToken) cachedCsrfToken = null;
+    return send(await getCsrfToken());
   }
-  return fetchJson<T>(url, {
-    ...options,
-    headers,
-  });
+}
+
+export function resetCsrfTokenForTests() {
+  cachedCsrfToken = null;
+  csrfTokenRequest = null;
 }

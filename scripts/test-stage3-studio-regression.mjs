@@ -183,6 +183,53 @@ async function runJsonFetchBehaviorTests() {
       (error) => error instanceof Error && error.message === "network unavailable",
     );
   });
+
+  api.resetCsrfTokenForTests();
+  let csrfRequests = 0;
+  const csrfHeaders = [];
+  await withMockFetch(async (url, options = {}) => {
+    if (url === "/api/auth/csrf") {
+      csrfRequests += 1;
+      return new Response(JSON.stringify({ ok: true, csrfToken: "shared-token" }), {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      });
+    }
+    csrfHeaders.push(new Headers(options.headers).get("x-csrf-token"));
+    return new Response(JSON.stringify({ ok: true }), {
+      status: 200,
+      headers: { "content-type": "application/json" },
+    });
+  }, async () => {
+    await Promise.all(Array.from({ length: 4 }, () => api.fetchJsonWithCsrf("/write", { method: "POST", body: "{}" })));
+  });
+  assert.equal(csrfRequests, 1, "concurrent writes share one CSRF token request");
+  assert.deepEqual(csrfHeaders, ["shared-token", "shared-token", "shared-token", "shared-token"]);
+
+  api.resetCsrfTokenForTests();
+  let refreshRequests = 0;
+  let writeRequests = 0;
+  await withMockFetch(async (url, options = {}) => {
+    if (url === "/api/auth/csrf") {
+      refreshRequests += 1;
+      return new Response(JSON.stringify({ ok: true, csrfToken: `token-${refreshRequests}` }), {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      });
+    }
+    writeRequests += 1;
+    const token = new Headers(options.headers).get("x-csrf-token");
+    return new Response(JSON.stringify(token === "token-1"
+      ? { code: "AUTH_CSRF_REQUIRED", message: "CSRF token is required." }
+      : { ok: true }), {
+      status: token === "token-1" ? 403 : 200,
+      headers: { "content-type": "application/json" },
+    });
+  }, async () => {
+    assert.deepEqual(await api.fetchJsonWithCsrf("/write", { method: "POST", body: "{}" }), { ok: true });
+  });
+  assert.equal(refreshRequests, 2, "a stale CSRF token is refreshed once");
+  assert.equal(writeRequests, 2, "the write is retried once after a CSRF rejection");
 }
 
 async function runImageGenerationQueueTests() {

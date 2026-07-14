@@ -100,13 +100,18 @@ export function authActionResponse(
 }
 
 export function csrfResponse(request: NextRequest) {
-  const csrfToken = createCsrfToken();
+  const cookieToken = request.cookies.get(AUTH_CSRF_COOKIE)?.value || null;
+  const csrfToken = cookieToken && verifyCsrfToken({ headerToken: cookieToken, cookieToken })
+    ? cookieToken
+    : createCsrfToken();
   const response = NextResponse.json({
     ok: true,
     csrfToken,
     uiState: "success",
   });
-  response.cookies.set(AUTH_CSRF_COOKIE, csrfToken, csrfCookieOptions(request));
+  if (csrfToken !== cookieToken) {
+    response.cookies.set(AUTH_CSRF_COOKIE, csrfToken, csrfCookieOptions(request));
+  }
   return response;
 }
 

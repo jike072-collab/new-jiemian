@@ -1,8 +1,10 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
+import { NextRequest } from "next/server";
 
 import { clearSessionCookieOptions, sessionCookieOptions } from "../cookies";
-import { csrfFailure } from "../http";
+import { createCsrfToken } from "../csrf";
+import { csrfFailure, csrfResponse } from "../http";
 import { AuthVerificationSendError, sendAuthVerificationCode } from "../verification-sender";
 
 function restoreEnv(previous: Map<string, string | undefined>) {
@@ -36,6 +38,18 @@ test("CSRF failure returns stable UI contract without upstream details", () => {
   assert.equal(result.code, "AUTH_CSRF_REQUIRED");
   assert.equal(result.uiState, "validation_error");
   assert.equal(result.message.includes("New API"), false);
+});
+
+test("CSRF endpoint reuses a valid cookie token instead of rotating concurrent requests", async () => {
+  const token = createCsrfToken();
+  const request = new NextRequest("https://example.test/api/auth/csrf", {
+    headers: { cookie: `aohuang_csrf=${token}` },
+  });
+  const response = csrfResponse(request);
+  const payload = await response.json() as { csrfToken: string };
+
+  assert.equal(payload.csrfToken, token);
+  assert.equal(response.headers.get("set-cookie"), null);
 });
 
 test("verification sender uses Resend email API when configured", async () => {
