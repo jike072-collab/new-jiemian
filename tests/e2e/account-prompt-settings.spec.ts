@@ -1,5 +1,7 @@
 import { expect, test } from "@playwright/test";
 
+const navigationTimeout = process.env.E2E_BASE_URL ? 60_000 : 30_000;
+
 const user = {
   local_user_id: "e2e-account-user",
   email: "account-e2e@example.invalid",
@@ -126,7 +128,7 @@ test("account ledger includes admin grants and separates entitlement balance", a
   });
 
   await page.goto("/?account=usage", { waitUntil: "domcontentloaded" });
-  await expect(page.getByRole("heading", { name: "积分明细", exact: true })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "积分明细", exact: true })).toBeVisible({ timeout: navigationTimeout });
   const ledger = page.locator(".account-records");
   await expect(ledger.getByText("剩余权益", { exact: true })).toHaveCount(1);
   await expect(ledger.getByText("手动充值", { exact: true })).toBeVisible();
