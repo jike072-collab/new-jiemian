@@ -521,31 +521,32 @@ export function PromptBox({
           >
             清除
           </button>
-          <button
-            type="button"
-            className="studio-prompt-action"
-            onClick={() => onOptimize(promptPreferences.preferences)}
-            disabled={optimizing}
-            aria-busy={optimizing}
-          >
-            {optimizing ? (
-              <>
-                <Loader2 className="size-4 animate-spin" aria-hidden="true" />
-                正在优化…
-              </>
-            ) : (
-              <span className="studio-prompt-action__copy">
-                <span>✨ 优化提示词</span>
-                {optimizeCostLabel ? <small>{optimizeCostLabel}</small> : null}
-              </span>
-            )}
-          </button>
-          <PromptSettingsButton tool={tool} store={promptPreferences.store} onChange={promptPreferences.saveStore} />
           {canUndoOptimize ? (
-            <button type="button" className="studio-prompt-action" onClick={onUndoOptimize}>
+            <button type="button" className="studio-prompt-action" onClick={onUndoOptimize} aria-label="撤销优化">
               撤销优化
             </button>
-          ) : null}
+          ) : (
+            <button
+              type="button"
+              className="studio-prompt-action"
+              onClick={() => onOptimize(promptPreferences.preferences)}
+              disabled={optimizing}
+              aria-busy={optimizing}
+            >
+              {optimizing ? (
+                <>
+                  <Loader2 className="size-4 animate-spin" aria-hidden="true" />
+                  正在优化…
+                </>
+              ) : (
+                <span className="studio-prompt-action__copy">
+                  <span>✨ 优化提示词</span>
+                  {optimizeCostLabel ? <small>{optimizeCostLabel}</small> : null}
+                </span>
+              )}
+            </button>
+          )}
+          <PromptSettingsButton tool={tool} store={promptPreferences.store} onChange={promptPreferences.saveStore} />
         </div>
       )}
     >

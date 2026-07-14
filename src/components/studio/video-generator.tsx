@@ -277,33 +277,34 @@ function VideoPromptBox({
           >
             清除
           </button>
-          <button
-            type="button"
-            className={cn("studio-prompt-action", !enableOptimization && "hidden")}
-            onClick={() => onOptimize(promptPreferences.preferences)}
-            disabled={optimizing || !enableOptimization}
-            aria-busy={optimizing}
-            aria-hidden={!enableOptimization}
-          >
-            {optimizing ? (
-              <>
-                <Loader2 className="size-4 animate-spin" aria-hidden="true" />
-                正在优化…
-              </>
-            ) : (
-              <span className="studio-prompt-action__copy">
-                <span>✨ 优化提示词</span>
-                {optimizeCostLabel ? <small>{optimizeCostLabel}</small> : null}
-              </span>
-            )}
-          </button>
-          {enableOptimization ? (
-            <PromptSettingsButton tool="video-generator" store={promptPreferences.store} onChange={promptPreferences.saveStore} />
-          ) : null}
           {enableOptimization && canUndoOptimize ? (
-            <button type="button" className="studio-prompt-action" onClick={onUndoOptimize}>
+            <button type="button" className="studio-prompt-action" onClick={onUndoOptimize} aria-label="撤销优化">
               撤销优化
             </button>
+          ) : (
+            <button
+              type="button"
+              className={cn("studio-prompt-action", !enableOptimization && "hidden")}
+              onClick={() => onOptimize(promptPreferences.preferences)}
+              disabled={optimizing || !enableOptimization}
+              aria-busy={optimizing}
+              aria-hidden={!enableOptimization}
+            >
+              {optimizing ? (
+                <>
+                  <Loader2 className="size-4 animate-spin" aria-hidden="true" />
+                  正在优化…
+                </>
+              ) : (
+                <span className="studio-prompt-action__copy">
+                  <span>✨ 优化提示词</span>
+                  {optimizeCostLabel ? <small>{optimizeCostLabel}</small> : null}
+                </span>
+              )}
+            </button>
+          )}
+          {enableOptimization ? (
+            <PromptSettingsButton tool="video-generator" store={promptPreferences.store} onChange={promptPreferences.saveStore} />
           ) : null}
         </div>
       )}

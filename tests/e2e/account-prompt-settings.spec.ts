@@ -178,6 +178,10 @@ test("prompt gear stores per-tool presets and sends selected preferences", async
   await page.getByTestId("prompt-input").fill("一只小猫看窗外的雨");
   await page.getByRole("button", { name: /优化提示词/ }).click();
   await expect(page.getByTestId("prompt-input")).toHaveValue(/雨后窗边/);
+  await expect(page.getByRole("button", { name: "撤销优化", exact: true })).toBeVisible();
+  await expect(page.getByRole("button", { name: /优化提示词/ })).toHaveCount(0);
+  await page.getByRole("button", { name: "撤销优化", exact: true }).click();
+  await expect(page.getByTestId("prompt-input")).toHaveValue("一只小猫看窗外的雨");
   const payload = optimizePayload as Record<string, unknown> | null;
   expect(payload).not.toBeNull();
   expect(payload).not.toHaveProperty("targetPlatform");
