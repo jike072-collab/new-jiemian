@@ -1,5 +1,6 @@
 import { type NextRequest, NextResponse } from "next/server";
 
+import { estimateImageGenerationEntitlementUnits } from "@/lib/generation-quota";
 import { authResultResponse, csrfFailure, requireAuthSession, requireCsrf } from "@/lib/server/auth";
 import { diagnosticErrorResponse } from "@/lib/server/error-diagnostics";
 import { failImageGenerationBeforeSubmit, generateImage, uploadedMediaFromForm } from "@/lib/server/provider-call";
@@ -18,11 +19,15 @@ export async function POST(request: NextRequest) {
       : "cloud_image_generation";
     const billingTaskId = String(form.get("taskId") || form.get("billingTaskId") || "");
     const billingEstimatedQuotaUnits = Number(form.get("estimatedQuotaUnits") || form.get("billingEstimatedQuotaUnits") || Number.NaN);
+    const quality = String(form.get("quality") || "1k");
+    const count = Number(form.get("count") || Number.NaN);
+    const membershipEntitlementAmount = estimateImageGenerationEntitlementUnits({ quality, count });
     const failBeforeSubmit = (error: unknown) => failImageGenerationBeforeSubmit({
       localUserId: session.user.local_user_id,
       taskId: billingTaskId,
       operation,
       estimatedQuotaUnits: billingEstimatedQuotaUnits,
+      membershipEntitlementAmount,
       reason: error instanceof Error ? error.message : "image generation rejected before provider submission",
     });
     const run = async () => {
@@ -39,9 +44,9 @@ export async function POST(request: NextRequest) {
         operation,
         prompt: String(form.get("prompt") || ""),
         ratio: String(form.get("ratio") || "1:1"),
-        quality: String(form.get("quality") || "1k"),
+        quality,
         files,
-        count: Number(form.get("count") || Number.NaN),
+        count,
         batchId: String(form.get("batchId") || "").trim(),
         batchTotal: Number(form.get("batchTotal") || Number.NaN),
         billingLocalUserId: session.user.local_user_id,

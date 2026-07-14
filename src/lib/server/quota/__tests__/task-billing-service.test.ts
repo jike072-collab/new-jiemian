@@ -243,6 +243,51 @@ test("uses one image entitlement per requested batch item", async () => {
   assert.equal(status.entitlements.image_generation.remaining, 7);
 });
 
+test("enforces the expected image entitlement amount before provider dispatch", async () => {
+  const harness = service({ availableQuota: 0, providerQuota: 0 });
+  await harness.membershipService.applyPaidMembership({
+    localUserId: "local-user",
+    orderId: "membership-image-4k",
+    planId: "basic",
+    cycle: "monthly",
+    now: new Date("2026-06-18T00:00:00.000Z"),
+  });
+  const initialRemaining = (await harness.membershipService.getStatus("local-user")).entitlements.image_generation.remaining;
+  const input = {
+    localUserId: "local-user",
+    taskId: "member-image-4k-task",
+    operation: "cloud_image_generation" as const,
+    estimatedQuotaUnits: 360,
+    membershipEntitlementAmount: 2,
+    idempotencyKey: "member-image-4k-task",
+    requestFingerprint: "image:4k:member-image-4k-task",
+  };
+  const prechecked = await harness.taskBilling.precheck(input);
+  assert.equal(prechecked.ok, true);
+  if (!prechecked.ok) return;
+  assert.equal(prechecked.record.membership_entitlement_units, 2);
+
+  const mismatched = await harness.taskBilling.claimProviderDispatch({
+    ...input,
+    membershipEntitlementAmount: 1,
+  });
+  assert.equal(mismatched.ok, false);
+  assert.equal((await harness.taskRepository.getByTaskId("local-user", input.taskId))?.billing_state, "prechecked");
+
+  const claimed = await harness.taskBilling.claimProviderDispatch(input);
+  assert.equal(claimed.ok, true);
+  if (!claimed.ok) return;
+  assert.equal(claimed.record.billing_state, "dispatching");
+  const failed = await harness.taskBilling.fail({
+    localUserId: "local-user",
+    taskId: input.taskId,
+    reason: "test restore",
+  });
+  assert.equal(failed.ok, true);
+  const status = await harness.membershipService.getStatus("local-user");
+  assert.equal(status.entitlements.image_generation.remaining, initialRemaining);
+});
+
 test("uses the shared image generation entitlement for image editing", async () => {
   const harness = service({ availableQuota: 0, providerQuota: 0 });
   await harness.membershipService.applyPaidMembership({

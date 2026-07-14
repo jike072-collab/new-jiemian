@@ -78,6 +78,7 @@ import { ApiError, fetchJson, fetchJsonWithCsrf } from "@/lib/client/api";
 import { removeLibraryMediaCache, scheduleLibraryMediaCache } from "@/lib/client/media-cache";
 import {
   estimateUpscaleQuota,
+  estimateImageGenerationEntitlementUnits,
   estimateImageGenerationTotalQuota,
   estimateVideoGenerationQuota,
   generationBillingFingerprint,
@@ -1563,10 +1564,10 @@ export function StudioApp() {
   const activeImageBillingOperation: ImageBillingOperation = activeImageWorkspaceScope === "image-editor"
     ? "cloud_image_edit"
     : "cloud_image_generation";
-  const imageGenerationCostLabel = membershipEntitlementLabel(
+  const imageGenerationCostLabel = imageGenerationEntitlementLabel(
     membershipEntitlements,
-    "image_generation",
-    "张",
+    imageGenerationCount,
+    activeImageWorkspace.quality,
     formatQuotaSymbolLabel(imageEstimatedQuotaUnits),
   );
   const imageWorkspaceAtSubmissionLimit = activeImageWorkspaceScope === "image-editor"
@@ -1875,7 +1876,7 @@ export function StudioApp() {
             taskId,
             idempotencyKey: taskId,
             estimatedQuotaUnits: snapshot.perImageQuotaUnits,
-            membershipEntitlementAmount: 1,
+            membershipEntitlementAmount: estimateImageGenerationEntitlementUnits({ quality: snapshot.quality }),
             requestFingerprint,
           }),
         });
@@ -2317,10 +2318,11 @@ export function StudioApp() {
     && Boolean(imageUpscaleWorkspace.availability?.ready)
     && !imageUpscaleWorkspace.loading
     && !imageUpscaleWorkspace.statusLoading;
-  const imageUpscaleCostLabel = membershipSingleEntitlementLabel(
+  const imageUpscaleCostLabel = membershipEntitlementUsageLabel(
     membershipEntitlements,
     "image_upscale",
     "张",
+    1,
     formatQuotaSymbolLabel(estimateUpscaleQuota({
       kind: "image",
       scale: imageUpscaleWorkspace.scale,
@@ -2498,10 +2500,11 @@ export function StudioApp() {
     && !videoUpscaleWorkspace.loading
     && !videoUpscaleWorkspace.statusLoading
     && !videoUpscaleProcessing;
-  const videoUpscaleCostLabel = membershipSingleEntitlementLabel(
+  const videoUpscaleCostLabel = membershipEntitlementUsageLabel(
     membershipEntitlements,
     "video_upscale",
     "次",
+    1,
     formatQuotaSymbolLabel(estimateUpscaleQuota({
       kind: "video",
       scale: videoUpscaleWorkspace.scale,
@@ -3222,14 +3225,35 @@ function membershipEntitlementLabel(
   return remaining > 0 ? `/ 剩余 ${formatQuotaUnits(remaining)} ${unit}` : fallback;
 }
 
-function membershipSingleEntitlementLabel(
+function membershipEntitlementUsageLabel(
   entitlements: MembershipEntitlements | null | undefined,
   kind: keyof MembershipEntitlements,
   unit: "次" | "张",
+  usage: number,
   fallback: string,
 ) {
   const remaining = entitlements?.[kind]?.remaining ?? 0;
-  return remaining > 0 ? `抵扣 1 ${unit} · 剩余 ${formatQuotaUnits(remaining)} ${unit}` : fallback;
+  return remaining >= usage
+    ? `抵扣 ${formatQuotaUnits(usage)} ${unit} · 剩余 ${formatQuotaUnits(remaining)} ${unit}`
+    : fallback;
+}
+
+function imageGenerationEntitlementLabel(
+  entitlements: MembershipEntitlements | null | undefined,
+  count: number,
+  quality: string,
+  fallback: string,
+) {
+  const remaining = entitlements?.image_generation.remaining ?? 0;
+  const unitsPerImage = estimateImageGenerationEntitlementUnits({ quality });
+  const requestedImages = Math.min(Math.max(Math.round(count), 1), 4);
+  const coveredImages = Math.min(requestedImages, Math.floor(remaining / unitsPerImage));
+  if (coveredImages <= 0) return fallback;
+  const coveredUnits = coveredImages * unitsPerImage;
+  if (coveredImages < requestedImages) {
+    return `抵扣 ${formatQuotaUnits(coveredUnits)} 张 · 其余 ${formatQuotaUnits(requestedImages - coveredImages)} 张用积分`;
+  }
+  return `抵扣 ${formatQuotaUnits(requestedImages * unitsPerImage)} 张 · 剩余 ${formatQuotaUnits(remaining)} 张`;
 }
 
 function formatMembershipDate(value: string | null | undefined) {

@@ -336,7 +336,7 @@ export class TaskBillingService {
     if (
       !Number.isInteger(requestedMembershipEntitlementAmount)
       || requestedMembershipEntitlementAmount < 1
-      || requestedMembershipEntitlementAmount > 4
+      || requestedMembershipEntitlementAmount > 8
     ) {
       return invalidTaskBillingRequest();
     }
@@ -419,6 +419,9 @@ export class TaskBillingService {
       record.idempotency_key !== input.idempotencyKey.trim()
       || record.estimated_quota_units !== input.estimatedQuotaUnits
       || (record.request_fingerprint || null) !== (input.requestFingerprint || null)
+      || (record.membership_entitlement_units > 0
+        && input.membershipEntitlementAmount != null
+        && record.membership_entitlement_units !== input.membershipEntitlementAmount)
       || !["prechecked", "accepted"].includes(record.billing_state)
     ) {
       return failure({
@@ -454,6 +457,10 @@ export class TaskBillingService {
         ? "estimated quota"
         : (record.request_fingerprint || null) !== (input.requestFingerprint || null)
           ? "request fingerprint"
+          : record.membership_entitlement_units > 0
+            && input.membershipEntitlementAmount != null
+            && record.membership_entitlement_units !== input.membershipEntitlementAmount
+            ? "membership entitlement amount"
           : null;
     if (conflictReason) {
       return failure({

@@ -62,7 +62,7 @@ function imageItem(index: number) {
       storedName: `e2e-generated-image-${index}.png`,
       size: 1024,
     },
-    params: { ratio: "1:1", quality: "2k", outputWidth: 2048, outputHeight: 2048 },
+    params: { ratio: "1:1", quality: "4k", outputWidth: 4096, outputHeight: 4096 },
     fileAvailable: true,
   };
 }
@@ -75,7 +75,6 @@ test.beforeEach(async ({ page }) => {
     json: { providers: { image: [provider], video: [] } },
   }));
   await page.route("**/api/library", (route) => route.fulfill({ json: { items: [] } }));
-  await page.route("**/api/quota/precheck", (route) => route.fulfill({ json: { ok: true } }));
 });
 
 test("image results reveal independently with unified waiting visuals", async ({ page }, testInfo) => {
@@ -85,7 +84,12 @@ test("image results reveal independently with unified waiting visuals", async ({
   }
   const releases: Array<() => void> = [];
   const imageReleases: Array<() => void> = [];
+  const precheckPayloads: Array<Record<string, unknown>> = [];
   let requestIndex = 0;
+  await page.route("**/api/quota/precheck", (route) => {
+    precheckPayloads.push(JSON.parse(route.request().postData() || "{}") as Record<string, unknown>);
+    return route.fulfill({ json: { ok: true } });
+  });
   await page.route("**/e2e/generated-image-*.svg", async (route) => {
     await new Promise<void>((resolve) => imageReleases.push(resolve));
     const index = route.request().url().match(/generated-image-(\d+)/)?.[1] || "1";
@@ -103,9 +107,10 @@ test("image results reveal independently with unified waiting visuals", async ({
   await page.goto("/", { waitUntil: "domcontentloaded" });
   await page.getByTestId("prompt-input").fill("产品摄影，干净背景");
   await page.getByRole("button", { name: "清晰度", exact: true }).click();
-  await page.getByRole("option", { name: "2K（细节更多）", exact: true }).click();
+  await page.getByRole("option", { name: "4K（大图输出）", exact: true }).click();
   await page.getByRole("button", { name: "数量", exact: true }).click();
   await page.getByRole("option", { name: "4张", exact: true }).click();
+  await expect(page.getByTestId("primary-submit")).toContainText("抵扣 8 张 · 剩余 20 张");
   if (testInfo.project.name.startsWith("mobile")) {
     await page.locator(".studio-mobile-action__button").click();
   } else {
@@ -113,6 +118,8 @@ test("image results reveal independently with unified waiting visuals", async ({
   }
 
   await expect.poll(() => releases.length).toBe(4);
+  expect(precheckPayloads).toHaveLength(4);
+  expect(precheckPayloads.every((payload) => payload.membershipEntitlementAmount === 2)).toBe(true);
   await expect(page.locator(".studio-image-result-card--pending")).toHaveCount(4);
   await expect(page.locator(".studio-dot-ripple-loader")).toHaveCount(4);
   const waitingCoverage = await page.locator(".studio-image-result-card--pending").evaluateAll((cards) => cards.map((card) => {
@@ -161,7 +168,7 @@ test("image results reveal independently with unified waiting visuals", async ({
   const firstOverlay = page.locator(".studio-image-result-card__overlay");
   await expect(firstOverlay.getByText("Banana2 · 图片 1", { exact: true })).toBeVisible();
   await expect(firstOverlay.getByText("1:1", { exact: true })).toBeVisible();
-  await expect(firstOverlay.getByText("2K", { exact: true })).toBeVisible();
+  await expect(firstOverlay.getByText("4K", { exact: true })).toBeVisible();
 
   releases.slice(1).forEach((release) => release());
   await expect(page.locator(".studio-image-result-card__media")).toHaveCount(4);

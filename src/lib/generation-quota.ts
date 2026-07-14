@@ -23,6 +23,12 @@ export function estimateImageGenerationTotalQuota(input: {
   return applyBanana2Discount(applyImageQualityMultiplier(base, input.quality), input.model);
 }
 
+export function estimateImageGenerationEntitlementUnits(input: { quality: string; count?: number }) {
+  const count = Math.min(Math.max(Math.round(Number(input.count) || 1), 1), 4);
+  const unitsPerImage = input.quality.trim().toLowerCase() === "4k" ? 2 : 1;
+  return count * unitsPerImage;
+}
+
 export function estimateVideoGenerationQuota(input: {
   mode: WorkspaceVideoMode;
   durationSeconds: number;

@@ -84,6 +84,7 @@ export type TaskBillingVerifyPrecheckInput = {
   localUserId: string;
   taskId: string;
   estimatedQuotaUnits: number;
+  membershipEntitlementAmount?: number | null;
   idempotencyKey: string;
   requestFingerprint?: string | null;
 };

@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 
 import {
   estimateGenerationQuota,
+  estimateImageGenerationEntitlementUnits,
   estimateImageGenerationTotalQuota,
   generationBillingFingerprint,
 } from "../generation-quota";
@@ -1281,7 +1282,7 @@ async function restoreMembershipEntitlementOnFailure(input: {
   await getMembershipService().restoreEntitlement({
     localUserId: input.localUserId,
     kind,
-    amount: Math.min(Math.max(Math.round(Number(input.amount) || 1), 1), 4),
+    amount: Math.min(Math.max(Math.round(Number(input.amount) || 1), 1), 8),
     idempotencyKey: `membership:restore:${kind}:${input.taskId}`,
     taskId: input.taskId,
   }).catch(() => undefined);
@@ -1312,6 +1313,7 @@ export async function failImageGenerationBeforeSubmit(input: {
   taskId?: string | null;
   operation?: "cloud_image_generation" | "cloud_image_edit" | null;
   estimatedQuotaUnits?: number | null;
+  membershipEntitlementAmount?: number | null;
   reason?: string | null;
 }) {
   const operation = input.operation === "cloud_image_edit" ? "cloud_image_edit" : "cloud_image_generation";
@@ -1319,6 +1321,7 @@ export async function failImageGenerationBeforeSubmit(input: {
     localUserId: input.localUserId,
     taskId: input.taskId,
     operation,
+    amount: input.membershipEntitlementAmount,
   });
   return settleGeneratedTaskBilling({
     localUserId: input.localUserId,
@@ -1335,6 +1338,7 @@ async function claimGenerationBillingDispatch(input: {
   idempotencyKey?: string | null;
   fingerprint: string;
   estimatedQuotaUnits: number;
+  membershipEntitlementAmount?: number | null;
 }) {
   if (!input.localUserId || !input.taskId || !input.idempotencyKey) {
     throw new Error("生成任务缺少有效额度预检。");
@@ -1345,6 +1349,7 @@ async function claimGenerationBillingDispatch(input: {
     taskId: input.taskId,
     idempotencyKey: input.idempotencyKey,
     estimatedQuotaUnits: input.estimatedQuotaUnits,
+    membershipEntitlementAmount: input.membershipEntitlementAmount,
     requestFingerprint: input.fingerprint,
   });
   if (!claimed.ok) throw new BillingDispatchRejectedError(claimed.message);
@@ -1405,6 +1410,10 @@ export async function generateImage(input: {
     count: outputCount,
     model: provider?.model,
   });
+  const membershipEntitlementAmount = estimateImageGenerationEntitlementUnits({
+    quality: input.quality,
+    count: outputCount,
+  });
   const billingFingerprint = generationBillingFingerprint({
     kind: "image",
     operation: imageOperation,
@@ -1429,6 +1438,7 @@ export async function generateImage(input: {
       idempotencyKey: input.billingIdempotencyKey,
       fingerprint: billingFingerprint,
       estimatedQuotaUnits,
+      membershipEntitlementAmount,
     });
     await markGenerationProviderStarted({
       localUserId: input.billingLocalUserId,
@@ -1503,7 +1513,10 @@ export async function generateImage(input: {
         localUserId: input.billingLocalUserId,
         taskId: input.billingTaskId,
         operation: imageOperation,
-        amount: outputCount - actualOutputCount,
+        amount: estimateImageGenerationEntitlementUnits({
+          quality: input.quality,
+          count: outputCount - actualOutputCount,
+        }),
       });
     }
     await acceptGenerationBilling({
@@ -1536,7 +1549,7 @@ export async function generateImage(input: {
         localUserId: input.billingLocalUserId,
         taskId: input.billingTaskId,
         operation: imageOperation,
-        amount: outputCount,
+        amount: membershipEntitlementAmount,
       });
       throw new GenerationDiagnosticError({
         code: "TASK_CREATE_FAILED",
@@ -1550,7 +1563,7 @@ export async function generateImage(input: {
         localUserId: input.billingLocalUserId,
         taskId: input.billingTaskId,
         operation: imageOperation,
-        amount: outputCount,
+        amount: membershipEntitlementAmount,
       });
       await settleGeneratedTaskBilling({
         localUserId: input.billingLocalUserId,
