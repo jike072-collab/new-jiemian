@@ -4,17 +4,18 @@
 
 - Target: `https://aohuang888.com`
 - Branch: `fix-newapi-membership-concurrency-ux`
-- Candidate commit: `680e36c3b78d811c70f2c9d33bc57323428cc3dd`
-- Active release: `/opt/aohuang-ai/releases/20260715T001500-moving-image-reveal`
-- Direct rollback: `/opt/aohuang-ai/releases/20260714T215000-image-motion-browser-acceptance`
+- Candidate commit: `bfb67a82ddc42ade65ced1d3fc2d7c5ff6454cde`
+- Active release: `/opt/aohuang-ai/releases/20260715T013100-image-reveal-once`
+- Direct rollback: `/opt/aohuang-ai/releases/20260715T001500-moving-image-reveal`
 - Verified backup: `/var/lib/aohuang-ai/backups/server-production-20260714-162825-17d228d5`
 - Database migrations: `001` through `016` applied
 
 ## Accepted changes
 
 - Image generation waits with a 20 by 20 dot field whose visible radial window moves across the result frame. Only part of the field is visible at a time.
-- Completed images keep a painted loading frame even when the media response is cached, then reveal from blurred and clipped to complete and sharp.
-- Dots leave in a staggered center-out transition instead of disappearing as one flat overlay.
+- Completed images first replace the loading dots with corresponding image fragments, expand into a brief mosaic, and then fade into the complete sharp image.
+- Completed image reveal keys are retained for the current page session, so switching to another tool and back displays existing results immediately without replaying the loading or reveal animation.
+- The 400-cell reveal overlay is removed after completion instead of accumulating hidden DOM nodes.
 - Reduced-motion behavior, Chromium, Firefox, WebKit, mobile Chrome, and mobile Safari remain supported.
 - Historical migration files match their originally applied SQL. Migration checksum comparison treats LF and CRLF as equivalent while still rejecting SQL content changes.
 - Migration `016` records removal of membership order foreign keys without editing an already-applied migration.
@@ -27,16 +28,16 @@
 | Final lint and typecheck | Pass | `npm run lint`, `npm run typecheck` |
 | Final production build | Pass | Next.js built 40 routes successfully |
 | Local image motion E2E | 5/5 pass | Chromium, Firefox, WebKit, mobile Chrome, mobile Safari |
-| Production browser acceptance | 35/35 pass | Public routes plus image motion fixture across all five projects |
+| Production browser acceptance | 5/5 projects pass | Chromium, mobile Chrome, and mobile Safari passed in the parallel run; Firefox and WebKit passed their immediate standalone reruns after parallel first-load/timing misses |
 | Moving-window regression | Pass | Test compares computed mask positions at two times and requires a changed position |
-| Cached-image regression | Pass | Result remains in `loading` for a painted frame before entering `ready` |
+| Tool-switch replay regression | Pass | Four completed cards remain `ready` and have zero reveal overlays after image to video to image navigation |
 | Migration status before apply | Pass | `001-015` applied, `016` pending |
 | Backup and verification | Pass | PostgreSQL/server backup created and restore verification completed before migration |
 | Migration status after apply | Pass | `001-016` applied |
 | Release manifest | Pass | SHA-256 manifest verified before activation |
 | Service and public HTTPS | Pass | Service active, backend liveness OK, public response HTTP 200 |
 | Post-activation error log | Pass | Zero error-level service log entries in the activation window |
-| Storage | Pass | Normal level, about 61.2 percent used at final health check |
+| Storage | Pass | Normal level, about 62.3 percent used at final health check |
 
 ## Prior acceptance retained
 
@@ -48,5 +49,5 @@
 ## Scope and residual risk
 
 - No paid generation, provider generation, recharge, membership purchase, refund, or payment callback was repeated for this UI and migration release. Production image E2E intercepted generation and quota APIs, so it did not deduct user points or call an upstream provider.
-- The migration is structurally idempotent because the three target foreign keys were already absent, but the verified backup remains the recovery point for database-level incidents.
+- This release contains no database or billing changes. Migrations `001-016` remain applied, and the previously verified backup remains the recovery point for database-level incidents.
 - A fresh paid end-to-end transaction is required only when billing or provider code changes again; this release did not change those paths.
