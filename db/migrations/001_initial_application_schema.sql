@@ -100,7 +100,7 @@ create table if not exists billing_orders (
   constraint billing_orders_currency_check check (currency in ('CNY')),
   constraint billing_orders_amount_check check (requested_amount > 0 and paid_amount >= 0 and credited_quota >= 0),
   constraint billing_orders_status_check check (
-    status in ('pending', 'processing', 'paid', 'failed', 'cancelled', 'expired', 'review', 'refunded')
+    status in ('pending', 'processing', 'paid', 'failed', 'cancelled', 'review', 'refunded')
   ),
   constraint billing_orders_version_check check (version > 0)
 );

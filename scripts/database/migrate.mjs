@@ -41,8 +41,25 @@ async function assertDatabaseIdentity(client) {
   return actual;
 }
 
-function checksum(sql) {
+function hashSql(sql) {
   return createHash("sha256").update(sql).digest("hex");
+}
+
+function normalizeSqlLineEndings(sql) {
+  return sql.replace(/\r\n?/g, "\n");
+}
+
+function checksum(sql) {
+  return hashSql(normalizeSqlLineEndings(sql));
+}
+
+function compatibleChecksums(sql) {
+  const normalized = normalizeSqlLineEndings(sql);
+  return new Set([
+    hashSql(sql),
+    hashSql(normalized),
+    hashSql(normalized.replace(/\n/g, "\r\n")),
+  ]);
 }
 
 function migrationVersion(file) {
@@ -61,6 +78,7 @@ async function loadMigrations() {
       file,
       version: migrationVersion(file),
       checksum: checksum(sql),
+      compatibleChecksums: compatibleChecksums(sql),
       sql,
     };
   }));
@@ -92,7 +110,7 @@ async function migrate(pool) {
     for (const migration of migrations) {
       const existing = applied.get(migration.version);
       if (existing) {
-        if (existing.checksum !== migration.checksum) {
+        if (!migration.compatibleChecksums.has(existing.checksum)) {
           fail(`checksum mismatch for already-applied migration ${migration.version}`);
         }
         continue;
@@ -128,7 +146,7 @@ async function status(pool) {
       if (!existing) {
         pending += 1;
         console.log(`${migration.version}\tpending`);
-      } else if (existing.checksum !== migration.checksum) {
+      } else if (!migration.compatibleChecksums.has(existing.checksum)) {
         console.log(`${migration.version}\tchecksum_mismatch`);
         pending += 1;
       } else {
