@@ -9,7 +9,7 @@ import { BeforeAfterImageCompare } from "@/components/before-after-image-compare
 import { ResultReveal } from "@/components/motion";
 import { upscaleTargetLabel, videoUpscaleScaleLabel } from "@/components/studio/constants";
 import { DotRippleLoader } from "@/components/studio/dot-ripple-loader";
-import { MediaCard, libraryStatusBadgeLabel } from "@/components/studio/media-card";
+import { MediaCard, libraryModelName, libraryStatusBadgeLabel } from "@/components/studio/media-card";
 import { PreviewState, StudioErrorAlert } from "@/components/studio/shared";
 import type { BusinessToolId, ImageGenerationProgressState, ImageUpscaleWorkspaceState, OutputItemState, OutputState, StudioErrorDiagnostic, VideoUpscaleWorkspaceState } from "@/components/studio/types";
 import type { LibraryItem } from "@/lib/server/types";
@@ -1260,15 +1260,6 @@ function imageResultFacts(item: LibraryItem) {
   return facts;
 }
 
-function imageResultModelName(item: LibraryItem) {
-  const model = item.model.trim();
-  const normalized = model.toLowerCase();
-  if (normalized === "image" || normalized === "banana-img2") return "Image";
-  if (normalized === "banana2") return "Banana2";
-  if (normalized === "banana-pro") return "Banana Pro";
-  return model || "Image";
-}
-
 function videoResultFacts(item: LibraryItem) {
   const facts: string[] = [];
   const ratio = typeof item.params.ratio === "string" ? item.params.ratio : "";
@@ -1630,6 +1621,7 @@ export function VideoUpscalePreviewPanel({
 }
 
 export function ImagePreviewPanel({
+  cacheOwnerId,
   mode,
   output,
   outputs = output ? [output] : [],
@@ -1650,6 +1642,7 @@ export function ImagePreviewPanel({
   onEdit,
   onDismiss,
 }: {
+  cacheOwnerId?: string | null;
   mode: WorkspaceImageMode;
   output: OutputState;
   outputs?: OutputItemState[];
@@ -1676,7 +1669,7 @@ export function ImagePreviewPanel({
   if (loading && !resultOutputs.length) {
     return (
       <PreviewState eyebrow="结果" title="正在生成图片" description="完成的图片会立即替换对应位置。" badge="生成中" role="status" live>
-        <ImageResultGrid outputs={[]} pendingCount={pendingCount} activeBatchId={activeBatchId} canRetry={false} loading onSubmit={onSubmit} onUpscale={onUpscale} onCreateVideo={onCreateVideo} onEdit={onEdit} onDismiss={onDismiss} />
+        <ImageResultGrid cacheOwnerId={cacheOwnerId} outputs={[]} pendingCount={pendingCount} activeBatchId={activeBatchId} canRetry={false} loading onSubmit={onSubmit} onUpscale={onUpscale} onCreateVideo={onCreateVideo} onEdit={onEdit} onDismiss={onDismiss} />
       </PreviewState>
     );
   }
@@ -1696,6 +1689,7 @@ export function ImagePreviewPanel({
   if (resultOutputs.length) {
     const resultContent = (
         <ImageResultGrid
+          cacheOwnerId={cacheOwnerId}
           outputs={resultOutputs}
           pendingCount={pendingCount}
           activeBatchId={activeBatchId}
@@ -1727,6 +1721,7 @@ export function ImagePreviewPanel({
 }
 
 function ImageResultGrid({
+  cacheOwnerId,
   outputs,
   pendingCount,
   activeBatchId,
@@ -1738,6 +1733,7 @@ function ImageResultGrid({
   onEdit,
   onDismiss,
 }: {
+  cacheOwnerId?: string | null;
   outputs: OutputItemState[];
   pendingCount: number;
   activeBatchId?: string | null;
@@ -1760,9 +1756,9 @@ function ImageResultGrid({
       {[...currentOutputs, ...historicOutputs].map((output, index) => (
         <article key={output.item.id} className={cn("studio-image-result-card", activeBatchId && output.item.params?.imageBatchId !== activeBatchId && "is-historic")}>
           <div className="studio-image-result-card__media">
-            <MediaCard item={output.item} large compact smoothReveal />
+            <MediaCard cacheOwnerId={cacheOwnerId} item={output.item} large compact smoothReveal />
             <div className="studio-image-result-card__overlay" aria-label={`图片 ${index + 1} 参数`}>
-              <span className="studio-image-result-card__label">{imageResultModelName(output.item)} · 图片 {index + 1}</span>
+              <span className="studio-image-result-card__label">{libraryModelName(output.item) || "Image"} · 图片 {index + 1}</span>
               {imageResultFacts(output.item).map((fact) => <span key={`${output.item.id}-${fact}`}>{fact}</span>)}
               {libraryStatusBadgeLabel(output.item.status) ? <strong>{libraryStatusBadgeLabel(output.item.status)}</strong> : null}
             </div>
@@ -1775,7 +1771,7 @@ function ImageResultGrid({
               <RefreshCw className="size-4" aria-hidden="true" />
               重做
             </button>
-            <button type="button" className="studio-secondary-button studio-secondary-button--accent" onClick={() => onUpscale(output.item)}>
+            <button type="button" className="studio-secondary-button" onClick={() => onUpscale(output.item)}>
               <ImageUp className="size-4" aria-hidden="true" />
               高清
             </button>
@@ -1894,7 +1890,7 @@ export function VideoPreviewPanel({
           <button type="button" className="studio-secondary-button" onClick={onSubmit} disabled={!canRetry}>
             重做
           </button>
-          <button type="button" className="studio-secondary-button studio-secondary-button--accent" onClick={() => onUpscale(output.item)}>
+          <button type="button" className="studio-secondary-button" onClick={() => onUpscale(output.item)}>
             视频高清处理
           </button>
         </div>
@@ -1967,12 +1963,21 @@ export function ImageGenerationProgressToast({
   stacked?: boolean;
   onClose: (id: string) => void;
 }) {
+  const [dismissedIds, setDismissedIds] = useState<Set<string>>(() => new Set());
   const visibleProgress = useMemo(
     () => [...progress]
+      .filter((item) => !dismissedIds.has(item.id))
       .sort((a, b) => Number(b.status === "running") - Number(a.status === "running") || b.startedAt - a.startedAt)
       .slice(0, 3),
-    [progress],
+    [dismissedIds, progress],
   );
+
+  useEffect(() => {
+    const terminalIds = progress.filter((item) => item.status !== "running").map((item) => item.id);
+    if (!terminalIds.length) return undefined;
+    const timer = window.setTimeout(() => terminalIds.forEach(onClose), 3900);
+    return () => window.clearTimeout(timer);
+  }, [onClose, progress]);
 
   const baseBottom = stacked ? 122 : 26;
 
@@ -1982,7 +1987,7 @@ export function ImageGenerationProgressToast({
       item={item}
       tick={tick}
       bottom={baseBottom + index * 116}
-      onClose={onClose}
+      onClose={(id) => setDismissedIds((current) => new Set(current).add(id))}
     />
   ));
 }
@@ -2003,12 +2008,8 @@ function ImageGenerationProgressItem({
   useEffect(() => {
     if (item.status !== "done") return undefined;
     const fadeTimer = window.setTimeout(() => setLeaving(true), 3200);
-    const closeTimer = window.setTimeout(() => onClose(item.id), 3900);
-    return () => {
-      window.clearTimeout(fadeTimer);
-      window.clearTimeout(closeTimer);
-    };
-  }, [item.id, item.status, onClose]);
+    return () => window.clearTimeout(fadeTimer);
+  }, [item.status]);
 
     const total = Math.max(item.total, 1);
     const completed = Math.min(Math.max(item.current, 0), total);

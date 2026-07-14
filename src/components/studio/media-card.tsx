@@ -3,10 +3,10 @@
 /* eslint-disable @next/next/no-img-element */
 
 import { AlertTriangle, Download, ExternalLink, Pause, Play, Video } from "lucide-react";
-import { useCallback, useEffect, useRef, useState, type MouseEvent, type PointerEvent } from "react";
+import { useCallback, useEffect, useRef, useState, type MouseEvent, type PointerEvent, type SyntheticEvent } from "react";
 
 import { DotRippleLoader } from "@/components/studio/dot-ripple-loader";
-import { cachedMediaObjectUrl } from "@/lib/client/media-cache";
+import { cachedMediaObjectUrl, peekSessionMediaObjectUrl, sessionMediaObjectUrl } from "@/lib/client/media-cache";
 import type { LibraryItem } from "@/lib/server/types";
 import { cn } from "@/lib/utils";
 
@@ -47,11 +47,13 @@ export function MediaCard({
   const imageRevealFrameRef = useRef<number | null>(null);
   const imageRevealTimeoutRef = useRef<number | null>(null);
   const imageRevealFinishTimeoutRef = useRef<number | null>(null);
+  const imageRevealStartedKeyRef = useRef("");
   const dragStateRef = useRef<{ pointerId: number; startX: number; startY: number; originX: number; originY: number } | null>(null);
   const [previewPlaying, setPreviewPlaying] = useState(false);
   const [readyVideoSource, setReadyVideoSource] = useState("");
   const [readyImageSource, setReadyImageSource] = useState("");
   const [finishedImageRevealKey, setFinishedImageRevealKey] = useState("");
+  const [imageRevealBounds, setImageRevealBounds] = useState({ key: "", top: 0, left: 0, width: 0, height: 0 });
   const [activeImageState, setActiveImageState] = useState({ key: "", index: 0 });
   const [imageViewportState, setImageViewportState] = useState({
     key: "",
@@ -96,11 +98,13 @@ export function MediaCard({
   const imageFetchPriority = large ? "high" : "low";
   const imageUrl = media?.url && item.type === "image" ? mediaPreviewUrl(media.url, large) : media?.url;
   const videoSource = item.type === "video" ? media?.url || "" : "";
-  const resolvedMediaUrl = useCachedMediaSource(cacheOwnerId, item.type === "image" ? imageUrl : videoSource);
+  const retainImageSource = smoothReveal && item.type === "image";
+  const resolvedMediaUrl = useCachedMediaSource(cacheOwnerId, item.type === "image" ? imageUrl : videoSource, retainImageSource);
+  const imageElementSource = item.type === "image" ? resolvedMediaUrl || (retainImageSource ? "" : imageUrl || "") : "";
   const displayedImageSource = item.type === "image" && !showLargeGallery && !isImageGroup && hasMediaUrl
-    ? resolvedMediaUrl || imageUrl || ""
+    ? imageElementSource || imageUrl || ""
     : "";
-  const imageRevealKey = displayedImageSource ? `${item.id}:${imageUrl || displayedImageSource}` : "";
+  const imageRevealKey = displayedImageSource ? imageUrl || displayedImageSource : "";
   const imageRevealPreviouslyFinished = Boolean(imageRevealKey) && revealedImageKeys.has(imageRevealKey);
   const imageReady = !smoothReveal || !displayedImageSource || imageRevealPreviouslyFinished || readyImageSource === displayedImageSource;
   const imageRevealFinished = !smoothReveal || !displayedImageSource || imageRevealPreviouslyFinished || finishedImageRevealKey === imageRevealKey;
@@ -123,12 +127,30 @@ export function MediaCard({
     }
   }, []);
 
-  const handleImageLoad = useCallback(() => {
+  const handleImageLoad = useCallback((event: SyntheticEvent<HTMLImageElement>) => {
     if (!displayedImageSource) return;
+    const image = event.currentTarget;
+    const containerWidth = image.clientWidth;
+    const containerHeight = image.clientHeight;
+    const naturalRatio = image.naturalWidth > 0 && image.naturalHeight > 0 ? image.naturalWidth / image.naturalHeight : 0;
+    if (containerWidth > 0 && containerHeight > 0 && naturalRatio > 0) {
+      const containerRatio = containerWidth / containerHeight;
+      const width = naturalRatio >= containerRatio ? containerWidth : containerHeight * naturalRatio;
+      const height = naturalRatio >= containerRatio ? containerWidth / naturalRatio : containerHeight;
+      setImageRevealBounds({
+        key: imageRevealKey,
+        top: (containerHeight - height) / 2,
+        left: (containerWidth - width) / 2,
+        width,
+        height,
+      });
+    }
     if (!smoothReveal || imageRevealPreviouslyFinished) {
       setReadyImageSource(displayedImageSource);
       return;
     }
+    if (imageRevealStartedKeyRef.current === imageRevealKey) return;
+    imageRevealStartedKeyRef.current = imageRevealKey;
     cancelScheduledImageReveal();
     imageRevealFrameRef.current = window.requestAnimationFrame(() => {
       imageRevealFrameRef.current = window.requestAnimationFrame(() => {
@@ -137,25 +159,32 @@ export function MediaCard({
           imageRevealTimeoutRef.current = null;
           imageRevealFinishTimeoutRef.current = window.setTimeout(() => {
             rememberRevealedImage(imageRevealKey);
+            imageRevealStartedKeyRef.current = "";
             setFinishedImageRevealKey(imageRevealKey);
             imageRevealFinishTimeoutRef.current = null;
-          }, 1_160);
+          }, 1_600);
         }, 72);
       });
     });
   }, [cancelScheduledImageReveal, displayedImageSource, imageRevealKey, imageRevealPreviouslyFinished, smoothReveal]);
 
-  useEffect(() => cancelScheduledImageReveal, [cancelScheduledImageReveal, displayedImageSource]);
+  useEffect(() => () => {
+    if (imageRevealStartedKeyRef.current) {
+      rememberRevealedImage(imageRevealStartedKeyRef.current);
+      imageRevealStartedKeyRef.current = "";
+    }
+    cancelScheduledImageReveal();
+  }, [cancelScheduledImageReveal, imageRevealKey]);
 
   useEffect(() => {
-    if (item.type !== "image" || !hasMediaUrl || !imageUrl) return undefined;
+    if (item.type !== "image" || !hasMediaUrl || !imageUrl || retainImageSource) return undefined;
     const warmImage = new Image();
     warmImage.decoding = "async";
     warmImage.src = imageUrl;
     return () => {
       warmImage.src = "";
     };
-  }, [hasMediaUrl, imageUrl, item.type]);
+  }, [hasMediaUrl, imageUrl, item.type, retainImageSource]);
 
   const detailFactItem = showLargeGallery ? activeImageItem || item : item;
   const detailFacts = showDetailFacts ? buildLibraryDetailFacts(detailFactItem) : [];
@@ -286,8 +315,12 @@ export function MediaCard({
         data-image-reveal-state={smoothReveal && displayedImageSource
           ? imageRevealFinished ? "ready" : imageReady ? "revealing" : "loading"
           : undefined}
+        data-image-reveal-grid={smoothReveal && displayedImageSource ? "24" : undefined}
+        data-image-reveal-width={imageRevealBounds.key === imageRevealKey ? Math.round(imageRevealBounds.width) : undefined}
+        data-image-reveal-height={imageRevealBounds.key === imageRevealKey ? Math.round(imageRevealBounds.height) : undefined}
       >
         {!large && scaleText ? <span className="studio-media-card__scale-badge">{scaleText}</span> : null}
+        {!large && libraryModelName(item) ? <span className="studio-media-card__model-badge">{libraryModelName(item)}</span> : null}
         {detailFacts.length ? (
           <div className="studio-media-card__facts-overlay" aria-label="Detail facts">
             {detailFacts.map((fact, index) => (
@@ -359,7 +392,7 @@ export function MediaCard({
               />
             ))}
           </div>
-        ) : hasMediaUrl && imageUrl && item.type === "image" ? (
+        ) : hasMediaUrl && imageUrl && item.type === "image" && imageElementSource ? (
           large ? (
             <div
               ref={zoomSurfaceRef}
@@ -371,7 +404,7 @@ export function MediaCard({
               onPointerCancel={handleImagePointerEnd}
             >
               <img
-                src={resolvedMediaUrl || imageUrl}
+                src={imageElementSource}
                 alt={item.title}
                 loading={imageLoading}
                 decoding="async"
@@ -389,12 +422,22 @@ export function MediaCard({
               />
             </div>
           ) : (
-            <img src={resolvedMediaUrl || imageUrl} alt={item.title} loading={imageLoading} decoding="async" fetchPriority={imageFetchPriority} onLoad={handleImageLoad} onError={onMediaMissing} />
+            <img src={imageElementSource} alt={item.title} loading={imageLoading} decoding="async" fetchPriority={imageFetchPriority} onLoad={handleImageLoad} onError={onMediaMissing} />
           )
         ) : null}
         {smoothReveal && displayedImageSource && !imageRevealFinished ? (
-          <div className="studio-media-card__image-reveal-overlay">
-            <DotRippleLoader fill imageSource={displayedImageSource} />
+          <div
+            className="studio-media-card__image-reveal-overlay"
+            data-image-reveal-bounded={imageRevealBounds.key === imageRevealKey ? "true" : "false"}
+            style={imageRevealBounds.key === imageRevealKey ? {
+              inset: "auto",
+              top: imageRevealBounds.top,
+              left: imageRevealBounds.left,
+              width: imageRevealBounds.width,
+              height: imageRevealBounds.height,
+            } : undefined}
+          >
+            <DotRippleLoader fill imageSource={imageElementSource || undefined} />
           </div>
         ) : null}
         {hasMediaUrl && media?.url && item.type === "video" ? (
@@ -473,21 +516,29 @@ export function MediaCard({
   );
 }
 
-function useCachedMediaSource(ownerLocalUserId: string | null | undefined, url: string | null | undefined) {
-  const [cachedSource, setCachedSource] = useState<{ source: string; url: string } | null>(null);
+function useCachedMediaSource(
+  ownerLocalUserId: string | null | undefined,
+  url: string | null | undefined,
+  retainAcrossMounts = false,
+) {
+  const [cachedSource, setCachedSource] = useState<{ source: string; url: string } | null>(() => {
+    const source = retainAcrossMounts && url ? peekSessionMediaObjectUrl(ownerLocalUserId, url) : null;
+    return source ? { source, url: url || "" } : null;
+  });
 
   useEffect(() => {
     let cancelled = false;
     let objectUrl = "";
     if (!url) return undefined;
 
-    void cachedMediaObjectUrl(ownerLocalUserId, url).then((cachedUrl) => {
+    const resolveMediaUrl = retainAcrossMounts ? sessionMediaObjectUrl : cachedMediaObjectUrl;
+    void resolveMediaUrl(ownerLocalUserId, url).then((cachedUrl) => {
       if (!cachedUrl) return;
       if (cancelled) {
-        URL.revokeObjectURL(cachedUrl);
+        if (!retainAcrossMounts) URL.revokeObjectURL(cachedUrl);
         return;
       }
-      objectUrl = cachedUrl;
+      if (!retainAcrossMounts) objectUrl = cachedUrl;
       setCachedSource({ source: cachedUrl, url });
     }).catch(() => undefined);
 
@@ -495,13 +546,15 @@ function useCachedMediaSource(ownerLocalUserId: string | null | undefined, url: 
       cancelled = true;
       if (objectUrl) URL.revokeObjectURL(objectUrl);
     };
-  }, [ownerLocalUserId, url]);
+  }, [ownerLocalUserId, retainAcrossMounts, url]);
 
   return cachedSource && cachedSource.url === url ? cachedSource.source : "";
 }
 
 export function buildLibraryDetailFacts(item: LibraryItem) {
   const facts: string[] = [];
+  const modelName = libraryModelName(item);
+  if (modelName) facts.push(modelName);
   facts.push(formatDateTime(item.createdAt));
   const durationText = libraryDuration(item);
   if (durationText) facts.push(durationText);
@@ -516,6 +569,16 @@ export function buildLibraryDetailFacts(item: LibraryItem) {
   const fileSizeText = typeof item.output?.size === "number" ? formatBytes(item.output.size) : "";
   if (fileSizeText) facts.push(fileSizeText);
   return facts.filter(Boolean);
+}
+
+export function libraryModelName(item: LibraryItem) {
+  const model = (item.model || "").trim();
+  const normalized = model.toLowerCase();
+  if (normalized === "image" || normalized === "banana-img2") return "Image";
+  if (normalized === "banana2") return "Banana2";
+  if (normalized === "banana-pro") return "Banana Pro";
+  if (normalized === "grok-video-1.5") return "Grok";
+  return model;
 }
 
 function mediaPreviewUrl(url: string, large: boolean) {

@@ -6,6 +6,9 @@ const warmupGapMs = 600;
 const maxBackgroundMediaBytes = 256 * 1024 * 1024;
 const scheduledKeys = new Set<string>();
 const warmupQueue: MediaCacheEntry[] = [];
+const sessionMediaObjectUrls = new Map<string, string>();
+const pendingSessionMediaObjectUrls = new Map<string, Promise<string | null>>();
+const maxSessionMediaObjectUrls = 32;
 let workerScheduled = false;
 let workerRunning = false;
 let persistRequested = false;
@@ -28,6 +31,23 @@ function cacheName(ownerLocalUserId: string) {
 
 function mediaRequest(url: string) {
   return new Request(url, { credentials: "same-origin" });
+}
+
+function sessionMediaKey(ownerLocalUserId: string | null | undefined, url: string) {
+  return `${ownerLocalUserId || "anonymous"}:${url}`;
+}
+
+function rememberSessionMediaObjectUrl(key: string, objectUrl: string) {
+  if (sessionMediaObjectUrls.size >= maxSessionMediaObjectUrls) {
+    const oldestKey = sessionMediaObjectUrls.keys().next().value;
+    if (oldestKey) {
+      const oldestUrl = sessionMediaObjectUrls.get(oldestKey);
+      if (oldestUrl) URL.revokeObjectURL(oldestUrl);
+      sessionMediaObjectUrls.delete(oldestKey);
+    }
+  }
+  sessionMediaObjectUrls.set(key, objectUrl);
+  return objectUrl;
 }
 
 function wait(delayMs: number) {
@@ -163,6 +183,34 @@ export async function cachedMediaObjectUrl(ownerLocalUserId: string | null | und
   return URL.createObjectURL(await response.blob());
 }
 
+export function peekSessionMediaObjectUrl(ownerLocalUserId: string | null | undefined, url: string) {
+  return sessionMediaObjectUrls.get(sessionMediaKey(ownerLocalUserId, url)) || null;
+}
+
+export function sessionMediaObjectUrl(ownerLocalUserId: string | null | undefined, url: string) {
+  const key = sessionMediaKey(ownerLocalUserId, url);
+  const existingUrl = sessionMediaObjectUrls.get(key);
+  if (existingUrl) return Promise.resolve(existingUrl);
+  const pendingUrl = pendingSessionMediaObjectUrls.get(key);
+  if (pendingUrl) return pendingUrl;
+
+  const request = (async () => {
+    let response: Response | null = null;
+    if (ownerLocalUserId && url.startsWith("/api/files/") && "caches" in window) {
+      const cache = await caches.open(cacheName(ownerLocalUserId));
+      response = await cache.match(mediaRequest(url), { ignoreVary: true }) || null;
+    }
+    if (!response) {
+      response = await fetch(mediaRequest(url), { cache: "force-cache" }).catch(() => null);
+    }
+    if (!response?.ok) return null;
+    return rememberSessionMediaObjectUrl(key, URL.createObjectURL(await response.blob()));
+  })().finally(() => pendingSessionMediaObjectUrls.delete(key));
+
+  pendingSessionMediaObjectUrls.set(key, request);
+  return request;
+}
+
 export async function removeLibraryMediaCache(ownerLocalUserId: string, urls: string[]) {
   if (!ownerLocalUserId || !("caches" in window)) return;
   const cache = await caches.open(cacheName(ownerLocalUserId));
@@ -171,6 +219,13 @@ export async function removeLibraryMediaCache(ownerLocalUserId: string, urls: st
     const thumbnailUrl = `${url}${url.includes("?") ? "&" : "?"}view=thumb`;
     scheduledKeys.delete(`${ownerLocalUserId}:${url}`);
     scheduledKeys.delete(`${ownerLocalUserId}:${thumbnailUrl}`);
+    for (const cachedUrl of [url, thumbnailUrl]) {
+      const key = sessionMediaKey(ownerLocalUserId, cachedUrl);
+      const objectUrl = sessionMediaObjectUrls.get(key);
+      if (objectUrl) URL.revokeObjectURL(objectUrl);
+      sessionMediaObjectUrls.delete(key);
+      pendingSessionMediaObjectUrls.delete(key);
+    }
     return [
       cache.delete(mediaRequest(url), { ignoreVary: true }),
       cache.delete(mediaRequest(thumbnailUrl), { ignoreVary: true }),

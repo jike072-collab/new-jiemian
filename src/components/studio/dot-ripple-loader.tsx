@@ -15,13 +15,13 @@ function createDotRippleDots(size: number) {
       row,
       column,
       rippleDelay: Math.round(distance * 58 + naturalOffset),
-      revealDelay: Math.round(distance * 19 + naturalOffset * 0.3),
+      revealDelay: Math.round(distance * 10 + naturalOffset * 0.14),
     };
   });
 }
 
 const compactDotRippleDots = createDotRippleDots(8);
-const fillDotRippleDots = createDotRippleDots(20);
+const fillDotRippleDots = createDotRippleDots(24);
 
 export function DotRippleLoader({
   fill = false,
@@ -33,7 +33,7 @@ export function DotRippleLoader({
   className?: string;
 }) {
   const dots = fill ? fillDotRippleDots : compactDotRippleDots;
-  const size = fill ? 20 : 8;
+  const size = fill ? 24 : 8;
   return (
     <div
       className={cn("studio-dot-ripple-loader", fill && "is-fill", imageSource && "has-image-fragments", className)}

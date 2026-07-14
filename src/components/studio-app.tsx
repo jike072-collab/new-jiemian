@@ -3046,6 +3046,7 @@ export function StudioApp() {
           ) : (
             activeBusinessTool === "image" ? (
               <ImagePreviewPanel
+                cacheOwnerId={sessionUser?.local_user_id || null}
                 mode={activeImageMode}
                 output={scopedActiveImageOutput}
                 outputs={scopedImageOutputs}

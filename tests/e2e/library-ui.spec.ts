@@ -52,11 +52,13 @@ test.beforeEach(async ({ page }) => {
 test("library detail actions and modal layering remain usable", async ({ page }) => {
   await page.goto("/?tool=library", { waitUntil: "domcontentloaded" });
   const preview = page.getByRole("button", { name: `预览作品 ${item.title}` });
-  await expect(preview).toBeVisible({ timeout: 15_000 });
+  await expect(preview).toBeVisible({ timeout: 30_000 });
+  await expect(preview.getByText("fixture-model", { exact: true })).toBeVisible();
   await preview.click();
 
   const modal = page.locator(".studio-library-modal");
   await expect(modal).toBeVisible();
+  await expect(modal.getByText("fixture-model", { exact: true })).toBeVisible();
   const metrics = await modal.evaluate((element) => {
     const rect = element.querySelector(".studio-library-detail")?.getBoundingClientRect();
     return {

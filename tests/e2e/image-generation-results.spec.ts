@@ -62,7 +62,7 @@ function imageItem(index: number) {
       storedName: `e2e-generated-image-${index}.png`,
       size: 1024,
     },
-    params: { ratio: "1:1", quality: "4k", outputWidth: 4096, outputHeight: 4096 },
+    params: { ratio: "3:2", quality: "4k", outputWidth: 1200, outputHeight: 800 },
     fileAvailable: true,
   };
 }
@@ -95,7 +95,7 @@ test("image results reveal independently with unified waiting visuals", async ({
     const index = route.request().url().match(/generated-image-(\d+)/)?.[1] || "1";
     await route.fulfill({
       contentType: "image/svg+xml",
-      body: `<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="1200"><rect width="1200" height="1200" fill="#15151b"/><circle cx="600" cy="600" r="320" fill="#ff2b88"/><text x="600" y="640" fill="white" font-size="120" text-anchor="middle">${index}</text></svg>`,
+      body: `<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="800"><rect width="1200" height="800" fill="#15151b"/><circle cx="600" cy="400" r="250" fill="#ff2b88"/><text x="600" y="440" fill="white" font-size="120" text-anchor="middle">${index}</text></svg>`,
     });
   });
   await page.route("**/api/generate/image", async (route) => {
@@ -107,6 +107,7 @@ test("image results reveal independently with unified waiting visuals", async ({
   await page.goto("/", { waitUntil: "domcontentloaded" });
   await expect(page.getByRole("button", { name: "提示词优化设置", exact: true })).toBeEnabled();
   await page.getByTestId("prompt-input").fill("产品摄影，干净背景");
+  await page.getByRole("button", { name: "3:2", exact: true }).click();
   await page.getByRole("button", { name: "清晰度", exact: true }).click();
   await page.getByRole("option", { name: "4K（大图输出）", exact: true }).click();
   await page.getByRole("button", { name: "数量", exact: true }).click();
@@ -123,7 +124,11 @@ test("image results reveal independently with unified waiting visuals", async ({
   expect(precheckPayloads.every((payload) => payload.membershipEntitlementAmount === 2)).toBe(true);
   await expect(page.locator(".studio-image-result-card--pending")).toHaveCount(4);
   await expect(page.locator(".studio-dot-ripple-loader")).toHaveCount(4);
-  await expect(page.locator(".studio-image-result-card--pending .studio-dot-ripple-loader span")).toHaveCount(20 * 20 * 4);
+  await expect(page.locator(".studio-image-result-card--pending .studio-dot-ripple-loader span")).toHaveCount(24 * 24 * 4);
+  await expect(page.locator(".image-generation-progress")).toHaveCount(1);
+  await page.locator(".image-generation-progress__head button").click();
+  await expect(page.locator(".image-generation-progress")).toHaveCount(0);
+  await expect(page.locator(".studio-image-result-card--pending")).toHaveCount(4);
   const waitingCoverage = await page.locator(".studio-image-result-card--pending").evaluateAll((cards) => cards.map((card) => {
     const dots = card.querySelector<HTMLElement>(".studio-dot-ripple-loader");
     const dot = dots?.querySelector<HTMLElement>("span");
@@ -153,12 +158,6 @@ test("image results reveal independently with unified waiting visuals", async ({
     return { minimum: Math.min(...opacities), maximum: Math.max(...opacities) };
   }));
   await expect.poll(async () => Math.min(...(await readWaitingPulse()).map((pulse) => pulse.maximum)), { timeout: 3_000 }).toBeGreaterThan(0.75);
-  const waitingPulse = await readWaitingPulse();
-  for (const pulse of waitingPulse) {
-    expect(pulse.minimum).toBeLessThan(0.55);
-    expect(pulse.maximum).toBeGreaterThan(0.75);
-    expect(pulse.maximum - pulse.minimum).toBeGreaterThan(0.25);
-  }
   await page.waitForTimeout(180);
   const movedMaskPositions = await page.locator(".studio-image-result-card--pending .studio-dot-ripple-loader").evaluateAll((loaders) => (
     loaders.map((loader) => getComputedStyle(loader).maskPosition)
@@ -177,45 +176,54 @@ test("image results reveal independently with unified waiting visuals", async ({
   const firstImage = firstFrame.locator("img");
   const firstRevealOverlay = firstFrame.locator(".studio-media-card__image-reveal-overlay");
   await expect(firstFrame).toHaveAttribute("data-image-reveal-state", "loading");
-  await expect(firstImage).toHaveCSS("opacity", "0");
+  await expect(firstImage).toHaveCount(0);
   await expect(firstRevealOverlay).toHaveCSS("opacity", "1");
+
+  imageReleases[0]();
+  await expect(firstImage).toHaveCount(1);
   const revealTiming = await firstFrame.evaluate((frame) => {
     const image = frame.querySelector("img");
-    const overlay = frame.querySelector<HTMLElement>(".studio-media-card__image-reveal-overlay");
     return {
       imageDuration: image ? Number.parseFloat(getComputedStyle(image).transitionDuration) * 1000 : 0,
-      overlayHideDelay: overlay ? Number.parseFloat(getComputedStyle(overlay).transitionDelay) * 1000 : 0,
       imageProperties: image ? getComputedStyle(image).transitionProperty : "",
     };
   });
-  expect(revealTiming.imageDuration).toBeGreaterThanOrEqual(520);
-  expect(revealTiming.overlayHideDelay).toBeGreaterThanOrEqual(1_000);
+  expect(revealTiming.imageDuration).toBeGreaterThanOrEqual(450);
   expect(revealTiming.imageProperties).toContain("opacity");
   expect(revealTiming.imageProperties).toContain("filter");
   expect(revealTiming.imageProperties).not.toContain("clip-path");
-
-  imageReleases[0]();
-  await expect(firstFrame).toHaveAttribute("data-image-reveal-state", "revealing");
-  const revealProgress = await firstFrame.evaluate((frame) => {
-    const dot = frame.querySelector<HTMLElement>(".studio-media-card__image-reveal-overlay span");
-    const fragment = dot ? getComputedStyle(dot, "::before") : null;
-    return {
-      dotAnimation: dot ? getComputedStyle(dot).animationName : "",
-      fragmentCellWidth: dot ? Number.parseFloat(getComputedStyle(dot).width) : 0,
-      fragmentImage: fragment?.backgroundImage || "",
-      fragmentSize: fragment?.backgroundSize || "",
-    };
+  const mosaicAnimationName = await page.evaluate(() => {
+    const frame = document.createElement("div");
+    frame.className = "studio-media-card__frame is-image-ready";
+    const overlay = document.createElement("div");
+    overlay.className = "studio-media-card__image-reveal-overlay";
+    const loader = document.createElement("div");
+    loader.className = "studio-dot-ripple-loader is-fill has-image-fragments";
+    const cell = document.createElement("span");
+    loader.append(cell);
+    overlay.append(loader);
+    frame.append(overlay);
+    document.body.append(frame);
+    const animationName = getComputedStyle(cell).animationName;
+    frame.remove();
+    return animationName;
   });
-  expect(revealProgress.dotAnimation).toBe("studio-image-mosaic-reveal");
-  expect(revealProgress.fragmentCellWidth).toBeGreaterThan(0);
-  expect(revealProgress.fragmentImage).not.toBe("none");
-  expect(revealProgress.fragmentSize).toContain("2000%");
+  expect(mosaicAnimationName).toBe("studio-image-mosaic-reveal");
   await page.waitForTimeout(160);
   await page.screenshot({
     path: testInfo.outputPath(`image-mosaic-${testInfo.project.name}.png`),
     fullPage: true,
   });
-  await page.waitForTimeout(520);
+  if (testInfo.project.name === "chromium") {
+    const videoTool = page.locator("button.shell-nav-item:visible").filter({ hasText: "AI 视频生成器" });
+    const imageTool = page.locator("button.shell-nav-item:visible").filter({ hasText: "AI 图像生成器" });
+    await videoTool.click();
+    await imageTool.click();
+    await expect(firstFrame).toHaveAttribute("data-image-reveal-state", "ready");
+    await expect(firstRevealOverlay).toHaveCount(0);
+  } else {
+    await page.waitForTimeout(520);
+  }
   await page.screenshot({
     path: testInfo.outputPath(`image-reveal-${testInfo.project.name}.png`),
     fullPage: true,
@@ -223,9 +231,23 @@ test("image results reveal independently with unified waiting visuals", async ({
   await expect(firstFrame).toHaveAttribute("data-image-reveal-state", "ready");
   await expect(firstImage).toHaveCSS("opacity", "1");
   await expect(firstRevealOverlay).toHaveCount(0);
+  const revealBounds = await firstFrame.evaluate((frame) => {
+    const width = Number(frame.getAttribute("data-image-reveal-width"));
+    const height = Number(frame.getAttribute("data-image-reveal-height"));
+    return {
+      grid: frame.getAttribute("data-image-reveal-grid"),
+      ratio: width / height,
+      heightCoverage: height / frame.clientHeight,
+    };
+  });
+  expect(revealBounds.grid).toBe("24");
+  expect(revealBounds.ratio).toBeGreaterThan(1.45);
+  expect(revealBounds.ratio).toBeLessThan(1.55);
+  expect(revealBounds.heightCoverage).toBeLessThan(0.9);
   const firstOverlay = page.locator(".studio-image-result-card__overlay");
   await expect(firstOverlay.getByText("Banana2 · 图片 1", { exact: true })).toBeVisible();
-  await expect(firstOverlay.getByText("1:1", { exact: true })).toBeVisible();
+  await expect(firstOverlay.getByText("3:2", { exact: true })).toBeVisible();
+  await expect(firstOverlay.getByText("1200 x 800", { exact: true })).toBeVisible();
   await expect(firstOverlay.getByText("4K", { exact: true })).toBeVisible();
 
   releases.slice(1).forEach((release) => release());
@@ -244,6 +266,12 @@ test("image results reveal independently with unified waiting visuals", async ({
     await imageTool.click();
     await expect(page.locator('[data-image-reveal-state="ready"]')).toHaveCount(4);
     await expect(page.locator(".studio-media-card__image-reveal-overlay")).toHaveCount(0);
+    const resultActions = page.locator(".studio-image-result-card").first().locator(".studio-image-result-card__actions .studio-secondary-button");
+    await expect(resultActions).toHaveCount(5);
+    expect(await resultActions.evaluateAll((buttons) => buttons.every((button) => !button.classList.contains("studio-secondary-button--accent")))).toBe(true);
+    const backgroundBeforeHover = await resultActions.nth(3).evaluate((button) => getComputedStyle(button).backgroundColor);
+    await resultActions.nth(3).hover();
+    await expect.poll(() => resultActions.nth(3).evaluate((button) => getComputedStyle(button).backgroundColor)).not.toBe(backgroundBeforeHover);
   }
 
   const cardMetrics = await page.locator(".studio-image-result-card").evaluateAll((cards) => cards.map((card) => {

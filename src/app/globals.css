@@ -3760,6 +3760,13 @@
     white-space: nowrap;
   }
 
+  .studio-image-result-card__actions .studio-secondary-button:hover:not(:disabled),
+  .studio-image-result-card__actions .studio-secondary-button:focus-visible:not(:disabled) {
+    border-color: var(--primary);
+    background: var(--primary);
+    color: var(--foreground);
+  }
+
   .studio-job-status-card {
     display: grid;
     place-items: center;
@@ -3870,8 +3877,8 @@
   }
 
   .studio-dot-ripple-loader.is-fill {
-    grid-template-columns: repeat(20, minmax(0, 1fr));
-    grid-template-rows: repeat(20, minmax(0, 1fr));
+    grid-template-columns: repeat(24, minmax(0, 1fr));
+    grid-template-rows: repeat(24, minmax(0, 1fr));
     width: auto;
     padding: 0;
     place-items: center;
@@ -11536,9 +11543,9 @@
     scale: 0.988;
     animation: none;
     transition:
-      opacity 520ms var(--ease-enter) 500ms,
-      filter 760ms var(--ease-enter) 360ms,
-      scale 760ms var(--ease-enter) 360ms,
+      opacity 460ms var(--ease-enter) 260ms,
+      filter 620ms var(--ease-enter) 180ms,
+      scale 620ms var(--ease-enter) 180ms,
       transform var(--motion-fast) var(--ease-enter);
     will-change: opacity, filter, scale, transform;
   }
@@ -11557,7 +11564,7 @@
     overflow: hidden;
     visibility: visible;
     pointer-events: none;
-    transition: visibility 0s linear 1120ms;
+    transition: visibility 0s linear 860ms;
   }
 
   .studio-media-card__image-reveal-overlay::before {
@@ -11569,15 +11576,15 @@
     filter: blur(0);
     transform: scale(1);
     transition:
-      opacity 620ms var(--ease-enter) 380ms,
-      filter 760ms var(--ease-enter) 300ms,
-      transform 760ms var(--ease-enter) 300ms;
+      opacity 500ms var(--ease-enter) 220ms,
+      filter 620ms var(--ease-enter) 180ms,
+      transform 620ms var(--ease-enter) 180ms;
   }
 
   .studio-media-card__image-reveal-overlay .studio-dot-ripple-loader.is-fill {
     align-self: stretch;
     justify-self: stretch;
-    margin: 12px;
+    margin: 0;
     z-index: 1;
   }
 
@@ -11598,11 +11605,11 @@
   }
 
   .studio-media-card__frame.is-image-ready .studio-media-card__image-reveal-overlay span {
-    width: calc(100% - 2px);
-    height: calc(100% - 2px);
+    width: calc(100% - 1px);
+    height: calc(100% - 1px);
     aspect-ratio: auto;
-    border-radius: 2px;
-    animation: studio-image-mosaic-reveal 760ms var(--ease-enter) both;
+    border-radius: 1px;
+    animation: studio-image-mosaic-reveal 620ms var(--ease-enter) both;
     animation-delay: var(--dot-reveal-delay, 0ms);
   }
 
@@ -11612,27 +11619,27 @@
 
   @keyframes studio-image-mosaic-reveal {
     0% {
-      opacity: 0.38;
-      transform: scale(0.34);
+      opacity: 0;
+      transform: scale(0.72);
       filter: blur(0);
     }
 
-    42% {
+    28% {
       opacity: 1;
-      transform: scale(0.88);
+      transform: scale(0.94);
       filter: blur(0);
     }
 
-    70% {
+    64% {
       opacity: 1;
-      transform: scale(1.06);
+      transform: scale(1.02);
       filter: blur(0);
     }
 
     100% {
       opacity: 0;
-      transform: scale(1.06);
-      filter: blur(0.6px);
+      transform: scale(1.02);
+      filter: blur(0.35px);
     }
   }
 
@@ -11746,6 +11753,26 @@
     font-size: 12px;
     font-weight: 760;
     pointer-events: none;
+  }
+
+  .studio-media-card__model-badge {
+    position: absolute;
+    top: 10px;
+    left: 10px;
+    z-index: 3;
+    display: inline-flex;
+    min-height: 26px;
+    align-items: center;
+    border: 1px solid rgba(255, 255, 255, 0.14);
+    border-radius: 6px;
+    background: rgba(8, 8, 12, 0.78);
+    color: rgba(255, 255, 255, 0.94);
+    font-size: 12px;
+    font-weight: 720;
+    line-height: 1;
+    padding: 0 8px;
+    pointer-events: none;
+    backdrop-filter: blur(10px);
   }
 
   .studio-media-card__zoom-surface img {
