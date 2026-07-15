@@ -188,7 +188,7 @@ function membershipFromSubscription(
     local_user_id: localUserId,
     plan_id: plan.id,
     cycle: cycleFromSubscription(record),
-    status: "active",
+    status: startsAt <= nowIso ? "active" : "queued",
     starts_at: startsAt,
     ends_at: endsAt,
     source_order_id: `new-api-subscription:${text(record.id) || text(record.subscription_id) || plan.id}`,
@@ -220,17 +220,22 @@ export async function getNewApiSubscriptionMembershipStatus(
     }),
   ]);
   const nowIso = now.toISOString();
-  const active = enrichSubscriptionsWithPlans(
+  const memberships = enrichSubscriptionsWithPlans(
     recordsFromPayload(response.data),
     recordsFromPayload(plansResponse.data),
   )
     .filter((record) => isActiveSubscription(record, nowIso))
     .map((record) => membershipFromSubscription(localUserId, record, nowIso))
-    .filter((record): record is UserMembership => Boolean(record))
-    .sort((a, b) => b.ends_at.localeCompare(a.ends_at))[0] || null;
-  if (!active) return null;
-  const plan = getMembershipPlan(active.plan_id);
-  const sku = getMembershipSku(active.plan_id, active.cycle);
+    .filter((record): record is UserMembership => Boolean(record));
+  const active = memberships
+    .filter((record) => record.status === "active")
+    .sort((a, b) => (getMembershipPlan(b.plan_id)?.rank || 0) - (getMembershipPlan(a.plan_id)?.rank || 0) || b.ends_at.localeCompare(a.ends_at))[0] || null;
+  const queued = memberships
+    .filter((record) => record.status === "queued")
+    .sort((a, b) => a.starts_at.localeCompare(b.starts_at))[0] || null;
+  if (!active && !queued) return null;
+  const plan = active ? getMembershipPlan(active.plan_id) : null;
+  const sku = active ? getMembershipSku(active.plan_id, active.cycle) : null;
   const grantEntitlements = createEmptyMembershipEntitlements();
   if (sku) {
     for (const kind of Object.keys(grantEntitlements) as MembershipEntitlementKind[]) {
@@ -239,7 +244,7 @@ export async function getNewApiSubscriptionMembershipStatus(
   }
   return {
     active,
-    queued: null,
+    queued,
     recharge_bonus_basis_points: plan?.recharge_bonus_basis_points || 0,
     first_purchase_reward_claimed: false,
     entitlements: {

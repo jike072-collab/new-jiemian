@@ -213,6 +213,203 @@ test("mirrors external New API membership into the local repository", async () =
   assert.equal(consumed.consumed, 1);
 });
 
+test("replaces a stale active NewAPI subscription with the current external subscription", async () => {
+  const repository = createMemoryMembershipRepository();
+  await repository.createMembership({
+    localUserId: "external-renewal-user",
+    planId: "enterprise",
+    cycle: "monthly",
+    status: "active",
+    startsAt: "2026-07-13T06:33:38.000Z",
+    endsAt: "2026-08-13T06:33:38.000Z",
+    sourceOrderId: "new-api-subscription:5",
+    now: "2026-07-13T06:33:38.000Z",
+  });
+  await repository.grantEntitlement({
+    localUserId: "external-renewal-user",
+    kind: "video_generation",
+    amount: 8,
+    sourceOrderId: "new-api-subscription:5",
+    expiresAt: "2026-08-13T06:33:38.000Z",
+    idempotencyKey: "old-video-grant",
+    now: "2026-07-13T06:33:38.000Z",
+  });
+  let externalCalls = 0;
+  const membership = new MembershipService({
+    repository,
+    externalMembershipFulfillment: async () => undefined,
+    externalStatus: async () => {
+      externalCalls += 1;
+      return {
+        active: {
+          id: "new-api-subscription:8",
+          local_user_id: "external-renewal-user",
+          plan_id: "enterprise",
+          cycle: "yearly",
+          status: "active",
+          starts_at: "2026-07-15T08:10:46.000Z",
+          ends_at: "2027-07-15T08:10:46.000Z",
+          source_order_id: "new-api-subscription:8",
+          created_at: "2026-07-15T08:10:45.000Z",
+          updated_at: "2026-07-15T08:10:45.000Z",
+          cancelled_at: null,
+          version: 1,
+        },
+        queued: null,
+        recharge_bonus_basis_points: 2_000,
+        first_purchase_reward_claimed: false,
+        entitlements: {
+          prompt_optimize: { remaining: 2_400, granted: 2_400, used: 0 },
+          image_generation: { remaining: 1_800, granted: 1_800, used: 0 },
+          video_generation: { remaining: 96, granted: 96, used: 0 },
+          image_edit: { remaining: 0, granted: 0, used: 0 },
+          image_upscale: { remaining: 1_800, granted: 1_800, used: 0 },
+          video_upscale: { remaining: 96, granted: 96, used: 0 },
+        },
+      };
+    },
+    now: () => new Date("2026-07-15T08:20:00.000Z"),
+  });
+
+  const status = await membership.getStatus("external-renewal-user");
+  assert.equal(status.active?.source_order_id, "new-api-subscription:8");
+  assert.equal(status.active?.cycle, "yearly");
+  assert.equal(status.entitlements.video_generation.remaining, 96);
+  const memberships = await repository.listMemberships("external-renewal-user");
+  assert.equal(memberships.find((item) => item.source_order_id === "new-api-subscription:5")?.status, "cancelled");
+  assert.equal(memberships.find((item) => item.source_order_id === "new-api-subscription:8")?.status, "active");
+  const entitlements = await repository.listEntitlements("external-renewal-user", "2026-07-15T08:20:00.000Z");
+  assert(entitlements.every((item) => item.source_order_id === "new-api-subscription:8"));
+  assert.equal(externalCalls, 1);
+});
+
+test("mirrors a queued NewAPI renewal without replacing the current month", async () => {
+  const repository = createMemoryMembershipRepository();
+  await repository.createMembership({
+    localUserId: "external-queued-renewal",
+    planId: "enterprise",
+    cycle: "monthly",
+    status: "active",
+    startsAt: "2026-07-13T06:33:38.000Z",
+    endsAt: "2026-08-13T06:33:38.000Z",
+    sourceOrderId: "new-api-subscription:5",
+    now: "2026-07-13T06:33:38.000Z",
+  });
+  const membership = new MembershipService({
+    repository,
+    externalMembershipFulfillment: async () => undefined,
+    externalStatus: async () => ({
+      active: {
+        id: "new-api-subscription:5",
+        local_user_id: "external-queued-renewal",
+        plan_id: "enterprise",
+        cycle: "monthly",
+        status: "active",
+        starts_at: "2026-07-13T06:33:38.000Z",
+        ends_at: "2026-08-13T06:33:38.000Z",
+        source_order_id: "new-api-subscription:5",
+        created_at: "2026-07-13T06:33:38.000Z",
+        updated_at: "2026-07-15T08:20:00.000Z",
+        cancelled_at: null,
+        version: 1,
+      },
+      queued: {
+        id: "new-api-subscription:9",
+        local_user_id: "external-queued-renewal",
+        plan_id: "enterprise",
+        cycle: "monthly",
+        status: "queued",
+        starts_at: "2026-08-13T06:33:38.000Z",
+        ends_at: "2026-09-13T06:33:38.000Z",
+        source_order_id: "new-api-subscription:9",
+        created_at: "2026-07-15T08:10:45.000Z",
+        updated_at: "2026-07-15T08:10:45.000Z",
+        cancelled_at: null,
+        version: 1,
+      },
+      recharge_bonus_basis_points: 2_000,
+      first_purchase_reward_claimed: false,
+      entitlements: {
+        prompt_optimize: { remaining: 200, granted: 200, used: 0 },
+        image_generation: { remaining: 150, granted: 150, used: 0 },
+        video_generation: { remaining: 8, granted: 8, used: 0 },
+        image_edit: { remaining: 0, granted: 0, used: 0 },
+        image_upscale: { remaining: 150, granted: 150, used: 0 },
+        video_upscale: { remaining: 8, granted: 8, used: 0 },
+      },
+    }),
+    now: () => new Date("2026-07-15T08:20:00.000Z"),
+  });
+
+  const status = await membership.getStatus("external-queued-renewal");
+  assert.equal(status.active?.source_order_id, "new-api-subscription:5");
+  assert.equal(status.queued?.source_order_id, "new-api-subscription:9");
+  assert.equal(status.queued?.starts_at, status.active?.ends_at);
+});
+
+test("grants one renewal when the same NewAPI subscription extends", async () => {
+  const repository = createMemoryMembershipRepository();
+  await repository.createMembership({
+    localUserId: "external-extended-renewal",
+    planId: "enterprise",
+    cycle: "monthly",
+    status: "active",
+    startsAt: "2026-07-13T06:33:38.000Z",
+    endsAt: "2026-08-13T06:33:38.000Z",
+    sourceOrderId: "new-api-subscription:5",
+    now: "2026-07-13T06:33:38.000Z",
+  });
+  await repository.grantEntitlement({
+    localUserId: "external-extended-renewal",
+    kind: "video_generation",
+    amount: 8,
+    sourceOrderId: "new-api-subscription:5",
+    expiresAt: "2026-08-13T06:33:38.000Z",
+    idempotencyKey: "new-api-mirror:new-api-subscription:5:video_generation",
+    now: "2026-07-13T06:33:38.000Z",
+  });
+  let currentTime = new Date("2026-07-15T08:20:00.000Z");
+  const membership = new MembershipService({
+    repository,
+    externalMembershipFulfillment: async () => undefined,
+    externalStatus: async () => ({
+      active: {
+        id: "new-api-subscription:5",
+        local_user_id: "external-extended-renewal",
+        plan_id: "enterprise",
+        cycle: "monthly",
+        status: "active",
+        starts_at: "2026-07-13T06:33:38.000Z",
+        ends_at: "2026-09-13T06:33:38.000Z",
+        source_order_id: "new-api-subscription:5",
+        created_at: "2026-07-13T06:33:38.000Z",
+        updated_at: currentTime.toISOString(),
+        cancelled_at: null,
+        version: 2,
+      },
+      queued: null,
+      recharge_bonus_basis_points: 2_000,
+      first_purchase_reward_claimed: false,
+      entitlements: {
+        prompt_optimize: { remaining: 200, granted: 200, used: 0 },
+        image_generation: { remaining: 150, granted: 150, used: 0 },
+        video_generation: { remaining: 8, granted: 8, used: 0 },
+        image_edit: { remaining: 0, granted: 0, used: 0 },
+        image_upscale: { remaining: 150, granted: 150, used: 0 },
+        video_upscale: { remaining: 8, granted: 8, used: 0 },
+      },
+    }),
+    now: () => currentTime,
+  });
+
+  const extended = await membership.getStatus("external-extended-renewal");
+  assert.equal(extended.active?.ends_at, "2026-09-13T06:33:38.000Z");
+  assert.equal(extended.entitlements.video_generation.remaining, 16);
+  currentTime = new Date("2026-07-15T08:21:00.000Z");
+  const repeated = await membership.getStatus("external-extended-renewal");
+  assert.equal(repeated.entitlements.video_generation.remaining, 16);
+});
+
 test("restores consumed entitlements for failed generation flows", async () => {
   const repository = createMemoryMembershipRepository();
   const membership = new MembershipService({
@@ -299,4 +496,25 @@ test("manual membership does not consume the paid first-purchase reward", async 
     cycle: "quarterly",
   });
   assert.equal(paid.isOwner, true);
+});
+
+test("manual renewal of the current plan starts after its existing term", async () => {
+  const membership = service();
+  const first = await membership.applyManualMembership({
+    localUserId: "manual-renewal",
+    orderId: "admin-membership:manual-renewal:one",
+    planId: "enterprise",
+    cycle: "monthly",
+  });
+  const second = await membership.applyManualMembership({
+    localUserId: "manual-renewal",
+    orderId: "admin-membership:manual-renewal:two",
+    planId: "enterprise",
+    cycle: "monthly",
+  });
+
+  assert.equal(first.status, "active");
+  assert.equal(second.status, "queued");
+  assert.equal(second.starts_at, first.ends_at);
+  assert.equal((await membership.getStatus("manual-renewal")).active?.source_order_id, first.source_order_id);
 });

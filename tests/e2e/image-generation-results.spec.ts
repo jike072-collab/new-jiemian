@@ -77,6 +77,29 @@ test.beforeEach(async ({ page }) => {
   await page.route("**/api/library", (route) => route.fulfill({ json: { items: [] } }));
 });
 
+test("workspace function panels become ready within one second", async ({ page }, testInfo) => {
+  test.skip(testInfo.project.name !== "chromium", "Desktop Chromium covers code-split panel readiness.");
+  await page.goto("/", { waitUntil: "domcontentloaded" });
+  await expect(page.getByTestId("prompt-input")).toBeVisible({ timeout: 30_000 });
+
+  const panels = [
+    { tool: "AI 视频生成器", ready: page.getByTestId("video-prompt-input"), state: "visible" as const },
+    { tool: "图片高清增强", ready: page.locator("#image-upscale-input"), state: "attached" as const },
+    { tool: "视频高清增强", ready: page.locator("#video-upscale-input"), state: "attached" as const },
+    { tool: "作品库", ready: page.locator(".studio-library-page"), state: "visible" as const },
+    { tool: "AI 图像生成器", ready: page.getByTestId("prompt-input"), state: "visible" as const },
+  ];
+
+  for (const panel of panels) {
+    const button = page.locator("button.shell-nav-item:visible").filter({ hasText: panel.tool });
+    await expect(button).toHaveCount(1);
+    const startedAt = Date.now();
+    await button.click();
+    await panel.ready.waitFor({ state: panel.state, timeout: 1_000 });
+    expect(Date.now() - startedAt, `${panel.tool} should be ready within one second`).toBeLessThan(1_000);
+  }
+});
+
 test("single pending image fills the available preview height", async ({ page }, testInfo) => {
   test.setTimeout(45_000);
   if (testInfo.project.name === "chromium") {

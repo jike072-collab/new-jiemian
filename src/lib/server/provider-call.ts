@@ -753,20 +753,30 @@ async function callOpenAiCompatibleGrokVideoProvider(provider: ProviderConfig, i
     payload.image = `data:${file.mimeType};base64,${file.bytes.toString("base64")}`;
   }
 
-  const response = await fetch(grokVideosEndpoint(provider.apiUrl), {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      ...authHeaders(provider),
-    },
-    body: JSON.stringify(payload),
-    signal: AbortSignal.timeout(180000),
-  });
-  const output = parseProviderOutput(await readProviderJson(response, provider));
-  return {
-    ...output,
-    statusUrl: output.statusUrl || grokOpenAiVideoStatusUrl(provider.apiUrl, output.jobId || ""),
-  };
+  let lastError: unknown;
+  for (let attempt = 1; attempt <= 3; attempt += 1) {
+    try {
+      const response = await fetchProviderWithNetworkRetry(grokVideosEndpoint(provider.apiUrl), {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          ...authHeaders(provider),
+        },
+        body: JSON.stringify(payload),
+        signal: AbortSignal.timeout(180000),
+      });
+      const output = parseProviderOutput(await readProviderJson(response, provider));
+      return {
+        ...output,
+        statusUrl: output.statusUrl || grokOpenAiVideoStatusUrl(provider.apiUrl, output.jobId || ""),
+      };
+    } catch (error) {
+      lastError = error;
+      if (attempt >= 3 || !isTemporaryProviderSaturation(error)) throw error;
+      await wait(750 * attempt);
+    }
+  }
+  throw lastError;
 }
 
 async function callGrokVideoProvider(provider: ProviderConfig, input: {
@@ -812,6 +822,23 @@ async function outputToLibraryFromAuthenticatedUrl(provider: ProviderConfig, url
 const providerJsonDefaultLimitBytes = 16 * 1024 * 1024;
 const providerJsonErrorLimitBytes = 1 * 1024 * 1024;
 const providerJsonHardLimitBytes = 64 * 1024 * 1024;
+
+function providerPayloadCode(payload: unknown) {
+  const record = asRecord(payload);
+  return firstString(asRecord(record.error).code, record.code, asRecord(record.data).code).toLowerCase();
+}
+
+function providerCodeForResponse(status: number, payload: unknown) {
+  const upstreamCode = providerPayloadCode(payload);
+  if (upstreamCode === "upstream_load_saturated") return "PROVIDER_RATE_LIMITED" as const;
+  return codeForUpstreamStatus(status);
+}
+
+function isTemporaryProviderSaturation(error: unknown) {
+  return error instanceof GenerationDiagnosticError
+    && error.code === "PROVIDER_RATE_LIMITED"
+    && error.safeDetails.upstreamCode === "upstream_load_saturated";
+}
 
 async function readBoundedText(response: Response, limitBytes: number) {
   if (!response.body) return "";
@@ -936,15 +963,17 @@ async function readProviderJson(response: Response, provider?: ProviderConfig) {
       payload = {};
     }
     const record = asRecord(payload);
+    const upstreamCode = providerPayloadCode(payload);
     const message = firstString(asRecord(record.error).message, record.message)
       || `供应商请求失败：HTTP ${response.status}`;
     throw new GenerationDiagnosticError({
-      code: codeForUpstreamStatus(response.status),
+      code: providerCodeForResponse(response.status, payload),
       message,
+      publicMessage: upstreamCode === "upstream_load_saturated" ? "当前视频通道繁忙，已自动重试，请稍后再试。" : undefined,
       providerId: provider?.id,
       model: provider?.model,
       upstreamStatus: response.status,
-      safeDetails: { upstreamStatus: response.status },
+      safeDetails: { upstreamStatus: response.status, ...(upstreamCode ? { upstreamCode } : {}) },
     });
   }
   if (!text.trim()) {

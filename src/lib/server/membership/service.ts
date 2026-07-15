@@ -56,6 +56,8 @@ const emptyEntitlements: MembershipStatusSnapshot["entitlements"] = {
   video_upscale: { remaining: 0, granted: 0, used: 0 },
 };
 
+const externalStatusRefreshMs = 30_000;
+
 function nowIso(now: Date) {
   return now.toISOString();
 }
@@ -100,6 +102,7 @@ export class MembershipService {
   private readonly externalStatus: (localUserId: string, at: Date) => Promise<MembershipStatusSnapshot | null>;
   private readonly externalMembershipFulfillment: NonNullable<MembershipServiceDependencies["externalMembershipFulfillment"]>;
   private readonly now: () => Date;
+  private readonly externalStatusCheckedAt = new Map<string, number>();
 
   constructor(dependencies: MembershipServiceDependencies = {}) {
     this.repository = dependencies.repository || createMembershipPersistenceRepository();
@@ -122,37 +125,106 @@ export class MembershipService {
   }
 
   private async mirrorExternalStatus(localUserId: string, status: MembershipStatusSnapshot, now: Date) {
-    if (!status.active) return;
+    const desiredMemberships = [status.active, status.queued]
+      .filter((membership): membership is UserMembership => Boolean(membership))
+      .filter((membership, index, records) => records.findIndex((record) => record.source_order_id === membership.source_order_id) === index);
+    if (!desiredMemberships.length) return false;
     try {
-      const existing = await this.repository.getMembershipByOrder(status.active.source_order_id);
-      if (!existing) {
-        await this.repository.createMembership({
-          localUserId,
-          planId: status.active.plan_id,
-          cycle: status.active.cycle,
-          status: status.active.status,
-          startsAt: status.active.starts_at,
-          endsAt: status.active.ends_at,
-          sourceOrderId: status.active.source_order_id,
-          now: nowIso(now),
-        });
+      const timestamp = nowIso(now);
+      const memberships = await this.repository.listMemberships(localUserId);
+      for (const desired of desiredMemberships) {
+        const existing = await this.repository.getMembershipByOrder(desired.source_order_id);
+        const extended = Boolean(existing && desired.ends_at > existing.ends_at);
+        const sku = getMembershipSku(desired.plan_id, desired.cycle);
+        const desiredEntitlements = desired.source_order_id === status.active?.source_order_id
+          ? status.entitlements
+          : sku
+            ? Object.fromEntries(Object.entries(sku.grant_entitlements).map(([kind, amount]) => [kind, { remaining: amount, granted: amount, used: 0 }])) as MembershipStatusSnapshot["entitlements"]
+            : emptyEntitlements;
+        const grantDesiredEntitlements = async () => {
+          for (const [kind, grant] of Object.entries(desiredEntitlements) as Array<[MembershipEntitlementKind, { remaining: number; granted: number; used: number }]>) {
+            if (grant.granted <= 0) continue;
+            await this.repository.grantEntitlement({
+              localUserId,
+              kind,
+              amount: grant.granted,
+              sourceOrderId: desired.source_order_id,
+              expiresAt: desired.ends_at,
+              idempotencyKey: extended
+                ? `new-api-renewal:${desired.source_order_id}:${desired.ends_at}:${kind}`
+                : `new-api-mirror:${desired.source_order_id}:${kind}`,
+              now: timestamp,
+            });
+          }
+        };
+        if (extended) await grantDesiredEntitlements();
+        if (!existing) {
+          await this.repository.createMembership({
+            localUserId,
+            planId: desired.plan_id,
+            cycle: desired.cycle,
+            status: desired.status,
+            startsAt: desired.starts_at,
+            endsAt: desired.ends_at,
+            sourceOrderId: desired.source_order_id,
+            now: timestamp,
+          });
+        } else if (existing.status !== desired.status || existing.starts_at !== desired.starts_at || existing.ends_at !== desired.ends_at) {
+          await this.repository.updateMembership(existing.id, {
+            status: desired.status,
+            starts_at: desired.starts_at,
+            ends_at: desired.ends_at,
+            cancelled_at: null,
+            updated_at: timestamp,
+          }, existing.version);
+        }
+        if (!extended) await grantDesiredEntitlements();
       }
-      for (const [kind, grant] of Object.entries(status.entitlements) as Array<[MembershipEntitlementKind, { remaining: number; granted: number; used: number }]>) {
-        if (grant.granted <= 0) continue;
-        await this.repository.grantEntitlement({
-          localUserId,
-          kind,
-          amount: grant.granted,
-          sourceOrderId: status.active.source_order_id,
-          expiresAt: status.active.ends_at,
-          idempotencyKey: `new-api-mirror:${status.active.source_order_id}:${kind}`,
-          now: nowIso(now),
-        });
+      const desiredOrderIds = new Set(desiredMemberships.map((membership) => membership.source_order_id));
+      const replaced = memberships.filter((membership) => (
+        membership.source_order_id.startsWith("new-api-subscription:")
+        && !desiredOrderIds.has(membership.source_order_id)
+        && (membership.status === "active" || membership.status === "queued")
+      ));
+      for (const membership of replaced) {
+        await this.repository.updateMembership(membership.id, {
+          status: "cancelled",
+          cancelled_at: timestamp,
+          updated_at: timestamp,
+        }, membership.version);
       }
-      await this.ensureExternalMembershipFulfillment(status.active);
+      await this.repository.expireEntitlementsBySourceOrder(
+        localUserId,
+        replaced.map((membership) => membership.source_order_id),
+        timestamp,
+      );
+      if (status.active) await this.ensureExternalMembershipFulfillment(status.active);
+      return true;
     } catch {
-      return;
+      return false;
     }
+  }
+
+  private async retireExternalMemberships(localUserId: string, memberships: UserMembership[], now: Date) {
+    const timestamp = nowIso(now);
+    const activeExternal = memberships.filter((membership) => (
+      membership.source_order_id.startsWith("new-api-subscription:")
+      && (membership.status === "active" || membership.status === "queued")
+    ));
+    if (!activeExternal.length) return false;
+    for (const membership of activeExternal) {
+      await this.repository.updateMembership(membership.id, {
+        status: "cancelled",
+        cancelled_at: timestamp,
+        updated_at: timestamp,
+      }, membership.version);
+    }
+    await this.repository.expireEntitlementsBySourceOrder(
+      localUserId,
+      activeExternal.map((membership) => membership.source_order_id),
+      timestamp,
+    );
+    return true;
   }
 
   private async ensureExternalMembershipFulfillment(active: UserMembership) {
@@ -163,6 +235,28 @@ export class MembershipService {
       planId: active.plan_id,
       cycle: active.cycle,
       startsAt: active.starts_at,
+    });
+  }
+
+  private externalStatusDiffers(
+    memberships: UserMembership[],
+    status: MembershipStatusSnapshot,
+  ) {
+    const local = memberships
+      .filter((membership) => membership.source_order_id.startsWith("new-api-subscription:"))
+      .filter((membership) => membership.status === "active" || membership.status === "queued");
+    const external = [status.active, status.queued]
+      .filter((membership): membership is UserMembership => Boolean(membership))
+      .filter((membership, index, records) => records.findIndex((record) => record.source_order_id === membership.source_order_id) === index);
+    if (local.length !== external.length) return true;
+    return external.some((expected) => {
+      const current = local.find((membership) => membership.source_order_id === expected.source_order_id);
+      return !current
+        || current.status !== expected.status
+        || current.plan_id !== expected.plan_id
+        || current.cycle !== expected.cycle
+        || current.starts_at !== expected.starts_at
+        || current.ends_at !== expected.ends_at;
     });
   }
 
@@ -197,8 +291,10 @@ export class MembershipService {
       .filter(byActiveRankAt(timestamp))
       .sort((a, b) => (getMembershipPlan(b.plan_id)?.rank || 0) - (getMembershipPlan(a.plan_id)?.rank || 0) || compareEndsDesc(a, b))[0] || null;
     const queued = memberships.filter(byQueued).sort(compareStarts)[0] || null;
-    if (active) {
-      await this.backfillMissingEntitlements(active, timestamp).catch((error) => {
+    const entitlementMemberships = [active, ...memberships.filter(byQueued)]
+      .filter((membership): membership is UserMembership => Boolean(membership));
+    for (const membership of entitlementMemberships) {
+      await this.backfillMissingEntitlements(membership, timestamp).catch((error) => {
         const code = error && typeof error === "object" && "code" in error ? String(error.code) : "unknown";
         console.error("membership.entitlement_backfill_failed", {
           code,
@@ -223,11 +319,32 @@ export class MembershipService {
       entitlements,
     };
     if (active) {
+      if (active.source_order_id.startsWith("new-api-subscription:")) {
+        const lastCheckedAt = this.externalStatusCheckedAt.get(localUserId) || 0;
+        if (at.getTime() - lastCheckedAt >= externalStatusRefreshMs) {
+          this.externalStatusCheckedAt.set(localUserId, at.getTime());
+          try {
+            const external = await this.externalStatus(localUserId, at);
+            if (!external) {
+              if (await this.retireExternalMemberships(localUserId, memberships, at)) {
+                return this.getStatus(localUserId, at);
+              }
+            } else if (this.externalStatusDiffers(memberships, external)) {
+              if (await this.mirrorExternalStatus(localUserId, external, at)) {
+                return this.getStatus(localUserId, at);
+              }
+            }
+          } catch {
+            // Keep the last valid local snapshot when NewAPI is temporarily unavailable.
+          }
+        }
+      }
       await this.ensureExternalMembershipFulfillment(active).catch(() => undefined);
       return localStatus;
     }
     try {
       const external = await this.externalStatus(localUserId, at);
+      this.externalStatusCheckedAt.set(localUserId, at.getTime());
       if (external) await this.mirrorExternalStatus(localUserId, external, at);
       return external || localStatus;
     } catch {
@@ -308,30 +425,30 @@ export class MembershipService {
     if (!sku) throw new Error("Invalid membership SKU.");
     await this.refreshExpired(input.localUserId, now);
     const memberships = await this.repository.listMemberships(input.localUserId);
-    const startsAt = now;
+    const active = memberships
+      .filter(byActiveRankAt(timestamp))
+      .sort((a, b) => (getMembershipPlan(b.plan_id)?.rank || 0) - (getMembershipPlan(a.plan_id)?.rank || 0) || compareEndsDesc(a, b))[0] || null;
+    const activePlan = active ? getMembershipPlan(active.plan_id) : null;
+    const startsAt = this.membershipStartTime(active, memberships, activePlan?.rank || 0, sku.plan.rank, now);
     const endsAt = addMembershipDuration(startsAt, sku.cycle);
+    const status = startsAt.getTime() <= now.getTime() ? "active" : "queued";
     const record = await this.repository.createMembership({
       localUserId: input.localUserId,
       planId: sku.plan.id,
       cycle: sku.cycle,
-      status: "active",
+      status,
       startsAt: nowIso(startsAt),
       endsAt: nowIso(endsAt),
       sourceOrderId: input.orderId,
       now: timestamp,
     });
-    for (const membership of memberships) {
-      if (membership.status !== "active" && membership.status !== "queued") continue;
-      await this.repository.updateMembership(membership.id, {
+    if (status === "active" && active && active.id !== record.id && sku.plan.rank > (activePlan?.rank || 0)) {
+      await this.repository.updateMembership(active.id, {
         status: "cancelled",
         cancelled_at: timestamp,
         updated_at: timestamp,
-      }, membership.version);
+      }, active.version);
     }
-    const replacedOrderIds = memberships
-      .filter((membership) => membership.status === "active" || membership.status === "queued")
-      .map((membership) => membership.source_order_id);
-    await this.repository.expireEntitlementsBySourceOrder(input.localUserId, replacedOrderIds, timestamp);
     await this.grantMembershipEntitlements(input.localUserId, input.orderId, sku.grant_entitlements, record.ends_at, timestamp);
     return record;
   }

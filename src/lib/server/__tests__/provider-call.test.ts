@@ -623,6 +623,39 @@ test("local Grok video provider sends reference images through the NewAPI videos
   }
 });
 
+test("local Grok video provider retries temporary upstream saturation", async () => {
+  const videoProvider = {
+    ...provider,
+    id: "video-grok-saturated",
+    kind: "video",
+    apiUrl: "http://127.0.0.1:3000/v1/videos",
+    model: "grok-video-1.5",
+    endpointType: "grok-videos",
+  } as const;
+  const originalFetch = globalThis.fetch;
+  let callCount = 0;
+  globalThis.fetch = (async () => {
+    callCount += 1;
+    if (callCount < 3) {
+      return jsonResponse({ code: "upstream_load_saturated", message: "upstream saturated" }, { status: 403 });
+    }
+    return jsonResponse({ data: [{ url: "https://cdn.example.test/retried-video.mp4" }] });
+  }) as typeof fetch;
+  try {
+    const output = await providerCallInternalsForTests.callOpenAiCompatibleGrokVideoProvider(videoProvider, {
+      mode: "text-to-video",
+      prompt: "test prompt",
+      ratio: "16:9",
+      duration: 6,
+      files: [],
+    });
+    assert.equal(callCount, 3);
+    assert.equal(output.url, "https://cdn.example.test/retried-video.mp4");
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
 test("grok video validation keeps model-specific duration rules", () => {
   assert.doesNotThrow(() => providerCallInternalsForTests.validateGrokVideoInput({
     ...provider,

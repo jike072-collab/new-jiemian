@@ -773,6 +773,12 @@
     transform: translateX(1px);
   }
 
+  .shell-nav .shell-nav-item:active {
+    background: rgba(255, 45, 135, 0.12);
+    transform: translateX(1px) scale(0.985);
+    transition-duration: 40ms;
+  }
+
   .shell-nav .shell-nav-item.is-active {
     border-color: rgba(255, 45, 135, 0.18);
     background: linear-gradient(90deg, rgba(255, 32, 122, 0.2), rgba(255, 32, 122, 0.07));

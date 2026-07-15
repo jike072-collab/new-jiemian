@@ -368,6 +368,9 @@ const membershipFaqItems = [
 const CLIENT_VIDEO_SUBMISSION_LIMIT = 1;
 
 const loadLibraryPane = () => import("@/components/studio/library-pane").then((module) => ({ default: module.LibraryPane }));
+const loadVideoGenerator = () => import("@/components/studio/video-generator").then((module) => ({ default: module.VideoGenerator }));
+const loadUpscaleForms = () => import("@/components/studio/upscale-form");
+const loadWorkspaceAccountPanel = () => import("@/components/workspace-account-panel").then((module) => ({ default: module.WorkspaceAccountPanel }));
 
 const LibraryPane = dynamic(
   loadLibraryPane,
@@ -375,22 +378,22 @@ const LibraryPane = dynamic(
 );
 
 const VideoGenerator = dynamic(
-  () => import("@/components/studio/video-generator").then((module) => ({ default: module.VideoGenerator })),
+  loadVideoGenerator,
   { loading: () => <FormPanelLoadingFallback compact /> },
 );
 
 const ImageUpscaleForm = dynamic(
-  () => import("@/components/studio/upscale-form").then((module) => ({ default: module.ImageUpscaleForm })),
+  () => loadUpscaleForms().then((module) => ({ default: module.ImageUpscaleForm })),
   { loading: () => <FormPanelLoadingFallback compact /> },
 );
 
 const VideoUpscaleForm = dynamic(
-  () => import("@/components/studio/upscale-form").then((module) => ({ default: module.VideoUpscaleForm })),
+  () => loadUpscaleForms().then((module) => ({ default: module.VideoUpscaleForm })),
   { loading: () => <FormPanelLoadingFallback compact /> },
 );
 
 const WorkspaceAccountPanel = dynamic(
-  () => import("@/components/workspace-account-panel").then((module) => ({ default: module.WorkspaceAccountPanel })),
+  loadWorkspaceAccountPanel,
   { loading: () => <PreviewPanelLoadingFallback title="账户概览" /> },
 );
 
@@ -1033,8 +1036,25 @@ export function StudioApp() {
   }, [libraryLoaded, libraryLoading, libraryNeedsRefresh, resetLibraryState, sessionUser]);
 
   useEffect(() => {
-    void loadLibraryPane();
     router.prefetch("/templates");
+    const idleWindow = window as Window & {
+      requestIdleCallback?: (callback: () => void, options?: { timeout: number }) => number;
+      cancelIdleCallback?: (id: number) => void;
+    };
+    const preloadPanels = () => {
+      void Promise.allSettled([
+        loadLibraryPane(),
+        loadVideoGenerator(),
+        loadUpscaleForms(),
+        loadWorkspaceAccountPanel(),
+      ]);
+    };
+    if (idleWindow.requestIdleCallback) {
+      const idleId = idleWindow.requestIdleCallback(preloadPanels, { timeout: 500 });
+      return () => idleWindow.cancelIdleCallback?.(idleId);
+    }
+    const timer = window.setTimeout(preloadPanels, 150);
+    return () => window.clearTimeout(timer);
   }, [router]);
 
   useEffect(() => {
