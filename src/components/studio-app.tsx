@@ -3061,6 +3061,11 @@ export function StudioApp() {
                 hasProvider={Boolean(selectedImageProvider)}
                 hasFiles={imageWorkspaceHasFiles}
                 onSubmit={submitImageWorkspace}
+                onRetry={() => {
+                  setImageOutputs([]);
+                  setOutputs((prev) => ({ ...prev, image: null }));
+                  void submitImageWorkspace();
+                }}
                 onReloadProviders={refreshProviders}
                 onUpscale={sendResultToUpscale}
                 onCreateVideo={sendImageResultToVideo}

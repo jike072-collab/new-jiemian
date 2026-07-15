@@ -124,66 +124,39 @@ test("image results reveal independently with unified waiting visuals", async ({
   expect(precheckPayloads.every((payload) => payload.membershipEntitlementAmount === 2)).toBe(true);
   await expect(page.locator(".studio-image-result-card--pending")).toHaveCount(4);
   await expect(page.locator(".studio-dot-ripple-loader")).toHaveCount(4);
-  await expect(page.locator(".studio-image-result-card--pending .studio-dot-ripple-loader span")).toHaveCount(24 * 24 * 4);
+  await expect(page.locator(".studio-image-result-card--pending .studio-dot-ripple-loader span")).toHaveCount(0);
   await expect(page.locator(".image-generation-progress")).toHaveCount(1);
   await page.locator(".image-generation-progress__head button").click();
   await expect(page.locator(".image-generation-progress")).toHaveCount(0);
   await expect(page.locator(".studio-image-result-card--pending")).toHaveCount(4);
   const waitingCoverage = await page.locator(".studio-image-result-card--pending").evaluateAll((cards) => cards.map((card) => {
     const dots = card.querySelector<HTMLElement>(".studio-dot-ripple-loader");
-    const dot = dots?.querySelector<HTMLElement>("span");
     const cardRect = card.getBoundingClientRect();
     const dotsRect = dots?.getBoundingClientRect();
     return {
       width: dotsRect ? dotsRect.width / cardRect.width : 0,
       height: dotsRect ? dotsRect.height / cardRect.height : 0,
-      baseOpacity: dot ? Number.parseFloat(getComputedStyle(dot).opacity) : 0,
       maskImage: dots ? getComputedStyle(dots).maskImage : "",
       maskSize: dots ? getComputedStyle(dots).maskSize : "",
       maskPosition: dots ? getComputedStyle(dots).maskPosition : "",
       animationName: dots ? getComputedStyle(dots).animationName : "",
+      backgroundSize: dots ? getComputedStyle(dots).backgroundSize : "",
+      vectorField: dots?.classList.contains("is-vector-field") || false,
+      highlightAnimation: dots ? getComputedStyle(dots, "::after").animationName : "",
     };
   }));
   for (const coverage of waitingCoverage) {
     expect(coverage.width).toBeGreaterThanOrEqual(0.85);
     expect(coverage.height).toBeGreaterThanOrEqual(0.85);
-    expect(coverage.baseOpacity).toBeGreaterThanOrEqual(0.05);
     expect(coverage.maskImage).not.toBe("none");
-    expect(coverage.maskSize).toContain("62%");
+    expect(coverage.maskSize).toContain("46%");
     expect(coverage.animationName).toContain("studio-dot-window");
-  }
-  const fieldFlows = await page.locator(".studio-image-result-card--pending .studio-dot-ripple-loader").evaluateAll((loaders) => loaders.map((loader) => {
-    const dots = loader.querySelectorAll<HTMLElement>("span");
-    const size = Math.sqrt(dots.length);
-    const readVariable = (dot: HTMLElement | undefined, variable: string) => (
-      dot ? Number.parseFloat(getComputedStyle(dot).getPropertyValue(variable)) : 0
-    );
-    return {
-      firstAnimation: dots[0] ? getComputedStyle(dots[0]).animationName : "",
-      firstRightScale: readVariable(dots[0], "--dot-flow-right-scale"),
-      lastRightScale: readVariable(dots[Math.round(size) - 1], "--dot-flow-right-scale"),
-      firstDownScale: readVariable(dots[0], "--dot-flow-down-scale"),
-      lastDownScale: readVariable(dots[dots.length - 1], "--dot-flow-down-scale"),
-      firstLeftScale: readVariable(dots[0], "--dot-flow-left-scale"),
-      lastLeftScale: readVariable(dots[Math.round(size) - 1], "--dot-flow-left-scale"),
-      firstUpScale: readVariable(dots[0], "--dot-flow-up-scale"),
-      lastUpScale: readVariable(dots[dots.length - 1], "--dot-flow-up-scale"),
-    };
-  }));
-  for (const field of fieldFlows) {
-    expect(field.firstAnimation).toBe("studio-dot-field-flow");
-    expect(field.lastRightScale).toBeGreaterThan(field.firstRightScale);
-    expect(field.firstLeftScale).toBeGreaterThan(field.lastLeftScale);
-    expect(field.lastDownScale).toBeGreaterThan(field.firstDownScale);
-    expect(field.firstUpScale).toBeGreaterThan(field.lastUpScale);
+    expect(coverage.backgroundSize).toContain("14px");
+    expect(coverage.vectorField).toBe(true);
+    expect(coverage.highlightAnimation).toContain("studio-dot-highlight-flow");
   }
   const initialMaskPositions = waitingCoverage.map((coverage) => coverage.maskPosition);
-  const readWaitingPulse = () => page.locator(".studio-image-result-card--pending").evaluateAll((cards) => cards.map((card) => {
-    const opacities = Array.from(card.querySelectorAll<HTMLElement>(".studio-dot-ripple-loader span"), (dot) => Number.parseFloat(getComputedStyle(dot).opacity));
-    return { minimum: Math.min(...opacities), maximum: Math.max(...opacities) };
-  }));
-  await expect.poll(async () => Math.min(...(await readWaitingPulse()).map((pulse) => pulse.maximum)), { timeout: 3_000 }).toBeGreaterThan(0.75);
-  await page.waitForTimeout(180);
+  await page.waitForTimeout(240);
   const movedMaskPositions = await page.locator(".studio-image-result-card--pending .studio-dot-ripple-loader").evaluateAll((loaders) => (
     loaders.map((loader) => getComputedStyle(loader).maskPosition)
   ));
@@ -343,4 +316,20 @@ test("image results reveal independently with unified waiting visuals", async ({
     path: testInfo.outputPath(`image-results-two-${testInfo.project.name}.png`),
     fullPage: true,
   });
+
+  await page.getByRole("button", { name: "关闭图片 2" }).click();
+  await expect(page.locator(".studio-image-results.is-count-1")).toBeVisible();
+  const singleResultMetrics = await page.locator(".studio-image-result-card").evaluateAll((cards) => cards.map((card) => {
+    const frame = card.querySelector<HTMLElement>(".studio-media-card__frame");
+    const cardRect = card.getBoundingClientRect();
+    const frameRect = frame?.getBoundingClientRect();
+    return { extraHeight: frameRect ? cardRect.height - frameRect.height : Number.POSITIVE_INFINITY };
+  }));
+  expect(singleResultMetrics).toHaveLength(1);
+  expect(singleResultMetrics[0].extraHeight).toBeLessThanOrEqual(testInfo.project.name.startsWith("mobile") ? 270 : 84);
+
+  await page.locator(".studio-image-result-card__actions .studio-secondary-button").first().click();
+  await expect.poll(() => releases.length).toBe(8);
+  await expect(page.locator(".studio-image-result-card--pending")).toHaveCount(4);
+  await expect(page.locator(".studio-image-result-card__media")).toHaveCount(0);
 });

@@ -1636,6 +1636,7 @@ export function ImagePreviewPanel({
   hasProvider,
   hasFiles,
   onSubmit,
+  onRetry,
   onReloadProviders,
   onUpscale,
   onCreateVideo,
@@ -1657,6 +1658,7 @@ export function ImagePreviewPanel({
   hasProvider: boolean;
   hasFiles: boolean;
   onSubmit: () => void;
+  onRetry: () => void;
   onReloadProviders: () => Promise<void>;
   onUpscale: (item: LibraryItem) => void;
   onCreateVideo: (item: LibraryItem) => void;
@@ -1669,7 +1671,7 @@ export function ImagePreviewPanel({
   if (loading && !resultOutputs.length) {
     return (
       <PreviewState eyebrow="结果" title="正在生成图片" description="完成的图片会立即替换对应位置。" badge="生成中" role="status" live>
-        <ImageResultGrid cacheOwnerId={cacheOwnerId} outputs={[]} pendingCount={pendingCount} activeBatchId={activeBatchId} canRetry={false} loading onSubmit={onSubmit} onUpscale={onUpscale} onCreateVideo={onCreateVideo} onEdit={onEdit} onDismiss={onDismiss} />
+        <ImageResultGrid cacheOwnerId={cacheOwnerId} outputs={[]} pendingCount={pendingCount} activeBatchId={activeBatchId} canRetry={false} loading onRetry={onRetry} onUpscale={onUpscale} onCreateVideo={onCreateVideo} onEdit={onEdit} onDismiss={onDismiss} />
       </PreviewState>
     );
   }
@@ -1695,7 +1697,7 @@ export function ImagePreviewPanel({
           activeBatchId={activeBatchId}
           canRetry={canRetry}
         loading={loading}
-        onSubmit={onSubmit}
+        onRetry={onRetry}
         onUpscale={onUpscale}
           onCreateVideo={onCreateVideo}
           onEdit={onEdit}
@@ -1727,7 +1729,7 @@ function ImageResultGrid({
   activeBatchId,
   canRetry,
   loading,
-  onSubmit,
+  onRetry,
   onUpscale,
   onCreateVideo,
   onEdit,
@@ -1739,7 +1741,7 @@ function ImageResultGrid({
   activeBatchId?: string | null;
   canRetry: boolean;
   loading: boolean;
-  onSubmit: () => void;
+  onRetry: () => void;
   onUpscale: (item: LibraryItem) => void;
   onCreateVideo: (item: LibraryItem) => void;
   onEdit: (item: LibraryItem) => void;
@@ -1767,7 +1769,7 @@ function ImageResultGrid({
             </button>
           </div>
           <div className="studio-image-result-card__actions">
-            <button type="button" className="studio-secondary-button" onClick={onSubmit} disabled={!canRetry || loading}>
+            <button type="button" className="studio-secondary-button" onClick={onRetry} disabled={!canRetry || loading}>
               <RefreshCw className="size-4" aria-hidden="true" />
               重做
             </button>
