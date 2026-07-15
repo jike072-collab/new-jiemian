@@ -123,10 +123,6 @@ test("image results reveal independently with unified waiting visuals", async ({
   expect(precheckPayloads).toHaveLength(4);
   expect(precheckPayloads.every((payload) => payload.membershipEntitlementAmount === 2)).toBe(true);
   await expect(page.locator(".studio-image-result-card--pending")).toHaveCount(4);
-  await expect(page.locator(".studio-image-result-card__pending-frame")).toHaveCount(4);
-  expect(await page.locator(".studio-image-result-card__pending-frame").evaluateAll((frames) => (
-    frames.every((frame) => getComputedStyle(frame).aspectRatio === "3 / 2")
-  ))).toBe(true);
   await expect(page.locator(".studio-dot-ripple-loader")).toHaveCount(4);
   await expect(page.locator(".studio-image-result-card--pending .studio-dot-ripple-loader span")).toHaveCount(0);
   await expect(page.locator(".image-generation-progress")).toHaveCount(1);
@@ -153,9 +149,9 @@ test("image results reveal independently with unified waiting visuals", async ({
     expect(coverage.width).toBeGreaterThanOrEqual(0.85);
     expect(coverage.height).toBeGreaterThanOrEqual(0.85);
     expect(coverage.maskImage).not.toBe("none");
-    expect(coverage.maskSize).toContain("58%");
+    expect(coverage.maskSize).toContain("46%");
     expect(coverage.animationName).toContain("studio-dot-window");
-    expect(coverage.backgroundSize).toContain("13px");
+    expect(coverage.backgroundSize).toContain("14px");
     expect(coverage.vectorField).toBe(true);
     expect(coverage.highlightAnimation).toContain("studio-dot-highlight-flow");
   }
@@ -274,39 +270,6 @@ test("image results reveal independently with unified waiting visuals", async ({
     const backgroundBeforeHover = await resultActions.nth(3).evaluate((button) => getComputedStyle(button).backgroundColor);
     await resultActions.nth(3).hover();
     await expect.poll(() => resultActions.nth(3).evaluate((button) => getComputedStyle(button).backgroundColor)).not.toBe(backgroundBeforeHover);
-    const nav = page.locator(".shell-nav");
-    const controls = page.locator(".shell-panel--controls");
-    for (const panel of [nav, controls]) {
-      await panel.hover({ position: { x: 6, y: 80 } });
-      await expect.poll(() => panel.evaluate((element) => {
-        const style = getComputedStyle(element);
-        return element.dataset.panelSpotlightEdge === "left"
-          && Number.parseFloat(getComputedStyle(element, "::after").opacity) > 0
-          && /px$/.test(style.getPropertyValue("--panel-spotlight-x").trim())
-          && /px$/.test(style.getPropertyValue("--panel-spotlight-y").trim());
-      })).toBe(true);
-      const box = await panel.boundingBox();
-      if (!box) throw new Error("Panel bounding box is unavailable");
-      await panel.hover({ position: { x: Math.round(box.width / 2), y: Math.round(box.height / 2) } });
-      await expect(panel).not.toHaveAttribute("data-panel-spotlight");
-    }
-
-    const controlTargets = [
-      page.locator(".studio-custom-select").first(),
-      page.locator(".studio-template-card").first(),
-      page.locator(".studio-upload").first(),
-      page.locator(".studio-textarea-wrap").first(),
-    ];
-    for (const target of controlTargets) {
-      await target.scrollIntoViewIfNeeded();
-      const targetBox = await target.boundingBox();
-      if (!targetBox) throw new Error("Spotlight target bounding box is unavailable");
-      await target.hover({ position: { x: 4, y: Math.max(4, Math.round(targetBox.height / 2)) } });
-      await expect.poll(() => target.evaluate((element) => (
-        Boolean(element.dataset.panelSpotlightEdge)
-          && Number.parseFloat(getComputedStyle(element, "::after").opacity) > 0
-      ))).toBe(true);
-    }
   }
 
   const cardMetrics = await page.locator(".studio-image-result-card").evaluateAll((cards) => cards.map((card) => {

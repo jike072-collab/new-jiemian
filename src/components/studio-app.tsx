@@ -3052,7 +3052,6 @@ export function StudioApp() {
                 outputs={scopedImageOutputs}
                 loading={scopedImageLoading}
                 pendingCount={scopedImagePendingCount}
-                pendingRatio={activeImageWorkspace.ratio}
                 activeBatchId={imageResultBatchId}
                 canSubmit={imageWorkspaceCanSubmit}
                 submitError={scopedImageSubmitError}

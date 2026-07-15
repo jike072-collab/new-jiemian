@@ -363,74 +363,6 @@
     box-shadow: inset -1px 0 0 rgba(255, 255, 255, 0.025);
   }
 
-  .shell-nav,
-  .shell-panel--controls,
-  .shell-nav-item,
-  .studio-custom-select,
-  .studio-template-track,
-  .studio-template-card,
-  .studio-upload,
-  .studio-ratio__item,
-  .studio-textarea-wrap,
-  .studio-prompt-action {
-    position: relative;
-    isolation: isolate;
-    --panel-spotlight-radius: var(--radius-control);
-  }
-
-  .shell-nav,
-  .shell-panel--controls,
-  .studio-template-track,
-  .studio-template-card {
-    --panel-spotlight-radius: var(--radius-card);
-  }
-
-  .shell-nav::after,
-  .shell-panel--controls::after,
-  .shell-nav-item::after,
-  .studio-custom-select::after,
-  .studio-template-track::after,
-  .studio-template-card::after,
-  .studio-upload::after,
-  .studio-ratio__item::after,
-  .studio-textarea-wrap::after,
-  .studio-prompt-action::after {
-    position: absolute;
-    z-index: 4;
-    inset: -1px;
-    border: 1px solid transparent;
-    border-radius: inherit;
-    border-image: conic-gradient(
-      from calc(var(--panel-spotlight-angle, 0deg) - 40deg),
-      transparent 0deg,
-      transparent 24deg,
-      color-mix(in srgb, var(--primary) 38%, transparent) 36deg,
-      color-mix(in srgb, var(--primary) 94%, #fff) 48deg,
-      color-mix(in srgb, var(--primary) 48%, transparent) 62deg,
-      transparent 78deg,
-      transparent 360deg
-    ) 1;
-    clip-path: inset(0 round var(--panel-spotlight-radius));
-    content: "";
-    opacity: 0;
-    pointer-events: none;
-    transition: opacity var(--motion-fast) var(--ease-enter), filter var(--motion-fast) var(--ease-enter);
-  }
-
-  .shell-nav[data-panel-spotlight]::after,
-  .shell-panel--controls[data-panel-spotlight]::after,
-  .shell-nav-item[data-panel-spotlight]::after,
-  .studio-custom-select[data-panel-spotlight]::after,
-  .studio-template-track[data-panel-spotlight]::after,
-  .studio-template-card[data-panel-spotlight]::after,
-  .studio-upload[data-panel-spotlight]::after,
-  .studio-ratio__item[data-panel-spotlight]::after,
-  .studio-textarea-wrap[data-panel-spotlight]::after,
-  .studio-prompt-action[data-panel-spotlight]::after {
-    opacity: 0.96;
-    filter: drop-shadow(0 0 5px color-mix(in srgb, var(--primary) 48%, transparent));
-  }
-
   .shell-root--account-center .shell-grid {
     grid-template-columns: var(--sidebar-width) minmax(0, 1fr);
   }
@@ -3728,7 +3660,6 @@
 
   .studio-image-result-card {
     display: grid;
-    position: relative;
     min-width: 0;
     gap: 10px;
     border: 1px solid color-mix(in srgb, var(--border-subtle) 84%, transparent);
@@ -3879,30 +3810,16 @@
   .studio-image-result-card--pending {
     position: relative;
     order: 1;
-    min-height: 0;
+    min-height: clamp(340px, 44vh, 510px);
     place-items: center;
+    align-content: center;
     color: var(--muted);
     text-align: center;
   }
 
-  .studio-image-result-card__pending-frame {
-    position: relative;
-    display: grid;
-    width: auto;
-    height: min(68vh, 700px);
-    max-width: 100%;
-    max-height: 100%;
-    justify-self: center;
-    place-items: center;
-    overflow: hidden;
-    aspect-ratio: var(--pending-image-aspect, 1 / 1);
-    border-radius: calc(var(--radius-card) - 2px);
-    background: color-mix(in srgb, var(--panel-2) 72%, var(--background));
-  }
-
-  .studio-image-result-card__pending-frame .studio-dot-ripple-loader.is-fill {
+  .studio-image-result-card--pending .studio-dot-ripple-loader.is-fill {
     position: absolute;
-    inset: 0;
+    inset: 12px;
     z-index: 0;
   }
 
@@ -3910,25 +3827,18 @@
     order: 2;
   }
 
-  .studio-image-result-card__pending-copy {
-    position: absolute;
+  .studio-image-result-card--pending p {
+    position: relative;
     z-index: 1;
-    inset: 0;
-    display: grid;
-    align-content: center;
-    justify-items: center;
-    gap: 8px;
-    pointer-events: none;
-  }
-
-  .studio-image-result-card__pending-copy p {
     margin: 0;
     color: var(--foreground);
     font-weight: 700;
     text-shadow: 0 2px 10px var(--background);
   }
 
-  .studio-image-result-card__pending-copy small {
+  .studio-image-result-card--pending small {
+    position: relative;
+    z-index: 1;
     color: var(--muted);
     font-size: 12px;
     text-shadow: 0 2px 10px var(--background);
@@ -3996,15 +3906,11 @@
   .studio-dot-ripple-loader.is-vector-field {
     display: block;
     contain: paint;
-    background-image: radial-gradient(circle, color-mix(in srgb, var(--primary) 68%, transparent) 0 1.1px, transparent 1.55px);
-    background-size: 13px 13px;
-    mask-image: radial-gradient(ellipse at center, #000 0 30%, rgba(0, 0, 0, 0.74) 52%, transparent 76%);
-    mask-repeat: no-repeat;
-    mask-size: 58% 70%;
+    background-image: radial-gradient(circle, color-mix(in srgb, var(--primary) 88%, var(--foreground)) 0 1.35px, transparent 1.7px);
+    background-size: 14px 14px;
+    mask-size: 46% 52%;
     mask-position: 86% 14%;
-    -webkit-mask-image: radial-gradient(ellipse at center, #000 0 30%, rgba(0, 0, 0, 0.74) 52%, transparent 76%);
-    -webkit-mask-repeat: no-repeat;
-    -webkit-mask-size: 58% 70%;
+    -webkit-mask-size: 46% 52%;
     -webkit-mask-position: 86% 14%;
     animation: studio-dot-window 6.2s cubic-bezier(0.44, 0.02, 0.2, 1) infinite;
     will-change: mask-position, -webkit-mask-position;
@@ -4013,8 +3919,8 @@
   .studio-dot-ripple-loader.is-vector-field::after {
     position: absolute;
     inset: 0;
-    background-image: radial-gradient(circle, color-mix(in srgb, var(--primary) 94%, var(--foreground)) 0 2.55px, transparent 3px);
-    background-size: 13px 13px;
+    background-image: radial-gradient(circle, color-mix(in srgb, var(--primary) 94%, var(--foreground)) 0 2.45px, transparent 2.95px);
+    background-size: 14px 14px;
     content: "";
     mask-image: linear-gradient(to bottom left, transparent 2%, rgba(0, 0, 0, 0.18) 42%, #000 100%);
     -webkit-mask-image: linear-gradient(to bottom left, transparent 2%, rgba(0, 0, 0, 0.18) 42%, #000 100%);
@@ -12392,10 +12298,6 @@
   .studio-image-result-card .studio-media-card.is-compact .studio-media-card__frame.is-large {
     height: min(56dvh, 540px);
     min-height: 280px;
-  }
-
-  .studio-image-result-card__pending-frame {
-    height: min(56dvh, 540px);
   }
 
   .studio-image-results,
