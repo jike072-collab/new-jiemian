@@ -372,6 +372,7 @@ async function uploadGetTokenVeoReferenceImage(provider: ProviderConfig, file: U
 
 async function callGetTokenVeoProvider(provider: ProviderConfig, input: {
   mode: "text-to-video" | "image-to-video";
+  referenceMode?: "single" | "first-last";
   prompt: string;
   ratio: string;
   duration: number;
@@ -389,7 +390,11 @@ async function callGetTokenVeoProvider(provider: ProviderConfig, input: {
   const imageUrls = input.mode === "image-to-video"
     ? await Promise.all(input.files.map((file) => uploadGetTokenVeoReferenceImage(provider, file)))
     : [];
-  const response = await fetchProviderWithNetworkRetry(getTokenVeoSubmitEndpoint(provider, input.mode), {
+  const isFirstLast = input.referenceMode === "first-last";
+  const submitEndpoint = isFirstLast
+    ? `${getTokenBananaBaseUrl(provider)}/${getTokenVeoModelPath(provider)}/start-end-to-video`
+    : getTokenVeoSubmitEndpoint(provider, input.mode);
+  const response = await fetchProviderWithNetworkRetry(submitEndpoint, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
@@ -401,7 +406,9 @@ async function callGetTokenVeoProvider(provider: ProviderConfig, input: {
       duration: String(input.duration),
       resolution: input.resolution,
       clientTaskId: randomUUID(),
-      ...(imageUrls.length ? { imageUrls } : {}),
+      ...(isFirstLast
+        ? { firstFrameUrl: imageUrls[0], lastFrameUrl: imageUrls[1] }
+        : imageUrls.length ? { imageUrls } : {}),
     }),
     signal: AbortSignal.timeout(180000),
   });

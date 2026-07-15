@@ -584,7 +584,7 @@ test("GetToken Veo Pro uploads one reference before image-to-video submission", 
   }
 });
 
-test("GetToken Veo Pro preserves first and last frame order in image-to-video payload", async () => {
+test("GetToken Veo Pro submits ordered first and last frames to the dedicated endpoint", async () => {
   const videoProvider = {
     ...provider,
     id: "video-gettoken-veo::model::veo-3.1-pro",
@@ -606,6 +606,7 @@ test("GetToken Veo Pro preserves first and last frame order in image-to-video pa
   try {
     await providerCallInternalsForTests.callGetTokenVeoProvider(videoProvider, {
       mode: "image-to-video",
+      referenceMode: "first-last",
       prompt: "The shot moves naturally from the first composition to the final composition.",
       ratio: "16:9",
       duration: 8,
@@ -617,12 +618,11 @@ test("GetToken Veo Pro preserves first and last frame order in image-to-video pa
     });
     assert.equal(requests[0]?.url, "https://nb.gettoken.cn/openapi/v1/media/upload/binary");
     assert.equal(requests[1]?.url, "https://nb.gettoken.cn/openapi/v1/media/upload/binary");
-    assert.equal(requests[2]?.url, "https://nb.gettoken.cn/openapi/v1/veo3.1-pro/image-to-video");
+    assert.equal(requests[2]?.url, "https://nb.gettoken.cn/openapi/v1/veo3.1-pro/start-end-to-video");
     const submitBody = JSON.parse(String(requests[2]?.body || "{}"));
-    assert.deepEqual(submitBody.imageUrls, [
-      "https://cdn.example.test/first.png",
-      "https://cdn.example.test/last.png",
-    ]);
+    assert.equal(submitBody.firstFrameUrl, "https://cdn.example.test/first.png");
+    assert.equal(submitBody.lastFrameUrl, "https://cdn.example.test/last.png");
+    assert.equal("imageUrls" in submitBody, false);
   } finally {
     globalThis.fetch = originalFetch;
   }
