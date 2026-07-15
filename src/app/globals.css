@@ -4035,6 +4035,26 @@
     color: var(--foreground);
   }
 
+  .studio-video-result-actions {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .studio-generation-pending {
+    position: relative;
+    overflow: hidden;
+  }
+
+  .studio-generation-pending > .studio-dot-ripple-loader.is-fill {
+    position: absolute;
+    inset: 6px;
+    z-index: 0;
+  }
+
+  .studio-generation-pending > :not(.studio-dot-ripple-loader) {
+    position: relative;
+    z-index: 1;
+  }
+
   .studio-job-status-card {
     display: grid;
     place-items: center;
@@ -4042,7 +4062,7 @@
     min-height: min(52vh, 520px);
     border: 1px solid color-mix(in srgb, var(--border-subtle) 78%, transparent);
     border-radius: var(--radius-card);
-    background: color-mix(in srgb, var(--background) 38%, transparent);
+    background: color-mix(in srgb, var(--panel-2) 72%, transparent);
     padding: 28px;
     text-align: center;
   }
@@ -4075,12 +4095,6 @@
     align-content: center;
     color: var(--muted);
     text-align: center;
-  }
-
-  .studio-image-result-card--pending .studio-dot-ripple-loader.is-fill {
-    position: absolute;
-    inset: 6px;
-    z-index: 0;
   }
 
   .studio-image-result-card.is-historic {
@@ -5770,36 +5784,6 @@
   .studio-error-alert__message {
     color: var(--primary);
     font-weight: 700;
-  }
-
-  .studio-error-alert__action {
-    color: var(--muted-strong);
-  }
-
-  .studio-error-alert__meta {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 6px;
-  }
-
-  .studio-error-alert__meta div {
-    display: inline-flex;
-    gap: 4px;
-    min-width: 0;
-    border: 1px solid var(--border-subtle);
-    border-radius: 999px;
-    padding: 3px 8px;
-    background: var(--surface-subtle);
-  }
-
-  .studio-error-alert__meta dt {
-    color: var(--muted);
-  }
-
-  .studio-error-alert__meta dd {
-    max-width: min(220px, 68vw);
-    overflow-wrap: anywhere;
-    color: var(--text);
   }
 
   .studio-status {
@@ -9102,6 +9086,16 @@
     text-align: center;
   }
 
+  .studio-error-preview {
+    min-height: 180px;
+    gap: var(--space-stack);
+  }
+
+  .studio-error-preview > strong {
+    color: var(--foreground);
+    font-size: 18px;
+  }
+
   .studio-processing-state {
     position: relative;
     display: grid;
@@ -9112,25 +9106,9 @@
     overflow: hidden;
     border: 1px solid var(--border-subtle);
     border-radius: var(--radius-card);
-    background:
-      radial-gradient(circle at 50% 38%, color-mix(in srgb, var(--primary) 18%, transparent), transparent 26%),
-      linear-gradient(145deg, color-mix(in srgb, var(--panel-2) 90%, transparent), color-mix(in srgb, var(--background) 72%, transparent));
+    background: color-mix(in srgb, var(--panel-2) 72%, transparent);
     color: var(--muted-strong);
     text-align: center;
-  }
-
-  .studio-processing-state::before,
-  .studio-processing-state::after {
-    position: absolute;
-    inset: 20%;
-    border: 1px solid color-mix(in srgb, var(--primary) 18%, transparent);
-    border-radius: 999px;
-    content: "";
-  }
-
-  .studio-processing-state::after {
-    inset: 30%;
-    border-color: color-mix(in srgb, #fff 8%, transparent);
   }
 
   .studio-processing-state p {
@@ -12282,10 +12260,11 @@
     bottom: 26px;
     z-index: var(--z-modal);
     display: grid;
-    grid-template-columns: 38px minmax(0, 1fr);
+    grid-template-columns: 38px minmax(0, max-content);
     gap: 12px;
-    width: min(440px, calc(100vw - 48px));
-    min-height: 82px;
+    width: fit-content;
+    max-width: min(440px, calc(100vw - 48px));
+    min-height: 64px;
     align-items: center;
     border: 1px solid color-mix(in srgb, var(--primary) 46%, rgba(255, 255, 255, 0.08));
     border-radius: 18px;
@@ -12293,7 +12272,7 @@
       linear-gradient(135deg, rgba(255, 43, 136, 0.16), rgba(164, 82, 255, 0.08) 42%, rgba(16, 16, 20, 0.96)),
       rgba(16, 16, 20, 0.96);
     color: var(--foreground);
-    padding: 16px 18px;
+    padding: 12px 14px;
     box-shadow: 0 22px 64px rgba(0, 0, 0, 0.42), 0 0 0 1px rgba(255, 255, 255, 0.03) inset;
     animation: ui-toast-in var(--motion-layout) var(--ease-enter) both;
     will-change: transform, opacity;
@@ -12312,8 +12291,8 @@
 
   .studio-toast__body {
     display: grid;
-    gap: 4px;
     min-width: 0;
+    max-width: 348px;
   }
 
   .studio-toast__body strong {
@@ -12321,12 +12300,7 @@
     font-size: 15px;
     font-weight: 700;
     line-height: 1.35;
-  }
-
-  .studio-toast__body small {
-    color: rgba(255, 255, 255, 0.62);
-    font-size: 12.5px;
-    line-height: 1.45;
+    overflow-wrap: anywhere;
   }
 
   .image-generation-progress {

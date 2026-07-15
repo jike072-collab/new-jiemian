@@ -69,6 +69,7 @@ const sources = {
   studioApp: read("src/components/studio-app.tsx"),
   shared: read("src/components/studio/shared.tsx"),
   resultPreview: read("src/components/studio/result-preview.tsx"),
+  mediaCard: read("src/components/studio/media-card.tsx"),
   imageGenerator: read("src/components/studio/image-generator.tsx"),
   videoGenerator: read("src/components/studio/video-generator.tsx"),
   upscaleForm: read("src/components/studio/upscale-form.tsx"),
@@ -91,11 +92,20 @@ for (const [name, source] of Object.entries({
 assert(sources.clientApi.includes("readonly diagnostic?: ErrorDiagnostic"), "ApiError must preserve diagnostic payloads");
 assert(sources.studioApp.includes("diagnosticFromError"), "StudioApp must extract diagnostics from ApiError");
 assert(sources.studioApp.includes("submitDiagnostic"), "StudioApp must store submit diagnostics");
+assert(sources.studioApp.includes('setMessage("生成失败")'), "generation failure toasts must use a generic customer-facing message");
 assert(sources.shared.includes("StudioErrorAlert"), "shared UI must expose StudioErrorAlert");
-assert(sources.resultPreview.includes("StudioErrorAlert"), "preview failure state must render diagnostics");
-assert(sources.imageGenerator.includes("diagnostic={state.submitDiagnostic}"), "image form must render diagnostics");
-assert(sources.videoGenerator.includes("diagnostic={state.submitDiagnostic}"), "video form must render diagnostics");
-assert(sources.upscaleForm.includes("diagnostic={state.submitDiagnostic}"), "upscale forms must render diagnostics");
+assert(sources.shared.includes(">生成失败</p>"), "customer-facing alerts must use a generic failure message");
+assert(!sources.shared.includes("diagnostic?.message || message"), "customer-facing alerts must not expose provider diagnostics");
+assert(!sources.shared.includes("<dt>Request ID</dt>"), "customer-facing alerts must not expose request ids");
+assert(!sources.resultPreview.includes("<StudioErrorAlert"), "preview failure state must not render diagnostics");
+assert(sources.mediaCard.includes("<p>生成失败</p>"), "failed media cards must use a generic customer-facing message");
+assert(!sources.mediaCard.includes("<p>{item.error}</p>"), "failed media cards must not expose stored provider errors");
+assert(sources.imageGenerator.includes("diagnostic={state.submitDiagnostic}"), "image form must forward diagnostic state to the generic alert");
+assert(sources.videoGenerator.includes("diagnostic={state.submitDiagnostic}"), "video form must forward diagnostic state to the generic alert");
+assert(sources.upscaleForm.includes("diagnostic={state.submitDiagnostic}"), "upscale forms must forward diagnostic state to the generic alert");
+assert(sources.resultPreview.includes("<DotRippleLoader fill expanded />"), "generation waiting states must use the expanded image loader");
+assert(sources.resultPreview.includes("studio-video-result-actions"), "video result actions must use the shared image action styling");
+assert(!sources.resultPreview.includes("视频高清处理"), "video result actions must use the same concise labels as image results");
 
 const forbiddenRealCalls = [
   ["/v1", "/images", "/generations"].join(""),
@@ -118,7 +128,7 @@ console.log(JSON.stringify({
   ok: true,
   diagnosticCodes: 43,
   routeContracts: 6,
-  frontendDiagnosticSurfaces: 4,
+  frontendDiagnosticSurfaces: 5,
   generationEndpointsCalled: false,
   newApiCalled: false,
 }, null, 2));

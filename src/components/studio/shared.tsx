@@ -37,35 +37,9 @@ export function StudioErrorAlert({
   diagnostic?: StudioErrorDiagnostic | null;
 }) {
   if (!message && !diagnostic) return null;
-  const code = diagnostic?.code;
-  const requestId = diagnostic?.requestId;
-  const retryText = diagnostic ? (diagnostic.retryable ? "可重试" : "需调整后重试") : "";
   return (
     <div className="studio-error-alert" role="alert">
-      <p className="studio-error-alert__message">{diagnostic?.message || message}</p>
-      {diagnostic?.action ? <p className="studio-error-alert__action">{diagnostic.action}</p> : null}
-      {code || requestId || retryText ? (
-        <dl className="studio-error-alert__meta" aria-label="错误诊断信息">
-          {code ? (
-            <div>
-              <dt>Code</dt>
-              <dd>{code}</dd>
-            </div>
-          ) : null}
-          {requestId ? (
-            <div>
-              <dt>Request ID</dt>
-              <dd>{requestId}</dd>
-            </div>
-          ) : null}
-          {retryText ? (
-            <div>
-              <dt>Retry</dt>
-              <dd>{retryText}</dd>
-            </div>
-          ) : null}
-        </dl>
-      ) : null}
+      <p className="studio-error-alert__message">生成失败</p>
     </div>
   );
 }
@@ -333,6 +307,7 @@ export function PreviewState({
   action,
   role,
   live,
+  hideHeader,
   children,
 }: {
   eyebrow: string;
@@ -342,11 +317,12 @@ export function PreviewState({
   action?: React.ReactNode;
   role?: "status" | "alert";
   live?: boolean;
+  hideHeader?: boolean;
   children: React.ReactNode;
 }) {
   return (
     <div className="studio-preview" role={role} aria-live={live ? "polite" : undefined}>
-      <div className="studio-preview__top">
+      {!hideHeader ? <div className="studio-preview__top">
         <div>
           <h3>{title}</h3>
           {description ? <p>{description}</p> : null}
@@ -357,7 +333,7 @@ export function PreviewState({
             {action}
           </div>
         ) : null}
-      </div>
+      </div> : null}
       <div className="studio-preview__content">{children}</div>
     </div>
   );

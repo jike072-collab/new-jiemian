@@ -1961,13 +1961,13 @@ export function StudioApp() {
           submitError: text,
           submitDiagnostic: diagnosticFromError(error),
         }));
-        setMessage(text);
+        setMessage("生成失败");
       }
       updateImageGenerationProgress(progressId, (current) => ({
         ...current,
         status: "failed",
         completedAt: Date.now(),
-        message: text,
+        message: "生成失败",
       }));
       await refreshAccountAfterGeneration().catch(() => undefined);
     } finally {
@@ -2405,7 +2405,7 @@ export function StudioApp() {
     } catch (error) {
       const text = error instanceof Error ? error.message : "图片高清增强处理失败。";
       updateImageUpscaleWorkspace({ submitError: text, submitDiagnostic: diagnosticFromError(error) });
-      setMessage(text);
+      setMessage("生成失败");
     } finally {
       imageUpscaleInFlightRef.current = false;
       updateImageUpscaleWorkspace({ loading: false });
@@ -2572,7 +2572,7 @@ export function StudioApp() {
     } catch (error) {
       const text = error instanceof Error ? error.message : "视频高清增强处理失败。";
       updateVideoUpscaleWorkspace({ submitError: text, submitDiagnostic: diagnosticFromError(error) });
-      setMessage(text);
+      setMessage("生成失败");
     } finally {
       videoUpscaleInFlightRef.current = false;
       updateVideoUpscaleWorkspace({ loading: false });
@@ -2761,7 +2761,7 @@ export function StudioApp() {
       } catch (error) {
         const text = error instanceof Error ? error.message : "视频高清增强任务查询失败。";
         updateVideoUpscaleWorkspace({ submitError: text, submitDiagnostic: diagnosticFromError(error) });
-        setMessage(text);
+        setMessage("生成失败");
       }
     }, 5000);
     return () => window.clearInterval(timer);
@@ -2802,7 +2802,7 @@ export function StudioApp() {
       } catch (error) {
         const text = error instanceof Error ? error.message : "视频任务查询失败。";
         updateVideoWorkspace({ submitError: text, submitDiagnostic: diagnosticFromError(error) });
-        setMessage(text);
+        setMessage("生成失败");
       }
     }, 5000);
     return () => window.clearInterval(timer);
@@ -2906,7 +2906,7 @@ export function StudioApp() {
     } catch (error) {
       const text = error instanceof Error ? error.message : "额度预检失败。";
       updateVideoWorkspace({ submitError: text, submitDiagnostic: diagnosticFromError(error) });
-      setMessage(text);
+      setMessage("生成失败");
       updateVideoInFlightState(videoInFlightCountRef.current - 1);
       updateVideoWorkspace({ loading: false });
       return;
@@ -2941,7 +2941,7 @@ export function StudioApp() {
     } catch (error) {
       const text = error instanceof Error ? error.message : "视频生成失败。";
       updateVideoWorkspace({ submitError: text, submitDiagnostic: diagnosticFromError(error) });
-      setMessage(text);
+      setMessage("生成失败");
       updateVideoInFlightState(videoInFlightCountRef.current - 1);
       await refreshAccountAfterGeneration().catch(() => undefined);
     } finally {

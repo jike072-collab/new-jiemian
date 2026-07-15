@@ -10,7 +10,7 @@ import { ResultReveal } from "@/components/motion";
 import { upscaleTargetLabel, videoUpscaleScaleLabel } from "@/components/studio/constants";
 import { DotRippleLoader } from "@/components/studio/dot-ripple-loader";
 import { MediaCard, libraryModelName, libraryStatusBadgeLabel } from "@/components/studio/media-card";
-import { PreviewState, StudioErrorAlert } from "@/components/studio/shared";
+import { PreviewState } from "@/components/studio/shared";
 import type { BusinessToolId, ImageGenerationProgressState, ImageUpscaleWorkspaceState, OutputItemState, OutputState, StudioErrorDiagnostic, VideoUpscaleWorkspaceState } from "@/components/studio/types";
 import type { LibraryItem } from "@/lib/server/types";
 import { cn } from "@/lib/utils";
@@ -1200,8 +1200,8 @@ function ProcessingPreview({
 
   return (
     <PreviewState eyebrow="处理中" title={label} description={detail} role="status" live>
-      <div className="studio-processing-state">
-        <DotRippleLoader />
+      <div className="studio-processing-state studio-generation-pending">
+        <DotRippleLoader fill expanded />
         <div className="studio-processing-state__copy">
           <p>{label}</p>
           <small>已等待 {elapsedText} · 进度 {progressValue}%</small>
@@ -1218,19 +1218,15 @@ function ErrorPreview({
   canRetry,
   onRetry,
   onReloadProviders,
-  message,
-  diagnostic,
 }: {
   canRetry: boolean;
   onRetry: () => void;
   onReloadProviders?: () => Promise<void>;
-  message?: string;
-  diagnostic?: StudioErrorDiagnostic | null;
 }) {
   return (
-    <PreviewState eyebrow="失败" title="生成失败" description="生成失败，请检查设置后重试" role="alert">
-      <div className="studio-preview__empty">
-        <StudioErrorAlert message={message} diagnostic={diagnostic} />
+    <PreviewState eyebrow="失败" title="生成失败" role="alert" hideHeader>
+      <div className="studio-preview__empty studio-error-preview">
+        <strong>生成失败</strong>
         <div className="studio-actions">
           {onReloadProviders ? (
             <button type="button" className="studio-secondary-button" onClick={() => void onReloadProviders()}>
@@ -1290,8 +1286,8 @@ function JobStatusPreview({
 }) {
   return (
     <PreviewState eyebrow="结果" title={title} description={detail} badge={badge} role="status" live>
-      <div className="studio-job-status-card" aria-live="polite">
-        <DotRippleLoader />
+      <div className="studio-job-status-card studio-generation-pending" aria-live="polite">
+        <DotRippleLoader fill expanded />
         <div className="studio-job-status-card__copy">
           <strong>{title}</strong>
           <p>{detail}</p>
@@ -1467,7 +1463,7 @@ export function ImageUpscalePreviewPanel({
   }
 
   if (state.submitError) {
-    return <ErrorPreview canRetry={canSubmit} onRetry={onSubmit} message={state.submitError} diagnostic={state.submitDiagnostic} />;
+    return <ErrorPreview canRetry={canSubmit} onRetry={onSubmit} />;
   }
 
   if (!state.checked || state.statusLoading || (!state.availability?.ready && !state.statusError)) {
@@ -1489,43 +1485,45 @@ export function ImageUpscalePreviewPanel({
     const resultScale = typeof params.scale === "number" ? upscaleTargetLabel(String(params.scale)) : upscaleTargetLabel(state.scale);
     return (
       <PreviewState eyebrow="结果" title="高清结果" description={`${upscaleTargetLabel(state.scale)} 高清处理完成。`} badge={libraryStatusBadgeLabel(output.item.status)} role="status" live>
-        {source ? (
-          <BeforeAfterImageCompare
-            beforeSrc={source.previewUrl}
-            afterSrc={output.item.output.url}
-            beforeLabel="高清前"
-            afterLabel="高清后"
-            beforeAlt={source.file.name}
-            afterAlt={output.item.title}
-          />
-        ) : (
-          <figure className="studio-upscale-preview__figure">
-            <span className="studio-upscale-preview__label">高清结果</span>
-            <img src={output.item.output.url} alt={output.item.title} />
-          </figure>
-        )}
-        <dl className="studio-upscale-stats" aria-label="图片高清结果信息">
-          <div>
-            <dt>原图尺寸</dt>
-            <dd>{sourceSize}</dd>
+        <ResultReveal className="studio-result-reveal">
+          {source ? (
+            <BeforeAfterImageCompare
+              beforeSrc={source.previewUrl}
+              afterSrc={output.item.output.url}
+              beforeLabel="高清前"
+              afterLabel="高清后"
+              beforeAlt={source.file.name}
+              afterAlt={output.item.title}
+            />
+          ) : (
+            <figure className="studio-upscale-preview__figure">
+              <span className="studio-upscale-preview__label">高清结果</span>
+              <img src={output.item.output.url} alt={output.item.title} />
+            </figure>
+          )}
+          <dl className="studio-upscale-stats" aria-label="图片高清结果信息">
+            <div>
+              <dt>原图尺寸</dt>
+              <dd>{sourceSize}</dd>
+            </div>
+            <div>
+              <dt>输出尺寸</dt>
+              <dd>{outputSize}</dd>
+            </div>
+            <div>
+              <dt>当前倍数</dt>
+              <dd>{resultScale}</dd>
+            </div>
+          </dl>
+          <div className="studio-actions">
+            <a className="studio-secondary-button" href={output.item.output.url} download>
+              下载结果图片
+            </a>
+            <button type="button" className="studio-secondary-button" onClick={onSubmit} disabled={!canSubmit}>
+              再次增强
+            </button>
           </div>
-          <div>
-            <dt>输出尺寸</dt>
-            <dd>{outputSize}</dd>
-          </div>
-          <div>
-            <dt>当前倍数</dt>
-            <dd>{resultScale}</dd>
-          </div>
-        </dl>
-        <div className="studio-actions">
-          <a className="studio-secondary-button" href={output.item.output.url} download>
-            下载结果图片
-          </a>
-          <button type="button" className="studio-secondary-button" onClick={onSubmit} disabled={!canSubmit}>
-            再次增强
-          </button>
-        </div>
+        </ResultReveal>
       </PreviewState>
     );
   }
@@ -1551,7 +1549,7 @@ export function VideoUpscalePreviewPanel({
   }
 
   if (state.submitError) {
-    return <ErrorPreview canRetry={canSubmit} onRetry={onSubmit} message={state.submitError} diagnostic={state.submitDiagnostic} />;
+    return <ErrorPreview canRetry={canSubmit} onRetry={onSubmit} />;
   }
 
   if (!state.checked || state.statusLoading || (!state.availability?.ready && !state.statusError)) {
@@ -1573,46 +1571,48 @@ export function VideoUpscalePreviewPanel({
     const resultScale = videoUpscaleScaleLabel(typeof params.scale === "number" ? String(params.scale) : state.scale);
     return (
       <PreviewState eyebrow="结果" title="高清结果" description={`${videoUpscaleScaleLabel(state.scale)} 高清处理完成。`} badge={libraryStatusBadgeLabel(output.item.status)} role="status" live>
-        {source ? (
-          <BeforeAfterImageCompare
-            beforeSrc={source.previewUrl}
-            afterSrc={output.item.output.url}
-            beforeLabel="高清前"
-            afterLabel="高清后"
-            beforeAlt={source.file.name}
-            afterAlt={output.item.title}
-            mediaType="video"
-            autoPlayVideo
-            videoPreload="auto"
-          />
-        ) : (
-          <figure className="studio-upscale-preview__figure">
-            <span className="studio-upscale-preview__label">高清结果</span>
-            <video src={output.item.output.url} controls />
-          </figure>
-        )}
-        <dl className="studio-upscale-stats" aria-label="视频高清结果信息">
-          <div>
-            <dt>原视频分辨率</dt>
-            <dd>{sourceSize}</dd>
+        <ResultReveal className="studio-result-reveal">
+          {source ? (
+            <BeforeAfterImageCompare
+              beforeSrc={source.previewUrl}
+              afterSrc={output.item.output.url}
+              beforeLabel="高清前"
+              afterLabel="高清后"
+              beforeAlt={source.file.name}
+              afterAlt={output.item.title}
+              mediaType="video"
+              autoPlayVideo
+              videoPreload="auto"
+            />
+          ) : (
+            <figure className="studio-upscale-preview__figure">
+              <span className="studio-upscale-preview__label">高清结果</span>
+              <video src={output.item.output.url} controls />
+            </figure>
+          )}
+          <dl className="studio-upscale-stats" aria-label="视频高清结果信息">
+            <div>
+              <dt>原视频分辨率</dt>
+              <dd>{sourceSize}</dd>
+            </div>
+            <div>
+              <dt>输出分辨率</dt>
+              <dd>{outputSize}</dd>
+            </div>
+            <div>
+              <dt>当前倍数</dt>
+              <dd>{resultScale}</dd>
+            </div>
+          </dl>
+          <div className="studio-actions">
+            <a className="studio-secondary-button" href={output.item.output.url} download>
+              下载结果视频
+            </a>
+            <button type="button" className="studio-secondary-button" onClick={onSubmit} disabled={!canSubmit}>
+              再次增强
+            </button>
           </div>
-          <div>
-            <dt>输出分辨率</dt>
-            <dd>{outputSize}</dd>
-          </div>
-          <div>
-            <dt>当前倍数</dt>
-            <dd>{resultScale}</dd>
-          </div>
-        </dl>
-        <div className="studio-actions">
-          <a className="studio-secondary-button" href={output.item.output.url} download>
-            下载结果视频
-          </a>
-          <button type="button" className="studio-secondary-button" onClick={onSubmit} disabled={!canSubmit}>
-            再次增强
-          </button>
-        </div>
+        </ResultReveal>
       </PreviewState>
     );
   }
@@ -1630,7 +1630,6 @@ export function ImagePreviewPanel({
   activeBatchId,
   canSubmit,
   submitError,
-  submitDiagnostic,
   isEditor,
   promptFilled,
   hasProvider,
@@ -1682,8 +1681,6 @@ export function ImagePreviewPanel({
         canRetry={canRetry}
         onRetry={onSubmit}
         onReloadProviders={!hasProvider ? onReloadProviders : undefined}
-        message={submitError}
-        diagnostic={submitDiagnostic}
       />
     );
   }
@@ -1795,7 +1792,7 @@ function ImageResultGrid({
         </article>
       ))}
       {Array.from({ length: pendingCount }).map((_, index) => (
-        <article key={`pending-${index}`} className="studio-image-result-card studio-image-result-card--pending" aria-live="polite">
+        <article key={`pending-${index}`} className="studio-image-result-card studio-image-result-card--pending studio-generation-pending" aria-live="polite">
           <DotRippleLoader fill expanded={pendingCount === 1} />
           <p>{loading ? "图片生成中" : "图片未生成"}</p>
           <small>完成后会自动补到这里。</small>
@@ -1811,7 +1808,6 @@ export function VideoPreviewPanel({
   loading,
   canSubmit,
   submitError,
-  submitDiagnostic,
   promptFilled,
   hasProvider,
   hasFiles,
@@ -1837,7 +1833,14 @@ export function VideoPreviewPanel({
   const statusLabel = output?.job?.status || output?.item.status;
 
   if (loading && !output) {
-    return <ToolTutorial kind="video" paused={false} />;
+    return (
+      <JobStatusPreview
+        title="视频任务提交中"
+        detail="任务提交后会自动刷新到这里。"
+        facts={[]}
+        badge="提交中"
+      />
+    );
   }
 
   if (submitError && !output) {
@@ -1846,8 +1849,6 @@ export function VideoPreviewPanel({
         canRetry={canRetry}
         onRetry={onSubmit}
         onReloadProviders={!hasProvider ? onReloadProviders : undefined}
-        message={submitError}
-        diagnostic={submitDiagnostic}
       />
     );
   }
@@ -1857,8 +1858,6 @@ export function VideoPreviewPanel({
         canRetry={canRetry}
         onRetry={onSubmit}
         onReloadProviders={!hasProvider ? onReloadProviders : undefined}
-        message={output.item.error || output.job?.error || submitError}
-        diagnostic={submitDiagnostic}
       />
     );
   }
@@ -1877,25 +1876,30 @@ export function VideoPreviewPanel({
   if (output) {
     return (
       <PreviewState eyebrow="结果" title="视频结果" badge={libraryStatusBadgeLabel(output.item.status)} role="status" live>
-        <MediaCard item={output.item} large compact />
-        {outputFacts.length ? (
-          <div className="studio-result-facts" aria-label="任务参数">
-            {outputFacts.map((fact) => <span key={`${output.item.id}-${fact}`}>{fact}</span>)}
-          </div>
-        ) : null}
-        <div className="studio-actions studio-actions--result">
-          {output.item.output?.url ? (
-            <a className="studio-secondary-button" href={output.item.output.url} download>
-              下载
-            </a>
+        <ResultReveal className="studio-result-reveal">
+          <MediaCard item={output.item} large compact />
+          {outputFacts.length ? (
+            <div className="studio-result-facts" aria-label="任务参数">
+              {outputFacts.map((fact) => <span key={`${output.item.id}-${fact}`}>{fact}</span>)}
+            </div>
           ) : null}
-          <button type="button" className="studio-secondary-button" onClick={onSubmit} disabled={!canRetry}>
-            重做
-          </button>
-          <button type="button" className="studio-secondary-button" onClick={() => onUpscale(output.item)}>
-            视频高清处理
-          </button>
-        </div>
+          <div className="studio-image-result-card__actions studio-video-result-actions">
+            <button type="button" className="studio-secondary-button" onClick={onSubmit} disabled={!canRetry}>
+              <RefreshCw className="size-4" aria-hidden="true" />
+              重做
+            </button>
+            <button type="button" className="studio-secondary-button" onClick={() => onUpscale(output.item)}>
+              <ImageUp className="size-4" aria-hidden="true" />
+              高清
+            </button>
+            {output.item.output?.url ? (
+              <a className="studio-secondary-button" href={output.item.output.url} download>
+                <Download className="size-4" aria-hidden="true" />
+                下载
+              </a>
+            ) : null}
+          </div>
+        </ResultReveal>
       </PreviewState>
     );
   }
@@ -2083,7 +2087,6 @@ export function Toast({ message, tone = "error", onClose }: { message: string; t
       </span>
       <span className="studio-toast__body">
         <strong>{message}</strong>
-        <small>{tone === "success" ? "结果已保存到作品库。" : "请根据提示处理当前操作，必要时稍后再试。"}</small>
       </span>
     </div>
   );
