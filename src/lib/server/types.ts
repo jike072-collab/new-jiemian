@@ -4,6 +4,7 @@ export type EndpointType =
   | "images-generations"
   | "images-edits"
   | "gettoken-banana"
+  | "gettoken-veo"
   | "chat-completions"
   | "videos-generations"
   | "grok-videos"

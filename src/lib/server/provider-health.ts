@@ -273,7 +273,7 @@ function endpointOriginUrl(apiUrl: string) {
 }
 
 function connectivityUrlFor(provider: ProviderConfig) {
-  if (provider.endpointType === "gettoken-banana") return provider.apiUrl;
+  if (provider.endpointType === "gettoken-banana" || provider.endpointType === "gettoken-veo") return provider.apiUrl;
   if (
     provider.endpointType === "images-generations"
     || provider.endpointType === "images-edits"
@@ -307,7 +307,7 @@ function modelKindsFor(provider: ProviderConfig): ProviderModelKind[] {
   if (provider.endpointType === "images-edits") return ["imageEdit"];
   if (provider.endpointType === "images-generations") return ["image", "imageEdit"];
   if (provider.endpointType === "gettoken-banana") return ["image", "imageEdit"];
-  if (provider.endpointType === "videos-generations" || provider.endpointType === "grok-videos") return ["video"];
+  if (provider.endpointType === "gettoken-veo" || provider.endpointType === "videos-generations" || provider.endpointType === "grok-videos") return ["video"];
   if (provider.endpointType === "volcengine-imagex-upscale") return ["imageUpscale"];
   if (provider.endpointType === "volcengine-vod-upscale") return ["videoUpscale"];
   if (provider.kind === "image") return ["image"];

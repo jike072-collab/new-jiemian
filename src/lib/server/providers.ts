@@ -17,6 +17,7 @@ const endpointTypes = [
   "images-generations",
   "images-edits",
   "gettoken-banana",
+  "gettoken-veo",
   "chat-completions",
   "videos-generations",
   "grok-videos",
@@ -140,8 +141,19 @@ function grokVideoOptionsForModel(model: string): ProviderConfig["videoOptions"]
   };
 }
 
+function getTokenVeoOptionsForModel(model: string): ProviderConfig["videoOptions"] {
+  if (!model.trim().toLowerCase().startsWith("veo-3.1-")) return undefined;
+  return {
+    durations: [8],
+    ratios: ["16:9", "9:16"],
+    resolution: "720p",
+    maxReferenceImages: 1,
+  };
+}
+
 function providerVideoOptions(provider: ProviderConfig) {
   return grokVideoOptionsForModel(provider.model)
+    || getTokenVeoOptionsForModel(provider.model)
     || jimengVideoOptionsForModel(provider.model)
     || normalizeVideoOptions(provider.videoOptions);
 }
@@ -287,6 +299,25 @@ export function defaultProviders(): ProviderConfig[] {
       apiKey: env("GETTOKEN_BANANA_API_KEY"),
       enabled: hasKey(env("GETTOKEN_BANANA_API_KEY")),
       endpointType: "gettoken-banana",
+      custom: false,
+    },
+    {
+      id: "video-gettoken-veo",
+      kind: "video",
+      title: "GetToken Veo 视频生成",
+      role: "支持 Veo 3.1 Pro 与 Veo 3.1 Fast 文生视频和图生视频",
+      apiUrl: env("GETTOKEN_VEO_API_URL", env("GETTOKEN_BANANA_API_URL", "https://nb.gettoken.cn/openapi/v1")),
+      model: "veo-3.1-pro",
+      models: ["veo-3.1-pro", "veo-3.1-fast"],
+      modelDisplayNames: {
+        "veo-3.1-pro": "Veo 3.1 Pro",
+        "veo-3.1-fast": "Veo 3.1 Fast",
+      },
+      enabledModels: ["veo-3.1-pro", "veo-3.1-fast"],
+      displayName: "Veo 3.1 Pro",
+      apiKey: env("GETTOKEN_VEO_API_KEY", env("GETTOKEN_BANANA_API_KEY")),
+      enabled: hasKey(env("GETTOKEN_VEO_API_KEY", env("GETTOKEN_BANANA_API_KEY"))),
+      endpointType: "gettoken-veo",
       custom: false,
     },
     {
@@ -437,7 +468,7 @@ function capabilitiesFor(provider: Pick<ProviderConfig, "endpointType">) {
   if (provider.endpointType === "images-edits") return ["image", "image-edit"];
   if (provider.endpointType === "images-generations") return ["image"];
   if (provider.endpointType === "gettoken-banana") return ["image", "image-edit"];
-  if (provider.endpointType === "videos-generations" || provider.endpointType === "grok-videos") return ["video"];
+  if (provider.endpointType === "gettoken-veo" || provider.endpointType === "videos-generations" || provider.endpointType === "grok-videos") return ["video"];
   if (provider.endpointType === "volcengine-imagex-upscale") return ["image-upscale"];
   if (provider.endpointType === "volcengine-vod-upscale") return ["video-upscale"];
   return [];

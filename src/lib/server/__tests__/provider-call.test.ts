@@ -6,6 +6,7 @@ import test from "node:test";
 import { createErrorDiagnostic, logDiagnosticEvent } from "../error-diagnostics";
 import { providerCallInternalsForTests } from "../provider-call";
 import { defaultProviders } from "../providers";
+import type { ProviderConfig } from "../types";
 
 const provider = {
   id: "provider-test",
@@ -24,6 +25,13 @@ test("Grok video defaults expose only model 1.5", () => {
   assert.equal(grokProvider?.model, "grok-video-1.5");
   assert.deepEqual(grokProvider?.models, ["grok-video-1.5"]);
   assert.deepEqual(grokProvider?.enabledModels, ["grok-video-1.5"]);
+});
+
+test("GetToken Veo defaults expose Pro and Fast at 720p", () => {
+  const veoProvider = defaultProviders().find((item) => item.id === "video-gettoken-veo");
+  assert.equal(veoProvider?.model, "veo-3.1-pro");
+  assert.deepEqual(veoProvider?.models, ["veo-3.1-pro", "veo-3.1-fast"]);
+  assert.deepEqual(veoProvider?.enabledModels, ["veo-3.1-pro", "veo-3.1-fast"]);
 });
 
 test("small valid provider JSON passes", async () => {
@@ -482,6 +490,117 @@ test("GetToken keeps four image tasks concurrent when upstream accepts them", as
   } finally {
     globalThis.fetch = originalFetch;
   }
+});
+
+test("GetToken Veo Fast submits documented 8-second 720p text video payload", async () => {
+  const videoProvider = {
+    ...provider,
+    id: "video-gettoken-veo::model::veo-3.1-fast",
+    kind: "video",
+    apiUrl: "https://nb.gettoken.cn/openapi/v1",
+    model: "veo-3.1-fast",
+    endpointType: "gettoken-veo",
+  } as const;
+  const originalFetch = globalThis.fetch;
+  let requestedUrl = "";
+  let requestedBody: Record<string, unknown> = {};
+  globalThis.fetch = (async (url, init) => {
+    requestedUrl = String(url);
+    requestedBody = JSON.parse(String(init?.body || "{}"));
+    return jsonResponse({ taskId: "veo-fast-task", status: "PROCESSING" });
+  }) as typeof fetch;
+  try {
+    const output = await providerCallInternalsForTests.callGetTokenVeoProvider(videoProvider, {
+      mode: "text-to-video",
+      prompt: "A ceramic cup rotates slowly on a clean studio table.",
+      ratio: "16:9",
+      duration: 8,
+      files: [],
+    });
+    assert.equal(requestedUrl, "https://nb.gettoken.cn/openapi/v1/veo3.1-fast/text-to-video");
+    assert.equal(requestedBody.aspectRatio, "16:9");
+    assert.equal(requestedBody.duration, "8");
+    assert.equal(requestedBody.resolution, "720p");
+    assert.equal(typeof requestedBody.clientTaskId, "string");
+    assert.equal("imageUrls" in requestedBody, false);
+    assert.equal(output.jobId, "veo-fast-task");
+    assert.equal(output.statusUrl, "https://nb.gettoken.cn/openapi/v1/query");
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test("GetToken Veo Pro uploads one reference before image-to-video submission", async () => {
+  const videoProvider = {
+    ...provider,
+    id: "video-gettoken-veo::model::veo-3.1-pro",
+    kind: "video",
+    apiUrl: "https://nb.gettoken.cn/openapi/v1",
+    model: "veo-3.1-pro",
+    endpointType: "gettoken-veo",
+  } as const;
+  const originalFetch = globalThis.fetch;
+  const requests: Array<{ url: string; body: BodyInit | null | undefined }> = [];
+  globalThis.fetch = (async (url, init) => {
+    requests.push({ url: String(url), body: init?.body });
+    if (requests.length === 1) {
+      assert(init?.body instanceof FormData);
+      assert.equal((init.body.get("file") as File)?.name, "frame.png");
+      return jsonResponse({ data: { download_url: "https://cdn.example.test/frame.png" } });
+    }
+    return jsonResponse({ taskId: "veo-pro-task", status: "RUNNING" });
+  }) as typeof fetch;
+  try {
+    const output = await providerCallInternalsForTests.callGetTokenVeoProvider(videoProvider, {
+      mode: "image-to-video",
+      prompt: "The product moves naturally while the camera makes a slow push in.",
+      ratio: "9:16",
+      duration: 8,
+      files: [{ bytes: Buffer.from("image-bytes"), mimeType: "image/png", fileName: "frame.png" }],
+    });
+    assert.equal(requests[0]?.url, "https://nb.gettoken.cn/openapi/v1/media/upload/binary");
+    assert.equal(requests[1]?.url, "https://nb.gettoken.cn/openapi/v1/veo3.1-pro/image-to-video");
+    const submitBody = JSON.parse(String(requests[1]?.body || "{}"));
+    assert.deepEqual(submitBody.imageUrls, ["https://cdn.example.test/frame.png"]);
+    assert.equal(submitBody.aspectRatio, "9:16");
+    assert.equal(output.jobId, "veo-pro-task");
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test("GetToken Veo accepts only documented duration and ratios", () => {
+  const videoProvider: ProviderConfig = {
+    ...provider,
+    id: "video-gettoken-veo::model::veo-3.1-pro",
+    kind: "video",
+    model: "veo-3.1-pro",
+    endpointType: "gettoken-veo",
+    videoOptions: {
+      durations: [8],
+      ratios: ["16:9", "9:16"],
+      resolution: "720p",
+      maxReferenceImages: 1,
+    },
+  };
+  assert.doesNotThrow(() => providerCallInternalsForTests.validateVideoInput(videoProvider, {
+    mode: "text-to-video",
+    ratio: "16:9",
+    duration: 8,
+    files: [],
+  }));
+  assert.throws(() => providerCallInternalsForTests.validateVideoInput(videoProvider, {
+    mode: "text-to-video",
+    ratio: "16:9",
+    duration: 10,
+    files: [],
+  }));
+  assert.throws(() => providerCallInternalsForTests.validateVideoInput(videoProvider, {
+    mode: "text-to-video",
+    ratio: "1:1",
+    duration: 8,
+    files: [],
+  }));
 });
 
 test("batch image generation retries once when upstream returns fewer outputs than requested", async () => {

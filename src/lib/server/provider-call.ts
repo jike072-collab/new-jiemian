@@ -179,7 +179,7 @@ function parseProviderOutput(payload: unknown): ProviderOutput {
   return {
     url,
     base64,
-    jobId: firstString(first.task_id, first.id, first.video_id, root.task_id, root.id, root.video_id),
+    jobId: firstString(first.taskId, first.task_id, first.id, first.video_id, root.taskId, root.task_id, root.id, root.video_id),
     status: firstString(first.status, root.status),
     statusUrl: firstString(first.status_url, root.status_url),
     mimeType: firstString(first.mime_type, root.mime_type),
@@ -283,6 +283,10 @@ function isGetTokenBananaProvider(provider: ProviderConfig) {
   return provider.endpointType === "gettoken-banana";
 }
 
+function isGetTokenVeoProvider(provider: ProviderConfig) {
+  return provider.endpointType === "gettoken-veo";
+}
+
 function getTokenBananaBaseUrl(provider: ProviderConfig) {
   return provider.apiUrl.replace(/\/+$/, "");
 }
@@ -305,6 +309,108 @@ function getTokenBananaSubmitEndpoint(provider: ProviderConfig, useEdits: boolea
 
 function getTokenBananaQueryEndpoint(provider: ProviderConfig) {
   return `${getTokenBananaBaseUrl(provider)}/query`;
+}
+
+function getTokenVeoModelPath(provider: ProviderConfig) {
+  if (provider.model === "veo-3.1-pro") return "veo3.1-pro";
+  if (provider.model === "veo-3.1-fast") return "veo3.1-fast";
+  throw new GenerationDiagnosticError({
+    code: "MODEL_MISSING_VIDEO",
+    providerId: provider.id,
+    model: provider.model,
+    publicMessage: "当前 Veo 视频模型配置无效。",
+  });
+}
+
+function getTokenVeoSubmitEndpoint(provider: ProviderConfig, mode: "text-to-video" | "image-to-video") {
+  return `${getTokenBananaBaseUrl(provider)}/${getTokenVeoModelPath(provider)}/${mode}`;
+}
+
+function getTokenVeoQueryEndpoint(provider: ProviderConfig) {
+  return `${getTokenBananaBaseUrl(provider)}/query`;
+}
+
+async function uploadGetTokenVeoReferenceImage(provider: ProviderConfig, file: UploadedMedia) {
+  if (file.bytes.byteLength > 10 * 1024 * 1024) {
+    throw new GenerationDiagnosticError({
+      code: "INPUT_INVALID_PARAMETERS",
+      providerId: provider.id,
+      model: provider.model,
+      publicMessage: "Veo 参考图不能超过 10MB。",
+    });
+  }
+  const form = new FormData();
+  form.append("file", new Blob([new Uint8Array(file.bytes)], { type: file.mimeType }), file.fileName);
+  const response = await fetchProviderWithNetworkRetry(`${getTokenBananaBaseUrl(provider)}/media/upload/binary`, {
+    method: "POST",
+    headers: authHeaders(provider),
+    body: form,
+    signal: AbortSignal.timeout(120000),
+  });
+  const payload = await readProviderJson(response, provider);
+  const data = asRecord(asRecord(payload).data);
+  const url = firstString(data.download_url, data.url, asRecord(payload).download_url, asRecord(payload).url);
+  if (!url) {
+    throw new GenerationDiagnosticError({
+      code: "PROVIDER_BAD_RESPONSE",
+      providerId: provider.id,
+      model: provider.model,
+      publicMessage: "Veo 参考图上传未返回可用 URL。",
+    });
+  }
+  return url;
+}
+
+async function callGetTokenVeoProvider(provider: ProviderConfig, input: {
+  mode: "text-to-video" | "image-to-video";
+  prompt: string;
+  ratio: string;
+  duration: number;
+  files: UploadedMedia[];
+}) {
+  if (input.prompt.trim().length < 5 || input.prompt.length > 8000) {
+    throw new GenerationDiagnosticError({
+      code: "INPUT_INVALID_PARAMETERS",
+      providerId: provider.id,
+      model: provider.model,
+      publicMessage: "Veo 视频提示词长度需要在 5 到 8000 个字符之间。",
+    });
+  }
+  const imageUrls = input.mode === "image-to-video"
+    ? [await uploadGetTokenVeoReferenceImage(provider, input.files[0])]
+    : [];
+  const response = await fetchProviderWithNetworkRetry(getTokenVeoSubmitEndpoint(provider, input.mode), {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      ...authHeaders(provider),
+    },
+    body: JSON.stringify({
+      prompt: input.prompt,
+      aspectRatio: input.ratio,
+      duration: String(input.duration),
+      resolution: "720p",
+      clientTaskId: randomUUID(),
+      ...(imageUrls.length ? { imageUrls } : {}),
+    }),
+    signal: AbortSignal.timeout(180000),
+  });
+  const payload = await readProviderJson(response, provider);
+  const output = parseProviderOutput(payload);
+  const taskId = output.jobId;
+  if (!taskId) {
+    throw new GenerationDiagnosticError({
+      code: "PROVIDER_BAD_RESPONSE",
+      providerId: provider.id,
+      model: provider.model,
+      publicMessage: "Veo 视频任务没有返回任务编号。",
+    });
+  }
+  return {
+    ...output,
+    jobId: taskId,
+    statusUrl: getTokenVeoQueryEndpoint(provider),
+  };
 }
 
 function getTokenTaskStatus(payload: unknown) {
@@ -1677,7 +1783,9 @@ export async function submitVideo(input: {
     });
 
     let output: ProviderOutput;
-    if (isGrokVideoProvider(readyProvider)) {
+    if (isGetTokenVeoProvider(readyProvider)) {
+      output = await callGetTokenVeoProvider(readyProvider, input);
+    } else if (isGrokVideoProvider(readyProvider)) {
       output = await callGrokVideoProvider(readyProvider, input);
     } else {
       const providerVideoOptions = videoOptionsForProvider(readyProvider);
@@ -1880,9 +1988,14 @@ export async function refreshVideoJob(jobId: string, localUserId?: string | null
   if (!provider || !provider.apiKey) throw new Error("视频供应商未配置。");
   if (!job.statusUrl) return job;
 
+  const getTokenVeo = isGetTokenVeoProvider(provider);
   const response = await fetch(job.statusUrl, {
-    method: "GET",
-    headers: authHeaders(provider),
+    method: getTokenVeo ? "POST" : "GET",
+    headers: {
+      ...(getTokenVeo ? { "Content-Type": "application/json" } : {}),
+      ...authHeaders(provider),
+    },
+    ...(getTokenVeo ? { body: JSON.stringify({ taskId: job.id }) } : {}),
     signal: AbortSignal.timeout(60000),
   });
   const output = parseProviderOutput(await readProviderJson(response, provider));
@@ -2022,14 +2135,19 @@ export async function uploadedMediaFromForm(
 }
 
 export const providerCallInternalsForTests = {
+  validateVideoInput,
   validateGrokVideoInput,
   callOpenAiCompatibleGrokVideoProvider,
   callImageProviderOnce,
   collectImageProviderOutputs,
   callGetTokenBananaProvider,
+  callGetTokenVeoProvider,
   getTokenBananaQueryEndpoint,
   getTokenBananaSubmitEndpoint,
+  getTokenVeoQueryEndpoint,
+  getTokenVeoSubmitEndpoint,
   isGetTokenBananaProvider,
+  isGetTokenVeoProvider,
   isImg2ImageProvider,
   isLocalOpenAiCompatibleEndpoint,
   parseProviderOutput,

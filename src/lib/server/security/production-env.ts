@@ -48,6 +48,7 @@ const endpointTypes = new Set([
   "images-generations",
   "images-edits",
   "gettoken-banana",
+  "gettoken-veo",
   "chat-completions",
   "videos-generations",
   "grok-videos",
