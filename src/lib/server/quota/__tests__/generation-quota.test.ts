@@ -5,6 +5,7 @@ import {
   estimateVideoGenerationEntitlementUnits,
   estimateVideoGenerationQuota,
   generationBillingFingerprint,
+  isVideoGenerationPricingPending,
 } from "../../../generation-quota.js";
 
 const baseInput = {
@@ -26,6 +27,13 @@ test("4K video generation requires two membership entitlement units", () => {
   assert.equal(estimateVideoGenerationEntitlementUnits({ resolution: "720p" }), 1);
   assert.equal(estimateVideoGenerationEntitlementUnits({ resolution: "1080p" }), 1);
   assert.equal(estimateVideoGenerationEntitlementUnits({ resolution: "4K" }), 2);
+});
+
+test("Seedance models remain blocked until product pricing is configured", () => {
+  assert.equal(isVideoGenerationPricingPending("暗黑破甲破限seedance 720p-fast-nsp"), true);
+  assert.equal(isVideoGenerationPricingPending("sh-seedance2.0-fast 720p-nv-15s"), true);
+  assert.equal(isVideoGenerationPricingPending("veo-3.1-pro"), false);
+  assert.equal(isVideoGenerationPricingPending("grok-video-1.5"), false);
 });
 
 test("video billing fingerprints include resolution", () => {

@@ -32,7 +32,6 @@ import {
   grokVideo10Ratios,
   grokVideo15Durations,
   grokVideo15Ratios,
-  jimengVideoRatios,
   maxReferenceImageCount,
   maxReferenceImageSize,
   maxVideoFirstFrameCount,
@@ -83,6 +82,7 @@ import {
   estimateVideoGenerationEntitlementUnits,
   estimateVideoGenerationQuota,
   generationBillingFingerprint,
+  isVideoGenerationPricingPending,
   upscaleBillingFingerprint,
 } from "@/lib/generation-quota";
 import {
@@ -581,23 +581,13 @@ function isGrokVideoProvider(provider: WorkspacePublicProvider | null | undefine
   return provider?.endpointType === "grok-videos" || Boolean(provider?.model.startsWith("grok-video-"));
 }
 
-function jimengVideoOptions(provider: WorkspacePublicProvider | null | undefined) {
-  const model = provider?.model.trim().toLowerCase() || "";
-  if (!model.includes("seedance2.0")) return null;
-  if (model.includes("15s")) return { durations: [15], ratios: jimengVideoRatios };
-  if (model.includes("10s-nyp")) return { durations: [5, 10], ratios: jimengVideoRatios };
-  return { durations: [5, 10, 15], ratios: jimengVideoRatios };
-}
-
 function videoDurationOptions(provider: WorkspacePublicProvider | null | undefined) {
-  const jimengOptions = jimengVideoOptions(provider);
-  if (jimengOptions) return jimengOptions.durations;
+  if (provider?.videoOptions?.durations?.length) return provider.videoOptions.durations;
   if (isGrokVideoProvider(provider)) {
     const defaults = provider?.model === "grok-video-1.5" ? grokVideo15Durations : grokVideo10Durations;
     const configured = provider?.videoOptions?.durations?.length ? provider.videoOptions.durations : defaults;
     return Array.from(new Set([6, ...configured, ...defaults]));
   }
-  if (provider?.videoOptions?.durations?.length) return provider.videoOptions.durations;
   return defaultVideoDurations;
 }
 
@@ -609,8 +599,6 @@ function preferredVideoDuration(provider: WorkspacePublicProvider | null | undef
 
 function videoRatioOptions(provider: WorkspacePublicProvider | null | undefined) {
   if (provider?.videoOptions?.ratios?.length) return provider.videoOptions.ratios;
-  const jimengOptions = jimengVideoOptions(provider);
-  if (jimengOptions) return jimengOptions.ratios;
   if (!isGrokVideoProvider(provider)) return ratios;
   return provider?.model === "grok-video-1.5" ? grokVideo15Ratios : grokVideo10Ratios;
 }
@@ -2037,18 +2025,22 @@ export function StudioApp() {
     model: selectedVideoProvider?.model,
   });
   const videoEntitlementUnits = estimateVideoGenerationEntitlementUnits({ resolution: videoWorkspace.resolution });
-  const videoGenerationCostLabel = membershipEntitlementUsageLabel(
-    membershipEntitlements,
-    "video_generation",
-    "次",
-    videoEntitlementUnits,
-    formatQuotaSymbolLabel(videoEstimatedQuotaUnits),
-  );
+  const videoPricingPending = isVideoGenerationPricingPending(selectedVideoProvider?.model);
+  const videoGenerationCostLabel = videoPricingPending
+    ? "价格待定"
+    : membershipEntitlementUsageLabel(
+      membershipEntitlements,
+      "video_generation",
+      "次",
+      videoEntitlementUnits,
+      formatQuotaSymbolLabel(videoEstimatedQuotaUnits),
+    );
   const videoWorkspaceCanSubmit = Boolean(selectedVideoProvider)
     && !providersLoading
     && videoWorkspace.inFlightCount < CLIENT_VIDEO_SUBMISSION_LIMIT
     && Boolean(videoWorkspacePrompt)
     && videoFirstLastFramesReady
+    && !videoPricingPending
     && (!videoWorkspaceNeedsFile || videoWorkspaceHasFiles)
     && (!videoWorkspaceRequiresFile || videoWorkspaceHasFiles)
     && (!selectedVideoModelRequiresFile || videoWorkspaceHasFiles);

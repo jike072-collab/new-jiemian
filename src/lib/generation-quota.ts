@@ -4,6 +4,10 @@ type ImageGenerationBillableOperation = "cloud_image_generation" | "cloud_image_
 type GenerationBillableOperation = ImageGenerationBillableOperation | "cloud_video_generation";
 type UpscaleBillableOperation = "cloud_image_upscale" | "cloud_video_upscale";
 
+export function isVideoGenerationPricingPending(model?: string | null) {
+  return String(model || "").trim().toLowerCase().includes("seedance");
+}
+
 export function estimateImageGenerationQuota(input: {
   mode: WorkspaceImageMode;
   quality: string;

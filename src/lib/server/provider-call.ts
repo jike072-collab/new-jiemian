@@ -6,6 +6,7 @@ import {
   estimateImageGenerationTotalQuota,
   estimateVideoGenerationEntitlementUnits,
   generationBillingFingerprint,
+  isVideoGenerationPricingPending,
 } from "../generation-quota";
 import { getMembershipService } from "./membership";
 
@@ -18,7 +19,7 @@ import {
 import { assertStorageAllows } from "./storage-capacity";
 import { storeRemoteUrlStreamed } from "./remote-media-download";
 import { getTaskBillingService } from "./quota";
-import { jimengVideoOptionsForModel, providerById } from "./providers";
+import { jimengVideoOptionsForModel, jimengVideoRequestSecondsForModel, providerById } from "./providers";
 import { type JobRecord, type LibraryItem, type ProviderConfig } from "./types";
 
 type UploadedMedia = {
@@ -1790,6 +1791,14 @@ export async function submitVideo(input: {
   billingEstimatedQuotaUnits?: number | null;
 }) {
   const provider = await providerById(input.providerId);
+  if (isVideoGenerationPricingPending(provider?.model)) {
+    throw new GenerationDiagnosticError({
+      code: "INPUT_INVALID_PARAMETERS",
+      providerId: provider?.id,
+      model: provider?.model,
+      publicMessage: "当前 Seedance 模型价格待定，暂未开放生成。",
+    });
+  }
   const estimatedQuotaUnits = estimateGenerationQuota({
     kind: "video",
     providerId: input.providerId,
@@ -1853,7 +1862,7 @@ export async function submitVideo(input: {
         model: readyProvider.model,
         prompt: input.prompt,
         duration: input.duration,
-        seconds: input.duration,
+        seconds: jimengVideoRequestSecondsForModel(readyProvider.model, input.duration),
         aspect_ratio: input.ratio,
         size: resolution === "720p" ? ratioTo720pSize(input.ratio) : ratioToSize(input.ratio),
         resolution,

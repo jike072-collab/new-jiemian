@@ -26,28 +26,33 @@ const endpointTypes = [
 ] as const satisfies readonly EndpointType[];
 
 const jimengVideoModels = [
-  "seedance2.0-pro 720p-15s",
-  "gu-seedance2.0-fast 720p-15s",
-  "op-seedance2.0 720p-pro-特价-15s",
-  "gu-seedance2.0-pro 720p-10s-nyp",
-  "seedance2.0 720p-fast",
-  "seedance2.0 720p-pro",
-  "seedance2.0 720p-fast-sr",
-  "seedance2.0 720p-mini-sr",
-  "seedance2.0 720p-pro-sr",
+  "暗黑破甲破限seedance 720p-fast-nsp",
+  "暗黑破甲破限seedance 720p-pro-nsp",
+  "oc-seedance 720-pro-15s",
+  "seedance2.0 720p-pro-gz-15s",
+  "sh-seedance2.0-fast 720p-nv-15s",
+  "sh-seedance2.0-mini-720p-nv-15s",
+  "xx-seedance 720p-pro-gz-15s",
 ];
 
 const jimengVideoDisplayNames: Record<string, string> = {
-  "seedance2.0-pro 720p-15s": "即梦 720P Pro 15 秒",
-  "gu-seedance2.0-fast 720p-15s": "即梦 720P Fast 15 秒",
-  "op-seedance2.0 720p-pro-特价-15s": "即梦 720P Pro 15 秒特价",
-  "gu-seedance2.0-pro 720p-10s-nyp": "即梦 720P Pro 5/10 秒",
-  "seedance2.0 720p-fast": "即梦 720P Fast",
-  "seedance2.0 720p-pro": "即梦 720P Pro",
-  "seedance2.0 720p-fast-sr": "即梦 720P Fast 超分",
-  "seedance2.0 720p-mini-sr": "即梦 720P Mini 超分",
-  "seedance2.0 720p-pro-sr": "即梦 720P Pro 超分",
+  "暗黑破甲破限seedance 720p-fast-nsp": "暗黑破甲破限seedance 720p-fast-nsp",
+  "暗黑破甲破限seedance 720p-pro-nsp": "暗黑破甲破限seedance 720p-pro-nsp",
+  "oc-seedance 720-pro-15s": "oc-seedance 720-pro-15s",
+  "seedance2.0 720p-pro-gz-15s": "seedance2.0 720p-pro-gz-15s",
+  "sh-seedance2.0-fast 720p-nv-15s": "sh-seedance2.0-fast 720p-nv-15s",
+  "sh-seedance2.0-mini-720p-nv-15s": "sh-seedance2.0-mini-720p-nv-15s",
+  "xx-seedance 720p-pro-gz-15s": "xx-seedance 720p-pro-gz-15s",
 };
+
+const flexibleJimengVideoModels = new Set([
+  "暗黑破甲破限seedance 720p-fast-nsp",
+  "暗黑破甲破限seedance 720p-pro-nsp",
+  "sh-seedance2.0-fast 720p-nv-15s",
+  "sh-seedance2.0-mini-720p-nv-15s",
+]);
+
+const flexibleJimengVideoDurations = Array.from({ length: 15 }, (_, index) => index + 1);
 
 function env(name: string, fallback = "") {
   return process.env[name] || fallback;
@@ -111,19 +116,23 @@ function normalizeVideoOptions(value: unknown): ProviderConfig["videoOptions"] {
 }
 
 export function jimengVideoOptionsForModel(model: string): ProviderConfig["videoOptions"] {
-  const normalized = model.trim().toLowerCase();
-  if (!normalized.includes("seedance2.0")) return undefined;
-  const fixed15s = normalized.includes("15s");
-  const fixed5Or10s = normalized.includes("10s-nyp");
-  const srModel = normalized.endsWith("-sr");
+  const configuredModel = jimengVideoModels.find((candidate) => candidate.toLowerCase() === model.trim().toLowerCase());
+  if (!configuredModel) return undefined;
+  const flexibleDuration = flexibleJimengVideoModels.has(configuredModel);
   return {
-    durations: fixed15s ? [15] : fixed5Or10s ? [5, 10] : [5, 10, 15],
+    durations: flexibleDuration ? flexibleJimengVideoDurations : [15],
     ratios: ["16:9", "9:16", "1:1"],
     resolution: "720p",
-    maxReferenceImages: fixed15s ? 4 : 9,
-    supportsVideoReference: !srModel,
-    supportsAudioReference: !fixed5Or10s,
+    maxReferenceImages: configuredModel === "seedance2.0 720p-pro-gz-15s" ? 4 : 9,
+    supportsVideoReference: !flexibleJimengVideoModels.has(configuredModel),
+    supportsAudioReference: true,
   };
+}
+
+export function jimengVideoRequestSecondsForModel(model: string, duration: number) {
+  const configuredModel = jimengVideoModels.find((candidate) => candidate.toLowerCase() === model.trim().toLowerCase());
+  if (!configuredModel || flexibleJimengVideoModels.has(configuredModel)) return duration;
+  return 1;
 }
 
 function grokVideoOptionsForModel(model: string): ProviderConfig["videoOptions"] {
@@ -329,14 +338,14 @@ export function defaultProviders(): ProviderConfig[] {
     {
       id: "video-main",
       kind: "video",
-      title: "视频生成",
-      role: "文生视频与图生视频",
-      apiUrl: env("VIDEO_API_URL", "https://clmm-mall.top/v1/videos/generations"),
-      model: env("VIDEO_MODEL", "seedance2.0 720p-fast-sr"),
+      title: "Seedance 视频生成",
+      role: "支持 7 个 Seedance 与 Seedance 2.0 视频模型，统一输出 720P",
+      apiUrl: env("VIDEO_API_URL", "https://clmm-mall.top/v1/videos"),
+      model: env("VIDEO_MODEL", "暗黑破甲破限seedance 720p-fast-nsp"),
       models: jimengVideoModels,
       modelDisplayNames: jimengVideoDisplayNames,
       enabledModels: jimengVideoModels,
-      displayName: env("VIDEO_DISPLAY_NAME", env("VIDEO_MODEL", "seedance2.0 720p-fast-sr")),
+      displayName: env("VIDEO_DISPLAY_NAME", env("VIDEO_MODEL", "暗黑破甲破限seedance 720p-fast-nsp")),
       apiKey: env("VIDEO_MODEL_API_KEY"),
       enabled: hasKey(env("VIDEO_MODEL_API_KEY")),
       endpointType: (env("VIDEO_ENDPOINT_TYPE", "videos-generations") as EndpointType),

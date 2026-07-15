@@ -6,14 +6,14 @@ import { useCallback } from "react";
 import { ImageUp, Loader2, UploadCloud, Wand2, X } from "lucide-react";
 
 import { ratioShapeClass, ratios } from "@/components/studio/constants";
-import { CustomSelect } from "@/components/studio/custom-select";
+import { HierarchicalSelect, type HierarchicalSelectItem } from "@/components/studio/custom-select";
 import { PromptSettingsButton, usePromptPreferences } from "@/components/studio/prompt-settings";
 import type { StudioErrorDiagnostic, UploadFilePreview } from "@/components/studio/types";
 import type { PromptPreferences, PromptPreferenceTool } from "@/lib/prompt-preferences";
 import type { FrontendProvider } from "@/lib/server/types";
 import { cn } from "@/lib/utils";
 
-export { CustomSelect } from "@/components/studio/custom-select";
+export { CustomSelect, HierarchicalSelect } from "@/components/studio/custom-select";
 
 function formatFileSize(size: number) {
   if (size >= 1024 * 1024) return `${(size / 1024 / 1024).toFixed(1)} MB`;
@@ -425,14 +425,42 @@ export function ProviderSelect({
     label: providerModelName(provider.model, provider.displayName),
     description: providerUseCase(provider.model, provider.displayName),
   }));
+  const familyDefinitions = [
+    { value: "veo", label: "Veo", matches: (provider: FrontendProvider) => provider.model.startsWith("veo-") },
+    { value: "grok", label: "Grok", matches: (provider: FrontendProvider) => provider.model.startsWith("grok-video-") },
+    { value: "seedance", label: "Seedance", matches: (provider: FrontendProvider) => provider.model.toLowerCase().includes("seedance") },
+    { value: "banana", label: "Banana", matches: (provider: FrontendProvider) => ["banana2", "banana-pro"].includes(provider.model.toLowerCase()) },
+  ];
+  const groupedProviderIds = new Set<string>();
+  const items: HierarchicalSelectItem[] = [];
+  for (const family of familyDefinitions) {
+    const familyOptions = providers
+      .map((provider, index) => ({ provider, option: options[index] }))
+      .filter(({ provider }) => family.matches(provider));
+    if (!familyOptions.length) continue;
+    familyOptions.forEach(({ provider }) => groupedProviderIds.add(provider.id));
+    if (familyOptions.length === 1) {
+      items.push({ type: "option", option: familyOptions[0].option });
+    } else {
+      items.push({
+        type: "group",
+        value: family.value,
+        label: family.label,
+        options: familyOptions.map(({ option }) => option),
+      });
+    }
+  }
+  providers.forEach((provider, index) => {
+    if (!groupedProviderIds.has(provider.id)) items.push({ type: "option", option: options[index] });
+  });
 
   return (
     <FieldFrame label={label} required>
       <div className="studio-provider">
-        <CustomSelect
+        <HierarchicalSelect
           label={label}
           value={value}
-          options={options}
+          items={items}
           disabled={loading || Boolean(error)}
           placeholder={loading ? "正在读取模型" : "选择模型"}
           onChange={onChange}
@@ -478,6 +506,27 @@ function providerUseCase(model: string, displayName: string) {
   if (normalized === "veo-3.1-pro") return "高质量视频生成·细节与稳定性优先";
   if (normalized === "veo-3.1-fast") return "快速视频生成·兼顾质量与生成速度";
   if (normalized === "grok-video-1.5") return "动态影像直出·商品短片一键生成";
+  if (normalized === "暗黑破甲破限seedance 720p-fast-nsp") {
+    return "0.88元/秒，13.2元/15秒；禁区，国内慎用慎发，破甲、破限、无审核，除了版权都能过。Seedance 720P Fast，支持 9 图、3 音频、0 视频，自由时长，按秒计费。";
+  }
+  if (normalized === "暗黑破甲破限seedance 720p-pro-nsp") {
+    return "0.99元/秒，14.85元/15秒；禁区，国内慎用慎发，破甲、破限、无审核，除了版权都能过。Seedance 720P Pro，支持 9 图、3 音频、0 视频，自由时长，按秒计费。";
+  }
+  if (normalized === "oc-seedance 720-pro-15s") {
+    return "0.36元/秒，满血 720P Pro，支持 9 图、3 视频、3 音频，高并发，不卡真人脸，自由时长固定价格。";
+  }
+  if (normalized === "seedance2.0 720p-pro-gz-15s") {
+    return "Seedance 2.0 720P Pro，支持 4 个参考图、3 个视频、1 个音频，固定时长 15 秒，过人脸，高并发。";
+  }
+  if (normalized === "sh-seedance2.0-fast 720p-nv-15s") {
+    return "渠道四：0.29元/秒，固定价格自由时长；官转 Seedance 2.0 原生 720P Fast，支持 9 张参考图片、3 个参考音频，不排队，过真人脸，不支持参考视频。";
+  }
+  if (normalized === "sh-seedance2.0-mini-720p-nv-15s") {
+    return "渠道四：0.25元/秒，固定价格自由时长；Seedance 2.0 原生 720P Mini，支持 9 张参考图片、3 个参考音频，不排队，过真人脸，不支持参考视频。";
+  }
+  if (normalized === "xx-seedance 720p-pro-gz-15s") {
+    return "0.29元/秒，Seedance 720P Pro，支持 9 图、1 音频、1 视频，高并发、不排队、过人脸，固定时长 15 秒。";
+  }
   return undefined;
 }
 
