@@ -3832,7 +3832,7 @@
 
   .studio-image-result-card--pending .studio-dot-ripple-loader.is-fill {
     position: absolute;
-    inset: 12px;
+    inset: 6px;
     z-index: 0;
   }
 
@@ -3909,7 +3909,7 @@
 
   .studio-dot-ripple-loader.is-vector-field {
     contain: layout paint;
-    padding: 6% 4%;
+    padding: 3% 2%;
     transform-origin: center;
     animation: studio-dot-field-orbit 12.8s cubic-bezier(0.42, 0, 0.18, 1) infinite;
   }

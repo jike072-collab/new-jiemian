@@ -13,8 +13,8 @@ function createDotRippleDots(size: number) {
     const naturalOffset = (row * 17 + column * 29) % 34;
     const x = column / Math.max(size - 1, 1);
     const y = row / Math.max(size - 1, 1);
-    const ellipse = Math.max(0, 1 - Math.hypot((x - 0.52) / 0.66, (y - 0.58) / 0.58));
-    const core = ellipse ** 1.35;
+    const ellipse = Math.max(0, 1 - Math.hypot((x - 0.52) / 0.76, (y - 0.55) / 0.68));
+    const core = ellipse ** 1.25;
     const directionalScale = x * 0.34 + y * 0.22;
     const fieldSize = 0.8 + core * (4.5 + directionalScale * 2.2);
     const fieldOpacity = 0.008 + core * (0.82 + directionalScale * 0.22);
