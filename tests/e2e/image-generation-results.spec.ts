@@ -77,6 +77,62 @@ test.beforeEach(async ({ page }) => {
   await page.route("**/api/library", (route) => route.fulfill({ json: { items: [] } }));
 });
 
+test("single pending image fills the available preview height", async ({ page }, testInfo) => {
+  test.setTimeout(45_000);
+  if (testInfo.project.name === "chromium") {
+    await page.setViewportSize({ width: 1536, height: 1194 });
+  }
+  const releases: Array<() => void> = [];
+  await page.route("**/api/quota/precheck", (route) => route.fulfill({ json: { ok: true } }));
+  await page.route("**/api/generate/image", async (route) => {
+    await new Promise<void>((resolve) => releases.push(resolve));
+    await route.fulfill({ json: { item: imageItem(1), items: [imageItem(1)] } });
+  });
+
+  await page.goto("/", { waitUntil: "domcontentloaded" });
+  await expect(page.getByRole("button", { name: "提示词优化设置", exact: true })).toBeEnabled({ timeout: 30_000 });
+  await page.getByTestId("prompt-input").fill("产品摄影，干净背景");
+  if (testInfo.project.name.startsWith("mobile")) {
+    await page.locator(".studio-mobile-action__button").click();
+  } else {
+    await page.getByTestId("primary-submit").click();
+  }
+
+  await expect.poll(() => releases.length).toBe(1);
+  const pendingCard = page.locator(".studio-image-result-card--pending");
+  await expect(pendingCard).toHaveCount(1);
+  await expect(pendingCard).toBeVisible();
+  await expect(pendingCard.locator(".studio-dot-ripple-loader.is-expanded-field span")).toHaveCount(676);
+  const layout = await pendingCard.evaluate((card) => {
+    const grid = card.closest<HTMLElement>(".studio-image-results");
+    const cardRect = card.getBoundingClientRect();
+    const gridRect = grid?.getBoundingClientRect();
+    return {
+      cardHeight: cardRect.height,
+      gridHeight: gridRect?.height || 0,
+      overflow: grid ? grid.scrollHeight - grid.clientHeight : Number.POSITIVE_INFINITY,
+    };
+  });
+  expect(layout.gridHeight).toBeGreaterThan(0);
+  expect(layout.cardHeight / layout.gridHeight).toBeGreaterThanOrEqual(0.98);
+  expect(layout.overflow).toBeLessThanOrEqual(1);
+  const initialMotion = await pendingCard.locator(".studio-dot-ripple-loader").evaluate((loader) => ({
+    field: getComputedStyle(loader).transform,
+    dot: getComputedStyle(loader.querySelector("span")!).transform,
+  }));
+  await page.waitForTimeout(320);
+  const movedMotion = await pendingCard.locator(".studio-dot-ripple-loader").evaluate((loader) => ({
+    field: getComputedStyle(loader).transform,
+    dot: getComputedStyle(loader.querySelector("span")!).transform,
+  }));
+  expect(movedMotion.field).not.toBe(initialMotion.field);
+  expect(movedMotion.dot).not.toBe(initialMotion.dot);
+  await page.screenshot({
+    path: testInfo.outputPath(`image-waiting-single-${testInfo.project.name}.png`),
+    fullPage: true,
+  });
+});
+
 test("image results reveal independently with unified waiting visuals", async ({ page }, testInfo) => {
   test.setTimeout(60_000);
   if (testInfo.project.name === "chromium") {

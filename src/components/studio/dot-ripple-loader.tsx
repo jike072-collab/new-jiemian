@@ -41,21 +41,28 @@ function createDotRippleDots(size: number) {
 
 const compactDotRippleDots = createDotRippleDots(8);
 const fillDotRippleDots = createDotRippleDots(18);
+const expandedFillDotRippleDots = createDotRippleDots(26);
 
 export function DotRippleLoader({
   fill = false,
+  expanded = false,
   imageSource,
   className,
 }: {
   fill?: boolean;
+  expanded?: boolean;
   imageSource?: string;
   className?: string;
 }) {
-  const dots = fill ? fillDotRippleDots : compactDotRippleDots;
-  const size = fill ? 18 : 8;
+  let dots = compactDotRippleDots;
+  let size = 8;
+  if (fill) {
+    dots = expanded ? expandedFillDotRippleDots : fillDotRippleDots;
+    size = expanded ? 26 : 18;
+  }
   return (
     <div
-      className={cn("studio-dot-ripple-loader", fill && "is-fill", fill && !imageSource && "is-vector-field", imageSource && "has-image-fragments", className)}
+      className={cn("studio-dot-ripple-loader", fill && "is-fill", fill && !imageSource && "is-vector-field", fill && expanded && "is-expanded-field", imageSource && "has-image-fragments", className)}
       style={imageSource ? {
         "--dot-image-source": `url(${JSON.stringify(imageSource)})`,
         "--dot-image-size": `${size * 100}% ${size * 100}%`,

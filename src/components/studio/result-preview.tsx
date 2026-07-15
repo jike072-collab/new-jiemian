@@ -1796,7 +1796,7 @@ function ImageResultGrid({
       ))}
       {Array.from({ length: pendingCount }).map((_, index) => (
         <article key={`pending-${index}`} className="studio-image-result-card studio-image-result-card--pending" aria-live="polite">
-          <DotRippleLoader fill />
+          <DotRippleLoader fill expanded={pendingCount === 1} />
           <p>{loading ? "图片生成中" : "图片未生成"}</p>
           <small>完成后会自动补到这里。</small>
         </article>
