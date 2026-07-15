@@ -1804,8 +1804,10 @@ function ImageResultGrid({
         <article key={`pending-${index}`} className="studio-image-result-card studio-image-result-card--pending" aria-live="polite">
           <div className="studio-image-result-card__pending-frame" style={pendingFrameStyle}>
             <DotRippleLoader fill />
-            <p>{loading ? "图片生成中" : "图片未生成"}</p>
-            <small>完成后会自动补到这里。</small>
+            <div className="studio-image-result-card__pending-copy">
+              <p>{loading ? "图片生成中" : "图片未生成"}</p>
+              <small>完成后会自动补到这里。</small>
+            </div>
           </div>
         </article>
       ))}

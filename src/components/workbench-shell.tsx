@@ -93,10 +93,29 @@ export function WorkbenchShell({
       ? event.target.closest<HTMLElement>(".shell-nav, .shell-panel--controls")
       : null;
     if (!target) return;
-    target.dataset.panelSpotlight = "true";
     const rect = target.getBoundingClientRect();
-    target.style.setProperty("--panel-spotlight-x", `${event.clientX - rect.left}px`);
-    target.style.setProperty("--panel-spotlight-y", `${event.clientY - rect.top}px`);
+    const x = event.clientX - rect.left;
+    const y = event.clientY - rect.top;
+    const distances = {
+      top: y,
+      right: rect.width - x,
+      bottom: rect.height - y,
+      left: x,
+    } as const;
+    const edge = (Object.entries(distances) as Array<[keyof typeof distances, number]>).reduce((closest, candidate) => (
+      candidate[1] < closest[1] ? candidate : closest
+    ))[0];
+
+    if (distances[edge] > 18) {
+      delete target.dataset.panelSpotlight;
+      delete target.dataset.panelSpotlightEdge;
+      return;
+    }
+
+    target.dataset.panelSpotlight = "true";
+    target.dataset.panelSpotlightEdge = edge;
+    target.style.setProperty("--panel-spotlight-x", `${x}px`);
+    target.style.setProperty("--panel-spotlight-y", `${y}px`);
   };
 
   const clearPanelSpotlight = (event: ReactPointerEvent<HTMLDivElement>) => {
@@ -106,7 +125,10 @@ export function WorkbenchShell({
     const next = event.relatedTarget instanceof Element
       ? event.relatedTarget.closest<HTMLElement>(".shell-nav, .shell-panel--controls")
       : null;
-    if (current && current !== next) delete current.dataset.panelSpotlight;
+    if (current && current !== next) {
+      delete current.dataset.panelSpotlight;
+      delete current.dataset.panelSpotlightEdge;
+    }
   };
 
   const activeTool = workspaceToolById(state.activeToolId) || workspaceToolEntries[0];

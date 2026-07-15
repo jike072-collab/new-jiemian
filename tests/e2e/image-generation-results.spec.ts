@@ -153,9 +153,9 @@ test("image results reveal independently with unified waiting visuals", async ({
     expect(coverage.width).toBeGreaterThanOrEqual(0.85);
     expect(coverage.height).toBeGreaterThanOrEqual(0.85);
     expect(coverage.maskImage).not.toBe("none");
-    expect(coverage.maskSize).toContain("58%");
-    expect(coverage.animationName).toContain("studio-dot-window");
-    expect(coverage.backgroundSize).toContain("13px");
+    expect(coverage.maskSize).toContain("70%");
+    expect(coverage.animationName).toContain("studio-dot-field-drift");
+    expect(coverage.backgroundSize).toContain("15px");
     expect(coverage.vectorField).toBe(true);
     expect(coverage.highlightAnimation).toContain("studio-dot-highlight-flow");
   }
@@ -277,14 +277,18 @@ test("image results reveal independently with unified waiting visuals", async ({
     const nav = page.locator(".shell-nav");
     const controls = page.locator(".shell-panel--controls");
     for (const panel of [nav, controls]) {
-      const spotlightBeforeHover = await panel.evaluate((element) => Number.parseFloat(getComputedStyle(element, "::after").opacity));
-      await panel.hover({ position: { x: 80, y: 80 } });
-      await expect.poll(() => panel.evaluate((element, beforeHover) => {
+      await panel.hover({ position: { x: 6, y: 80 } });
+      await expect.poll(() => panel.evaluate((element) => {
         const style = getComputedStyle(element);
-        return Number.parseFloat(getComputedStyle(element, "::after").opacity) >= Math.max(beforeHover, 0.01)
+        return element.dataset.panelSpotlightEdge === "left"
+          && Number.parseFloat(getComputedStyle(element, "::after").opacity) > 0
           && /px$/.test(style.getPropertyValue("--panel-spotlight-x").trim())
           && /px$/.test(style.getPropertyValue("--panel-spotlight-y").trim());
-      }, spotlightBeforeHover)).toBe(true);
+      })).toBe(true);
+      const box = await panel.boundingBox();
+      if (!box) throw new Error("Panel bounding box is unavailable");
+      await panel.hover({ position: { x: Math.round(box.width / 2), y: Math.round(box.height / 2) } });
+      await expect(panel).not.toHaveAttribute("data-panel-spotlight");
     }
   }
 

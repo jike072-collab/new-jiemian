@@ -365,8 +365,6 @@
 
   .shell-nav,
   .shell-panel--controls {
-    --panel-spotlight-x: 50%;
-    --panel-spotlight-y: 50%;
     isolation: isolate;
   }
 
@@ -374,25 +372,52 @@
   .shell-panel--controls::after {
     position: absolute;
     z-index: 4;
-    inset: -1px;
-    border: 1px solid transparent;
-    border-radius: inherit;
-    background: radial-gradient(150px circle at var(--panel-spotlight-x) var(--panel-spotlight-y), color-mix(in srgb, var(--primary) 84%, #fff) 0%, color-mix(in srgb, var(--primary) 48%, transparent) 36%, transparent 72%) border-box;
+    width: 132px;
+    height: 2px;
+    background: linear-gradient(90deg, transparent 0%, color-mix(in srgb, var(--primary) 40%, transparent) 16%, color-mix(in srgb, var(--primary) 96%, #fff) 50%, color-mix(in srgb, var(--primary) 40%, transparent) 84%, transparent 100%);
+    box-shadow: 0 0 14px color-mix(in srgb, var(--primary) 52%, transparent);
     content: "";
-    mask: linear-gradient(#000 0 0) padding-box, linear-gradient(#000 0 0);
-    mask-composite: exclude;
     opacity: 0;
     pointer-events: none;
     transition: opacity var(--motion-fast) var(--ease-enter);
-    -webkit-mask: linear-gradient(#000 0 0) padding-box, linear-gradient(#000 0 0);
-    -webkit-mask-composite: xor;
   }
 
-  .shell-nav:hover::after,
-  .shell-panel--controls:hover::after,
   .shell-nav[data-panel-spotlight]::after,
   .shell-panel--controls[data-panel-spotlight]::after {
     opacity: 0.96;
+  }
+
+  .shell-nav[data-panel-spotlight-edge="top"]::after,
+  .shell-panel--controls[data-panel-spotlight-edge="top"]::after {
+    top: -1px;
+    left: calc(var(--panel-spotlight-x) - 66px);
+  }
+
+  .shell-nav[data-panel-spotlight-edge="bottom"]::after,
+  .shell-panel--controls[data-panel-spotlight-edge="bottom"]::after {
+    bottom: -1px;
+    left: calc(var(--panel-spotlight-x) - 66px);
+  }
+
+  .shell-nav[data-panel-spotlight-edge="left"]::after,
+  .shell-nav[data-panel-spotlight-edge="right"]::after,
+  .shell-panel--controls[data-panel-spotlight-edge="left"]::after,
+  .shell-panel--controls[data-panel-spotlight-edge="right"]::after {
+    width: 2px;
+    height: 132px;
+    background: linear-gradient(180deg, transparent 0%, color-mix(in srgb, var(--primary) 40%, transparent) 16%, color-mix(in srgb, var(--primary) 96%, #fff) 50%, color-mix(in srgb, var(--primary) 40%, transparent) 84%, transparent 100%);
+  }
+
+  .shell-nav[data-panel-spotlight-edge="left"]::after,
+  .shell-panel--controls[data-panel-spotlight-edge="left"]::after {
+    top: calc(var(--panel-spotlight-y) - 66px);
+    left: -1px;
+  }
+
+  .shell-nav[data-panel-spotlight-edge="right"]::after,
+  .shell-panel--controls[data-panel-spotlight-edge="right"]::after {
+    top: calc(var(--panel-spotlight-y) - 66px);
+    right: -1px;
   }
 
   .shell-root--account-center .shell-grid {
@@ -3874,18 +3899,25 @@
     order: 2;
   }
 
-  .studio-image-result-card__pending-frame p {
-    position: relative;
+  .studio-image-result-card__pending-copy {
+    position: absolute;
     z-index: 1;
+    inset: 0;
+    display: grid;
+    align-content: center;
+    justify-items: center;
+    gap: 8px;
+    pointer-events: none;
+  }
+
+  .studio-image-result-card__pending-copy p {
     margin: 0;
     color: var(--foreground);
     font-weight: 700;
     text-shadow: 0 2px 10px var(--background);
   }
 
-  .studio-image-result-card__pending-frame small {
-    position: relative;
-    z-index: 1;
+  .studio-image-result-card__pending-copy small {
     color: var(--muted);
     font-size: 12px;
     text-shadow: 0 2px 10px var(--background);
@@ -3953,29 +3985,32 @@
   .studio-dot-ripple-loader.is-vector-field {
     display: block;
     contain: paint;
-    background-image: radial-gradient(circle, color-mix(in srgb, var(--primary) 68%, transparent) 0 1.1px, transparent 1.55px);
-    background-size: 13px 13px;
+    background-image:
+      radial-gradient(circle at 2px 2px, color-mix(in srgb, var(--primary) 76%, transparent) 0 1.25px, transparent 1.75px),
+      radial-gradient(circle at 7px 9px, color-mix(in srgb, var(--primary) 48%, transparent) 0 0.9px, transparent 1.35px),
+      radial-gradient(circle at 12px 4px, color-mix(in srgb, var(--foreground) 34%, var(--primary)) 0 0.7px, transparent 1.1px);
+    background-size: 15px 14px, 19px 18px, 23px 21px;
     mask-image: radial-gradient(ellipse at center, #000 0 30%, rgba(0, 0, 0, 0.74) 52%, transparent 76%);
     mask-repeat: no-repeat;
-    mask-size: 58% 70%;
+    mask-size: 70% 82%;
     mask-position: 86% 14%;
     -webkit-mask-image: radial-gradient(ellipse at center, #000 0 30%, rgba(0, 0, 0, 0.74) 52%, transparent 76%);
     -webkit-mask-repeat: no-repeat;
-    -webkit-mask-size: 58% 70%;
+    -webkit-mask-size: 70% 82%;
     -webkit-mask-position: 86% 14%;
-    animation: studio-dot-window 6.2s cubic-bezier(0.44, 0.02, 0.2, 1) infinite;
-    will-change: mask-position, -webkit-mask-position;
+    animation: studio-dot-field-drift 8.4s cubic-bezier(0.36, 0.02, 0.18, 1) infinite;
+    will-change: background-position, mask-position, -webkit-mask-position;
   }
 
   .studio-dot-ripple-loader.is-vector-field::after {
     position: absolute;
     inset: 0;
-    background-image: radial-gradient(circle, color-mix(in srgb, var(--primary) 94%, var(--foreground)) 0 2.55px, transparent 3px);
-    background-size: 13px 13px;
+    background-image: radial-gradient(circle at 3px 3px, color-mix(in srgb, var(--primary) 94%, var(--foreground)) 0 1.9px, transparent 2.35px);
+    background-size: 15px 14px;
     content: "";
     mask-image: linear-gradient(to bottom left, transparent 2%, rgba(0, 0, 0, 0.18) 42%, #000 100%);
     -webkit-mask-image: linear-gradient(to bottom left, transparent 2%, rgba(0, 0, 0, 0.18) 42%, #000 100%);
-    animation: studio-dot-highlight-flow 6.2s steps(1, end) infinite;
+    animation: studio-dot-highlight-flow 8.4s steps(1, end) infinite;
   }
 
   .studio-dot-ripple-loader.is-fill span {
@@ -4024,6 +4059,38 @@
     100% {
       mask-position: 88% 72%;
       -webkit-mask-position: 88% 72%;
+    }
+  }
+
+  @keyframes studio-dot-field-drift {
+    0% {
+      background-position: 0 0, 4px 7px, 9px 3px;
+      mask-position: 84% 12%;
+      -webkit-mask-position: 84% 12%;
+    }
+
+    21% {
+      background-position: -11px 8px, 9px -5px, -4px 12px;
+      mask-position: 24% 72%;
+      -webkit-mask-position: 24% 72%;
+    }
+
+    47% {
+      background-position: 8px -9px, -6px 8px, 12px -6px;
+      mask-position: 76% 58%;
+      -webkit-mask-position: 76% 58%;
+    }
+
+    73% {
+      background-position: -6px -5px, 12px 3px, -9px -8px;
+      mask-position: 30% 24%;
+      -webkit-mask-position: 30% 24%;
+    }
+
+    100% {
+      background-position: 5px 10px, -3px -7px, 8px 5px;
+      mask-position: 88% 70%;
+      -webkit-mask-position: 88% 70%;
     }
   }
 
