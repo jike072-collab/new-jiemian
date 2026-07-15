@@ -35,6 +35,16 @@ test("GetToken Veo defaults expose Pro and Fast with three resolutions", () => {
   assert.deepEqual(veoProvider ? sanitizeProvider(veoProvider).videoOptions?.resolutions : undefined, ["720p", "1080p", "4k"]);
 });
 
+test("GetToken Veo keeps early invalid query responses pending", () => {
+  const createdAt = "2026-07-15T14:55:00.000Z";
+  const createdAtMs = Date.parse(createdAt);
+  assert.equal(providerCallInternalsForTests.shouldKeepGetTokenVeoJobPending(400, createdAt, createdAtMs + 5_000), true);
+  assert.equal(providerCallInternalsForTests.shouldKeepGetTokenVeoJobPending(400, createdAt, createdAtMs + 29 * 60_000), true);
+  assert.equal(providerCallInternalsForTests.shouldKeepGetTokenVeoJobPending(400, createdAt, createdAtMs + 30 * 60_000), false);
+  assert.equal(providerCallInternalsForTests.shouldKeepGetTokenVeoJobPending(503, createdAt, createdAtMs + 5_000), false);
+  assert.equal(providerCallInternalsForTests.shouldKeepGetTokenVeoJobPending(400, "invalid", createdAtMs + 5_000), false);
+});
+
 test("small valid provider JSON passes", async () => {
   const response = jsonResponse({
     data: [{ url: "https://cdn.example.test/result.png" }],

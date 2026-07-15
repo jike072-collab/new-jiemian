@@ -287,6 +287,14 @@ function isGetTokenVeoProvider(provider: ProviderConfig) {
   return provider.endpointType === "gettoken-veo";
 }
 
+const getTokenVeoQueryWarmupMs = 30 * 60 * 1000;
+
+function shouldKeepGetTokenVeoJobPending(status: number, createdAt: string, now = Date.now()) {
+  if (status !== 400) return false;
+  const createdAtMs = Date.parse(createdAt);
+  return Number.isFinite(createdAtMs) && now - createdAtMs < getTokenVeoQueryWarmupMs;
+}
+
 function getTokenBananaBaseUrl(provider: ProviderConfig) {
   return provider.apiUrl.replace(/\/+$/, "");
 }
@@ -2023,6 +2031,10 @@ export async function refreshVideoJob(jobId: string, localUserId?: string | null
     ...(getTokenVeo ? { body: JSON.stringify({ taskId: job.id }) } : {}),
     signal: AbortSignal.timeout(60000),
   });
+  if (getTokenVeo && shouldKeepGetTokenVeoJobPending(response.status, job.createdAt)) {
+    await response.body?.cancel();
+    return job;
+  }
   const output = parseProviderOutput(await readProviderJson(response, provider));
   const status = normalizeStatus(output.status || "");
 
@@ -2173,6 +2185,7 @@ export const providerCallInternalsForTests = {
   getTokenVeoSubmitEndpoint,
   isGetTokenBananaProvider,
   isGetTokenVeoProvider,
+  shouldKeepGetTokenVeoJobPending,
   isImg2ImageProvider,
   isLocalOpenAiCompatibleEndpoint,
   parseProviderOutput,
