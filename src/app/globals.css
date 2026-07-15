@@ -3137,7 +3137,8 @@
     overflow: visible;
   }
 
-  .studio-hierarchical-select .studio-custom-select__option-copy {
+  .studio-hierarchical-select .studio-custom-select__option-copy,
+  .studio-hierarchical-select__submenu.is-portal .studio-custom-select__option-copy {
     flex: 1 1 auto;
     flex-direction: column;
     align-items: flex-start;
@@ -3145,13 +3146,15 @@
     padding: 7px 0;
   }
 
-  .studio-hierarchical-select .studio-custom-select__option-copy > span {
+  .studio-hierarchical-select .studio-custom-select__option-copy > span,
+  .studio-hierarchical-select__submenu.is-portal .studio-custom-select__option-copy > span {
     max-width: 100%;
     overflow-wrap: anywhere;
     line-height: 1.3;
   }
 
-  .studio-hierarchical-select .studio-custom-select__option-copy small {
+  .studio-hierarchical-select .studio-custom-select__option-copy small,
+  .studio-hierarchical-select__submenu.is-portal .studio-custom-select__option-copy small {
     white-space: normal;
   }
 
