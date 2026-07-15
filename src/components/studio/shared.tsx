@@ -475,6 +475,8 @@ function providerUseCase(model: string, displayName: string) {
   }
   if (normalized === "banana2") return "极速省积分·批量草图首选";
   if (normalized === "banana-pro") return "电商质感专项优化·商用成品直出";
+  if (normalized === "veo-3.1-pro") return "高质量视频生成·细节与稳定性优先";
+  if (normalized === "veo-3.1-fast") return "快速视频生成·兼顾质量与生成速度";
   if (normalized === "grok-video-1.5") return "动态影像直出·商品短片一键生成";
   return undefined;
 }
