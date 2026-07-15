@@ -825,7 +825,16 @@ const providerJsonHardLimitBytes = 64 * 1024 * 1024;
 
 function providerPayloadCode(payload: unknown) {
   const record = asRecord(payload);
-  return firstString(asRecord(record.error).code, record.code, asRecord(record.data).code).toLowerCase();
+  const directCode = firstString(asRecord(record.error).code, record.code, asRecord(record.data).code).toLowerCase();
+  if (directCode !== "fail_to_fetch_task") return directCode;
+  const wrappedMessage = firstString(asRecord(record.error).message, record.message, asRecord(record.data).message);
+  if (!wrappedMessage.startsWith("{")) return directCode;
+  try {
+    const nested = JSON.parse(wrappedMessage);
+    return firstString(asRecord(nested).code, asRecord(asRecord(nested).error).code, asRecord(asRecord(nested).data).code).toLowerCase() || directCode;
+  } catch {
+    return directCode;
+  }
 }
 
 function providerCodeForResponse(status: number, payload: unknown) {

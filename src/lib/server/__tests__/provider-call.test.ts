@@ -637,7 +637,14 @@ test("local Grok video provider retries temporary upstream saturation", async ()
   globalThis.fetch = (async () => {
     callCount += 1;
     if (callCount < 3) {
-      return jsonResponse({ code: "upstream_load_saturated", message: "upstream saturated" }, { status: 403 });
+      return jsonResponse({
+        code: "fail_to_fetch_task",
+        message: JSON.stringify({
+          code: "upstream_load_saturated",
+          message: "当前分组上游负载已饱和，请稍后再试",
+          data: null,
+        }),
+      }, { status: 403 });
     }
     return jsonResponse({ data: [{ url: "https://cdn.example.test/retried-video.mp4" }] });
   }) as typeof fetch;
