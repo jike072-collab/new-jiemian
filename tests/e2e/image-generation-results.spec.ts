@@ -146,7 +146,7 @@ test("image results reveal independently with unified waiting visuals", async ({
   for (const coverage of waitingCoverage) {
     expect(coverage.width).toBeGreaterThanOrEqual(0.85);
     expect(coverage.height).toBeGreaterThanOrEqual(0.85);
-    expect(coverage.animationName).toBe("none");
+    expect(coverage.animationName).toContain("studio-dot-field-orbit");
     expect(coverage.vectorField).toBe(true);
     expect(coverage.particleCount).toBe(324);
     expect(new Set(coverage.particleSizes).size).toBeGreaterThan(4);
@@ -155,11 +155,18 @@ test("image results reveal independently with unified waiting visuals", async ({
   const initialTransforms = await page.locator(".studio-image-result-card--pending .studio-dot-ripple-loader span").evaluateAll((dots) => (
     dots.map((dot) => getComputedStyle(dot).transform)
   ));
+  const initialFieldTransforms = await page.locator(".studio-image-result-card--pending .studio-dot-ripple-loader").evaluateAll((fields) => (
+    fields.map((field) => getComputedStyle(field).transform)
+  ));
   await page.waitForTimeout(240);
   const movedTransforms = await page.locator(".studio-image-result-card--pending .studio-dot-ripple-loader span").evaluateAll((dots) => (
     dots.map((dot) => getComputedStyle(dot).transform)
   ));
+  const movedFieldTransforms = await page.locator(".studio-image-result-card--pending .studio-dot-ripple-loader").evaluateAll((fields) => (
+    fields.map((field) => getComputedStyle(field).transform)
+  ));
   expect(movedTransforms.some((transform, index) => transform !== initialTransforms[index])).toBe(true);
+  expect(movedFieldTransforms.some((transform, index) => transform !== initialFieldTransforms[index])).toBe(true);
   await page.screenshot({
     path: testInfo.outputPath(`image-waiting-${testInfo.project.name}.png`),
     fullPage: true,

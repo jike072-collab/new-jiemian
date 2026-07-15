@@ -3810,6 +3810,7 @@
   .studio-image-result-card--pending {
     position: relative;
     order: 1;
+    overflow: hidden;
     min-height: clamp(340px, 44vh, 510px);
     place-items: center;
     align-content: center;
@@ -3897,6 +3898,8 @@
   .studio-dot-ripple-loader.is-vector-field {
     contain: layout paint;
     padding: 6% 4%;
+    transform-origin: center;
+    animation: studio-dot-field-orbit 12.8s cubic-bezier(0.42, 0, 0.18, 1) infinite;
   }
 
   .studio-dot-ripple-loader.is-vector-field span {
@@ -3950,6 +3953,25 @@
     }
   }
 
+  @keyframes studio-dot-field-orbit {
+    0%,
+    100% {
+      transform: translate3d(-3%, -2%, 0) scale(0.98);
+    }
+
+    23% {
+      transform: translate3d(4%, -3%, 0) scale(1.02);
+    }
+
+    49% {
+      transform: translate3d(2%, 4%, 0) scale(0.99);
+    }
+
+    74% {
+      transform: translate3d(-4%, 3%, 0) scale(1.015);
+    }
+  }
+
   @media (prefers-reduced-motion: reduce) {
     .studio-dot-ripple-loader span {
       animation: none;
@@ -3958,8 +3980,6 @@
     }
 
     .studio-dot-ripple-loader.is-fill {
-      mask-position: center;
-      -webkit-mask-position: center;
       animation: none;
     }
   }

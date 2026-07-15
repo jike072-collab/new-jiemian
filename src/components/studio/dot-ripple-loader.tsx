@@ -18,8 +18,10 @@ function createDotRippleDots(size: number) {
     const directionalScale = x * 0.34 + y * 0.22;
     const fieldSize = 0.8 + core * (4.5 + directionalScale * 2.2);
     const fieldOpacity = 0.008 + core * (0.82 + directionalScale * 0.22);
-    const fieldDriftX = ((row * 11 + column * 7) % 9 - 4) * 0.48;
-    const fieldDriftY = ((row * 5 + column * 13) % 9 - 4) * 0.42;
+    const fieldDriftX = ((row * 11 + column * 7) % 9 - 4) * 2.4;
+    const fieldDriftY = ((row * 5 + column * 13) % 9 - 4) * 2.1;
+    const opacityFloor = 0.06 + (naturalOffset % 7) * 0.025;
+    const opacityMidpoint = 0.42 + ((row + column) % 6) * 0.065;
     return {
       row,
       column,
@@ -28,11 +30,11 @@ function createDotRippleDots(size: number) {
       revealDelay: Math.round(distance * 10 + naturalOffset * 0.14),
       fieldSize,
       fieldOpacity,
-      fieldOpacityLow: fieldOpacity * 0.62,
-      fieldOpacityMid: fieldOpacity * 0.82,
+      fieldOpacityLow: fieldOpacity * opacityFloor,
+      fieldOpacityMid: fieldOpacity * opacityMidpoint,
       fieldDriftX,
       fieldDriftY,
-      fieldDuration: 3100 + naturalOffset * 34,
+      fieldDuration: 4800 + naturalOffset * 57,
     };
   });
 }
