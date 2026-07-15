@@ -4,15 +4,15 @@
 
 - Target: `https://aohuang888.com`
 - Branch: `fix-newapi-membership-concurrency-ux`
-- Candidate commit: `8d835b7cd4c6d98d02b77090c17590b038c69f7c`
-- Active release: `/opt/aohuang-ai/releases/20260715T023200-result-interactions`
-- Direct rollback: `/opt/aohuang-ai/releases/20260715T013100-image-reveal-once`
+- Candidate commit: `bee0538bd19189141eb75c694454f94aedfbd263`
+- Active release: `/opt/aohuang-ai/releases/20260715T093000-downward-dot-sweep`
+- Direct rollback: `/opt/aohuang-ai/releases/20260715T023200-result-interactions`
 - Verified backup: `/var/lib/aohuang-ai/backups/server-production-20260714-162825-17d228d5`
 - Database migrations: `001` through `016` applied
 
 ## Accepted changes
 
-- Image generation waits with a 20 by 20 dot field whose visible radial window moves across the result frame. Only part of the field is visible at a time.
+- Image generation waiting now uses a denser 24 by 24 vertical wave: its visible band travels from top to bottom, with a larger and brighter lower edge rather than an even radial pulse.
 - Completed images first replace the loading dots with corresponding image fragments inside the actual `object-fit: contain` image bounds, expand into a denser 24 by 24 mosaic, and then fade into the complete sharp image.
 - Completed image reveal keys and up to 32 recent object URLs are retained for the current page session, so switching to another tool and back displays existing results immediately without replaying the animation or issuing another image request.
 - The 576-cell reveal overlay is removed after completion instead of accumulating hidden DOM nodes.
@@ -33,6 +33,7 @@
 | Local result and library E2E | 10/10 pass | Image generation and library interaction fixtures passed on Chromium, Firefox, WebKit, mobile Chrome, and mobile Safari |
 | Production browser acceptance | 10/10 scenarios pass | Nine scenarios passed in the parallel run; mobile Safari image generation passed its immediate standalone rerun after a first-load initialization timeout |
 | Moving-window regression | Pass | Test compares computed mask positions at two times and requires a changed position |
+| Downward dot-sweep regression | Pass | Every pending grid uses the vertical sweep animation and each lower row has a later animation phase than the first row |
 | Tool-switch replay regression | Pass | Four completed cards remain `ready` and have zero reveal overlays after image to video to image navigation |
 | Tool-switch request regression | Pass | Four generated images produce exactly four media requests before and after image to video to image navigation |
 | Progress dismissal regression | Pass | Closing the running progress toast leaves all four pending result slots active until their responses complete |
@@ -43,7 +44,7 @@
 | Release manifest | Pass | SHA-256 manifest verified before activation |
 | Service and public HTTPS | Pass | Service active, backend liveness OK, public response HTTP 200 |
 | Post-activation error log | Pass | Zero error-level service log entries in the activation window |
-| Storage | Pass | Normal level, about 63.4 percent used at final health check |
+| Storage | Pass | Normal level, about 64.6 percent used at final health check |
 
 ## Prior acceptance retained
 
