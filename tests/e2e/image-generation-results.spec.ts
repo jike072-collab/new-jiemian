@@ -149,9 +149,9 @@ test("image results reveal independently with unified waiting visuals", async ({
     expect(coverage.width).toBeGreaterThanOrEqual(0.85);
     expect(coverage.height).toBeGreaterThanOrEqual(0.85);
     expect(coverage.maskImage).not.toBe("none");
-    expect(coverage.maskSize).toContain("46%");
+    expect(coverage.maskSize).toContain("58%");
     expect(coverage.animationName).toContain("studio-dot-window");
-    expect(coverage.backgroundSize).toContain("14px");
+    expect(coverage.backgroundSize).toContain("13px");
     expect(coverage.vectorField).toBe(true);
     expect(coverage.highlightAnimation).toContain("studio-dot-highlight-flow");
   }
@@ -270,6 +270,19 @@ test("image results reveal independently with unified waiting visuals", async ({
     const backgroundBeforeHover = await resultActions.nth(3).evaluate((button) => getComputedStyle(button).backgroundColor);
     await resultActions.nth(3).hover();
     await expect.poll(() => resultActions.nth(3).evaluate((button) => getComputedStyle(button).backgroundColor)).not.toBe(backgroundBeforeHover);
+    const resultCard = page.locator(".studio-image-result-card").first();
+    const spotlightBeforeHover = await resultCard.evaluate((card) => Number.parseFloat(getComputedStyle(card, "::after").opacity));
+    await resultCard.hover({ position: { x: 80, y: 80 } });
+    await expect.poll(() => resultCard.evaluate((card) => ({
+      opacity: Number.parseFloat(getComputedStyle(card, "::after").opacity),
+      x: getComputedStyle(card).getPropertyValue("--spotlight-x").trim(),
+      y: getComputedStyle(card).getPropertyValue("--spotlight-y").trim(),
+    }))).toMatchObject({
+      opacity: expect.any(Number),
+      x: expect.stringMatching(/px$/),
+      y: expect.stringMatching(/px$/),
+    });
+    expect(await resultCard.evaluate((card) => Number.parseFloat(getComputedStyle(card, "::after").opacity))).toBeGreaterThan(spotlightBeforeHover);
   }
 
   const cardMetrics = await page.locator(".studio-image-result-card").evaluateAll((cards) => cards.map((card) => {

@@ -3660,12 +3660,45 @@
 
   .studio-image-result-card {
     display: grid;
+    position: relative;
     min-width: 0;
     gap: 10px;
     border: 1px solid color-mix(in srgb, var(--border-subtle) 84%, transparent);
     border-radius: var(--radius-card);
     background: color-mix(in srgb, var(--panel-2) 72%, transparent);
     padding: 10px;
+  }
+
+  .studio-image-result-card--interactive {
+    --spotlight-x: 50%;
+    --spotlight-y: 50%;
+    isolation: isolate;
+  }
+
+  .studio-image-result-card--interactive::after {
+    position: absolute;
+    z-index: 2;
+    inset: -1px;
+    border: 1px solid transparent;
+    border-radius: inherit;
+    background: radial-gradient(150px circle at var(--spotlight-x) var(--spotlight-y), color-mix(in srgb, var(--primary) 84%, #fff) 0%, color-mix(in srgb, var(--primary) 46%, transparent) 38%, transparent 72%) border-box;
+    content: "";
+    mask: linear-gradient(#000 0 0) padding-box, linear-gradient(#000 0 0);
+    mask-composite: exclude;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity var(--motion-fast) var(--ease-enter);
+    -webkit-mask: linear-gradient(#000 0 0) padding-box, linear-gradient(#000 0 0);
+    -webkit-mask-composite: xor;
+  }
+
+  .studio-image-result-card--interactive:hover::after {
+    opacity: 0.96;
+  }
+
+  .studio-image-result-card--interactive > * {
+    position: relative;
+    z-index: 3;
   }
 
   .studio-image-result-card__media {
@@ -3906,11 +3939,15 @@
   .studio-dot-ripple-loader.is-vector-field {
     display: block;
     contain: paint;
-    background-image: radial-gradient(circle, color-mix(in srgb, var(--primary) 88%, var(--foreground)) 0 1.35px, transparent 1.7px);
-    background-size: 14px 14px;
-    mask-size: 46% 52%;
-    -webkit-mask-size: 46% 52%;
+    background-image: radial-gradient(circle, color-mix(in srgb, var(--primary) 68%, transparent) 0 1.1px, transparent 1.55px);
+    background-size: 13px 13px;
+    mask-image: radial-gradient(ellipse at center, #000 0 30%, rgba(0, 0, 0, 0.74) 52%, transparent 76%);
+    mask-repeat: no-repeat;
+    mask-size: 58% 70%;
     mask-position: 86% 14%;
+    -webkit-mask-image: radial-gradient(ellipse at center, #000 0 30%, rgba(0, 0, 0, 0.74) 52%, transparent 76%);
+    -webkit-mask-repeat: no-repeat;
+    -webkit-mask-size: 58% 70%;
     -webkit-mask-position: 86% 14%;
     animation: studio-dot-window 6.2s cubic-bezier(0.44, 0.02, 0.2, 1) infinite;
     will-change: mask-position, -webkit-mask-position;
@@ -3919,8 +3956,8 @@
   .studio-dot-ripple-loader.is-vector-field::after {
     position: absolute;
     inset: 0;
-    background-image: radial-gradient(circle, color-mix(in srgb, var(--primary) 94%, var(--foreground)) 0 2.45px, transparent 2.95px);
-    background-size: 14px 14px;
+    background-image: radial-gradient(circle, color-mix(in srgb, var(--primary) 94%, var(--foreground)) 0 2.55px, transparent 3px);
+    background-size: 13px 13px;
     content: "";
     mask-image: linear-gradient(to bottom left, transparent 2%, rgba(0, 0, 0, 0.18) 42%, #000 100%);
     -webkit-mask-image: linear-gradient(to bottom left, transparent 2%, rgba(0, 0, 0, 0.18) 42%, #000 100%);
@@ -11677,7 +11714,7 @@
     height: calc(100% - 1px);
     aspect-ratio: auto;
     border-radius: 1px;
-    animation: studio-image-mosaic-reveal 620ms var(--ease-enter) both;
+    animation: studio-image-mosaic-reveal 720ms var(--ease-enter) both;
     animation-delay: var(--dot-reveal-delay, 0ms);
   }
 
@@ -11687,27 +11724,27 @@
 
   @keyframes studio-image-mosaic-reveal {
     0% {
-      opacity: 0;
-      transform: scale(0.72);
-      filter: blur(0);
+      opacity: 0.08;
+      transform: scale(0.58);
+      filter: saturate(0.82);
     }
 
-    28% {
+    32% {
       opacity: 1;
-      transform: scale(0.94);
-      filter: blur(0);
+      transform: scale(1.08);
+      filter: saturate(1.08);
     }
 
-    64% {
-      opacity: 1;
-      transform: scale(1.02);
-      filter: blur(0);
+    68% {
+      opacity: 0.92;
+      transform: scale(1.01);
+      filter: saturate(1);
     }
 
     100% {
       opacity: 0;
-      transform: scale(1.02);
-      filter: blur(0.35px);
+      transform: scale(1.01);
+      filter: saturate(1);
     }
   }
 

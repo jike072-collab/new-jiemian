@@ -2,7 +2,7 @@
 
 /* eslint-disable @next/next/no-img-element */
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type PointerEvent } from "react";
 import { AlertTriangle, Check, Download, ImageUp, Loader2, RefreshCw, UploadCloud, Video, Wand2, X } from "lucide-react";
 
 import { BeforeAfterImageCompare } from "@/components/before-after-image-compare";
@@ -1747,6 +1747,11 @@ function ImageResultGrid({
   onEdit: (item: LibraryItem) => void;
   onDismiss: (itemId: string) => void;
 }) {
+  const updateCardSpotlight = (event: PointerEvent<HTMLElement>) => {
+    const rect = event.currentTarget.getBoundingClientRect();
+    event.currentTarget.style.setProperty("--spotlight-x", `${event.clientX - rect.left}px`);
+    event.currentTarget.style.setProperty("--spotlight-y", `${event.clientY - rect.top}px`);
+  };
   const currentOutputs = activeBatchId
     ? outputs.filter((output) => output.item.params?.imageBatchId === activeBatchId)
     : outputs;
@@ -1756,7 +1761,12 @@ function ImageResultGrid({
   return (
     <div className={cn("studio-image-results", `is-count-${Math.min(Math.max(pendingCount + outputs.length, 1), 4)}`)}>
       {[...currentOutputs, ...historicOutputs].map((output, index) => (
-        <article key={output.item.id} className={cn("studio-image-result-card", activeBatchId && output.item.params?.imageBatchId !== activeBatchId && "is-historic")}>
+        <article
+          key={output.item.id}
+          className={cn("studio-image-result-card", "studio-image-result-card--interactive", activeBatchId && output.item.params?.imageBatchId !== activeBatchId && "is-historic")}
+          onPointerEnter={updateCardSpotlight}
+          onPointerMove={updateCardSpotlight}
+        >
           <div className="studio-image-result-card__media">
             <MediaCard cacheOwnerId={cacheOwnerId} item={output.item} large compact smoothReveal />
             <div className="studio-image-result-card__overlay" aria-label={`图片 ${index + 1} 参数`}>
