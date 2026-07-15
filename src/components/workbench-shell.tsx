@@ -30,6 +30,19 @@ import {
 
 type ShellPane = "parameters" | "preview";
 
+const spotlightTargetSelector = [
+  ".shell-nav",
+  ".shell-panel--controls",
+  ".shell-nav-item",
+  ".studio-custom-select",
+  ".studio-template-track",
+  ".studio-template-card",
+  ".studio-upload",
+  ".studio-ratio__item",
+  ".studio-textarea-wrap",
+  ".studio-prompt-action",
+].join(", ");
+
 type WorkspaceShellState = {
   activeToolId: WorkspaceToolId;
 };
@@ -90,7 +103,7 @@ export function WorkbenchShell({
 
   const updatePanelSpotlight = (event: ReactPointerEvent<HTMLDivElement>) => {
     const target = event.target instanceof Element
-      ? event.target.closest<HTMLElement>(".shell-nav, .shell-panel--controls")
+      ? event.target.closest<HTMLElement>(spotlightTargetSelector)
       : null;
     if (!target) return;
     const rect = target.getBoundingClientRect();
@@ -114,16 +127,21 @@ export function WorkbenchShell({
 
     target.dataset.panelSpotlight = "true";
     target.dataset.panelSpotlightEdge = edge;
+    const edgeAngle = { top: 0, right: 90, bottom: 180, left: 270 }[edge];
+    const alongEdge = edge === "top" || edge === "bottom"
+      ? (x / Math.max(rect.width, 1) - 0.5) * 56
+      : (y / Math.max(rect.height, 1) - 0.5) * 56;
+    target.style.setProperty("--panel-spotlight-angle", `${edgeAngle + alongEdge}deg`);
     target.style.setProperty("--panel-spotlight-x", `${x}px`);
     target.style.setProperty("--panel-spotlight-y", `${y}px`);
   };
 
   const clearPanelSpotlight = (event: ReactPointerEvent<HTMLDivElement>) => {
     const current = event.target instanceof Element
-      ? event.target.closest<HTMLElement>(".shell-nav, .shell-panel--controls")
+      ? event.target.closest<HTMLElement>(spotlightTargetSelector)
       : null;
     const next = event.relatedTarget instanceof Element
-      ? event.relatedTarget.closest<HTMLElement>(".shell-nav, .shell-panel--controls")
+      ? event.relatedTarget.closest<HTMLElement>(spotlightTargetSelector)
       : null;
     if (current && current !== next) {
       delete current.dataset.panelSpotlight;

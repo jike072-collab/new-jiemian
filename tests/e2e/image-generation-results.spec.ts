@@ -153,9 +153,9 @@ test("image results reveal independently with unified waiting visuals", async ({
     expect(coverage.width).toBeGreaterThanOrEqual(0.85);
     expect(coverage.height).toBeGreaterThanOrEqual(0.85);
     expect(coverage.maskImage).not.toBe("none");
-    expect(coverage.maskSize).toContain("70%");
-    expect(coverage.animationName).toContain("studio-dot-field-drift");
-    expect(coverage.backgroundSize).toContain("15px");
+    expect(coverage.maskSize).toContain("58%");
+    expect(coverage.animationName).toContain("studio-dot-window");
+    expect(coverage.backgroundSize).toContain("13px");
     expect(coverage.vectorField).toBe(true);
     expect(coverage.highlightAnimation).toContain("studio-dot-highlight-flow");
   }
@@ -289,6 +289,23 @@ test("image results reveal independently with unified waiting visuals", async ({
       if (!box) throw new Error("Panel bounding box is unavailable");
       await panel.hover({ position: { x: Math.round(box.width / 2), y: Math.round(box.height / 2) } });
       await expect(panel).not.toHaveAttribute("data-panel-spotlight");
+    }
+
+    const controlTargets = [
+      page.locator(".studio-custom-select").first(),
+      page.locator(".studio-template-card").first(),
+      page.locator(".studio-upload").first(),
+      page.locator(".studio-textarea-wrap").first(),
+    ];
+    for (const target of controlTargets) {
+      await target.scrollIntoViewIfNeeded();
+      const targetBox = await target.boundingBox();
+      if (!targetBox) throw new Error("Spotlight target bounding box is unavailable");
+      await target.hover({ position: { x: 4, y: Math.max(4, Math.round(targetBox.height / 2)) } });
+      await expect.poll(() => target.evaluate((element) => (
+        Boolean(element.dataset.panelSpotlightEdge)
+          && Number.parseFloat(getComputedStyle(element, "::after").opacity) > 0
+      ))).toBe(true);
     }
   }
 
