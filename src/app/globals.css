@@ -390,9 +390,8 @@
     position: absolute;
     z-index: 4;
     inset: -1px;
-    border: 0;
+    border: 1px solid transparent;
     border-radius: inherit;
-    padding: 1px;
     background: conic-gradient(
       from calc(var(--panel-spotlight-angle, 0deg) - 40deg),
       transparent 0deg,
@@ -404,13 +403,15 @@
       transparent 360deg
     );
     content: "";
-    mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
-    mask-composite: exclude;
+    mask: linear-gradient(transparent, transparent), linear-gradient(#fff, #fff);
+    mask-clip: padding-box, border-box;
+    mask-composite: intersect;
     opacity: 0;
     pointer-events: none;
     transition: opacity var(--motion-fast) var(--ease-enter), filter var(--motion-fast) var(--ease-enter);
-    -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
-    -webkit-mask-composite: xor;
+    -webkit-mask: linear-gradient(transparent, transparent), linear-gradient(#fff, #fff);
+    -webkit-mask-clip: padding-box, border-box;
+    -webkit-mask-composite: source-in;
   }
 
   .shell-nav[data-panel-spotlight]::after,
