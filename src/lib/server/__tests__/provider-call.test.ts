@@ -5,6 +5,7 @@ import test from "node:test";
 
 import { createErrorDiagnostic, logDiagnosticEvent } from "../error-diagnostics";
 import { providerCallInternalsForTests } from "../provider-call";
+import { defaultProviders } from "../providers";
 
 const provider = {
   id: "provider-test",
@@ -17,6 +18,13 @@ const provider = {
   enabled: true,
   endpointType: "images-generations",
 } as const;
+
+test("Grok video defaults expose only model 1.5", () => {
+  const grokProvider = defaultProviders().find((item) => item.id === "video-grok");
+  assert.equal(grokProvider?.model, "grok-video-1.5");
+  assert.deepEqual(grokProvider?.models, ["grok-video-1.5"]);
+  assert.deepEqual(grokProvider?.enabledModels, ["grok-video-1.5"]);
+});
 
 test("small valid provider JSON passes", async () => {
   const response = jsonResponse({

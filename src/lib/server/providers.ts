@@ -12,6 +12,7 @@ import { dataRoot, readJsonFile, writeJsonFile } from "./paths";
 
 const providersPath = join(dataRoot, "providers.json");
 const virtualModelSeparator = "::model::";
+const activeGrokVideoModel = "grok-video-1.5";
 const endpointTypes = [
   "images-generations",
   "images-edits",
@@ -310,8 +311,10 @@ export function defaultProviders(): ProviderConfig[] {
       title: "Grok 视频",
       role: "Grok 文生视频与图生视频",
       apiUrl: env("GROK_VIDEO_API_URL", "https://api.manxiaobai.online/v1/videos"),
-      model: env("GROK_VIDEO_MODEL", "grok-video-1.0"),
-      displayName: env("GROK_VIDEO_DISPLAY_NAME", "Grok 视频 1.0"),
+      model: activeGrokVideoModel,
+      models: [activeGrokVideoModel],
+      enabledModels: [activeGrokVideoModel],
+      displayName: env("GROK_VIDEO_DISPLAY_NAME", "grok"),
       apiKey: env("GROK_VIDEO_API_KEY"),
       enabled: hasKey(env("GROK_VIDEO_API_KEY")),
       endpointType: "grok-videos",
@@ -362,8 +365,12 @@ export function defaultProviders(): ProviderConfig[] {
 function normalizeProvider(provider: ProviderConfig): ProviderConfig {
   const legacyNormalized = normalizeLegacyUpscaleProvider(provider);
   const apiUrl = String(legacyNormalized.apiUrl || "").trim();
-  const models = normalizeModels(legacyNormalized.models);
-  const enabledModels = normalizeModels(legacyNormalized.enabledModels);
+  const endpointType = normalizeEndpointType(legacyNormalized.endpointType, legacyNormalized.kind);
+  const onlyActiveGrokModel = endpointType === "grok-videos";
+  const models = normalizeModels(legacyNormalized.models)
+    .filter((model) => !onlyActiveGrokModel || model === activeGrokVideoModel);
+  const enabledModels = normalizeModels(legacyNormalized.enabledModels)
+    .filter((model) => !onlyActiveGrokModel || model === activeGrokVideoModel);
   const retired = isRetiredNianhuaImageProvider({
     kind: legacyNormalized.kind,
     apiUrl,
@@ -371,7 +378,7 @@ function normalizeProvider(provider: ProviderConfig): ProviderConfig {
   return {
     ...legacyNormalized,
     apiUrl,
-    model: String(legacyNormalized.model || "").trim(),
+    model: onlyActiveGrokModel ? activeGrokVideoModel : String(legacyNormalized.model || "").trim(),
     models: models.length ? models : undefined,
     enabledModels: enabledModels.length
       ? enabledModels.filter((model) => !models.length || models.includes(model))
@@ -383,7 +390,7 @@ function normalizeProvider(provider: ProviderConfig): ProviderConfig {
     fallbackApiKey: fallbackApiKeyForProvider(legacyNormalized),
     fallbackProviderId: fallbackProviderIdForProvider(legacyNormalized),
     enabled: retired ? false : Boolean(legacyNormalized.enabled),
-    endpointType: normalizeEndpointType(legacyNormalized.endpointType, legacyNormalized.kind),
+    endpointType,
     custom: Boolean(legacyNormalized.custom),
   };
 }
