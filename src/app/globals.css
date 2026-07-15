@@ -3898,6 +3898,21 @@
     width: 4px;
   }
 
+  .studio-dot-ripple-loader.is-fill:not(.has-image-fragments) {
+    mask-image: linear-gradient(to bottom, transparent 0%, rgba(0, 0, 0, 0.28) 24%, #000 54%, rgba(0, 0, 0, 0.5) 76%, transparent 100%);
+    -webkit-mask-image: linear-gradient(to bottom, transparent 0%, rgba(0, 0, 0, 0.28) 24%, #000 54%, rgba(0, 0, 0, 0.5) 76%, transparent 100%);
+    mask-size: 74% 72%;
+    -webkit-mask-size: 74% 72%;
+    mask-position: 50% -34%;
+    -webkit-mask-position: 50% -34%;
+    animation: studio-dot-sweep-window 3.6s linear infinite;
+  }
+
+  .studio-dot-ripple-loader.is-fill:not(.has-image-fragments) span {
+    animation: studio-dot-sweep 2.72s var(--ease-toggle) infinite;
+    animation-delay: calc(-1 * var(--dot-sweep-delay, 0ms));
+  }
+
   @keyframes studio-dot-ripple {
     0%,
     100% {
@@ -3916,26 +3931,40 @@
     }
   }
 
-  @keyframes studio-dot-window {
+  @keyframes studio-dot-sweep {
     0%,
     100% {
-      mask-position: 12% 18%;
-      -webkit-mask-position: 12% 18%;
+      opacity: 0.1;
+      transform: scale(0.34);
     }
 
-    27% {
-      mask-position: 88% 30%;
-      -webkit-mask-position: 88% 30%;
+    30% {
+      opacity: 0.28;
+      transform: scale(0.56);
     }
 
-    54% {
-      mask-position: 72% 88%;
-      -webkit-mask-position: 72% 88%;
+    52% {
+      opacity: 0.94;
+      transform: scale(1.34);
     }
 
-    78% {
-      mask-position: 18% 72%;
-      -webkit-mask-position: 18% 72%;
+    68% {
+      opacity: 0.5;
+      transform: scale(0.78);
+    }
+  }
+
+  @keyframes studio-dot-sweep-window {
+    0%,
+    12% {
+      mask-position: 50% -34%;
+      -webkit-mask-position: 50% -34%;
+    }
+
+    78%,
+    100% {
+      mask-position: 50% 134%;
+      -webkit-mask-position: 50% 134%;
     }
   }
 

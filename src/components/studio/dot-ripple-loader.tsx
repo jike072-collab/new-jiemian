@@ -15,6 +15,7 @@ function createDotRippleDots(size: number) {
       row,
       column,
       rippleDelay: Math.round(distance * 58 + naturalOffset),
+      sweepDelay: Math.round(row * 58 + naturalOffset * 1.1),
       revealDelay: Math.round(distance * 10 + naturalOffset * 0.14),
     };
   });
@@ -48,6 +49,7 @@ export function DotRippleLoader({
           key={index}
           style={{
             "--dot-ripple-delay": `${dot.rippleDelay}ms`,
+            "--dot-sweep-delay": `${dot.sweepDelay}ms`,
             "--dot-reveal-delay": `${dot.revealDelay}ms`,
             "--dot-image-position": `${(dot.column / (size - 1)) * 100}% ${(dot.row / (size - 1)) * 100}%`,
           } as CSSProperties}

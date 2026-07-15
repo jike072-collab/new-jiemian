@@ -147,10 +147,22 @@ test("image results reveal independently with unified waiting visuals", async ({
   for (const coverage of waitingCoverage) {
     expect(coverage.width).toBeGreaterThanOrEqual(0.85);
     expect(coverage.height).toBeGreaterThanOrEqual(0.85);
-    expect(coverage.baseOpacity).toBeGreaterThanOrEqual(0.18);
+    expect(coverage.baseOpacity).toBeGreaterThanOrEqual(0.05);
     expect(coverage.maskImage).not.toBe("none");
-    expect(coverage.maskSize).toContain("62%");
-    expect(coverage.animationName).toContain("studio-dot-window");
+    expect(coverage.maskSize).toContain("74%");
+    expect(coverage.animationName).toContain("studio-dot-sweep-window");
+  }
+  const sweepDelays = await page.locator(".studio-image-result-card--pending .studio-dot-ripple-loader").evaluateAll((loaders) => loaders.map((loader) => {
+    const dots = loader.querySelectorAll<HTMLElement>("span");
+    return {
+      firstAnimation: dots[0] ? getComputedStyle(dots[0]).animationName : "",
+      firstDelay: dots[0] ? Number.parseFloat(getComputedStyle(dots[0]).animationDelay) : 0,
+      lastDelay: dots[dots.length - 1] ? Number.parseFloat(getComputedStyle(dots[dots.length - 1]).animationDelay) : 0,
+    };
+  }));
+  for (const sweep of sweepDelays) {
+    expect(sweep.firstAnimation).toBe("studio-dot-sweep");
+    expect(sweep.lastDelay).toBeLessThan(sweep.firstDelay);
   }
   const initialMaskPositions = waitingCoverage.map((coverage) => coverage.maskPosition);
   const readWaitingPulse = () => page.locator(".studio-image-result-card--pending").evaluateAll((cards) => cards.map((card) => {
