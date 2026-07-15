@@ -80,6 +80,7 @@ import {
   estimateUpscaleQuota,
   estimateImageGenerationEntitlementUnits,
   estimateImageGenerationTotalQuota,
+  estimateVideoGenerationEntitlementUnits,
   estimateVideoGenerationQuota,
   generationBillingFingerprint,
   upscaleBillingFingerprint,
@@ -478,13 +479,7 @@ function createImageWorkspaceFiles(files: File[]) {
   }));
 }
 
-function createVideoWorkspaceFiles(files: File[]) {
-  if (files.length > maxVideoFirstFrameCount) {
-    throw new Error("图像只能上传 1 张。");
-  }
-  const nextFiles = files.slice(0, maxVideoFirstFrameCount);
-  if (!nextFiles.length) return [];
-  const [file] = nextFiles;
+function createVideoWorkspaceFile(file: File, frameRole?: VideoWorkspaceFile["frameRole"]) {
   if (!allowedReferenceImageTypes.has(file.type)) {
     throw new Error("图像仅支持 PNG、JPEG 和 WebP。");
   }
@@ -492,10 +487,21 @@ function createVideoWorkspaceFiles(files: File[]) {
   if (file.size > maxReferenceImageSize) {
     throw new Error(`图像不能超过 ${defaultUploadLimits.referenceImage.label}。`);
   }
-  return [{
+  return {
     file,
     previewUrl: URL.createObjectURL(file),
-  }];
+    ...(frameRole ? { frameRole } : {}),
+  };
+}
+
+function createVideoWorkspaceFiles(files: File[]) {
+  if (files.length > maxVideoFirstFrameCount) {
+    throw new Error("图像只能上传 1 张。");
+  }
+  const nextFiles = files.slice(0, maxVideoFirstFrameCount);
+  if (!nextFiles.length) return [];
+  const [file] = nextFiles;
+  return [createVideoWorkspaceFile(file)];
 }
 
 function createImageUpscaleFile(files: File[], limit: PublicUploadLimit = defaultUploadLimits.imageUpscale) {
@@ -701,6 +707,7 @@ export function StudioApp() {
   const [imageEditorWorkspace, setImageEditorWorkspace] = useState<ImageWorkspaceState>(() => createInitialImageWorkspaceState());
   const [videoWorkspace, setVideoWorkspace] = useState<VideoWorkspaceState>({
     providerId: "",
+    referenceMode: "single",
     ratio: "16:9",
     duration: 6,
     resolution: "720p",
@@ -1237,7 +1244,9 @@ export function StudioApp() {
   const activeImageMode: WorkspaceImageMode = activeImageWorkspaceScope === "image-editor" || activeImageWorkspace.files.length
     ? "image-to-image"
     : "text-to-image";
-  const activeVideoMode: WorkspaceVideoMode = videoWorkspace.files.length ? "image-to-video" : "text-to-video";
+  const activeVideoMode: WorkspaceVideoMode = videoWorkspace.referenceMode === "first-last" || videoWorkspace.files.length
+    ? "image-to-video"
+    : "text-to-video";
   const templateParam = searchParams.get("template") || "";
   const activeImageTemplate = useMemo(() => templateById(activeImageWorkspace.templateId), [activeImageWorkspace.templateId]);
   const activeVideoTemplate = useMemo(() => templateById(videoWorkspace.templateId), [videoWorkspace.templateId]);
@@ -2015,6 +2024,7 @@ export function StudioApp() {
 
   const videoWorkspaceFiles = videoWorkspace.files;
   const videoWorkspaceHasFiles = videoWorkspaceFiles.length > 0;
+  const videoFirstLastFramesReady = videoWorkspace.referenceMode !== "first-last" || videoWorkspaceFiles.length === 2;
   const videoWorkspacePrompt = videoWorkspace.prompt.trim();
   const videoWorkspaceNeedsFile = activeVideoMode === "image-to-video";
   const videoWorkspaceRequiresFile = activeVideoTemplate?.scope === "video" && activeVideoTemplate.requiresImage;
@@ -2022,19 +2032,23 @@ export function StudioApp() {
   const videoEstimatedQuotaUnits = estimateVideoGenerationQuota({
     mode: activeVideoMode,
     durationSeconds: videoWorkspace.duration,
+    resolution: videoWorkspace.resolution,
     referenceImages: videoWorkspace.files.length,
     model: selectedVideoProvider?.model,
   });
-  const videoGenerationCostLabel = membershipEntitlementLabel(
+  const videoEntitlementUnits = estimateVideoGenerationEntitlementUnits({ resolution: videoWorkspace.resolution });
+  const videoGenerationCostLabel = membershipEntitlementUsageLabel(
     membershipEntitlements,
     "video_generation",
     "次",
+    videoEntitlementUnits,
     formatQuotaSymbolLabel(videoEstimatedQuotaUnits),
   );
   const videoWorkspaceCanSubmit = Boolean(selectedVideoProvider)
     && !providersLoading
     && videoWorkspace.inFlightCount < CLIENT_VIDEO_SUBMISSION_LIMIT
     && Boolean(videoWorkspacePrompt)
+    && videoFirstLastFramesReady
     && (!videoWorkspaceNeedsFile || videoWorkspaceHasFiles)
     && (!videoWorkspaceRequiresFile || videoWorkspaceHasFiles)
     && (!selectedVideoModelRequiresFile || videoWorkspaceHasFiles);
@@ -2181,6 +2195,59 @@ export function StudioApp() {
     videoWorkspaceFilesRef.current = nextFiles;
   }, []);
 
+  const replaceVideoFrameFile = useCallback((frameRole: "first" | "last", file: File) => {
+    let nextFile: VideoWorkspaceFile;
+    try {
+      nextFile = createVideoWorkspaceFile(file, frameRole);
+    } catch (error) {
+      setVideoWorkspace((prev) => ({
+        ...prev,
+        fileError: error instanceof Error ? error.message : "图像读取失败。",
+        submitError: "",
+        submitDiagnostic: null,
+      }));
+      return;
+    }
+    setVideoWorkspace((prev) => {
+      const replaced = prev.files.find((item) => item.frameRole === frameRole);
+      if (replaced) URL.revokeObjectURL(replaced.previewUrl);
+      const nextFiles = [...prev.files.filter((item) => item.frameRole !== frameRole), nextFile]
+        .sort((left, right) => (left.frameRole === "first" ? -1 : right.frameRole === "first" ? 1 : 0));
+      videoWorkspaceFilesRef.current = nextFiles;
+      return {
+        ...prev,
+        files: nextFiles,
+        fileError: nextFiles.length === 2 ? "" : prev.fileError,
+        submitError: "",
+        submitDiagnostic: null,
+      };
+    });
+  }, []);
+
+  const changeVideoReferenceMode = useCallback((referenceMode: VideoWorkspaceState["referenceMode"]) => {
+    setVideoWorkspace((prev) => {
+      if (prev.referenceMode === referenceMode) return prev;
+      const first = prev.files.find((item) => item.frameRole === "first") || prev.files[0];
+      const removedFiles = prev.files.filter((item) => item !== first);
+      removedFiles.forEach((item) => URL.revokeObjectURL(item.previewUrl));
+      const nextFiles = first
+        ? [{
+            ...first,
+            ...(referenceMode === "first-last" ? { frameRole: "first" as const } : { frameRole: undefined }),
+          }]
+        : [];
+      videoWorkspaceFilesRef.current = nextFiles;
+      return {
+        ...prev,
+        referenceMode,
+        files: nextFiles,
+        fileError: "",
+        submitError: "",
+        submitDiagnostic: null,
+      };
+    });
+  }, []);
+
   const removeVideoWorkspaceFile = useCallback((index: number) => {
     setVideoWorkspace((prev) => {
       const removed = prev.files[index];
@@ -2190,7 +2257,9 @@ export function StudioApp() {
       return {
         ...prev,
         files: nextFiles,
-        fileError: selectedVideoModelRequiresFile && !nextFiles.length ? videoModelReferenceMessage : "",
+        fileError: prev.referenceMode === "first-last" && nextFiles.length < 2
+          ? "首尾帧视频需要上传首帧图和尾帧图。"
+          : selectedVideoModelRequiresFile && !nextFiles.length ? videoModelReferenceMessage : "",
         submitError: "",
         submitDiagnostic: null,
       };
@@ -2203,7 +2272,9 @@ export function StudioApp() {
     setVideoWorkspace((prev) => ({
       ...prev,
       files: [],
-      fileError: selectedVideoModelRequiresFile ? videoModelReferenceMessage : "",
+      fileError: prev.referenceMode === "first-last"
+        ? "首尾帧视频需要上传首帧图和尾帧图。"
+        : selectedVideoModelRequiresFile ? videoModelReferenceMessage : "",
       submitError: "",
       submitDiagnostic: null,
     }));
@@ -2756,6 +2827,11 @@ export function StudioApp() {
       updateVideoWorkspace({ submitError: "请输入提示词。" });
       return;
     }
+    if (videoWorkspace.referenceMode === "first-last" && videoWorkspace.files.length !== 2) {
+      const text = "首尾帧视频需要上传首帧图和尾帧图。";
+      updateVideoWorkspace({ fileError: text, submitError: text });
+      return;
+    }
     if (videoWorkspaceNeedsFile && !videoWorkspaceHasFiles) {
       const text = "请先上传图像。";
       updateVideoWorkspace({ fileError: text, submitError: text });
@@ -2784,6 +2860,7 @@ export function StudioApp() {
     const snapshot = {
       providerId: selectedVideoProvider.id,
       mode: activeVideoMode,
+      referenceMode: videoWorkspace.referenceMode,
       ratio: videoWorkspace.ratio,
       duration: videoWorkspace.duration,
       resolution: videoWorkspace.resolution,
@@ -2793,16 +2870,19 @@ export function StudioApp() {
       estimatedQuotaUnits: estimateVideoGenerationQuota({
         mode: activeVideoMode,
         durationSeconds: videoWorkspace.duration,
+        resolution: videoWorkspace.resolution,
         referenceImages: videoWorkspace.files.length,
         model: selectedVideoProvider.model,
       }),
     };
+    const membershipEntitlementAmount = estimateVideoGenerationEntitlementUnits({ resolution: snapshot.resolution });
     const requestFingerprint = generationBillingFingerprint({
       kind: "video",
       providerId: snapshot.providerId,
       mode: snapshot.mode,
       ratio: snapshot.ratio,
       durationSeconds: snapshot.duration,
+      resolution: snapshot.resolution,
       referenceImages: snapshot.files.length,
       model: snapshot.model,
       taskId,
@@ -2826,6 +2906,7 @@ export function StudioApp() {
           taskId,
           idempotencyKey: taskId,
           estimatedQuotaUnits: snapshot.estimatedQuotaUnits,
+          membershipEntitlementAmount,
           requestFingerprint,
         }),
       });
@@ -2844,6 +2925,7 @@ export function StudioApp() {
       const form = new FormData();
       form.set("providerId", snapshot.providerId);
       form.set("mode", snapshot.mode);
+      form.set("referenceMode", snapshot.referenceMode);
       form.set("ratio", snapshot.ratio);
       form.set("duration", String(snapshot.duration));
       form.set("resolution", snapshot.resolution);
@@ -2889,6 +2971,7 @@ export function StudioApp() {
     videoWorkspace.prompt,
     videoWorkspace.ratio,
     videoWorkspace.resolution,
+    videoWorkspace.referenceMode,
     videoWorkspaceHasFiles,
     videoWorkspaceRequiresFile,
     videoWorkspaceNeedsFile,
@@ -2943,6 +3026,9 @@ export function StudioApp() {
           costLabel={videoGenerationCostLabel}
           onProviderChange={(value) => {
             const provider = providers.video.find((item) => item.id === value);
+            if (provider?.model !== "veo-3.1-pro" && videoWorkspace.referenceMode === "first-last") {
+              changeVideoReferenceMode("single");
+            }
             updateVideoWorkspace({
               providerId: value,
               duration: preferredVideoDuration(provider),
@@ -2959,8 +3045,12 @@ export function StudioApp() {
           onPromptOptimizeUndo={undoVideoPromptOptimization}
           promptOptimizeCostLabel={membershipEntitlementLabel(membershipEntitlements, "prompt_optimize", "次", promptOptimizationCostLabel)}
           onFilesChange={replaceVideoWorkspaceFiles}
+          onFrameFileChange={replaceVideoFrameFile}
           onFileRemove={removeVideoWorkspaceFile}
           onFilesClear={clearVideoWorkspaceFiles}
+          referenceMode={videoWorkspace.referenceMode}
+          supportsFirstLastFrame={selectedVideoProvider?.model === "veo-3.1-pro"}
+          onReferenceModeChange={changeVideoReferenceMode}
           ratioOptions={selectedVideoRatioOptions}
           durationOptions={selectedVideoDurationOptions}
           resolutionOptions={selectedVideoResolutionOptions}

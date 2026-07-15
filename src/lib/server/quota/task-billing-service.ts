@@ -330,7 +330,9 @@ export class TaskBillingService {
     const quota = await this.getQuotaSnapshot(input.localUserId);
     if (!quota.ok) return quota;
     const requestedMembershipEntitlementKind = membershipEntitlementKindForOperation(input.operation);
-    const requestedMembershipEntitlementAmount = input.operation === "cloud_image_generation" || input.operation === "cloud_image_edit"
+    const requestedMembershipEntitlementAmount = input.operation === "cloud_image_generation"
+      || input.operation === "cloud_image_edit"
+      || input.operation === "cloud_video_generation"
       ? (input.membershipEntitlementAmount ?? 1)
       : 1;
     if (

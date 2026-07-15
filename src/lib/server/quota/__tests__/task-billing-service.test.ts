@@ -288,6 +288,48 @@ test("enforces the expected image entitlement amount before provider dispatch", 
   assert.equal(status.entitlements.image_generation.remaining, initialRemaining);
 });
 
+test("uses and restores two video entitlements for a 4K generation", async () => {
+  const harness = service({ availableQuota: 0, providerQuota: 0 });
+  await harness.membershipService.applyPaidMembership({
+    localUserId: "local-user",
+    orderId: "membership-video-4k",
+    planId: "advanced",
+    cycle: "monthly",
+    now: new Date("2026-06-18T00:00:00.000Z"),
+  });
+  const initialRemaining = (await harness.membershipService.getStatus("local-user")).entitlements.video_generation.remaining;
+  const input = {
+    localUserId: "local-user",
+    taskId: "member-video-4k-task",
+    operation: "cloud_video_generation" as const,
+    estimatedQuotaUnits: 960,
+    membershipEntitlementAmount: 2,
+    idempotencyKey: "member-video-4k-task",
+    requestFingerprint: "video:4k:member-video-4k-task",
+  };
+  const prechecked = await harness.taskBilling.precheck(input);
+  assert.equal(prechecked.ok, true);
+  if (!prechecked.ok) return;
+  assert.equal(prechecked.record.membership_entitlement_units, 2);
+
+  const mismatched = await harness.taskBilling.claimProviderDispatch({
+    ...input,
+    membershipEntitlementAmount: 1,
+  });
+  assert.equal(mismatched.ok, false);
+
+  const claimed = await harness.taskBilling.claimProviderDispatch(input);
+  assert.equal(claimed.ok, true);
+  const failed = await harness.taskBilling.fail({
+    localUserId: "local-user",
+    taskId: input.taskId,
+    reason: "test restore",
+  });
+  assert.equal(failed.ok, true);
+  const status = await harness.membershipService.getStatus("local-user");
+  assert.equal(status.entitlements.video_generation.remaining, initialRemaining);
+});
+
 test("uses the shared image generation entitlement for image editing", async () => {
   const harness = service({ availableQuota: 0, providerQuota: 0 });
   await harness.membershipService.applyPaidMembership({

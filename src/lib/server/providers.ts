@@ -146,13 +146,14 @@ function grokVideoOptionsForModel(model: string): ProviderConfig["videoOptions"]
 }
 
 function getTokenVeoOptionsForModel(model: string): ProviderConfig["videoOptions"] {
-  if (!model.trim().toLowerCase().startsWith("veo-3.1-")) return undefined;
+  const normalizedModel = model.trim().toLowerCase();
+  if (!normalizedModel.startsWith("veo-3.1-")) return undefined;
   return {
     durations: [8],
     ratios: ["16:9", "9:16"],
     resolution: "720p",
     resolutions: ["720p", "1080p", "4k"],
-    maxReferenceImages: 1,
+    maxReferenceImages: normalizedModel === "veo-3.1-pro" ? 2 : 1,
   };
 }
 

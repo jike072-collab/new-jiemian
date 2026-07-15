@@ -32,6 +32,7 @@ export function estimateImageGenerationEntitlementUnits(input: { quality: string
 export function estimateVideoGenerationQuota(input: {
   mode: WorkspaceVideoMode;
   durationSeconds: number;
+  resolution: string;
   referenceImages: number;
   model?: string | null;
 }) {
@@ -41,7 +42,11 @@ export function estimateVideoGenerationQuota(input: {
   if (duration >= 15) quota = Math.round(base * 0.8);
   else if (duration >= 12) quota = Math.round(base * 0.85);
   else if (duration >= 10) quota = Math.round(base * 0.9);
-  return applyGrokVideoModelDiscount(quota, input.model);
+  return applyVideoModelPricing(quota, input.model, input.resolution);
+}
+
+export function estimateVideoGenerationEntitlementUnits(input: { resolution: string }) {
+  return input.resolution.trim().toLowerCase() === "4k" ? 2 : 1;
 }
 
 export type GenerationBillingIntent =
@@ -61,6 +66,7 @@ export type GenerationBillingIntent =
       mode: WorkspaceVideoMode;
       ratio: string;
       durationSeconds: number;
+      resolution: string;
       referenceImages: number;
       model?: string | null;
     };
@@ -80,6 +86,7 @@ export function estimateGenerationQuota(input: GenerationBillingIntent) {
     : estimateVideoGenerationQuota({
       mode: input.mode,
       durationSeconds: input.durationSeconds,
+      resolution: input.resolution,
       referenceImages: input.referenceImages,
       model: input.model,
     });
@@ -110,6 +117,7 @@ export function generationBillingFingerprint(input: GenerationBillingIntent & {
       input.mode,
       input.ratio,
       Math.max(1, Math.floor(input.durationSeconds || 1)),
+      input.resolution.trim().toLowerCase(),
       Math.max(0, Math.trunc(input.referenceImages)),
       input.estimatedQuotaUnits,
   ];
@@ -163,8 +171,13 @@ function applyBanana2Discount(base: number, model?: string | null) {
     : base;
 }
 
-function applyGrokVideoModelDiscount(base: number, model?: string | null) {
-  return String(model || "").trim().toLowerCase() === "grok-video-1.0"
-    ? Math.round(base * 0.8)
-    : base;
+function applyVideoModelPricing(base: number, model: string | null | undefined, resolution: string) {
+  const normalizedModel = String(model || "").trim().toLowerCase();
+  if (normalizedModel === "grok-video-1.0") return Math.round(base * 0.8);
+  if (normalizedModel !== "veo-3.1-pro" && normalizedModel !== "veo-3.1-fast") return base;
+
+  const normalizedResolution = resolution.trim().toLowerCase();
+  const resolutionPercent = normalizedResolution === "4k" ? 120 : normalizedResolution === "1080p" ? 110 : 100;
+  const modelPercent = normalizedModel === "veo-3.1-fast" ? 80 : 100;
+  return Math.ceil((base * resolutionPercent * modelPercent) / 100_000) * 10;
 }

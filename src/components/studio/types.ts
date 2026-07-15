@@ -86,10 +86,12 @@ export type ImageWorkspaceState = {
 export type VideoWorkspaceFile = {
   file: File;
   previewUrl: string;
+  frameRole?: "first" | "last";
 };
 
 export type VideoWorkspaceState = {
   providerId: string;
+  referenceMode: "single" | "first-last";
   ratio: string;
   duration: number;
   resolution: string;

@@ -1,7 +1,9 @@
 "use client";
 
+/* eslint-disable @next/next/no-img-element */
+
 import { useEffect, useRef, useState } from "react";
-import { Loader2 } from "lucide-react";
+import { ImagePlus, Loader2, X } from "lucide-react";
 
 import { featuredVideoPromptTemplates } from "@/lib/template-catalog";
 import type { FrontendProvider } from "@/lib/server/types";
@@ -51,8 +53,12 @@ export function VideoGenerator({
   onPromptOptimizeUndo,
   promptOptimizeCostLabel,
   onFilesChange,
+  onFrameFileChange,
   onFileRemove,
   onFilesClear,
+  referenceMode,
+  supportsFirstLastFrame,
+  onReferenceModeChange,
   ratioOptions,
   durationOptions,
   resolutionOptions,
@@ -81,8 +87,12 @@ export function VideoGenerator({
   onPromptOptimizeUndo: () => void;
   promptOptimizeCostLabel?: string;
   onFilesChange: (files: File[]) => void;
+  onFrameFileChange: (frameRole: "first" | "last", file: File) => void;
   onFileRemove: (index: number) => void;
   onFilesClear: () => void;
+  referenceMode: VideoWorkspaceState["referenceMode"];
+  supportsFirstLastFrame: boolean;
+  onReferenceModeChange: (mode: VideoWorkspaceState["referenceMode"]) => void;
   ratioOptions: string[];
   durationOptions: number[];
   resolutionOptions: string[];
@@ -144,7 +154,11 @@ export function VideoGenerator({
         filledTitle={meta.uploadFilledTitle}
         helpText={meta.uploadHelpText}
         required={modelRequiresImage || meta.uploadRequired}
+        referenceMode={referenceMode}
+        supportsFirstLastFrame={supportsFirstLastFrame}
+        onReferenceModeChange={onReferenceModeChange}
         onChange={onFilesChange}
+        onFrameFileChange={onFrameFileChange}
         onRemove={onFileRemove}
         onClear={onFilesClear}
       />
@@ -208,7 +222,11 @@ function VideoReferenceInput({
   filledTitle,
   helpText,
   required,
+  referenceMode,
+  supportsFirstLastFrame,
+  onReferenceModeChange,
   onChange,
+  onFrameFileChange,
   onRemove,
   onClear,
 }: {
@@ -220,37 +238,133 @@ function VideoReferenceInput({
   filledTitle: string;
   helpText: string;
   required: boolean;
+  referenceMode: VideoWorkspaceState["referenceMode"];
+  supportsFirstLastFrame: boolean;
+  onReferenceModeChange: (mode: VideoWorkspaceState["referenceMode"]) => void;
   onChange: (files: File[]) => void;
+  onFrameFileChange: (frameRole: "first" | "last", file: File) => void;
   onRemove: (index: number) => void;
   onClear: () => void;
 }) {
   const inputRef = useRef<HTMLInputElement | null>(null);
   const [dragging, setDragging] = useState(false);
+  const firstLastMode = supportsFirstLastFrame && referenceMode === "first-last";
 
   return (
-    <FieldFrame label={label} required={required} hint={required ? "必填" : mode === "image-to-video" ? "已上传" : "可选"}>
-      <CompactDropzone
-        inputRef={inputRef}
-        inputId="video-first-frame-input"
-        accept="image/png,image/jpeg,image/webp"
-        multiple={false}
-        dragging={dragging}
-        error={error}
-        files={files.map((item) => ({
-          name: item.file.name,
-          size: item.file.size,
-          previewUrl: item.previewUrl,
-        }))}
-        emptyTitle={emptyTitle}
-        filledTitle={filledTitle}
-        helpText={helpText}
-        onFiles={onChange}
-        onRemove={onRemove}
-        onClear={files.length ? onClear : undefined}
-        onDraggingChange={setDragging}
-      />
+    <FieldFrame
+      label={label}
+      required={required || firstLastMode}
+      hint={supportsFirstLastFrame ? undefined : required ? "必填" : mode === "image-to-video" ? "已上传" : "可选"}
+      action={supportsFirstLastFrame ? (
+        <button
+          type="button"
+          className="studio-reference-mode-toggle"
+          onClick={() => onReferenceModeChange(firstLastMode ? "single" : "first-last")}
+          aria-pressed={firstLastMode}
+        >
+          {firstLastMode ? "图生视频" : "首尾帧视频"}
+        </button>
+      ) : undefined}
+    >
+      {firstLastMode ? (
+        <FirstLastFrameInput files={files} onChange={onFrameFileChange} onRemove={onRemove} />
+      ) : (
+        <CompactDropzone
+          inputRef={inputRef}
+          inputId="video-first-frame-input"
+          accept="image/png,image/jpeg,image/webp"
+          multiple={false}
+          dragging={dragging}
+          error={error}
+          files={files.map((item) => ({
+            name: item.file.name,
+            size: item.file.size,
+            previewUrl: item.previewUrl,
+          }))}
+          emptyTitle={emptyTitle}
+          filledTitle={filledTitle}
+          helpText={helpText}
+          onFiles={onChange}
+          onRemove={onRemove}
+          onClear={files.length ? onClear : undefined}
+          onDraggingChange={setDragging}
+        />
+      )}
       {error ? <p className="studio-error-text" role="alert">{error}</p> : null}
     </FieldFrame>
+  );
+}
+
+function FirstLastFrameInput({
+  files,
+  onChange,
+  onRemove,
+}: {
+  files: VideoWorkspaceFile[];
+  onChange: (frameRole: "first" | "last", file: File) => void;
+  onRemove: (index: number) => void;
+}) {
+  const firstInputRef = useRef<HTMLInputElement | null>(null);
+  const lastInputRef = useRef<HTMLInputElement | null>(null);
+  const frames = (["first", "last"] as const).map((frameRole) => {
+    const index = files.findIndex((item) => item.frameRole === frameRole);
+    return { frameRole, index, file: index >= 0 ? files[index] : null };
+  });
+
+  return (
+    <div className="studio-video-frame-pair" role="group" aria-label="首尾帧图片">
+      {frames.map(({ frameRole, index, file }) => {
+        const inputRef = frameRole === "first" ? firstInputRef : lastInputRef;
+        const label = frameRole === "first" ? "首帧图" : "尾帧图";
+        const applyFile = (nextFile: File | undefined) => {
+          if (nextFile) onChange(frameRole, nextFile);
+        };
+        return (
+          <div key={frameRole} className={cn("studio-video-frame-slot", file && "is-filled")}>
+            <input
+              ref={inputRef}
+              id={`video-${frameRole}-frame-input`}
+              type="file"
+              accept="image/png,image/jpeg,image/webp"
+              aria-label={`上传${label}`}
+              className="studio-file-input"
+              onChange={(event) => {
+                applyFile(event.target.files?.[0]);
+                event.currentTarget.value = "";
+              }}
+            />
+            <button
+              type="button"
+              className="studio-video-frame-slot__button"
+              onClick={() => inputRef.current?.click()}
+              onDragOver={(event) => event.preventDefault()}
+              onDrop={(event) => {
+                event.preventDefault();
+                applyFile(event.dataTransfer.files[0]);
+              }}
+            >
+              {file ? (
+                <img src={file.previewUrl} alt={file.file.name} />
+              ) : (
+                <ImagePlus className="size-6" aria-hidden="true" />
+              )}
+              <strong>{label}</strong>
+              <span>必填</span>
+            </button>
+            {file ? (
+              <button
+                type="button"
+                className="studio-video-frame-slot__remove"
+                aria-label={`删除${label}`}
+                onClick={() => onRemove(index)}
+              >
+                <X className="size-4" aria-hidden="true" />
+              </button>
+            ) : null}
+          </div>
+        );
+      })}
+    </div>
   );
 }
 

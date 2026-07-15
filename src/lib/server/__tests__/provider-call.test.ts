@@ -33,6 +33,7 @@ test("GetToken Veo defaults expose Pro and Fast with three resolutions", () => {
   assert.deepEqual(veoProvider?.models, ["veo-3.1-pro", "veo-3.1-fast"]);
   assert.deepEqual(veoProvider?.enabledModels, ["veo-3.1-pro", "veo-3.1-fast"]);
   assert.deepEqual(veoProvider ? sanitizeProvider(veoProvider).videoOptions?.resolutions : undefined, ["720p", "1080p", "4k"]);
+  assert.equal(veoProvider ? sanitizeProvider(veoProvider).videoOptions?.maxReferenceImages : undefined, 2);
 });
 
 test("GetToken Veo keeps early invalid query responses pending", () => {
@@ -583,6 +584,50 @@ test("GetToken Veo Pro uploads one reference before image-to-video submission", 
   }
 });
 
+test("GetToken Veo Pro preserves first and last frame order in image-to-video payload", async () => {
+  const videoProvider = {
+    ...provider,
+    id: "video-gettoken-veo::model::veo-3.1-pro",
+    kind: "video",
+    apiUrl: "https://nb.gettoken.cn/openapi/v1",
+    model: "veo-3.1-pro",
+    endpointType: "gettoken-veo",
+  } as const;
+  const originalFetch = globalThis.fetch;
+  const requests: Array<{ url: string; body: BodyInit | null | undefined }> = [];
+  globalThis.fetch = (async (url, init) => {
+    requests.push({ url: String(url), body: init?.body });
+    if (init?.body instanceof FormData) {
+      const name = (init.body.get("file") as File)?.name;
+      return jsonResponse({ data: { download_url: `https://cdn.example.test/${name}` } });
+    }
+    return jsonResponse({ taskId: "veo-first-last-task", status: "RUNNING" });
+  }) as typeof fetch;
+  try {
+    await providerCallInternalsForTests.callGetTokenVeoProvider(videoProvider, {
+      mode: "image-to-video",
+      prompt: "The shot moves naturally from the first composition to the final composition.",
+      ratio: "16:9",
+      duration: 8,
+      resolution: "1080p",
+      files: [
+        { bytes: Buffer.from("first-frame"), mimeType: "image/png", fileName: "first.png" },
+        { bytes: Buffer.from("last-frame"), mimeType: "image/png", fileName: "last.png" },
+      ],
+    });
+    assert.equal(requests[0]?.url, "https://nb.gettoken.cn/openapi/v1/media/upload/binary");
+    assert.equal(requests[1]?.url, "https://nb.gettoken.cn/openapi/v1/media/upload/binary");
+    assert.equal(requests[2]?.url, "https://nb.gettoken.cn/openapi/v1/veo3.1-pro/image-to-video");
+    const submitBody = JSON.parse(String(requests[2]?.body || "{}"));
+    assert.deepEqual(submitBody.imageUrls, [
+      "https://cdn.example.test/first.png",
+      "https://cdn.example.test/last.png",
+    ]);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
 test("GetToken Veo accepts only documented duration, ratios, and resolutions", () => {
   const videoProvider: ProviderConfig = {
     ...provider,
@@ -595,7 +640,7 @@ test("GetToken Veo accepts only documented duration, ratios, and resolutions", (
       ratios: ["16:9", "9:16"],
       resolution: "720p",
       resolutions: ["720p", "1080p", "4k"],
-      maxReferenceImages: 1,
+      maxReferenceImages: 2,
     },
   };
   assert.doesNotThrow(() => providerCallInternalsForTests.validateVideoInput(videoProvider, {
@@ -625,6 +670,44 @@ test("GetToken Veo accepts only documented duration, ratios, and resolutions", (
     duration: 8,
     resolution: "2k",
     files: [],
+  }));
+  assert.doesNotThrow(() => providerCallInternalsForTests.validateVideoInput(videoProvider, {
+    mode: "image-to-video",
+    referenceMode: "first-last",
+    ratio: "16:9",
+    duration: 8,
+    resolution: "1080p",
+    files: [
+      { bytes: Buffer.from("first"), mimeType: "image/png", fileName: "first.png" },
+      { bytes: Buffer.from("last"), mimeType: "image/png", fileName: "last.png" },
+    ],
+  }));
+  assert.throws(() => providerCallInternalsForTests.validateVideoInput(videoProvider, {
+    mode: "image-to-video",
+    referenceMode: "single",
+    ratio: "16:9",
+    duration: 8,
+    resolution: "1080p",
+    files: [
+      { bytes: Buffer.from("first"), mimeType: "image/png", fileName: "first.png" },
+      { bytes: Buffer.from("last"), mimeType: "image/png", fileName: "last.png" },
+    ],
+  }));
+  assert.throws(() => providerCallInternalsForTests.validateVideoInput({
+    ...videoProvider,
+    id: "video-gettoken-veo::model::veo-3.1-fast",
+    model: "veo-3.1-fast",
+    videoOptions: { ...videoProvider.videoOptions, maxReferenceImages: 1 },
+  }, {
+    mode: "image-to-video",
+    referenceMode: "first-last",
+    ratio: "16:9",
+    duration: 8,
+    resolution: "1080p",
+    files: [
+      { bytes: Buffer.from("first"), mimeType: "image/png", fileName: "first.png" },
+      { bytes: Buffer.from("last"), mimeType: "image/png", fileName: "last.png" },
+    ],
   }));
 });
 

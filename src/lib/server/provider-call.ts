@@ -4,6 +4,7 @@ import {
   estimateGenerationQuota,
   estimateImageGenerationEntitlementUnits,
   estimateImageGenerationTotalQuota,
+  estimateVideoGenerationEntitlementUnits,
   generationBillingFingerprint,
 } from "../generation-quota";
 import { getMembershipService } from "./membership";
@@ -386,7 +387,7 @@ async function callGetTokenVeoProvider(provider: ProviderConfig, input: {
     });
   }
   const imageUrls = input.mode === "image-to-video"
-    ? [await uploadGetTokenVeoReferenceImage(provider, input.files[0])]
+    ? await Promise.all(input.files.map((file) => uploadGetTokenVeoReferenceImage(provider, file)))
     : [];
   const response = await fetchProviderWithNetworkRetry(getTokenVeoSubmitEndpoint(provider, input.mode), {
     method: "POST",
@@ -779,6 +780,7 @@ function videoOptionsForProvider(provider: ProviderConfig) {
 
 function validateVideoInput(provider: ProviderConfig, input: {
   mode: "text-to-video" | "image-to-video";
+  referenceMode?: "single" | "first-last";
   ratio: string;
   duration: number;
   resolution: string;
@@ -818,8 +820,20 @@ function validateVideoInput(provider: ProviderConfig, input: {
       publicMessage: `当前视频模型不支持 ${input.resolution} 清晰度。`,
     });
   }
+  if (input.referenceMode === "first-last") {
+    if (provider.model !== "veo-3.1-pro" || input.mode !== "image-to-video" || input.files.length !== 2) {
+      throw new GenerationDiagnosticError({
+        code: "INPUT_INVALID_PARAMETERS",
+        providerId: provider.id,
+        model: provider.model,
+        publicMessage: "Veo 3.1 Pro 首尾帧视频必须上传首帧图和尾帧图。",
+      });
+    }
+  }
   if (input.mode === "image-to-video") {
-    const maxReferenceImages = options?.maxReferenceImages ?? 1;
+    const maxReferenceImages = input.referenceMode === "first-last"
+      ? 2
+      : isGetTokenVeoProvider(provider) ? 1 : options?.maxReferenceImages ?? 1;
     if (input.files.length > maxReferenceImages) {
       throw new GenerationDiagnosticError({
         code: "INPUT_INVALID_PARAMETERS",
@@ -1466,12 +1480,14 @@ export async function failVideoGenerationBeforeSubmit(input: {
   localUserId?: string | null;
   taskId?: string | null;
   estimatedQuotaUnits?: number | null;
+  membershipEntitlementAmount?: number | null;
   reason?: string | null;
 }) {
   await restoreMembershipEntitlementOnFailure({
     localUserId: input.localUserId,
     taskId: input.taskId,
     operation: "cloud_video_generation",
+    amount: input.membershipEntitlementAmount,
   });
   return settleGeneratedTaskBilling({
     localUserId: input.localUserId,
@@ -1755,6 +1771,7 @@ export async function generateImage(input: {
 export async function submitVideo(input: {
   providerId: string;
   mode: "text-to-video" | "image-to-video";
+  referenceMode?: "single" | "first-last";
   prompt: string;
   ratio: string;
   duration: number;
@@ -1772,6 +1789,7 @@ export async function submitVideo(input: {
     mode: input.mode,
     ratio: input.ratio,
     durationSeconds: input.duration,
+    resolution: input.resolution,
     referenceImages: input.files.length,
     model: provider?.model,
   });
@@ -1781,11 +1799,13 @@ export async function submitVideo(input: {
     mode: input.mode,
     ratio: input.ratio,
     durationSeconds: input.duration,
+    resolution: input.resolution,
     referenceImages: input.files.length,
     model: provider?.model,
     taskId: input.billingTaskId || "",
     estimatedQuotaUnits,
   });
+  const membershipEntitlementAmount = estimateVideoGenerationEntitlementUnits({ resolution: input.resolution });
   try {
     await assertStorageAllows("video-generation", { fresh: true });
     if (!input.prompt.trim()) throw new GenerationDiagnosticError({ code: "INPUT_MISSING_PROMPT", providerId: provider?.id, model: provider?.model });
@@ -1806,6 +1826,7 @@ export async function submitVideo(input: {
       idempotencyKey: input.billingIdempotencyKey,
       fingerprint: billingFingerprint,
       estimatedQuotaUnits,
+      membershipEntitlementAmount,
     });
     await markGenerationProviderStarted({
       localUserId: input.billingLocalUserId,
@@ -1942,6 +1963,7 @@ export async function submitVideo(input: {
         localUserId: input.billingLocalUserId,
         taskId: input.billingTaskId,
         operation: "cloud_video_generation",
+        amount: membershipEntitlementAmount,
       });
       throw new GenerationDiagnosticError({
         code: "TASK_CREATE_FAILED",
@@ -1955,6 +1977,7 @@ export async function submitVideo(input: {
         localUserId: input.billingLocalUserId,
         taskId: input.billingTaskId,
         operation: "cloud_video_generation",
+        amount: membershipEntitlementAmount,
       });
       await settleGeneratedTaskBilling({
         localUserId: input.billingLocalUserId,
