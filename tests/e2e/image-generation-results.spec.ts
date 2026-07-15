@@ -149,20 +149,33 @@ test("image results reveal independently with unified waiting visuals", async ({
     expect(coverage.height).toBeGreaterThanOrEqual(0.85);
     expect(coverage.baseOpacity).toBeGreaterThanOrEqual(0.05);
     expect(coverage.maskImage).not.toBe("none");
-    expect(coverage.maskSize).toContain("74%");
-    expect(coverage.animationName).toContain("studio-dot-sweep-window");
+    expect(coverage.maskSize).toContain("62%");
+    expect(coverage.animationName).toContain("studio-dot-window");
   }
-  const sweepDelays = await page.locator(".studio-image-result-card--pending .studio-dot-ripple-loader").evaluateAll((loaders) => loaders.map((loader) => {
+  const fieldFlows = await page.locator(".studio-image-result-card--pending .studio-dot-ripple-loader").evaluateAll((loaders) => loaders.map((loader) => {
     const dots = loader.querySelectorAll<HTMLElement>("span");
+    const size = Math.sqrt(dots.length);
+    const readVariable = (dot: HTMLElement | undefined, variable: string) => (
+      dot ? Number.parseFloat(getComputedStyle(dot).getPropertyValue(variable)) : 0
+    );
     return {
       firstAnimation: dots[0] ? getComputedStyle(dots[0]).animationName : "",
-      firstDelay: dots[0] ? Number.parseFloat(getComputedStyle(dots[0]).animationDelay) : 0,
-      lastDelay: dots[dots.length - 1] ? Number.parseFloat(getComputedStyle(dots[dots.length - 1]).animationDelay) : 0,
+      firstRightScale: readVariable(dots[0], "--dot-flow-right-scale"),
+      lastRightScale: readVariable(dots[Math.round(size) - 1], "--dot-flow-right-scale"),
+      firstDownScale: readVariable(dots[0], "--dot-flow-down-scale"),
+      lastDownScale: readVariable(dots[dots.length - 1], "--dot-flow-down-scale"),
+      firstLeftScale: readVariable(dots[0], "--dot-flow-left-scale"),
+      lastLeftScale: readVariable(dots[Math.round(size) - 1], "--dot-flow-left-scale"),
+      firstUpScale: readVariable(dots[0], "--dot-flow-up-scale"),
+      lastUpScale: readVariable(dots[dots.length - 1], "--dot-flow-up-scale"),
     };
   }));
-  for (const sweep of sweepDelays) {
-    expect(sweep.firstAnimation).toBe("studio-dot-sweep");
-    expect(sweep.lastDelay).toBeLessThan(sweep.firstDelay);
+  for (const field of fieldFlows) {
+    expect(field.firstAnimation).toBe("studio-dot-field-flow");
+    expect(field.lastRightScale).toBeGreaterThan(field.firstRightScale);
+    expect(field.firstLeftScale).toBeGreaterThan(field.lastLeftScale);
+    expect(field.lastDownScale).toBeGreaterThan(field.firstDownScale);
+    expect(field.firstUpScale).toBeGreaterThan(field.lastUpScale);
   }
   const initialMaskPositions = waitingCoverage.map((coverage) => coverage.maskPosition);
   const readWaitingPulse = () => page.locator(".studio-image-result-card--pending").evaluateAll((cards) => cards.map((card) => {

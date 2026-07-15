@@ -73,7 +73,7 @@ test("library detail actions and modal layering remain usable", async ({ page })
   expect(metrics.bottom).toBeLessThanOrEqual(metrics.viewportHeight + 1);
 
   const actions = modal.getByLabel("作品操作");
-  for (const name of ["重新生成", "放大", "生成视频", "图片编辑", "刷新", "删除"]) {
+  for (const name of ["重新生成", "放大", "生成视频", "图片编辑", "删除"]) {
     await expect(actions.getByRole("button", { name, exact: true })).toBeVisible();
   }
   await expect(actions.getByRole("link", { name: "下载", exact: true })).toBeVisible();

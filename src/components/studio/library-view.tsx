@@ -387,10 +387,6 @@ export function LibraryWorkspace({
                   preferCached={selectedItem.type === "image"}
                 />
               ) : null}
-              <button type="button" className="studio-library-detail__action" onClick={() => void onRefresh()}>
-                <RefreshCw className="size-4" aria-hidden="true" />
-                刷新
-              </button>
               <button
                 type="button"
                 className="studio-library-detail__action is-danger"

@@ -31,10 +31,12 @@ type PromptSettingsStore = {
 
 const storageKey = "aohuang-prompt-settings-v1";
 const tools: PromptPreferenceTool[] = ["image-generator", "image-editor", "video-generator"];
-const subscribeToHydration = () => () => undefined;
+const subscribeToHydration = (onStoreChange: () => void) => {
+  const timer = window.setTimeout(onStoreChange, 0);
+  return () => window.clearTimeout(timer);
+};
 const hydratedSnapshot = () => true;
 const serverHydratedSnapshot = () => false;
-
 function createDefaultStore(): PromptSettingsStore {
   return {
     version: 2,
