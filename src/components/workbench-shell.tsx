@@ -12,7 +12,7 @@ import {
   UserRound,
   X,
 } from "lucide-react";
-import { type ReactNode, type RefObject, useCallback, useEffect, useId, useRef, useState } from "react";
+import { type PointerEvent as ReactPointerEvent, type ReactNode, type RefObject, useCallback, useEffect, useId, useRef, useState } from "react";
 
 import { BrandLogo } from "@/components/brand-logo";
 import { getPlanTone } from "@/lib/account-status";
@@ -87,6 +87,27 @@ export function WorkbenchShell({
   const lastAccountTriggerRef = useRef<HTMLElement | null>(null);
   const accountCloseTimerRef = useRef<number | null>(null);
   const previousOverflowRef = useRef("");
+
+  const updatePanelSpotlight = (event: ReactPointerEvent<HTMLDivElement>) => {
+    const target = event.target instanceof Element
+      ? event.target.closest<HTMLElement>(".shell-nav, .shell-panel--controls")
+      : null;
+    if (!target) return;
+    target.dataset.panelSpotlight = "true";
+    const rect = target.getBoundingClientRect();
+    target.style.setProperty("--panel-spotlight-x", `${event.clientX - rect.left}px`);
+    target.style.setProperty("--panel-spotlight-y", `${event.clientY - rect.top}px`);
+  };
+
+  const clearPanelSpotlight = (event: ReactPointerEvent<HTMLDivElement>) => {
+    const current = event.target instanceof Element
+      ? event.target.closest<HTMLElement>(".shell-nav, .shell-panel--controls")
+      : null;
+    const next = event.relatedTarget instanceof Element
+      ? event.relatedTarget.closest<HTMLElement>(".shell-nav, .shell-panel--controls")
+      : null;
+    if (current && current !== next) delete current.dataset.panelSpotlight;
+  };
 
   const activeTool = workspaceToolById(state.activeToolId) || workspaceToolEntries[0];
   const drawerId = "workspace-mobile-drawer";
@@ -248,6 +269,8 @@ export function WorkbenchShell({
         !contentOnly && `shell-root--tool-${state.activeToolId}`,
         contentOnly && "shell-root--account-center",
       )}
+      onPointerMove={updatePanelSpotlight}
+      onPointerOut={clearPanelSpotlight}
     >
       <Header
         isAuthenticated={isAuthenticated}

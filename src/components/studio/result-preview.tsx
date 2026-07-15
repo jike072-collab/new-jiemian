@@ -2,7 +2,7 @@
 
 /* eslint-disable @next/next/no-img-element */
 
-import { useCallback, useEffect, useMemo, useRef, useState, type PointerEvent } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import { AlertTriangle, Check, Download, ImageUp, Loader2, RefreshCw, UploadCloud, Video, Wand2, X } from "lucide-react";
 
 import { BeforeAfterImageCompare } from "@/components/before-after-image-compare";
@@ -1627,6 +1627,7 @@ export function ImagePreviewPanel({
   outputs = output ? [output] : [],
   loading,
   pendingCount = 0,
+  pendingRatio,
   activeBatchId,
   canSubmit,
   submitError,
@@ -1649,6 +1650,7 @@ export function ImagePreviewPanel({
   outputs?: OutputItemState[];
   loading: boolean;
   pendingCount?: number;
+  pendingRatio?: string;
   activeBatchId?: string | null;
   canSubmit: boolean;
   submitError: string;
@@ -1671,7 +1673,7 @@ export function ImagePreviewPanel({
   if (loading && !resultOutputs.length) {
     return (
       <PreviewState eyebrow="结果" title="正在生成图片" description="完成的图片会立即替换对应位置。" badge="生成中" role="status" live>
-        <ImageResultGrid cacheOwnerId={cacheOwnerId} outputs={[]} pendingCount={pendingCount} activeBatchId={activeBatchId} canRetry={false} loading onRetry={onRetry} onUpscale={onUpscale} onCreateVideo={onCreateVideo} onEdit={onEdit} onDismiss={onDismiss} />
+        <ImageResultGrid cacheOwnerId={cacheOwnerId} outputs={[]} pendingCount={pendingCount} pendingRatio={pendingRatio} activeBatchId={activeBatchId} canRetry={false} loading onRetry={onRetry} onUpscale={onUpscale} onCreateVideo={onCreateVideo} onEdit={onEdit} onDismiss={onDismiss} />
       </PreviewState>
     );
   }
@@ -1694,6 +1696,7 @@ export function ImagePreviewPanel({
           cacheOwnerId={cacheOwnerId}
           outputs={resultOutputs}
           pendingCount={pendingCount}
+          pendingRatio={pendingRatio}
           activeBatchId={activeBatchId}
           canRetry={canRetry}
         loading={loading}
@@ -1726,6 +1729,7 @@ function ImageResultGrid({
   cacheOwnerId,
   outputs,
   pendingCount,
+  pendingRatio,
   activeBatchId,
   canRetry,
   loading,
@@ -1738,6 +1742,7 @@ function ImageResultGrid({
   cacheOwnerId?: string | null;
   outputs: OutputItemState[];
   pendingCount: number;
+  pendingRatio?: string;
   activeBatchId?: string | null;
   canRetry: boolean;
   loading: boolean;
@@ -1747,11 +1752,7 @@ function ImageResultGrid({
   onEdit: (item: LibraryItem) => void;
   onDismiss: (itemId: string) => void;
 }) {
-  const updateCardSpotlight = (event: PointerEvent<HTMLElement>) => {
-    const rect = event.currentTarget.getBoundingClientRect();
-    event.currentTarget.style.setProperty("--spotlight-x", `${event.clientX - rect.left}px`);
-    event.currentTarget.style.setProperty("--spotlight-y", `${event.clientY - rect.top}px`);
-  };
+  const pendingFrameStyle = imagePendingFrameStyle(pendingRatio);
   const currentOutputs = activeBatchId
     ? outputs.filter((output) => output.item.params?.imageBatchId === activeBatchId)
     : outputs;
@@ -1761,12 +1762,7 @@ function ImageResultGrid({
   return (
     <div className={cn("studio-image-results", `is-count-${Math.min(Math.max(pendingCount + outputs.length, 1), 4)}`)}>
       {[...currentOutputs, ...historicOutputs].map((output, index) => (
-        <article
-          key={output.item.id}
-          className={cn("studio-image-result-card", "studio-image-result-card--interactive", activeBatchId && output.item.params?.imageBatchId !== activeBatchId && "is-historic")}
-          onPointerEnter={updateCardSpotlight}
-          onPointerMove={updateCardSpotlight}
-        >
+        <article key={output.item.id} className={cn("studio-image-result-card", activeBatchId && output.item.params?.imageBatchId !== activeBatchId && "is-historic")}>
           <div className="studio-image-result-card__media">
             <MediaCard cacheOwnerId={cacheOwnerId} item={output.item} large compact smoothReveal />
             <div className="studio-image-result-card__overlay" aria-label={`图片 ${index + 1} 参数`}>
@@ -1806,9 +1802,11 @@ function ImageResultGrid({
       ))}
       {Array.from({ length: pendingCount }).map((_, index) => (
         <article key={`pending-${index}`} className="studio-image-result-card studio-image-result-card--pending" aria-live="polite">
-          <DotRippleLoader fill />
-          <p>{loading ? "图片生成中" : "图片未生成"}</p>
-          <small>完成后会自动补到这里。</small>
+          <div className="studio-image-result-card__pending-frame" style={pendingFrameStyle}>
+            <DotRippleLoader fill />
+            <p>{loading ? "图片生成中" : "图片未生成"}</p>
+            <small>完成后会自动补到这里。</small>
+          </div>
         </article>
       ))}
     </div>
@@ -1911,6 +1909,16 @@ export function VideoPreviewPanel({
   }
 
   return <ToolTutorial kind="video" paused={false} />;
+}
+
+function imagePendingFrameStyle(ratio?: string): CSSProperties {
+  const [widthText, heightText] = (ratio || "1:1").split(":");
+  const width = Number(widthText);
+  const height = Number(heightText);
+  if (!Number.isFinite(width) || !Number.isFinite(height) || width <= 0 || height <= 0) {
+    return { "--pending-image-aspect": "1 / 1" } as CSSProperties;
+  }
+  return { "--pending-image-aspect": `${width} / ${height}` } as CSSProperties;
 }
 
 export function OutputPanel({

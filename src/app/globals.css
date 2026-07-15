@@ -363,6 +363,38 @@
     box-shadow: inset -1px 0 0 rgba(255, 255, 255, 0.025);
   }
 
+  .shell-nav,
+  .shell-panel--controls {
+    --panel-spotlight-x: 50%;
+    --panel-spotlight-y: 50%;
+    isolation: isolate;
+  }
+
+  .shell-nav::after,
+  .shell-panel--controls::after {
+    position: absolute;
+    z-index: 4;
+    inset: -1px;
+    border: 1px solid transparent;
+    border-radius: inherit;
+    background: radial-gradient(150px circle at var(--panel-spotlight-x) var(--panel-spotlight-y), color-mix(in srgb, var(--primary) 84%, #fff) 0%, color-mix(in srgb, var(--primary) 48%, transparent) 36%, transparent 72%) border-box;
+    content: "";
+    mask: linear-gradient(#000 0 0) padding-box, linear-gradient(#000 0 0);
+    mask-composite: exclude;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity var(--motion-fast) var(--ease-enter);
+    -webkit-mask: linear-gradient(#000 0 0) padding-box, linear-gradient(#000 0 0);
+    -webkit-mask-composite: xor;
+  }
+
+  .shell-nav:hover::after,
+  .shell-panel--controls:hover::after,
+  .shell-nav[data-panel-spotlight]::after,
+  .shell-panel--controls[data-panel-spotlight]::after {
+    opacity: 0.96;
+  }
+
   .shell-root--account-center .shell-grid {
     grid-template-columns: var(--sidebar-width) minmax(0, 1fr);
   }
@@ -3669,38 +3701,6 @@
     padding: 10px;
   }
 
-  .studio-image-result-card--interactive {
-    --spotlight-x: 50%;
-    --spotlight-y: 50%;
-    isolation: isolate;
-  }
-
-  .studio-image-result-card--interactive::after {
-    position: absolute;
-    z-index: 2;
-    inset: -1px;
-    border: 1px solid transparent;
-    border-radius: inherit;
-    background: radial-gradient(150px circle at var(--spotlight-x) var(--spotlight-y), color-mix(in srgb, var(--primary) 84%, #fff) 0%, color-mix(in srgb, var(--primary) 46%, transparent) 38%, transparent 72%) border-box;
-    content: "";
-    mask: linear-gradient(#000 0 0) padding-box, linear-gradient(#000 0 0);
-    mask-composite: exclude;
-    opacity: 0;
-    pointer-events: none;
-    transition: opacity var(--motion-fast) var(--ease-enter);
-    -webkit-mask: linear-gradient(#000 0 0) padding-box, linear-gradient(#000 0 0);
-    -webkit-mask-composite: xor;
-  }
-
-  .studio-image-result-card--interactive:hover::after {
-    opacity: 0.96;
-  }
-
-  .studio-image-result-card--interactive > * {
-    position: relative;
-    z-index: 3;
-  }
-
   .studio-image-result-card__media {
     position: relative;
     min-width: 0;
@@ -3843,16 +3843,30 @@
   .studio-image-result-card--pending {
     position: relative;
     order: 1;
-    min-height: clamp(340px, 44vh, 510px);
+    min-height: 0;
     place-items: center;
-    align-content: center;
     color: var(--muted);
     text-align: center;
   }
 
-  .studio-image-result-card--pending .studio-dot-ripple-loader.is-fill {
+  .studio-image-result-card__pending-frame {
+    position: relative;
+    display: grid;
+    width: auto;
+    height: min(68vh, 700px);
+    max-width: 100%;
+    max-height: 100%;
+    justify-self: center;
+    place-items: center;
+    overflow: hidden;
+    aspect-ratio: var(--pending-image-aspect, 1 / 1);
+    border-radius: calc(var(--radius-card) - 2px);
+    background: color-mix(in srgb, var(--panel-2) 72%, var(--background));
+  }
+
+  .studio-image-result-card__pending-frame .studio-dot-ripple-loader.is-fill {
     position: absolute;
-    inset: 12px;
+    inset: 0;
     z-index: 0;
   }
 
@@ -3860,7 +3874,7 @@
     order: 2;
   }
 
-  .studio-image-result-card--pending p {
+  .studio-image-result-card__pending-frame p {
     position: relative;
     z-index: 1;
     margin: 0;
@@ -3869,7 +3883,7 @@
     text-shadow: 0 2px 10px var(--background);
   }
 
-  .studio-image-result-card--pending small {
+  .studio-image-result-card__pending-frame small {
     position: relative;
     z-index: 1;
     color: var(--muted);
@@ -12335,6 +12349,10 @@
   .studio-image-result-card .studio-media-card.is-compact .studio-media-card__frame.is-large {
     height: min(56dvh, 540px);
     min-height: 280px;
+  }
+
+  .studio-image-result-card__pending-frame {
+    height: min(56dvh, 540px);
   }
 
   .studio-image-results,

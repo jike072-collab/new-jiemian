@@ -123,6 +123,10 @@ test("image results reveal independently with unified waiting visuals", async ({
   expect(precheckPayloads).toHaveLength(4);
   expect(precheckPayloads.every((payload) => payload.membershipEntitlementAmount === 2)).toBe(true);
   await expect(page.locator(".studio-image-result-card--pending")).toHaveCount(4);
+  await expect(page.locator(".studio-image-result-card__pending-frame")).toHaveCount(4);
+  expect(await page.locator(".studio-image-result-card__pending-frame").evaluateAll((frames) => (
+    frames.every((frame) => getComputedStyle(frame).aspectRatio === "3 / 2")
+  ))).toBe(true);
   await expect(page.locator(".studio-dot-ripple-loader")).toHaveCount(4);
   await expect(page.locator(".studio-image-result-card--pending .studio-dot-ripple-loader span")).toHaveCount(0);
   await expect(page.locator(".image-generation-progress")).toHaveCount(1);
@@ -270,19 +274,18 @@ test("image results reveal independently with unified waiting visuals", async ({
     const backgroundBeforeHover = await resultActions.nth(3).evaluate((button) => getComputedStyle(button).backgroundColor);
     await resultActions.nth(3).hover();
     await expect.poll(() => resultActions.nth(3).evaluate((button) => getComputedStyle(button).backgroundColor)).not.toBe(backgroundBeforeHover);
-    const resultCard = page.locator(".studio-image-result-card").first();
-    const spotlightBeforeHover = await resultCard.evaluate((card) => Number.parseFloat(getComputedStyle(card, "::after").opacity));
-    await resultCard.hover({ position: { x: 80, y: 80 } });
-    await expect.poll(() => resultCard.evaluate((card) => ({
-      opacity: Number.parseFloat(getComputedStyle(card, "::after").opacity),
-      x: getComputedStyle(card).getPropertyValue("--spotlight-x").trim(),
-      y: getComputedStyle(card).getPropertyValue("--spotlight-y").trim(),
-    }))).toMatchObject({
-      opacity: expect.any(Number),
-      x: expect.stringMatching(/px$/),
-      y: expect.stringMatching(/px$/),
-    });
-    expect(await resultCard.evaluate((card) => Number.parseFloat(getComputedStyle(card, "::after").opacity))).toBeGreaterThan(spotlightBeforeHover);
+    const nav = page.locator(".shell-nav");
+    const controls = page.locator(".shell-panel--controls");
+    for (const panel of [nav, controls]) {
+      const spotlightBeforeHover = await panel.evaluate((element) => Number.parseFloat(getComputedStyle(element, "::after").opacity));
+      await panel.hover({ position: { x: 80, y: 80 } });
+      await expect.poll(() => panel.evaluate((element, beforeHover) => {
+        const style = getComputedStyle(element);
+        return Number.parseFloat(getComputedStyle(element, "::after").opacity) >= Math.max(beforeHover, 0.01)
+          && /px$/.test(style.getPropertyValue("--panel-spotlight-x").trim())
+          && /px$/.test(style.getPropertyValue("--panel-spotlight-y").trim());
+      }, spotlightBeforeHover)).toBe(true);
+    }
   }
 
   const cardMetrics = await page.locator(".studio-image-result-card").evaluateAll((cards) => cards.map((card) => {
