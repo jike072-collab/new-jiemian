@@ -124,7 +124,7 @@ test("image results reveal independently with unified waiting visuals", async ({
   expect(precheckPayloads.every((payload) => payload.membershipEntitlementAmount === 2)).toBe(true);
   await expect(page.locator(".studio-image-result-card--pending")).toHaveCount(4);
   await expect(page.locator(".studio-dot-ripple-loader")).toHaveCount(4);
-  await expect(page.locator(".studio-image-result-card--pending .studio-dot-ripple-loader span")).toHaveCount(0);
+  await expect(page.locator(".studio-image-result-card--pending .studio-dot-ripple-loader span")).toHaveCount(1296);
   await expect(page.locator(".image-generation-progress")).toHaveCount(1);
   await page.locator(".image-generation-progress__head button").click();
   await expect(page.locator(".image-generation-progress")).toHaveCount(0);
@@ -136,31 +136,30 @@ test("image results reveal independently with unified waiting visuals", async ({
     return {
       width: dotsRect ? dotsRect.width / cardRect.width : 0,
       height: dotsRect ? dotsRect.height / cardRect.height : 0,
-      maskImage: dots ? getComputedStyle(dots).maskImage : "",
-      maskSize: dots ? getComputedStyle(dots).maskSize : "",
-      maskPosition: dots ? getComputedStyle(dots).maskPosition : "",
       animationName: dots ? getComputedStyle(dots).animationName : "",
-      backgroundSize: dots ? getComputedStyle(dots).backgroundSize : "",
       vectorField: dots?.classList.contains("is-vector-field") || false,
-      highlightAnimation: dots ? getComputedStyle(dots, "::after").animationName : "",
+      particleCount: dots?.querySelectorAll("span").length || 0,
+      particleSizes: Array.from(dots?.querySelectorAll<HTMLElement>("span") || []).map((dot) => getComputedStyle(dot).width),
+      particleAnimation: dots ? getComputedStyle(dots.querySelector("span")!).animationName : "",
     };
   }));
   for (const coverage of waitingCoverage) {
     expect(coverage.width).toBeGreaterThanOrEqual(0.85);
     expect(coverage.height).toBeGreaterThanOrEqual(0.85);
-    expect(coverage.maskImage).not.toBe("none");
-    expect(coverage.maskSize).toContain("46%");
-    expect(coverage.animationName).toContain("studio-dot-window");
-    expect(coverage.backgroundSize).toContain("14px");
+    expect(coverage.animationName).toBe("none");
     expect(coverage.vectorField).toBe(true);
-    expect(coverage.highlightAnimation).toContain("studio-dot-highlight-flow");
+    expect(coverage.particleCount).toBe(324);
+    expect(new Set(coverage.particleSizes).size).toBeGreaterThan(4);
+    expect(coverage.particleAnimation).toContain("studio-dot-field-drift");
   }
-  const initialMaskPositions = waitingCoverage.map((coverage) => coverage.maskPosition);
-  await page.waitForTimeout(240);
-  const movedMaskPositions = await page.locator(".studio-image-result-card--pending .studio-dot-ripple-loader").evaluateAll((loaders) => (
-    loaders.map((loader) => getComputedStyle(loader).maskPosition)
+  const initialTransforms = await page.locator(".studio-image-result-card--pending .studio-dot-ripple-loader span").evaluateAll((dots) => (
+    dots.map((dot) => getComputedStyle(dot).transform)
   ));
-  expect(movedMaskPositions.some((position, index) => position !== initialMaskPositions[index])).toBe(true);
+  await page.waitForTimeout(240);
+  const movedTransforms = await page.locator(".studio-image-result-card--pending .studio-dot-ripple-loader span").evaluateAll((dots) => (
+    dots.map((dot) => getComputedStyle(dot).transform)
+  ));
+  expect(movedTransforms.some((transform, index) => transform !== initialTransforms[index])).toBe(true);
   await page.screenshot({
     path: testInfo.outputPath(`image-waiting-${testInfo.project.name}.png`),
     fullPage: true,

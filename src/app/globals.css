@@ -3886,49 +3886,28 @@
   }
 
   .studio-dot-ripple-loader.is-fill {
-    grid-template-columns: repeat(24, minmax(0, 1fr));
-    grid-template-rows: repeat(24, minmax(0, 1fr));
+    grid-template-columns: repeat(18, minmax(0, 1fr));
+    grid-template-rows: repeat(18, minmax(0, 1fr));
     width: auto;
     padding: 0;
     place-items: center;
-    mask-image: radial-gradient(circle, #000 0 28%, rgba(0, 0, 0, 0.86) 46%, transparent 72%);
-    -webkit-mask-image: radial-gradient(circle, #000 0 28%, rgba(0, 0, 0, 0.86) 46%, transparent 72%);
-    mask-repeat: no-repeat;
-    -webkit-mask-repeat: no-repeat;
-    mask-size: 62% 62%;
-    -webkit-mask-size: 62% 62%;
-    mask-position: 12% 18%;
-    -webkit-mask-position: 12% 18%;
-    animation: studio-dot-window 4.8s var(--ease-toggle) infinite;
     pointer-events: none;
   }
 
   .studio-dot-ripple-loader.is-vector-field {
-    display: block;
-    contain: paint;
-    background-image: radial-gradient(circle, color-mix(in srgb, var(--primary) 88%, var(--foreground)) 0 1.35px, transparent 1.7px);
-    background-size: 14px 14px;
-    mask-size: 46% 52%;
-    mask-position: 86% 14%;
-    -webkit-mask-size: 46% 52%;
-    -webkit-mask-position: 86% 14%;
-    animation: studio-dot-window 6.2s cubic-bezier(0.44, 0.02, 0.2, 1) infinite;
-    will-change: mask-position, -webkit-mask-position;
+    contain: layout paint;
+    padding: 6% 4%;
   }
 
-  .studio-dot-ripple-loader.is-vector-field::after {
-    position: absolute;
-    inset: 0;
-    background-image: radial-gradient(circle, color-mix(in srgb, var(--primary) 94%, var(--foreground)) 0 2.45px, transparent 2.95px);
-    background-size: 14px 14px;
-    content: "";
-    mask-image: linear-gradient(to bottom left, transparent 2%, rgba(0, 0, 0, 0.18) 42%, #000 100%);
-    -webkit-mask-image: linear-gradient(to bottom left, transparent 2%, rgba(0, 0, 0, 0.18) 42%, #000 100%);
-    animation: studio-dot-highlight-flow 6.2s steps(1, end) infinite;
-  }
-
-  .studio-dot-ripple-loader.is-fill span {
-    width: 4px;
+  .studio-dot-ripple-loader.is-vector-field span {
+    width: var(--dot-field-size);
+    overflow: visible;
+    background: color-mix(in srgb, var(--primary) 88%, var(--foreground));
+    box-shadow: 0 0 7px color-mix(in srgb, var(--primary) 42%, transparent);
+    opacity: var(--dot-field-opacity);
+    transform: translate3d(0, 0, 0) scale(0.72);
+    animation: studio-dot-field-drift var(--dot-field-duration) cubic-bezier(0.38, 0.02, 0.2, 1) infinite;
+    animation-delay: var(--dot-field-delay);
   }
 
   @keyframes studio-dot-ripple {
@@ -3949,62 +3928,25 @@
     }
   }
 
-  @keyframes studio-dot-window {
+  @keyframes studio-dot-field-drift {
     0% {
-      mask-position: 86% 14%;
-      -webkit-mask-position: 86% 14%;
+      opacity: var(--dot-field-opacity-low);
+      transform: translate3d(0, 0, 0) scale(0.72);
     }
 
-    24% {
-      mask-position: 20% 76%;
-      -webkit-mask-position: 20% 76%;
+    36% {
+      opacity: var(--dot-field-opacity);
+      transform: translate3d(var(--dot-field-drift-x), var(--dot-field-drift-y), 0) scale(1);
     }
 
-    52% {
-      mask-position: 78% 62%;
-      -webkit-mask-position: 78% 62%;
-    }
-
-    76% {
-      mask-position: 28% 28%;
-      -webkit-mask-position: 28% 28%;
-    }
-
-    100% {
-      mask-position: 88% 72%;
-      -webkit-mask-position: 88% 72%;
-    }
-  }
-
-  @keyframes studio-dot-highlight-flow {
-    0%,
-    18% {
-      mask-image: linear-gradient(to bottom left, transparent 2%, rgba(0, 0, 0, 0.18) 42%, #000 100%);
-      -webkit-mask-image: linear-gradient(to bottom left, transparent 2%, rgba(0, 0, 0, 0.18) 42%, #000 100%);
-    }
-
-    19%,
-    42% {
-      mask-image: linear-gradient(to top right, transparent 2%, rgba(0, 0, 0, 0.18) 42%, #000 100%);
-      -webkit-mask-image: linear-gradient(to top right, transparent 2%, rgba(0, 0, 0, 0.18) 42%, #000 100%);
-    }
-
-    43%,
     68% {
-      mask-image: linear-gradient(to top left, transparent 2%, rgba(0, 0, 0, 0.18) 42%, #000 100%);
-      -webkit-mask-image: linear-gradient(to top left, transparent 2%, rgba(0, 0, 0, 0.18) 42%, #000 100%);
+      opacity: var(--dot-field-opacity-mid);
+      transform: translate3d(var(--dot-field-drift-x-reverse), var(--dot-field-drift-y-reverse), 0) scale(0.86);
     }
 
-    69%,
-    84% {
-      mask-image: linear-gradient(to bottom right, transparent 2%, rgba(0, 0, 0, 0.18) 42%, #000 100%);
-      -webkit-mask-image: linear-gradient(to bottom right, transparent 2%, rgba(0, 0, 0, 0.18) 42%, #000 100%);
-    }
-
-    85%,
     100% {
-      mask-image: linear-gradient(to top right, transparent 2%, rgba(0, 0, 0, 0.18) 42%, #000 100%);
-      -webkit-mask-image: linear-gradient(to top right, transparent 2%, rgba(0, 0, 0, 0.18) 42%, #000 100%);
+      opacity: var(--dot-field-opacity-low);
+      transform: translate3d(0, 0, 0) scale(0.72);
     }
   }
 
