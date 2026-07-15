@@ -132,6 +132,7 @@ function friendlyAuthError(error: unknown) {
   if (!(error instanceof ApiError)) {
     return "请求失败，请稍后重试";
   }
+  if (error.code === "AUTH_ACCOUNT_NOT_FOUND") return "该邮箱未注册";
   if (error.code === "AUTH_INVALID_CREDENTIALS") return "账号或密码不正确";
   if (error.code === "AUTH_DUPLICATE_ACCOUNT") return "邮箱或用户名已注册";
   if (error.code === "AUTH_VERIFICATION_CODE_INVALID") return "验证码不正确或已过期";

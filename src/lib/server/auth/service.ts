@@ -292,12 +292,7 @@ export class AuthService {
     }
     if (purpose === "login" && !existingUser) {
       await this.audit("auth.login_code.missing_user", null, context, { destination: destinationHash });
-      return {
-        ok: true,
-        status: 200,
-        uiState: "success",
-        message: "If the account exists, a verification code will be sent.",
-      };
+      return this.accountNotFoundFailure();
     }
 
     const rate = this.verificationLimiter.consume(
@@ -501,12 +496,17 @@ export class AuthService {
       }
       if (!user) {
         await this.audit("auth.login.failed", null, context, { reason: "missing_user_code", identifier: sha256(identifier) });
-        return failure({
-          status: 401,
-          code: "AUTH_INVALID_CREDENTIALS",
-          uiState: "invalid_credentials",
-          message: genericInvalidCredentials,
-        });
+        const rate = this.loginLimiter.consume(ipRateLimitKey("login-failed", context), this.now());
+        if (!rate.allowed) {
+          return failure({
+            status: 429,
+            code: "AUTH_RATE_LIMITED",
+            uiState: "rate_limited",
+            message: "Too many login attempts.",
+            retryAfterSeconds: rate.retryAfterSeconds,
+          });
+        }
+        return this.accountNotFoundFailure();
       }
       const verification = await this.consumeVerificationCode({
         destination: identifier,
@@ -548,12 +548,7 @@ export class AuthService {
           retryAfterSeconds: rate.retryAfterSeconds,
         });
       }
-      return failure({
-        status: 401,
-        code: "AUTH_INVALID_CREDENTIALS",
-        uiState: "invalid_credentials",
-        message: genericInvalidCredentials,
-      });
+      return user ? this.invalidCredentialsFailure() : this.accountNotFoundFailure();
     }
 
     return this.completeLogin(user, input, context, redirectTo);
@@ -639,6 +634,15 @@ export class AuthService {
       code: "AUTH_INVALID_CREDENTIALS",
       uiState: "invalid_credentials",
       message: genericInvalidCredentials,
+    });
+  }
+
+  private accountNotFoundFailure(): AuthFailure {
+    return failure({
+      status: 404,
+      code: "AUTH_ACCOUNT_NOT_FOUND",
+      uiState: "invalid_credentials",
+      message: "Email is not registered.",
     });
   }
 

@@ -595,6 +595,24 @@ test("logs in with an email verification code", async () => {
   assert.equal(login.session?.cookieMaxAgeSeconds, AUTH_SESSION_TTL_SECONDS);
 });
 
+test("does not send a login verification code for an unregistered email", async () => {
+  const harness = service();
+  const result = await harness.service.requestVerificationCode({
+    identifier: "missing-code@example.com",
+    purpose: "login",
+  }, { ip: "203.0.113.23" });
+
+  assert.equal(result.ok, false);
+  if (result.ok) return;
+  assert.equal(result.code, "AUTH_ACCOUNT_NOT_FOUND");
+  assert.equal(result.status, 404);
+  assert.equal(harness.sentCodes.length, 0);
+  assert.equal(await harness.repository.getLatestVerificationCode({
+    destination: "missing-code@example.com",
+    purpose: "login",
+  }), null);
+});
+
 test("remember-me login keeps the session cookie for the full session TTL", async () => {
   const harness = service();
   await registerActiveAccount(harness);
@@ -637,7 +655,7 @@ test("normalizes unsafe redirects to the app root", async () => {
   assert.equal(login.redirectTo, "/");
 });
 
-test("uses one generic invalid credentials error for wrong password and missing users", async () => {
+test("distinguishes an unregistered email from a wrong password", async () => {
   const harness = service();
   await registerActiveAccount(harness);
 
@@ -654,8 +672,23 @@ test("uses one generic invalid credentials error for wrong password and missing 
   assert.equal(missingUser.ok, false);
   if (wrongPassword.ok || missingUser.ok) return;
   assert.equal(wrongPassword.code, "AUTH_INVALID_CREDENTIALS");
-  assert.equal(missingUser.code, "AUTH_INVALID_CREDENTIALS");
-  assert.equal(wrongPassword.message, missingUser.message);
+  assert.equal(missingUser.code, "AUTH_ACCOUNT_NOT_FOUND");
+  assert.equal(missingUser.status, 404);
+  assert.equal(missingUser.message, "Email is not registered.");
+});
+
+test("verification-code login reports an unregistered email", async () => {
+  const harness = service();
+  const result = await harness.service.login({
+    identifier: "missing-code@example.com",
+    verificationCode: "123456",
+    loginMethod: "verification_code",
+  }, { ip: "203.0.113.23" });
+
+  assert.equal(result.ok, false);
+  if (result.ok) return;
+  assert.equal(result.code, "AUTH_ACCOUNT_NOT_FOUND");
+  assert.equal(result.status, 404);
 });
 
 test("audit records do not store submitted passwords", async () => {
@@ -750,7 +783,8 @@ test("successful login does not consume failed-login budget", async () => {
   assert.equal(success.ok, true);
   assert.equal(failure.ok, false);
   if (failure.ok) return;
-  assert.equal(failure.status, 401);
+  assert.equal(failure.status, 404);
+  assert.equal(failure.code, "AUTH_ACCOUNT_NOT_FOUND");
 });
 
 test("administrator password failures use the stricter limiter", async () => {
