@@ -19,6 +19,8 @@ export type EnabledProviders = {
 export type WorkspaceVideoOptions = {
   durations?: number[];
   ratios?: string[];
+  resolution?: string;
+  resolutions?: string[];
 };
 
 export type WorkspacePublicProvider = FrontendProvider & {
@@ -90,6 +92,7 @@ export type VideoWorkspaceState = {
   providerId: string;
   ratio: string;
   duration: number;
+  resolution: string;
   templateId: string;
   prompt: string;
   promptOptimizing: boolean;

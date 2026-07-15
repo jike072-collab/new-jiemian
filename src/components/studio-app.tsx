@@ -609,6 +609,17 @@ function videoRatioOptions(provider: WorkspacePublicProvider | null | undefined)
   return provider?.model === "grok-video-1.5" ? grokVideo15Ratios : grokVideo10Ratios;
 }
 
+function videoResolutionOptions(provider: WorkspacePublicProvider | null | undefined) {
+  if (provider?.videoOptions?.resolutions?.length) return provider.videoOptions.resolutions;
+  return [provider?.videoOptions?.resolution || "720p"];
+}
+
+function preferredVideoResolution(provider: WorkspacePublicProvider | null | undefined, current?: string) {
+  const options = videoResolutionOptions(provider);
+  if (current && options.includes(current)) return current;
+  return options.includes("720p") ? "720p" : options[0] || "720p";
+}
+
 function videoProviderRequiresReferenceImage(provider: WorkspacePublicProvider | null | undefined) {
   return provider?.model === "grok-video-1.5";
 }
@@ -692,6 +703,7 @@ export function StudioApp() {
     providerId: "",
     ratio: "16:9",
     duration: 6,
+    resolution: "720p",
     templateId: "",
     prompt: "",
     promptOptimizing: false,
@@ -1999,6 +2011,7 @@ export function StudioApp() {
   }, [providers.video, videoWorkspace.providerId]);
   const selectedVideoDurationOptions = useMemo(() => videoDurationOptions(selectedVideoProvider), [selectedVideoProvider]);
   const selectedVideoRatioOptions = useMemo(() => videoRatioOptions(selectedVideoProvider), [selectedVideoProvider]);
+  const selectedVideoResolutionOptions = useMemo(() => videoResolutionOptions(selectedVideoProvider), [selectedVideoProvider]);
 
   const videoWorkspaceFiles = videoWorkspace.files;
   const videoWorkspaceHasFiles = videoWorkspaceFiles.length > 0;
@@ -2046,15 +2059,17 @@ export function StudioApp() {
         ? preferredVideoDuration(selectedVideoProvider)
         : preferredVideoDuration(selectedVideoProvider, prev.duration);
       const nextRatio = ratioOptions.includes(prev.ratio) ? prev.ratio : ratioOptions[0];
+      const nextResolution = preferredVideoResolution(selectedVideoProvider, prev.resolution);
       const modelNeedsFile = videoProviderRequiresReferenceImage(selectedVideoProvider);
       const nextFileError = modelNeedsFile && !prev.files.length
         ? videoModelReferenceMessage
         : prev.fileError === videoModelReferenceMessage ? "" : prev.fileError;
-      if (nextDuration === prev.duration && nextRatio === prev.ratio && nextFileError === prev.fileError) return prev;
+      if (nextDuration === prev.duration && nextRatio === prev.ratio && nextResolution === prev.resolution && nextFileError === prev.fileError) return prev;
       return {
         ...prev,
         duration: nextDuration,
         ratio: nextRatio,
+        resolution: nextResolution,
         fileError: nextFileError,
         submitError: "",
       };
@@ -2771,6 +2786,7 @@ export function StudioApp() {
       mode: activeVideoMode,
       ratio: videoWorkspace.ratio,
       duration: videoWorkspace.duration,
+      resolution: videoWorkspace.resolution,
       prompt: videoWorkspace.prompt,
       model: selectedVideoProvider.model,
       files: videoWorkspace.files.map((attachment) => attachment.file),
@@ -2830,6 +2846,7 @@ export function StudioApp() {
       form.set("mode", snapshot.mode);
       form.set("ratio", snapshot.ratio);
       form.set("duration", String(snapshot.duration));
+      form.set("resolution", snapshot.resolution);
       form.set("prompt", snapshot.prompt);
       form.set("taskId", taskId);
       form.set("idempotencyKey", taskId);
@@ -2871,6 +2888,7 @@ export function StudioApp() {
     videoWorkspace.files,
     videoWorkspace.prompt,
     videoWorkspace.ratio,
+    videoWorkspace.resolution,
     videoWorkspaceHasFiles,
     videoWorkspaceRequiresFile,
     videoWorkspaceNeedsFile,
@@ -2925,10 +2943,16 @@ export function StudioApp() {
           costLabel={videoGenerationCostLabel}
           onProviderChange={(value) => {
             const provider = providers.video.find((item) => item.id === value);
-            updateVideoWorkspace({ providerId: value, duration: preferredVideoDuration(provider), submitError: "" });
+            updateVideoWorkspace({
+              providerId: value,
+              duration: preferredVideoDuration(provider),
+              resolution: preferredVideoResolution(provider),
+              submitError: "",
+            });
           }}
           onRatioChange={(value) => updateVideoWorkspace({ ratio: value })}
           onDurationChange={(value) => updateVideoWorkspace({ duration: value })}
+          onResolutionChange={(value) => updateVideoWorkspace({ resolution: value })}
           onTemplateChange={applyVideoPromptTemplate}
           onPromptChange={(value) => updateVideoWorkspace({ prompt: value, promptOptimizeUndo: "", promptOptimizeError: "", submitError: "" })}
           onPromptOptimize={optimizeVideoPrompt}
@@ -2939,6 +2963,7 @@ export function StudioApp() {
           onFilesClear={clearVideoWorkspaceFiles}
           ratioOptions={selectedVideoRatioOptions}
           durationOptions={selectedVideoDurationOptions}
+          resolutionOptions={selectedVideoResolutionOptions}
           modelRequiresImage={selectedVideoModelRequiresFile}
           onReloadProviders={refreshProviders}
           onSubmit={submitVideoWorkspace}

@@ -366,6 +366,7 @@ async function callGetTokenVeoProvider(provider: ProviderConfig, input: {
   prompt: string;
   ratio: string;
   duration: number;
+  resolution: string;
   files: UploadedMedia[];
 }) {
   if (input.prompt.trim().length < 5 || input.prompt.length > 8000) {
@@ -389,7 +390,7 @@ async function callGetTokenVeoProvider(provider: ProviderConfig, input: {
       prompt: input.prompt,
       aspectRatio: input.ratio,
       duration: String(input.duration),
-      resolution: "720p",
+      resolution: input.resolution,
       clientTaskId: randomUUID(),
       ...(imageUrls.length ? { imageUrls } : {}),
     }),
@@ -714,6 +715,7 @@ function validateGrokVideoInput(provider: ProviderConfig, input: {
   mode: "text-to-video" | "image-to-video";
   ratio: string;
   duration: number;
+  resolution?: string;
   files: UploadedMedia[];
 }) {
   const allowedDurations = provider.model === "grok-video-1.5" ? grokVideo15Durations : grokVideo10Durations;
@@ -735,6 +737,14 @@ function validateGrokVideoInput(provider: ProviderConfig, input: {
       publicMessage: provider.model === "grok-video-1.5"
         ? "grok-video-1.5 只支持 16:9 和 9:16。"
         : "grok-video-1.0 不支持当前比例。",
+    });
+  }
+  if (input.resolution && input.resolution !== "720p") {
+    throw new GenerationDiagnosticError({
+      code: "INPUT_INVALID_PARAMETERS",
+      providerId: provider.id,
+      model: provider.model,
+      publicMessage: "当前 Grok 视频模型固定使用 720P。",
     });
   }
   if (provider.model === "grok-video-1.5" && input.files.length !== 1) {
@@ -763,6 +773,7 @@ function validateVideoInput(provider: ProviderConfig, input: {
   mode: "text-to-video" | "image-to-video";
   ratio: string;
   duration: number;
+  resolution: string;
   files: UploadedMedia[];
 }) {
   if (isGrokVideoProvider(provider)) {
@@ -772,6 +783,9 @@ function validateVideoInput(provider: ProviderConfig, input: {
   const options = videoOptionsForProvider(provider);
   const allowedDurations = options?.durations?.length ? new Set(options.durations) : new Set([5, 8, 10, 15]);
   const allowedRatios = options?.ratios?.length ? new Set(options.ratios) : defaultVideoRatios;
+  const allowedResolutions = options?.resolutions?.length
+    ? new Set(options.resolutions)
+    : new Set([options?.resolution || "720p"]);
   if (!allowedDurations.has(input.duration)) {
     throw new GenerationDiagnosticError({
       code: "INPUT_INVALID_PARAMETERS",
@@ -786,6 +800,14 @@ function validateVideoInput(provider: ProviderConfig, input: {
       providerId: provider.id,
       model: provider.model,
       publicMessage: `当前视频模型不支持 ${input.ratio} 比例。`,
+    });
+  }
+  if (!allowedResolutions.has(input.resolution)) {
+    throw new GenerationDiagnosticError({
+      code: "INPUT_INVALID_PARAMETERS",
+      providerId: provider.id,
+      model: provider.model,
+      publicMessage: `当前视频模型不支持 ${input.resolution} 清晰度。`,
     });
   }
   if (input.mode === "image-to-video") {
@@ -1728,6 +1750,7 @@ export async function submitVideo(input: {
   prompt: string;
   ratio: string;
   duration: number;
+  resolution: string;
   files: UploadedMedia[];
   billingLocalUserId?: string | null;
   billingTaskId?: string | null;
@@ -1789,7 +1812,7 @@ export async function submitVideo(input: {
       output = await callGrokVideoProvider(readyProvider, input);
     } else {
       const providerVideoOptions = videoOptionsForProvider(readyProvider);
-      const resolution = providerVideoOptions?.resolution || "720p";
+      const resolution = input.resolution || providerVideoOptions?.resolution || "720p";
       const providerPayload: Record<string, string | number | string[]> = {
         model: readyProvider.model,
         prompt: input.prompt,
@@ -1835,6 +1858,7 @@ export async function submitVideo(input: {
         params: {
           ratio: input.ratio,
           duration: input.duration,
+          resolution: input.resolution,
           referenceImages: input.files.length,
           ...(input.billingTaskId ? { billingTaskId: input.billingTaskId } : {}),
           ...(input.billingIdempotencyKey ? { billingIdempotencyKey: input.billingIdempotencyKey } : {}),
@@ -1874,6 +1898,7 @@ export async function submitVideo(input: {
       params: {
         ratio: input.ratio,
         duration: input.duration,
+        resolution: input.resolution,
         referenceImages: input.files.length,
         ...(input.billingTaskId ? { billingTaskId: input.billingTaskId } : {}),
       },

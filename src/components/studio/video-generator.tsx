@@ -44,6 +44,7 @@ export function VideoGenerator({
   onProviderChange,
   onRatioChange,
   onDurationChange,
+  onResolutionChange,
   onTemplateChange,
   onPromptChange,
   onPromptOptimize,
@@ -54,6 +55,7 @@ export function VideoGenerator({
   onFilesClear,
   ratioOptions,
   durationOptions,
+  resolutionOptions,
   modelRequiresImage,
   onReloadProviders,
   onSubmit,
@@ -72,6 +74,7 @@ export function VideoGenerator({
   onProviderChange: (value: string) => void;
   onRatioChange: (value: string) => void;
   onDurationChange: (value: number) => void;
+  onResolutionChange: (value: string) => void;
   onTemplateChange: (value: string) => void;
   onPromptChange: (value: string) => void;
   onPromptOptimize: (preferences: PromptPreferences) => void;
@@ -82,12 +85,26 @@ export function VideoGenerator({
   onFilesClear: () => void;
   ratioOptions: string[];
   durationOptions: number[];
+  resolutionOptions: string[];
   modelRequiresImage: boolean;
   onReloadProviders: () => Promise<void>;
   onSubmit: () => void;
   registerMobileAction: (action: MobileActionState) => void;
 }) {
   const meta = videoWorkspaceModeMeta[mode];
+  const durationField = (
+    <FieldFrame label="时长" required>
+      <CustomSelect
+        label="时长"
+        value={String(state.duration)}
+        options={durationOptions.map((value) => ({
+          value: String(value),
+          label: `${value} 秒`,
+        }))}
+        onChange={(value) => onDurationChange(Number(value))}
+      />
+    </FieldFrame>
+  );
 
   useEffect(() => {
     registerMobileAction({
@@ -137,17 +154,22 @@ export function VideoGenerator({
       <StackedControl label="比例" required>
         <AspectRatioSelector label="比例" value={state.ratio} options={ratioOptions} onChange={onRatioChange} />
       </StackedControl>
-      <FieldFrame label="时长" required>
-        <CustomSelect
-          label="时长"
-          value={String(state.duration)}
-          options={durationOptions.map((value) => ({
-            value: String(value),
-            label: `${value} 秒`,
-          }))}
-          onChange={(value) => onDurationChange(Number(value))}
-        />
-      </FieldFrame>
+      {resolutionOptions.length > 1 ? (
+        <div className="studio-dual-fields">
+          {durationField}
+          <FieldFrame label="清晰度" required>
+            <CustomSelect
+              label="清晰度"
+              value={state.resolution}
+              options={resolutionOptions.map((value) => ({
+                value,
+                label: value.toUpperCase(),
+              }))}
+              onChange={onResolutionChange}
+            />
+          </FieldFrame>
+        </div>
+      ) : durationField}
       <VideoPromptBox
         label={meta.promptLabel}
         value={state.prompt}

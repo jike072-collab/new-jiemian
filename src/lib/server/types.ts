@@ -26,6 +26,7 @@ export type ProviderConfig = {
     durations?: number[];
     ratios?: string[];
     resolution?: string;
+    resolutions?: string[];
     maxReferenceImages?: number;
     supportsVideoReference?: boolean;
     supportsAudioReference?: boolean;

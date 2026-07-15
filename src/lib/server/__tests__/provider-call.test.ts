@@ -5,7 +5,7 @@ import test from "node:test";
 
 import { createErrorDiagnostic, logDiagnosticEvent } from "../error-diagnostics";
 import { providerCallInternalsForTests } from "../provider-call";
-import { defaultProviders } from "../providers";
+import { defaultProviders, sanitizeProvider } from "../providers";
 import type { ProviderConfig } from "../types";
 
 const provider = {
@@ -27,11 +27,12 @@ test("Grok video defaults expose only model 1.5", () => {
   assert.deepEqual(grokProvider?.enabledModels, ["grok-video-1.5"]);
 });
 
-test("GetToken Veo defaults expose Pro and Fast at 720p", () => {
+test("GetToken Veo defaults expose Pro and Fast with three resolutions", () => {
   const veoProvider = defaultProviders().find((item) => item.id === "video-gettoken-veo");
   assert.equal(veoProvider?.model, "veo-3.1-pro");
   assert.deepEqual(veoProvider?.models, ["veo-3.1-pro", "veo-3.1-fast"]);
   assert.deepEqual(veoProvider?.enabledModels, ["veo-3.1-pro", "veo-3.1-fast"]);
+  assert.deepEqual(veoProvider ? sanitizeProvider(veoProvider).videoOptions?.resolutions : undefined, ["720p", "1080p", "4k"]);
 });
 
 test("small valid provider JSON passes", async () => {
@@ -492,7 +493,7 @@ test("GetToken keeps four image tasks concurrent when upstream accepts them", as
   }
 });
 
-test("GetToken Veo Fast submits documented 8-second 720p text video payload", async () => {
+test("GetToken Veo Fast submits selected 1080p text video payload", async () => {
   const videoProvider = {
     ...provider,
     id: "video-gettoken-veo::model::veo-3.1-fast",
@@ -515,12 +516,13 @@ test("GetToken Veo Fast submits documented 8-second 720p text video payload", as
       prompt: "A ceramic cup rotates slowly on a clean studio table.",
       ratio: "16:9",
       duration: 8,
+      resolution: "1080p",
       files: [],
     });
     assert.equal(requestedUrl, "https://nb.gettoken.cn/openapi/v1/veo3.1-fast/text-to-video");
     assert.equal(requestedBody.aspectRatio, "16:9");
     assert.equal(requestedBody.duration, "8");
-    assert.equal(requestedBody.resolution, "720p");
+    assert.equal(requestedBody.resolution, "1080p");
     assert.equal(typeof requestedBody.clientTaskId, "string");
     assert.equal("imageUrls" in requestedBody, false);
     assert.equal(output.jobId, "veo-fast-task");
@@ -556,6 +558,7 @@ test("GetToken Veo Pro uploads one reference before image-to-video submission", 
       prompt: "The product moves naturally while the camera makes a slow push in.",
       ratio: "9:16",
       duration: 8,
+      resolution: "4k",
       files: [{ bytes: Buffer.from("image-bytes"), mimeType: "image/png", fileName: "frame.png" }],
     });
     assert.equal(requests[0]?.url, "https://nb.gettoken.cn/openapi/v1/media/upload/binary");
@@ -563,13 +566,14 @@ test("GetToken Veo Pro uploads one reference before image-to-video submission", 
     const submitBody = JSON.parse(String(requests[1]?.body || "{}"));
     assert.deepEqual(submitBody.imageUrls, ["https://cdn.example.test/frame.png"]);
     assert.equal(submitBody.aspectRatio, "9:16");
+    assert.equal(submitBody.resolution, "4k");
     assert.equal(output.jobId, "veo-pro-task");
   } finally {
     globalThis.fetch = originalFetch;
   }
 });
 
-test("GetToken Veo accepts only documented duration and ratios", () => {
+test("GetToken Veo accepts only documented duration, ratios, and resolutions", () => {
   const videoProvider: ProviderConfig = {
     ...provider,
     id: "video-gettoken-veo::model::veo-3.1-pro",
@@ -580,6 +584,7 @@ test("GetToken Veo accepts only documented duration and ratios", () => {
       durations: [8],
       ratios: ["16:9", "9:16"],
       resolution: "720p",
+      resolutions: ["720p", "1080p", "4k"],
       maxReferenceImages: 1,
     },
   };
@@ -587,18 +592,28 @@ test("GetToken Veo accepts only documented duration and ratios", () => {
     mode: "text-to-video",
     ratio: "16:9",
     duration: 8,
+    resolution: "4k",
     files: [],
   }));
   assert.throws(() => providerCallInternalsForTests.validateVideoInput(videoProvider, {
     mode: "text-to-video",
     ratio: "16:9",
     duration: 10,
+    resolution: "720p",
     files: [],
   }));
   assert.throws(() => providerCallInternalsForTests.validateVideoInput(videoProvider, {
     mode: "text-to-video",
     ratio: "1:1",
     duration: 8,
+    resolution: "720p",
+    files: [],
+  }));
+  assert.throws(() => providerCallInternalsForTests.validateVideoInput(videoProvider, {
+    mode: "text-to-video",
+    ratio: "16:9",
+    duration: 8,
+    resolution: "2k",
     files: [],
   }));
 });

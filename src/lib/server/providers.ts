@@ -93,6 +93,9 @@ function normalizeVideoOptions(value: unknown): ProviderConfig["videoOptions"] {
     ? Array.from(new Set(input.ratios.map((item) => String(item || "").trim()).filter(Boolean)))
     : undefined;
   const resolution = String(input.resolution || "").trim();
+  const resolutions = Array.isArray(input.resolutions)
+    ? Array.from(new Set(input.resolutions.map((item) => String(item || "").trim().toLowerCase()).filter(Boolean)))
+    : undefined;
   const maxReferenceImages = Number(input.maxReferenceImages);
   const supportsVideoReference = typeof input.supportsVideoReference === "boolean" ? input.supportsVideoReference : undefined;
   const supportsAudioReference = typeof input.supportsAudioReference === "boolean" ? input.supportsAudioReference : undefined;
@@ -100,6 +103,7 @@ function normalizeVideoOptions(value: unknown): ProviderConfig["videoOptions"] {
   if (durations?.length) normalized.durations = durations;
   if (ratios?.length) normalized.ratios = ratios;
   if (resolution) normalized.resolution = resolution;
+  if (resolutions?.length) normalized.resolutions = resolutions;
   if (Number.isFinite(maxReferenceImages) && maxReferenceImages >= 0) normalized.maxReferenceImages = Math.floor(maxReferenceImages);
   if (supportsVideoReference !== undefined) normalized.supportsVideoReference = supportsVideoReference;
   if (supportsAudioReference !== undefined) normalized.supportsAudioReference = supportsAudioReference;
@@ -147,6 +151,7 @@ function getTokenVeoOptionsForModel(model: string): ProviderConfig["videoOptions
     durations: [8],
     ratios: ["16:9", "9:16"],
     resolution: "720p",
+    resolutions: ["720p", "1080p", "4k"],
     maxReferenceImages: 1,
   };
 }

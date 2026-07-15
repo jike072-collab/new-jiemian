@@ -48,6 +48,7 @@ export async function POST(request: NextRequest) {
       prompt: String(form.get("prompt") || ""),
       ratio: String(form.get("ratio") || "16:9"),
       duration: Number.isFinite(duration) ? duration : 5,
+      resolution: String(form.get("resolution") || "720p").trim().toLowerCase(),
       files: guardedFiles,
       billingLocalUserId: session.user.local_user_id,
       billingTaskId,
