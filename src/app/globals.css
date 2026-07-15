@@ -3233,7 +3233,12 @@
       transform-origin: top;
     }
 
+    .studio-hierarchical-select__group:not(.is-open) > .studio-hierarchical-select__submenu {
+      display: none;
+    }
+
     .studio-hierarchical-select__group.is-open > .studio-hierarchical-select__submenu {
+      display: grid;
       transform: translateY(0) scale(1);
     }
 
