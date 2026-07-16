@@ -48,6 +48,8 @@ test("Seedance defaults expose the Redbird Seedance 2.0 model catalog", () => {
   assert.equal(models.includes("Doubao-Seedance-2.0-fast-260128-grid"), true);
   assert.equal(models.includes("quanneng2.0-9tu"), true);
   assert.equal(models.includes("sdquan-2-miao"), true);
+  assert.equal(seedanceProvider?.modelDisplayNames?.["Doubao-Seedance-2.0-fast-260128-grid"], "Seedance 2.0 Fast 不卡真人");
+  assert.equal(seedanceProvider?.modelDisplayNames?.["Doubao-Seedance-2.0-fast-260128"], "Seedance 2.0 Fast 卡真人");
   assert.deepEqual(seedanceProvider?.enabledModels, models);
   assert.equal(seedanceProvider?.apiUrl, "https://open.hongniaoai.com/api/v1/videos");
   assert.deepEqual(seedanceVideoOptionsForModel("quanneng2.0-9tu")?.durations, [15]);
