@@ -442,6 +442,19 @@ function getTokenTaskError(payload: unknown) {
     || "GetToken Banana 任务执行失败。";
 }
 
+function getTokenVeoVideoResultUrl(payload: unknown) {
+  const results = Array.isArray(asRecord(payload).results) ? asRecord(payload).results as unknown[] : [];
+  for (const item of results) {
+    const result = asRecord(item);
+    const url = firstString(result.url);
+    const outputType = firstString(result.outputType, result.output_type).trim().toLowerCase().replace(/^\./, "");
+    if (url && (["mp4", "webm", "mov"].includes(outputType) || /\.(?:mp4|webm|mov)(?:[?#]|$)/i.test(url))) {
+      return url;
+    }
+  }
+  return "";
+}
+
 function isGetTokenTaskSuccess(status: string) {
   return ["SUCCESS", "SUCCEEDED", "COMPLETED", "DONE", "FINISHED"].includes(status);
 }
@@ -2074,8 +2087,14 @@ export async function refreshVideoJob(jobId: string, localUserId?: string | null
     await response.body?.cancel();
     return job;
   }
-  const output = parseProviderOutput(await readProviderJson(response, provider));
-  const status = normalizeStatus(output.status || "");
+  const payload = await readProviderJson(response, provider);
+  let output = parseProviderOutput(payload);
+  let status: JobRecord["status"] = normalizeStatus(output.status || "");
+  if (getTokenVeo) {
+    const videoUrl = getTokenVeoVideoResultUrl(payload);
+    output = { ...output, url: videoUrl };
+    if (status === "done" && !videoUrl) status = "failed";
+  }
 
   if (output.url) {
     const outputUrl = absolutizeProviderUrl(provider, output.url);
@@ -2225,6 +2244,7 @@ export const providerCallInternalsForTests = {
   isGetTokenBananaProvider,
   isGetTokenVeoProvider,
   shouldKeepGetTokenVeoJobPending,
+  getTokenVeoVideoResultUrl,
   isImg2ImageProvider,
   isLocalOpenAiCompatibleEndpoint,
   parseProviderOutput,

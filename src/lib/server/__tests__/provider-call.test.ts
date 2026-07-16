@@ -83,6 +83,24 @@ test("GetToken Veo keeps early invalid query responses pending", () => {
   assert.equal(providerCallInternalsForTests.shouldKeepGetTokenVeoJobPending(400, "invalid", createdAtMs + 5_000), false);
 });
 
+test("GetToken Veo selects the video result instead of its image preview", () => {
+  assert.equal(providerCallInternalsForTests.getTokenVeoVideoResultUrl({
+    previewUrl: "https://nb.gettoken.cn/output/preview.png",
+    results: [
+      { url: "https://nb.gettoken.cn/output/preview.png", outputType: "png" },
+      { url: "https://nb.gettoken.cn/output/result.mp4", outputType: "mp4" },
+    ],
+  }), "https://nb.gettoken.cn/output/result.mp4");
+});
+
+test("GetToken Veo rejects a successful response that only contains an image", () => {
+  assert.equal(providerCallInternalsForTests.getTokenVeoVideoResultUrl({
+    previewType: "image",
+    previewUrl: "https://nb.gettoken.cn/output/preview.png",
+    results: [{ url: "https://nb.gettoken.cn/output/preview.png", outputType: "png" }],
+  }), "");
+});
+
 test("small valid provider JSON passes", async () => {
   const response = jsonResponse({
     data: [{ url: "https://cdn.example.test/result.png" }],
