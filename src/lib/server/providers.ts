@@ -29,20 +29,20 @@ const jimengVideoModels = [
   "暗黑破甲破限seedance 720p-fast-nsp",
   "暗黑破甲破限seedance 720p-pro-nsp",
   "oc-seedance 720-pro-15s",
+  "xx-seedance 720p-pro-gz-15s",
   "seedance2.0 720p-pro-gz-15s",
   "sh-seedance2.0-fast 720p-nv-15s",
   "sh-seedance2.0-mini-720p-nv-15s",
-  "xx-seedance 720p-pro-gz-15s",
 ];
 
 const jimengVideoDisplayNames: Record<string, string> = {
-  "暗黑破甲破限seedance 720p-fast-nsp": "暗黑破甲破限seedance 720p-fast-nsp",
-  "暗黑破甲破限seedance 720p-pro-nsp": "暗黑破甲破限seedance 720p-pro-nsp",
+  "暗黑破甲破限seedance 720p-fast-nsp": "破限seedance 720p-fast-nsp",
+  "暗黑破甲破限seedance 720p-pro-nsp": "破限seedance 720p-pro-nsp",
   "oc-seedance 720-pro-15s": "oc-seedance 720-pro-15s",
+  "xx-seedance 720p-pro-gz-15s": "xx-seedance 720p-pro-gz-15s",
   "seedance2.0 720p-pro-gz-15s": "seedance2.0 720p-pro-gz-15s",
   "sh-seedance2.0-fast 720p-nv-15s": "sh-seedance2.0-fast 720p-nv-15s",
   "sh-seedance2.0-mini-720p-nv-15s": "sh-seedance2.0-mini-720p-nv-15s",
-  "xx-seedance 720p-pro-gz-15s": "xx-seedance 720p-pro-gz-15s",
 };
 
 const flexibleJimengVideoModels = new Set([

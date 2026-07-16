@@ -192,6 +192,7 @@ export function HierarchicalSelect({
   const buttonRef = useRef<HTMLButtonElement | null>(null);
   const flyoutRef = useRef<HTMLDivElement | null>(null);
   const flyoutTriggerRef = useRef<HTMLButtonElement | null>(null);
+  const flyoutOptionsRef = useRef<SelectOption[]>([]);
   const closeGroupTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [open, setOpen] = useState(false);
   const [openAbove, setOpenAbove] = useState(false);
@@ -206,6 +207,7 @@ export function HierarchicalSelect({
     setOpen(false);
     setOpenGroup(null);
     flyoutTriggerRef.current = null;
+    flyoutOptionsRef.current = [];
   }, []);
 
   const cancelGroupClose = useCallback(() => {
@@ -219,11 +221,22 @@ export function HierarchicalSelect({
     closeGroupTimerRef.current = setTimeout(() => setOpenGroup(null), 140);
   }, [cancelGroupClose]);
 
-  const positionFlyout = useCallback((trigger: HTMLButtonElement) => {
+  const positionFlyout = useCallback((trigger: HTMLButtonElement, options: SelectOption[]) => {
     const rect = trigger.getBoundingClientRect();
     const edge = 12;
     const gap = 6;
-    const preferredWidth = Math.min(520, Math.max(360, window.innerWidth * 0.38));
+    const contentWidth = options.reduce((longest, option) => {
+      const measure = (text: string, asciiWidth: number, fullWidth: number) => Array.from(text).reduce(
+        (width, character) => width + (character.charCodeAt(0) <= 0xff ? asciiWidth : fullWidth),
+        0,
+      );
+      return Math.max(
+        longest,
+        measure(option.label, 7.5, 14),
+        option.description ? measure(option.description, 6.5, 12) : 0,
+      );
+    }, 0);
+    const preferredWidth = Math.min(520, Math.max(280, Math.ceil(contentWidth + 52)));
     const rightSpace = window.innerWidth - rect.right - gap - edge;
     const leftSpace = rect.left - gap - edge;
     const openToRight = rightSpace >= Math.min(360, preferredWidth) || rightSpace >= leftSpace;
@@ -247,10 +260,11 @@ export function HierarchicalSelect({
     });
   }, []);
 
-  const showGroup = useCallback((group: string, trigger: HTMLButtonElement) => {
+  const showGroup = useCallback((group: string, trigger: HTMLButtonElement, options: SelectOption[]) => {
     cancelGroupClose();
     flyoutTriggerRef.current = trigger;
-    if (desktopFlyout) positionFlyout(trigger);
+    flyoutOptionsRef.current = options;
+    if (desktopFlyout) positionFlyout(trigger, options);
     setOpenGroup(group);
   }, [cancelGroupClose, desktopFlyout, positionFlyout]);
 
@@ -265,7 +279,7 @@ export function HierarchicalSelect({
   useEffect(() => {
     if (!desktopFlyout || !openGroup) return undefined;
     const update = () => {
-      if (flyoutTriggerRef.current) positionFlyout(flyoutTriggerRef.current);
+      if (flyoutTriggerRef.current) positionFlyout(flyoutTriggerRef.current, flyoutOptionsRef.current);
     };
     window.addEventListener("resize", update);
     window.addEventListener("scroll", update, true);
@@ -442,7 +456,7 @@ export function HierarchicalSelect({
             <div
               key={item.value}
               className={cn("studio-hierarchical-select__group", groupOpen && "is-open")}
-              onPointerEnter={(event) => showGroup(item.value, event.currentTarget.querySelector("button") as HTMLButtonElement)}
+              onPointerEnter={(event) => showGroup(item.value, event.currentTarget.querySelector("button") as HTMLButtonElement, item.options)}
               onPointerLeave={scheduleGroupClose}
             >
               <button
@@ -456,7 +470,7 @@ export function HierarchicalSelect({
                 className={cn("studio-custom-select__option studio-hierarchical-select__group-trigger", selected && "is-selected")}
                 onClick={(event) => {
                   if (groupOpen) setOpenGroup(null);
-                  else showGroup(item.value, event.currentTarget);
+                  else showGroup(item.value, event.currentTarget, item.options);
                 }}
                 onKeyDown={(event) => {
                   if (event.key === "ArrowDown" || event.key === "ArrowUp") {
@@ -464,7 +478,7 @@ export function HierarchicalSelect({
                     focusMenuItem(event.currentTarget, event.key === "ArrowDown" ? 1 : -1);
                   } else if (event.key === "ArrowRight" || event.key === "Enter" || event.key === " ") {
                     event.preventDefault();
-                    showGroup(item.value, event.currentTarget);
+                    showGroup(item.value, event.currentTarget, item.options);
                     requestAnimationFrame(() => document.getElementById(`${groupId}-menu`)?.querySelector<HTMLButtonElement>("button")?.focus());
                   }
                 }}

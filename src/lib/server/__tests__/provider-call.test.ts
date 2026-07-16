@@ -47,10 +47,10 @@ test("Seedance defaults expose the seven documented 720p models with exact durat
     "暗黑破甲破限seedance 720p-fast-nsp",
     "暗黑破甲破限seedance 720p-pro-nsp",
     "oc-seedance 720-pro-15s",
+    "xx-seedance 720p-pro-gz-15s",
     "seedance2.0 720p-pro-gz-15s",
     "sh-seedance2.0-fast 720p-nv-15s",
     "sh-seedance2.0-mini-720p-nv-15s",
-    "xx-seedance 720p-pro-gz-15s",
   ];
   assert.deepEqual(seedanceProvider?.models, models);
   assert.deepEqual(seedanceProvider?.enabledModels, models);
@@ -63,14 +63,14 @@ test("Seedance defaults expose the seven documented 720p models with exact durat
   assert.deepEqual(jimengVideoOptionsForModel(models[1])?.durations, Array.from({ length: 15 }, (_, index) => index + 1));
   assert.deepEqual(jimengVideoOptionsForModel(models[2])?.durations, [15]);
   assert.deepEqual(jimengVideoOptionsForModel(models[3])?.durations, [15]);
-  assert.deepEqual(jimengVideoOptionsForModel(models[4])?.durations, Array.from({ length: 15 }, (_, index) => index + 1));
+  assert.deepEqual(jimengVideoOptionsForModel(models[4])?.durations, [15]);
   assert.deepEqual(jimengVideoOptionsForModel(models[5])?.durations, Array.from({ length: 15 }, (_, index) => index + 1));
-  assert.deepEqual(jimengVideoOptionsForModel(models[6])?.durations, [15]);
+  assert.deepEqual(jimengVideoOptionsForModel(models[6])?.durations, Array.from({ length: 15 }, (_, index) => index + 1));
   assert.equal(jimengVideoRequestSecondsForModel(models[0], 8), 8);
-  assert.equal(jimengVideoRequestSecondsForModel(models[4], 8), 8);
+  assert.equal(jimengVideoRequestSecondsForModel(models[5], 8), 8);
   assert.equal(jimengVideoRequestSecondsForModel(models[2], 15), 1);
   assert.equal(jimengVideoRequestSecondsForModel(models[3], 15), 1);
-  assert.equal(jimengVideoRequestSecondsForModel(models[6], 15), 1);
+  assert.equal(jimengVideoRequestSecondsForModel(models[4], 15), 1);
 });
 
 test("GetToken Veo keeps early invalid query responses pending", () => {

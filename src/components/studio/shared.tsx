@@ -483,25 +483,25 @@ function providerUseCase(model: string, displayName: string) {
   if (normalized === "veo-3.1-fast") return "快速视频生成·兼顾质量与生成速度";
   if (normalized === "grok-video-1.5") return "动态影像直出·商品短片一键生成";
   if (normalized === "暗黑破甲破限seedance 720p-fast-nsp") {
-    return "0.88元/秒，13.2元/15秒；禁区，国内慎用慎发，破甲、破限、无审核，除了版权都能过。Seedance 720P Fast，支持 9 图、3 音频、0 视频，自由时长，按秒计费。";
+    return "Seedance 720P Fast · 9 图 · 3 音频 · 自由时长";
   }
   if (normalized === "暗黑破甲破限seedance 720p-pro-nsp") {
-    return "0.99元/秒，14.85元/15秒；禁区，国内慎用慎发，破甲、破限、无审核，除了版权都能过。Seedance 720P Pro，支持 9 图、3 音频、0 视频，自由时长，按秒计费。";
+    return "Seedance 720P Pro · 9 图 · 3 音频 · 自由时长";
   }
   if (normalized === "oc-seedance 720-pro-15s") {
-    return "0.36元/秒，满血 720P Pro，支持 9 图、3 视频、3 音频，高并发，不卡真人脸，自由时长固定价格。";
+    return "Seedance 720P Pro · 9 图 · 3 视频 · 3 音频 · 固定 15 秒";
   }
   if (normalized === "seedance2.0 720p-pro-gz-15s") {
-    return "Seedance 2.0 720P Pro，支持 4 个参考图、3 个视频、1 个音频，固定时长 15 秒，过人脸，高并发。";
+    return "Seedance 2.0 720P Pro · 4 图 · 3 视频 · 1 音频 · 固定 15 秒";
   }
   if (normalized === "sh-seedance2.0-fast 720p-nv-15s") {
-    return "渠道四：0.29元/秒，固定价格自由时长；官转 Seedance 2.0 原生 720P Fast，支持 9 张参考图片、3 个参考音频，不排队，过真人脸，不支持参考视频。";
+    return "Seedance 2.0 720P Fast · 9 图 · 3 音频 · 自由时长";
   }
   if (normalized === "sh-seedance2.0-mini-720p-nv-15s") {
-    return "渠道四：0.25元/秒，固定价格自由时长；Seedance 2.0 原生 720P Mini，支持 9 张参考图片、3 个参考音频，不排队，过真人脸，不支持参考视频。";
+    return "Seedance 2.0 720P Mini · 9 图 · 3 音频 · 自由时长";
   }
   if (normalized === "xx-seedance 720p-pro-gz-15s") {
-    return "0.29元/秒，Seedance 720P Pro，支持 9 图、1 音频、1 视频，高并发、不排队、过人脸，固定时长 15 秒。";
+    return "Seedance 720P Pro · 9 图 · 1 视频 · 1 音频 · 固定 15 秒";
   }
   return undefined;
 }
