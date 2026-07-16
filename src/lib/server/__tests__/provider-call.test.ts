@@ -43,23 +43,18 @@ test("GetToken Veo defaults expose Pro and Fast with three resolutions", () => {
 
 test("Seedance defaults expose the Redbird Seedance 2.0 model catalog", () => {
   const seedanceProvider = defaultProviders().find((item) => item.id === "video-main");
-  const models = [
-    "Doubao-Seedance-2.0-fast-260128-grid",
-    "Doubao-Seedance-2.0-fast-260128",
-    "Doubao-Seedance-2-0-260128-grid",
-    "Doubao-Seedance-2.0-260128",
-  ];
-  assert.deepEqual(seedanceProvider?.models, models);
+  const models = seedanceProvider?.models || [];
+  assert.equal(models.length, 12);
+  assert.equal(models.includes("Doubao-Seedance-2.0-fast-260128-grid"), true);
+  assert.equal(models.includes("quanneng2.0-9tu"), true);
+  assert.equal(models.includes("sdquan-2-miao"), true);
   assert.deepEqual(seedanceProvider?.enabledModels, models);
   assert.equal(seedanceProvider?.apiUrl, "https://open.hongniaoai.com/api/v1/videos");
-  for (const model of models) {
-    assert.equal(seedanceVideoOptionsForModel(model)?.resolution, "720p");
-    assert.equal(seedanceVideoOptionsForModel(model)?.resolutions, undefined);
-    assert.deepEqual(seedanceVideoOptionsForModel(model)?.durations, [15]);
-  }
-  assert.equal(seedanceVideoOptionsForModel(models[0])?.maxReferenceImages, 9);
-  assert.equal(seedanceVideoOptionsForModel(models[0])?.supportsVideoReference, true);
-  assert.equal(seedanceVideoOptionsForModel(models[0])?.supportsAudioReference, true);
+  assert.deepEqual(seedanceVideoOptionsForModel("quanneng2.0-9tu")?.durations, [15]);
+  assert.deepEqual(seedanceVideoOptionsForModel("sdquan-2-miao")?.durations, [4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15]);
+  assert.equal(seedanceVideoOptionsForModel("video-2.0-fast-720P")?.maxReferenceImages, 4);
+  assert.equal(seedanceVideoOptionsForModel("Doubao-Seedance-2.0-fast-260128-grid")?.supportsVideoReference, true);
+  assert.equal(seedanceVideoOptionsForModel("sdquan-fast")?.supportsAudioReference, true);
   assert.equal(seedanceVideoRequestSecondsForModel(models[0], 15), 15);
 });
 

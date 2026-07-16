@@ -26,17 +26,48 @@ const endpointTypes = [
 ] as const satisfies readonly EndpointType[];
 
 const seedanceVideoModels = [
+  "video-2.0-fast-720P",
+  "quanneng2.0",
   "Doubao-Seedance-2.0-fast-260128-grid",
   "Doubao-Seedance-2.0-fast-260128",
   "Doubao-Seedance-2-0-260128-grid",
   "Doubao-Seedance-2.0-260128",
+  "sdquan-fast",
+  "sdquan-2",
+  "B-quannengship2.0",
+  "quanneng2.0-9tu",
+  "sdquan-2-miao_fast",
+  "sdquan-2-miao",
 ];
 
 const seedanceVideoDisplayNames: Record<string, string> = {
+  "video-2.0-fast-720P": "全能视频 2.0 Fast 720P",
+  "quanneng2.0": "全能视频 2.0 线路 B",
   "Doubao-Seedance-2.0-fast-260128-grid": "Seedance 2.0 Fast 卡脸",
   "Doubao-Seedance-2.0-fast-260128": "Seedance 2.0 Fast 不卡脸",
   "Doubao-Seedance-2-0-260128-grid": "Seedance 2.0 满血 卡脸",
   "Doubao-Seedance-2.0-260128": "Seedance 2.0 满血 不卡脸",
+  "sdquan-fast": "全能视频 2.0 快速",
+  "sdquan-2": "全能视频 2.0 满血",
+  "B-quannengship2.0": "全能视频 2.0 满血 933",
+  "quanneng2.0-9tu": "全能视频 2.0 9 图",
+  "sdquan-2-miao_fast": "全能视频 2.0 Miao Fast",
+  "sdquan-2-miao": "全能视频 2.0 Miao Pro",
+};
+
+const seedanceVideoOptionsByModel: Record<string, NonNullable<ProviderConfig["videoOptions"]>> = {
+  "video-2.0-fast-720p": { durations: [10, 15], ratios: ["16:9", "9:16"], resolution: "720p", maxReferenceImages: 4, supportsVideoReference: true, supportsAudioReference: true },
+  "quanneng2.0": { durations: [10, 15], ratios: ["16:9", "9:16"], resolution: "720p", maxReferenceImages: 4, supportsVideoReference: true, supportsAudioReference: true },
+  "doubao-seedance-2.0-fast-260128-grid": { durations: [15], ratios: ["16:9", "9:16"], resolution: "720p", maxReferenceImages: 9, supportsVideoReference: true, supportsAudioReference: true },
+  "doubao-seedance-2.0-fast-260128": { durations: [15], ratios: ["16:9", "9:16"], resolution: "720p", maxReferenceImages: 9, supportsVideoReference: true, supportsAudioReference: true },
+  "doubao-seedance-2-0-260128-grid": { durations: [15], ratios: ["16:9", "9:16"], resolution: "720p", maxReferenceImages: 9, supportsVideoReference: true, supportsAudioReference: true },
+  "doubao-seedance-2.0-260128": { durations: [15], ratios: ["16:9", "9:16"], resolution: "720p", maxReferenceImages: 9, supportsVideoReference: true, supportsAudioReference: true },
+  "sdquan-fast": { durations: [15], ratios: ["16:9", "9:16", "4:3", "3:4", "1:1", "21:9"], resolution: "720p", maxReferenceImages: 9, supportsAudioReference: true },
+  "sdquan-2": { durations: [15], ratios: ["16:9", "9:16", "4:3", "3:4", "1:1", "21:9"], resolution: "720p", maxReferenceImages: 9, supportsAudioReference: true },
+  "b-quannengship2.0": { durations: [5, 10, 15], ratios: ["16:9", "9:16"], resolution: "720p", maxReferenceImages: 9 },
+  "quanneng2.0-9tu": { durations: [15], ratios: ["16:9", "9:16"], resolution: "720p", maxReferenceImages: 9 },
+  "sdquan-2-miao_fast": { durations: [4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15], ratios: ["16:9", "9:16", "4:3", "3:4", "1:1", "21:9"], resolution: "720p", maxReferenceImages: 9, supportsAudioReference: true },
+  "sdquan-2-miao": { durations: [4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15], ratios: ["16:9", "9:16", "4:3", "3:4", "1:1", "21:9"], resolution: "720p", maxReferenceImages: 9, supportsAudioReference: true },
 };
 
 function env(name: string, fallback = "") {
@@ -101,16 +132,7 @@ function normalizeVideoOptions(value: unknown): ProviderConfig["videoOptions"] {
 }
 
 export function seedanceVideoOptionsForModel(model: string): ProviderConfig["videoOptions"] {
-  const configuredModel = seedanceVideoModels.find((candidate) => candidate.toLowerCase() === model.trim().toLowerCase());
-  if (!configuredModel) return undefined;
-  return {
-    durations: [15],
-    ratios: ["16:9", "9:16"],
-    resolution: "720p",
-    maxReferenceImages: 9,
-    supportsVideoReference: true,
-    supportsAudioReference: true,
-  };
+  return seedanceVideoOptionsByModel[model.trim().toLowerCase()];
 }
 
 export function seedanceVideoRequestSecondsForModel(_model: string, duration: number) {

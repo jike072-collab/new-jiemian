@@ -291,7 +291,7 @@ function isGetTokenVeoProvider(provider: ProviderConfig) {
 }
 
 function isRedbirdSeedanceProvider(provider: ProviderConfig) {
-  return provider.model.trim().toLowerCase().startsWith("doubao-seedance-2");
+  return Boolean(seedanceVideoOptionsForModel(provider.model));
 }
 
 function redbirdVideoPayload(provider: ProviderConfig, input: {

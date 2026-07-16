@@ -482,10 +482,18 @@ function providerUseCase(model: string, displayName: string) {
   if (normalized === "veo-3.1-pro") return "高质量视频生成·细节与稳定性优先";
   if (normalized === "veo-3.1-fast") return "快速视频生成·兼顾质量与生成速度";
   if (normalized === "grok-video-1.5") return "动态影像直出·商品短片一键生成";
+  if (normalized === "video-2.0-fast-720p") return "快速 720P · 支持视频和音频参考";
+  if (normalized === "quanneng2.0") return "线路 B · 支持视频和音频参考";
   if (normalized === "doubao-seedance-2.0-fast-260128-grid") return "快速生成 · 支持卡脸 · 720P";
   if (normalized === "doubao-seedance-2.0-fast-260128") return "快速生成 · 不卡脸 · 720P";
   if (normalized === "doubao-seedance-2-0-260128-grid") return "满血质量 · 支持卡脸 · 720P";
   if (normalized === "doubao-seedance-2.0-260128") return "满血质量 · 不卡脸 · 720P";
+  if (normalized === "sdquan-fast") return "快速质量 · 15 秒 · 支持音频参考";
+  if (normalized === "sdquan-2") return "满血质量 · 15 秒 · 支持音频参考";
+  if (normalized === "b-quannengship2.0") return "满血 933 · 5/10/15 秒";
+  if (normalized === "quanneng2.0-9tu") return "支持 9 图参考 · 固定 15 秒";
+  if (normalized === "sdquan-2-miao_fast") return "Miao Fast · 4-15 秒 · 支持音频参考";
+  if (normalized === "sdquan-2-miao") return "Miao Pro · 4-15 秒 · 支持音频参考";
   return undefined;
 }
 

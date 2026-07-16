@@ -5,7 +5,13 @@ type GenerationBillableOperation = ImageGenerationBillableOperation | "cloud_vid
 type UpscaleBillableOperation = "cloud_image_upscale" | "cloud_video_upscale";
 
 export function isVideoGenerationPricingPending(model?: string | null) {
-  return String(model || "").trim().toLowerCase().includes("seedance");
+  const normalized = String(model || "").trim().toLowerCase();
+  return normalized.includes("seedance")
+    || normalized.startsWith("sdquan-")
+    || normalized === "quanneng2.0"
+    || normalized === "quanneng2.0-9tu"
+    || normalized === "b-quannengship2.0"
+    || normalized === "video-2.0-fast-720p";
 }
 
 export function estimateImageGenerationQuota(input: {

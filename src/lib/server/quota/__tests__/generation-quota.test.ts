@@ -31,6 +31,8 @@ test("4K video generation requires two membership entitlement units", () => {
 
 test("Seedance models remain blocked until product pricing is configured", () => {
   assert.equal(isVideoGenerationPricingPending("Doubao-Seedance-2.0-fast-260128"), true);
+  assert.equal(isVideoGenerationPricingPending("sdquan-2-miao_fast"), true);
+  assert.equal(isVideoGenerationPricingPending("quanneng2.0-9tu"), true);
   assert.equal(isVideoGenerationPricingPending("veo-3.1-pro"), false);
   assert.equal(isVideoGenerationPricingPending("grok-video-1.5"), false);
 });
