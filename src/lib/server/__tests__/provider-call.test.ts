@@ -41,12 +41,17 @@ test("GetToken Veo defaults expose Pro and Fast with three resolutions", () => {
   assert.equal(veoProvider ? sanitizeProvider(veoProvider).videoOptions?.maxReferenceImages : undefined, 2);
 });
 
-test("Seedance defaults expose the NewAPI standard and fast models", () => {
+test("Seedance defaults expose the Redbird Seedance 2.0 model catalog", () => {
   const seedanceProvider = defaultProviders().find((item) => item.id === "video-main");
-  const models = ["seedance-2.0", "seedance-2.0-fast"];
+  const models = [
+    "Doubao-Seedance-2.0-fast-260128-grid",
+    "Doubao-Seedance-2.0-fast-260128",
+    "Doubao-Seedance-2-0-260128-grid",
+    "Doubao-Seedance-2.0-260128",
+  ];
   assert.deepEqual(seedanceProvider?.models, models);
   assert.deepEqual(seedanceProvider?.enabledModels, models);
-  assert.equal(seedanceProvider?.apiUrl, "http://127.0.0.1:3000/v1/videos");
+  assert.equal(seedanceProvider?.apiUrl, "");
   for (const model of models) {
     assert.equal(seedanceVideoOptionsForModel(model)?.resolution, "720p");
     assert.equal(seedanceVideoOptionsForModel(model)?.resolutions, undefined);

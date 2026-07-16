@@ -482,12 +482,10 @@ function providerUseCase(model: string, displayName: string) {
   if (normalized === "veo-3.1-pro") return "高质量视频生成·细节与稳定性优先";
   if (normalized === "veo-3.1-fast") return "快速视频生成·兼顾质量与生成速度";
   if (normalized === "grok-video-1.5") return "动态影像直出·商品短片一键生成";
-  if (normalized === "seedance-2.0") {
-    return "标准质量 · 720P 视频生成";
-  }
-  if (normalized === "seedance-2.0-fast") {
-    return "快速生成 · 720P 视频生成";
-  }
+  if (normalized === "doubao-seedance-2.0-fast-260128-grid") return "快速生成 · 支持卡脸 · 720P";
+  if (normalized === "doubao-seedance-2.0-fast-260128") return "快速生成 · 不卡脸 · 720P";
+  if (normalized === "doubao-seedance-2-0-260128-grid") return "满血质量 · 支持卡脸 · 720P";
+  if (normalized === "doubao-seedance-2.0-260128") return "满血质量 · 不卡脸 · 720P";
   return undefined;
 }
 

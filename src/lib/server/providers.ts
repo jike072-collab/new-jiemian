@@ -25,11 +25,18 @@ const endpointTypes = [
   "volcengine-vod-upscale",
 ] as const satisfies readonly EndpointType[];
 
-const seedanceVideoModels = ["seedance-2.0", "seedance-2.0-fast"];
+const seedanceVideoModels = [
+  "Doubao-Seedance-2.0-fast-260128-grid",
+  "Doubao-Seedance-2.0-fast-260128",
+  "Doubao-Seedance-2-0-260128-grid",
+  "Doubao-Seedance-2.0-260128",
+];
 
 const seedanceVideoDisplayNames: Record<string, string> = {
-  "seedance-2.0": "Seedance 2.0",
-  "seedance-2.0-fast": "Seedance 2.0 Fast",
+  "Doubao-Seedance-2.0-fast-260128-grid": "Seedance 2.0 Fast 卡脸",
+  "Doubao-Seedance-2.0-fast-260128": "Seedance 2.0 Fast 不卡脸",
+  "Doubao-Seedance-2-0-260128-grid": "Seedance 2.0 满血 卡脸",
+  "Doubao-Seedance-2.0-260128": "Seedance 2.0 满血 不卡脸",
 };
 
 function env(name: string, fallback = "") {
@@ -314,16 +321,16 @@ export function defaultProviders(): ProviderConfig[] {
       id: "video-main",
       kind: "video",
       title: "Seedance 视频生成",
-      role: "NewAPI Seedance 2.0 标准与快速模型，统一输出 720P",
-      apiUrl: env("SEEDANCE_VIDEO_API_URL", "http://127.0.0.1:3000/v1/videos"),
-      model: env("SEEDANCE_VIDEO_MODEL", "seedance-2.0"),
+      role: "红鸟 Seedance 2.0 满血与快速模型，统一输出 720P",
+      apiUrl: env("REDBIRD_SEEDANCE_VIDEO_API_URL"),
+      model: env("REDBIRD_SEEDANCE_VIDEO_MODEL", "Doubao-Seedance-2.0-fast-260128-grid"),
       models: seedanceVideoModels,
       modelDisplayNames: seedanceVideoDisplayNames,
       enabledModels: seedanceVideoModels,
-      displayName: env("SEEDANCE_VIDEO_DISPLAY_NAME", env("SEEDANCE_VIDEO_MODEL", "seedance-2.0")),
-      apiKey: env("SEEDANCE_VIDEO_API_KEY", env("GROK_VIDEO_API_KEY")),
-      enabled: hasKey(env("SEEDANCE_VIDEO_API_KEY", env("GROK_VIDEO_API_KEY"))),
-      endpointType: (env("VIDEO_ENDPOINT_TYPE", "videos-generations") as EndpointType),
+      displayName: env("REDBIRD_SEEDANCE_VIDEO_DISPLAY_NAME", env("REDBIRD_SEEDANCE_VIDEO_MODEL", "Doubao-Seedance-2.0-fast-260128-grid")),
+      apiKey: env("REDBIRD_SEEDANCE_VIDEO_API_KEY"),
+      enabled: hasKey(env("REDBIRD_SEEDANCE_VIDEO_API_KEY")),
+      endpointType: (env("REDBIRD_SEEDANCE_VIDEO_ENDPOINT_TYPE", "videos-generations") as EndpointType),
       custom: false,
     },
     {
