@@ -60,12 +60,11 @@ test("Seedance defaults expose the Redbird Seedance 2.0 model catalog", () => {
   assert.equal(seedanceVideoRequestSecondsForModel(models[0], 15), 15);
 });
 
-test("Redbird Seedance sends documented image arrays and asynchronous task fields", () => {
-  const payload = providerCallInternalsForTests.redbirdVideoPayload({
+test("Redbird Seedance sends reference images as multipart files", () => {
+  const form = providerCallInternalsForTests.redbirdVideoFormData({
     ...provider,
     model: "Doubao-Seedance-2.0-fast-260128",
   }, {
-    mode: "image-to-video",
     prompt: "让产品自然旋转展示",
     ratio: "9:16",
     duration: 15,
@@ -74,11 +73,10 @@ test("Redbird Seedance sends documented image arrays and asynchronous task field
       { bytes: Buffer.from("second"), mimeType: "image/jpeg", fileName: "second.jpg" },
     ],
   });
-  assert.equal(payload.model, "Doubao-Seedance-2.0-fast-260128");
-  assert.equal(payload.seconds, "15");
-  assert.equal(payload.aspect_ratio, "9:16");
-  assert.equal(payload.images?.length, 2);
-  assert.equal("image" in payload, false);
+  assert.equal(form.get("model"), "Doubao-Seedance-2.0-fast-260128");
+  assert.equal(form.get("seconds"), "15");
+  assert.equal(form.get("aspect_ratio"), "9:16");
+  assert.equal(form.getAll("input_reference").length, 2);
 });
 
 test("GetToken Veo keeps early invalid query responses pending", () => {

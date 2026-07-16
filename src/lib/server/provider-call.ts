@@ -295,22 +295,33 @@ function isRedbirdSeedanceProvider(provider: ProviderConfig) {
 }
 
 function redbirdVideoPayload(provider: ProviderConfig, input: {
-  mode: "text-to-video" | "image-to-video";
   prompt: string;
   ratio: string;
   duration: number;
-  files: UploadedMedia[];
 }) {
-  const payload: Record<string, string | string[]> = {
+  return {
     model: provider.model,
     prompt: input.prompt,
     aspect_ratio: input.ratio,
     seconds: String(input.duration),
   };
-  if (input.mode === "image-to-video") {
-    payload.images = input.files.map((file) => `data:${file.mimeType};base64,${file.bytes.toString("base64")}`);
+}
+
+function redbirdVideoFormData(provider: ProviderConfig, input: {
+  prompt: string;
+  ratio: string;
+  duration: number;
+  files: UploadedMedia[];
+}) {
+  const form = new FormData();
+  form.append("model", provider.model);
+  form.append("prompt", input.prompt);
+  form.append("aspect_ratio", input.ratio);
+  form.append("seconds", String(input.duration));
+  for (const file of input.files) {
+    form.append("input_reference", new Blob([new Uint8Array(file.bytes)], { type: file.mimeType }), file.fileName);
   }
-  return payload;
+  return form;
 }
 
 const getTokenVeoQueryWarmupMs = 30 * 60 * 1000;
@@ -1893,13 +1904,16 @@ export async function submitVideo(input: {
     } else if (isGrokVideoProvider(readyProvider)) {
       output = await callGrokVideoProvider(readyProvider, input);
     } else if (isRedbirdSeedanceProvider(readyProvider)) {
+      const useFormData = input.mode === "image-to-video";
       const response = await fetch(readyProvider.apiUrl, {
         method: "POST",
         headers: {
-          "Content-Type": "application/json",
+          ...(useFormData ? {} : { "Content-Type": "application/json" }),
           ...authHeaders(readyProvider),
         },
-        body: JSON.stringify(redbirdVideoPayload(readyProvider, input)),
+        body: useFormData
+          ? redbirdVideoFormData(readyProvider, input)
+          : JSON.stringify(redbirdVideoPayload(readyProvider, input)),
         signal: AbortSignal.timeout(180000),
       });
       output = parseProviderOutput(await readProviderJson(response, readyProvider));
@@ -2291,6 +2305,7 @@ export const providerCallInternalsForTests = {
   isGetTokenVeoProvider,
   isRedbirdSeedanceProvider,
   redbirdVideoPayload,
+  redbirdVideoFormData,
   shouldKeepGetTokenVeoJobPending,
   getTokenVeoVideoResultUrl,
   isImg2ImageProvider,
