@@ -43,6 +43,7 @@ const metadataHost = "169.254.169.254";
 const allowedHostsEnvName = "REMOTE_MEDIA_ALLOWED_HOSTS";
 const builtInRemoteMediaHosts = [
   "image.codesonline.dev",
+  "nb.gettoken.cn",
   "gettoken-jp.oss-accelerate.aliyuncs.com",
 ];
 

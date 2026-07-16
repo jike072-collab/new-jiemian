@@ -357,10 +357,19 @@ test("production allowlist is fail-closed and rejects suffix bypasses and unlist
   });
 });
 
-test("GetToken result storage allows only the exact production CDN host", async () => {
+test("GetToken result storage allows only the exact production result hosts", async () => {
   await withEnv({ NODE_ENV: "production", REMOTE_MEDIA_ALLOWED_HOSTS: undefined }, async () => {
     assert.doesNotThrow(() => remoteMediaDownloadInternalsForTests.assertAllowedRemoteHost(
+      "nb.gettoken.cn",
+    ));
+    assert.doesNotThrow(() => remoteMediaDownloadInternalsForTests.assertAllowedRemoteHost(
       "gettoken-jp.oss-accelerate.aliyuncs.com",
+    ));
+    assert.throws(() => remoteMediaDownloadInternalsForTests.assertAllowedRemoteHost(
+      "video.nb.gettoken.cn",
+    ));
+    assert.throws(() => remoteMediaDownloadInternalsForTests.assertAllowedRemoteHost(
+      "nb.gettoken.cn.evil.test",
     ));
     assert.throws(() => remoteMediaDownloadInternalsForTests.assertAllowedRemoteHost(
       "other.gettoken-jp.oss-accelerate.aliyuncs.com",
