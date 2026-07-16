@@ -483,7 +483,6 @@ function providerUseCase(model: string, displayName: string) {
   if (normalized === "veo-3.1-fast") return "快速视频生成·兼顾质量与生成速度";
   if (normalized === "grok-video-1.5") return "动态影像直出·商品短片一键生成";
   if (normalized === "video-2.0-fast-720p") return "快速 720P · 支持视频和音频参考";
-  if (normalized === "quanneng2.0") return "线路 B · 支持视频和音频参考";
   if (normalized === "doubao-seedance-2.0-fast-260128-grid") return "快速生成 · 不卡真人 · 720P";
   if (normalized === "doubao-seedance-2.0-fast-260128") return "快速生成 · 卡真人 · 720P";
   if (normalized === "doubao-seedance-2-0-260128-grid") return "满血质量 · 不卡真人 · 720P";

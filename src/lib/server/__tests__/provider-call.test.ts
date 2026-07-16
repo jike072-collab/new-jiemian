@@ -44,7 +44,8 @@ test("GetToken Veo defaults expose Pro and Fast with three resolutions", () => {
 test("Seedance defaults expose the Redbird Seedance 2.0 model catalog", () => {
   const seedanceProvider = defaultProviders().find((item) => item.id === "video-main");
   const models = seedanceProvider?.models || [];
-  assert.equal(models.length, 12);
+  assert.equal(models.length, 11);
+  assert.equal(models.includes("quanneng2.0"), false);
   assert.equal(models.includes("Doubao-Seedance-2.0-fast-260128-grid"), true);
   assert.equal(models.includes("quanneng2.0-9tu"), true);
   assert.equal(models.includes("sdquan-2-miao"), true);

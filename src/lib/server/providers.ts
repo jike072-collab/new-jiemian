@@ -27,7 +27,6 @@ const endpointTypes = [
 
 const seedanceVideoModels = [
   "video-2.0-fast-720P",
-  "quanneng2.0",
   "Doubao-Seedance-2.0-fast-260128-grid",
   "Doubao-Seedance-2.0-fast-260128",
   "Doubao-Seedance-2-0-260128-grid",
@@ -42,7 +41,6 @@ const seedanceVideoModels = [
 
 const seedanceVideoDisplayNames: Record<string, string> = {
   "video-2.0-fast-720P": "全能视频 2.0 Fast 720P",
-  "quanneng2.0": "全能视频 2.0 线路 B",
   "Doubao-Seedance-2.0-fast-260128-grid": "Seedance 2.0 Fast 不卡真人",
   "Doubao-Seedance-2.0-fast-260128": "Seedance 2.0 Fast 卡真人",
   "Doubao-Seedance-2-0-260128-grid": "Seedance 2.0 满血 不卡真人",
@@ -57,7 +55,6 @@ const seedanceVideoDisplayNames: Record<string, string> = {
 
 const seedanceVideoOptionsByModel: Record<string, NonNullable<ProviderConfig["videoOptions"]>> = {
   "video-2.0-fast-720p": { durations: [10, 15], ratios: ["16:9", "9:16"], resolution: "720p", maxReferenceImages: 4, supportsVideoReference: true, supportsAudioReference: true },
-  "quanneng2.0": { durations: [10, 15], ratios: ["16:9", "9:16"], resolution: "720p", maxReferenceImages: 4, supportsVideoReference: true, supportsAudioReference: true },
   "doubao-seedance-2.0-fast-260128-grid": { durations: [15], ratios: ["16:9", "9:16"], resolution: "720p", maxReferenceImages: 9, supportsVideoReference: true, supportsAudioReference: true },
   "doubao-seedance-2.0-fast-260128": { durations: [15], ratios: ["16:9", "9:16"], resolution: "720p", maxReferenceImages: 9, supportsVideoReference: true, supportsAudioReference: true },
   "doubao-seedance-2-0-260128-grid": { durations: [15], ratios: ["16:9", "9:16"], resolution: "720p", maxReferenceImages: 9, supportsVideoReference: true, supportsAudioReference: true },
