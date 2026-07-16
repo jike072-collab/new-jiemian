@@ -2087,7 +2087,13 @@ export async function refreshVideoJob(jobId: string, localUserId?: string | null
     await response.body?.cancel();
     return job;
   }
-  const payload = await readProviderJson(response, provider);
+  let payload: unknown;
+  if (getTokenVeo && response.status === 400) {
+    await response.body?.cancel();
+    payload = { status: "FAILED", errorCode: "RESULT_EXPIRED" };
+  } else {
+    payload = await readProviderJson(response, provider);
+  }
   let output = parseProviderOutput(payload);
   let status: JobRecord["status"] = normalizeStatus(output.status || "");
   if (getTokenVeo) {
