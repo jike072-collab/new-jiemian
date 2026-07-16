@@ -29,10 +29,33 @@ test("4K video generation requires two membership entitlement units", () => {
   assert.equal(estimateVideoGenerationEntitlementUnits({ resolution: "4K" }), 2);
 });
 
-test("Seedance models remain blocked until product pricing is configured", () => {
+test("Seedance pricing follows model cost and duration tiers", () => {
+  assert.equal(estimateVideoGenerationQuota({ ...baseInput, model: "quanneng2.0-9tu", resolution: "720p", durationSeconds: 15 }), 300);
+  assert.equal(estimateVideoGenerationQuota({ ...baseInput, model: "video-2.0-fast-720P", resolution: "720p", durationSeconds: 10 }), 550);
+  assert.equal(estimateVideoGenerationQuota({ ...baseInput, model: "video-2.0-fast-720P", resolution: "720p", durationSeconds: 15 }), 650);
+  assert.equal(estimateVideoGenerationQuota({ ...baseInput, model: "B-quannengship2.0", resolution: "720p", durationSeconds: 5 }), 650);
+  assert.equal(estimateVideoGenerationQuota({ ...baseInput, model: "B-quannengship2.0", resolution: "720p", durationSeconds: 10 }), 750);
+  assert.equal(estimateVideoGenerationQuota({ ...baseInput, model: "B-quannengship2.0", resolution: "720p", durationSeconds: 15 }), 850);
+  assert.equal(estimateVideoGenerationQuota({ ...baseInput, model: "quanneng2.0", resolution: "720p", durationSeconds: 10 }), 800);
+  assert.equal(estimateVideoGenerationQuota({ ...baseInput, model: "quanneng2.0", resolution: "720p", durationSeconds: 15 }), 900);
+  assert.equal(estimateVideoGenerationQuota({ ...baseInput, model: "Doubao-Seedance-2.0-fast-260128-grid", resolution: "720p", durationSeconds: 15 }), 1200);
+  assert.equal(estimateVideoGenerationQuota({ ...baseInput, model: "Doubao-Seedance-2-0-260128-grid", resolution: "720p", durationSeconds: 15 }), 1400);
+});
+
+test("Seedance premium models consume multiple membership video entitlements", () => {
+  assert.equal(estimateVideoGenerationEntitlementUnits({ resolution: "720p", model: "quanneng2.0-9tu" }), 1);
+  assert.equal(estimateVideoGenerationEntitlementUnits({ resolution: "720p", model: "video-2.0-fast-720P" }), 1);
+  assert.equal(estimateVideoGenerationEntitlementUnits({ resolution: "720p", model: "B-quannengship2.0" }), 2);
+  assert.equal(estimateVideoGenerationEntitlementUnits({ resolution: "720p", model: "quanneng2.0" }), 2);
+  assert.equal(estimateVideoGenerationEntitlementUnits({ resolution: "720p", model: "Doubao-Seedance-2.0-fast-260128-grid" }), 3);
+  assert.equal(estimateVideoGenerationEntitlementUnits({ resolution: "720p", model: "Doubao-Seedance-2-0-260128-grid" }), 4);
+});
+
+test("only unpriced legacy Seedance models remain blocked", () => {
   assert.equal(isVideoGenerationPricingPending("Doubao-Seedance-2.0-fast-260128"), true);
   assert.equal(isVideoGenerationPricingPending("sdquan-2-miao_fast"), true);
-  assert.equal(isVideoGenerationPricingPending("quanneng2.0-9tu"), true);
+  assert.equal(isVideoGenerationPricingPending("quanneng2.0-9tu"), false);
+  assert.equal(isVideoGenerationPricingPending("Doubao-Seedance-2-0-260128-grid"), false);
   assert.equal(isVideoGenerationPricingPending("veo-3.1-pro"), false);
   assert.equal(isVideoGenerationPricingPending("grok-video-1.5"), false);
 });

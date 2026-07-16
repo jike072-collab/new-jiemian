@@ -330,6 +330,42 @@ test("uses and restores two video entitlements for a 4K generation", async () =>
   assert.equal(status.entitlements.video_generation.remaining, initialRemaining);
 });
 
+test("uses and restores four video entitlements for a premium Seedance generation", async () => {
+  const harness = service({ availableQuota: 0, providerQuota: 0 });
+  await harness.membershipService.applyPaidMembership({
+    localUserId: "local-user",
+    orderId: "membership-video-seedance-full",
+    planId: "enterprise",
+    cycle: "monthly",
+    now: new Date("2026-06-18T00:00:00.000Z"),
+  });
+  const initialRemaining = (await harness.membershipService.getStatus("local-user")).entitlements.video_generation.remaining;
+  const input = {
+    localUserId: "local-user",
+    taskId: "member-video-seedance-full-task",
+    operation: "cloud_video_generation" as const,
+    estimatedQuotaUnits: 1400,
+    membershipEntitlementAmount: 4,
+    idempotencyKey: "member-video-seedance-full-task",
+    requestFingerprint: "video:seedance-full:member-video-seedance-full-task",
+  };
+  const prechecked = await harness.taskBilling.precheck(input);
+  assert.equal(prechecked.ok, true);
+  if (!prechecked.ok) return;
+  assert.equal(prechecked.record.membership_entitlement_units, 4);
+
+  const claimed = await harness.taskBilling.claimProviderDispatch(input);
+  assert.equal(claimed.ok, true);
+  const failed = await harness.taskBilling.fail({
+    localUserId: "local-user",
+    taskId: input.taskId,
+    reason: "test premium restore",
+  });
+  assert.equal(failed.ok, true);
+  const status = await harness.membershipService.getStatus("local-user");
+  assert.equal(status.entitlements.video_generation.remaining, initialRemaining);
+});
+
 test("uses the shared image generation entitlement for image editing", async () => {
   const harness = service({ availableQuota: 0, providerQuota: 0 });
   await harness.membershipService.applyPaidMembership({

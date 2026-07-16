@@ -2132,7 +2132,10 @@ export function StudioApp() {
     referenceImages: videoReferenceImages.length,
     model: selectedVideoProvider?.model,
   });
-  const videoEntitlementUnits = estimateVideoGenerationEntitlementUnits({ resolution: videoWorkspace.resolution });
+  const videoEntitlementUnits = estimateVideoGenerationEntitlementUnits({
+    resolution: videoWorkspace.resolution,
+    model: selectedVideoProvider?.model,
+  });
   const videoPricingPending = isVideoGenerationPricingPending(selectedVideoProvider?.model);
   const videoGenerationCostLabel = videoPricingPending
     ? "价格待定"
@@ -2995,7 +2998,10 @@ export function StudioApp() {
         model: selectedVideoProvider.model,
       }),
     };
-    const membershipEntitlementAmount = estimateVideoGenerationEntitlementUnits({ resolution: snapshot.resolution });
+    const membershipEntitlementAmount = estimateVideoGenerationEntitlementUnits({
+      resolution: snapshot.resolution,
+      model: snapshot.model,
+    });
     const requestFingerprint = generationBillingFingerprint({
       kind: "video",
       providerId: snapshot.providerId,

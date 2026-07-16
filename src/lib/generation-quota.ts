@@ -6,6 +6,7 @@ type UpscaleBillableOperation = "cloud_image_upscale" | "cloud_video_upscale";
 
 export function isVideoGenerationPricingPending(model?: string | null) {
   const normalized = String(model || "").trim().toLowerCase();
+  if (seedanceVideoQuota(normalized, 15) !== null) return false;
   return normalized.includes("seedance")
     || normalized.startsWith("sdquan-")
     || normalized === "quanneng2.0"
@@ -47,6 +48,8 @@ export function estimateVideoGenerationQuota(input: {
   model?: string | null;
 }) {
   const duration = Math.max(1, Math.floor(input.durationSeconds || 1));
+  const seedanceQuota = seedanceVideoQuota(input.model, duration);
+  if (seedanceQuota !== null) return seedanceQuota;
   const base = duration * 100;
   let quota = base;
   if (duration >= 15) quota = Math.round(base * 0.8);
@@ -55,7 +58,11 @@ export function estimateVideoGenerationQuota(input: {
   return applyVideoModelPricing(quota, input.model, input.resolution);
 }
 
-export function estimateVideoGenerationEntitlementUnits(input: { resolution: string }) {
+export function estimateVideoGenerationEntitlementUnits(input: { resolution: string; model?: string | null }) {
+  const normalizedModel = String(input.model || "").trim().toLowerCase();
+  if (normalizedModel === "b-quannengship2.0" || normalizedModel === "quanneng2.0") return 2;
+  if (normalizedModel === "doubao-seedance-2.0-fast-260128-grid") return 3;
+  if (normalizedModel === "doubao-seedance-2-0-260128-grid") return 4;
   return input.resolution.trim().toLowerCase() === "4k" ? 2 : 1;
 }
 
@@ -190,4 +197,15 @@ function applyVideoModelPricing(base: number, model: string | null | undefined, 
   const resolutionPercent = normalizedResolution === "4k" ? 120 : normalizedResolution === "1080p" ? 110 : 100;
   const modelPercent = normalizedModel === "veo-3.1-fast" ? 80 : 100;
   return Math.ceil((base * resolutionPercent * modelPercent) / 100_000) * 10;
+}
+
+function seedanceVideoQuota(model: string | null | undefined, duration: number) {
+  const normalizedModel = String(model || "").trim().toLowerCase();
+  if (normalizedModel === "quanneng2.0-9tu") return 300;
+  if (normalizedModel === "video-2.0-fast-720p") return duration >= 15 ? 650 : 550;
+  if (normalizedModel === "b-quannengship2.0") return duration >= 15 ? 850 : duration >= 10 ? 750 : 650;
+  if (normalizedModel === "quanneng2.0") return duration >= 15 ? 900 : 800;
+  if (normalizedModel === "doubao-seedance-2.0-fast-260128-grid") return 1200;
+  if (normalizedModel === "doubao-seedance-2-0-260128-grid") return 1400;
+  return null;
 }

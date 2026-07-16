@@ -1932,7 +1932,10 @@ export async function submitVideo(input: {
     taskId: input.billingTaskId || "",
     estimatedQuotaUnits,
   });
-  const membershipEntitlementAmount = estimateVideoGenerationEntitlementUnits({ resolution: input.resolution });
+  const membershipEntitlementAmount = estimateVideoGenerationEntitlementUnits({
+    resolution: input.resolution,
+    model: provider?.model,
+  });
   try {
     await assertStorageAllows("video-generation", { fresh: true });
     if (!input.prompt.trim()) throw new GenerationDiagnosticError({ code: "INPUT_MISSING_PROMPT", providerId: provider?.id, model: provider?.model });

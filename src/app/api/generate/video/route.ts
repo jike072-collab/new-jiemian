@@ -5,6 +5,7 @@ import { diagnosticErrorResponse } from "@/lib/server/error-diagnostics";
 import { failVideoGenerationBeforeSubmit, submitVideo, uploadedMediaFromForm } from "@/lib/server/provider-call";
 import { WorkloadLimitError, withUserVideoWorkload, withVideoUploadPhase, workloadLimitResponse } from "@/lib/server/workload-guard";
 import { estimateVideoGenerationEntitlementUnits } from "@/lib/generation-quota";
+import { providerById } from "@/lib/server/providers";
 
 export const runtime = "nodejs";
 
@@ -26,7 +27,9 @@ export async function POST(request: NextRequest) {
     const referenceCount = imageCount + referenceVideos.length + referenceAudios.length;
     const billingTaskId = String(form.get("taskId") || form.get("billingTaskId") || "");
     const billingEstimatedQuotaUnits = Number(form.get("estimatedQuotaUnits") || form.get("billingEstimatedQuotaUnits") || Number.NaN);
-    const membershipEntitlementAmount = estimateVideoGenerationEntitlementUnits({ resolution });
+    const providerId = String(form.get("providerId") || "");
+    const selectedProvider = await providerById(providerId);
+    const membershipEntitlementAmount = estimateVideoGenerationEntitlementUnits({ resolution, model: selectedProvider?.model });
     const failBeforeSubmit = (error: unknown) => failVideoGenerationBeforeSubmit({
       localUserId: session.user.local_user_id,
       taskId: billingTaskId,
@@ -69,7 +72,7 @@ export async function POST(request: NextRequest) {
         throw error;
       }
       return submitVideo({
-      providerId: String(form.get("providerId") || ""),
+      providerId,
       mode,
       referenceMode,
       prompt: String(form.get("prompt") || ""),
