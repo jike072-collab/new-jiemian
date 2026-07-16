@@ -258,8 +258,11 @@ function runImageGenerationSourceChecks() {
   assert(studioSource.includes("runImageGenerationWithSlot(async () =>"));
   assert(studioSource.includes("progress.total - progress.current"));
   assert(studioSource.includes("if (recoveredItems.length) return publishItems(recoveredItems)"));
+  assert(studioSource.includes('scope: "video"'));
+  assert(studioSource.includes('updateVideoGenerationProgress("failed", "生成失败")'));
   assert(previewSource.includes("window.setTimeout(() => setLeaving(true), 3200)"));
   assert(previewSource.includes(".slice(0, 3)"));
+  assert(previewSource.includes('const isVideo = item.scope === "video"'));
   assert(imageRouteSource.includes("if (error instanceof WorkloadLimitError) await failBeforeSubmit(error)"));
 }
 

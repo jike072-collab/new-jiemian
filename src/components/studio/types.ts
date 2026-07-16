@@ -111,7 +111,7 @@ export type VideoWorkspaceState = {
 
 export type ImageGenerationProgressItem = {
   id: string;
-  scope: "image" | "image-editor";
+  scope: "image" | "image-editor" | "video";
   status: "running" | "done" | "failed";
   current: number;
   total: number;

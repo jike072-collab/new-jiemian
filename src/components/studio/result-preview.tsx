@@ -2027,16 +2027,17 @@ function ImageGenerationProgressItem({
         ? Math.min(Math.max(completed / total, 0), 1)
         : animatedTaskProgress(elapsedMs, completed / total, 0.94);
     const progressPercent = Math.round(progressRatio * 100);
+    const isVideo = item.scope === "video";
     const title = item.status === "done"
-      ? "生成已完成"
+      ? isVideo ? "视频生成完成" : "生成已完成"
       : item.status === "failed"
         ? "生成失败"
-        : "图片生成中";
+        : isVideo ? "视频生成中" : "图片生成中";
     const statusText = item.status === "running"
-      ? `第 ${activeIndex} / ${total} 张`
+      ? isVideo ? "视频任务进行中" : `第 ${activeIndex} / ${total} 张`
       : item.status === "done"
-        ? `已完成 ${total} 张`
-        : `已完成 ${completed} / ${total} 张`;
+        ? isVideo ? "视频已完成" : `已完成 ${total} 张`
+        : isVideo ? "视频生成失败" : `已完成 ${completed} / ${total} 张`;
 
     return (
       <div

@@ -750,6 +750,7 @@ export function StudioApp() {
     "image-editor": null,
   });
   const videoInFlightCountRef = useRef(0);
+  const videoGenerationProgressIdRef = useRef<string | null>(null);
   const imageUpscaleInFlightRef = useRef(false);
   const videoUpscaleInFlightRef = useRef(false);
   const accountPlanStatus = useMemo<PlanStatus>(() => {
@@ -953,6 +954,7 @@ export function StudioApp() {
       imageEditorInFlightCountRef.current = 0;
       latestImageDisplayRef.current = { image: null, "image-editor": null };
       videoInFlightCountRef.current = 0;
+      videoGenerationProgressIdRef.current = null;
       setImageGenerationProgress([]);
       setLogoutConfirmOpen(false);
       router.replace("/login");
@@ -973,6 +975,7 @@ export function StudioApp() {
       clearCachedAccountSnapshot();
       resetAccountState();
       resetLibraryState();
+      videoGenerationProgressIdRef.current = null;
       setImageGenerationProgress([]);
     } catch (error) {
       if (error instanceof ApiError && error.status === 401) {
@@ -980,6 +983,7 @@ export function StudioApp() {
         clearCachedAccountSnapshot();
         resetAccountState();
         resetLibraryState();
+        videoGenerationProgressIdRef.current = null;
         setImageGenerationProgress([]);
       } else {
         const text = error instanceof Error ? error.message : "会话加载失败。";
@@ -1655,6 +1659,22 @@ export function StudioApp() {
   const closeImageGenerationProgress = useCallback((progressId: string) => {
     setImageGenerationProgress((prev) => prev.filter((progress) => progress.id !== progressId));
   }, []);
+
+  const updateVideoGenerationProgress = useCallback((
+    status: "running" | "done" | "failed",
+    message: string,
+  ) => {
+    const progressId = videoGenerationProgressIdRef.current;
+    if (!progressId) return;
+    updateImageGenerationProgress(progressId, (current) => ({
+      ...current,
+      status,
+      current: status === "done" ? 1 : 0,
+      completedAt: status === "running" ? undefined : Date.now(),
+      message,
+    }));
+    if (status !== "running") videoGenerationProgressIdRef.current = null;
+  }, [updateImageGenerationProgress]);
 
   const applyImagePromptTemplate = useCallback((templateId: string) => {
     applyTemplatePreset(templateId);
@@ -2790,6 +2810,14 @@ export function StudioApp() {
         const itemBackedJob = updatedItem && updatedItem.status !== "queued" && updatedItem.status !== "generating"
           ? { ...nextJob, status: updatedItem.status === "failed" ? "failed" as const : "done" as const }
           : nextJob;
+        updateVideoGenerationProgress(
+          itemBackedJob.status === "done" ? "done" : itemBackedJob.status === "failed" ? "failed" : "running",
+          itemBackedJob.status === "done"
+            ? "视频生成完成"
+            : itemBackedJob.status === "failed"
+              ? "生成失败"
+              : itemBackedJob.status === "queued" ? "视频任务排队中" : "视频正在生成",
+        );
         if (updatedItem) {
           updateVideoWorkspace({ job: itemBackedJob });
           handleVideoResult(updatedItem, itemBackedJob);
@@ -2806,7 +2834,7 @@ export function StudioApp() {
       }
     }, 5000);
     return () => window.clearInterval(timer);
-  }, [handleVideoResult, outputs.video, refreshAccountAfterGeneration, refreshLibraryAfterMutation, setMessage, updateVideoInFlightState, updateVideoWorkspace, videoWorkspace.job]);
+  }, [handleVideoResult, outputs.video, refreshAccountAfterGeneration, refreshLibraryAfterMutation, setMessage, updateVideoGenerationProgress, updateVideoInFlightState, updateVideoWorkspace, videoWorkspace.job]);
 
   const submitVideoWorkspace = useCallback(async () => {
     if (!selectedVideoProvider) {
@@ -2880,6 +2908,17 @@ export function StudioApp() {
       taskId,
       estimatedQuotaUnits: snapshot.estimatedQuotaUnits,
     });
+    const progressId = createTaskId("video-progress");
+    videoGenerationProgressIdRef.current = progressId;
+    setImageGenerationProgress((prev) => [...prev, {
+      id: progressId,
+      scope: "video",
+      status: "running",
+      current: 0,
+      total: 1,
+      startedAt: Date.now(),
+      message: "正在提交视频任务",
+    }]);
 
     updateVideoInFlightState(videoInFlightCountRef.current + 1);
     updateVideoWorkspace({
@@ -2907,6 +2946,7 @@ export function StudioApp() {
       const text = error instanceof Error ? error.message : "额度预检失败。";
       updateVideoWorkspace({ submitError: text, submitDiagnostic: diagnosticFromError(error) });
       setMessage("生成失败");
+      updateVideoGenerationProgress("failed", "生成失败");
       updateVideoInFlightState(videoInFlightCountRef.current - 1);
       updateVideoWorkspace({ loading: false });
       return;
@@ -2933,6 +2973,15 @@ export function StudioApp() {
         body: form,
       });
       keepVideoSlotOccupied = Boolean(data.job && data.job.status !== "done" && data.job.status !== "failed");
+      const resultStatus = data.job?.status || data.item.status;
+      updateVideoGenerationProgress(
+        resultStatus === "done" ? "done" : resultStatus === "failed" ? "failed" : "running",
+        resultStatus === "done"
+          ? "视频生成完成"
+          : resultStatus === "failed"
+            ? "生成失败"
+            : resultStatus === "queued" ? "视频任务排队中" : "视频正在生成",
+      );
       updateVideoWorkspace({ job: data.job });
       handleVideoResult(data.item, data.job);
       await refreshLibraryAfterMutation();
@@ -2942,6 +2991,7 @@ export function StudioApp() {
       const text = error instanceof Error ? error.message : "视频生成失败。";
       updateVideoWorkspace({ submitError: text, submitDiagnostic: diagnosticFromError(error) });
       setMessage("生成失败");
+      updateVideoGenerationProgress("failed", "生成失败");
       updateVideoInFlightState(videoInFlightCountRef.current - 1);
       await refreshAccountAfterGeneration().catch(() => undefined);
     } finally {
@@ -2957,6 +3007,7 @@ export function StudioApp() {
     selectedVideoModelRequiresFile,
     setMessage,
     updateVideoInFlightState,
+    updateVideoGenerationProgress,
     updateVideoWorkspace,
     videoWorkspace.duration,
     videoWorkspace.files,
