@@ -2201,7 +2201,7 @@ export async function refreshPendingVideoJobsForOwner(localUserId: string, limit
       && job.status !== "failed"
       && (job.ownerLocalUserId === ownerId || job.billing_local_user_id === ownerId)
     ))
-    .sort((a: JobRecord, b: JobRecord) => a.updatedAt.localeCompare(b.updatedAt))
+    .sort((a: JobRecord, b: JobRecord) => b.updatedAt.localeCompare(a.updatedAt))
     .slice(0, Math.max(1, Math.min(10, Math.floor(limit))));
   for (const job of jobs) {
     await refreshVideoJob(job.id, ownerId).catch(() => undefined);
