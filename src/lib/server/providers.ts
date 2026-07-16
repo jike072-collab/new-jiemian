@@ -26,31 +26,36 @@ const endpointTypes = [
 ] as const satisfies readonly EndpointType[];
 
 const jimengVideoModels = [
-  "暗黑破甲破限seedance 720p-fast-nsp",
-  "暗黑破甲破限seedance 720p-pro-nsp",
-  "oc-seedance 720-pro-15s",
-  "xx-seedance 720p-pro-gz-15s",
-  "seedance2.0 720p-pro-gz-15s",
+  "mg-seedance2.0 -720p fast",
+  "mg-seedance2.0 -720p mini",
+  "mg-seedance2.0 -720p pro",
   "sh-seedance2.0-fast 720p-nv-15s",
   "sh-seedance2.0-mini-720p-nv-15s",
 ];
 
 const jimengVideoDisplayNames: Record<string, string> = {
-  "暗黑破甲破限seedance 720p-fast-nsp": "破限seedance 720p-fast-nsp",
-  "暗黑破甲破限seedance 720p-pro-nsp": "破限seedance 720p-pro-nsp",
-  "oc-seedance 720-pro-15s": "oc-seedance 720-pro-15s",
-  "xx-seedance 720p-pro-gz-15s": "xx-seedance 720p-pro-gz-15s",
-  "seedance2.0 720p-pro-gz-15s": "seedance2.0 720p-pro-gz-15s",
-  "sh-seedance2.0-fast 720p-nv-15s": "sh-seedance2.0-fast 720p-nv-15s",
-  "sh-seedance2.0-mini-720p-nv-15s": "sh-seedance2.0-mini-720p-nv-15s",
+  "mg-seedance2.0 -720p fast": "Seedance 2.0 Fast",
+  "mg-seedance2.0 -720p mini": "Seedance 2.0 Mini",
+  "mg-seedance2.0 -720p pro": "Seedance 2.0 Pro",
+  "sh-seedance2.0-fast 720p-nv-15s": "Seedance 2.0 Fast 直转",
+  "sh-seedance2.0-mini-720p-nv-15s": "Seedance 2.0 Mini 直转",
 };
 
 const flexibleJimengVideoModels = new Set([
-  "暗黑破甲破限seedance 720p-fast-nsp",
-  "暗黑破甲破限seedance 720p-pro-nsp",
+  "mg-seedance2.0 -720p fast",
+  "mg-seedance2.0 -720p mini",
+  "mg-seedance2.0 -720p pro",
   "sh-seedance2.0-fast 720p-nv-15s",
   "sh-seedance2.0-mini-720p-nv-15s",
 ]);
+
+const jimengVideoReferenceLimits: Record<string, number> = {
+  "mg-seedance2.0 -720p fast": 4,
+  "mg-seedance2.0 -720p mini": 4,
+  "mg-seedance2.0 -720p pro": 4,
+  "sh-seedance2.0-fast 720p-nv-15s": 9,
+  "sh-seedance2.0-mini-720p-nv-15s": 9,
+};
 
 const flexibleJimengVideoDurations = Array.from({ length: 15 }, (_, index) => index + 1);
 
@@ -123,8 +128,8 @@ export function jimengVideoOptionsForModel(model: string): ProviderConfig["video
     durations: flexibleDuration ? flexibleJimengVideoDurations : [15],
     ratios: ["16:9", "9:16", "1:1"],
     resolution: "720p",
-    maxReferenceImages: configuredModel === "seedance2.0 720p-pro-gz-15s" ? 4 : 9,
-    supportsVideoReference: !flexibleJimengVideoModels.has(configuredModel),
+    maxReferenceImages: jimengVideoReferenceLimits[configuredModel],
+    supportsVideoReference: configuredModel.startsWith("mg-seedance2.0"),
     supportsAudioReference: true,
   };
 }
@@ -339,13 +344,13 @@ export function defaultProviders(): ProviderConfig[] {
       id: "video-main",
       kind: "video",
       title: "Seedance 视频生成",
-      role: "支持 7 个 Seedance 与 Seedance 2.0 视频模型，统一输出 720P",
+      role: "支持 5 个 Seedance 2.0 视频模型，统一输出 720P",
       apiUrl: env("VIDEO_API_URL", "https://clmm-mall.top/v1/videos"),
-      model: env("VIDEO_MODEL", "暗黑破甲破限seedance 720p-fast-nsp"),
+      model: env("VIDEO_MODEL", "mg-seedance2.0 -720p fast"),
       models: jimengVideoModels,
       modelDisplayNames: jimengVideoDisplayNames,
       enabledModels: jimengVideoModels,
-      displayName: env("VIDEO_DISPLAY_NAME", env("VIDEO_MODEL", "暗黑破甲破限seedance 720p-fast-nsp")),
+      displayName: env("VIDEO_DISPLAY_NAME", env("VIDEO_MODEL", "mg-seedance2.0 -720p fast")),
       apiKey: env("VIDEO_MODEL_API_KEY"),
       enabled: hasKey(env("VIDEO_MODEL_API_KEY")),
       endpointType: (env("VIDEO_ENDPOINT_TYPE", "videos-generations") as EndpointType),
