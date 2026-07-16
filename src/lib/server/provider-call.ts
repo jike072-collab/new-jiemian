@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import { parseBuffer } from "music-metadata";
 
 import {
   estimateGenerationQuota,
@@ -20,12 +21,15 @@ import { assertStorageAllows } from "./storage-capacity";
 import { storeRemoteUrlStreamed } from "./remote-media-download";
 import { getTaskBillingService } from "./quota";
 import { providerById, seedanceVideoOptionsForModel, seedanceVideoRequestSecondsForModel } from "./providers";
+import { storeProviderReference } from "./provider-reference";
 import { type JobRecord, type LibraryItem, type ProviderConfig } from "./types";
 
 type UploadedMedia = {
   bytes: Buffer;
   mimeType: string;
   fileName: string;
+  mediaType?: "image" | "video" | "audio";
+  durationSeconds?: number;
 };
 
 type ProviderOutput = {
@@ -294,16 +298,27 @@ function isRedbirdSeedanceProvider(provider: ProviderConfig) {
   return Boolean(seedanceVideoOptionsForModel(provider.model));
 }
 
+function mediaFiles(input: { files: UploadedMedia[] }, mediaType: "image" | "video" | "audio") {
+  return input.files.filter((file) => (file.mediaType || "image") === mediaType);
+}
+
 function redbirdVideoPayload(provider: ProviderConfig, input: {
   prompt: string;
   ratio: string;
   duration: number;
+  files?: UploadedMedia[];
+  videoUrls?: string[];
+  audioUrls?: string[];
 }) {
   return {
     model: provider.model,
     prompt: input.prompt,
     aspect_ratio: input.ratio,
+    resolution: "720p",
     seconds: String(input.duration),
+    ...(input.files?.length ? { images: input.files.map((file) => `data:${file.mimeType};base64,${file.bytes.toString("base64")}`) } : {}),
+    ...(input.videoUrls?.length ? { videos: input.videoUrls } : {}),
+    ...(input.audioUrls?.length ? { audios: input.audioUrls } : {}),
   };
 }
 
@@ -322,6 +337,10 @@ function redbirdVideoFormData(provider: ProviderConfig, input: {
     form.append("input_reference", new Blob([new Uint8Array(file.bytes)], { type: file.mimeType }), file.fileName);
   }
   return form;
+}
+
+async function prepareRedbirdReferenceUrls(files: UploadedMedia[]) {
+  return Promise.all(files.map(async (file) => (await storeProviderReference(file)).url));
 }
 
 const getTokenVeoQueryWarmupMs = 30 * 60 * 1000;
@@ -842,8 +861,19 @@ function validateVideoInput(provider: ProviderConfig, input: {
   resolution: string;
   files: UploadedMedia[];
 }) {
+  const referenceImages = mediaFiles(input, "image");
+  const referenceVideos = mediaFiles(input, "video");
+  const referenceAudios = mediaFiles(input, "audio");
   if (isGrokVideoProvider(provider)) {
-    validateGrokVideoInput(provider, input);
+    if (referenceVideos.length || referenceAudios.length) {
+      throw new GenerationDiagnosticError({
+        code: "INPUT_INVALID_PARAMETERS",
+        providerId: provider.id,
+        model: provider.model,
+        publicMessage: "当前 Grok 视频模型只支持参考图。",
+      });
+    }
+    validateGrokVideoInput(provider, { ...input, files: referenceImages });
     return;
   }
   const options = videoOptionsForProvider(provider);
@@ -877,7 +907,7 @@ function validateVideoInput(provider: ProviderConfig, input: {
     });
   }
   if (input.referenceMode === "first-last") {
-    if (provider.model !== "veo-3.1-pro" || input.mode !== "image-to-video" || input.files.length !== 2) {
+    if (provider.model !== "veo-3.1-pro" || input.mode !== "image-to-video" || referenceImages.length !== 2 || referenceVideos.length || referenceAudios.length) {
       throw new GenerationDiagnosticError({
         code: "INPUT_INVALID_PARAMETERS",
         providerId: provider.id,
@@ -890,12 +920,42 @@ function validateVideoInput(provider: ProviderConfig, input: {
     const maxReferenceImages = input.referenceMode === "first-last"
       ? 2
       : isGetTokenVeoProvider(provider) ? 1 : options?.maxReferenceImages ?? 1;
-    if (input.files.length > maxReferenceImages) {
+    if (referenceImages.length > maxReferenceImages) {
       throw new GenerationDiagnosticError({
         code: "INPUT_INVALID_PARAMETERS",
         providerId: provider.id,
         model: provider.model,
         publicMessage: `当前视频模型最多支持 ${maxReferenceImages} 张参考图。`,
+      });
+    }
+  }
+  const maxReferenceVideos = options?.maxReferenceVideos ?? 0;
+  const maxReferenceAudios = options?.maxReferenceAudios ?? 0;
+  if (referenceVideos.length > maxReferenceVideos) {
+    throw new GenerationDiagnosticError({
+      code: "INPUT_INVALID_PARAMETERS",
+      providerId: provider.id,
+      model: provider.model,
+      publicMessage: maxReferenceVideos ? `当前视频模型最多支持 ${maxReferenceVideos} 个参考视频。` : "当前视频模型不支持参考视频。",
+    });
+  }
+  if (referenceAudios.length > maxReferenceAudios) {
+    throw new GenerationDiagnosticError({
+      code: "INPUT_INVALID_PARAMETERS",
+      providerId: provider.id,
+      model: provider.model,
+      publicMessage: maxReferenceAudios ? `当前视频模型最多支持 ${maxReferenceAudios} 个参考音频。` : "当前视频模型不支持参考音频。",
+    });
+  }
+  const maxReferenceDurationSeconds = options?.maxReferenceDurationSeconds ?? 15;
+  for (const [label, files] of [["视频", referenceVideos], ["音频", referenceAudios]] as const) {
+    const totalDuration = files.reduce((total, file) => total + (file.durationSeconds || 0), 0);
+    if (totalDuration > maxReferenceDurationSeconds + 0.05) {
+      throw new GenerationDiagnosticError({
+        code: "INPUT_INVALID_PARAMETERS",
+        providerId: provider.id,
+        model: provider.model,
+        publicMessage: `参考${label}总时长不能超过 ${maxReferenceDurationSeconds} 秒。`,
       });
     }
   }
@@ -1839,6 +1899,9 @@ export async function submitVideo(input: {
   billingEstimatedQuotaUnits?: number | null;
 }) {
   const provider = await providerById(input.providerId);
+  const referenceImageCount = mediaFiles(input, "image").length;
+  const referenceVideoCount = mediaFiles(input, "video").length;
+  const referenceAudioCount = mediaFiles(input, "audio").length;
   if (isVideoGenerationPricingPending(provider?.model)) {
     throw new GenerationDiagnosticError({
       code: "INPUT_INVALID_PARAMETERS",
@@ -1854,7 +1917,7 @@ export async function submitVideo(input: {
     ratio: input.ratio,
     durationSeconds: input.duration,
     resolution: input.resolution,
-    referenceImages: input.files.length,
+    referenceImages: referenceImageCount,
     model: provider?.model,
   });
   const billingFingerprint = generationBillingFingerprint({
@@ -1864,7 +1927,7 @@ export async function submitVideo(input: {
     ratio: input.ratio,
     durationSeconds: input.duration,
     resolution: input.resolution,
-    referenceImages: input.files.length,
+    referenceImages: referenceImageCount,
     model: provider?.model,
     taskId: input.billingTaskId || "",
     estimatedQuotaUnits,
@@ -1902,9 +1965,18 @@ export async function submitVideo(input: {
     if (isGetTokenVeoProvider(readyProvider)) {
       output = await callGetTokenVeoProvider(readyProvider, input);
     } else if (isGrokVideoProvider(readyProvider)) {
-      output = await callGrokVideoProvider(readyProvider, input);
+      output = await callGrokVideoProvider(readyProvider, { ...input, files: mediaFiles(input, "image") });
     } else if (isRedbirdSeedanceProvider(readyProvider)) {
-      const useFormData = input.mode === "image-to-video";
+      const referenceImages = mediaFiles(input, "image");
+      const referenceVideos = mediaFiles(input, "video");
+      const referenceAudios = mediaFiles(input, "audio");
+      const useFormData = referenceImages.length > 0 && !referenceVideos.length && !referenceAudios.length;
+      const [videoUrls, audioUrls] = useFormData
+        ? [[], []]
+        : await Promise.all([
+          prepareRedbirdReferenceUrls(referenceVideos),
+          prepareRedbirdReferenceUrls(referenceAudios),
+        ]);
       const response = await fetch(readyProvider.apiUrl, {
         method: "POST",
         headers: {
@@ -1912,8 +1984,8 @@ export async function submitVideo(input: {
           ...authHeaders(readyProvider),
         },
         body: useFormData
-          ? redbirdVideoFormData(readyProvider, input)
-          : JSON.stringify(redbirdVideoPayload(readyProvider, input)),
+          ? redbirdVideoFormData(readyProvider, { ...input, files: referenceImages })
+          : JSON.stringify(redbirdVideoPayload(readyProvider, { ...input, files: referenceImages, videoUrls, audioUrls })),
         signal: AbortSignal.timeout(180000),
       });
       output = parseProviderOutput(await readProviderJson(response, readyProvider));
@@ -1966,7 +2038,9 @@ export async function submitVideo(input: {
           ratio: input.ratio,
           duration: input.duration,
           resolution: input.resolution,
-          referenceImages: input.files.length,
+          referenceImages: referenceImageCount,
+          referenceVideos: referenceVideoCount,
+          referenceAudios: referenceAudioCount,
           ...(input.billingTaskId ? { billingTaskId: input.billingTaskId } : {}),
           ...(input.billingIdempotencyKey ? { billingIdempotencyKey: input.billingIdempotencyKey } : {}),
           billingEstimatedQuotaUnits: estimatedQuotaUnits,
@@ -2006,7 +2080,9 @@ export async function submitVideo(input: {
         ratio: input.ratio,
         duration: input.duration,
         resolution: input.resolution,
-        referenceImages: input.files.length,
+        referenceImages: referenceImageCount,
+        referenceVideos: referenceVideoCount,
+        referenceAudios: referenceAudioCount,
         ...(input.billingTaskId ? { billingTaskId: input.billingTaskId } : {}),
       },
     });
@@ -2271,22 +2347,55 @@ export async function refreshPendingVideoJobsForOwner(localUserId: string, limit
 export async function uploadedMediaFromForm(
   form: FormData,
   fieldName = "files",
-  operation: "reference-image-upload" | "video-generation-upload" = "reference-image-upload",
+  operation: "reference-image-upload" | "video-generation-upload" | "video-reference-upload" | "audio-reference-upload" = "reference-image-upload",
 ) {
   const files = form.getAll(fieldName).filter((value): value is File => value instanceof File && value.size > 0);
-  if (files.length > 10) throw new Error("最多上传 10 张参考图片。");
-  if (operation === "video-generation-upload" && files.length) {
+  if (files.length > 10) throw new Error("最多上传 10 个参考素材。");
+  if (operation !== "reference-image-upload" && files.length) {
     await assertStorageAllows("video-upload", { fresh: true });
   }
+  const uploadKind = operation === "video-reference-upload"
+    ? "reference-video"
+    : operation === "audio-reference-upload" ? "reference-audio" : "reference-image";
+  const mediaType = operation === "video-reference-upload"
+    ? "video"
+    : operation === "audio-reference-upload" ? "audio" : "image";
+  const output: UploadedMedia[] = [];
   for (const file of files) {
-    assertFileSizeAllowed(file, "reference-image");
-    await assertFileFormatAllowed(file, "reference-image");
+    let mimeType: string;
+    if (uploadKind === "reference-image") {
+      assertFileSizeAllowed(file, "reference-image");
+      mimeType = await assertFileFormatAllowed(file, "reference-image");
+    } else {
+      assertFileSizeAllowed(file, uploadKind);
+      mimeType = await assertFileFormatAllowed(file, uploadKind);
+    }
+    const bytes = Buffer.from(await file.arrayBuffer());
+    if (mediaType === "image") {
+      if (operation === "video-generation-upload") {
+        const sharp = (await import("sharp")).default;
+        const metadata = await sharp(bytes).metadata();
+        const width = metadata.width || 0;
+        const height = metadata.height || 0;
+        if (width < 300 || height < 300 || width > 6000 || height > 6000) {
+          throw new GenerationDiagnosticError({ code: "INPUT_INVALID_PARAMETERS", publicMessage: "参考图每条边需在 300-6000 像素之间。" });
+        }
+        const aspectRatio = width / height;
+        if (aspectRatio < 0.4 || aspectRatio > 2.5) {
+          throw new GenerationDiagnosticError({ code: "INPUT_INVALID_PARAMETERS", publicMessage: "参考图宽高比需在 0.4-2.5 之间。" });
+        }
+      }
+      output.push({ bytes, mimeType, fileName: file.name || "reference.png", mediaType });
+      continue;
+    }
+    const metadata = await parseBuffer(bytes, { mimeType, size: bytes.length }, { duration: true, skipCovers: true });
+    const durationSeconds = metadata.format.duration || 0;
+    if (!Number.isFinite(durationSeconds) || durationSeconds <= 0) {
+      throw new GenerationDiagnosticError({ code: "INPUT_INVALID_PARAMETERS", publicMessage: `无法读取参考${mediaType === "video" ? "视频" : "音频"}时长。` });
+    }
+    output.push({ bytes, mimeType, fileName: file.name || `reference.${mediaType === "video" ? "mp4" : "mp3"}`, mediaType, durationSeconds });
   }
-  return Promise.all(files.map(async (file) => ({
-    bytes: Buffer.from(await file.arrayBuffer()),
-    mimeType: file.type || "application/octet-stream",
-    fileName: file.name || "reference.png",
-  })));
+  return output;
 }
 
 export const providerCallInternalsForTests = {

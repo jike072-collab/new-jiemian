@@ -44,27 +44,30 @@ test("GetToken Veo defaults expose Pro and Fast with three resolutions", () => {
 test("Seedance defaults expose the Redbird Seedance 2.0 model catalog", () => {
   const seedanceProvider = defaultProviders().find((item) => item.id === "video-main");
   const models = seedanceProvider?.models || [];
-  assert.equal(models.length, 11);
-  assert.equal(models.includes("quanneng2.0"), false);
+  assert.equal(models.length, 6);
+  assert.equal(models.includes("quanneng2.0"), true);
   assert.equal(models.includes("Doubao-Seedance-2.0-fast-260128-grid"), true);
   assert.equal(models.includes("quanneng2.0-9tu"), true);
-  assert.equal(models.includes("sdquan-2-miao"), true);
-  assert.equal(seedanceProvider?.modelDisplayNames?.["Doubao-Seedance-2.0-fast-260128-grid"], "Seedance 2.0 Fast 不卡真人");
-  assert.equal(seedanceProvider?.modelDisplayNames?.["Doubao-Seedance-2.0-fast-260128"], "Seedance 2.0 Fast 卡真人");
+  assert.equal(models.includes("sdquan-2-miao"), false);
+  assert.equal(seedanceProvider?.modelDisplayNames?.["Doubao-Seedance-2.0-fast-260128-grid"], "Seedance 2.0 Fast 933 不卡真人");
+  assert.equal(seedanceProvider?.modelDisplayNames?.["B-quannengship2.0"], "全能视频 2.0 线路 B");
+  assert.equal(seedanceProvider?.modelDisplayNames?.["quanneng2.0"], "全能视频 2.0 线路 S");
   assert.deepEqual(seedanceProvider?.enabledModels, models);
   assert.equal(seedanceProvider?.apiUrl, "https://open.hongniaoai.com/api/v1/videos");
   assert.deepEqual(seedanceVideoOptionsForModel("quanneng2.0-9tu")?.durations, [15]);
-  assert.deepEqual(seedanceVideoOptionsForModel("sdquan-2-miao")?.durations, [4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15]);
+  assert.deepEqual(seedanceVideoOptionsForModel("quanneng2.0")?.durations, [10, 15]);
   assert.equal(seedanceVideoOptionsForModel("video-2.0-fast-720P")?.maxReferenceImages, 4);
+  assert.equal(seedanceVideoOptionsForModel("video-2.0-fast-720P")?.maxReferenceVideos, 3);
+  assert.equal(seedanceVideoOptionsForModel("video-2.0-fast-720P")?.maxReferenceAudios, 1);
   assert.equal(seedanceVideoOptionsForModel("Doubao-Seedance-2.0-fast-260128-grid")?.supportsVideoReference, true);
-  assert.equal(seedanceVideoOptionsForModel("sdquan-fast")?.supportsAudioReference, true);
+  assert.equal(seedanceVideoOptionsForModel("Doubao-Seedance-2-0-260128-grid")?.maxReferenceAudios, 3);
   assert.equal(seedanceVideoRequestSecondsForModel(models[0], 15), 15);
 });
 
 test("Redbird Seedance sends reference images as multipart files", () => {
   const form = providerCallInternalsForTests.redbirdVideoFormData({
     ...provider,
-    model: "Doubao-Seedance-2.0-fast-260128",
+    model: "Doubao-Seedance-2-0-260128-grid",
   }, {
     prompt: "让产品自然旋转展示",
     ratio: "9:16",
@@ -74,10 +77,65 @@ test("Redbird Seedance sends reference images as multipart files", () => {
       { bytes: Buffer.from("second"), mimeType: "image/jpeg", fileName: "second.jpg" },
     ],
   });
-  assert.equal(form.get("model"), "Doubao-Seedance-2.0-fast-260128");
+  assert.equal(form.get("model"), "Doubao-Seedance-2-0-260128-grid");
   assert.equal(form.get("seconds"), "15");
   assert.equal(form.get("aspect_ratio"), "9:16");
   assert.equal(form.getAll("input_reference").length, 2);
+});
+
+test("Redbird Seedance mixed reference payload keeps media types separate", () => {
+  const payload = providerCallInternalsForTests.redbirdVideoPayload({
+    ...provider,
+    model: "Doubao-Seedance-2-0-260128-grid",
+  }, {
+    prompt: "替换商品并保持原动作",
+    ratio: "9:16",
+    duration: 15,
+    files: [{ bytes: Buffer.from("image"), mimeType: "image/png", fileName: "shoe.png", mediaType: "image" }],
+    videoUrls: ["https://example.test/reference.mp4"],
+    audioUrls: ["https://example.test/reference.mp3"],
+  });
+  assert.deepEqual(payload.images, ["data:image/png;base64,aW1hZ2U="]);
+  assert.deepEqual(payload.videos, ["https://example.test/reference.mp4"]);
+  assert.deepEqual(payload.audios, ["https://example.test/reference.mp3"]);
+  assert.equal(payload.resolution, "720p");
+});
+
+test("Seedance validates model-specific video, audio, and duration limits", () => {
+  const videoProvider: ProviderConfig = {
+    ...provider,
+    kind: "video",
+    model: "video-2.0-fast-720P",
+    endpointType: "videos-generations",
+  };
+  const reference = (mediaType: "video" | "audio", durationSeconds: number) => ({
+    bytes: Buffer.from(mediaType),
+    mimeType: mediaType === "video" ? "video/mp4" : "audio/mpeg",
+    fileName: mediaType === "video" ? "reference.mp4" : "reference.mp3",
+    mediaType,
+    durationSeconds,
+  });
+  assert.doesNotThrow(() => providerCallInternalsForTests.validateVideoInput(videoProvider, {
+    mode: "image-to-video",
+    ratio: "16:9",
+    duration: 10,
+    resolution: "720p",
+    files: [reference("video", 8), reference("video", 7), reference("audio", 15)],
+  }));
+  assert.throws(() => providerCallInternalsForTests.validateVideoInput(videoProvider, {
+    mode: "image-to-video",
+    ratio: "16:9",
+    duration: 10,
+    resolution: "720p",
+    files: [reference("video", 8), reference("video", 8)],
+  }));
+  assert.throws(() => providerCallInternalsForTests.validateVideoInput(videoProvider, {
+    mode: "image-to-video",
+    ratio: "16:9",
+    duration: 10,
+    resolution: "720p",
+    files: [reference("audio", 5), reference("audio", 5)],
+  }));
 });
 
 test("GetToken Veo keeps early invalid query responses pending", () => {

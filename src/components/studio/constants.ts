@@ -1,6 +1,7 @@
 import type { WorkspaceImageMode, WorkspaceVideoMode } from "@/lib/workspace-registry";
 import {
   allowedImageMimeTypes,
+  allowedAudioMimeTypes,
   allowedVideoMimeTypes,
   defaultPublicUploadLimits,
 } from "@/lib/upload-limits";
@@ -59,6 +60,8 @@ export const imageWorkspaceModeMeta: Record<WorkspaceImageMode, {
 };
 
 export const allowedReferenceImageTypes = new Set<string>(allowedImageMimeTypes);
+export const allowedReferenceVideoTypes = new Set<string>(allowedVideoMimeTypes);
+export const allowedReferenceAudioTypes = new Set<string>(allowedAudioMimeTypes);
 export const allowedUpscaleVideoTypes = new Set<string>(allowedVideoMimeTypes);
 export const defaultUploadLimits = defaultPublicUploadLimits;
 export const maxReferenceImageSize = defaultUploadLimits.referenceImage.bytes;

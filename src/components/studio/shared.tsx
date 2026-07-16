@@ -3,7 +3,7 @@
 /* eslint-disable @next/next/no-img-element */
 
 import { useCallback } from "react";
-import { ImageUp, Loader2, UploadCloud, Wand2, X } from "lucide-react";
+import { FileAudio, ImageUp, Loader2, UploadCloud, Wand2, X } from "lucide-react";
 
 import { ratioShapeClass, ratios } from "@/components/studio/constants";
 import { HierarchicalSelect, type HierarchicalSelectItem } from "@/components/studio/custom-select";
@@ -244,13 +244,13 @@ export function CompactDropzone({
           <div className="studio-upload-list">
             {files.map((file, index) => (
               <div key={`${file.name}-${file.size}-${index}`} className="studio-upload-item">
-                {file.previewUrl ? (
+                {file.previewUrl && file.mediaType !== "audio" ? (
                   file.mediaType === "video"
-                    ? <video src={file.previewUrl} controls />
+                    ? <video src={file.previewUrl} muted playsInline />
                     : <img src={file.previewUrl} alt={file.name} />
                 ) : (
                   <span className="studio-upload-item__placeholder" aria-hidden="true">
-                    <ImageUp className="size-5" />
+                    {file.mediaType === "audio" ? <FileAudio className="size-5" /> : <ImageUp className="size-5" />}
                   </span>
                 )}
                 <div>
@@ -404,7 +404,7 @@ export function ProviderSelect({
   const familyDefinitions = [
     { value: "veo", label: "Veo", matches: (provider: FrontendProvider) => provider.model.startsWith("veo-") },
     { value: "grok", label: "Grok", matches: (provider: FrontendProvider) => provider.model.startsWith("grok-video-") },
-    { value: "seedance", label: "Seedance", matches: (provider: FrontendProvider) => provider.model.toLowerCase().includes("seedance") },
+    { value: "seedance", label: "Seedance", matches: (provider: FrontendProvider) => provider.id.startsWith("video-main::model::") || provider.model.toLowerCase().includes("seedance") },
     { value: "banana", label: "Banana", matches: (provider: FrontendProvider) => ["banana2", "banana-pro"].includes(provider.model.toLowerCase()) },
   ];
   const groupedProviderIds = new Set<string>();
@@ -482,17 +482,12 @@ function providerUseCase(model: string, displayName: string) {
   if (normalized === "veo-3.1-pro") return "高质量视频生成·细节与稳定性优先";
   if (normalized === "veo-3.1-fast") return "快速视频生成·兼顾质量与生成速度";
   if (normalized === "grok-video-1.5") return "动态影像直出·商品短片一键生成";
-  if (normalized === "video-2.0-fast-720p") return "快速 720P · 支持视频和音频参考";
-  if (normalized === "doubao-seedance-2.0-fast-260128-grid") return "快速生成 · 不卡真人 · 720P";
-  if (normalized === "doubao-seedance-2.0-fast-260128") return "快速生成 · 卡真人 · 720P";
-  if (normalized === "doubao-seedance-2-0-260128-grid") return "满血质量 · 不卡真人 · 720P";
-  if (normalized === "doubao-seedance-2.0-260128") return "满血质量 · 卡真人 · 720P";
-  if (normalized === "sdquan-fast") return "快速质量 · 15 秒 · 支持音频参考";
-  if (normalized === "sdquan-2") return "满血质量 · 15 秒 · 支持音频参考";
-  if (normalized === "b-quannengship2.0") return "满血 933 · 5/10/15 秒";
-  if (normalized === "quanneng2.0-9tu") return "支持 9 图参考 · 固定 15 秒";
-  if (normalized === "sdquan-2-miao_fast") return "Miao Fast · 4-15 秒 · 支持音频参考";
-  if (normalized === "sdquan-2-miao") return "Miao Pro · 4-15 秒 · 支持音频参考";
+  if (normalized === "video-2.0-fast-720p") return "支持 4 图 · 3 视频 · 1 音频 · 10/15 秒 · 720P";
+  if (normalized === "quanneng2.0-9tu") return "支持 9 图 · 15 秒 · 720P";
+  if (normalized === "b-quannengship2.0") return "支持 9 图 · 5/10/15 秒 · 720P";
+  if (normalized === "quanneng2.0") return "支持 4 图 · 3 视频 · 1 音频 · 10/15 秒 · 720P";
+  if (normalized === "doubao-seedance-2.0-fast-260128-grid") return "支持 9 图 · 3 视频 · 3 音频 · 15 秒 · 不卡真人 · 720P";
+  if (normalized === "doubao-seedance-2-0-260128-grid") return "支持 9 图 · 3 视频 · 3 音频 · 15 秒 · 不卡真人 · 720P";
   return undefined;
 }
 

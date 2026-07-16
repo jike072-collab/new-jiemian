@@ -19,8 +19,10 @@ const headerReadBytes = 64;
 
 export function currentUploadLimitBytes(kind: MediaUploadKind) {
   const policy = mediaUploadPolicies[kind];
-  const envName = kind === "video-upscale"
+  const envName = kind === "video-upscale" || kind === "reference-video"
     ? "MEDIA_VIDEO_UPLOAD_LIMIT_MIB"
+    : kind === "reference-audio"
+      ? "MEDIA_AUDIO_UPLOAD_LIMIT_MIB"
     : "MEDIA_IMAGE_UPLOAD_LIMIT_MIB";
   return resolveLoweredUploadLimitBytes(process.env[envName], policy);
 }
@@ -36,6 +38,8 @@ export function currentRemoteMediaLimitBytes(kind: RemoteMediaKind) {
 export function publicUploadLimits(): PublicUploadLimits {
   return {
     referenceImage: publicLimit(currentUploadLimitBytes("reference-image")),
+    referenceVideo: publicLimit(currentUploadLimitBytes("reference-video")),
+    referenceAudio: publicLimit(currentUploadLimitBytes("reference-audio")),
     imageUpscale: publicLimit(currentUploadLimitBytes("image-upscale")),
     videoUpscale: publicLimit(currentUploadLimitBytes("video-upscale")),
   };
@@ -118,6 +122,9 @@ function isSignatureAllowed(header: Buffer, mimeType: string) {
   if (mimeType === "image/webp") return hasWebpSignature(header);
   if (mimeType === "video/mp4" || mimeType === "video/quicktime") return hasIsoBaseMediaSignature(header);
   if (mimeType === "video/webm") return hasWebmSignature(header);
+  if (mimeType === "audio/mp4" || mimeType === "audio/x-m4a") return hasIsoBaseMediaSignature(header);
+  if (mimeType === "audio/mpeg") return hasMp3Signature(header);
+  if (mimeType === "audio/wav" || mimeType === "audio/x-wav") return hasWavSignature(header);
   return false;
 }
 
@@ -151,4 +158,17 @@ function hasWebmSignature(header: Buffer) {
     && header[1] === 0x45
     && header[2] === 0xdf
     && header[3] === 0xa3;
+}
+
+function hasMp3Signature(header: Buffer) {
+  return header.length >= 3 && (
+    header.toString("ascii", 0, 3) === "ID3"
+    || (header[0] === 0xff && (header[1] & 0xe0) === 0xe0)
+  );
+}
+
+function hasWavSignature(header: Buffer) {
+  return header.length >= 12
+    && header.toString("ascii", 0, 4) === "RIFF"
+    && header.toString("ascii", 8, 12) === "WAVE";
 }

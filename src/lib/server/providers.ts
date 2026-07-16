@@ -27,44 +27,29 @@ const endpointTypes = [
 
 const seedanceVideoModels = [
   "video-2.0-fast-720P",
-  "Doubao-Seedance-2.0-fast-260128-grid",
-  "Doubao-Seedance-2.0-fast-260128",
-  "Doubao-Seedance-2-0-260128-grid",
-  "Doubao-Seedance-2.0-260128",
-  "sdquan-fast",
-  "sdquan-2",
-  "B-quannengship2.0",
   "quanneng2.0-9tu",
-  "sdquan-2-miao_fast",
-  "sdquan-2-miao",
+  "B-quannengship2.0",
+  "quanneng2.0",
+  "Doubao-Seedance-2.0-fast-260128-grid",
+  "Doubao-Seedance-2-0-260128-grid",
 ];
 
 const seedanceVideoDisplayNames: Record<string, string> = {
   "video-2.0-fast-720P": "全能视频 2.0 Fast 720P",
-  "Doubao-Seedance-2.0-fast-260128-grid": "Seedance 2.0 Fast 不卡真人",
-  "Doubao-Seedance-2.0-fast-260128": "Seedance 2.0 Fast 卡真人",
-  "Doubao-Seedance-2-0-260128-grid": "Seedance 2.0 满血 不卡真人",
-  "Doubao-Seedance-2.0-260128": "Seedance 2.0 满血 卡真人",
-  "sdquan-fast": "全能视频 2.0 快速",
-  "sdquan-2": "全能视频 2.0 满血",
-  "B-quannengship2.0": "全能视频 2.0 满血 933",
   "quanneng2.0-9tu": "全能视频 2.0 9 图",
-  "sdquan-2-miao_fast": "全能视频 2.0 Miao Fast",
-  "sdquan-2-miao": "全能视频 2.0 Miao Pro",
+  "B-quannengship2.0": "全能视频 2.0 线路 B",
+  "quanneng2.0": "全能视频 2.0 线路 S",
+  "Doubao-Seedance-2.0-fast-260128-grid": "Seedance 2.0 Fast 933 不卡真人",
+  "Doubao-Seedance-2-0-260128-grid": "Seedance 2.0 满血 933 不卡真人",
 };
 
 const seedanceVideoOptionsByModel: Record<string, NonNullable<ProviderConfig["videoOptions"]>> = {
-  "video-2.0-fast-720p": { durations: [10, 15], ratios: ["16:9", "9:16"], resolution: "720p", maxReferenceImages: 4, supportsVideoReference: true, supportsAudioReference: true },
-  "doubao-seedance-2.0-fast-260128-grid": { durations: [15], ratios: ["16:9", "9:16"], resolution: "720p", maxReferenceImages: 9, supportsVideoReference: true, supportsAudioReference: true },
-  "doubao-seedance-2.0-fast-260128": { durations: [15], ratios: ["16:9", "9:16"], resolution: "720p", maxReferenceImages: 9, supportsVideoReference: true, supportsAudioReference: true },
-  "doubao-seedance-2-0-260128-grid": { durations: [15], ratios: ["16:9", "9:16"], resolution: "720p", maxReferenceImages: 9, supportsVideoReference: true, supportsAudioReference: true },
-  "doubao-seedance-2.0-260128": { durations: [15], ratios: ["16:9", "9:16"], resolution: "720p", maxReferenceImages: 9, supportsVideoReference: true, supportsAudioReference: true },
-  "sdquan-fast": { durations: [15], ratios: ["16:9", "9:16", "4:3", "3:4", "1:1", "21:9"], resolution: "720p", maxReferenceImages: 9, supportsAudioReference: true },
-  "sdquan-2": { durations: [15], ratios: ["16:9", "9:16", "4:3", "3:4", "1:1", "21:9"], resolution: "720p", maxReferenceImages: 9, supportsAudioReference: true },
-  "b-quannengship2.0": { durations: [5, 10, 15], ratios: ["16:9", "9:16"], resolution: "720p", maxReferenceImages: 9 },
-  "quanneng2.0-9tu": { durations: [15], ratios: ["16:9", "9:16"], resolution: "720p", maxReferenceImages: 9 },
-  "sdquan-2-miao_fast": { durations: [4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15], ratios: ["16:9", "9:16", "4:3", "3:4", "1:1", "21:9"], resolution: "720p", maxReferenceImages: 9, supportsAudioReference: true },
-  "sdquan-2-miao": { durations: [4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15], ratios: ["16:9", "9:16", "4:3", "3:4", "1:1", "21:9"], resolution: "720p", maxReferenceImages: 9, supportsAudioReference: true },
+  "video-2.0-fast-720p": { durations: [10, 15], ratios: ["16:9", "9:16"], resolution: "720p", maxReferenceImages: 4, maxReferenceVideos: 3, maxReferenceAudios: 1, maxReferenceDurationSeconds: 15, supportsVideoReference: true, supportsAudioReference: true },
+  "quanneng2.0-9tu": { durations: [15], ratios: ["16:9", "9:16"], resolution: "720p", maxReferenceImages: 9, maxReferenceVideos: 0, maxReferenceAudios: 0, maxReferenceDurationSeconds: 15 },
+  "b-quannengship2.0": { durations: [5, 10, 15], ratios: ["16:9", "9:16"], resolution: "720p", maxReferenceImages: 9, maxReferenceVideos: 0, maxReferenceAudios: 0, maxReferenceDurationSeconds: 15 },
+  "quanneng2.0": { durations: [10, 15], ratios: ["16:9", "9:16"], resolution: "720p", maxReferenceImages: 4, maxReferenceVideos: 3, maxReferenceAudios: 1, maxReferenceDurationSeconds: 15, supportsVideoReference: true, supportsAudioReference: true },
+  "doubao-seedance-2.0-fast-260128-grid": { durations: [15], ratios: ["16:9", "9:16"], resolution: "720p", maxReferenceImages: 9, maxReferenceVideos: 3, maxReferenceAudios: 3, maxReferenceDurationSeconds: 15, supportsVideoReference: true, supportsAudioReference: true },
+  "doubao-seedance-2-0-260128-grid": { durations: [15], ratios: ["16:9", "9:16"], resolution: "720p", maxReferenceImages: 9, maxReferenceVideos: 3, maxReferenceAudios: 3, maxReferenceDurationSeconds: 15, supportsVideoReference: true, supportsAudioReference: true },
 };
 
 function env(name: string, fallback = "") {
@@ -115,6 +100,9 @@ function normalizeVideoOptions(value: unknown): ProviderConfig["videoOptions"] {
     ? Array.from(new Set(input.resolutions.map((item) => String(item || "").trim().toLowerCase()).filter(Boolean)))
     : undefined;
   const maxReferenceImages = Number(input.maxReferenceImages);
+  const maxReferenceVideos = Number(input.maxReferenceVideos);
+  const maxReferenceAudios = Number(input.maxReferenceAudios);
+  const maxReferenceDurationSeconds = Number(input.maxReferenceDurationSeconds);
   const supportsVideoReference = typeof input.supportsVideoReference === "boolean" ? input.supportsVideoReference : undefined;
   const supportsAudioReference = typeof input.supportsAudioReference === "boolean" ? input.supportsAudioReference : undefined;
   const normalized: NonNullable<ProviderConfig["videoOptions"]> = {};
@@ -123,6 +111,9 @@ function normalizeVideoOptions(value: unknown): ProviderConfig["videoOptions"] {
   if (resolution) normalized.resolution = resolution;
   if (resolutions?.length) normalized.resolutions = resolutions;
   if (Number.isFinite(maxReferenceImages) && maxReferenceImages >= 0) normalized.maxReferenceImages = Math.floor(maxReferenceImages);
+  if (Number.isFinite(maxReferenceVideos) && maxReferenceVideos >= 0) normalized.maxReferenceVideos = Math.floor(maxReferenceVideos);
+  if (Number.isFinite(maxReferenceAudios) && maxReferenceAudios >= 0) normalized.maxReferenceAudios = Math.floor(maxReferenceAudios);
+  if (Number.isFinite(maxReferenceDurationSeconds) && maxReferenceDurationSeconds > 0) normalized.maxReferenceDurationSeconds = maxReferenceDurationSeconds;
   if (supportsVideoReference !== undefined) normalized.supportsVideoReference = supportsVideoReference;
   if (supportsAudioReference !== undefined) normalized.supportsAudioReference = supportsAudioReference;
   return Object.keys(normalized).length ? normalized : undefined;
@@ -556,6 +547,20 @@ function mergeStoredProvider(fallback: ProviderConfig, stored: ProviderConfig | 
       displayName: fallback.displayName,
       apiKey: legacyStored.apiKey || fallback.apiKey,
       endpointType: fallback.endpointType,
+    };
+  }
+  if (fallback.id === "video-main") {
+    const selectedModel = fallback.models?.includes(legacyStored.model) ? legacyStored.model : fallback.model;
+    return {
+      ...fallback,
+      ...legacyStored,
+      model: selectedModel,
+      models: fallback.models,
+      modelDisplayNames: fallback.modelDisplayNames,
+      enabledModels: fallback.enabledModels,
+      title: legacyStored.title || fallback.title,
+      role: fallback.role,
+      displayName: fallback.modelDisplayNames?.[selectedModel] || selectedModel,
     };
   }
   return {

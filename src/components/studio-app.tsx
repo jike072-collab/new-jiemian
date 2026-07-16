@@ -23,6 +23,8 @@ import {
 import { MobileActionBar } from "@/components/studio/shared";
 import {
   allowedReferenceImageTypes,
+  allowedReferenceAudioTypes,
+  allowedReferenceVideoTypes,
   allowedUpscaleVideoTypes,
   defaultVideoDurations,
   defaultUploadLimits,
@@ -34,7 +36,6 @@ import {
   grokVideo15Ratios,
   maxReferenceImageCount,
   maxReferenceImageSize,
-  maxVideoFirstFrameCount,
   promptOptimizationCostLabel,
   ratios,
   upscaleUnavailableMessage,
@@ -459,6 +460,65 @@ function ensureVideoFileName(file: File, message = "视频高清增强仅支持 
   }
 }
 
+function ensureAudioFileName(file: File, message = "参考音频仅支持 MP3、M4A 和 WAV。") {
+  if (![".mp3", ".m4a", ".wav"].includes(fileExtensionFromName(file.name))) {
+    throw new Error(message);
+  }
+}
+
+function readImageDimensions(file: File) {
+  return new Promise<{ width: number; height: number }>((resolve, reject) => {
+    const url = URL.createObjectURL(file);
+    const image = new Image();
+    image.onload = () => {
+      URL.revokeObjectURL(url);
+      resolve({ width: image.naturalWidth, height: image.naturalHeight });
+    };
+    image.onerror = () => {
+      URL.revokeObjectURL(url);
+      reject(new Error("图片读取失败。"));
+    };
+    image.src = url;
+  });
+}
+
+async function validateReferenceImageDimensions(file: File) {
+  const { width, height } = await readImageDimensions(file);
+  if (width < 300 || height < 300 || width > 6000 || height > 6000) {
+    throw new Error("参考图每条边需在 300-6000 像素之间。");
+  }
+  const aspectRatio = width / height;
+  if (aspectRatio < 0.4 || aspectRatio > 2.5) {
+    throw new Error("参考图宽高比需在 0.4-2.5 之间。");
+  }
+}
+
+function readMediaDuration(file: File, mediaType: "video" | "audio") {
+  return new Promise<number>((resolve, reject) => {
+    const url = URL.createObjectURL(file);
+    const media = document.createElement(mediaType);
+    const cleanup = () => {
+      media.onloadedmetadata = null;
+      media.onerror = null;
+      media.removeAttribute("src");
+      media.load();
+      URL.revokeObjectURL(url);
+    };
+    media.preload = "metadata";
+    media.onloadedmetadata = () => {
+      const duration = media.duration;
+      cleanup();
+      if (!Number.isFinite(duration) || duration <= 0) reject(new Error("无法读取素材时长。"));
+      else resolve(duration);
+    };
+    media.onerror = () => {
+      cleanup();
+      reject(new Error("无法读取素材时长。"));
+    };
+    media.src = url;
+  });
+}
+
 function createImageWorkspaceFiles(files: File[]) {
   const nextFiles = files.slice(0, maxReferenceImageCount);
   if (files.length > maxReferenceImageCount) {
@@ -479,7 +539,7 @@ function createImageWorkspaceFiles(files: File[]) {
   }));
 }
 
-function createVideoWorkspaceFile(file: File, frameRole?: VideoWorkspaceFile["frameRole"]) {
+async function createVideoWorkspaceFile(file: File, frameRole?: VideoWorkspaceFile["frameRole"]) {
   if (!allowedReferenceImageTypes.has(file.type)) {
     throw new Error("图像仅支持 PNG、JPEG 和 WebP。");
   }
@@ -487,21 +547,48 @@ function createVideoWorkspaceFile(file: File, frameRole?: VideoWorkspaceFile["fr
   if (file.size > maxReferenceImageSize) {
     throw new Error(`图像不能超过 ${defaultUploadLimits.referenceImage.label}。`);
   }
+  await validateReferenceImageDimensions(file);
   return {
     file,
     previewUrl: URL.createObjectURL(file),
+    mediaType: "image" as const,
     ...(frameRole ? { frameRole } : {}),
   };
 }
 
-function createVideoWorkspaceFiles(files: File[]) {
-  if (files.length > maxVideoFirstFrameCount) {
-    throw new Error("图像只能上传 1 张。");
+async function createVideoWorkspaceFiles(
+  files: File[],
+  mediaType: VideoWorkspaceFile["mediaType"],
+  maxCount: number,
+  maxDurationSeconds: number,
+) {
+  const mediaLabel = mediaType === "image" ? "参考图" : mediaType === "video" ? "参考视频" : "参考音频";
+  if (files.length > maxCount) throw new Error(`当前模型最多支持 ${maxCount} ${mediaType === "image" ? "张参考图" : mediaType === "video" ? "个参考视频" : "个参考音频"}。`);
+  const sizeLimit = mediaType === "image"
+    ? defaultUploadLimits.referenceImage
+    : mediaType === "video" ? defaultUploadLimits.referenceVideo : defaultUploadLimits.referenceAudio;
+  const nextFiles: VideoWorkspaceFile[] = [];
+  for (const file of files) {
+    if (mediaType === "image") {
+      if (!allowedReferenceImageTypes.has(file.type)) throw new Error("参考图仅支持 PNG、JPEG 和 WebP。");
+      ensureImageFileName(file, "参考图仅支持 PNG、JPEG 和 WebP。");
+      await validateReferenceImageDimensions(file);
+    } else if (mediaType === "video") {
+      if (!allowedReferenceVideoTypes.has(file.type)) throw new Error("参考视频仅支持 MP4、WebM 和 MOV。");
+      ensureVideoFileName(file, "参考视频仅支持 MP4、WebM 和 MOV。");
+    } else {
+      if (!allowedReferenceAudioTypes.has(file.type)) throw new Error("参考音频仅支持 MP3、M4A 和 WAV。");
+      ensureAudioFileName(file);
+    }
+    if (file.size > sizeLimit.bytes) throw new Error(`单个${mediaLabel}不能超过 ${sizeLimit.label}。`);
+    const durationSeconds = mediaType === "image" ? undefined : await readMediaDuration(file, mediaType);
+    nextFiles.push({ file, previewUrl: URL.createObjectURL(file), mediaType, ...(durationSeconds ? { durationSeconds } : {}) });
   }
-  const nextFiles = files.slice(0, maxVideoFirstFrameCount);
-  if (!nextFiles.length) return [];
-  const [file] = nextFiles;
-  return [createVideoWorkspaceFile(file)];
+  if (mediaType !== "image" && nextFiles.reduce((total, item) => total + (item.durationSeconds || 0), 0) > maxDurationSeconds + 0.05) {
+    nextFiles.forEach((item) => URL.revokeObjectURL(item.previewUrl));
+    throw new Error(`参考${mediaType === "video" ? "视频" : "音频"}总时长不能超过 ${maxDurationSeconds} 秒。`);
+  }
+  return nextFiles;
 }
 
 function createImageUpscaleFile(files: File[], limit: PublicUploadLimit = defaultUploadLimits.imageUpscale) {
@@ -2032,7 +2119,8 @@ export function StudioApp() {
 
   const videoWorkspaceFiles = videoWorkspace.files;
   const videoWorkspaceHasFiles = videoWorkspaceFiles.length > 0;
-  const videoFirstLastFramesReady = videoWorkspace.referenceMode !== "first-last" || videoWorkspaceFiles.length === 2;
+  const videoReferenceImages = videoWorkspaceFiles.filter((item) => item.mediaType === "image");
+  const videoFirstLastFramesReady = videoWorkspace.referenceMode !== "first-last" || videoReferenceImages.length === 2;
   const videoWorkspacePrompt = videoWorkspace.prompt.trim();
   const videoWorkspaceNeedsFile = activeVideoMode === "image-to-video";
   const videoWorkspaceRequiresFile = activeVideoTemplate?.scope === "video" && activeVideoTemplate.requiresImage;
@@ -2041,7 +2129,7 @@ export function StudioApp() {
     mode: activeVideoMode,
     durationSeconds: videoWorkspace.duration,
     resolution: videoWorkspace.resolution,
-    referenceImages: videoWorkspace.files.length,
+    referenceImages: videoReferenceImages.length,
     model: selectedVideoProvider?.model,
   });
   const videoEntitlementUnits = estimateVideoGenerationEntitlementUnits({ resolution: videoWorkspace.resolution });
@@ -2183,10 +2271,14 @@ export function StudioApp() {
     });
   }, []);
 
-  const replaceVideoWorkspaceFiles = useCallback((files: File[]) => {
+  const replaceVideoWorkspaceFiles = useCallback(async (mediaType: VideoWorkspaceFile["mediaType"], files: File[]) => {
     let nextFiles: VideoWorkspaceFile[];
     try {
-      nextFiles = createVideoWorkspaceFiles(files);
+      const options = selectedVideoProvider?.videoOptions;
+      const maxCount = mediaType === "image"
+        ? options?.maxReferenceImages ?? 1
+        : mediaType === "video" ? options?.maxReferenceVideos ?? 0 : options?.maxReferenceAudios ?? 0;
+      nextFiles = await createVideoWorkspaceFiles(files, mediaType, maxCount, options?.maxReferenceDurationSeconds ?? 15);
     } catch (error) {
       setVideoWorkspace((prev) => ({
         ...prev,
@@ -2196,21 +2288,25 @@ export function StudioApp() {
       }));
       return;
     }
-    setVideoWorkspace((prev) => ({
-      ...prev,
-      files: nextFiles,
-      fileError: "",
-      submitError: "",
-      submitDiagnostic: null,
-    }));
-    videoWorkspaceFilesRef.current.forEach((file) => URL.revokeObjectURL(file.previewUrl));
-    videoWorkspaceFilesRef.current = nextFiles;
-  }, []);
+    setVideoWorkspace((prev) => {
+      const replacedFiles = prev.files.filter((item) => item.mediaType === mediaType);
+      replacedFiles.forEach((item) => URL.revokeObjectURL(item.previewUrl));
+      const combinedFiles = [...prev.files.filter((item) => item.mediaType !== mediaType), ...nextFiles];
+      videoWorkspaceFilesRef.current = combinedFiles;
+      return {
+        ...prev,
+        files: combinedFiles,
+        fileError: "",
+        submitError: "",
+        submitDiagnostic: null,
+      };
+    });
+  }, [selectedVideoProvider]);
 
-  const replaceVideoFrameFile = useCallback((frameRole: "first" | "last", file: File) => {
+  const replaceVideoFrameFile = useCallback(async (frameRole: "first" | "last", file: File) => {
     let nextFile: VideoWorkspaceFile;
     try {
-      nextFile = createVideoWorkspaceFile(file, frameRole);
+      nextFile = await createVideoWorkspaceFile(file, frameRole);
     } catch (error) {
       setVideoWorkspace((prev) => ({
         ...prev,
@@ -2239,7 +2335,7 @@ export function StudioApp() {
   const changeVideoReferenceMode = useCallback((referenceMode: VideoWorkspaceState["referenceMode"]) => {
     setVideoWorkspace((prev) => {
       if (prev.referenceMode === referenceMode) return prev;
-      const first = prev.files.find((item) => item.frameRole === "first") || prev.files[0];
+      const first = prev.files.find((item) => item.frameRole === "first") || prev.files.find((item) => item.mediaType === "image");
       const removedFiles = prev.files.filter((item) => item !== first);
       removedFiles.forEach((item) => URL.revokeObjectURL(item.previewUrl));
       const nextFiles = first
@@ -2260,11 +2356,12 @@ export function StudioApp() {
     });
   }, []);
 
-  const removeVideoWorkspaceFile = useCallback((index: number) => {
+  const removeVideoWorkspaceFile = useCallback((mediaType: VideoWorkspaceFile["mediaType"], index: number) => {
     setVideoWorkspace((prev) => {
-      const removed = prev.files[index];
+      const matchingFiles = prev.files.filter((item) => item.mediaType === mediaType);
+      const removed = matchingFiles[index];
       if (removed) URL.revokeObjectURL(removed.previewUrl);
-      const nextFiles = prev.files.filter((_, currentIndex) => currentIndex !== index);
+      const nextFiles = prev.files.filter((item) => item !== removed);
       videoWorkspaceFilesRef.current = nextFiles;
       return {
         ...prev,
@@ -2278,18 +2375,21 @@ export function StudioApp() {
     });
   }, [selectedVideoModelRequiresFile]);
 
-  const clearVideoWorkspaceFiles = useCallback(() => {
-    videoWorkspaceFilesRef.current.forEach((file) => URL.revokeObjectURL(file.previewUrl));
-    videoWorkspaceFilesRef.current = [];
+  const clearVideoWorkspaceFiles = useCallback((mediaType: VideoWorkspaceFile["mediaType"]) => {
     setVideoWorkspace((prev) => ({
       ...prev,
-      files: [],
+      files: prev.files.filter((file) => {
+        if (file.mediaType !== mediaType) return true;
+        URL.revokeObjectURL(file.previewUrl);
+        return false;
+      }),
       fileError: prev.referenceMode === "first-last"
         ? "首尾帧视频需要上传首帧图和尾帧图。"
         : selectedVideoModelRequiresFile ? videoModelReferenceMessage : "",
       submitError: "",
       submitDiagnostic: null,
     }));
+    videoWorkspaceFilesRef.current = videoWorkspaceFilesRef.current.filter((file) => file.mediaType !== mediaType);
   }, [selectedVideoModelRequiresFile]);
 
   const updateImageUpscaleWorkspace = useCallback((patch: Partial<ImageUpscaleWorkspaceState>) => {
@@ -2659,7 +2759,7 @@ export function StudioApp() {
     try {
       setMessage("正在准备图生视频素材。");
       const file = await fileFromLibraryOutput(item, ".png", defaultUploadLimits.referenceImage);
-      replaceVideoWorkspaceFiles([file]);
+      await replaceVideoWorkspaceFiles("image", [file]);
       setVideoWorkspace((prev) => ({
         ...prev,
         prompt: item.prompt || prev.prompt,
@@ -2886,12 +2986,12 @@ export function StudioApp() {
       resolution: videoWorkspace.resolution,
       prompt: videoWorkspace.prompt,
       model: selectedVideoProvider.model,
-      files: videoWorkspace.files.map((attachment) => attachment.file),
+      files: videoWorkspace.files,
       estimatedQuotaUnits: estimateVideoGenerationQuota({
         mode: activeVideoMode,
         durationSeconds: videoWorkspace.duration,
         resolution: videoWorkspace.resolution,
-        referenceImages: videoWorkspace.files.length,
+        referenceImages: videoReferenceImages.length,
         model: selectedVideoProvider.model,
       }),
     };
@@ -2903,7 +3003,7 @@ export function StudioApp() {
       ratio: snapshot.ratio,
       durationSeconds: snapshot.duration,
       resolution: snapshot.resolution,
-      referenceImages: snapshot.files.length,
+      referenceImages: snapshot.files.filter((item) => item.mediaType === "image").length,
       model: snapshot.model,
       taskId,
       estimatedQuotaUnits: snapshot.estimatedQuotaUnits,
@@ -2965,9 +3065,10 @@ export function StudioApp() {
       form.set("taskId", taskId);
       form.set("idempotencyKey", taskId);
       form.set("estimatedQuotaUnits", String(snapshot.estimatedQuotaUnits));
-      if (snapshot.mode === "image-to-video") {
-        snapshot.files.forEach((file) => form.append("files", file));
-      }
+      snapshot.files.forEach((item) => {
+        const fieldName = item.mediaType === "image" ? "referenceImages" : item.mediaType === "video" ? "referenceVideos" : "referenceAudios";
+        form.append(fieldName, item.file);
+      });
       const data = await fetchJsonWithCsrf<{ item: LibraryItem; job: JobRecord | null }>("/api/generate/video", {
         method: "POST",
         body: form,
@@ -3015,6 +3116,7 @@ export function StudioApp() {
     videoWorkspace.ratio,
     videoWorkspace.resolution,
     videoWorkspace.referenceMode,
+    videoReferenceImages.length,
     videoWorkspaceHasFiles,
     videoWorkspaceRequiresFile,
     videoWorkspaceNeedsFile,
@@ -3069,14 +3171,32 @@ export function StudioApp() {
           costLabel={videoGenerationCostLabel}
           onProviderChange={(value) => {
             const provider = providers.video.find((item) => item.id === value);
-            if (provider?.model !== "veo-3.1-pro" && videoWorkspace.referenceMode === "first-last") {
-              changeVideoReferenceMode("single");
-            }
-            updateVideoWorkspace({
-              providerId: value,
-              duration: preferredVideoDuration(provider),
-              resolution: preferredVideoResolution(provider),
-              submitError: "",
+            setVideoWorkspace((prev) => {
+              const nextReferenceMode = provider?.model === "veo-3.1-pro" ? prev.referenceMode : "single";
+              const maxImages = nextReferenceMode === "first-last" ? 2 : provider?.videoOptions?.maxReferenceImages ?? 1;
+              const maxVideos = provider?.videoOptions?.maxReferenceVideos ?? 0;
+              const maxAudios = provider?.videoOptions?.maxReferenceAudios ?? 0;
+              const keep = new Set([
+                ...prev.files.filter((item) => item.mediaType === "image").slice(0, maxImages),
+                ...prev.files.filter((item) => item.mediaType === "video").slice(0, maxVideos),
+                ...prev.files.filter((item) => item.mediaType === "audio").slice(0, maxAudios),
+              ]);
+              prev.files.filter((item) => !keep.has(item)).forEach((item) => URL.revokeObjectURL(item.previewUrl));
+              const nextFiles = prev.files
+                .filter((item) => keep.has(item))
+                .map((item) => nextReferenceMode === "single" ? { ...item, frameRole: undefined } : item);
+              videoWorkspaceFilesRef.current = nextFiles;
+              return {
+                ...prev,
+                providerId: value,
+                referenceMode: nextReferenceMode,
+                files: nextFiles,
+                duration: preferredVideoDuration(provider),
+                resolution: preferredVideoResolution(provider),
+                fileError: "",
+                submitError: "",
+                submitDiagnostic: null,
+              };
             });
           }}
           onRatioChange={(value) => updateVideoWorkspace({ ratio: value })}
@@ -3097,6 +3217,7 @@ export function StudioApp() {
           ratioOptions={selectedVideoRatioOptions}
           durationOptions={selectedVideoDurationOptions}
           resolutionOptions={selectedVideoResolutionOptions}
+          referenceOptions={selectedVideoProvider?.videoOptions}
           modelRequiresImage={selectedVideoModelRequiresFile}
           onReloadProviders={refreshProviders}
           onSubmit={submitVideoWorkspace}

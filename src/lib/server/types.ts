@@ -28,6 +28,9 @@ export type ProviderConfig = {
     resolution?: string;
     resolutions?: string[];
     maxReferenceImages?: number;
+    maxReferenceVideos?: number;
+    maxReferenceAudios?: number;
+    maxReferenceDurationSeconds?: number;
     supportsVideoReference?: boolean;
     supportsAudioReference?: boolean;
   };

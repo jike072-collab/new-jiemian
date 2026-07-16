@@ -21,6 +21,10 @@ export type WorkspaceVideoOptions = {
   ratios?: string[];
   resolution?: string;
   resolutions?: string[];
+  maxReferenceImages?: number;
+  maxReferenceVideos?: number;
+  maxReferenceAudios?: number;
+  maxReferenceDurationSeconds?: number;
 };
 
 export type WorkspacePublicProvider = FrontendProvider & {
@@ -55,7 +59,7 @@ export type UploadFilePreview = {
   name: string;
   size: number;
   previewUrl?: string;
-  mediaType?: "image" | "video";
+  mediaType?: "image" | "video" | "audio";
 };
 
 export type SelectOption = {
@@ -86,6 +90,8 @@ export type ImageWorkspaceState = {
 export type VideoWorkspaceFile = {
   file: File;
   previewUrl: string;
+  mediaType: "image" | "video" | "audio";
+  durationSeconds?: number;
   frameRole?: "first" | "last";
 };
 

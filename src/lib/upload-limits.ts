@@ -1,6 +1,6 @@
 export const BYTES_PER_MIB = 1024 * 1024;
 
-export type MediaUploadKind = "reference-image" | "image-upscale" | "video-upscale";
+export type MediaUploadKind = "reference-image" | "reference-video" | "reference-audio" | "image-upscale" | "video-upscale";
 export type RemoteMediaKind = "image" | "video";
 
 export type UploadLimitPolicy = {
@@ -21,18 +21,23 @@ export type PublicUploadLimit = {
 
 export type PublicUploadLimits = {
   readonly referenceImage: PublicUploadLimit;
+  readonly referenceVideo: PublicUploadLimit;
+  readonly referenceAudio: PublicUploadLimit;
   readonly imageUpscale: PublicUploadLimit;
   readonly videoUpscale: PublicUploadLimit;
 };
 
 export const imageUploadDefaultMiB = 10;
 export const videoUploadDefaultMiB = 200;
+export const audioUploadDefaultMiB = 50;
 export const uploadHardCapMiB = 256;
 
 export const allowedImageMimeTypes = ["image/png", "image/jpeg", "image/webp"] as const;
 export const allowedImageExtensions = [".png", ".jpg", ".jpeg", ".webp"] as const;
 export const allowedVideoMimeTypes = ["video/mp4", "video/webm", "video/quicktime"] as const;
 export const allowedVideoExtensions = [".mp4", ".webm", ".mov"] as const;
+export const allowedAudioMimeTypes = ["audio/mpeg", "audio/mp4", "audio/x-m4a", "audio/wav", "audio/x-wav"] as const;
+export const allowedAudioExtensions = [".mp3", ".m4a", ".wav"] as const;
 
 export function bytesFromMiB(value: number) {
   return value * BYTES_PER_MIB;
@@ -57,6 +62,24 @@ export const mediaUploadPolicies: Record<MediaUploadKind, UploadLimitPolicy> = {
     clientSizeMessage: (limitLabel) => `单张图像不能超过 ${limitLabel}。`,
     serverSizeMessage: (limitLabel) => `单张参考图片不能超过 ${limitLabel}。`,
     formatMessage: "图像仅支持 PNG、JPEG 和 WebP。",
+  },
+  "reference-video": {
+    defaultBytes: bytesFromMiB(videoUploadDefaultMiB),
+    hardCapBytes: bytesFromMiB(uploadHardCapMiB),
+    allowedMimeTypes: allowedVideoMimeTypes,
+    allowedExtensions: allowedVideoExtensions,
+    clientSizeMessage: (limitLabel) => `单个参考视频不能超过 ${limitLabel}。`,
+    serverSizeMessage: (limitLabel) => `单个参考视频不能超过 ${limitLabel}。`,
+    formatMessage: "参考视频仅支持 MP4、WebM 和 MOV。",
+  },
+  "reference-audio": {
+    defaultBytes: bytesFromMiB(audioUploadDefaultMiB),
+    hardCapBytes: bytesFromMiB(uploadHardCapMiB),
+    allowedMimeTypes: allowedAudioMimeTypes,
+    allowedExtensions: allowedAudioExtensions,
+    clientSizeMessage: (limitLabel) => `单个参考音频不能超过 ${limitLabel}。`,
+    serverSizeMessage: (limitLabel) => `单个参考音频不能超过 ${limitLabel}。`,
+    formatMessage: "参考音频仅支持 MP3、M4A 和 WAV。",
   },
   "image-upscale": {
     defaultBytes: bytesFromMiB(imageUploadDefaultMiB),
@@ -91,6 +114,8 @@ export const remoteMediaDownloadPolicies: Record<RemoteMediaKind, Pick<UploadLim
 
 export const defaultPublicUploadLimits: PublicUploadLimits = {
   referenceImage: publicLimit(mediaUploadPolicies["reference-image"].defaultBytes),
+  referenceVideo: publicLimit(mediaUploadPolicies["reference-video"].defaultBytes),
+  referenceAudio: publicLimit(mediaUploadPolicies["reference-audio"].defaultBytes),
   imageUpscale: publicLimit(mediaUploadPolicies["image-upscale"].defaultBytes),
   videoUpscale: publicLimit(mediaUploadPolicies["video-upscale"].defaultBytes),
 };

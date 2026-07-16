@@ -8,6 +8,7 @@ export function isVideoGenerationPricingPending(model?: string | null) {
   const normalized = String(model || "").trim().toLowerCase();
   return normalized.includes("seedance")
     || normalized.startsWith("sdquan-")
+    || normalized === "quanneng2.0"
     || normalized === "quanneng2.0-9tu"
     || normalized === "b-quannengship2.0"
     || normalized === "video-2.0-fast-720p";

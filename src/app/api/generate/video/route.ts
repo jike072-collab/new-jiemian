@@ -18,7 +18,12 @@ export async function POST(request: NextRequest) {
     const mode = String(form.get("mode") || "text-to-video") === "image-to-video" ? "image-to-video" : "text-to-video";
     const referenceMode = String(form.get("referenceMode") || "single") === "first-last" ? "first-last" : "single";
     const resolution = String(form.get("resolution") || "720p").trim().toLowerCase();
-    const files = form.getAll("files").filter((value): value is File => value instanceof File && value.size > 0);
+    const legacyFiles = form.getAll("files").filter((value): value is File => value instanceof File && value.size > 0);
+    const referenceImages = form.getAll("referenceImages").filter((value): value is File => value instanceof File && value.size > 0);
+    const referenceVideos = form.getAll("referenceVideos").filter((value): value is File => value instanceof File && value.size > 0);
+    const referenceAudios = form.getAll("referenceAudios").filter((value): value is File => value instanceof File && value.size > 0);
+    const imageCount = referenceImages.length || legacyFiles.length;
+    const referenceCount = imageCount + referenceVideos.length + referenceAudios.length;
     const billingTaskId = String(form.get("taskId") || form.get("billingTaskId") || "");
     const billingEstimatedQuotaUnits = Number(form.get("estimatedQuotaUnits") || form.get("billingEstimatedQuotaUnits") || Number.NaN);
     const membershipEntitlementAmount = estimateVideoGenerationEntitlementUnits({ resolution });
@@ -30,14 +35,14 @@ export async function POST(request: NextRequest) {
       reason: error instanceof Error ? error.message : "video generation rejected before provider submission",
     });
     try {
-      if (mode === "text-to-video" && (files.length || referenceMode === "first-last")) {
+      if (mode === "text-to-video" && (referenceCount || referenceMode === "first-last")) {
         throw new Error("文生视频模式不接收首尾帧图片。");
       }
-      if (mode === "image-to-video" && referenceMode === "first-last" && files.length !== 2) {
+      if (mode === "image-to-video" && referenceMode === "first-last" && (imageCount !== 2 || referenceVideos.length || referenceAudios.length)) {
         throw new Error("首尾帧视频必须上传首帧图和尾帧图。");
       }
-      if (mode === "image-to-video" && referenceMode === "single" && files.length !== 1) {
-        throw new Error(files.length ? "图生视频模式只能上传 1 张首帧图片。" : "图生视频模式需要上传 1 张首帧图片。");
+      if (mode === "image-to-video" && referenceMode === "single" && !referenceCount) {
+        throw new Error("参考素材模式至少需要上传 1 个素材。");
       }
     } catch (error) {
       await failBeforeSubmit(error);
@@ -46,12 +51,19 @@ export async function POST(request: NextRequest) {
     const result = await withUserVideoWorkload(session.user.local_user_id, async () => {
       let guardedFiles;
       try {
-        guardedFiles = files.length
+        guardedFiles = referenceCount
           ? await withVideoUploadPhase(
             session.user.local_user_id,
-            () => uploadedMediaFromForm(form, "files", "video-generation-upload"),
+            async () => {
+              const [images, videos, audios] = await Promise.all([
+                uploadedMediaFromForm(form, referenceImages.length ? "referenceImages" : "files", "video-generation-upload"),
+                uploadedMediaFromForm(form, "referenceVideos", "video-reference-upload"),
+                uploadedMediaFromForm(form, "referenceAudios", "audio-reference-upload"),
+              ]);
+              return [...images, ...videos, ...audios];
+            },
           )
-          : await uploadedMediaFromForm(form, "files", "video-generation-upload");
+          : [];
       } catch (error) {
         await failBeforeSubmit(error);
         throw error;

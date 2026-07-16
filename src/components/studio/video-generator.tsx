@@ -27,7 +27,7 @@ import {
   StudioErrorAlert,
   SubmitButton,
 } from "@/components/studio/shared";
-import type { MobileActionState, VideoWorkspaceFile, VideoWorkspaceState, WorkspacePublicProvider } from "@/components/studio/types";
+import type { MobileActionState, VideoWorkspaceFile, VideoWorkspaceState, WorkspacePublicProvider, WorkspaceVideoOptions } from "@/components/studio/types";
 import { PromptSettingsButton, usePromptPreferences } from "@/components/studio/prompt-settings";
 import type { PromptPreferences } from "@/lib/prompt-preferences";
 import { cn } from "@/lib/utils";
@@ -62,6 +62,7 @@ export function VideoGenerator({
   ratioOptions,
   durationOptions,
   resolutionOptions,
+  referenceOptions,
   modelRequiresImage,
   onReloadProviders,
   onSubmit,
@@ -86,16 +87,17 @@ export function VideoGenerator({
   onPromptOptimize: (preferences: PromptPreferences) => void;
   onPromptOptimizeUndo: () => void;
   promptOptimizeCostLabel?: string;
-  onFilesChange: (files: File[]) => void;
+  onFilesChange: (mediaType: VideoWorkspaceFile["mediaType"], files: File[]) => void;
   onFrameFileChange: (frameRole: "first" | "last", file: File) => void;
-  onFileRemove: (index: number) => void;
-  onFilesClear: () => void;
+  onFileRemove: (mediaType: VideoWorkspaceFile["mediaType"], index: number) => void;
+  onFilesClear: (mediaType: VideoWorkspaceFile["mediaType"]) => void;
   referenceMode: VideoWorkspaceState["referenceMode"];
   supportsFirstLastFrame: boolean;
   onReferenceModeChange: (mode: VideoWorkspaceState["referenceMode"]) => void;
   ratioOptions: string[];
   durationOptions: number[];
   resolutionOptions: string[];
+  referenceOptions?: WorkspaceVideoOptions;
   modelRequiresImage: boolean;
   onReloadProviders: () => Promise<void>;
   onSubmit: () => void;
@@ -161,6 +163,7 @@ export function VideoGenerator({
         onFrameFileChange={onFrameFileChange}
         onRemove={onFileRemove}
         onClear={onFilesClear}
+        referenceOptions={referenceOptions}
       />
       {modelRequiresImage && !state.files.length && !state.fileError ? (
         <p className="studio-help-text">{videoModelReferenceMessage}</p>
@@ -229,6 +232,7 @@ function VideoReferenceInput({
   onFrameFileChange,
   onRemove,
   onClear,
+  referenceOptions,
 }: {
   files: VideoWorkspaceFile[];
   error: string;
@@ -241,18 +245,40 @@ function VideoReferenceInput({
   referenceMode: VideoWorkspaceState["referenceMode"];
   supportsFirstLastFrame: boolean;
   onReferenceModeChange: (mode: VideoWorkspaceState["referenceMode"]) => void;
-  onChange: (files: File[]) => void;
+  onChange: (mediaType: VideoWorkspaceFile["mediaType"], files: File[]) => void;
   onFrameFileChange: (frameRole: "first" | "last", file: File) => void;
-  onRemove: (index: number) => void;
-  onClear: () => void;
+  onRemove: (mediaType: VideoWorkspaceFile["mediaType"], index: number) => void;
+  onClear: (mediaType: VideoWorkspaceFile["mediaType"]) => void;
+  referenceOptions?: WorkspaceVideoOptions;
 }) {
   const inputRef = useRef<HTMLInputElement | null>(null);
   const [dragging, setDragging] = useState(false);
+  const [activeMediaType, setActiveMediaType] = useState<VideoWorkspaceFile["mediaType"]>("image");
   const firstLastMode = supportsFirstLastFrame && referenceMode === "first-last";
+  const maxImages = supportsFirstLastFrame ? 1 : referenceOptions?.maxReferenceImages ?? 1;
+  const maxVideos = referenceOptions?.maxReferenceVideos ?? 0;
+  const maxAudios = referenceOptions?.maxReferenceAudios ?? 0;
+  const maxDurationSeconds = referenceOptions?.maxReferenceDurationSeconds ?? 15;
+  const mediaOptions = [
+    { type: "image" as const, label: "参考图", max: maxImages },
+    { type: "video" as const, label: "参考视频", max: maxVideos },
+    { type: "audio" as const, label: "参考音频", max: maxAudios },
+  ].filter((item) => item.max > 0);
+  const hasMediaTabs = maxVideos > 0 || maxAudios > 0;
+  const activeMediaTypeAvailable = activeMediaType === "image" ? maxImages > 0 : activeMediaType === "video" ? maxVideos > 0 : maxAudios > 0;
+  const effectiveActiveMediaType = activeMediaTypeAvailable ? activeMediaType : "image";
+  const activeOption = mediaOptions.find((item) => item.type === effectiveActiveMediaType) || mediaOptions[0];
+  const activeFiles = files.filter((item) => item.mediaType === activeOption?.type);
+
+  const activeConfig = activeOption?.type === "video"
+    ? { accept: "video/mp4,video/webm,video/quicktime", title: "上传参考视频", help: `支持 MP4、WebM、MOV，总时长不超过 ${maxDurationSeconds} 秒` }
+    : activeOption?.type === "audio"
+      ? { accept: "audio/mpeg,audio/mp4,audio/x-m4a,audio/wav,audio/x-wav", title: "上传参考音频", help: `支持 MP3、M4A、WAV，总时长不超过 ${maxDurationSeconds} 秒` }
+      : { accept: "image/png,image/jpeg,image/webp", title: maxImages > 1 ? "上传参考图" : emptyTitle, help: maxImages > 1 ? "支持 PNG、JPEG、WebP，300-6000px" : helpText };
 
   return (
     <FieldFrame
-      label={label}
+      label={hasMediaTabs ? "参考素材" : maxImages > 1 ? "参考图" : label}
       required={required || firstLastMode}
       hint={supportsFirstLastFrame ? undefined : required ? "必填" : mode === "image-to-video" ? "已上传" : "可选"}
       action={supportsFirstLastFrame ? (
@@ -267,28 +293,50 @@ function VideoReferenceInput({
       ) : undefined}
     >
       {firstLastMode ? (
-        <FirstLastFrameInput files={files} onChange={onFrameFileChange} onRemove={onRemove} />
+        <FirstLastFrameInput files={files} onChange={onFrameFileChange} onRemove={(index) => onRemove("image", index)} />
       ) : (
-        <CompactDropzone
-          inputRef={inputRef}
-          inputId="video-first-frame-input"
-          accept="image/png,image/jpeg,image/webp"
-          multiple={false}
-          dragging={dragging}
-          error={error}
-          files={files.map((item) => ({
-            name: item.file.name,
-            size: item.file.size,
-            previewUrl: item.previewUrl,
-          }))}
-          emptyTitle={emptyTitle}
-          filledTitle={filledTitle}
-          helpText={helpText}
-          onFiles={onChange}
-          onRemove={onRemove}
-          onClear={files.length ? onClear : undefined}
-          onDraggingChange={setDragging}
-        />
+        <div className="studio-reference-media">
+          {hasMediaTabs ? (
+            <div className="studio-reference-media__tabs" role="tablist" aria-label="参考素材类型">
+              {mediaOptions.map((item) => {
+                const count = files.filter((file) => file.mediaType === item.type).length;
+                return (
+                  <button
+                    key={item.type}
+                    type="button"
+                    role="tab"
+                    aria-selected={effectiveActiveMediaType === item.type}
+                    className={cn("studio-reference-media__tab", effectiveActiveMediaType === item.type && "is-active")}
+                    onClick={() => setActiveMediaType(item.type)}
+                  >
+                    {item.label} {count}/{item.max}
+                  </button>
+                );
+              })}
+            </div>
+          ) : null}
+          <CompactDropzone
+            inputRef={inputRef}
+            inputId="video-first-frame-input"
+            accept={activeConfig.accept}
+            multiple={(activeOption?.max || 1) > 1}
+            dragging={dragging}
+            error={error}
+            files={activeFiles.map((item) => ({
+              name: item.file.name,
+              size: item.file.size,
+              previewUrl: item.previewUrl,
+              mediaType: item.mediaType,
+            }))}
+            emptyTitle={activeConfig.title}
+            filledTitle={filledTitle}
+            helpText={activeConfig.help}
+            onFiles={(nextFiles) => onChange(activeOption?.type || "image", nextFiles)}
+            onRemove={(index) => onRemove(activeOption?.type || "image", index)}
+            onClear={activeFiles.length ? () => onClear(activeOption?.type || "image") : undefined}
+            onDraggingChange={setDragging}
+          />
+        </div>
       )}
       {error ? <p className="studio-error-text" role="alert">{error}</p> : null}
     </FieldFrame>
