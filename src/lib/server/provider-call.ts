@@ -19,7 +19,7 @@ import {
 import { assertStorageAllows } from "./storage-capacity";
 import { storeRemoteUrlStreamed } from "./remote-media-download";
 import { getTaskBillingService } from "./quota";
-import { jimengVideoOptionsForModel, jimengVideoRequestSecondsForModel, providerById } from "./providers";
+import { providerById, seedanceVideoOptionsForModel, seedanceVideoRequestSecondsForModel } from "./providers";
 import { type JobRecord, type LibraryItem, type ProviderConfig } from "./types";
 
 type UploadedMedia = {
@@ -797,7 +797,7 @@ function validateGrokVideoInput(provider: ProviderConfig, input: {
 }
 
 function videoOptionsForProvider(provider: ProviderConfig) {
-  return jimengVideoOptionsForModel(provider.model) || provider.videoOptions;
+  return seedanceVideoOptionsForModel(provider.model) || provider.videoOptions;
 }
 
 function validateVideoInput(provider: ProviderConfig, input: {
@@ -1876,7 +1876,7 @@ export async function submitVideo(input: {
         model: readyProvider.model,
         prompt: input.prompt,
         duration: input.duration,
-        seconds: jimengVideoRequestSecondsForModel(readyProvider.model, input.duration),
+        seconds: seedanceVideoRequestSecondsForModel(readyProvider.model, input.duration),
         aspect_ratio: input.ratio,
         size: resolution === "720p" ? ratioTo720pSize(input.ratio) : ratioToSize(input.ratio),
         resolution,

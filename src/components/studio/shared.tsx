@@ -482,20 +482,11 @@ function providerUseCase(model: string, displayName: string) {
   if (normalized === "veo-3.1-pro") return "高质量视频生成·细节与稳定性优先";
   if (normalized === "veo-3.1-fast") return "快速视频生成·兼顾质量与生成速度";
   if (normalized === "grok-video-1.5") return "动态影像直出·商品短片一键生成";
-  if (normalized === "mg-seedance2.0 -720p fast") {
-    return "极速生成 · 支持 4 图 · 3 视频 · 3 音频 · 自由时长 · 支持人脸";
+  if (normalized === "seedance-2.0") {
+    return "标准质量 · 720P 视频生成";
   }
-  if (normalized === "mg-seedance2.0 -720p mini") {
-    return "轻量生成 · 支持 4 图 · 3 视频 · 1 音频 · 自由时长 · 支持人脸";
-  }
-  if (normalized === "mg-seedance2.0 -720p pro") {
-    return "质量优先 · 支持 4 图 · 3 视频 · 1 音频 · 自由时长 · 支持人脸";
-  }
-  if (normalized === "sh-seedance2.0-fast 720p-nv-15s") {
-    return "极速直转 · 支持 9 图 · 3 音频 · 自由时长 · 支持人脸 · 不支持参考视频";
-  }
-  if (normalized === "sh-seedance2.0-mini-720p-nv-15s") {
-    return "轻量直转 · 支持 9 图 · 3 音频 · 自由时长 · 支持人脸 · 不支持参考视频";
+  if (normalized === "seedance-2.0-fast") {
+    return "快速生成 · 720P 视频生成";
   }
   return undefined;
 }

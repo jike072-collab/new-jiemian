@@ -7,8 +7,8 @@ import { createErrorDiagnostic, logDiagnosticEvent } from "../error-diagnostics"
 import { providerCallInternalsForTests } from "../provider-call";
 import {
   defaultProviders,
-  jimengVideoOptionsForModel,
-  jimengVideoRequestSecondsForModel,
+  seedanceVideoOptionsForModel,
+  seedanceVideoRequestSecondsForModel,
   sanitizeProvider,
 } from "../providers";
 import type { ProviderConfig } from "../types";
@@ -41,31 +41,20 @@ test("GetToken Veo defaults expose Pro and Fast with three resolutions", () => {
   assert.equal(veoProvider ? sanitizeProvider(veoProvider).videoOptions?.maxReferenceImages : undefined, 2);
 });
 
-test("Seedance defaults expose the five current 720p Seedance 2.0 models", () => {
+test("Seedance defaults expose the NewAPI standard and fast models", () => {
   const seedanceProvider = defaultProviders().find((item) => item.id === "video-main");
-  const models = [
-    "mg-seedance2.0 -720p fast",
-    "mg-seedance2.0 -720p mini",
-    "mg-seedance2.0 -720p pro",
-    "sh-seedance2.0-fast 720p-nv-15s",
-    "sh-seedance2.0-mini-720p-nv-15s",
-  ];
+  const models = ["seedance-2.0", "seedance-2.0-fast"];
   assert.deepEqual(seedanceProvider?.models, models);
   assert.deepEqual(seedanceProvider?.enabledModels, models);
-  assert.equal(seedanceProvider?.apiUrl, "https://clmm-mall.top/v1/videos");
+  assert.equal(seedanceProvider?.apiUrl, "http://127.0.0.1:3000/v1/videos");
   for (const model of models) {
-    assert.equal(jimengVideoOptionsForModel(model)?.resolution, "720p");
-    assert.equal(jimengVideoOptionsForModel(model)?.resolutions, undefined);
+    assert.equal(seedanceVideoOptionsForModel(model)?.resolution, "720p");
+    assert.equal(seedanceVideoOptionsForModel(model)?.resolutions, undefined);
+    assert.deepEqual(seedanceVideoOptionsForModel(model)?.durations, [6]);
   }
-  for (const model of models) {
-    assert.deepEqual(jimengVideoOptionsForModel(model)?.durations, Array.from({ length: 15 }, (_, index) => index + 1));
-  }
-  assert.equal(jimengVideoOptionsForModel(models[0])?.maxReferenceImages, 4);
-  assert.equal(jimengVideoOptionsForModel(models[3])?.maxReferenceImages, 9);
-  assert.equal(jimengVideoOptionsForModel(models[0])?.supportsVideoReference, true);
-  assert.equal(jimengVideoOptionsForModel(models[3])?.supportsVideoReference, false);
-  assert.equal(jimengVideoRequestSecondsForModel(models[0], 8), 8);
-  assert.equal(jimengVideoRequestSecondsForModel(models[4], 8), 8);
+  assert.equal(seedanceVideoOptionsForModel(models[0])?.maxReferenceImages, 1);
+  assert.equal(seedanceVideoOptionsForModel(models[0])?.supportsVideoReference, false);
+  assert.equal(seedanceVideoRequestSecondsForModel(models[0], 6), 6);
 });
 
 test("GetToken Veo keeps early invalid query responses pending", () => {

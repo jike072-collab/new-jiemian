@@ -25,39 +25,12 @@ const endpointTypes = [
   "volcengine-vod-upscale",
 ] as const satisfies readonly EndpointType[];
 
-const jimengVideoModels = [
-  "mg-seedance2.0 -720p fast",
-  "mg-seedance2.0 -720p mini",
-  "mg-seedance2.0 -720p pro",
-  "sh-seedance2.0-fast 720p-nv-15s",
-  "sh-seedance2.0-mini-720p-nv-15s",
-];
+const seedanceVideoModels = ["seedance-2.0", "seedance-2.0-fast"];
 
-const jimengVideoDisplayNames: Record<string, string> = {
-  "mg-seedance2.0 -720p fast": "Seedance 2.0 Fast",
-  "mg-seedance2.0 -720p mini": "Seedance 2.0 Mini",
-  "mg-seedance2.0 -720p pro": "Seedance 2.0 Pro",
-  "sh-seedance2.0-fast 720p-nv-15s": "Seedance 2.0 Fast 直转",
-  "sh-seedance2.0-mini-720p-nv-15s": "Seedance 2.0 Mini 直转",
+const seedanceVideoDisplayNames: Record<string, string> = {
+  "seedance-2.0": "Seedance 2.0",
+  "seedance-2.0-fast": "Seedance 2.0 Fast",
 };
-
-const flexibleJimengVideoModels = new Set([
-  "mg-seedance2.0 -720p fast",
-  "mg-seedance2.0 -720p mini",
-  "mg-seedance2.0 -720p pro",
-  "sh-seedance2.0-fast 720p-nv-15s",
-  "sh-seedance2.0-mini-720p-nv-15s",
-]);
-
-const jimengVideoReferenceLimits: Record<string, number> = {
-  "mg-seedance2.0 -720p fast": 4,
-  "mg-seedance2.0 -720p mini": 4,
-  "mg-seedance2.0 -720p pro": 4,
-  "sh-seedance2.0-fast 720p-nv-15s": 9,
-  "sh-seedance2.0-mini-720p-nv-15s": 9,
-};
-
-const flexibleJimengVideoDurations = Array.from({ length: 15 }, (_, index) => index + 1);
 
 function env(name: string, fallback = "") {
   return process.env[name] || fallback;
@@ -120,24 +93,21 @@ function normalizeVideoOptions(value: unknown): ProviderConfig["videoOptions"] {
   return Object.keys(normalized).length ? normalized : undefined;
 }
 
-export function jimengVideoOptionsForModel(model: string): ProviderConfig["videoOptions"] {
-  const configuredModel = jimengVideoModels.find((candidate) => candidate.toLowerCase() === model.trim().toLowerCase());
+export function seedanceVideoOptionsForModel(model: string): ProviderConfig["videoOptions"] {
+  const configuredModel = seedanceVideoModels.find((candidate) => candidate.toLowerCase() === model.trim().toLowerCase());
   if (!configuredModel) return undefined;
-  const flexibleDuration = flexibleJimengVideoModels.has(configuredModel);
   return {
-    durations: flexibleDuration ? flexibleJimengVideoDurations : [15],
-    ratios: ["16:9", "9:16", "1:1"],
+    durations: [6],
+    ratios: ["16:9"],
     resolution: "720p",
-    maxReferenceImages: jimengVideoReferenceLimits[configuredModel],
-    supportsVideoReference: configuredModel.startsWith("mg-seedance2.0"),
-    supportsAudioReference: true,
+    maxReferenceImages: 1,
+    supportsVideoReference: false,
+    supportsAudioReference: false,
   };
 }
 
-export function jimengVideoRequestSecondsForModel(model: string, duration: number) {
-  const configuredModel = jimengVideoModels.find((candidate) => candidate.toLowerCase() === model.trim().toLowerCase());
-  if (!configuredModel || flexibleJimengVideoModels.has(configuredModel)) return duration;
-  return 1;
+export function seedanceVideoRequestSecondsForModel(_model: string, duration: number) {
+  return duration;
 }
 
 function grokVideoOptionsForModel(model: string): ProviderConfig["videoOptions"] {
@@ -174,7 +144,7 @@ function getTokenVeoOptionsForModel(model: string): ProviderConfig["videoOptions
 function providerVideoOptions(provider: ProviderConfig) {
   return grokVideoOptionsForModel(provider.model)
     || getTokenVeoOptionsForModel(provider.model)
-    || jimengVideoOptionsForModel(provider.model)
+    || seedanceVideoOptionsForModel(provider.model)
     || normalizeVideoOptions(provider.videoOptions);
 }
 
@@ -344,15 +314,15 @@ export function defaultProviders(): ProviderConfig[] {
       id: "video-main",
       kind: "video",
       title: "Seedance 视频生成",
-      role: "支持 5 个 Seedance 2.0 视频模型，统一输出 720P",
-      apiUrl: env("VIDEO_API_URL", "https://clmm-mall.top/v1/videos"),
-      model: env("VIDEO_MODEL", "mg-seedance2.0 -720p fast"),
-      models: jimengVideoModels,
-      modelDisplayNames: jimengVideoDisplayNames,
-      enabledModels: jimengVideoModels,
-      displayName: env("VIDEO_DISPLAY_NAME", env("VIDEO_MODEL", "mg-seedance2.0 -720p fast")),
-      apiKey: env("VIDEO_MODEL_API_KEY"),
-      enabled: hasKey(env("VIDEO_MODEL_API_KEY")),
+      role: "NewAPI Seedance 2.0 标准与快速模型，统一输出 720P",
+      apiUrl: env("SEEDANCE_VIDEO_API_URL", "http://127.0.0.1:3000/v1/videos"),
+      model: env("SEEDANCE_VIDEO_MODEL", "seedance-2.0"),
+      models: seedanceVideoModels,
+      modelDisplayNames: seedanceVideoDisplayNames,
+      enabledModels: seedanceVideoModels,
+      displayName: env("SEEDANCE_VIDEO_DISPLAY_NAME", env("SEEDANCE_VIDEO_MODEL", "seedance-2.0")),
+      apiKey: env("SEEDANCE_VIDEO_API_KEY", env("GROK_VIDEO_API_KEY")),
+      enabled: hasKey(env("SEEDANCE_VIDEO_API_KEY", env("GROK_VIDEO_API_KEY"))),
       endpointType: (env("VIDEO_ENDPOINT_TYPE", "videos-generations") as EndpointType),
       custom: false,
     },
