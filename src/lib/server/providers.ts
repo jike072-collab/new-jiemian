@@ -104,12 +104,12 @@ export function seedanceVideoOptionsForModel(model: string): ProviderConfig["vid
   const configuredModel = seedanceVideoModels.find((candidate) => candidate.toLowerCase() === model.trim().toLowerCase());
   if (!configuredModel) return undefined;
   return {
-    durations: [6],
-    ratios: ["16:9"],
+    durations: [15],
+    ratios: ["16:9", "9:16"],
     resolution: "720p",
-    maxReferenceImages: 1,
-    supportsVideoReference: false,
-    supportsAudioReference: false,
+    maxReferenceImages: 9,
+    supportsVideoReference: true,
+    supportsAudioReference: true,
   };
 }
 
@@ -322,7 +322,7 @@ export function defaultProviders(): ProviderConfig[] {
       kind: "video",
       title: "Seedance 视频生成",
       role: "红鸟 Seedance 2.0 满血与快速模型，统一输出 720P",
-      apiUrl: env("REDBIRD_SEEDANCE_VIDEO_API_URL"),
+      apiUrl: env("REDBIRD_SEEDANCE_VIDEO_API_URL", "https://open.hongniaoai.com/api/v1/videos"),
       model: env("REDBIRD_SEEDANCE_VIDEO_MODEL", "Doubao-Seedance-2.0-fast-260128-grid"),
       models: seedanceVideoModels,
       modelDisplayNames: seedanceVideoDisplayNames,

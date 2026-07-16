@@ -290,6 +290,29 @@ function isGetTokenVeoProvider(provider: ProviderConfig) {
   return provider.endpointType === "gettoken-veo";
 }
 
+function isRedbirdSeedanceProvider(provider: ProviderConfig) {
+  return provider.model.trim().toLowerCase().startsWith("doubao-seedance-2");
+}
+
+function redbirdVideoPayload(provider: ProviderConfig, input: {
+  mode: "text-to-video" | "image-to-video";
+  prompt: string;
+  ratio: string;
+  duration: number;
+  files: UploadedMedia[];
+}) {
+  const payload: Record<string, string | string[]> = {
+    model: provider.model,
+    prompt: input.prompt,
+    aspect_ratio: input.ratio,
+    seconds: String(input.duration),
+  };
+  if (input.mode === "image-to-video") {
+    payload.images = input.files.map((file) => `data:${file.mimeType};base64,${file.bytes.toString("base64")}`);
+  }
+  return payload;
+}
+
 const getTokenVeoQueryWarmupMs = 30 * 60 * 1000;
 
 function shouldKeepGetTokenVeoJobPending(status: number, createdAt: string, now = Date.now()) {
@@ -1869,6 +1892,17 @@ export async function submitVideo(input: {
       output = await callGetTokenVeoProvider(readyProvider, input);
     } else if (isGrokVideoProvider(readyProvider)) {
       output = await callGrokVideoProvider(readyProvider, input);
+    } else if (isRedbirdSeedanceProvider(readyProvider)) {
+      const response = await fetch(readyProvider.apiUrl, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          ...authHeaders(readyProvider),
+        },
+        body: JSON.stringify(redbirdVideoPayload(readyProvider, input)),
+        signal: AbortSignal.timeout(180000),
+      });
+      output = parseProviderOutput(await readProviderJson(response, readyProvider));
     } else {
       const providerVideoOptions = videoOptionsForProvider(readyProvider);
       const resolution = input.resolution || providerVideoOptions?.resolution || "720p";
@@ -2255,6 +2289,8 @@ export const providerCallInternalsForTests = {
   getTokenVeoSubmitEndpoint,
   isGetTokenBananaProvider,
   isGetTokenVeoProvider,
+  isRedbirdSeedanceProvider,
+  redbirdVideoPayload,
   shouldKeepGetTokenVeoJobPending,
   getTokenVeoVideoResultUrl,
   isImg2ImageProvider,

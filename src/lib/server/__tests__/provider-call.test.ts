@@ -51,15 +51,37 @@ test("Seedance defaults expose the Redbird Seedance 2.0 model catalog", () => {
   ];
   assert.deepEqual(seedanceProvider?.models, models);
   assert.deepEqual(seedanceProvider?.enabledModels, models);
-  assert.equal(seedanceProvider?.apiUrl, "");
+  assert.equal(seedanceProvider?.apiUrl, "https://open.hongniaoai.com/api/v1/videos");
   for (const model of models) {
     assert.equal(seedanceVideoOptionsForModel(model)?.resolution, "720p");
     assert.equal(seedanceVideoOptionsForModel(model)?.resolutions, undefined);
-    assert.deepEqual(seedanceVideoOptionsForModel(model)?.durations, [6]);
+    assert.deepEqual(seedanceVideoOptionsForModel(model)?.durations, [15]);
   }
-  assert.equal(seedanceVideoOptionsForModel(models[0])?.maxReferenceImages, 1);
-  assert.equal(seedanceVideoOptionsForModel(models[0])?.supportsVideoReference, false);
-  assert.equal(seedanceVideoRequestSecondsForModel(models[0], 6), 6);
+  assert.equal(seedanceVideoOptionsForModel(models[0])?.maxReferenceImages, 9);
+  assert.equal(seedanceVideoOptionsForModel(models[0])?.supportsVideoReference, true);
+  assert.equal(seedanceVideoOptionsForModel(models[0])?.supportsAudioReference, true);
+  assert.equal(seedanceVideoRequestSecondsForModel(models[0], 15), 15);
+});
+
+test("Redbird Seedance sends documented image arrays and asynchronous task fields", () => {
+  const payload = providerCallInternalsForTests.redbirdVideoPayload({
+    ...provider,
+    model: "Doubao-Seedance-2.0-fast-260128",
+  }, {
+    mode: "image-to-video",
+    prompt: "让产品自然旋转展示",
+    ratio: "9:16",
+    duration: 15,
+    files: [
+      { bytes: Buffer.from("first"), mimeType: "image/png", fileName: "first.png" },
+      { bytes: Buffer.from("second"), mimeType: "image/jpeg", fileName: "second.jpg" },
+    ],
+  });
+  assert.equal(payload.model, "Doubao-Seedance-2.0-fast-260128");
+  assert.equal(payload.seconds, "15");
+  assert.equal(payload.aspect_ratio, "9:16");
+  assert.equal(payload.images?.length, 2);
+  assert.equal("image" in payload, false);
 });
 
 test("GetToken Veo keeps early invalid query responses pending", () => {
