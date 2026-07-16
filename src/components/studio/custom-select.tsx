@@ -225,18 +225,24 @@ export function HierarchicalSelect({
     const rect = trigger.getBoundingClientRect();
     const edge = 12;
     const gap = 6;
+    const context = document.createElement("canvas").getContext("2d");
+    const triggerStyle = window.getComputedStyle(trigger);
+    const rootFontSize = Number.parseFloat(window.getComputedStyle(document.documentElement).fontSize) || 16;
+    const measure = (text: string, font: string) => {
+      if (!context) return text.length * rootFontSize * 0.75;
+      context.font = font;
+      return context.measureText(text).width;
+    };
+    const labelFont = triggerStyle.font;
+    const descriptionFont = `500 ${rootFontSize * 0.75}px ${triggerStyle.fontFamily}`;
     const contentWidth = options.reduce((longest, option) => {
-      const measure = (text: string, asciiWidth: number, fullWidth: number) => Array.from(text).reduce(
-        (width, character) => width + (character.charCodeAt(0) <= 0xff ? asciiWidth : fullWidth),
-        0,
-      );
       return Math.max(
         longest,
-        measure(option.label, 7.5, 14),
-        option.description ? measure(option.description, 6.5, 12) : 0,
+        measure(option.label, labelFont),
+        option.description ? measure(option.description, descriptionFont) : 0,
       );
     }, 0);
-    const preferredWidth = Math.min(520, Math.max(280, Math.ceil(contentWidth + 52)));
+    const preferredWidth = Math.min(520, Math.max(280, Math.ceil(contentWidth + 32)));
     const rightSpace = window.innerWidth - rect.right - gap - edge;
     const leftSpace = rect.left - gap - edge;
     const openToRight = rightSpace >= Math.min(360, preferredWidth) || rightSpace >= leftSpace;

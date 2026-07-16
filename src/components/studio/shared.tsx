@@ -483,25 +483,25 @@ function providerUseCase(model: string, displayName: string) {
   if (normalized === "veo-3.1-fast") return "快速视频生成·兼顾质量与生成速度";
   if (normalized === "grok-video-1.5") return "动态影像直出·商品短片一键生成";
   if (normalized === "暗黑破甲破限seedance 720p-fast-nsp") {
-    return "Seedance 720P Fast · 9 图 · 3 音频 · 自由时长";
+    return "支持 9 图 · 3 音频 · 自由时长 · 过人脸 · 注意：国内慎用慎发";
   }
   if (normalized === "暗黑破甲破限seedance 720p-pro-nsp") {
-    return "Seedance 720P Pro · 9 图 · 3 音频 · 自由时长";
+    return "支持 9 图 · 3 音频 · 自由时长 · 过人脸 · 注意：国内慎用慎发";
   }
   if (normalized === "oc-seedance 720-pro-15s") {
-    return "Seedance 720P Pro · 9 图 · 3 视频 · 3 音频 · 固定 15 秒";
+    return "支持 9 图 · 3 视频 · 3 音频 · 固定 15 秒 · 过人脸";
   }
   if (normalized === "seedance2.0 720p-pro-gz-15s") {
-    return "Seedance 2.0 720P Pro · 4 图 · 3 视频 · 1 音频 · 固定 15 秒";
+    return "支持 4 图 · 3 视频 · 1 音频 · 固定 15 秒 · 过人脸";
   }
   if (normalized === "sh-seedance2.0-fast 720p-nv-15s") {
-    return "Seedance 2.0 720P Fast · 9 图 · 3 音频 · 自由时长";
+    return "支持 9 图 · 3 音频 · 自由时长 · 过人脸";
   }
   if (normalized === "sh-seedance2.0-mini-720p-nv-15s") {
-    return "Seedance 2.0 720P Mini · 9 图 · 3 音频 · 自由时长";
+    return "支持 9 图 · 3 音频 · 自由时长 · 过人脸";
   }
   if (normalized === "xx-seedance 720p-pro-gz-15s") {
-    return "Seedance 720P Pro · 9 图 · 1 视频 · 1 音频 · 固定 15 秒";
+    return "支持 9 图 · 1 视频 · 1 音频 · 固定 15 秒 · 过人脸";
   }
   return undefined;
 }
