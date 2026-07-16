@@ -260,6 +260,24 @@ test("img2 special request format is only used for legacy image4k models", () =>
   }), true);
 });
 
+test("provider output ignores failure text placed in URL fields", () => {
+  const output = providerCallInternalsForTests.parseProviderOutput({
+    status: "failed",
+    result_url: "video generation failed (503): upstream connection refused",
+    video: { url: "video generation failed (503): upstream connection refused" },
+  });
+  assert.equal(output.status, "failed");
+  assert.equal(output.url, "");
+});
+
+test("provider output keeps root-relative media URLs", () => {
+  const output = providerCallInternalsForTests.parseProviderOutput({
+    status: "completed",
+    result_url: "/v1/videos/task-1/content",
+  });
+  assert.equal(output.url, "/v1/videos/task-1/content");
+});
+
 test("OpenAI-compatible image edits send every reference as image[]", async () => {
   const originalFetch = globalThis.fetch;
   const captured: { body?: FormData } = {};

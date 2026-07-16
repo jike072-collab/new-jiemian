@@ -150,7 +150,7 @@ function parseProviderOutput(payload: unknown): ProviderOutput {
   const metadata = asRecord(root.metadata);
   const first = asRecord(data[0] || root.video || root.result || root.output || payload);
   const firstMetadata = asRecord(first.metadata);
-  const url = bestOutputUrl(payload) || firstString(
+  const candidateUrl = bestOutputUrl(payload) || firstString(
     first.video_url,
     first.download_url,
     first.result_url,
@@ -170,6 +170,7 @@ function parseProviderOutput(payload: unknown): ProviderOutput {
     root.url,
     metadata.url,
   );
+  const url = /^(?:https?:\/\/|\/)/i.test(candidateUrl) ? candidateUrl : "";
   const base64 = firstString(
     first.b64_json,
     first.base64,
@@ -2102,6 +2103,27 @@ export async function refreshVideoJob(jobId: string, localUserId?: string | null
     if (status === "done" && !videoUrl) status = "failed";
   }
 
+  if (status === "failed") {
+    await updateLibraryItem(job.libraryItemId, {
+      status: "failed",
+      error: "视频生成任务失败。",
+    });
+    await settleGeneratedTaskBilling({
+      localUserId: job.billing_local_user_id || job.ownerLocalUserId || localUserId || null,
+      taskId: job.billing_task_id,
+      estimatedQuotaUnits: job.billing_estimated_quota_units ?? null,
+      outcome: "failed",
+      reason: output.status || "generation failed",
+      upstreamRequestId: output.jobId || null,
+      upstreamModel: provider.model,
+      newApiTaskId: output.jobId || job.id,
+    });
+    return updateJob(job.id, {
+      status,
+      billing_state: job.billing_task_id ? job.billing_state || "prechecked" : job.billing_state,
+    });
+  }
+
   if (output.url) {
     const outputUrl = absolutizeProviderUrl(provider, output.url);
     const stored = outputUrl.includes("/content")
@@ -2174,22 +2196,6 @@ export async function refreshVideoJob(jobId: string, localUserId?: string | null
     return updated;
   }
 
-  if (status === "failed") {
-    await updateLibraryItem(job.libraryItemId, {
-      status: "failed",
-      error: "视频生成任务失败。",
-    });
-    await settleGeneratedTaskBilling({
-      localUserId: job.billing_local_user_id || job.ownerLocalUserId || localUserId || null,
-      taskId: job.billing_task_id,
-      estimatedQuotaUnits: job.billing_estimated_quota_units ?? null,
-      outcome: "failed",
-      reason: output.status || "generation failed",
-      upstreamRequestId: output.jobId || null,
-      upstreamModel: provider.model,
-      newApiTaskId: output.jobId || job.id,
-    });
-  }
   return updateJob(job.id, {
     status,
     billing_state: job.billing_task_id ? job.billing_state || "prechecked" : job.billing_state,
