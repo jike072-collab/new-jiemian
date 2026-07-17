@@ -3759,7 +3759,47 @@
   }
 
   .studio-ratio--six {
-    grid-template-columns: repeat(5, minmax(0, 1fr));
+    grid-template-columns: repeat(6, minmax(0, 1fr));
+    gap: 6px;
+  }
+
+  .studio-ratio--six .studio-ratio__item {
+    min-height: 68px;
+    padding: 5px 2px;
+  }
+
+  .studio-ratio--six .studio-ratio__graphic {
+    height: 34px;
+  }
+
+  .studio-ratio--six .ratio-1-1 {
+    width: 28px;
+    height: 28px;
+  }
+
+  .studio-ratio--six .ratio-16-9 {
+    width: 34px;
+    height: 19px;
+  }
+
+  .studio-ratio--six .ratio-9-16 {
+    width: 18px;
+    height: 32px;
+  }
+
+  .studio-ratio--six .ratio-4-3 {
+    width: 32px;
+    height: 24px;
+  }
+
+  .studio-ratio--six .ratio-3-4 {
+    width: 22px;
+    height: 30px;
+  }
+
+  .studio-ratio--six .ratio-21-9 {
+    width: 36px;
+    height: 15px;
   }
 
   .studio-duration-slider {
@@ -14277,6 +14317,15 @@
 
   .studio-ratio--six {
     grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .studio-ratio--six .studio-ratio__item {
+    min-height: 58px;
+    padding: 5px 4px;
+  }
+
+  .studio-ratio--six .studio-ratio__graphic {
+    height: 30px;
   }
 
   .studio-ratio__item {
