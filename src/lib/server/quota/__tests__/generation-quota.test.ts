@@ -40,7 +40,7 @@ test("Seedance pricing follows model cost and duration tiers", () => {
   assert.equal(estimateVideoGenerationQuota({ ...baseInput, model: "quanneng2.0", resolution: "720p", durationSeconds: 15 }), 900);
   assert.equal(estimateVideoGenerationQuota({ ...baseInput, model: "Doubao-Seedance-2.0-fast-260128-grid", resolution: "720p", durationSeconds: 15 }), 1200);
   assert.equal(estimateVideoGenerationQuota({ ...baseInput, model: "Doubao-Seedance-2-0-260128-grid", resolution: "720p", durationSeconds: 15 }), 1400);
-  const proQuotaByDuration = [550, 650, 800, 950, 1050, 1200, 1300, 1450, 1550, 1700, 1850, 1950];
+  const proQuotaByDuration = [1200, 1500, 1800, 2100, 2400, 2700, 3000, 3300, 3600, 3900, 4200, 4500];
   for (const [index, quota] of proQuotaByDuration.entries()) {
     assert.equal(estimateVideoGenerationQuota({ ...baseInput, model: "sdquan-2-miao", resolution: "720p", durationSeconds: index + 4 }), quota);
   }

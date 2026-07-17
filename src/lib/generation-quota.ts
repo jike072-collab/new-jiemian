@@ -213,8 +213,7 @@ function seedanceVideoQuota(model: string | null | undefined, duration: number) 
   if (normalizedModel === "video-2.0-fast-720p") return duration >= 15 ? 650 : 550;
   if (normalizedModel === "b-quannengship2.0") return duration >= 15 ? 850 : duration >= 10 ? 750 : 650;
   if (normalizedModel === "quanneng2.0") return duration >= 15 ? 900 : 800;
-  // Pro costs ¥0.43/second upstream. Keep the existing 300 points/yuan margin and round up to 50.
-  if (normalizedModel === "sdquan-2-miao") return Math.ceil((duration * 0.43 * 300) / 50) * 50;
+  if (normalizedModel === "sdquan-2-miao") return duration * 300;
   if (normalizedModel === "doubao-seedance-2.0-fast-260128-grid") return 1200;
   if (normalizedModel === "doubao-seedance-2-0-260128-grid") return 1400;
   return null;
