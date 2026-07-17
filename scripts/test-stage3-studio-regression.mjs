@@ -267,7 +267,7 @@ function runImageGenerationSourceChecks() {
   assert(previewSource.includes('const isVideo = item.scope === "video"'));
   assert(studioSource.includes("itemBackedJob.progress"));
   assert(studioSource.includes("data.job?.progress"));
-  assert(studioSource.includes('providerProgress: snapshot.providerId === "video-main" ? 0 : undefined'));
+  assert(studioSource.includes('snapshot.providerId.startsWith("video-main::model::")'));
   assert(studioSource.includes("await refreshLibraryAfterMutation().catch(() => undefined)"));
   assert(studioSource.includes("await refreshAccountAfterGeneration().catch(() => undefined)"));
   assert(previewSource.includes("Math.max(current, providerRatio) + 0.001"));

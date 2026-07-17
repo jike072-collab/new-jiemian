@@ -3029,7 +3029,9 @@ export function StudioApp() {
       current: 0,
       total: 1,
       startedAt: Date.now(),
-      providerProgress: snapshot.providerId === "video-main" ? 0 : undefined,
+      providerProgress: snapshot.providerId === "video-main" || snapshot.providerId.startsWith("video-main::model::")
+        ? 0
+        : undefined,
       message: "正在提交视频任务",
     }]);
 
