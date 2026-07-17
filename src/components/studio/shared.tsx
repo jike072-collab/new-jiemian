@@ -261,7 +261,7 @@ export function CompactDropzone({
                       onRemove(index);
                     }}
                   >
-                    <X className="size-4" aria-hidden="true" />
+                    <X className="size-3.5" aria-hidden="true" />
                   </button>
                 ) : null}
               </div>
