@@ -3737,12 +3737,12 @@
   .studio-textarea-highlight {
     position: absolute;
     inset: 0;
-    z-index: 1;
+    z-index: 3;
     box-sizing: border-box;
     overflow: hidden;
     border: 1px solid transparent;
     border-radius: var(--radius-control);
-    color: var(--foreground);
+    color: transparent;
     font: inherit;
     line-height: 1.5;
     overflow-wrap: anywhere;
@@ -3754,29 +3754,20 @@
   .studio-textarea--reference-overlay {
     position: relative;
     z-index: 2;
-    background: transparent;
-    caret-color: var(--foreground);
-    color: transparent;
-    -webkit-text-fill-color: transparent;
-  }
-
-  .studio-textarea--reference-overlay::placeholder {
-    color: var(--muted);
-    -webkit-text-fill-color: var(--muted);
   }
 
   .studio-prompt-reference-token {
     border-radius: 3px;
-    background: color-mix(in srgb, var(--primary) 20%, transparent);
+    background: color-mix(in srgb, var(--primary) 20%, var(--surface));
     box-decoration-break: clone;
-    box-shadow: 0 0 0 2px color-mix(in srgb, var(--primary) 20%, transparent);
+    box-shadow: 0 0 0 2px color-mix(in srgb, var(--primary) 20%, var(--surface));
     color: color-mix(in srgb, var(--primary) 82%, #fff 18%);
     -webkit-box-decoration-break: clone;
   }
 
   .studio-prompt-reference-token.is-invalid {
-    background: color-mix(in srgb, #ff5d73 16%, transparent);
-    box-shadow: 0 0 0 2px color-mix(in srgb, #ff5d73 16%, transparent);
+    background: color-mix(in srgb, #ff5d73 16%, var(--surface));
+    box-shadow: 0 0 0 2px color-mix(in srgb, #ff5d73 16%, var(--surface));
     color: color-mix(in srgb, #ff5d73 82%, #fff 18%);
     text-decoration: underline dotted;
     text-underline-offset: 3px;
