@@ -150,9 +150,9 @@ function bestOutputUrl(payload: unknown) {
 
 function parseProviderOutput(payload: unknown): ProviderOutput {
   const root = asRecord(payload);
-  const data = Array.isArray(root.data) ? root.data : [];
+  const data = root.data;
   const metadata = asRecord(root.metadata);
-  const first = asRecord(data[0] || root.video || root.result || root.output || payload);
+  const first = asRecord((Array.isArray(data) ? data[0] : data) || root.video || root.result || root.output || payload);
   const firstMetadata = asRecord(first.metadata);
   const candidateUrl = bestOutputUrl(payload) || firstString(
     first.video_url,
@@ -2226,6 +2226,26 @@ export async function refreshVideoJob(jobId: string, localUserId?: string | null
     ...(getTokenVeo ? { body: JSON.stringify({ taskId: job.id }) } : {}),
     signal: AbortSignal.timeout(60000),
   });
+  if (isRedbirdSeedanceProvider(provider) && response.status === 404) {
+    await response.body?.cancel();
+    await updateLibraryItem(job.libraryItemId, {
+      status: "failed",
+      error: "视频生成任务未找到。",
+    });
+    await settleGeneratedTaskBilling({
+      localUserId: job.billing_local_user_id || job.ownerLocalUserId || localUserId || null,
+      taskId: job.billing_task_id,
+      estimatedQuotaUnits: job.billing_estimated_quota_units ?? null,
+      outcome: "failed",
+      reason: "upstream task not found",
+      upstreamModel: provider.model,
+      newApiTaskId: job.id,
+    });
+    return updateJob(job.id, {
+      status: "failed",
+      billing_state: job.billing_task_id ? job.billing_state || "prechecked" : job.billing_state,
+    }) || job;
+  }
   if (getTokenVeo && shouldKeepGetTokenVeoJobPending(response.status, job.createdAt)) {
     await response.body?.cancel();
     return job;

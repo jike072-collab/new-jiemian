@@ -101,6 +101,19 @@ test("Redbird Seedance mixed reference payload keeps media types separate", () =
   assert.equal(payload.resolution, "720p");
 });
 
+test("Provider output reads object-shaped data responses", () => {
+  assert.deepEqual(providerCallInternalsForTests.parseProviderOutput({
+    data: { id: "redbird-task-1", status: "queued" },
+  }), {
+    url: "",
+    base64: "",
+    jobId: "redbird-task-1",
+    status: "queued",
+    statusUrl: "",
+    mimeType: "",
+  });
+});
+
 test("Seedance validates model-specific video, audio, and duration limits", () => {
   const videoProvider: ProviderConfig = {
     ...provider,
