@@ -29,7 +29,6 @@ const seedanceVideoModels = [
   "video-2.0-fast-720P",
   "quanneng2.0-9tu",
   "quanneng2.0",
-  "Doubao-Seedance-2.0-fast-260128-grid",
   "Doubao-Seedance-2-0-260128-grid",
 ];
 
@@ -37,7 +36,6 @@ const seedanceVideoDisplayNames: Record<string, string> = {
   "video-2.0-fast-720P": "全能视频 2.0 Fast 720P",
   "quanneng2.0-9tu": "全能视频 2.0 9 图 首帧",
   "quanneng2.0": "全能视频 2.0 线路 S",
-  "Doubao-Seedance-2.0-fast-260128-grid": "Seedance 2.0 Fast 933 不卡真人",
   "Doubao-Seedance-2-0-260128-grid": "Seedance 2.0 满血 933 不卡真人",
 };
 
@@ -338,11 +336,11 @@ export function defaultProviders(): ProviderConfig[] {
       title: "Seedance 视频生成",
       role: "红鸟 Seedance 2.0 满血与快速模型，统一输出 720P",
       apiUrl: env("REDBIRD_SEEDANCE_VIDEO_API_URL", "https://open.hongniaoai.com/api/v1/videos"),
-      model: env("REDBIRD_SEEDANCE_VIDEO_MODEL", "Doubao-Seedance-2.0-fast-260128-grid"),
+      model: env("REDBIRD_SEEDANCE_VIDEO_MODEL", "video-2.0-fast-720P"),
       models: seedanceVideoModels,
       modelDisplayNames: seedanceVideoDisplayNames,
       enabledModels: seedanceVideoModels,
-      displayName: env("REDBIRD_SEEDANCE_VIDEO_DISPLAY_NAME", env("REDBIRD_SEEDANCE_VIDEO_MODEL", "Doubao-Seedance-2.0-fast-260128-grid")),
+      displayName: env("REDBIRD_SEEDANCE_VIDEO_DISPLAY_NAME", env("REDBIRD_SEEDANCE_VIDEO_MODEL", "video-2.0-fast-720P")),
       apiKey: env("REDBIRD_SEEDANCE_VIDEO_API_KEY"),
       enabled: hasKey(env("REDBIRD_SEEDANCE_VIDEO_API_KEY")),
       endpointType: (env("REDBIRD_SEEDANCE_VIDEO_ENDPOINT_TYPE", "videos-generations") as EndpointType),
