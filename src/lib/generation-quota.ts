@@ -62,7 +62,8 @@ export function estimateVideoGenerationEntitlementUnits(input: { resolution: str
   const normalizedModel = String(input.model || "").trim().toLowerCase();
   const duration = Math.max(1, Math.floor(input.durationSeconds || 15));
   if (normalizedModel === "b-quannengship2.0") return 2;
-  if (normalizedModel === "quanneng2.0" || normalizedModel === "sdquan-2-miao" || normalizedModel === "doubao-seedance-2-0-260128-grid") {
+  if (normalizedModel === "quanneng2.0") return duration >= 15 ? 2 : 1;
+  if (normalizedModel === "sdquan-2-miao" || normalizedModel === "doubao-seedance-2-0-260128-grid") {
     return duration >= 10 ? 2 : 1;
   }
   if (normalizedModel === "doubao-seedance-2.0-fast-260128-grid") return 3;

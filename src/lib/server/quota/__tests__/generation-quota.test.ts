@@ -50,8 +50,8 @@ test("Seedance premium models consume multiple membership video entitlements", (
   assert.equal(estimateVideoGenerationEntitlementUnits({ resolution: "720p", model: "quanneng2.0-9tu" }), 1);
   assert.equal(estimateVideoGenerationEntitlementUnits({ resolution: "720p", model: "video-2.0-fast-720P" }), 1);
   assert.equal(estimateVideoGenerationEntitlementUnits({ resolution: "720p", model: "B-quannengship2.0" }), 2);
-  assert.equal(estimateVideoGenerationEntitlementUnits({ resolution: "720p", model: "quanneng2.0", durationSeconds: 9 }), 1);
-  assert.equal(estimateVideoGenerationEntitlementUnits({ resolution: "720p", model: "quanneng2.0", durationSeconds: 10 }), 2);
+  assert.equal(estimateVideoGenerationEntitlementUnits({ resolution: "720p", model: "quanneng2.0", durationSeconds: 10 }), 1);
+  assert.equal(estimateVideoGenerationEntitlementUnits({ resolution: "720p", model: "quanneng2.0", durationSeconds: 15 }), 2);
   assert.equal(estimateVideoGenerationEntitlementUnits({ resolution: "720p", model: "Doubao-Seedance-2.0-fast-260128-grid" }), 3);
   assert.equal(estimateVideoGenerationEntitlementUnits({ resolution: "720p", model: "Doubao-Seedance-2-0-260128-grid", durationSeconds: 9 }), 1);
   assert.equal(estimateVideoGenerationEntitlementUnits({ resolution: "720p", model: "Doubao-Seedance-2-0-260128-grid", durationSeconds: 10 }), 2);
