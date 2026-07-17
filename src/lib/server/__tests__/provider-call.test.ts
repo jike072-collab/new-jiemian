@@ -6,6 +6,7 @@ import test from "node:test";
 import { seedanceLibraryModelName } from "../../seedance-model-display";
 import { createErrorDiagnostic, logDiagnosticEvent } from "../error-diagnostics";
 import { providerCallInternalsForTests } from "../provider-call";
+import { providerReferenceMimeType } from "../provider-reference";
 import {
   defaultProviders,
   seedanceVideoOptionsForModel,
@@ -25,6 +26,13 @@ const provider = {
   enabled: true,
   endpointType: "images-generations",
 } as const;
+
+test("provider references preserve image MIME types for upstream asset validation", () => {
+  assert.equal(providerReferenceMimeType("provider-reference-123.png.tmp"), "image/png");
+  assert.equal(providerReferenceMimeType("provider-reference-123.jpg.tmp"), "image/jpeg");
+  assert.equal(providerReferenceMimeType("provider-reference-123.jpeg.tmp"), "image/jpeg");
+  assert.equal(providerReferenceMimeType("provider-reference-123.webp.tmp"), "image/webp");
+});
 
 test("Grok video defaults expose only model 1.5", () => {
   const grokProvider = defaultProviders().find((item) => item.id === "video-grok");

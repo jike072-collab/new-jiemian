@@ -79,6 +79,10 @@ export async function resolveProviderReference(name: string, expiresValue: strin
 
 export function providerReferenceMimeType(name: string) {
   const normalized = name.toLowerCase().replace(/\.tmp$/, "");
+  if (normalized.endsWith(".png")) return "image/png";
+  if (normalized.endsWith(".jpg") || normalized.endsWith(".jpeg")) return "image/jpeg";
+  if (normalized.endsWith(".webp")) return "image/webp";
+  if (normalized.endsWith(".gif")) return "image/gif";
   if (normalized.endsWith(".webm")) return "video/webm";
   if (normalized.endsWith(".mov")) return "video/quicktime";
   if (normalized.endsWith(".mp4")) return "video/mp4";
