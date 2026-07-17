@@ -44,7 +44,7 @@ const seedanceVideoDisplayNames: Record<string, string> = {
 };
 
 const seedanceVideoOptionsByModel: Record<string, NonNullable<ProviderConfig["videoOptions"]>> = {
-  "video-2.0-fast-720p": { durations: [10, 15], ratios: ["16:9", "9:16"], resolution: "720p", maxReferenceImages: 4, maxReferenceVideos: 3, maxReferenceAudios: 1, maxReferenceDurationSeconds: 15, supportsVideoReference: true, supportsAudioReference: true },
+  "video-2.0-fast-720p": { durations: [10, 15], ratios: ["16:9", "9:16"], resolution: "720p", maxReferenceImages: 4, maxReferenceVideos: 3, maxReferenceAudios: 1, maxReferenceDurationSeconds: 15, requiredReferenceMedia: ["image"], supportsVideoReference: true, supportsAudioReference: true },
   "quanneng2.0-9tu": { durations: [15], ratios: ["16:9", "9:16"], resolution: "720p", maxReferenceImages: 9, maxReferenceVideos: 0, maxReferenceAudios: 0, maxReferenceDurationSeconds: 15 },
   "b-quannengship2.0": { durations: [5, 10, 15], ratios: ["16:9", "9:16"], resolution: "720p", maxReferenceImages: 9, maxReferenceVideos: 0, maxReferenceAudios: 0, maxReferenceDurationSeconds: 15 },
   "quanneng2.0": { durations: [10, 15], ratios: ["16:9", "9:16"], resolution: "720p", maxReferenceImages: 4, maxReferenceVideos: 3, maxReferenceAudios: 1, maxReferenceDurationSeconds: 15, supportsVideoReference: true, supportsAudioReference: true },
@@ -103,6 +103,9 @@ function normalizeVideoOptions(value: unknown): ProviderConfig["videoOptions"] {
   const maxReferenceVideos = Number(input.maxReferenceVideos);
   const maxReferenceAudios = Number(input.maxReferenceAudios);
   const maxReferenceDurationSeconds = Number(input.maxReferenceDurationSeconds);
+  const requiredReferenceMedia = Array.isArray(input.requiredReferenceMedia)
+    ? Array.from(new Set(input.requiredReferenceMedia.filter((item): item is "image" | "video" | "audio" => item === "image" || item === "video" || item === "audio")))
+    : undefined;
   const supportsVideoReference = typeof input.supportsVideoReference === "boolean" ? input.supportsVideoReference : undefined;
   const supportsAudioReference = typeof input.supportsAudioReference === "boolean" ? input.supportsAudioReference : undefined;
   const normalized: NonNullable<ProviderConfig["videoOptions"]> = {};
@@ -114,6 +117,7 @@ function normalizeVideoOptions(value: unknown): ProviderConfig["videoOptions"] {
   if (Number.isFinite(maxReferenceVideos) && maxReferenceVideos >= 0) normalized.maxReferenceVideos = Math.floor(maxReferenceVideos);
   if (Number.isFinite(maxReferenceAudios) && maxReferenceAudios >= 0) normalized.maxReferenceAudios = Math.floor(maxReferenceAudios);
   if (Number.isFinite(maxReferenceDurationSeconds) && maxReferenceDurationSeconds > 0) normalized.maxReferenceDurationSeconds = maxReferenceDurationSeconds;
+  if (requiredReferenceMedia?.length) normalized.requiredReferenceMedia = requiredReferenceMedia;
   if (supportsVideoReference !== undefined) normalized.supportsVideoReference = supportsVideoReference;
   if (supportsAudioReference !== undefined) normalized.supportsAudioReference = supportsAudioReference;
   return Object.keys(normalized).length ? normalized : undefined;
@@ -136,6 +140,7 @@ function grokVideoOptionsForModel(model: string): ProviderConfig["videoOptions"]
       ratios: ["16:9", "9:16"],
       resolution: "720p",
       maxReferenceImages: 1,
+      requiredReferenceMedia: ["image"],
     };
   }
   return {

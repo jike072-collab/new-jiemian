@@ -877,6 +877,21 @@ function validateVideoInput(provider: ProviderConfig, input: {
     return;
   }
   const options = videoOptionsForProvider(provider);
+  const requiredReferenceMedia = options?.requiredReferenceMedia || [];
+  for (const [mediaType, label, count] of [
+    ["image", "参考图", referenceImages.length],
+    ["video", "参考视频", referenceVideos.length],
+    ["audio", "参考音频", referenceAudios.length],
+  ] as const) {
+    if (requiredReferenceMedia.includes(mediaType) && !count) {
+      throw new GenerationDiagnosticError({
+        code: "INPUT_MISSING_IMAGE",
+        providerId: provider.id,
+        model: provider.model,
+        publicMessage: `当前模型需要上传${label}。`,
+      });
+    }
+  }
   const allowedDurations = options?.durations?.length ? new Set(options.durations) : new Set([5, 8, 10, 15]);
   const allowedRatios = options?.ratios?.length ? new Set(options.ratios) : defaultVideoRatios;
   const allowedResolutions = options?.resolutions?.length

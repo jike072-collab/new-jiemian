@@ -25,6 +25,7 @@ export type WorkspaceVideoOptions = {
   maxReferenceVideos?: number;
   maxReferenceAudios?: number;
   maxReferenceDurationSeconds?: number;
+  requiredReferenceMedia?: Array<"image" | "video" | "audio">;
 };
 
 export type WorkspacePublicProvider = FrontendProvider & {

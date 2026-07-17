@@ -3637,7 +3637,7 @@
   .studio-upload-item {
     display: grid;
     grid-template-columns: 58px 36px;
-    align-items: center;
+    align-items: start;
     gap: 8px;
     width: auto;
     border: 1px solid var(--border-subtle);
@@ -3647,6 +3647,10 @@
     transition:
       border-color var(--motion-fast) var(--ease-enter),
       background var(--motion-fast) var(--ease-enter);
+  }
+
+  .studio-upload-item .studio-icon-button {
+    justify-self: end;
   }
 
   .studio-upload-item:hover {

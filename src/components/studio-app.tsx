@@ -702,7 +702,7 @@ function preferredVideoResolution(provider: WorkspacePublicProvider | null | und
 }
 
 function videoProviderRequiresReferenceImage(provider: WorkspacePublicProvider | null | undefined) {
-  return provider?.model === "grok-video-1.5";
+  return provider?.videoOptions?.requiredReferenceMedia?.includes("image") || false;
 }
 
 function diagnosticFromError(error: unknown): StudioErrorDiagnostic | null {

@@ -41,6 +41,16 @@ export async function POST(request: NextRequest) {
       if (mode === "text-to-video" && (referenceCount || referenceMode === "first-last")) {
         throw new Error("文生视频模式不接收首尾帧图片。");
       }
+      const requiredReferenceMedia = selectedProvider?.videoOptions?.requiredReferenceMedia || [];
+      if (requiredReferenceMedia.includes("image") && !imageCount) {
+        throw new Error("当前模型需要上传参考图。");
+      }
+      if (requiredReferenceMedia.includes("video") && !referenceVideos.length) {
+        throw new Error("当前模型需要上传参考视频。");
+      }
+      if (requiredReferenceMedia.includes("audio") && !referenceAudios.length) {
+        throw new Error("当前模型需要上传参考音频。");
+      }
       if (mode === "image-to-video" && referenceMode === "first-last" && (imageCount !== 2 || referenceVideos.length || referenceAudios.length)) {
         throw new Error("首尾帧视频必须上传首帧图和尾帧图。");
       }

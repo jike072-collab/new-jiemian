@@ -108,10 +108,10 @@ test("Seedance validates model-specific video, audio, and duration limits", () =
     model: "video-2.0-fast-720P",
     endpointType: "videos-generations",
   };
-  const reference = (mediaType: "video" | "audio", durationSeconds: number) => ({
+  const reference = (mediaType: "image" | "video" | "audio", durationSeconds = 0) => ({
     bytes: Buffer.from(mediaType),
-    mimeType: mediaType === "video" ? "video/mp4" : "audio/mpeg",
-    fileName: mediaType === "video" ? "reference.mp4" : "reference.mp3",
+    mimeType: mediaType === "image" ? "image/png" : mediaType === "video" ? "video/mp4" : "audio/mpeg",
+    fileName: mediaType === "image" ? "reference.png" : mediaType === "video" ? "reference.mp4" : "reference.mp3",
     mediaType,
     durationSeconds,
   });
@@ -120,7 +120,7 @@ test("Seedance validates model-specific video, audio, and duration limits", () =
     ratio: "16:9",
     duration: 10,
     resolution: "720p",
-    files: [reference("video", 8), reference("video", 7), reference("audio", 15)],
+    files: [reference("image"), reference("video", 8), reference("video", 7), reference("audio", 15)],
   }));
   assert.throws(() => providerCallInternalsForTests.validateVideoInput(videoProvider, {
     mode: "image-to-video",
