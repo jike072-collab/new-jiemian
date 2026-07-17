@@ -81,6 +81,18 @@ function firstString(...values: unknown[]) {
   return "";
 }
 
+function nestedString(value: unknown, fields: string[]): string {
+  const record = asRecord(value);
+  for (const field of ["data", "task", "result", "output", "video"]) {
+    const nested = record[field];
+    if (nested && typeof nested === "object") {
+      const found = nestedString(nested, fields);
+      if (found) return found;
+    }
+  }
+  return firstString(...fields.map((field) => record[field]));
+}
+
 type OutputUrlCandidate = {
   url: string;
   field: string;
@@ -186,10 +198,10 @@ function parseProviderOutput(payload: unknown): ProviderOutput {
   return {
     url,
     base64,
-    jobId: firstString(first.taskId, first.task_id, first.id, first.video_id, root.taskId, root.task_id, root.id, root.video_id),
-    status: firstString(first.status, root.status),
-    statusUrl: firstString(first.status_url, root.status_url),
-    mimeType: firstString(first.mime_type, root.mime_type),
+    jobId: nestedString(payload, ["taskId", "task_id", "id", "video_id"]),
+    status: nestedString(payload, ["status"]),
+    statusUrl: nestedString(payload, ["status_url"]),
+    mimeType: nestedString(payload, ["mime_type"]),
   };
 }
 

@@ -103,7 +103,7 @@ test("Redbird Seedance mixed reference payload keeps media types separate", () =
 
 test("Provider output reads object-shaped data responses", () => {
   assert.deepEqual(providerCallInternalsForTests.parseProviderOutput({
-    data: { id: "redbird-task-1", status: "queued" },
+    data: { task: { id: "redbird-task-1", status: "queued" } },
   }), {
     url: "",
     base64: "",
