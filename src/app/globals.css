@@ -3765,6 +3765,42 @@
     -webkit-box-decoration-break: clone;
   }
 
+  .studio-prompt-reference-token.has-preview {
+    display: inline-flex;
+    height: 20px;
+    align-items: center;
+    gap: 3px;
+    border: 1px solid color-mix(in srgb, var(--primary) 34%, transparent);
+    border-radius: 5px;
+    box-shadow: none;
+    padding: 1px 4px 1px 2px;
+    font-size: 12px;
+    font-weight: 700;
+    line-height: 16px;
+    vertical-align: -4px;
+  }
+
+  .studio-prompt-reference-token__preview {
+    display: grid;
+    width: 16px;
+    height: 16px;
+    flex: 0 0 16px;
+    place-items: center;
+    overflow: hidden;
+    border-radius: 3px;
+    background: color-mix(in srgb, var(--surface-hover) 88%, transparent);
+  }
+
+  .studio-prompt-reference-token__preview img,
+  .studio-prompt-reference-token__preview svg {
+    width: 100%;
+    height: 100%;
+  }
+
+  .studio-prompt-reference-token__preview img {
+    object-fit: cover;
+  }
+
   .studio-prompt-reference-token.is-invalid {
     background: color-mix(in srgb, #ff5d73 16%, var(--surface));
     box-shadow: 0 0 0 2px color-mix(in srgb, #ff5d73 16%, var(--surface));

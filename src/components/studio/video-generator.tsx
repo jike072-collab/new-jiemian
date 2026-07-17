@@ -512,7 +512,7 @@ function VideoPromptBox({
     ? references.filter((reference) => reference.label.toLowerCase().includes(mentionContext.query.toLowerCase()))
     : [];
   const mentionOpen = Boolean(mentionContext && filteredReferences.length);
-  const referenceLabels = new Set(references.map((reference) => reference.label));
+  const referencesByLabel = new Map(references.map((reference) => [reference.label, reference]));
   const promptParts = value.split(/(@(?:Image|Video|Audio)\d+)/g);
   const showReferenceOverlay = Boolean(references.length || promptParts.length > 1);
 
@@ -629,10 +629,31 @@ function VideoPromptBox({
             {promptParts.map((part, index) => {
               const match = /^@(Image|Video|Audio)\d+$/.test(part);
               if (!match) return <span key={`${index}-${part}`}>{part}</span>;
+              const reference = referencesByLabel.get(part.slice(1));
+              if (reference) {
+                return (
+                  <mark
+                    key={`${index}-${part}`}
+                    className="studio-prompt-reference-token has-preview"
+                    title={reference.typeLabel}
+                  >
+                    <span className="studio-prompt-reference-token__preview">
+                      {reference.file.mediaType === "image" ? (
+                        <img src={reference.file.previewUrl} alt="" />
+                      ) : reference.file.mediaType === "video" ? (
+                        <Video aria-hidden="true" />
+                      ) : (
+                        <FileAudio2 aria-hidden="true" />
+                      )}
+                    </span>
+                    <span>{reference.label}</span>
+                  </mark>
+                );
+              }
               return (
                 <mark
                   key={`${index}-${part}`}
-                  className={cn("studio-prompt-reference-token", !referenceLabels.has(part.slice(1)) && "is-invalid")}
+                  className="studio-prompt-reference-token is-invalid"
                 >
                   {part}
                 </mark>
