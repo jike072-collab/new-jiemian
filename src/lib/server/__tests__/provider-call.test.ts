@@ -80,6 +80,7 @@ test("Redbird Seedance sends reference images as multipart files", () => {
   assert.equal(form.get("model"), "Doubao-Seedance-2-0-260128-grid");
   assert.equal(form.get("seconds"), "15");
   assert.equal(form.get("aspect_ratio"), "9:16");
+  assert.equal(form.get("resolution"), "720p");
   assert.equal(form.getAll("input_reference").length, 2);
 });
 

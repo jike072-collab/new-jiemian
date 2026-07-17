@@ -362,6 +362,7 @@ function redbirdVideoFormData(provider: ProviderConfig, input: {
   form.append("model", provider.model);
   form.append("prompt", input.prompt);
   form.append("aspect_ratio", input.ratio);
+  form.append("resolution", "720p");
   form.append("seconds", String(input.duration));
   for (const file of input.files) {
     form.append("input_reference", new Blob([new Uint8Array(file.bytes)], { type: file.mimeType }), file.fileName);
