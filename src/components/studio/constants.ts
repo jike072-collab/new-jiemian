@@ -125,6 +125,7 @@ export const ratioShapeClass: Record<string, string> = {
   "3:4": "ratio-3-4",
   "3:2": "ratio-3-2",
   "2:3": "ratio-2-3",
+  "21:9": "ratio-21-9",
 };
 
 export function formatQuotaUnits(value: number | null | undefined) {

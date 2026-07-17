@@ -123,7 +123,7 @@ export function AspectRatioSelector({
   onChange: (value: string) => void;
 }) {
   return (
-    <div className="studio-ratio" role="group" aria-label={label}>
+    <div className={cn("studio-ratio", options.length === 6 && "studio-ratio--six")} role="group" aria-label={label}>
       {options.map((ratio) => (
         <button
           key={ratio}

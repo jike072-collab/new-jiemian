@@ -2,7 +2,7 @@
 
 /* eslint-disable @next/next/no-img-element */
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type CSSProperties } from "react";
 import { ImagePlus, Loader2, X } from "lucide-react";
 
 import { featuredVideoPromptTemplates } from "@/lib/template-catalog";
@@ -104,17 +104,54 @@ export function VideoGenerator({
   registerMobileAction: (action: MobileActionState) => void;
 }) {
   const meta = videoWorkspaceModeMeta[mode];
+  const durationMin = durationOptions[0] ?? state.duration;
+  const durationMax = durationOptions[durationOptions.length - 1] ?? state.duration;
+  const durationMidpoint = Math.round((durationMin + durationMax) / 2);
+  const durationProgress = durationMax > durationMin
+    ? ((state.duration - durationMin) / (durationMax - durationMin)) * 100
+    : 0;
+  const useDurationSlider = selectedProvider?.model.toLowerCase() === "sdquan-2-miao" && durationOptions.length > 1;
   const durationField = (
     <FieldFrame label="时长" required>
-      <CustomSelect
-        label="时长"
-        value={String(state.duration)}
-        options={durationOptions.map((value) => ({
-          value: String(value),
-          label: `${value} 秒`,
-        }))}
-        onChange={(value) => onDurationChange(Number(value))}
-      />
+      {useDurationSlider ? (
+        <div
+          className="studio-duration-slider"
+          style={{ "--studio-duration-progress": `${durationProgress}%` } as CSSProperties}
+        >
+          <div className="studio-duration-slider__track-group">
+            <input
+              id="studio-video-duration"
+              type="range"
+              min={durationMin}
+              max={durationMax}
+              step={1}
+              value={state.duration}
+              aria-label="视频时长"
+              aria-valuetext={`${state.duration} 秒`}
+              onChange={(event) => onDurationChange(Number(event.target.value))}
+            />
+            <div className="studio-duration-slider__ticks" aria-hidden="true">
+              <span>{durationMin}</span>
+              <span>{durationMidpoint}</span>
+              <span>{durationMax}</span>
+            </div>
+          </div>
+          <output className="studio-duration-slider__value" htmlFor="studio-video-duration">
+            <strong>{state.duration}</strong>
+            <span>秒</span>
+          </output>
+        </div>
+      ) : (
+        <CustomSelect
+          label="时长"
+          value={String(state.duration)}
+          options={durationOptions.map((value) => ({
+            value: String(value),
+            label: `${value} 秒`,
+          }))}
+          onChange={(value) => onDurationChange(Number(value))}
+        />
+      )}
     </FieldFrame>
   );
 
