@@ -3759,7 +3759,7 @@
   }
 
   .studio-ratio--six {
-    grid-template-columns: repeat(6, minmax(0, 1fr));
+    grid-template-columns: repeat(5, minmax(0, 1fr));
   }
 
   .studio-duration-slider {
@@ -4039,8 +4039,8 @@
   }
 
   .ratio-21-9 {
-    width: 48px;
-    height: 21px;
+    width: 46px;
+    height: 20px;
   }
 
   .studio-actions {
