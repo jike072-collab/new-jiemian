@@ -128,7 +128,7 @@ export function VideoGenerator({
               value={state.duration}
               aria-label="视频时长"
               aria-valuetext={`${state.duration} 秒`}
-              onChange={(event) => onDurationChange(Number(event.target.value))}
+              onInput={(event) => onDurationChange(Number(event.currentTarget.value))}
             />
             <div className="studio-duration-slider__ticks" aria-hidden="true">
               <span>{durationMin}</span>
