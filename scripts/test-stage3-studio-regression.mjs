@@ -267,6 +267,9 @@ function runImageGenerationSourceChecks() {
   assert(previewSource.includes('const isVideo = item.scope === "video"'));
   assert(studioSource.includes("itemBackedJob.progress"));
   assert(studioSource.includes("data.job?.progress"));
+  assert(studioSource.includes('providerProgress: snapshot.providerId === "video-main" ? 0 : undefined'));
+  assert(studioSource.includes("await refreshLibraryAfterMutation().catch(() => undefined)"));
+  assert(studioSource.includes("await refreshAccountAfterGeneration().catch(() => undefined)"));
   assert(previewSource.includes("providerProgressRatio ?? animatedTaskProgress"));
   assert(stylesSource.includes(".studio-upload-item .studio-icon-button {\n    position: absolute;\n    top: 4px;\n    right: 4px;"));
   assert(stylesSource.includes(".studio-video-frame-slot__remove {\n    position: absolute;\n    top: 8px;\n    right: 8px;"));

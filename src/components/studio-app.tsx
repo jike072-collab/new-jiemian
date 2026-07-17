@@ -3029,6 +3029,7 @@ export function StudioApp() {
       current: 0,
       total: 1,
       startedAt: Date.now(),
+      providerProgress: snapshot.providerId === "video-main" ? 0 : undefined,
       message: "正在提交视频任务",
     }]);
 
@@ -3098,8 +3099,8 @@ export function StudioApp() {
       );
       updateVideoWorkspace({ job: data.job });
       handleVideoResult(data.item, data.job);
-      await refreshLibraryAfterMutation();
-      await refreshAccountAfterGeneration();
+      await refreshLibraryAfterMutation().catch(() => undefined);
+      await refreshAccountAfterGeneration().catch(() => undefined);
       updateVideoInFlightState(keepVideoSlotOccupied ? CLIENT_VIDEO_SUBMISSION_LIMIT : videoInFlightCountRef.current - 1);
     } catch (error) {
       const text = error instanceof Error ? error.message : "视频生成失败。";
