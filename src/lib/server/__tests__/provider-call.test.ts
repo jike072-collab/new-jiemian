@@ -3,6 +3,7 @@ import { createHash } from "node:crypto";
 import { readdir } from "node:fs/promises";
 import test from "node:test";
 
+import { seedanceLibraryModelName } from "../../seedance-model-display";
 import { createErrorDiagnostic, logDiagnosticEvent } from "../error-diagnostics";
 import { providerCallInternalsForTests } from "../provider-call";
 import {
@@ -51,9 +52,14 @@ test("Seedance defaults expose the Redbird Seedance 2.0 model catalog", () => {
   assert.equal(models.includes("B-quannengship2.0"), false);
   assert.equal(models.includes("sdquan-2-miao"), true);
   assert.equal(seedanceProvider?.modelDisplayNames?.["Doubao-Seedance-2.0-fast-260128-grid"], undefined);
-  assert.equal(seedanceProvider?.modelDisplayNames?.["quanneng2.0-9tu"], "全能视频 2.0 9 图 首帧");
-  assert.equal(seedanceProvider?.modelDisplayNames?.["quanneng2.0"], "全能视频 2.0 线路 S");
-  assert.equal(seedanceProvider?.modelDisplayNames?.["sdquan-2-miao"], "全能视频 2.0 Pro");
+  assert.equal(seedanceProvider?.modelDisplayNames?.["video-2.0-fast-720P"], "Fast 720P");
+  assert.equal(seedanceProvider?.modelDisplayNames?.["quanneng2.0-9tu"], "9 图 首帧");
+  assert.equal(seedanceProvider?.modelDisplayNames?.["quanneng2.0"], "线路 S");
+  assert.equal(seedanceProvider?.modelDisplayNames?.["sdquan-2-miao"], "Pro");
+  assert.equal(seedanceProvider?.modelDisplayNames?.["Doubao-Seedance-2-0-260128-grid"], "满血 933 不卡真人");
+  assert.equal(seedanceLibraryModelName("video-2.0-fast-720P"), "Seedance 2.0 · Fast 720P");
+  assert.equal(seedanceLibraryModelName("B-quannengship2.0"), "Seedance 2.0 · 线路 B");
+  assert.equal(seedanceLibraryModelName("Doubao-Seedance-2.0-fast-260128-grid"), "Seedance 2.0 · Fast 933 不卡真人");
   assert.deepEqual(seedanceProvider?.enabledModels, models);
   assert.equal(seedanceProvider?.apiUrl, "https://open.hongniaoai.com/api/v1/videos");
   assert.deepEqual(seedanceVideoOptionsForModel("quanneng2.0-9tu")?.durations, [15]);

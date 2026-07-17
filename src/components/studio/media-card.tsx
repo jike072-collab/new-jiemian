@@ -7,6 +7,7 @@ import { useCallback, useEffect, useRef, useState, type MouseEvent, type Pointer
 
 import { DotRippleLoader } from "@/components/studio/dot-ripple-loader";
 import { cachedMediaObjectUrl, peekSessionMediaObjectUrl, sessionMediaObjectUrl } from "@/lib/client/media-cache";
+import { seedanceLibraryModelName } from "@/lib/seedance-model-display";
 import type { LibraryItem } from "@/lib/server/types";
 import { cn } from "@/lib/utils";
 
@@ -574,6 +575,8 @@ export function buildLibraryDetailFacts(item: LibraryItem) {
 export function libraryModelName(item: LibraryItem) {
   const model = (item.model || "").trim();
   const normalized = model.toLowerCase();
+  const seedanceName = seedanceLibraryModelName(model);
+  if (seedanceName) return seedanceName;
   if (normalized === "image" || normalized === "banana-img2") return "Image";
   if (normalized === "banana2") return "Banana2";
   if (normalized === "banana-pro") return "Banana Pro";

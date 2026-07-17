@@ -9,6 +9,7 @@ import {
   type PublicProvider,
 } from "./types";
 import { dataRoot, readJsonFile, writeJsonFile } from "./paths";
+import { seedanceVideoDisplayNames } from "../seedance-model-display";
 
 const providersPath = join(dataRoot, "providers.json");
 const virtualModelSeparator = "::model::";
@@ -32,14 +33,6 @@ const seedanceVideoModels = [
   "sdquan-2-miao",
   "Doubao-Seedance-2-0-260128-grid",
 ];
-
-const seedanceVideoDisplayNames: Record<string, string> = {
-  "video-2.0-fast-720P": "全能视频 2.0 Fast 720P",
-  "quanneng2.0-9tu": "全能视频 2.0 9 图 首帧",
-  "quanneng2.0": "全能视频 2.0 线路 S",
-  "sdquan-2-miao": "全能视频 2.0 Pro",
-  "Doubao-Seedance-2-0-260128-grid": "Seedance 2.0 满血 933 不卡真人",
-};
 
 const seedanceVideoOptionsByModel: Record<string, NonNullable<ProviderConfig["videoOptions"]>> = {
   "video-2.0-fast-720p": { durations: [10, 15], ratios: ["16:9", "9:16"], resolution: "720p", maxReferenceImages: 4, maxReferenceVideos: 3, maxReferenceAudios: 1, maxReferenceDurationSeconds: 15, requiredReferenceMedia: ["image"], supportsVideoReference: true, supportsAudioReference: true },

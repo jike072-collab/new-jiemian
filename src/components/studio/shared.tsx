@@ -398,7 +398,7 @@ export function ProviderSelect({
   const familyDefinitions = [
     { value: "veo", label: "Veo", matches: (provider: FrontendProvider) => provider.model.startsWith("veo-") },
     { value: "grok", label: "Grok", matches: (provider: FrontendProvider) => provider.model.startsWith("grok-video-") },
-    { value: "seedance", label: "Seedance", matches: (provider: FrontendProvider) => provider.id.startsWith("video-main::model::") || provider.model.toLowerCase().includes("seedance") },
+    { value: "seedance", label: "Seedance 2.0", matches: (provider: FrontendProvider) => provider.id.startsWith("video-main::model::") || provider.model.toLowerCase().includes("seedance") },
     { value: "banana", label: "Banana", matches: (provider: FrontendProvider) => ["banana2", "banana-pro"].includes(provider.model.toLowerCase()) },
   ];
   const groupedProviderIds = new Set<string>();
