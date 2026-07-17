@@ -64,7 +64,7 @@ test("Seedance defaults expose the Redbird Seedance 2.0 model catalog", () => {
   assert.equal(seedanceVideoRequestSecondsForModel(models[0], 15), 15);
 });
 
-test("Redbird Seedance sends reference images as multipart files", () => {
+test("Redbird Seedance multipart builder includes required fields", () => {
   const form = providerCallInternalsForTests.redbirdVideoFormData({
     ...provider,
     model: "Doubao-Seedance-2-0-260128-grid",

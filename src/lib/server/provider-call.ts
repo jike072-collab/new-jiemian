@@ -2019,7 +2019,8 @@ export async function submitVideo(input: {
       const referenceImages = mediaFiles(input, "image");
       const referenceVideos = mediaFiles(input, "video");
       const referenceAudios = mediaFiles(input, "audio");
-      const useFormData = referenceImages.length > 0 && !referenceVideos.length && !referenceAudios.length;
+      // Seedance image-only jobs are stable with signed JSON URLs; multipart input_reference can reset upstream.
+      const useFormData = false;
       const [imageUrls, videoUrls, audioUrls] = useFormData
         ? [[], [], []]
         : await Promise.all([
