@@ -92,10 +92,11 @@ test("Redbird Seedance mixed reference payload keeps media types separate", () =
     ratio: "9:16",
     duration: 15,
     files: [{ bytes: Buffer.from("image"), mimeType: "image/png", fileName: "shoe.png", mediaType: "image" }],
+    imageUrls: ["https://example.test/reference.png"],
     videoUrls: ["https://example.test/reference.mp4"],
     audioUrls: ["https://example.test/reference.mp3"],
   });
-  assert.deepEqual(payload.images, ["data:image/png;base64,aW1hZ2U="]);
+  assert.deepEqual(payload.images, ["https://example.test/reference.png"]);
   assert.deepEqual(payload.videos, ["https://example.test/reference.mp4"]);
   assert.deepEqual(payload.audios, ["https://example.test/reference.mp3"]);
   assert.equal(payload.resolution, "720p");

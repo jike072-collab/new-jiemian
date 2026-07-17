@@ -334,6 +334,7 @@ function redbirdVideoPayload(provider: ProviderConfig, input: {
   ratio: string;
   duration: number;
   files?: UploadedMedia[];
+  imageUrls?: string[];
   videoUrls?: string[];
   audioUrls?: string[];
 }) {
@@ -343,7 +344,9 @@ function redbirdVideoPayload(provider: ProviderConfig, input: {
     aspect_ratio: input.ratio,
     resolution: "720p",
     seconds: String(input.duration),
-    ...(input.files?.length ? { images: input.files.map((file) => `data:${file.mimeType};base64,${file.bytes.toString("base64")}`) } : {}),
+    ...(input.imageUrls?.length
+      ? { images: input.imageUrls }
+      : input.files?.length ? { images: input.files.map((file) => `data:${file.mimeType};base64,${file.bytes.toString("base64")}`) } : {}),
     ...(input.videoUrls?.length ? { videos: input.videoUrls } : {}),
     ...(input.audioUrls?.length ? { audios: input.audioUrls } : {}),
   };
@@ -2016,9 +2019,10 @@ export async function submitVideo(input: {
       const referenceVideos = mediaFiles(input, "video");
       const referenceAudios = mediaFiles(input, "audio");
       const useFormData = referenceImages.length > 0 && !referenceVideos.length && !referenceAudios.length;
-      const [videoUrls, audioUrls] = useFormData
-        ? [[], []]
+      const [imageUrls, videoUrls, audioUrls] = useFormData
+        ? [[], [], []]
         : await Promise.all([
+          prepareRedbirdReferenceUrls(referenceImages),
           prepareRedbirdReferenceUrls(referenceVideos),
           prepareRedbirdReferenceUrls(referenceAudios),
         ]);
@@ -2030,10 +2034,22 @@ export async function submitVideo(input: {
         },
         body: useFormData
           ? redbirdVideoFormData(readyProvider, { ...input, files: referenceImages })
-          : JSON.stringify(redbirdVideoPayload(readyProvider, { ...input, files: referenceImages, videoUrls, audioUrls })),
+          : JSON.stringify(redbirdVideoPayload(readyProvider, { ...input, files: referenceImages, imageUrls, videoUrls, audioUrls })),
         signal: AbortSignal.timeout(180000),
       });
-      output = parseProviderOutput(await readProviderJson(response, readyProvider));
+      const payload = await readProviderJson(response, readyProvider);
+      output = parseProviderOutput(payload);
+      if (!output.url && !output.jobId) {
+        const root = asRecord(payload);
+        throw new GenerationDiagnosticError({
+          code: "PROVIDER_BAD_RESPONSE",
+          message: firstString(asRecord(root.error).message, root.message, root.fail_reason) || "Redbird video response did not contain a task id.",
+          publicMessage: "上游未创建视频任务，请稍后重试。",
+          providerId: readyProvider.id,
+          model: readyProvider.model,
+          safeDetails: { responseKeys: Object.keys(root).slice(0, 12) },
+        });
+      }
     } else {
       const providerVideoOptions = videoOptionsForProvider(readyProvider);
       const resolution = input.resolution || providerVideoOptions?.resolution || "720p";
