@@ -50,6 +50,7 @@ test("Seedance defaults expose the Redbird Seedance 2.0 model catalog", () => {
   assert.equal(models.includes("quanneng2.0-9tu"), true);
   assert.equal(models.includes("sdquan-2-miao"), false);
   assert.equal(seedanceProvider?.modelDisplayNames?.["Doubao-Seedance-2.0-fast-260128-grid"], "Seedance 2.0 Fast 933 不卡真人");
+  assert.equal(seedanceProvider?.modelDisplayNames?.["quanneng2.0-9tu"], "全能视频 2.0 9 图 首帧");
   assert.equal(seedanceProvider?.modelDisplayNames?.["B-quannengship2.0"], "全能视频 2.0 线路 B");
   assert.equal(seedanceProvider?.modelDisplayNames?.["quanneng2.0"], "全能视频 2.0 线路 S");
   assert.deepEqual(seedanceProvider?.enabledModels, models);

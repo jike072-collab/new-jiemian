@@ -36,7 +36,7 @@ const seedanceVideoModels = [
 
 const seedanceVideoDisplayNames: Record<string, string> = {
   "video-2.0-fast-720P": "全能视频 2.0 Fast 720P",
-  "quanneng2.0-9tu": "全能视频 2.0 9 图",
+  "quanneng2.0-9tu": "全能视频 2.0 9 图 首帧",
   "B-quannengship2.0": "全能视频 2.0 线路 B",
   "quanneng2.0": "全能视频 2.0 线路 S",
   "Doubao-Seedance-2.0-fast-260128-grid": "Seedance 2.0 Fast 933 不卡真人",
