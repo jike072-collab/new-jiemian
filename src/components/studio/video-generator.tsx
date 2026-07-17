@@ -190,6 +190,7 @@ export function VideoGenerator({
       <VideoPromptBox
         label={meta.promptLabel}
         value={state.prompt}
+        maxLength={referenceOptions?.maxPromptCharacters}
         onChange={onPromptChange}
         optimizeCostLabel={promptOptimizeCostLabel || promptOptimizationCostLabel}
         optimizing={state.promptOptimizing}
@@ -422,6 +423,7 @@ function FirstLastFrameInput({
 function VideoPromptBox({
   label,
   value,
+  maxLength,
   onChange,
   enableOptimization = true,
   placeholder,
@@ -435,6 +437,7 @@ function VideoPromptBox({
 }: {
   label: string;
   value: string;
+  maxLength?: number;
   onChange: (value: string) => void;
   enableOptimization?: boolean;
   placeholder: string;
@@ -504,13 +507,16 @@ function VideoPromptBox({
           id="video-prompt"
           data-testid="video-prompt-input"
           value={value}
+          maxLength={maxLength}
           onChange={(event) => onChange(event.target.value)}
           placeholder={placeholder}
           aria-describedby={descriptionId}
+          aria-invalid={Boolean(maxLength && value.length > maxLength)}
           className="studio-textarea"
         />
-        <span id={descriptionId} className="studio-counter">{value.length} 个字符</span>
+        <span id={descriptionId} className="studio-counter">{maxLength ? `${value.length}/${maxLength}` : value.length} 个字符</span>
       </div>
+      {maxLength && value.length > maxLength ? <p className="studio-error-text" role="alert">提示词最多 {maxLength} 个字符。</p> : null}
       {optimizeError ? <p className="studio-error-text" role="alert">{optimizeError}</p> : null}
     </FieldFrame>
   );

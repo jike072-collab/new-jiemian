@@ -31,6 +31,7 @@ export type ProviderConfig = {
     maxReferenceVideos?: number;
     maxReferenceAudios?: number;
     maxReferenceDurationSeconds?: number;
+    maxPromptCharacters?: number;
     requiredReferenceMedia?: Array<"image" | "video" | "audio">;
     supportsVideoReference?: boolean;
     supportsAudioReference?: boolean;

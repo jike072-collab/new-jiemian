@@ -20,6 +20,7 @@ const providerCall = read("src/lib/server/provider-call.ts");
 const volcengineUpscale = read("src/lib/server/volcengine-upscale.ts");
 const library = read("src/lib/server/library.ts");
 const accountSummaryRoute = read("src/app/api/account/summary/route.ts");
+const videoGenerationRoute = read("src/app/api/generate/video/route.ts");
 
 const contracts = [
   {
@@ -100,6 +101,16 @@ const contracts = [
       "form.set(\"estimatedQuotaUnits\", String(snapshot.estimatedQuotaUnits))",
       "snapshot.files.forEach((file) => form.append(\"files\", file))",
       "handleVideoResult(data.item, data.job)",
+    ],
+  },
+  {
+    name: "video model prompt limits",
+    source: `${studioApp}\n${videoGenerator}\n${videoGenerationRoute}`,
+    checks: [
+      "maxLength={referenceOptions?.maxPromptCharacters}",
+      "videoWorkspacePrompt.length <= videoPromptMaxCharacters",
+      "prompt.length > maxPromptCharacters",
+      "await failBeforeSubmit(error)",
     ],
   },
   {

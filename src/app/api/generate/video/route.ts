@@ -19,6 +19,7 @@ export async function POST(request: NextRequest) {
     const mode = String(form.get("mode") || "text-to-video") === "image-to-video" ? "image-to-video" : "text-to-video";
     const referenceMode = String(form.get("referenceMode") || "single") === "first-last" ? "first-last" : "single";
     const resolution = String(form.get("resolution") || "720p").trim().toLowerCase();
+    const prompt = String(form.get("prompt") || "").trim();
     const legacyFiles = form.getAll("files").filter((value): value is File => value instanceof File && value.size > 0);
     const referenceImages = form.getAll("referenceImages").filter((value): value is File => value instanceof File && value.size > 0);
     const referenceVideos = form.getAll("referenceVideos").filter((value): value is File => value instanceof File && value.size > 0);
@@ -50,6 +51,10 @@ export async function POST(request: NextRequest) {
       }
       if (requiredReferenceMedia.includes("audio") && !referenceAudios.length) {
         throw new Error("当前模型需要上传参考音频。");
+      }
+      const maxPromptCharacters = selectedProvider?.videoOptions?.maxPromptCharacters;
+      if (maxPromptCharacters && prompt.length > maxPromptCharacters) {
+        throw new Error(`当前模型提示词最多 ${maxPromptCharacters} 个字符。`);
       }
       if (mode === "image-to-video" && referenceMode === "first-last" && (imageCount !== 2 || referenceVideos.length || referenceAudios.length)) {
         throw new Error("首尾帧视频必须上传首帧图和尾帧图。");
@@ -85,7 +90,7 @@ export async function POST(request: NextRequest) {
       providerId,
       mode,
       referenceMode,
-      prompt: String(form.get("prompt") || ""),
+      prompt,
       ratio: String(form.get("ratio") || "16:9"),
       duration: Number.isFinite(duration) ? duration : 5,
       resolution,

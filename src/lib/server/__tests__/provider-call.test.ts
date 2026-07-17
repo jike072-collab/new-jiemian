@@ -57,6 +57,7 @@ test("Seedance defaults expose the Redbird Seedance 2.0 model catalog", () => {
   assert.equal(seedanceProvider?.apiUrl, "https://open.hongniaoai.com/api/v1/videos");
   assert.deepEqual(seedanceVideoOptionsForModel("quanneng2.0-9tu")?.durations, [15]);
   assert.deepEqual(seedanceVideoOptionsForModel("quanneng2.0")?.durations, [10, 15]);
+  assert.equal(seedanceVideoOptionsForModel("quanneng2.0")?.maxPromptCharacters, 80);
   assert.equal(seedanceVideoOptionsForModel("video-2.0-fast-720P")?.maxReferenceImages, 4);
   assert.equal(seedanceVideoOptionsForModel("video-2.0-fast-720P")?.maxReferenceVideos, 3);
   assert.equal(seedanceVideoOptionsForModel("video-2.0-fast-720P")?.maxReferenceAudios, 1);

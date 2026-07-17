@@ -45,7 +45,7 @@ const seedanceVideoOptionsByModel: Record<string, NonNullable<ProviderConfig["vi
   "video-2.0-fast-720p": { durations: [10, 15], ratios: ["16:9", "9:16"], resolution: "720p", maxReferenceImages: 4, maxReferenceVideos: 3, maxReferenceAudios: 1, maxReferenceDurationSeconds: 15, requiredReferenceMedia: ["image"], supportsVideoReference: true, supportsAudioReference: true },
   "quanneng2.0-9tu": { durations: [15], ratios: ["16:9", "9:16"], resolution: "720p", maxReferenceImages: 9, maxReferenceVideos: 0, maxReferenceAudios: 0, maxReferenceDurationSeconds: 15 },
   "b-quannengship2.0": { durations: [5, 10, 15], ratios: ["16:9", "9:16"], resolution: "720p", maxReferenceImages: 9, maxReferenceVideos: 0, maxReferenceAudios: 0, maxReferenceDurationSeconds: 15 },
-  "quanneng2.0": { durations: [10, 15], ratios: ["16:9", "9:16"], resolution: "720p", maxReferenceImages: 4, maxReferenceVideos: 3, maxReferenceAudios: 1, maxReferenceDurationSeconds: 15, supportsVideoReference: true, supportsAudioReference: true },
+  "quanneng2.0": { durations: [10, 15], ratios: ["16:9", "9:16"], resolution: "720p", maxReferenceImages: 4, maxReferenceVideos: 3, maxReferenceAudios: 1, maxReferenceDurationSeconds: 15, maxPromptCharacters: 80, supportsVideoReference: true, supportsAudioReference: true },
   "doubao-seedance-2.0-fast-260128-grid": { durations: [15], ratios: ["16:9", "9:16"], resolution: "720p", maxReferenceImages: 9, maxReferenceVideos: 3, maxReferenceAudios: 3, maxReferenceDurationSeconds: 15, supportsVideoReference: true, supportsAudioReference: true },
   "doubao-seedance-2-0-260128-grid": { durations: [15], ratios: ["16:9", "9:16"], resolution: "720p", maxReferenceImages: 9, maxReferenceVideos: 3, maxReferenceAudios: 3, maxReferenceDurationSeconds: 15, supportsVideoReference: true, supportsAudioReference: true },
 };
@@ -101,6 +101,7 @@ function normalizeVideoOptions(value: unknown): ProviderConfig["videoOptions"] {
   const maxReferenceVideos = Number(input.maxReferenceVideos);
   const maxReferenceAudios = Number(input.maxReferenceAudios);
   const maxReferenceDurationSeconds = Number(input.maxReferenceDurationSeconds);
+  const maxPromptCharacters = Number(input.maxPromptCharacters);
   const requiredReferenceMedia = Array.isArray(input.requiredReferenceMedia)
     ? Array.from(new Set(input.requiredReferenceMedia.filter((item): item is "image" | "video" | "audio" => item === "image" || item === "video" || item === "audio")))
     : undefined;
@@ -115,6 +116,7 @@ function normalizeVideoOptions(value: unknown): ProviderConfig["videoOptions"] {
   if (Number.isFinite(maxReferenceVideos) && maxReferenceVideos >= 0) normalized.maxReferenceVideos = Math.floor(maxReferenceVideos);
   if (Number.isFinite(maxReferenceAudios) && maxReferenceAudios >= 0) normalized.maxReferenceAudios = Math.floor(maxReferenceAudios);
   if (Number.isFinite(maxReferenceDurationSeconds) && maxReferenceDurationSeconds > 0) normalized.maxReferenceDurationSeconds = maxReferenceDurationSeconds;
+  if (Number.isFinite(maxPromptCharacters) && maxPromptCharacters > 0) normalized.maxPromptCharacters = Math.floor(maxPromptCharacters);
   if (requiredReferenceMedia?.length) normalized.requiredReferenceMedia = requiredReferenceMedia;
   if (supportsVideoReference !== undefined) normalized.supportsVideoReference = supportsVideoReference;
   if (supportsAudioReference !== undefined) normalized.supportsAudioReference = supportsAudioReference;

@@ -2127,6 +2127,7 @@ export function StudioApp() {
   const videoWorkspaceHasModelReferenceImage = videoReferenceImages.length > 0;
   const videoFirstLastFramesReady = videoWorkspace.referenceMode !== "first-last" || videoReferenceImages.length === 2;
   const videoWorkspacePrompt = videoWorkspace.prompt.trim();
+  const videoPromptMaxCharacters = selectedVideoProvider?.videoOptions?.maxPromptCharacters;
   const videoWorkspaceNeedsFile = activeVideoMode === "image-to-video";
   const videoWorkspaceRequiresFile = activeVideoTemplate?.scope === "video" && activeVideoTemplate.requiresImage;
   const selectedVideoModelRequiresFile = videoProviderRequiresReferenceImage(selectedVideoProvider);
@@ -2155,6 +2156,7 @@ export function StudioApp() {
     && !providersLoading
     && videoWorkspace.inFlightCount < CLIENT_VIDEO_SUBMISSION_LIMIT
     && Boolean(videoWorkspacePrompt)
+    && (!videoPromptMaxCharacters || videoWorkspacePrompt.length <= videoPromptMaxCharacters)
     && videoFirstLastFramesReady
     && !videoPricingPending
     && (!videoWorkspaceNeedsFile || videoWorkspaceHasFiles)
@@ -2954,6 +2956,11 @@ export function StudioApp() {
     }
     if (!videoWorkspacePrompt) {
       updateVideoWorkspace({ submitError: "请输入提示词。" });
+      return;
+    }
+    const maxPromptCharacters = selectedVideoProvider.videoOptions?.maxPromptCharacters;
+    if (maxPromptCharacters && videoWorkspacePrompt.length > maxPromptCharacters) {
+      updateVideoWorkspace({ submitError: `当前模型提示词最多 ${maxPromptCharacters} 个字符。` });
       return;
     }
     if (videoWorkspace.referenceMode === "first-last" && videoWorkspace.files.length !== 2) {
