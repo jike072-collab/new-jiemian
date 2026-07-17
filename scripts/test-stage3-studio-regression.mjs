@@ -259,6 +259,7 @@ function runImageGenerationSourceChecks() {
   assert(studioSource.includes("progress.total - progress.current"));
   assert(studioSource.includes("if (recoveredItems.length) return publishItems(recoveredItems)"));
   assert(studioSource.includes('scope: "video"'));
+  assert(studioSource.includes("handleVideoResult(currentItem, itemBackedJob)"));
   assert(studioSource.includes('updateVideoGenerationProgress("failed", "生成失败")'));
   assert(previewSource.includes("window.setTimeout(() => setLeaving(true), 3200)"));
   assert(previewSource.includes(".slice(0, 3)"));

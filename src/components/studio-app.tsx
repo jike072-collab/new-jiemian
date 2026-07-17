@@ -2925,6 +2925,8 @@ export function StudioApp() {
         if (updatedItem) {
           updateVideoWorkspace({ job: itemBackedJob });
           handleVideoResult(updatedItem, itemBackedJob);
+        } else if (currentItemMatchesJob && currentItem) {
+          handleVideoResult(currentItem, itemBackedJob);
         }
         if (itemBackedJob.status === "done" || itemBackedJob.status === "failed") {
           updateVideoInFlightState(0);
