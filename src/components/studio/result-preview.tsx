@@ -2010,12 +2010,32 @@ function ImageGenerationProgressItem({
   onClose: (id: string) => void;
 }) {
   const [leaving, setLeaving] = useState(false);
+  const [smoothedVideoProgress, setSmoothedVideoProgress] = useState(() => (
+    Number.isFinite(item.providerProgress)
+      ? Math.min(Math.max(Number(item.providerProgress) / 100, 0), 0.98)
+      : 0
+  ));
 
   useEffect(() => {
     if (item.status !== "done") return undefined;
     const fadeTimer = window.setTimeout(() => setLeaving(true), 3200);
     return () => window.clearTimeout(fadeTimer);
   }, [item.status]);
+
+  useEffect(() => {
+    if (item.scope !== "video" || item.status !== "running") return undefined;
+    const providerRatio = Number.isFinite(item.providerProgress)
+      ? Math.min(Math.max(Number(item.providerProgress) / 100, 0), 0.98)
+      : 0;
+    const ceiling = providerRatio >= 0.85 ? 0.98 : 0.84;
+    const timer = window.setInterval(() => {
+      setSmoothedVideoProgress((current) => Math.min(
+        ceiling,
+        Math.max(current, providerRatio) + 0.001,
+      ));
+    }, 1000);
+    return () => window.clearInterval(timer);
+  }, [item.providerProgress, item.scope, item.status]);
 
     const total = Math.max(item.total, 1);
     const completed = Math.min(Math.max(item.current, 0), total);
@@ -2029,7 +2049,9 @@ function ImageGenerationProgressItem({
       ? 1
       : item.status === "failed"
         ? Math.min(Math.max(completed / total, 0), 1)
-        : providerProgressRatio ?? animatedTaskProgress(elapsedMs, completed / total, 0.94);
+        : isVideo && providerProgressRatio !== null
+          ? smoothedVideoProgress
+          : animatedTaskProgress(elapsedMs, completed / total, 0.94);
     const progressPercent = Math.round(progressRatio * 100);
     const title = item.status === "done"
       ? isVideo ? "视频生成完成" : "生成已完成"
@@ -2071,7 +2093,7 @@ function ImageGenerationProgressItem({
             <span>进度 {progressPercent}% · 用时 {formatElapsedClock(elapsedMs)}</span>
           </span>
           <span className="image-generation-progress__track" aria-hidden="true">
-            <span style={{ width: `${progressPercent}%` }} />
+            <span style={{ width: `${progressRatio * 100}%` }} />
           </span>
         </span>
       </div>
