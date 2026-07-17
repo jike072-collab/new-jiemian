@@ -3734,23 +3734,90 @@
     position: relative;
   }
 
-  .studio-textarea-wrap:has(.studio-prompt-reference-trigger) .studio-textarea {
-    padding-right: 48px;
+  .studio-textarea-highlight {
+    position: absolute;
+    inset: 0;
+    z-index: 1;
+    box-sizing: border-box;
+    overflow: hidden;
+    border: 1px solid transparent;
+    border-radius: var(--radius-control);
+    color: var(--foreground);
+    font: inherit;
+    line-height: 1.5;
+    overflow-wrap: anywhere;
+    padding: 14px 14px 44px;
+    pointer-events: none;
+    white-space: pre-wrap;
   }
 
-  .studio-prompt-reference-trigger {
+  .studio-textarea--reference-overlay {
+    position: relative;
+    z-index: 2;
+    background: transparent;
+    caret-color: var(--foreground);
+    color: transparent;
+    -webkit-text-fill-color: transparent;
+  }
+
+  .studio-textarea--reference-overlay::placeholder {
+    color: var(--muted);
+    -webkit-text-fill-color: var(--muted);
+  }
+
+  .studio-prompt-reference-token {
+    border-radius: 3px;
+    background: color-mix(in srgb, var(--primary) 20%, transparent);
+    box-decoration-break: clone;
+    box-shadow: 0 0 0 2px color-mix(in srgb, var(--primary) 20%, transparent);
+    color: color-mix(in srgb, var(--primary) 82%, #fff 18%);
+    -webkit-box-decoration-break: clone;
+  }
+
+  .studio-prompt-reference-token.is-invalid {
+    background: color-mix(in srgb, #ff5d73 16%, transparent);
+    box-shadow: 0 0 0 2px color-mix(in srgb, #ff5d73 16%, transparent);
+    color: color-mix(in srgb, #ff5d73 82%, #fff 18%);
+    text-decoration: underline dotted;
+    text-underline-offset: 3px;
+  }
+
+  .studio-prompt-footer {
     position: absolute;
     right: 10px;
     bottom: 8px;
-    z-index: 3;
+    left: 12px;
+    z-index: 4;
+    display: flex;
+    min-width: 0;
+    height: 30px;
+    align-items: center;
+    gap: 10px;
+    pointer-events: none;
+  }
+
+  .studio-prompt-reference-hint {
+    min-width: 0;
+    flex: 1;
+    overflow: hidden;
+    color: var(--muted);
+    font-size: 11px;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .studio-prompt-reference-trigger {
+    position: static;
     display: grid;
     width: 30px;
     height: 30px;
+    flex: 0 0 auto;
     place-items: center;
     border: 1px solid var(--border-subtle);
     border-radius: 50%;
     background: color-mix(in srgb, var(--surface-hover) 84%, var(--surface));
     color: var(--muted-strong);
+    pointer-events: auto;
     transition:
       border-color var(--motion-fast) var(--ease-enter),
       background var(--motion-fast) var(--ease-enter),
@@ -3776,7 +3843,7 @@
   .studio-prompt-reference-menu {
     position: absolute;
     right: 10px;
-    bottom: 42px;
+    bottom: 46px;
     left: 10px;
     z-index: 12;
     display: grid;
@@ -3859,6 +3926,7 @@
 
   .studio-textarea {
     min-height: 144px;
+    line-height: 1.5;
     resize: vertical;
     padding: 14px 14px 44px;
   }
@@ -4045,6 +4113,14 @@
   .studio-duration-slider__value span {
     color: var(--muted);
     font-size: 12px;
+  }
+
+  .studio-prompt-footer .studio-counter {
+    position: static;
+    left: auto;
+    bottom: auto;
+    flex: 0 0 auto;
+    font-size: 11px;
   }
 
   .studio-ratio__item {

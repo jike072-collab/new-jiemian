@@ -492,6 +492,7 @@ function VideoPromptBox({
   const descriptionId = "video-prompt-counter";
   const promptPreferences = usePromptPreferences("video-generator");
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
+  const promptHighlightRef = useRef<HTMLDivElement | null>(null);
   const promptWrapRef = useRef<HTMLDivElement | null>(null);
   const promptCursorRef = useRef(value.length);
   const [mentionContext, setMentionContext] = useState<{ start: number; end: number; query: string } | null>(null);
@@ -511,6 +512,9 @@ function VideoPromptBox({
     ? references.filter((reference) => reference.label.toLowerCase().includes(mentionContext.query.toLowerCase()))
     : [];
   const mentionOpen = Boolean(mentionContext && filteredReferences.length);
+  const referenceLabels = new Set(references.map((reference) => reference.label));
+  const promptParts = value.split(/(@(?:Image|Video|Audio)\d+)/g);
+  const showReferenceOverlay = Boolean(references.length || promptParts.length > 1);
 
   useEffect(() => {
     if (!mentionOpen) return;
@@ -620,6 +624,23 @@ function VideoPromptBox({
         {label}
       </label>
       <div ref={promptWrapRef} className="studio-textarea-wrap">
+        {showReferenceOverlay ? (
+          <div ref={promptHighlightRef} className="studio-textarea-highlight" aria-hidden="true">
+            {promptParts.map((part, index) => {
+              const match = /^@(Image|Video|Audio)\d+$/.test(part);
+              if (!match) return <span key={`${index}-${part}`}>{part}</span>;
+              return (
+                <mark
+                  key={`${index}-${part}`}
+                  className={cn("studio-prompt-reference-token", !referenceLabels.has(part.slice(1)) && "is-invalid")}
+                >
+                  {part}
+                </mark>
+              );
+            })}
+            {"\n"}
+          </div>
+        ) : null}
         <textarea
           ref={textareaRef}
           id="video-prompt"
@@ -633,6 +654,11 @@ function VideoPromptBox({
           }}
           onSelect={(event) => {
             promptCursorRef.current = event.currentTarget.selectionStart ?? event.currentTarget.value.length;
+          }}
+          onScroll={(event) => {
+            if (!promptHighlightRef.current) return;
+            promptHighlightRef.current.scrollTop = event.currentTarget.scrollTop;
+            promptHighlightRef.current.scrollLeft = event.currentTarget.scrollLeft;
           }}
           onKeyDown={(event) => {
             if (!mentionOpen) return;
@@ -658,7 +684,7 @@ function VideoPromptBox({
           aria-controls={mentionOpen ? "video-prompt-reference-menu" : undefined}
           aria-haspopup={references.length ? "listbox" : undefined}
           aria-activedescendant={mentionOpen ? filteredReferences[activeMentionIndex]?.id : undefined}
-          className="studio-textarea"
+          className={cn("studio-textarea", showReferenceOverlay && "studio-textarea--reference-overlay")}
         />
         {mentionOpen ? (
           <div id="video-prompt-reference-menu" className="studio-prompt-reference-menu" role="listbox" aria-label="选择参考素材">
@@ -690,12 +716,15 @@ function VideoPromptBox({
             ))}
           </div>
         ) : null}
-        <span id={descriptionId} className="studio-counter">{maxLength ? `${value.length}/${maxLength}` : value.length} 个字符</span>
-        {references.length ? (
-          <button type="button" className="studio-prompt-reference-trigger" aria-label="引用参考素材" title="引用参考素材" onClick={openReferenceMenu}>
-            <AtSign className="size-4" aria-hidden="true" />
-          </button>
-        ) : null}
+        <div className={cn("studio-prompt-footer", references.length && "has-references")}>
+          {references.length ? <span className="studio-prompt-reference-hint">输入 @ 引用素材</span> : null}
+          <span id={descriptionId} className="studio-counter">{maxLength ? `${value.length}/${maxLength}` : value.length} 个字符</span>
+          {references.length ? (
+            <button type="button" className="studio-prompt-reference-trigger" aria-label="引用参考素材" title="引用参考素材" onClick={openReferenceMenu}>
+              <AtSign className="size-4" aria-hidden="true" />
+            </button>
+          ) : null}
+        </div>
       </div>
       {maxLength && value.length > maxLength ? <p className="studio-error-text" role="alert">提示词最多 {maxLength} 个字符。</p> : null}
       {optimizeError ? <p className="studio-error-text" role="alert">{optimizeError}</p> : null}
