@@ -86,7 +86,7 @@ test("Every Redbird Seedance model uses signed JSON reference arrays", () => {
     const selected = { ...provider, model };
     assert.equal(providerCallInternalsForTests.isRedbirdSeedanceProvider(selected), true);
     const payload = providerCallInternalsForTests.redbirdVideoPayload(selected, {
-      prompt: "替换商品并保持原动作",
+      prompt: "以 @Video1 为基础，将鞋子替换为 @Image1",
       ratio: "9:16",
       duration: 15,
       files: [{ bytes: Buffer.from("image"), mimeType: "image/png", fileName: "shoe.png", mediaType: "image" }],
@@ -97,6 +97,7 @@ test("Every Redbird Seedance model uses signed JSON reference arrays", () => {
     assert.deepEqual(payload.images, ["https://example.test/reference.png"]);
     assert.deepEqual(payload.videos, ["https://example.test/reference.mp4"]);
     assert.deepEqual(payload.audios, ["https://example.test/reference.mp3"]);
+    assert.equal(payload.prompt, "以 @Video1 为基础，将鞋子替换为 @Image1");
     assert.equal(payload.resolution, "720p");
   }
 });

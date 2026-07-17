@@ -3734,6 +3734,129 @@
     position: relative;
   }
 
+  .studio-textarea-wrap:has(.studio-prompt-reference-trigger) .studio-textarea {
+    padding-right: 48px;
+  }
+
+  .studio-prompt-reference-trigger {
+    position: absolute;
+    right: 10px;
+    bottom: 8px;
+    z-index: 3;
+    display: grid;
+    width: 30px;
+    height: 30px;
+    place-items: center;
+    border: 1px solid var(--border-subtle);
+    border-radius: 50%;
+    background: color-mix(in srgb, var(--surface-hover) 84%, var(--surface));
+    color: var(--muted-strong);
+    transition:
+      border-color var(--motion-fast) var(--ease-enter),
+      background var(--motion-fast) var(--ease-enter),
+      color var(--motion-fast) var(--ease-enter),
+      transform var(--motion-fast) var(--ease-enter);
+  }
+
+  .studio-prompt-reference-trigger:hover {
+    border-color: color-mix(in srgb, var(--primary) 48%, transparent);
+    background: color-mix(in srgb, var(--primary) 14%, var(--surface-hover));
+    color: var(--primary);
+  }
+
+  .studio-prompt-reference-trigger:active {
+    transform: scale(0.96);
+  }
+
+  .studio-prompt-reference-trigger:focus-visible {
+    outline: none;
+    box-shadow: 0 0 0 3px color-mix(in srgb, var(--primary) 18%, transparent);
+  }
+
+  .studio-prompt-reference-menu {
+    position: absolute;
+    right: 10px;
+    bottom: 42px;
+    left: 10px;
+    z-index: 12;
+    display: grid;
+    max-height: 218px;
+    gap: 4px;
+    overflow-y: auto;
+    border: 1px solid color-mix(in srgb, var(--border-subtle) 88%, transparent);
+    border-radius: 8px;
+    background: color-mix(in srgb, var(--surface) 96%, #000 4%);
+    box-shadow: 0 16px 36px rgba(0, 0, 0, 0.34);
+    padding: 6px;
+  }
+
+  .studio-prompt-reference-option {
+    display: grid;
+    width: 100%;
+    min-width: 0;
+    grid-template-columns: 38px minmax(0, 1fr);
+    align-items: center;
+    gap: 10px;
+    border: 1px solid transparent;
+    border-radius: 6px;
+    background: transparent;
+    color: var(--foreground);
+    padding: 6px 8px;
+    text-align: left;
+  }
+
+  .studio-prompt-reference-option:hover,
+  .studio-prompt-reference-option.is-active {
+    border-color: color-mix(in srgb, var(--primary) 34%, transparent);
+    background: color-mix(in srgb, var(--primary) 12%, var(--surface-hover));
+  }
+
+  .studio-prompt-reference-option:focus-visible {
+    outline: none;
+    box-shadow: inset 0 0 0 2px color-mix(in srgb, var(--primary) 36%, transparent);
+  }
+
+  .studio-prompt-reference-option__preview {
+    display: grid;
+    width: 38px;
+    height: 38px;
+    flex: 0 0 auto;
+    place-items: center;
+    overflow: hidden;
+    border-radius: 6px;
+    background: color-mix(in srgb, var(--surface-hover) 86%, transparent);
+    color: var(--primary);
+  }
+
+  .studio-prompt-reference-option__preview img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+  }
+
+  .studio-prompt-reference-option__copy {
+    display: grid;
+    min-width: 0;
+    gap: 2px;
+  }
+
+  .studio-prompt-reference-option__copy strong,
+  .studio-prompt-reference-option__copy small {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .studio-prompt-reference-option__copy strong {
+    font-size: 13px;
+    font-weight: 700;
+  }
+
+  .studio-prompt-reference-option__copy small {
+    color: var(--muted);
+    font-size: 11px;
+  }
+
   .studio-textarea {
     min-height: 144px;
     resize: vertical;

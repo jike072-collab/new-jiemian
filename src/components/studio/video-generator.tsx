@@ -3,7 +3,7 @@
 /* eslint-disable @next/next/no-img-element */
 
 import { useEffect, useRef, useState, type CSSProperties } from "react";
-import { ImagePlus, Loader2, X } from "lucide-react";
+import { AtSign, FileAudio2, ImagePlus, Loader2, Video, X } from "lucide-react";
 
 import { featuredVideoPromptTemplates } from "@/lib/template-catalog";
 import type { FrontendProvider } from "@/lib/server/types";
@@ -227,6 +227,7 @@ export function VideoGenerator({
       <VideoPromptBox
         label={meta.promptLabel}
         value={state.prompt}
+        files={state.files}
         maxLength={referenceOptions?.maxPromptCharacters}
         onChange={onPromptChange}
         optimizeCostLabel={promptOptimizeCostLabel || promptOptimizationCostLabel}
@@ -460,6 +461,7 @@ function FirstLastFrameInput({
 function VideoPromptBox({
   label,
   value,
+  files,
   maxLength,
   onChange,
   enableOptimization = true,
@@ -474,6 +476,7 @@ function VideoPromptBox({
 }: {
   label: string;
   value: string;
+  files: VideoWorkspaceFile[];
   maxLength?: number;
   onChange: (value: string) => void;
   enableOptimization?: boolean;
@@ -488,6 +491,83 @@ function VideoPromptBox({
 }) {
   const descriptionId = "video-prompt-counter";
   const promptPreferences = usePromptPreferences("video-generator");
+  const textareaRef = useRef<HTMLTextAreaElement | null>(null);
+  const promptWrapRef = useRef<HTMLDivElement | null>(null);
+  const promptCursorRef = useRef(value.length);
+  const [mentionContext, setMentionContext] = useState<{ start: number; end: number; query: string } | null>(null);
+  const [activeMentionIndex, setActiveMentionIndex] = useState(0);
+  const referenceCounts: Record<VideoWorkspaceFile["mediaType"], number> = { image: 0, video: 0, audio: 0 };
+  const references = files.map((file) => {
+    const index = ++referenceCounts[file.mediaType];
+    const prefix = file.mediaType === "image" ? "Image" : file.mediaType === "video" ? "Video" : "Audio";
+    return {
+      id: `video-prompt-reference-${file.mediaType}-${index}`,
+      label: `${prefix}${index}`,
+      typeLabel: file.mediaType === "image" ? "参考图" : file.mediaType === "video" ? "参考视频" : "参考音频",
+      file,
+    };
+  });
+  const filteredReferences = mentionContext
+    ? references.filter((reference) => reference.label.toLowerCase().includes(mentionContext.query.toLowerCase()))
+    : [];
+  const mentionOpen = Boolean(mentionContext && filteredReferences.length);
+
+  useEffect(() => {
+    if (!mentionOpen) return;
+    const closeOnOutsidePointer = (event: PointerEvent) => {
+      if (!promptWrapRef.current?.contains(event.target as Node)) setMentionContext(null);
+    };
+    document.addEventListener("pointerdown", closeOnOutsidePointer);
+    return () => document.removeEventListener("pointerdown", closeOnOutsidePointer);
+  }, [mentionOpen]);
+
+  const updateMentionContext = (nextValue: string, cursor: number) => {
+    const prefix = nextValue.slice(0, cursor);
+    const atIndex = prefix.lastIndexOf("@");
+    const query = atIndex >= 0 ? prefix.slice(atIndex + 1) : "";
+    if (atIndex < 0 || !/^[A-Za-z0-9]*$/.test(query) || !references.length) {
+      setMentionContext(null);
+      return;
+    }
+    setMentionContext({ start: atIndex, end: cursor, query });
+    setActiveMentionIndex(0);
+  };
+
+  const focusPromptAt = (cursor: number) => {
+    promptCursorRef.current = cursor;
+    requestAnimationFrame(() => {
+      textareaRef.current?.focus();
+      textareaRef.current?.setSelectionRange(cursor, cursor);
+    });
+  };
+
+  const insertReference = (label: string) => {
+    if (!mentionContext) return;
+    const token = `@${label}`;
+    const suffix = value.slice(mentionContext.end);
+    const trailingSpace = suffix && /^\s/.test(suffix) ? "" : " ";
+    const nextValue = `${value.slice(0, mentionContext.start)}${token}${trailingSpace}${suffix}`;
+    if (maxLength && nextValue.length > maxLength) return;
+    const cursor = mentionContext.start + token.length + trailingSpace.length;
+    onChange(nextValue);
+    setMentionContext(null);
+    focusPromptAt(cursor);
+  };
+
+  const openReferenceMenu = () => {
+    if (!references.length) return;
+    const cursor = Math.min(promptCursorRef.current, value.length);
+    const needsLeadingSpace = cursor > 0 && !/\s/.test(value[cursor - 1]);
+    const insertion = `${needsLeadingSpace ? " " : ""}@`;
+    const nextValue = `${value.slice(0, cursor)}${insertion}${value.slice(cursor)}`;
+    if (maxLength && nextValue.length > maxLength) return;
+    const start = cursor + (needsLeadingSpace ? 1 : 0);
+    const end = start + 1;
+    onChange(nextValue);
+    setMentionContext({ start, end, query: "" });
+    setActiveMentionIndex(0);
+    focusPromptAt(end);
+  };
 
   return (
     <FieldFrame
@@ -539,19 +619,83 @@ function VideoPromptBox({
       <label className="studio-sr-only" htmlFor="video-prompt">
         {label}
       </label>
-      <div className="studio-textarea-wrap">
+      <div ref={promptWrapRef} className="studio-textarea-wrap">
         <textarea
+          ref={textareaRef}
           id="video-prompt"
           data-testid="video-prompt-input"
           value={value}
           maxLength={maxLength}
-          onChange={(event) => onChange(event.target.value)}
+          onChange={(event) => {
+            promptCursorRef.current = event.target.selectionStart ?? event.target.value.length;
+            onChange(event.target.value);
+            updateMentionContext(event.target.value, event.target.selectionStart ?? event.target.value.length);
+          }}
+          onSelect={(event) => {
+            promptCursorRef.current = event.currentTarget.selectionStart ?? event.currentTarget.value.length;
+          }}
+          onKeyDown={(event) => {
+            if (!mentionOpen) return;
+            if (event.key === "ArrowDown" || event.key === "ArrowUp") {
+              event.preventDefault();
+              const direction = event.key === "ArrowDown" ? 1 : -1;
+              setActiveMentionIndex((current) => (current + direction + filteredReferences.length) % filteredReferences.length);
+              return;
+            }
+            if (event.key === "Enter" || event.key === "Tab") {
+              event.preventDefault();
+              insertReference(filteredReferences[activeMentionIndex]?.label || filteredReferences[0].label);
+              return;
+            }
+            if (event.key === "Escape") {
+              event.preventDefault();
+              setMentionContext(null);
+            }
+          }}
           placeholder={placeholder}
           aria-describedby={descriptionId}
           aria-invalid={Boolean(maxLength && value.length > maxLength)}
+          aria-controls={mentionOpen ? "video-prompt-reference-menu" : undefined}
+          aria-haspopup={references.length ? "listbox" : undefined}
+          aria-activedescendant={mentionOpen ? filteredReferences[activeMentionIndex]?.id : undefined}
           className="studio-textarea"
         />
+        {mentionOpen ? (
+          <div id="video-prompt-reference-menu" className="studio-prompt-reference-menu" role="listbox" aria-label="选择参考素材">
+            {filteredReferences.map((reference, index) => (
+              <button
+                key={reference.id}
+                id={reference.id}
+                type="button"
+                role="option"
+                aria-selected={index === activeMentionIndex}
+                className={cn("studio-prompt-reference-option", index === activeMentionIndex && "is-active")}
+                onMouseEnter={() => setActiveMentionIndex(index)}
+                onClick={() => insertReference(reference.label)}
+              >
+                <span className="studio-prompt-reference-option__preview" aria-hidden="true">
+                  {reference.file.mediaType === "image" ? (
+                    <img src={reference.file.previewUrl} alt="" />
+                  ) : reference.file.mediaType === "video" ? (
+                    <Video className="size-4" />
+                  ) : (
+                    <FileAudio2 className="size-4" />
+                  )}
+                </span>
+                <span className="studio-prompt-reference-option__copy">
+                  <strong>{reference.label}</strong>
+                  <small>{reference.typeLabel}</small>
+                </span>
+              </button>
+            ))}
+          </div>
+        ) : null}
         <span id={descriptionId} className="studio-counter">{maxLength ? `${value.length}/${maxLength}` : value.length} 个字符</span>
+        {references.length ? (
+          <button type="button" className="studio-prompt-reference-trigger" aria-label="引用参考素材" title="引用参考素材" onClick={openReferenceMenu}>
+            <AtSign className="size-4" aria-hidden="true" />
+          </button>
+        ) : null}
       </div>
       {maxLength && value.length > maxLength ? <p className="studio-error-text" role="alert">提示词最多 {maxLength} 个字符。</p> : null}
       {optimizeError ? <p className="studio-error-text" role="alert">{optimizeError}</p> : null}
