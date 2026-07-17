@@ -15,12 +15,6 @@ import { cn } from "@/lib/utils";
 
 export { CustomSelect, HierarchicalSelect } from "@/components/studio/custom-select";
 
-function formatFileSize(size: number) {
-  if (size >= 1024 * 1024) return `${(size / 1024 / 1024).toFixed(1)} MB`;
-  if (size >= 1024) return `${Math.round(size / 1024)} KB`;
-  return `${size} B`;
-}
-
 export function FormPanel({ children }: { children: React.ReactNode }) {
   return (
     <div className="studio-form-panel">
@@ -198,7 +192,7 @@ export function CompactDropzone({
         role="button"
         tabIndex={0}
         aria-controls={inputId}
-        aria-describedby={helpId}
+        aria-describedby={hasFiles ? undefined : helpId}
         onClick={() => inputRef.current?.click()}
         onKeyDown={(event) => {
           if (event.key === "Enter" || event.key === " ") {
@@ -222,7 +216,7 @@ export function CompactDropzone({
           id={inputId}
           type="file"
           aria-label={fileInputLabel}
-          aria-describedby={helpId}
+          aria-describedby={hasFiles ? undefined : helpId}
           accept={accept}
           multiple={multiple}
           onChange={(event) => {
@@ -231,6 +225,8 @@ export function CompactDropzone({
           }}
           className="studio-file-input"
         />
+        {!hasFiles ? (
+          <>
         <div className="studio-upload__icon" aria-hidden="true">
           <UploadCloud className="size-5" />
         </div>
@@ -240,6 +236,8 @@ export function CompactDropzone({
           {dragging ? <span className="studio-upload__drop-hint">释放后自动读取文件</span> : null}
           {hasFiles && !dragging ? <span>点击区域可替换文件</span> : null}
         </div>
+          </>
+        ) : null}
         {hasFiles ? (
           <div className="studio-upload-list">
             {files.map((file, index) => (
@@ -253,10 +251,6 @@ export function CompactDropzone({
                     {file.mediaType === "audio" ? <FileAudio className="size-5" /> : <ImageUp className="size-5" />}
                   </span>
                 )}
-                <div>
-                  <strong>{file.name}</strong>
-                  <span>{formatFileSize(file.size)}</span>
-                </div>
                 {onRemove ? (
                   <button
                     type="button"

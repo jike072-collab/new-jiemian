@@ -3295,11 +3295,11 @@
   }
 
   .studio-reference-media__tabs {
-    display: flex;
-    width: fit-content;
-    max-width: 100%;
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    width: 100%;
     padding: 3px;
-    overflow-x: auto;
+    overflow: hidden;
     border: 1px solid var(--border-subtle);
     border-radius: 7px;
     background: color-mix(in srgb, var(--surface-hover) 54%, var(--surface));
@@ -3307,13 +3307,15 @@
 
   .studio-reference-media__tab {
     min-height: 30px;
-    padding: 5px 9px;
+    min-width: 0;
+    padding: 5px 4px;
     border: 0;
     border-radius: 5px;
     background: transparent;
     color: var(--muted-strong);
     font-size: 12px;
     line-height: 1;
+    text-align: center;
     white-space: nowrap;
     cursor: pointer;
   }
@@ -3531,9 +3533,11 @@
   }
 
   .studio-upload.is-filled {
-    align-content: stretch;
+    display: block;
+    min-height: 0;
     border-color: color-mix(in srgb, var(--primary) 28%, var(--border-subtle));
     background: color-mix(in srgb, var(--surface-hover) 48%, var(--surface));
+    padding: 8px;
   }
 
   .studio-custom-select__option-copy {
@@ -3545,11 +3549,6 @@
 
   .studio-custom-select__option-copy > span {
     flex: 0 0 auto;
-  }
-
-  .studio-upload.is-filled .studio-upload__icon,
-  .studio-upload.is-filled .studio-upload__content {
-    justify-self: center;
   }
 
   .studio-upload.is-error {
@@ -3630,20 +3629,21 @@
     width: 100%;
     display: flex;
     flex-wrap: wrap;
+    align-items: flex-start;
     gap: 8px;
-    margin-top: 4px;
+    margin-top: 0;
   }
 
   .studio-upload-item {
     display: grid;
-    grid-template-columns: 58px minmax(0, 1fr) 36px;
+    grid-template-columns: 58px 36px;
     align-items: center;
-    gap: 10px;
-    width: 100%;
+    gap: 8px;
+    width: auto;
     border: 1px solid var(--border-subtle);
     border-radius: var(--radius-control);
     background: color-mix(in srgb, var(--surface) 62%, transparent);
-    padding: 8px;
+    padding: 6px;
     transition:
       border-color var(--motion-fast) var(--ease-enter),
       background var(--motion-fast) var(--ease-enter);
