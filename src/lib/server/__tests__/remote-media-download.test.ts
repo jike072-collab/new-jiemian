@@ -377,6 +377,20 @@ test("GetToken result storage allows only the exact production result hosts", as
   });
 });
 
+test("Seedance result storage allows only Volcvideo regional subdomains", async () => {
+  await withEnv({ NODE_ENV: "production", REMOTE_MEDIA_ALLOWED_HOSTS: undefined }, async () => {
+    assert.doesNotThrow(() => remoteMediaDownloadInternalsForTests.assertAllowedRemoteHost(
+      "2130229220-amk-2108503009-default-350469.vod.cn-north-1.volcvideo.com",
+    ));
+    assert.throws(() => remoteMediaDownloadInternalsForTests.assertAllowedRemoteHost(
+      "vod.cn-north-1.volcvideo.com",
+    ));
+    assert.throws(() => remoteMediaDownloadInternalsForTests.assertAllowedRemoteHost(
+      "vod.cn-north-1.volcvideo.com.evil.test",
+    ));
+  });
+});
+
 test("same-origin redirects keep auth headers but cross-origin redirects reject them", async () => {
   const authHeader = "Bearer test-token";
   await withEnv({ NODE_ENV: "production", REMOTE_MEDIA_ALLOWED_HOSTS: "media.example.test,*.media.example.test" }, async () => {

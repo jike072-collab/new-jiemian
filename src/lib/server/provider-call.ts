@@ -37,6 +37,7 @@ type ProviderOutput = {
   base64?: string;
   jobId?: string;
   status?: string;
+  progress?: number;
   statusUrl?: string;
   mimeType?: string;
 };
@@ -210,11 +211,13 @@ function parseProviderOutput(payload: unknown): ProviderOutput {
     root.base64,
     root.image_base64,
   );
+  const progressValue = Number(root.progress ?? first.progress);
   return {
     url,
     base64,
     jobId: nestedString(payload, ["taskId", "task_id", "id", "video_id"]),
     status: nestedString(payload, ["status"]),
+    ...(Number.isFinite(progressValue) ? { progress: Math.min(Math.max(progressValue, 0), 100) } : {}),
     statusUrl: nestedString(payload, ["status_url"]),
     mimeType: nestedString(payload, ["mime_type"]),
   };
@@ -350,24 +353,6 @@ function redbirdVideoPayload(provider: ProviderConfig, input: {
     ...(input.videoUrls?.length ? { videos: input.videoUrls } : {}),
     ...(input.audioUrls?.length ? { audios: input.audioUrls } : {}),
   };
-}
-
-function redbirdVideoFormData(provider: ProviderConfig, input: {
-  prompt: string;
-  ratio: string;
-  duration: number;
-  files: UploadedMedia[];
-}) {
-  const form = new FormData();
-  form.append("model", provider.model);
-  form.append("prompt", input.prompt);
-  form.append("aspect_ratio", input.ratio);
-  form.append("resolution", "720p");
-  form.append("seconds", String(input.duration));
-  for (const file of input.files) {
-    form.append("input_reference", new Blob([new Uint8Array(file.bytes)], { type: file.mimeType }), file.fileName);
-  }
-  return form;
 }
 
 async function prepareRedbirdReferenceUrls(files: UploadedMedia[]) {
@@ -2019,24 +2004,18 @@ export async function submitVideo(input: {
       const referenceImages = mediaFiles(input, "image");
       const referenceVideos = mediaFiles(input, "video");
       const referenceAudios = mediaFiles(input, "audio");
-      // Seedance image-only jobs are stable with signed JSON URLs; multipart input_reference can reset upstream.
-      const useFormData = false;
-      const [imageUrls, videoUrls, audioUrls] = useFormData
-        ? [[], [], []]
-        : await Promise.all([
-          prepareRedbirdReferenceUrls(referenceImages),
-          prepareRedbirdReferenceUrls(referenceVideos),
-          prepareRedbirdReferenceUrls(referenceAudios),
-        ]);
+      const [imageUrls, videoUrls, audioUrls] = await Promise.all([
+        prepareRedbirdReferenceUrls(referenceImages),
+        prepareRedbirdReferenceUrls(referenceVideos),
+        prepareRedbirdReferenceUrls(referenceAudios),
+      ]);
       const response = await fetch(readyProvider.apiUrl, {
         method: "POST",
         headers: {
-          ...(useFormData ? {} : { "Content-Type": "application/json" }),
+          "Content-Type": "application/json",
           ...authHeaders(readyProvider),
         },
-        body: useFormData
-          ? redbirdVideoFormData(readyProvider, { ...input, files: referenceImages })
-          : JSON.stringify(redbirdVideoPayload(readyProvider, { ...input, files: referenceImages, imageUrls, videoUrls, audioUrls })),
+        body: JSON.stringify(redbirdVideoPayload(readyProvider, { ...input, files: referenceImages, imageUrls, videoUrls, audioUrls })),
         signal: AbortSignal.timeout(180000),
       });
       const payload = await readProviderJson(response, readyProvider);
@@ -2163,6 +2142,7 @@ export async function submitVideo(input: {
       ownerLocalUserId: input.billingLocalUserId || null,
       providerId: readyProvider.id,
       status: normalizeStatus(output.status || ""),
+      progress: output.progress,
       statusUrl: output.statusUrl
         ? absolutizeProviderUrl(readyProvider, output.statusUrl)
         : isGrokVideoProvider(readyProvider) ? grokStatusUrl(readyProvider.apiUrl, jobId) : deriveStatusUrl(readyProvider.apiUrl, jobId),
@@ -2327,6 +2307,7 @@ export async function refreshVideoJob(jobId: string, localUserId?: string | null
     });
     return updateJob(job.id, {
       status,
+      progress: output.progress,
       billing_state: job.billing_task_id ? job.billing_state || "prechecked" : job.billing_state,
     });
   }
@@ -2342,6 +2323,7 @@ export async function refreshVideoJob(jobId: string, localUserId?: string | null
     } satisfies Partial<LibraryItem>);
     let updated = await updateJob(job.id, {
       status: "done",
+      progress: 100,
       billing_state: job.billing_task_id ? job.billing_state || "accepted" : job.billing_state,
       billing_last_error: null,
     }) || job;
@@ -2377,6 +2359,7 @@ export async function refreshVideoJob(jobId: string, localUserId?: string | null
     } satisfies Partial<LibraryItem>);
     let updated = await updateJob(job.id, {
       status: "done",
+      progress: 100,
       billing_state: job.billing_task_id ? job.billing_state || "accepted" : job.billing_state,
       billing_last_error: null,
     }) || job;
@@ -2405,6 +2388,7 @@ export async function refreshVideoJob(jobId: string, localUserId?: string | null
 
   return updateJob(job.id, {
     status,
+    progress: output.progress,
     billing_state: job.billing_task_id ? job.billing_state || "prechecked" : job.billing_state,
   });
 }
@@ -2497,7 +2481,6 @@ export const providerCallInternalsForTests = {
   isGetTokenVeoProvider,
   isRedbirdSeedanceProvider,
   redbirdVideoPayload,
-  redbirdVideoFormData,
   shouldKeepGetTokenVeoJobPending,
   getTokenVeoVideoResultUrl,
   isImg2ImageProvider,

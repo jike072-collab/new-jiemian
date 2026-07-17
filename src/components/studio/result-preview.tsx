@@ -2021,13 +2021,16 @@ function ImageGenerationProgressItem({
     const completed = Math.min(Math.max(item.current, 0), total);
     const activeIndex = item.status === "running" ? Math.min(completed + 1, total) : completed;
     const elapsedMs = (item.completedAt ?? tick) - item.startedAt;
+    const isVideo = item.scope === "video";
+    const providerProgressRatio = isVideo && Number.isFinite(item.providerProgress)
+      ? Math.min(Math.max(Number(item.providerProgress) / 100, 0), 1)
+      : null;
     const progressRatio = item.status === "done"
       ? 1
       : item.status === "failed"
         ? Math.min(Math.max(completed / total, 0), 1)
-        : animatedTaskProgress(elapsedMs, completed / total, 0.94);
+        : providerProgressRatio ?? animatedTaskProgress(elapsedMs, completed / total, 0.94);
     const progressPercent = Math.round(progressRatio * 100);
-    const isVideo = item.scope === "video";
     const title = item.status === "done"
       ? isVideo ? "视频生成完成" : "生成已完成"
       : item.status === "failed"

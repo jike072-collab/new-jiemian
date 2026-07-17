@@ -1750,6 +1750,7 @@ export function StudioApp() {
   const updateVideoGenerationProgress = useCallback((
     status: "running" | "done" | "failed",
     message: string,
+    providerProgress?: number,
   ) => {
     const progressId = videoGenerationProgressIdRef.current;
     if (!progressId) return;
@@ -1758,6 +1759,9 @@ export function StudioApp() {
       status,
       current: status === "done" ? 1 : 0,
       completedAt: status === "running" ? undefined : Date.now(),
+      providerProgress: status === "done"
+        ? 100
+        : Number.isFinite(providerProgress) ? Math.min(Math.max(Number(providerProgress), 0), 100) : current.providerProgress,
       message,
     }));
     if (status !== "running") videoGenerationProgressIdRef.current = null;
@@ -2921,6 +2925,7 @@ export function StudioApp() {
             : itemBackedJob.status === "failed"
               ? "生成失败"
               : itemBackedJob.status === "queued" ? "视频任务排队中" : "视频正在生成",
+          itemBackedJob.progress,
         );
         if (updatedItem) {
           updateVideoWorkspace({ job: itemBackedJob });
@@ -3089,6 +3094,7 @@ export function StudioApp() {
           : resultStatus === "failed"
             ? "生成失败"
             : resultStatus === "queued" ? "视频任务排队中" : "视频正在生成",
+        data.job?.progress,
       );
       updateVideoWorkspace({ job: data.job });
       handleVideoResult(data.item, data.job);

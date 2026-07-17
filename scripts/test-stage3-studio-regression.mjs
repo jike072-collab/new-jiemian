@@ -253,6 +253,7 @@ function runImageGenerationSourceChecks() {
   const studioSource = readFileSync(join(root, "src/components/studio-app.tsx"), "utf8");
   const previewSource = readFileSync(join(root, "src/components/studio/result-preview.tsx"), "utf8");
   const imageRouteSource = readFileSync(join(root, "src/app/api/generate/image/route.ts"), "utf8");
+  const stylesSource = readFileSync(join(root, "src/app/globals.css"), "utf8");
 
   assert(studioSource.includes("activeImageWorkspaceScope === \"image-editor\" && activeImageInFlightCountRef.current >= 1"));
   assert(studioSource.includes("runImageGenerationWithSlot(async () =>"));
@@ -264,6 +265,11 @@ function runImageGenerationSourceChecks() {
   assert(previewSource.includes("window.setTimeout(() => setLeaving(true), 3200)"));
   assert(previewSource.includes(".slice(0, 3)"));
   assert(previewSource.includes('const isVideo = item.scope === "video"'));
+  assert(studioSource.includes("itemBackedJob.progress"));
+  assert(studioSource.includes("data.job?.progress"));
+  assert(previewSource.includes("providerProgressRatio ?? animatedTaskProgress"));
+  assert(stylesSource.includes(".studio-upload-item .studio-icon-button {\n    position: absolute;\n    top: 4px;\n    right: 4px;"));
+  assert(stylesSource.includes(".studio-video-frame-slot__remove {\n    position: absolute;\n    top: 8px;\n    right: 8px;"));
   assert(imageRouteSource.includes("if (error instanceof WorkloadLimitError) await failBeforeSubmit(error)"));
 }
 

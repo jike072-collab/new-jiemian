@@ -117,6 +117,7 @@ export type JobRecord = {
   ownerLocalUserId?: string | null;
   providerId: string;
   status: "queued" | "generating" | "done" | "failed";
+  progress?: number;
   statusUrl: string;
   sourceUrl?: string;
   billing_task_id?: string | null;

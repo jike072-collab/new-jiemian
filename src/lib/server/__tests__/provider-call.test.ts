@@ -64,43 +64,26 @@ test("Seedance defaults expose the Redbird Seedance 2.0 model catalog", () => {
   assert.equal(seedanceVideoRequestSecondsForModel(models[0], 15), 15);
 });
 
-test("Redbird Seedance multipart builder includes required fields", () => {
-  const form = providerCallInternalsForTests.redbirdVideoFormData({
-    ...provider,
-    model: "Doubao-Seedance-2-0-260128-grid",
-  }, {
-    prompt: "让产品自然旋转展示",
-    ratio: "9:16",
-    duration: 15,
-    files: [
-      { bytes: Buffer.from("first"), mimeType: "image/png", fileName: "first.png" },
-      { bytes: Buffer.from("second"), mimeType: "image/jpeg", fileName: "second.jpg" },
-    ],
-  });
-  assert.equal(form.get("model"), "Doubao-Seedance-2-0-260128-grid");
-  assert.equal(form.get("seconds"), "15");
-  assert.equal(form.get("aspect_ratio"), "9:16");
-  assert.equal(form.get("resolution"), "720p");
-  assert.equal(form.getAll("input_reference").length, 2);
-});
-
-test("Redbird Seedance mixed reference payload keeps media types separate", () => {
-  const payload = providerCallInternalsForTests.redbirdVideoPayload({
-    ...provider,
-    model: "Doubao-Seedance-2-0-260128-grid",
-  }, {
-    prompt: "替换商品并保持原动作",
-    ratio: "9:16",
-    duration: 15,
-    files: [{ bytes: Buffer.from("image"), mimeType: "image/png", fileName: "shoe.png", mediaType: "image" }],
-    imageUrls: ["https://example.test/reference.png"],
-    videoUrls: ["https://example.test/reference.mp4"],
-    audioUrls: ["https://example.test/reference.mp3"],
-  });
-  assert.deepEqual(payload.images, ["https://example.test/reference.png"]);
-  assert.deepEqual(payload.videos, ["https://example.test/reference.mp4"]);
-  assert.deepEqual(payload.audios, ["https://example.test/reference.mp3"]);
-  assert.equal(payload.resolution, "720p");
+test("Every Redbird Seedance model uses signed JSON reference arrays", () => {
+  const models = defaultProviders().find((item) => item.id === "video-main")?.models || [];
+  assert.equal(models.length, 6);
+  for (const model of models) {
+    const selected = { ...provider, model };
+    assert.equal(providerCallInternalsForTests.isRedbirdSeedanceProvider(selected), true);
+    const payload = providerCallInternalsForTests.redbirdVideoPayload(selected, {
+      prompt: "替换商品并保持原动作",
+      ratio: "9:16",
+      duration: 15,
+      files: [{ bytes: Buffer.from("image"), mimeType: "image/png", fileName: "shoe.png", mediaType: "image" }],
+      imageUrls: ["https://example.test/reference.png"],
+      videoUrls: ["https://example.test/reference.mp4"],
+      audioUrls: ["https://example.test/reference.mp3"],
+    });
+    assert.deepEqual(payload.images, ["https://example.test/reference.png"]);
+    assert.deepEqual(payload.videos, ["https://example.test/reference.mp4"]);
+    assert.deepEqual(payload.audios, ["https://example.test/reference.mp3"]);
+    assert.equal(payload.resolution, "720p");
+  }
 });
 
 test("Provider output reads object-shaped data responses", () => {
@@ -114,6 +97,17 @@ test("Provider output reads object-shaped data responses", () => {
     statusUrl: "",
     mimeType: "",
   });
+});
+
+test("Provider output preserves real upstream progress", () => {
+  assert.equal(providerCallInternalsForTests.parseProviderOutput({
+    id: "redbird-task-progress",
+    status: "processing",
+    progress: 86,
+  }).progress, 86);
+  assert.equal(providerCallInternalsForTests.parseProviderOutput({
+    data: { status: "processing", progress: 30 },
+  }).progress, 30);
 });
 
 test("Seedance validates model-specific video, audio, and duration limits", () => {

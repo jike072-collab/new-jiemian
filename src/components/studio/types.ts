@@ -124,6 +124,7 @@ export type ImageGenerationProgressItem = {
   total: number;
   startedAt: number;
   completedAt?: number;
+  providerProgress?: number;
   message?: string;
 };
 
