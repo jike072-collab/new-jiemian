@@ -312,7 +312,7 @@ function VideoReferenceInput({
                     className={cn("studio-reference-media__tab", effectiveActiveMediaType === item.type && "is-active")}
                     onClick={() => setActiveMediaType(item.type)}
                   >
-                    <span className={cn("studio-reference-media__tab-label", itemRequired && "is-required")}>{item.label}</span> {count}/{item.max}
+                    <span className={cn("studio-reference-media__tab-content", itemRequired && "is-required")}>{item.label} {count}/{item.max}</span>
                   </button>
                 );
               })}

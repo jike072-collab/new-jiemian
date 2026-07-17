@@ -3320,12 +3320,12 @@
     cursor: pointer;
   }
 
-  .studio-reference-media__tab-label {
+  .studio-reference-media__tab-content {
     position: relative;
     display: inline-block;
   }
 
-  .studio-reference-media__tab-label.is-required::after {
+  .studio-reference-media__tab-content.is-required::after {
     position: absolute;
     top: -2px;
     right: -7px;
