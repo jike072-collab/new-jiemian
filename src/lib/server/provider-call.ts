@@ -82,6 +82,13 @@ function firstString(...values: unknown[]) {
 }
 
 function nestedString(value: unknown, fields: string[]): string {
+  if (Array.isArray(value)) {
+    for (const item of value) {
+      const found = nestedString(item, fields);
+      if (found) return found;
+    }
+    return "";
+  }
   const record = asRecord(value);
   for (const field of ["data", "task", "result", "output", "video"]) {
     const nested = record[field];
@@ -90,7 +97,15 @@ function nestedString(value: unknown, fields: string[]): string {
       if (found) return found;
     }
   }
-  return firstString(...fields.map((field) => record[field]));
+  const direct = firstString(...fields.map((field) => record[field]));
+  if (direct) return direct;
+  for (const nested of Object.values(record)) {
+    if (nested && typeof nested === "object") {
+      const found = nestedString(nested, fields);
+      if (found) return found;
+    }
+  }
+  return "";
 }
 
 type OutputUrlCandidate = {
