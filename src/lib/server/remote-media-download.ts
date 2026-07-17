@@ -45,6 +45,7 @@ const builtInRemoteMediaHosts = [
   "image.codesonline.dev",
   "nb.gettoken.cn",
   "gettoken-jp.oss-accelerate.aliyuncs.com",
+  "workflow888.oss-cn-hongkong.aliyuncs.com",
   "*.vod.cn-north-1.volcvideo.com",
 ];
 

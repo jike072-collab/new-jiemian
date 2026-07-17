@@ -377,6 +377,20 @@ test("GetToken result storage allows only the exact production result hosts", as
   });
 });
 
+test("Redbird result storage allows only the exact production workflow host", async () => {
+  await withEnv({ NODE_ENV: "production", REMOTE_MEDIA_ALLOWED_HOSTS: undefined }, async () => {
+    assert.doesNotThrow(() => remoteMediaDownloadInternalsForTests.assertAllowedRemoteHost(
+      "workflow888.oss-cn-hongkong.aliyuncs.com",
+    ));
+    assert.throws(() => remoteMediaDownloadInternalsForTests.assertAllowedRemoteHost(
+      "other.workflow888.oss-cn-hongkong.aliyuncs.com",
+    ));
+    assert.throws(() => remoteMediaDownloadInternalsForTests.assertAllowedRemoteHost(
+      "workflow888.oss-cn-hongkong.aliyuncs.com.evil.test",
+    ));
+  });
+});
+
 test("Seedance result storage allows only Volcvideo regional subdomains", async () => {
   await withEnv({ NODE_ENV: "production", REMOTE_MEDIA_ALLOWED_HOSTS: undefined }, async () => {
     assert.doesNotThrow(() => remoteMediaDownloadInternalsForTests.assertAllowedRemoteHost(
