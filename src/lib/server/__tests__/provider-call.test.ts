@@ -44,14 +44,14 @@ test("GetToken Veo defaults expose Pro and Fast with three resolutions", () => {
 test("Seedance defaults expose the Redbird Seedance 2.0 model catalog", () => {
   const seedanceProvider = defaultProviders().find((item) => item.id === "video-main");
   const models = seedanceProvider?.models || [];
-  assert.equal(models.length, 6);
+  assert.equal(models.length, 5);
   assert.equal(models.includes("quanneng2.0"), true);
   assert.equal(models.includes("Doubao-Seedance-2.0-fast-260128-grid"), true);
   assert.equal(models.includes("quanneng2.0-9tu"), true);
+  assert.equal(models.includes("B-quannengship2.0"), false);
   assert.equal(models.includes("sdquan-2-miao"), false);
   assert.equal(seedanceProvider?.modelDisplayNames?.["Doubao-Seedance-2.0-fast-260128-grid"], "Seedance 2.0 Fast 933 不卡真人");
   assert.equal(seedanceProvider?.modelDisplayNames?.["quanneng2.0-9tu"], "全能视频 2.0 9 图 首帧");
-  assert.equal(seedanceProvider?.modelDisplayNames?.["B-quannengship2.0"], "全能视频 2.0 线路 B");
   assert.equal(seedanceProvider?.modelDisplayNames?.["quanneng2.0"], "全能视频 2.0 线路 S");
   assert.deepEqual(seedanceProvider?.enabledModels, models);
   assert.equal(seedanceProvider?.apiUrl, "https://open.hongniaoai.com/api/v1/videos");
@@ -67,7 +67,7 @@ test("Seedance defaults expose the Redbird Seedance 2.0 model catalog", () => {
 
 test("Every Redbird Seedance model uses signed JSON reference arrays", () => {
   const models = defaultProviders().find((item) => item.id === "video-main")?.models || [];
-  assert.equal(models.length, 6);
+  assert.equal(models.length, 5);
   for (const model of models) {
     const selected = { ...provider, model };
     assert.equal(providerCallInternalsForTests.isRedbirdSeedanceProvider(selected), true);
