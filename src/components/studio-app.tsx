@@ -2933,10 +2933,8 @@ export function StudioApp() {
           await refreshAccountAfterGeneration();
         }
         await refreshLibraryAfterMutation();
-      } catch (error) {
-        const text = error instanceof Error ? error.message : "视频任务查询失败。";
-        updateVideoWorkspace({ submitError: text, submitDiagnostic: diagnosticFromError(error) });
-        setMessage("生成失败");
+      } catch {
+        // Provider polling can time out while a long video is still running; keep polling.
       }
     }, 5000);
     return () => window.clearInterval(timer);
