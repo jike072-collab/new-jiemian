@@ -40,7 +40,7 @@ test("Seedance pricing follows model cost and duration tiers", () => {
   assert.equal(estimateVideoGenerationQuota({ ...baseInput, model: "quanneng2.0", resolution: "720p", durationSeconds: 15 }), 900);
   assert.equal(estimateVideoGenerationQuota({ ...baseInput, model: "Doubao-Seedance-2.0-fast-260128-grid", resolution: "720p", durationSeconds: 15 }), 1200);
   assert.equal(estimateVideoGenerationQuota({ ...baseInput, model: "Doubao-Seedance-2-0-260128-grid", resolution: "720p", durationSeconds: 15 }), 1400);
-  const proQuotaByDuration = [1200, 1500, 1800, 2100, 2400, 2700, 3000, 3300, 3600, 3900, 4200, 4500];
+  const proQuotaByDuration = [400, 500, 600, 700, 800, 900, 1000, 1100, 1200, 1300, 1400, 1500];
   for (const [index, quota] of proQuotaByDuration.entries()) {
     assert.equal(estimateVideoGenerationQuota({ ...baseInput, model: "sdquan-2-miao", resolution: "720p", durationSeconds: index + 4 }), quota);
   }
@@ -50,14 +50,16 @@ test("Seedance premium models consume multiple membership video entitlements", (
   assert.equal(estimateVideoGenerationEntitlementUnits({ resolution: "720p", model: "quanneng2.0-9tu" }), 1);
   assert.equal(estimateVideoGenerationEntitlementUnits({ resolution: "720p", model: "video-2.0-fast-720P" }), 1);
   assert.equal(estimateVideoGenerationEntitlementUnits({ resolution: "720p", model: "B-quannengship2.0" }), 2);
-  assert.equal(estimateVideoGenerationEntitlementUnits({ resolution: "720p", model: "quanneng2.0" }), 2);
+  assert.equal(estimateVideoGenerationEntitlementUnits({ resolution: "720p", model: "quanneng2.0", durationSeconds: 9 }), 1);
+  assert.equal(estimateVideoGenerationEntitlementUnits({ resolution: "720p", model: "quanneng2.0", durationSeconds: 10 }), 2);
   assert.equal(estimateVideoGenerationEntitlementUnits({ resolution: "720p", model: "Doubao-Seedance-2.0-fast-260128-grid" }), 3);
-  assert.equal(estimateVideoGenerationEntitlementUnits({ resolution: "720p", model: "Doubao-Seedance-2-0-260128-grid" }), 4);
+  assert.equal(estimateVideoGenerationEntitlementUnits({ resolution: "720p", model: "Doubao-Seedance-2-0-260128-grid", durationSeconds: 9 }), 1);
+  assert.equal(estimateVideoGenerationEntitlementUnits({ resolution: "720p", model: "Doubao-Seedance-2-0-260128-grid", durationSeconds: 10 }), 2);
   assert.equal(estimateVideoGenerationEntitlementUnits({ resolution: "720p", model: "sdquan-2-miao", durationSeconds: 4 }), 1);
-  assert.equal(estimateVideoGenerationEntitlementUnits({ resolution: "720p", model: "sdquan-2-miao", durationSeconds: 5 }), 2);
-  assert.equal(estimateVideoGenerationEntitlementUnits({ resolution: "720p", model: "sdquan-2-miao", durationSeconds: 8 }), 3);
-  assert.equal(estimateVideoGenerationEntitlementUnits({ resolution: "720p", model: "sdquan-2-miao", durationSeconds: 11 }), 4);
-  assert.equal(estimateVideoGenerationEntitlementUnits({ resolution: "720p", model: "sdquan-2-miao", durationSeconds: 14 }), 5);
+  assert.equal(estimateVideoGenerationEntitlementUnits({ resolution: "720p", model: "sdquan-2-miao", durationSeconds: 9 }), 1);
+  assert.equal(estimateVideoGenerationEntitlementUnits({ resolution: "720p", model: "sdquan-2-miao", durationSeconds: 10 }), 2);
+  assert.equal(estimateVideoGenerationEntitlementUnits({ resolution: "720p", model: "sdquan-2-miao", durationSeconds: 11 }), 2);
+  assert.equal(estimateVideoGenerationEntitlementUnits({ resolution: "720p", model: "sdquan-2-miao", durationSeconds: 15 }), 2);
 });
 
 test("only unpriced legacy Seedance models remain blocked", () => {

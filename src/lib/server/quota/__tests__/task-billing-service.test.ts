@@ -330,7 +330,7 @@ test("uses and restores two video entitlements for a 4K generation", async () =>
   assert.equal(status.entitlements.video_generation.remaining, initialRemaining);
 });
 
-test("uses and restores four video entitlements for a premium Seedance generation", async () => {
+test("uses and restores two video entitlements for a premium Seedance generation", async () => {
   const harness = service({ availableQuota: 0, providerQuota: 0 });
   await harness.membershipService.applyPaidMembership({
     localUserId: "local-user",
@@ -345,14 +345,14 @@ test("uses and restores four video entitlements for a premium Seedance generatio
     taskId: "member-video-seedance-full-task",
     operation: "cloud_video_generation" as const,
     estimatedQuotaUnits: 1400,
-    membershipEntitlementAmount: 4,
+    membershipEntitlementAmount: 2,
     idempotencyKey: "member-video-seedance-full-task",
     requestFingerprint: "video:seedance-full:member-video-seedance-full-task",
   };
   const prechecked = await harness.taskBilling.precheck(input);
   assert.equal(prechecked.ok, true);
   if (!prechecked.ok) return;
-  assert.equal(prechecked.record.membership_entitlement_units, 4);
+  assert.equal(prechecked.record.membership_entitlement_units, 2);
 
   const claimed = await harness.taskBilling.claimProviderDispatch(input);
   assert.equal(claimed.ok, true);
