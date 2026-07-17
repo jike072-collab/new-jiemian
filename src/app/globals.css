@@ -3320,6 +3320,22 @@
     cursor: pointer;
   }
 
+  .studio-reference-media__tab-label {
+    position: relative;
+    display: inline-block;
+  }
+
+  .studio-reference-media__tab-label.is-required::after {
+    position: absolute;
+    top: -2px;
+    right: -7px;
+    width: 5px;
+    height: 5px;
+    border-radius: 999px;
+    background: #ef4444;
+    content: "";
+  }
+
   .studio-reference-media__tab:hover,
   .studio-reference-media__tab:focus-visible {
     color: var(--foreground);

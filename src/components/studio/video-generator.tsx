@@ -259,6 +259,7 @@ function VideoReferenceInput({
   const maxVideos = referenceOptions?.maxReferenceVideos ?? 0;
   const maxAudios = referenceOptions?.maxReferenceAudios ?? 0;
   const maxDurationSeconds = referenceOptions?.maxReferenceDurationSeconds ?? 15;
+  const requiredReferenceMedia = new Set(referenceOptions?.requiredReferenceMedia || (required ? ["image"] : []));
   const mediaOptions = [
     { type: "image" as const, label: "参考图", max: maxImages },
     { type: "video" as const, label: "参考视频", max: maxVideos },
@@ -279,8 +280,8 @@ function VideoReferenceInput({
   return (
     <FieldFrame
       label={hasMediaTabs ? "参考素材" : maxImages > 1 ? "参考图" : label}
-      required={required || firstLastMode}
-      hint={supportsFirstLastFrame ? undefined : required ? "必填" : mode === "image-to-video" ? "已上传" : "可选"}
+      required={firstLastMode || (!hasMediaTabs && requiredReferenceMedia.has("image"))}
+      hint={supportsFirstLastFrame ? undefined : !hasMediaTabs && requiredReferenceMedia.has("image") ? "必填" : mode === "image-to-video" ? "已上传" : "可选"}
       action={supportsFirstLastFrame ? (
         <button
           type="button"
@@ -300,16 +301,18 @@ function VideoReferenceInput({
             <div className="studio-reference-media__tabs" role="tablist" aria-label="参考素材类型">
               {mediaOptions.map((item) => {
                 const count = files.filter((file) => file.mediaType === item.type).length;
+                const itemRequired = requiredReferenceMedia.has(item.type);
                 return (
                   <button
                     key={item.type}
                     type="button"
                     role="tab"
+                    aria-label={`${item.label}${itemRequired ? "，必填" : ""} ${count}/${item.max}`}
                     aria-selected={effectiveActiveMediaType === item.type}
                     className={cn("studio-reference-media__tab", effectiveActiveMediaType === item.type && "is-active")}
                     onClick={() => setActiveMediaType(item.type)}
                   >
-                    {item.label} {count}/{item.max}
+                    <span className={cn("studio-reference-media__tab-label", itemRequired && "is-required")}>{item.label}</span> {count}/{item.max}
                   </button>
                 );
               })}

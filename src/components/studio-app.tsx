@@ -2120,6 +2120,7 @@ export function StudioApp() {
   const videoWorkspaceFiles = videoWorkspace.files;
   const videoWorkspaceHasFiles = videoWorkspaceFiles.length > 0;
   const videoReferenceImages = videoWorkspaceFiles.filter((item) => item.mediaType === "image");
+  const videoWorkspaceHasModelReferenceImage = videoReferenceImages.length > 0;
   const videoFirstLastFramesReady = videoWorkspace.referenceMode !== "first-last" || videoReferenceImages.length === 2;
   const videoWorkspacePrompt = videoWorkspace.prompt.trim();
   const videoWorkspaceNeedsFile = activeVideoMode === "image-to-video";
@@ -2154,7 +2155,7 @@ export function StudioApp() {
     && !videoPricingPending
     && (!videoWorkspaceNeedsFile || videoWorkspaceHasFiles)
     && (!videoWorkspaceRequiresFile || videoWorkspaceHasFiles)
-    && (!selectedVideoModelRequiresFile || videoWorkspaceHasFiles);
+    && (!selectedVideoModelRequiresFile || videoWorkspaceHasModelReferenceImage);
 
   const updateVideoWorkspace = useCallback((patch: Partial<VideoWorkspaceState>) => {
     setVideoWorkspace((prev) => ({
@@ -2178,7 +2179,7 @@ export function StudioApp() {
       const nextRatio = ratioOptions.includes(prev.ratio) ? prev.ratio : ratioOptions[0];
       const nextResolution = preferredVideoResolution(selectedVideoProvider, prev.resolution);
       const modelNeedsFile = videoProviderRequiresReferenceImage(selectedVideoProvider);
-      const nextFileError = modelNeedsFile && !prev.files.length
+      const nextFileError = modelNeedsFile && !prev.files.some((item) => item.mediaType === "image")
         ? videoModelReferenceMessage
         : prev.fileError === videoModelReferenceMessage ? "" : prev.fileError;
       if (nextDuration === prev.duration && nextRatio === prev.ratio && nextResolution === prev.resolution && nextFileError === prev.fileError) return prev;
@@ -2371,7 +2372,7 @@ export function StudioApp() {
         files: nextFiles,
         fileError: prev.referenceMode === "first-last" && nextFiles.length < 2
           ? "首尾帧视频需要上传首帧图和尾帧图。"
-          : selectedVideoModelRequiresFile && !nextFiles.length ? videoModelReferenceMessage : "",
+          : selectedVideoModelRequiresFile && !nextFiles.some((item) => item.mediaType === "image") ? videoModelReferenceMessage : "",
         submitError: "",
         submitDiagnostic: null,
       };
@@ -2388,7 +2389,7 @@ export function StudioApp() {
       }),
       fileError: prev.referenceMode === "first-last"
         ? "首尾帧视频需要上传首帧图和尾帧图。"
-        : selectedVideoModelRequiresFile ? videoModelReferenceMessage : "",
+        : selectedVideoModelRequiresFile && !prev.files.some((file) => file.mediaType !== mediaType && file.mediaType === "image") ? videoModelReferenceMessage : "",
       submitError: "",
       submitDiagnostic: null,
     }));
@@ -2960,7 +2961,7 @@ export function StudioApp() {
       updateVideoWorkspace({ fileError: text, submitError: text });
       return;
     }
-    if (selectedVideoModelRequiresFile && !videoWorkspaceHasFiles) {
+    if (selectedVideoModelRequiresFile && !videoWorkspaceHasModelReferenceImage) {
       const text = videoModelReferenceMessage;
       updateVideoWorkspace({ fileError: text, submitError: text });
       return;
@@ -2971,10 +2972,10 @@ export function StudioApp() {
       setMessage(text);
       return;
     }
-    if ((videoWorkspaceRequiresFile || videoWorkspaceNeedsFile || selectedVideoModelRequiresFile) && !videoWorkspaceHasFiles) {
+    if ((videoWorkspaceRequiresFile || videoWorkspaceNeedsFile) && !videoWorkspaceHasFiles) {
       setVideoWorkspace((prev) => ({
         ...prev,
-        fileError: selectedVideoModelRequiresFile ? videoModelReferenceMessage : "请先上传图像。",
+        fileError: "请先上传图像。",
       }));
       return;
     }
@@ -3123,6 +3124,7 @@ export function StudioApp() {
     videoWorkspace.resolution,
     videoWorkspace.referenceMode,
     videoReferenceImages.length,
+    videoWorkspaceHasModelReferenceImage,
     videoWorkspaceHasFiles,
     videoWorkspaceRequiresFile,
     videoWorkspaceNeedsFile,
