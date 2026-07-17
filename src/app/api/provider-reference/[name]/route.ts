@@ -17,13 +17,8 @@ function parseRange(value: string | null, size: number) {
   return { start, end: Math.min(end, size - 1) };
 }
 
-async function serve(request: NextRequest, context: { params: Promise<{ name: string }> }, headOnly: boolean) {
-  const { name } = await context.params;
-  const reference = await resolveProviderReference(
-    name,
-    request.nextUrl.searchParams.get("expires"),
-    request.nextUrl.searchParams.get("signature"),
-  );
+export async function serveProviderReference(request: NextRequest, name: string, expires: string | null, signature: string | null, headOnly: boolean) {
+  const reference = await resolveProviderReference(name, expires, signature);
   if (!reference) return NextResponse.json({ error: "Reference not found." }, { status: 404 });
   const baseHeaders = {
     "Content-Type": providerReferenceMimeType(name),
@@ -52,9 +47,11 @@ async function serve(request: NextRequest, context: { params: Promise<{ name: st
 }
 
 export async function GET(request: NextRequest, context: { params: Promise<{ name: string }> }) {
-  return serve(request, context, false);
+  const { name } = await context.params;
+  return serveProviderReference(request, name, request.nextUrl.searchParams.get("expires"), request.nextUrl.searchParams.get("signature"), false);
 }
 
 export async function HEAD(request: NextRequest, context: { params: Promise<{ name: string }> }) {
-  return serve(request, context, true);
+  const { name } = await context.params;
+  return serveProviderReference(request, name, request.nextUrl.searchParams.get("expires"), request.nextUrl.searchParams.get("signature"), true);
 }

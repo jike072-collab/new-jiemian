@@ -61,7 +61,7 @@ export async function storeProviderReference(input: { bytes: Buffer; mimeType: s
   return {
     name,
     path: resolveUploadPath(name),
-    url: `${publicBaseUrl()}/api/provider-reference/${encodeURIComponent(name)}?expires=${expires}&signature=${encodeURIComponent(signature)}`,
+    url: `${publicBaseUrl()}/api/provider-reference/${encodeURIComponent(name)}/${expires}/${encodeURIComponent(signature)}`,
   };
 }
 
