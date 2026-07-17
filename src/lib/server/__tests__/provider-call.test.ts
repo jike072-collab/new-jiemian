@@ -44,15 +44,16 @@ test("GetToken Veo defaults expose Pro and Fast with three resolutions", () => {
 test("Seedance defaults expose the Redbird Seedance 2.0 model catalog", () => {
   const seedanceProvider = defaultProviders().find((item) => item.id === "video-main");
   const models = seedanceProvider?.models || [];
-  assert.equal(models.length, 4);
+  assert.equal(models.length, 5);
   assert.equal(models.includes("quanneng2.0"), true);
   assert.equal(models.includes("Doubao-Seedance-2.0-fast-260128-grid"), false);
   assert.equal(models.includes("quanneng2.0-9tu"), true);
   assert.equal(models.includes("B-quannengship2.0"), false);
-  assert.equal(models.includes("sdquan-2-miao"), false);
+  assert.equal(models.includes("sdquan-2-miao"), true);
   assert.equal(seedanceProvider?.modelDisplayNames?.["Doubao-Seedance-2.0-fast-260128-grid"], undefined);
   assert.equal(seedanceProvider?.modelDisplayNames?.["quanneng2.0-9tu"], "全能视频 2.0 9 图 首帧");
   assert.equal(seedanceProvider?.modelDisplayNames?.["quanneng2.0"], "全能视频 2.0 线路 S");
+  assert.equal(seedanceProvider?.modelDisplayNames?.["sdquan-2-miao"], "全能视频 2.0 Pro");
   assert.deepEqual(seedanceProvider?.enabledModels, models);
   assert.equal(seedanceProvider?.apiUrl, "https://open.hongniaoai.com/api/v1/videos");
   assert.deepEqual(seedanceVideoOptionsForModel("quanneng2.0-9tu")?.durations, [15]);
@@ -61,6 +62,12 @@ test("Seedance defaults expose the Redbird Seedance 2.0 model catalog", () => {
   assert.equal(seedanceVideoOptionsForModel("video-2.0-fast-720P")?.maxReferenceImages, 4);
   assert.equal(seedanceVideoOptionsForModel("video-2.0-fast-720P")?.maxReferenceVideos, 3);
   assert.equal(seedanceVideoOptionsForModel("video-2.0-fast-720P")?.maxReferenceAudios, 1);
+  assert.deepEqual(seedanceVideoOptionsForModel("sdquan-2-miao")?.durations, [4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15]);
+  assert.deepEqual(seedanceVideoOptionsForModel("sdquan-2-miao")?.ratios, ["16:9", "9:16", "4:3", "3:4", "1:1", "21:9"]);
+  assert.equal(seedanceVideoOptionsForModel("sdquan-2-miao")?.maxReferenceVideos, 0);
+  assert.equal(seedanceVideoOptionsForModel("sdquan-2-miao")?.maxReferenceAudios, 3);
+  assert.deepEqual(seedanceVideoOptionsForModel("sdquan-2-miao")?.requiredReferenceMedia, ["image"]);
+  assert.equal(seedanceVideoOptionsForModel("sdquan-2-miao")?.supportsAudioReference, true);
   assert.equal(seedanceVideoOptionsForModel("Doubao-Seedance-2-0-260128-grid")?.supportsVideoReference, true);
   assert.equal(seedanceVideoOptionsForModel("Doubao-Seedance-2-0-260128-grid")?.maxReferenceAudios, 3);
   assert.equal(seedanceVideoRequestSecondsForModel(models[0], 15), 15);
@@ -68,7 +75,7 @@ test("Seedance defaults expose the Redbird Seedance 2.0 model catalog", () => {
 
 test("Every Redbird Seedance model uses signed JSON reference arrays", () => {
   const models = defaultProviders().find((item) => item.id === "video-main")?.models || [];
-  assert.equal(models.length, 4);
+  assert.equal(models.length, 5);
   for (const model of models) {
     const selected = { ...provider, model };
     assert.equal(providerCallInternalsForTests.isRedbirdSeedanceProvider(selected), true);
@@ -146,6 +153,35 @@ test("Seedance validates model-specific video, audio, and duration limits", () =
     duration: 10,
     resolution: "720p",
     files: [reference("audio", 5), reference("audio", 5)],
+  }));
+  const proProvider = { ...videoProvider, model: "sdquan-2-miao" };
+  assert.doesNotThrow(() => providerCallInternalsForTests.validateVideoInput(proProvider, {
+    mode: "image-to-video",
+    ratio: "21:9",
+    duration: 4,
+    resolution: "720p",
+    files: [reference("image"), reference("audio", 5), reference("audio", 5), reference("audio", 5)],
+  }));
+  assert.throws(() => providerCallInternalsForTests.validateVideoInput(proProvider, {
+    mode: "image-to-video",
+    ratio: "16:9",
+    duration: 4,
+    resolution: "720p",
+    files: [reference("image"), reference("video", 4)],
+  }));
+  assert.throws(() => providerCallInternalsForTests.validateVideoInput(proProvider, {
+    mode: "image-to-video",
+    ratio: "16:9",
+    duration: 4,
+    resolution: "720p",
+    files: [reference("audio", 5)],
+  }));
+  assert.throws(() => providerCallInternalsForTests.validateVideoInput(proProvider, {
+    mode: "image-to-video",
+    ratio: "16:9",
+    duration: 3,
+    resolution: "720p",
+    files: [reference("image")],
   }));
 });
 

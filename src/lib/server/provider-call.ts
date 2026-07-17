@@ -1966,6 +1966,7 @@ export async function submitVideo(input: {
   const membershipEntitlementAmount = estimateVideoGenerationEntitlementUnits({
     resolution: input.resolution,
     model: provider?.model,
+    durationSeconds: input.duration,
   });
   try {
     await assertStorageAllows("video-generation", { fresh: true });

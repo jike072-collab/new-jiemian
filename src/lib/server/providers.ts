@@ -29,6 +29,7 @@ const seedanceVideoModels = [
   "video-2.0-fast-720P",
   "quanneng2.0-9tu",
   "quanneng2.0",
+  "sdquan-2-miao",
   "Doubao-Seedance-2-0-260128-grid",
 ];
 
@@ -36,6 +37,7 @@ const seedanceVideoDisplayNames: Record<string, string> = {
   "video-2.0-fast-720P": "全能视频 2.0 Fast 720P",
   "quanneng2.0-9tu": "全能视频 2.0 9 图 首帧",
   "quanneng2.0": "全能视频 2.0 线路 S",
+  "sdquan-2-miao": "全能视频 2.0 Pro",
   "Doubao-Seedance-2-0-260128-grid": "Seedance 2.0 满血 933 不卡真人",
 };
 
@@ -44,6 +46,7 @@ const seedanceVideoOptionsByModel: Record<string, NonNullable<ProviderConfig["vi
   "quanneng2.0-9tu": { durations: [15], ratios: ["16:9", "9:16"], resolution: "720p", maxReferenceImages: 9, maxReferenceVideos: 0, maxReferenceAudios: 0, maxReferenceDurationSeconds: 15 },
   "b-quannengship2.0": { durations: [5, 10, 15], ratios: ["16:9", "9:16"], resolution: "720p", maxReferenceImages: 9, maxReferenceVideos: 0, maxReferenceAudios: 0, maxReferenceDurationSeconds: 15 },
   "quanneng2.0": { durations: [10, 15], ratios: ["16:9", "9:16"], resolution: "720p", maxReferenceImages: 4, maxReferenceVideos: 3, maxReferenceAudios: 1, maxReferenceDurationSeconds: 15, maxPromptCharacters: 80, supportsVideoReference: true, supportsAudioReference: true },
+  "sdquan-2-miao": { durations: [4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15], ratios: ["16:9", "9:16", "4:3", "3:4", "1:1", "21:9"], resolution: "720p", maxReferenceImages: 9, maxReferenceVideos: 0, maxReferenceAudios: 3, maxReferenceDurationSeconds: 15, requiredReferenceMedia: ["image"], supportsAudioReference: true },
   "doubao-seedance-2.0-fast-260128-grid": { durations: [15], ratios: ["16:9", "9:16"], resolution: "720p", maxReferenceImages: 9, maxReferenceVideos: 3, maxReferenceAudios: 3, maxReferenceDurationSeconds: 15, supportsVideoReference: true, supportsAudioReference: true },
   "doubao-seedance-2-0-260128-grid": { durations: [15], ratios: ["16:9", "9:16"], resolution: "720p", maxReferenceImages: 9, maxReferenceVideos: 3, maxReferenceAudios: 3, maxReferenceDurationSeconds: 15, supportsVideoReference: true, supportsAudioReference: true },
 };

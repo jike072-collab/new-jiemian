@@ -480,6 +480,7 @@ function providerUseCase(model: string, displayName: string) {
   if (normalized === "quanneng2.0-9tu") return "支持 9 图 · 15 秒 · 720P";
   if (normalized === "b-quannengship2.0") return "支持 9 图 · 5/10/15 秒 · 720P";
   if (normalized === "quanneng2.0") return "支持 4 图 · 3 视频 · 1 音频 · 10/15 秒 · 720P";
+  if (normalized === "sdquan-2-miao") return "支持 9 图 · 3 音频 · 4-15 秒 · 720P";
   if (normalized === "doubao-seedance-2.0-fast-260128-grid") return "支持 9 图 · 3 视频 · 3 音频 · 15 秒 · 不卡真人 · 720P";
   if (normalized === "doubao-seedance-2-0-260128-grid") return "支持 9 图 · 3 视频 · 3 音频 · 15 秒 · 不卡真人 · 720P";
   return undefined;

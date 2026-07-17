@@ -2141,6 +2141,7 @@ export function StudioApp() {
   const videoEntitlementUnits = estimateVideoGenerationEntitlementUnits({
     resolution: videoWorkspace.resolution,
     model: selectedVideoProvider?.model,
+    durationSeconds: videoWorkspace.duration,
   });
   const videoPricingPending = isVideoGenerationPricingPending(selectedVideoProvider?.model);
   const videoGenerationCostLabel = videoPricingPending
@@ -3014,6 +3015,7 @@ export function StudioApp() {
     const membershipEntitlementAmount = estimateVideoGenerationEntitlementUnits({
       resolution: snapshot.resolution,
       model: snapshot.model,
+      durationSeconds: snapshot.duration,
     });
     const requestFingerprint = generationBillingFingerprint({
       kind: "video",
