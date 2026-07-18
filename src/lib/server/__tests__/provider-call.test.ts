@@ -3,7 +3,7 @@ import { createHash } from "node:crypto";
 import { readdir } from "node:fs/promises";
 import test from "node:test";
 
-import { seedanceLibraryModelName } from "../../seedance-model-display";
+import { isSeedance20VideoModel, seedanceLibraryModelName } from "../../seedance-model-display";
 import { createErrorDiagnostic, logDiagnosticEvent } from "../error-diagnostics";
 import { providerCallInternalsForTests } from "../provider-call";
 import { providerReferenceMimeType } from "../provider-reference";
@@ -68,6 +68,9 @@ test("Seedance defaults expose the Redbird Seedance 2.0 model catalog", () => {
   assert.equal(seedanceLibraryModelName("video-2.0-fast-720P"), "Seedance 2.0 · Fast 720P");
   assert.equal(seedanceLibraryModelName("B-quannengship2.0"), "Seedance 2.0 · 线路 B");
   assert.equal(seedanceLibraryModelName("Doubao-Seedance-2.0-fast-260128-grid"), "Seedance 2.0 · Fast 933 不卡真人");
+  assert.equal(isSeedance20VideoModel("sdquan-2-miao"), true);
+  assert.equal(isSeedance20VideoModel("GROK-VIDEO-1.5"), false);
+  assert.equal(isSeedance20VideoModel("Doubao-Seedance-2.0-fast-260128-grid"), false);
   assert.deepEqual(seedanceProvider?.enabledModels, models);
   assert.equal(seedanceProvider?.apiUrl, "https://open.hongniaoai.com/api/v1/videos");
   assert.deepEqual(seedanceVideoOptionsForModel("quanneng2.0-9tu")?.durations, [15]);

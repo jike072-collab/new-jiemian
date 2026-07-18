@@ -6,6 +6,12 @@ export const seedanceVideoDisplayNames: Record<string, string> = {
   "Doubao-Seedance-2-0-260128-grid": "满血 933 不卡真人",
 };
 
+const seedanceVideoModelIds = new Set(Object.keys(seedanceVideoDisplayNames).map((model) => model.toLowerCase()));
+
+export function isSeedance20VideoModel(model: string | null | undefined) {
+  return Boolean(model && seedanceVideoModelIds.has(model.trim().toLowerCase()));
+}
+
 const seedanceLibraryShortNames: Record<string, string> = {
   ...Object.fromEntries(
     Object.entries(seedanceVideoDisplayNames).map(([model, displayName]) => [model.toLowerCase(), displayName]),

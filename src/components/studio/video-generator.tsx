@@ -6,6 +6,7 @@ import { useEffect, useRef, useState, type CSSProperties } from "react";
 import { AtSign, FileAudio2, ImagePlus, Loader2, Video, X } from "lucide-react";
 
 import { featuredVideoPromptTemplates } from "@/lib/template-catalog";
+import { isSeedance20VideoModel } from "@/lib/seedance-model-display";
 import type { FrontendProvider } from "@/lib/server/types";
 import type { WorkspaceVideoMode } from "@/lib/workspace-registry";
 import { TemplateRail } from "@/components/template-center";
@@ -228,6 +229,7 @@ export function VideoGenerator({
         label={meta.promptLabel}
         value={state.prompt}
         files={state.files}
+        enableReferenceMentions={isSeedance20VideoModel(selectedProvider?.model)}
         maxLength={referenceOptions?.maxPromptCharacters}
         onChange={onPromptChange}
         optimizeCostLabel={promptOptimizeCostLabel || promptOptimizationCostLabel}
@@ -462,6 +464,7 @@ function VideoPromptBox({
   label,
   value,
   files,
+  enableReferenceMentions,
   maxLength,
   onChange,
   enableOptimization = true,
@@ -477,6 +480,7 @@ function VideoPromptBox({
   label: string;
   value: string;
   files: VideoWorkspaceFile[];
+  enableReferenceMentions: boolean;
   maxLength?: number;
   onChange: (value: string) => void;
   enableOptimization?: boolean;
@@ -498,7 +502,7 @@ function VideoPromptBox({
   const [mentionContext, setMentionContext] = useState<{ start: number; end: number; query: string } | null>(null);
   const [activeMentionIndex, setActiveMentionIndex] = useState(0);
   const referenceCounts: Record<VideoWorkspaceFile["mediaType"], number> = { image: 0, video: 0, audio: 0 };
-  const references = files.map((file) => {
+  const references = enableReferenceMentions ? files.map((file) => {
     const index = ++referenceCounts[file.mediaType];
     const prefix = file.mediaType === "image" ? "Image" : file.mediaType === "video" ? "Video" : "Audio";
     return {
@@ -507,7 +511,7 @@ function VideoPromptBox({
       typeLabel: file.mediaType === "image" ? "参考图" : file.mediaType === "video" ? "参考视频" : "参考音频",
       file,
     };
-  });
+  }) : [];
   const filteredReferences = mentionContext
     ? references.filter((reference) => reference.label.toLowerCase().includes(mentionContext.query.toLowerCase()))
     : [];
