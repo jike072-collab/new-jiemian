@@ -6036,10 +6036,13 @@
 
   .studio-library-tile .studio-media-card__model-badge {
     left: 54px;
-    max-width: calc(100% - 108px);
+    display: inline-block;
+    max-width: calc(100% - 64px);
+    height: 26px;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
+    line-height: 26px;
   }
 
   .studio-media-card__play {
