@@ -227,7 +227,7 @@ function WhiteBackgroundFourViewInput({
   onClear: () => void;
 }) {
   const inputRef = useRef<HTMLInputElement | null>(null);
-  const views = ["外侧", "内侧", "顶部", "鞋底"];
+  const views = ["侧视图 1", "侧视图 2", "顶部", "鞋底"];
   const nextIndex = files.length;
 
   const applyFile = (file: File | undefined) => {
@@ -270,7 +270,7 @@ function WhiteBackgroundFourViewInput({
           );
         })}
       </div>
-      <p className="studio-four-view-upload-note">请严格按外侧、内侧、顶部、鞋底顺序上传。重新上传会清空当前四张图片。</p>
+      <p className="studio-four-view-upload-note">前两张请分别上传外侧和内侧，顺序不限；第 3 张上传顶部，第 4 张上传鞋底。重新上传会清空当前四张图片。</p>
       {error ? <p className="studio-error-text" role="alert">{error}</p> : null}
     </FieldFrame>
   );
