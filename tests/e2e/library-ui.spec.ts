@@ -88,3 +88,15 @@ test("library detail actions and modal layering remain usable", async ({ page })
   await modal.getByRole("button", { name: "关闭预览", exact: true }).click();
   await expect(modal).toBeHidden();
 });
+
+test("library shows a reload state when its initial request fails", async ({ page }) => {
+  await page.route("**/api/library", (route) => route.fulfill({
+    status: 500,
+    json: { message: "作品库暂时不可用" },
+  }));
+
+  await page.goto("/?tool=library", { waitUntil: "domcontentloaded" });
+  await expect(page.getByRole("heading", { name: "作品加载失败", exact: true })).toBeVisible({ timeout: 30_000 });
+  await expect(page.getByRole("button", { name: "重新加载", exact: true })).toBeVisible();
+  await expect(page.getByRole("status", { name: "正在加载作品", exact: true })).toBeHidden();
+});

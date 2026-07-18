@@ -1117,15 +1117,25 @@ export function StudioApp() {
     setLibraryLoading(true);
     setLibraryError("");
     try {
-      const data = await jsonFetch<{ items: LibraryItem[] }>("/api/library");
+      const controller = new AbortController();
+      const timeoutId = window.setTimeout(() => controller.abort(), 20_000);
+      let data: { items: LibraryItem[] };
+      try {
+        data = await jsonFetch<{ items: LibraryItem[] }>("/api/library", { signal: controller.signal });
+      } finally {
+        window.clearTimeout(timeoutId);
+      }
       setLibrary(data.items);
       setMissingLibraryMediaIds(new Set());
       setLibraryLoaded(true);
       setLibraryNeedsRefresh(false);
       scheduleLibraryMediaCache(sessionUser.local_user_id, data.items);
     } catch (error) {
-      const text = error instanceof Error ? error.message : "作品库加载失败。";
+      const text = error instanceof DOMException && error.name === "AbortError"
+        ? "作品库加载超时，请重试。"
+        : error instanceof Error ? error.message : "作品库加载失败。";
       setLibraryError(text);
+      setLibraryLoaded(true);
       throw error;
     } finally {
       libraryRefreshInFlightRef.current = false;
