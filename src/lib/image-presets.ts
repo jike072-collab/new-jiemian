@@ -10,6 +10,17 @@ export const ecommerceTenPageMinReferenceCount = 2;
 export const ecommerceTenPageMaxReferenceCount = 10;
 export const ecommerceTenPageDefaultRatio = "1:1";
 export const ecommerceTenPageDefaultQuality = "1k";
+export const ecommerceTenPageBatchStyles = [
+  "Electric sport campaign: graphite and bright lime backgrounds, crisp white type, sharp studio lighting, precise motion accents, and high-energy athletic art direction.",
+  "Coastal pop campaign: cobalt blue, coral, and clean white environments, sunlit editorial lighting, bold geometric type, and an upbeat Southeast Asian street mood.",
+  "Technical performance campaign: deep red, brushed silver, charcoal, and white, controlled hard light, modular technical graphics, and a premium engineered mood.",
+  "Fresh city campaign: sky cyan, sunflower yellow, warm white, natural daylight, open compositions, and youthful urban movement with clean retail typography.",
+  "Night social campaign: magenta, near-black, ivory, focused flash lighting, restrained camera-frame accents, and a polished social-first fashion mood.",
+  "Tropical active campaign: emerald green, vivid orange, and white, bright outdoor light, rhythmic shapes, and energetic campus-to-street art direction.",
+  "Modern monochrome campaign: black, white, concrete gray, and small signal-red accents, dramatic directional light, bold grid typography, and a confident editorial mood.",
+  "Playful retail campaign: light blue, cherry red, white, soft studio daylight, lively cut-paper shapes, and friendly conversion-focused product styling.",
+] as const;
+export const ecommerceTenPageBatchStyleCount = ecommerceTenPageBatchStyles.length;
 export const ecommerceTenPageTitles = [
   "Hero Visual Impact",
   "Pain Point Solution",
@@ -36,16 +47,20 @@ const ecommerceTenPageDirections = [
   "Create a final buyer-show and CTA conversion page with the shoe, size information placeholder only when supplied, and general calls to action without inventing discounts or reviews.",
 ] as const;
 
-export function ecommerceTenPagePrompt(pageIndex: number, ratio: string) {
+export function ecommerceTenPagePrompt(pageIndex: number, ratio: string, pageCount = ecommerceTenPageCount, batchStyleIndex = 0) {
+  const normalizedPageCount = Math.min(Math.max(Math.trunc(pageCount), 1), ecommerceTenPageCount);
   const index = Math.min(Math.max(Math.trunc(pageIndex) - 1, 0), ecommerceTenPageCount - 1);
+  const normalizedBatchStyleIndex = Math.min(Math.max(Math.trunc(batchStyleIndex), 0), ecommerceTenPageBatchStyleCount - 1);
   const pageTitle = ecommerceTenPageTitles[index];
   const direction = ecommerceTenPageDirections[index];
+  const batchStyle = ecommerceTenPageBatchStyles[normalizedBatchStyleIndex];
   return [
-    `Create page ${index + 1} of a 10-page TikTok shoe e-commerce detail image series. Page concept: ${pageTitle}.`,
+    `Create page ${index + 1} of a ${normalizedPageCount}-image TikTok shoe e-commerce detail series. Page concept: ${pageTitle}.`,
     `Canvas ratio: ${ratio}. Target market: Southeast Asia. All visible text must be English only.`,
     "The first uploaded reference image is the original brand logo. Place it in the top-left corner of this page, small and clear at about 5% to 8% of the canvas width. Preserve it exactly: do not stretch, redraw, recolor, redesign, or print it on the shoe.",
     "Every remaining uploaded reference image is one completed four-view white-background board for one real shoe colorway. Preserve the shoe shape, proportions, material appearance, side details, top view, outsole, and each original colorway. Never invent, merge, mirror, or recolor a colorway.",
-    "Keep one unified sporty, energetic, premium, youthful, TikTok-native visual system across the 10 pages, while making this page composition and information emphasis distinct.",
+    `Batch visual direction: ${batchStyle}`,
+    `Apply this exact visual direction consistently across all ${normalizedPageCount} images in this batch. Keep the palette, typography family, lighting language, graphic treatment, and overall brand mood cohesive. Do not change or recolor the referenced shoes to match the campaign palette. This page must still use a clearly different composition, scene, product angle, information density, and visual emphasis from every other page; do not repeat a layout.`,
     direction,
     "Use short, legible English product copy only when it is supported by the references. Do not add fake certifications, medical claims, fake reviews, fake discounts, or unsupported performance promises.",
     "Negative prompt: no Chinese text, no unreadable text, no random letters, no distorted logo, no redesigned logo, no wrong shoe shape, no wrong colorway, no mismatched left and right shoes, no extra shoes, no broken outsole, no cluttered layout, no low-resolution product.",

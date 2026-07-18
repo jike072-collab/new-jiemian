@@ -2,6 +2,7 @@ import { type NextRequest, NextResponse } from "next/server";
 
 import { estimateImageGenerationEntitlementUnits } from "@/lib/generation-quota";
 import {
+  ecommerceTenPageBatchStyleCount,
   ecommerceTenPageCount,
   ecommerceTenPageMaxReferenceCount,
   ecommerceTenPageMinReferenceCount,
@@ -37,6 +38,8 @@ export async function POST(request: NextRequest) {
     const quality = whiteBackgroundFourView ? whiteBackgroundFourViewQuality : String(form.get("quality") || "1k");
     const count = whiteBackgroundFourView || ecommerceTenPage ? 1 : Number(form.get("count") || Number.NaN);
     const pageIndex = Number(form.get("pageIndex") || Number.NaN);
+    const requestedBatchTotal = Number(form.get("batchTotal") || Number.NaN);
+    const requestedBatchStyleIndex = Number(form.get("batchStyleIndex") || Number.NaN);
     const membershipEntitlementAmount = estimateImageGenerationEntitlementUnits({ quality, count });
     const failBeforeSubmit = (error: unknown) => failImageGenerationBeforeSubmit({
       localUserId: session.user.local_user_id,
@@ -74,11 +77,31 @@ export async function POST(request: NextRequest) {
         await failBeforeSubmit(error);
         throw error;
       }
-      if (ecommerceTenPage && (!Number.isInteger(pageIndex) || pageIndex < 1 || pageIndex > ecommerceTenPageCount)) {
+      if (ecommerceTenPage && (!Number.isInteger(requestedBatchTotal) || requestedBatchTotal < 1 || requestedBatchTotal > ecommerceTenPageCount)) {
+        const error = new GenerationDiagnosticError({
+          code: "INPUT_INVALID_PARAMETERS",
+          message: `E-commerce image batch total must be between 1 and ${ecommerceTenPageCount}.`,
+          publicMessage: "电商套图生成数量必须在 1 到 10 张之间。",
+          status: 400,
+        });
+        await failBeforeSubmit(error);
+        throw error;
+      }
+      if (ecommerceTenPage && (!Number.isInteger(pageIndex) || pageIndex < 1 || pageIndex > requestedBatchTotal)) {
         const error = new GenerationDiagnosticError({
           code: "INPUT_INVALID_PARAMETERS",
           message: `E-commerce ten-page page index must be between 1 and ${ecommerceTenPageCount}.`,
           publicMessage: "电商套图页面编号无效，请重新提交。",
+          status: 400,
+        });
+        await failBeforeSubmit(error);
+        throw error;
+      }
+      if (ecommerceTenPage && (!Number.isInteger(requestedBatchStyleIndex) || requestedBatchStyleIndex < 0 || requestedBatchStyleIndex >= ecommerceTenPageBatchStyleCount)) {
+        const error = new GenerationDiagnosticError({
+          code: "INPUT_INVALID_PARAMETERS",
+          message: `E-commerce batch style index must be between 0 and ${ecommerceTenPageBatchStyleCount - 1}.`,
+          publicMessage: "电商套图风格参数无效，请重新提交。",
           status: 400,
         });
         await failBeforeSubmit(error);
@@ -90,13 +113,14 @@ export async function POST(request: NextRequest) {
         operation,
         prompt: whiteBackgroundFourView
           ? whiteBackgroundFourViewPrompt
-          : ecommerceTenPage ? ecommerceTenPagePrompt(pageIndex, String(form.get("ratio") || "1:1")) : String(form.get("prompt") || ""),
+          : ecommerceTenPage ? ecommerceTenPagePrompt(pageIndex, String(form.get("ratio") || "1:1"), requestedBatchTotal, requestedBatchStyleIndex) : String(form.get("prompt") || ""),
         ratio: whiteBackgroundFourView ? whiteBackgroundFourViewRatio : String(form.get("ratio") || "1:1"),
         quality,
         files,
         count,
         batchId: String(form.get("batchId") || "").trim(),
-        batchTotal: Number(form.get("batchTotal") || Number.NaN),
+        batchTotal: requestedBatchTotal,
+        batchStyleIndex: ecommerceTenPage ? requestedBatchStyleIndex : undefined,
         pageIndex: ecommerceTenPage ? pageIndex : undefined,
         billingLocalUserId: session.user.local_user_id,
         billingTaskId,

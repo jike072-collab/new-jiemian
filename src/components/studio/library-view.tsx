@@ -598,7 +598,10 @@ function buildLibraryDisplayEntries(items: LibraryItem[]): LibraryDisplayEntry[]
       continue;
     }
 
-    const groupLimit = typeof item.params.imageBatchTotal === "number" && item.params.imageBatchTotal >= 10 ? 10 : 4;
+    const requestedGroupLimit = Number(item.params.imageBatchTotal);
+    const groupLimit = Number.isInteger(requestedGroupLimit)
+      ? Math.min(Math.max(requestedGroupLimit, 1), 10)
+      : 4;
     const pageIndex = Number(item.params.imagePageIndex);
     const target = entries.find((entry) => (
       entry.key === batch.key

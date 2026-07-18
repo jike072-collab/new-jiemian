@@ -1734,6 +1734,7 @@ export async function generateImage(input: {
   count?: number | null;
   batchId?: string | null;
   batchTotal?: number | null;
+  batchStyleIndex?: number | null;
   pageIndex?: number | null;
   billingLocalUserId?: string | null;
   billingTaskId?: string | null;
@@ -1825,7 +1826,8 @@ export async function generateImage(input: {
         quality: input.quality,
         referenceImages: input.files.length,
         ...(input.batchId ? { imageBatchId: input.batchId } : {}),
-        ...(batchTotal > 1 ? { imageBatchTotal: batchTotal, imageBatchIndex: index + 1 } : {}),
+        ...(batchTotal > 1 || Number.isInteger(input.pageIndex) ? { imageBatchTotal: batchTotal, imageBatchIndex: index + 1 } : {}),
+        ...(Number.isInteger(input.batchStyleIndex) ? { imageBatchStyleIndex: Number(input.batchStyleIndex) } : {}),
         ...(Number.isInteger(input.pageIndex) ? { imagePageIndex: Number(input.pageIndex) } : {}),
         ...(input.billingTaskId ? { billingTaskId: input.billingTaskId } : {}),
         ...(input.billingIdempotencyKey ? { billingIdempotencyKey: input.billingIdempotencyKey } : {}),

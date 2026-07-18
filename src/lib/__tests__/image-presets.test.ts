@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import {
+  ecommerceTenPageBatchStyleCount,
   ecommerceTenPageCount,
   ecommerceTenPageDefaultQuality,
   ecommerceTenPageDefaultRatio,
@@ -35,6 +36,11 @@ test("e-commerce ten-page preset defines one page prompt per task", () => {
   assert.match(pageSix, /Canvas ratio: 9:16/);
   assert.match(pageSix, /original brand logo/);
   assert.match(pageSix, /Negative prompt/);
+  assert.match(ecommerceTenPagePrompt(3, "1:1", 5), /page 3 of a 5-image/);
+  assert.match(pageSix, /do not repeat a layout/);
+  assert.ok(ecommerceTenPageBatchStyleCount > 1);
+  assert.notEqual(ecommerceTenPagePrompt(1, "1:1", 10, 0), ecommerceTenPagePrompt(1, "1:1", 10, 1));
+  assert.match(ecommerceTenPagePrompt(2, "1:1", 10, 1), /Apply this exact visual direction consistently/);
 });
 
 test("white background four-view preset fixes the documented shoe view order", () => {

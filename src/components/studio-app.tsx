@@ -11,6 +11,7 @@ import { WorkbenchShell } from "@/components/workbench-shell";
 import { ImageGenerator } from "@/components/studio/image-generator";
 import { jsonFetch } from "@/components/studio/json-fetch";
 import {
+  ecommerceTenPageBatchStyleCount,
   ecommerceTenPageCount,
   ecommerceTenPageDefaultQuality,
   ecommerceTenPageDefaultRatio,
@@ -430,9 +431,18 @@ type ImageWorkspaceScope = "image" | "image-editor";
 
 const imageGenerationExecutionLimit = 4;
 const ecommerceTenPageExecutionLimit = 10;
+const ecommerceBatchStyleStorageKey = "studio:ecommerce-last-batch-style";
 
 const runImageGenerationWithSlot = createTaskRunner(imageGenerationExecutionLimit);
 const runEcommerceTenPageWithSlot = createTaskRunner(ecommerceTenPageExecutionLimit);
+
+function nextEcommerceBatchStyleIndex(previous: number) {
+  if (!Number.isInteger(previous) || previous < 0 || previous >= ecommerceTenPageBatchStyleCount) {
+    return Math.floor(Math.random() * ecommerceTenPageBatchStyleCount);
+  }
+  const offset = 1 + Math.floor(Math.random() * (ecommerceTenPageBatchStyleCount - 1));
+  return (previous + offset) % ecommerceTenPageBatchStyleCount;
+}
 
 function createInitialImageWorkspaceState(): ImageWorkspaceState {
   return {
@@ -852,6 +862,7 @@ export function StudioApp() {
   const appliedTemplateIdRef = useRef<string | null>(null);
   const imageInFlightCountRef = useRef(0);
   const imageEditorInFlightCountRef = useRef(0);
+  const ecommerceBatchStyleIndexRef = useRef(-1);
   const latestImageDisplayRef = useRef<Record<ImageWorkspaceScope, { taskId: string; progressId: string } | null>>({
     image: null,
     "image-editor": null,
@@ -1712,14 +1723,15 @@ export function StudioApp() {
   const imageWorkspacePrompt = activeImageWorkspace.prompt.trim();
   const imageWorkspaceRequiresFile = activeImageTemplate?.scope === "image" && activeImageTemplate.requiresImage;
   const imageGenerationCount = Math.min(Math.max(Math.round(Number(activeImageWorkspace.count) || 1), 1), 4);
-  const imageBillingCount = ecommerceTenPageMode ? ecommerceTenPageCount : imageGenerationCount;
+  const ecommerceGenerationCount = Math.min(Math.max(Math.round(Number(activeImageWorkspace.count) || 1), 1), ecommerceTenPageCount);
+  const imageBillingCount = ecommerceTenPageMode ? ecommerceGenerationCount : imageGenerationCount;
   const singleImageEstimatedQuotaUnits = estimateImageGenerationTotalQuota({
     quality: activeImageWorkspace.quality,
     count: 1,
     model: selectedImageProvider?.model,
   });
   const imageEstimatedQuotaUnits = ecommerceTenPageMode
-    ? singleImageEstimatedQuotaUnits * ecommerceTenPageCount
+    ? singleImageEstimatedQuotaUnits * ecommerceGenerationCount
     : estimateImageGenerationTotalQuota({
       quality: activeImageWorkspace.quality,
       count: imageBillingCount,
@@ -2013,7 +2025,7 @@ export function StudioApp() {
     }));
   }, [activeImageWorkspaceFilesRef, activeImageWorkspaceSetter]);
 
-  const submitImageWorkspace = useCallback(async (options?: { pageIndex?: number; batchId?: string }) => {
+  const submitImageWorkspace = useCallback(async (options?: { pageIndex?: number; batchId?: string; batchTotal?: number; batchStyleIndex?: number }) => {
     if (activeImageWorkspaceScope === "image-editor" && activeImageInFlightCountRef.current >= 1) return;
     if (ecommerceTenPageMode && activeImageInFlightCountRef.current > 0 && !options?.pageIndex) return;
     if (!selectedImageProvider) {
@@ -2047,7 +2059,10 @@ export function StudioApp() {
       }));
       return;
     }
-    if (ecommerceTenPageMode && options?.pageIndex && (options.pageIndex < 1 || options.pageIndex > ecommerceTenPageCount)) return;
+    const ecommerceBatchCount = options?.pageIndex
+      ? Math.min(Math.max(Math.round(Number(options.batchTotal) || ecommerceGenerationCount), 1), ecommerceTenPageCount)
+      : ecommerceGenerationCount;
+    if (ecommerceTenPageMode && options?.pageIndex && (options.pageIndex < 1 || options.pageIndex > ecommerceBatchCount)) return;
     if (imageWorkspaceRequiresFile && !imageWorkspaceHasFiles) {
       activeImageWorkspaceSetter((prev) => ({
         ...prev,
@@ -2057,9 +2072,31 @@ export function StudioApp() {
     }
 
     const pageRetry = ecommerceTenPageMode && Number.isInteger(options?.pageIndex);
-    const totalCount = pageRetry ? 1 : ecommerceTenPageMode ? ecommerceTenPageCount : imageGenerationCount;
+    const totalCount = pageRetry ? 1 : ecommerceTenPageMode ? ecommerceBatchCount : imageGenerationCount;
     const progressId = createTaskId("image-progress");
     const batchId = pageRetry && options?.batchId ? options.batchId : createTaskId("image-batch");
+    const requestedBatchStyleIndex = Number(options?.batchStyleIndex);
+    let previousBatchStyleIndex = ecommerceBatchStyleIndexRef.current;
+    if (ecommerceTenPageMode && previousBatchStyleIndex < 0 && typeof window !== "undefined") {
+      try {
+        previousBatchStyleIndex = Number(window.sessionStorage.getItem(ecommerceBatchStyleStorageKey));
+      } catch {
+        previousBatchStyleIndex = -1;
+      }
+    }
+    const batchStyleIndex = ecommerceTenPageMode
+      ? pageRetry && Number.isInteger(requestedBatchStyleIndex) && requestedBatchStyleIndex >= 0 && requestedBatchStyleIndex < ecommerceTenPageBatchStyleCount
+        ? requestedBatchStyleIndex
+        : nextEcommerceBatchStyleIndex(previousBatchStyleIndex)
+      : 0;
+    if (ecommerceTenPageMode) {
+      ecommerceBatchStyleIndexRef.current = batchStyleIndex;
+      try {
+        window.sessionStorage.setItem(ecommerceBatchStyleStorageKey, String(batchStyleIndex));
+      } catch {
+        // Session storage is only a continuity hint; generation does not depend on it.
+      }
+    }
     const snapshot = {
       scope: activeImageWorkspaceScope,
       providerId: selectedImageProvider.id,
@@ -2069,7 +2106,7 @@ export function StudioApp() {
       quality: whiteBackgroundFourViewMode ? whiteBackgroundFourViewQuality : activeImageWorkspace.quality,
       prompt: whiteBackgroundFourViewMode
         ? whiteBackgroundFourViewPrompt
-        : ecommerceTenPageMode ? ecommerceTenPagePrompt(options?.pageIndex || 1, activeImageWorkspace.ratio) : activeImageWorkspace.prompt,
+        : ecommerceTenPageMode ? ecommerceTenPagePrompt(options?.pageIndex || 1, activeImageWorkspace.ratio, ecommerceBatchCount, batchStyleIndex) : activeImageWorkspace.prompt,
       files: activeImageWorkspace.files.map((attachment) => attachment.file),
       perImageQuotaUnits: estimateImageGenerationTotalQuota({
         quality: activeImageWorkspace.quality,
@@ -2077,7 +2114,8 @@ export function StudioApp() {
         model: selectedImageProvider.model,
       }),
       totalCount,
-      batchTotal: ecommerceTenPageMode ? ecommerceTenPageCount : totalCount,
+      batchTotal: ecommerceTenPageMode ? ecommerceBatchCount : totalCount,
+      batchStyleIndex,
       batchId,
       preset: whiteBackgroundFourViewMode ? whiteBackgroundFourViewPresetId : ecommerceTenPageMode ? ecommerceTenPagePresetId : null,
       pageIndex: pageRetry ? options?.pageIndex : undefined,
@@ -2164,6 +2202,7 @@ export function StudioApp() {
         form.set("idempotencyKey", taskId);
         form.set("batchId", snapshot.batchId);
         form.set("batchTotal", String(snapshot.batchTotal));
+        if (snapshot.ecommerceTenPageMode) form.set("batchStyleIndex", String(snapshot.batchStyleIndex));
         if (pageIndex) form.set("pageIndex", String(pageIndex));
         form.set("count", "1");
         form.set("estimatedQuotaUnits", String(snapshot.perImageQuotaUnits));
@@ -2235,6 +2274,7 @@ export function StudioApp() {
     activeImageWorkspaceSetter,
     activeImageWorkspaceScope,
     activeImageMode,
+    ecommerceGenerationCount,
     ecommerceTenPageMode,
     handleImageResult,
     imageGenerationCount,
@@ -3310,7 +3350,7 @@ export function StudioApp() {
           </button>
           <button type="button" className={cn(ecommerceTenPageMode && "is-active")} onClick={toggleEcommerceTenPageMode} role="menuitem">
             <Sparkles className="size-4" aria-hidden="true" />
-            <span><strong>电商套图 10 张</strong><small>Logo + 多配色四视图</small></span>
+            <span><strong>电商套图 1-10 张</strong><small>Logo + 多配色四视图</small></span>
           </button>
         </div>
       ) : null}
@@ -3567,7 +3607,12 @@ export function StudioApp() {
                 onRetryItem={ecommerceTenPageMode ? (item) => {
                   const pageIndex = Number(item.params?.imagePageIndex);
                   if (!Number.isInteger(pageIndex) || !imageResultBatchId) return;
-                  void submitImageWorkspace({ pageIndex, batchId: imageResultBatchId });
+                  void submitImageWorkspace({
+                    pageIndex,
+                    batchId: imageResultBatchId,
+                    batchTotal: Number(item.params?.imageBatchTotal),
+                    batchStyleIndex: Number(item.params?.imageBatchStyleIndex),
+                  });
                 } : undefined}
                 onReloadProviders={refreshProviders}
                 onUpscale={sendResultToUpscale}

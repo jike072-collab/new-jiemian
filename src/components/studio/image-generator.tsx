@@ -95,7 +95,8 @@ export function ImageGenerator({
   registerMobileAction: (action: MobileActionState) => void;
 }) {
   const meta = imageWorkspaceModeMeta[mode];
-  const submitLabel = ecommerceTenPageMode ? "生成电商套图 10 张" : whiteBackgroundFourViewMode ? "生成四视图白底图" : meta.submitLabel;
+  const ecommerceCount = Math.min(Math.max(Math.round(Number(state.count) || 1), 1), 10);
+  const submitLabel = ecommerceTenPageMode ? `生成电商套图 ${ecommerceCount} 张` : whiteBackgroundFourViewMode ? "生成四视图白底图" : meta.submitLabel;
   const loadingLabel = ecommerceTenPageMode ? "正在生成电商套图" : whiteBackgroundFourViewMode ? "正在生成四视图" : meta.loadingLabel;
 
   useEffect(() => {
@@ -125,7 +126,7 @@ export function ImageGenerator({
         aria-pressed={ecommerceTenPageMode}
         onClick={onEcommerceTenPageModeChange}
       >
-        电商套图 10 张
+        电商套图 1-10 张
       </button>
       <ProviderSelect
         providers={providers}
@@ -161,21 +162,27 @@ export function ImageGenerator({
           <StackedControl label="比例" required>
             <AspectRatioSelector label="比例" value={state.ratio} onChange={onRatioChange} />
           </StackedControl>
-          <StackedControl label="清晰度" required>
-            <CustomSelect
-              label="清晰度"
-              value={state.quality}
-              options={[
-                { value: "1k", label: "1K（默认）" },
-                { value: "2k", label: "2K（细节更多）" },
-                { value: "4k", label: "4K（大图输出）" },
-              ]}
-              onChange={onQualityChange}
-            />
-          </StackedControl>
-          <div className="studio-fixed-generation-settings" aria-label="固定生成设置">
-            <span>固定生成</span>
-            <strong>10 张</strong>
+          <div className="studio-dual-fields">
+            <StackedControl label="清晰度" required>
+              <CustomSelect
+                label="清晰度"
+                value={state.quality}
+                options={[
+                  { value: "1k", label: "1K（默认）" },
+                  { value: "2k", label: "2K（细节更多）" },
+                  { value: "4k", label: "4K（大图输出）" },
+                ]}
+                onChange={onQualityChange}
+              />
+            </StackedControl>
+            <StackedControl label="数量" required>
+              <CustomSelect
+                label="数量"
+                value={String(ecommerceCount)}
+                options={Array.from({ length: 10 }, (_, index) => ({ value: String(index + 1), label: `${index + 1}张` }))}
+                onChange={(value) => onCountChange(Number(value))}
+              />
+            </StackedControl>
           </div>
         </>
       ) : (

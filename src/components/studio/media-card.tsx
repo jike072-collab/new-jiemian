@@ -67,7 +67,9 @@ export function MediaCard({
     ? (groupItems || [item])
       .filter((entry) => entry.type === "image" && entry.output?.url && !entry.expired)
       .sort((left, right) => Number(left.params.imagePageIndex || left.params.imageBatchIndex || 0) - Number(right.params.imagePageIndex || right.params.imageBatchIndex || 0))
-      .slice(0, item.params.imageBatchTotal === 10 ? 10 : 4)
+      .slice(0, Number.isInteger(Number(item.params.imageBatchTotal))
+        ? Math.min(Math.max(Number(item.params.imageBatchTotal), 1), 10)
+        : 4)
     : [];
   const imageGroupKey = `${item.id}:${imageGroupItems.map((entry) => entry.id).join(",")}`;
   const activeImageIndex = activeImageState.key === imageGroupKey
