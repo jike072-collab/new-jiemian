@@ -6,7 +6,19 @@ export const seedanceVideoDisplayNames: Record<string, string> = {
   "Doubao-Seedance-2-0-260128-grid": "满血 933 不卡真人",
 };
 
-const seedanceVideoModelIds = new Set(Object.keys(seedanceVideoDisplayNames).map((model) => model.toLowerCase()));
+export const clmmSeedanceVideoDisplayNames: Record<string, string> = {
+  "mg-seedance2.0 -720p fast": "Fast",
+  "mg-seedance2.0 -720p mini": "Mini",
+  "mg-seedance2.0 -720p pro": "Pro",
+  "seedance2.0 720p-933-pro-gz-15s": "满血 933 不卡真人",
+  "seedance2.0 720p-fast-gz-15s": "Fast 15 秒 不卡真人",
+  "seedance2.0 720p-pro-gz-15s": "Pro 15 秒 不卡真人",
+};
+
+const seedanceVideoModelIds = new Set(
+  [...Object.keys(seedanceVideoDisplayNames), ...Object.keys(clmmSeedanceVideoDisplayNames)]
+    .map((model) => model.toLowerCase()),
+);
 
 export function isSeedance20VideoModel(model: string | null | undefined) {
   return Boolean(model && seedanceVideoModelIds.has(model.trim().toLowerCase()));
@@ -20,7 +32,14 @@ const seedanceLibraryShortNames: Record<string, string> = {
   "doubao-seedance-2.0-fast-260128-grid": "Fast 933 不卡真人",
 };
 
+const clmmSeedanceLibraryShortNames = Object.fromEntries(
+  Object.entries(clmmSeedanceVideoDisplayNames).map(([model, displayName]) => [model.toLowerCase(), displayName]),
+);
+
 export function seedanceLibraryModelName(model: string) {
-  const displayName = seedanceLibraryShortNames[model.trim().toLowerCase()];
+  const normalized = model.trim().toLowerCase();
+  const clmmDisplayName = clmmSeedanceLibraryShortNames[normalized];
+  if (clmmDisplayName) return `Seedance 2.0 新 · ${clmmDisplayName}`;
+  const displayName = seedanceLibraryShortNames[normalized];
   return displayName ? `Seedance 2.0 · ${displayName}` : undefined;
 }

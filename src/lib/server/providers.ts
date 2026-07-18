@@ -9,7 +9,7 @@ import {
   type PublicProvider,
 } from "./types";
 import { dataRoot, readJsonFile, writeJsonFile } from "./paths";
-import { seedanceVideoDisplayNames } from "../seedance-model-display";
+import { clmmSeedanceVideoDisplayNames, seedanceVideoDisplayNames } from "../seedance-model-display";
 
 const providersPath = join(dataRoot, "providers.json");
 const virtualModelSeparator = "::model::";
@@ -33,6 +33,18 @@ const seedanceVideoModels = [
   "sdquan-2-miao",
   "Doubao-Seedance-2-0-260128-grid",
 ];
+
+const clmmSeedanceVideoModels = Object.keys(clmmSeedanceVideoDisplayNames);
+const clmmFlexibleVideoDurations = Array.from({ length: 11 }, (_, index) => index + 5);
+
+const clmmSeedanceVideoOptionsByModel: Record<string, NonNullable<ProviderConfig["videoOptions"]>> = {
+  "mg-seedance2.0 -720p fast": { durations: clmmFlexibleVideoDurations, ratios: ["16:9", "9:16"], resolution: "720p", maxReferenceImages: 4, maxReferenceVideos: 3, maxReferenceAudios: 3, maxReferenceDurationSeconds: 15, supportsVideoReference: true, supportsAudioReference: true },
+  "mg-seedance2.0 -720p mini": { durations: clmmFlexibleVideoDurations, ratios: ["16:9", "9:16"], resolution: "720p", maxReferenceImages: 4, maxReferenceVideos: 3, maxReferenceAudios: 1, maxReferenceDurationSeconds: 15, supportsVideoReference: true, supportsAudioReference: true },
+  "mg-seedance2.0 -720p pro": { durations: clmmFlexibleVideoDurations, ratios: ["16:9", "9:16"], resolution: "720p", maxReferenceImages: 4, maxReferenceVideos: 3, maxReferenceAudios: 1, maxReferenceDurationSeconds: 15, supportsVideoReference: true, supportsAudioReference: true },
+  "seedance2.0 720p-933-pro-gz-15s": { durations: [15], ratios: ["16:9", "9:16"], resolution: "720p", maxReferenceImages: 9, maxReferenceVideos: 3, maxReferenceAudios: 3, maxReferenceDurationSeconds: 15, supportsVideoReference: true, supportsAudioReference: true },
+  "seedance2.0 720p-fast-gz-15s": { durations: [15], ratios: ["16:9", "9:16"], resolution: "720p", maxReferenceImages: 4, maxReferenceVideos: 1, maxReferenceAudios: 1, maxReferenceDurationSeconds: 15, supportsVideoReference: true, supportsAudioReference: true },
+  "seedance2.0 720p-pro-gz-15s": { durations: [15], ratios: ["16:9", "9:16"], resolution: "720p", maxReferenceImages: 4, maxReferenceVideos: 3, maxReferenceAudios: 1, maxReferenceDurationSeconds: 15, supportsVideoReference: true, supportsAudioReference: true },
+};
 
 const seedanceVideoOptionsByModel: Record<string, NonNullable<ProviderConfig["videoOptions"]>> = {
   "video-2.0-fast-720p": { durations: [10, 15], ratios: ["16:9", "9:16"], resolution: "720p", maxReferenceImages: 4, maxReferenceVideos: 3, maxReferenceAudios: 1, maxReferenceDurationSeconds: 15, requiredReferenceMedia: ["image"], supportsVideoReference: true, supportsAudioReference: true },
@@ -125,6 +137,14 @@ export function seedanceVideoRequestSecondsForModel(_model: string, duration: nu
   return duration;
 }
 
+export function clmmSeedanceVideoOptionsForModel(model: string): ProviderConfig["videoOptions"] {
+  return clmmSeedanceVideoOptionsByModel[model.trim().toLowerCase()];
+}
+
+export function clmmSeedanceVideoRequestSecondsForModel(model: string, duration: number) {
+  return model.trim().toLowerCase().endsWith("-15s") ? 1 : duration;
+}
+
 function grokVideoOptionsForModel(model: string): ProviderConfig["videoOptions"] {
   const normalized = model.trim().toLowerCase();
   if (!normalized.startsWith("grok-video-")) return undefined;
@@ -161,6 +181,7 @@ function providerVideoOptions(provider: ProviderConfig) {
   return grokVideoOptionsForModel(provider.model)
     || getTokenVeoOptionsForModel(provider.model)
     || seedanceVideoOptionsForModel(provider.model)
+    || clmmSeedanceVideoOptionsForModel(provider.model)
     || normalizeVideoOptions(provider.videoOptions);
 }
 
@@ -371,6 +392,22 @@ export function defaultProviders(): ProviderConfig[] {
       custom: false,
     },
     {
+      id: "video-seedance-new",
+      kind: "video",
+      title: "Seedance 2.0 新视频生成",
+      role: "CLMM Seedance 2.0 六个 720P 模型",
+      apiUrl: env("VIDEO_API_URL", "https://clmm-mall.top/v1/videos"),
+      model: env("VIDEO_MODEL", clmmSeedanceVideoModels[0]),
+      models: clmmSeedanceVideoModels,
+      modelDisplayNames: clmmSeedanceVideoDisplayNames,
+      enabledModels: clmmSeedanceVideoModels,
+      displayName: env("VIDEO_DISPLAY_NAME", clmmSeedanceVideoDisplayNames[clmmSeedanceVideoModels[0]]),
+      apiKey: env("VIDEO_MODEL_API_KEY"),
+      enabled: hasKey(env("VIDEO_MODEL_API_KEY")),
+      endpointType: (env("VIDEO_ENDPOINT_TYPE", "videos-generations") as EndpointType),
+      custom: false,
+    },
+    {
       id: "image-upscale",
       kind: "image-upscale",
       title: "图片高清增强",
@@ -548,7 +585,7 @@ function mergeStoredProvider(fallback: ProviderConfig, stored: ProviderConfig | 
       endpointType: fallback.endpointType,
     };
   }
-  if (fallback.id === "video-main") {
+  if (fallback.id === "video-main" || fallback.id === "video-seedance-new") {
     const selectedModel = fallback.models?.includes(legacyStored.model) ? legacyStored.model : fallback.model;
     return {
       ...fallback,

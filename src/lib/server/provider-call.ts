@@ -20,7 +20,13 @@ import {
 import { assertStorageAllows } from "./storage-capacity";
 import { storeRemoteUrlStreamed } from "./remote-media-download";
 import { getTaskBillingService } from "./quota";
-import { providerById, seedanceVideoOptionsForModel, seedanceVideoRequestSecondsForModel } from "./providers";
+import {
+  clmmSeedanceVideoOptionsForModel,
+  clmmSeedanceVideoRequestSecondsForModel,
+  providerById,
+  seedanceVideoOptionsForModel,
+  seedanceVideoRequestSecondsForModel,
+} from "./providers";
 import { storeProviderReference } from "./provider-reference";
 import { type JobRecord, type LibraryItem, type ProviderConfig } from "./types";
 
@@ -328,6 +334,14 @@ function isRedbirdSeedanceProvider(provider: ProviderConfig) {
   return Boolean(seedanceVideoOptionsForModel(provider.model));
 }
 
+function isClmmSeedanceProvider(provider: ProviderConfig) {
+  return provider.id === "video-seedance-new" || provider.id.startsWith("video-seedance-new::model::");
+}
+
+function isSeedanceTaskProvider(provider: ProviderConfig) {
+  return isRedbirdSeedanceProvider(provider) || isClmmSeedanceProvider(provider);
+}
+
 function mediaFiles(input: { files: UploadedMedia[] }, mediaType: "image" | "video" | "audio") {
   return input.files.filter((file) => (file.mediaType || "image") === mediaType);
 }
@@ -352,6 +366,27 @@ function redbirdVideoPayload(provider: ProviderConfig, input: {
       : input.files?.length ? { images: input.files.map((file) => `data:${file.mimeType};base64,${file.bytes.toString("base64")}`) } : {}),
     ...(input.videoUrls?.length ? { videos: input.videoUrls } : {}),
     ...(input.audioUrls?.length ? { audios: input.audioUrls } : {}),
+  };
+}
+
+function clmmSeedanceVideoPayload(provider: ProviderConfig, input: {
+  prompt: string;
+  ratio: string;
+  duration: number;
+  imageUrls?: string[];
+  videoUrls?: string[];
+  audioUrls?: string[];
+}) {
+  return {
+    model: provider.model,
+    prompt: input.prompt,
+    aspect_ratio: input.ratio,
+    resolution: "720p",
+    size: ratioTo720pSize(input.ratio),
+    seconds: String(clmmSeedanceVideoRequestSecondsForModel(provider.model, input.duration)),
+    ...(input.imageUrls?.length ? { reference_image_urls: input.imageUrls } : {}),
+    ...(input.videoUrls?.length ? { reference_videos: input.videoUrls } : {}),
+    ...(input.audioUrls?.length ? { reference_audios: input.audioUrls } : {}),
   };
 }
 
@@ -871,7 +906,9 @@ function validateGrokVideoInput(provider: ProviderConfig, input: {
 }
 
 function videoOptionsForProvider(provider: ProviderConfig) {
-  return seedanceVideoOptionsForModel(provider.model) || provider.videoOptions;
+  return seedanceVideoOptionsForModel(provider.model)
+    || clmmSeedanceVideoOptionsForModel(provider.model)
+    || provider.videoOptions;
 }
 
 function validateVideoInput(provider: ProviderConfig, input: {
@@ -2010,7 +2047,7 @@ export async function submitVideo(input: {
       output = await callGetTokenVeoProvider(readyProvider, input);
     } else if (isGrokVideoProvider(readyProvider)) {
       output = await callGrokVideoProvider(readyProvider, { ...input, files: mediaFiles(input, "image") });
-    } else if (isRedbirdSeedanceProvider(readyProvider)) {
+    } else if (isRedbirdSeedanceProvider(readyProvider) || isClmmSeedanceProvider(readyProvider)) {
       const referenceImages = mediaFiles(input, "image");
       const referenceVideos = mediaFiles(input, "video");
       const referenceAudios = mediaFiles(input, "audio");
@@ -2025,7 +2062,9 @@ export async function submitVideo(input: {
           "Content-Type": "application/json",
           ...authHeaders(readyProvider),
         },
-        body: JSON.stringify(redbirdVideoPayload(readyProvider, { ...input, files: referenceImages, imageUrls, videoUrls, audioUrls })),
+        body: JSON.stringify(isClmmSeedanceProvider(readyProvider)
+          ? clmmSeedanceVideoPayload(readyProvider, { ...input, imageUrls, videoUrls, audioUrls })
+          : redbirdVideoPayload(readyProvider, { ...input, files: referenceImages, imageUrls, videoUrls, audioUrls })),
         signal: AbortSignal.timeout(180000),
       });
       const payload = await readProviderJson(response, readyProvider);
@@ -2261,7 +2300,7 @@ export async function refreshVideoJob(jobId: string, localUserId?: string | null
     ...(getTokenVeo ? { body: JSON.stringify({ taskId: job.id }) } : {}),
     signal: AbortSignal.timeout(60000),
   });
-  if (isRedbirdSeedanceProvider(provider) && response.status === 404) {
+  if (isSeedanceTaskProvider(provider) && response.status === 404) {
     await response.body?.cancel();
     await updateLibraryItem(job.libraryItemId, {
       status: "failed",
@@ -2490,7 +2529,9 @@ export const providerCallInternalsForTests = {
   isGetTokenBananaProvider,
   isGetTokenVeoProvider,
   isRedbirdSeedanceProvider,
+  isClmmSeedanceProvider,
   redbirdVideoPayload,
+  clmmSeedanceVideoPayload,
   shouldKeepGetTokenVeoJobPending,
   getTokenVeoVideoResultUrl,
   isImg2ImageProvider,

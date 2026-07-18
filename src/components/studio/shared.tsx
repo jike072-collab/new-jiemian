@@ -398,7 +398,8 @@ export function ProviderSelect({
   const familyDefinitions = [
     { value: "veo", label: "Veo", matches: (provider: FrontendProvider) => provider.model.startsWith("veo-") },
     { value: "grok", label: "Grok", matches: (provider: FrontendProvider) => provider.model.startsWith("grok-video-") },
-    { value: "seedance", label: "Seedance 2.0", matches: (provider: FrontendProvider) => provider.id.startsWith("video-main::model::") || provider.model.toLowerCase().includes("seedance") },
+    { value: "seedance", label: "Seedance 2.0", matches: (provider: FrontendProvider) => provider.id.startsWith("video-main::model::") },
+    { value: "seedance-new", label: "Seedance 2.0 新", matches: (provider: FrontendProvider) => provider.id.startsWith("video-seedance-new::model::") },
     { value: "banana", label: "Banana", matches: (provider: FrontendProvider) => ["banana2", "banana-pro"].includes(provider.model.toLowerCase()) },
   ];
   const groupedProviderIds = new Set<string>();
@@ -483,6 +484,12 @@ function providerUseCase(model: string, displayName: string) {
   if (normalized === "sdquan-2-miao") return "支持 9 图 · 3 音频 · 4-15 秒 · 720P";
   if (normalized === "doubao-seedance-2.0-fast-260128-grid") return "支持 9 图 · 3 视频 · 3 音频 · 15 秒 · 不卡真人 · 720P";
   if (normalized === "doubao-seedance-2-0-260128-grid") return "支持 9 图 · 3 视频 · 3 音频 · 15 秒 · 不卡真人 · 720P";
+  if (normalized === "mg-seedance2.0 -720p fast") return "支持 4 图 · 3 视频 · 3 音频 · 5-15 秒 · 不卡真人 · 720P";
+  if (normalized === "mg-seedance2.0 -720p mini") return "支持 4 图 · 3 视频 · 1 音频 · 5-15 秒 · 不卡真人 · 720P";
+  if (normalized === "mg-seedance2.0 -720p pro") return "支持 4 图 · 3 视频 · 1 音频 · 5-15 秒 · 不卡真人 · 720P";
+  if (normalized === "seedance2.0 720p-933-pro-gz-15s") return "支持 9 图 · 3 视频 · 3 音频 · 15 秒 · 不卡真人 · 720P";
+  if (normalized === "seedance2.0 720p-fast-gz-15s") return "支持 4 图 · 1 视频 · 1 音频 · 15 秒 · 不卡真人 · 720P";
+  if (normalized === "seedance2.0 720p-pro-gz-15s") return "支持 4 图 · 3 视频 · 1 音频 · 15 秒 · 不卡真人 · 720P";
   return undefined;
 }
 

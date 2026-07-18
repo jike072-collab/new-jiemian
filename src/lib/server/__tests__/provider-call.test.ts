@@ -8,6 +8,8 @@ import { createErrorDiagnostic, logDiagnosticEvent } from "../error-diagnostics"
 import { providerCallInternalsForTests } from "../provider-call";
 import { providerReferenceMimeType } from "../provider-reference";
 import {
+  clmmSeedanceVideoOptionsForModel,
+  clmmSeedanceVideoRequestSecondsForModel,
   defaultProviders,
   seedanceVideoOptionsForModel,
   seedanceVideoRequestSecondsForModel,
@@ -111,6 +113,54 @@ test("Every Redbird Seedance model uses signed JSON reference arrays", () => {
     assert.equal(payload.prompt, "以 @Video1 为基础，将鞋子替换为 @Image1");
     assert.equal(payload.resolution, "720p");
   }
+});
+
+test("CLMM Seedance defaults expose exactly the six 720P models", () => {
+  const clmmProvider = defaultProviders().find((item) => item.id === "video-seedance-new");
+  const models = clmmProvider?.models || [];
+  assert.deepEqual(models, [
+    "mg-seedance2.0 -720p fast",
+    "mg-seedance2.0 -720p mini",
+    "mg-seedance2.0 -720p pro",
+    "seedance2.0 720p-933-pro-gz-15s",
+    "seedance2.0 720p-fast-gz-15s",
+    "seedance2.0 720p-pro-gz-15s",
+  ]);
+  assert.equal(clmmProvider?.apiUrl, "https://clmm-mall.top/v1/videos");
+  assert.deepEqual(clmmProvider?.enabledModels, models);
+  assert.deepEqual(clmmSeedanceVideoOptionsForModel(models[0])?.durations, [5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15]);
+  assert.equal(clmmSeedanceVideoOptionsForModel(models[0])?.maxReferenceAudios, 3);
+  assert.equal(clmmSeedanceVideoOptionsForModel(models[3])?.maxReferenceImages, 9);
+  assert.equal(clmmSeedanceVideoOptionsForModel(models[4])?.maxReferenceVideos, 1);
+  assert.equal(clmmSeedanceVideoRequestSecondsForModel(models[0], 12), 12);
+  assert.equal(clmmSeedanceVideoRequestSecondsForModel(models[3], 15), 1);
+  assert.equal(isSeedance20VideoModel(models[0]), true);
+  assert.equal(seedanceLibraryModelName(models[3]), "Seedance 2.0 新 · 满血 933 不卡真人");
+});
+
+test("CLMM Seedance payload uses documented multi-reference fields", () => {
+  const selected: ProviderConfig = {
+    ...provider,
+    id: "video-seedance-new::model::seedance2.0%20720p-fast-gz-15s",
+    kind: "video",
+    apiUrl: "https://clmm-mall.top/v1/videos",
+    model: "seedance2.0 720p-fast-gz-15s",
+    endpointType: "videos-generations",
+  };
+  assert.equal(providerCallInternalsForTests.isClmmSeedanceProvider(selected), true);
+  const payload = providerCallInternalsForTests.clmmSeedanceVideoPayload(selected, {
+    prompt: "以 @Video1 为基础，将商品替换为 @Image1",
+    ratio: "9:16",
+    duration: 15,
+    imageUrls: ["https://example.test/reference-1.png", "https://example.test/reference-2.png"],
+    videoUrls: ["https://example.test/reference.mp4"],
+    audioUrls: ["https://example.test/reference.mp3"],
+  });
+  assert.equal(payload.seconds, "1");
+  assert.equal(payload.size, "720x1280");
+  assert.deepEqual(payload.reference_image_urls, ["https://example.test/reference-1.png", "https://example.test/reference-2.png"]);
+  assert.deepEqual(payload.reference_videos, ["https://example.test/reference.mp4"]);
+  assert.deepEqual(payload.reference_audios, ["https://example.test/reference.mp3"]);
 });
 
 test("Provider output reads object-shaped data responses", () => {

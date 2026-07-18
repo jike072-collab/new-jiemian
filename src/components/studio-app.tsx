@@ -3235,7 +3235,10 @@ export function StudioApp() {
       current: 0,
       total: 1,
       startedAt: Date.now(),
-      providerProgress: snapshot.providerId === "video-main" || snapshot.providerId.startsWith("video-main::model::")
+      providerProgress: snapshot.providerId === "video-main"
+        || snapshot.providerId.startsWith("video-main::model::")
+        || snapshot.providerId === "video-seedance-new"
+        || snapshot.providerId.startsWith("video-seedance-new::model::")
         ? 0
         : undefined,
       message: "正在提交视频任务",
