@@ -24,6 +24,7 @@ import {
   SubmitButton,
 } from "@/components/studio/shared";
 import type { ImageWorkspaceFile, ImageWorkspaceState, MobileActionState } from "@/components/studio/types";
+import { ShoeViewOutline } from "@/components/studio/shoe-view-outline";
 import type { PromptPreferences, PromptPreferenceTool } from "@/lib/prompt-preferences";
 import { cn } from "@/lib/utils";
 
@@ -274,38 +275,6 @@ function WhiteBackgroundFourViewInput({
       <p className="studio-four-view-upload-note">请严格按外侧、内侧、顶部、鞋底顺序上传。重新上传会清空当前四张图片。</p>
       {error ? <p className="studio-error-text" role="alert">{error}</p> : null}
     </FieldFrame>
-  );
-}
-
-function ShoeViewOutline({ view, active }: { view: string; active: boolean }) {
-  const strokeClass = "studio-four-view-shoe-outline__stroke";
-
-  return (
-    <svg
-      className={cn("studio-four-view-shoe-outline", active && "is-active", `is-${view}`)}
-      viewBox="0 0 160 92"
-      aria-hidden="true"
-      focusable="false"
-    >
-      {view === "外侧" || view === "内侧" ? (
-        <g transform={view === "内侧" ? "translate(160 0) scale(-1 1)" : undefined}>
-          <path className={strokeClass} d="M12 68c11-3 20-10 28-22l13-21c4-7 11-11 19-11h15c7 0 13 3 18 9l14 16c6 6 13 10 21 13l17 6c5 2 8 6 8 11v3H12z" />
-          <path className={strokeClass} d="M12 72h143v8H12zM38 56c12-2 22-8 30-18l12-14M57 52h42M74 25l18 16M85 22l18 16M96 25l17 14M120 49c8 4 15 7 24 9M136 63h11" />
-        </g>
-      ) : view === "顶部" ? (
-        <g>
-          <path className={strokeClass} d="M55 82c-8-11-11-24-8-39l7-24c2-7 8-11 15-11h22c7 0 13 4 15 11l7 24c3 15 0 28-8 39z" />
-          <path className={strokeClass} d="M66 13v53M94 13v53M68 28h24M66 40h28M64 52h32M61 65h38M55 82h50" />
-          <path className={strokeClass} d="M72 73c5 4 11 6 16 6s11-2 16-6" />
-        </g>
-      ) : (
-        <g>
-          <path className={strokeClass} d="M56 8c-14 3-25 14-29 30l-7 25c-4 14 7 25 22 25h76c15 0 26-11 22-25l-7-25c-4-16-15-27-29-30z" />
-          <path className={strokeClass} d="M48 18l13 16M77 10v74M112 18L99 34M32 48h96M26 67h108" />
-          <path className={strokeClass} d="M45 40l13 13M109 40L96 53M40 58l13 13M114 58l-13 13" />
-        </g>
-      )}
-    </svg>
   );
 }
 

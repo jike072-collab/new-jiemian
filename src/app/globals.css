@@ -2262,25 +2262,25 @@
     position: absolute;
     width: min(78%, 164px);
     height: 76%;
-    color: color-mix(in srgb, var(--muted) 58%, transparent);
-    opacity: 0.48;
+    color: #55565d;
+    opacity: 0.82;
     pointer-events: none;
   }
 
-  .studio-four-view-shoe-outline__stroke {
+  .studio-four-view-shoe-outline__stroke > * {
     fill: none;
     stroke: currentColor;
     stroke-linecap: round;
     stroke-linejoin: round;
-    stroke-width: 2.2;
+    stroke-width: 4;
   }
 
   .studio-four-view-shoe-outline.is-active {
     color: var(--primary);
-    opacity: 0.84;
+    opacity: 1;
   }
 
-  .studio-four-view-shoe-outline.is-active .studio-four-view-shoe-outline__stroke {
+  .studio-four-view-shoe-outline.is-active .studio-four-view-shoe-outline__stroke > * {
     stroke-dasharray: 240;
     stroke-dashoffset: 240;
     animation: studio-four-view-shoe-draw 560ms var(--ease-enter) both;
@@ -2332,7 +2332,7 @@
   }
 
   @media (prefers-reduced-motion: reduce) {
-    .studio-four-view-shoe-outline.is-active .studio-four-view-shoe-outline__stroke {
+    .studio-four-view-shoe-outline.is-active .studio-four-view-shoe-outline__stroke > * {
       animation: none;
       stroke-dasharray: none;
       stroke-dashoffset: 0;
