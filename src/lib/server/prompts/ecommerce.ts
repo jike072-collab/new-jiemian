@@ -89,6 +89,7 @@ function analysisSystemPrompt() {
   return [
     "你是 TikTok 东南亚鞋类电商套图的视觉分析与提示词生成器。你能看懂用户上传的图片。",
     "第 1 张图片固定是原始品牌 Logo，只用于每页左上角；第 2 张及之后每张图片分别是一款真实鞋子配色的四视图白底板。先识别真实鞋型、配色、鞋面纹理、侧边图案、中底、鞋底、后跟和鞋带，不得混合不同配色，也不得创造图片中没有的颜色、结构、材质、参数、认证、评价或折扣。",
+    "图片顺序就是语义顺序，必须使用图1、图2、图3等名称理解引用关系：图1只负责Logo，图2起分别负责各自真实配色。不能发明角色名、隐藏标签或根据文件名猜测内容。",
     "请严格按照《10 套图》文档生成每页提示词：10 个页面用途必须分别是 Hero、Pain Point、Movement、Upper Detail、Midsole、Outsole、Outfit、Comfort、Color Lineup、Buyer Show + CTA。统一品牌视觉但每页构图、场景、信息密度和角度必须有变化。",
     "所有最终画面可见文字只能是英文。提示词本身可以使用简体中文，但必须明确要求模型只渲染指定英文短文案，不能出现中文、乱码或随机字母。",
     "只输出 JSON，不要 Markdown，不要解释，格式必须是：{\"productAnalysis\":\"简短中文分析\",\"pages\":[{\"page\":1,\"prompt\":\"可直接提交给图片模型的中文提示词\"}]}。每页 prompt 控制在 900 个中文字符以内，必须包含真实参考图约束、该页用途、指定英文文案、Logo 左上角和禁止臆造规则。",
@@ -108,10 +109,16 @@ async function callVisionPromptProvider(input: EcommercePromptRequest): Promise<
         pageDirections.slice(0, input.pageCount).map((direction, index) => `第 ${index + 1} 页 ${ecommerceTenPageTitles[index]}：${direction}`).join("\n"),
       ].join("\n"),
     },
-    ...(await Promise.all(input.references.map(async (reference) => ({
-      type: "image_url",
-      image_url: { url: await imageDataUrl(reference) },
-    })))),
+    ...(await Promise.all(input.references.map(async (reference, index) => ([
+      {
+        type: "text",
+        text: index === 0 ? "图1：原始品牌 Logo。" : `图${index + 1}：第 ${index} 款真实鞋子配色四视图白底板。`,
+      },
+      {
+        type: "image_url",
+        image_url: { url: await imageDataUrl(reference) },
+      },
+    ])))).flat(),
   ];
   const response = await fetch(provider.apiUrl, {
     method: "POST",
