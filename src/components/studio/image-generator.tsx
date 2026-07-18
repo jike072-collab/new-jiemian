@@ -259,6 +259,7 @@ function WhiteBackgroundFourViewInput({
           return (
             <div key={view} className={cn("studio-four-view-upload-slot", file && "is-filled", canUpload && "is-next")}>
               {file ? <img src={file.previewUrl} alt={`${view}视图`} /> : null}
+              {!file ? <ShoeViewOutline view={view} active={canUpload} /> : null}
               {!file && canUpload ? (
                 <button type="button" onClick={() => inputRef.current?.click()}>
                   <ImagePlus className="size-5" aria-hidden="true" />
@@ -273,6 +274,38 @@ function WhiteBackgroundFourViewInput({
       <p className="studio-four-view-upload-note">请严格按外侧、内侧、顶部、鞋底顺序上传。重新上传会清空当前四张图片。</p>
       {error ? <p className="studio-error-text" role="alert">{error}</p> : null}
     </FieldFrame>
+  );
+}
+
+function ShoeViewOutline({ view, active }: { view: string; active: boolean }) {
+  const strokeClass = "studio-four-view-shoe-outline__stroke";
+
+  return (
+    <svg
+      className={cn("studio-four-view-shoe-outline", active && "is-active", `is-${view}`)}
+      viewBox="0 0 160 92"
+      aria-hidden="true"
+      focusable="false"
+    >
+      {view === "外侧" || view === "内侧" ? (
+        <g transform={view === "内侧" ? "translate(160 0) scale(-1 1)" : undefined}>
+          <path className={strokeClass} d="M18 62c15-3 28-15 41-31 5-7 12-11 20-11h15c5 0 10 3 13 8l11 19c7 9 18 13 28 16 5 1 8 5 8 10v4H18z" />
+          <path className={strokeClass} d="M25 62h117M66 28l17 14M77 25l18 14M89 25l17 13M48 52h42" />
+        </g>
+      ) : view === "顶部" ? (
+        <g>
+          <path className={strokeClass} d="M49 79c-7-11-10-25-7-40l5-21c2-7 8-11 15-11h36c7 0 13 4 15 11l5 21c3 15 0 29-7 40z" />
+          <path className={strokeClass} d="M65 12v56M95 12v56M68 27h24M66 39h28M64 51h32M61 64h38" />
+          <path className={strokeClass} d="M49 79h62" />
+        </g>
+      ) : (
+        <g>
+          <path className={strokeClass} d="M30 75c-9-8-10-22-4-34l13-25c3-6 9-9 15-9h52c7 0 12 3 15 9l13 25c6 12 5 26-4 34z" />
+          <path className={strokeClass} d="M45 20l70 52M63 10l47 68M39 39h83M31 58h98" />
+          <path className={strokeClass} d="M61 32l11 11M89 32l-11 11M56 56l11 11M104 56L93 67" />
+        </g>
+      )}
+    </svg>
   );
 }
 
