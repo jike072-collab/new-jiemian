@@ -55,6 +55,8 @@ export function ImageGenerator({
   onFilesClear,
   whiteBackgroundFourViewMode,
   onWhiteBackgroundFourViewModeChange,
+  ecommerceTenPageMode,
+  onEcommerceTenPageModeChange,
   onReloadProviders,
   onSubmit,
   registerMobileAction,
@@ -86,13 +88,15 @@ export function ImageGenerator({
   onFilesClear: () => void;
   whiteBackgroundFourViewMode: boolean;
   onWhiteBackgroundFourViewModeChange: () => void;
+  ecommerceTenPageMode: boolean;
+  onEcommerceTenPageModeChange: () => void;
   onReloadProviders: () => Promise<void>;
   onSubmit: () => void;
   registerMobileAction: (action: MobileActionState) => void;
 }) {
   const meta = imageWorkspaceModeMeta[mode];
-  const submitLabel = whiteBackgroundFourViewMode ? "生成四视图白底图" : meta.submitLabel;
-  const loadingLabel = whiteBackgroundFourViewMode ? "正在生成四视图" : meta.loadingLabel;
+  const submitLabel = ecommerceTenPageMode ? "生成电商套图 10 张" : whiteBackgroundFourViewMode ? "生成四视图白底图" : meta.submitLabel;
+  const loadingLabel = ecommerceTenPageMode ? "正在生成电商套图" : whiteBackgroundFourViewMode ? "正在生成四视图" : meta.loadingLabel;
 
   useEffect(() => {
     registerMobileAction({
@@ -115,6 +119,14 @@ export function ImageGenerator({
       >
         四视图白底图
       </button>
+      <button
+        type="button"
+        className="studio-four-view-mobile-toggle"
+        aria-pressed={ecommerceTenPageMode}
+        onClick={onEcommerceTenPageModeChange}
+      >
+        电商套图 10 张
+      </button>
       <ProviderSelect
         providers={providers}
         value={selectedProvider?.id || state.providerId}
@@ -123,7 +135,7 @@ export function ImageGenerator({
         onChange={onProviderChange}
         onReload={onReloadProviders}
       />
-      {showTemplates && !whiteBackgroundFourViewMode ? (
+      {showTemplates && !whiteBackgroundFourViewMode && !ecommerceTenPageMode ? (
         <TemplateRail
           scope="image"
           title="模板"
@@ -141,6 +153,29 @@ export function ImageGenerator({
             <strong>1:1</strong>
             <strong>1K</strong>
             <strong>1 张</strong>
+          </div>
+        </>
+      ) : ecommerceTenPageMode ? (
+        <>
+          <EcommerceTenPageInput files={state.files} error={state.fileError} onChange={onFilesChange} onRemove={onFileRemove} onClear={onFilesClear} />
+          <StackedControl label="比例" required>
+            <AspectRatioSelector label="比例" value={state.ratio} onChange={onRatioChange} />
+          </StackedControl>
+          <StackedControl label="清晰度" required>
+            <CustomSelect
+              label="清晰度"
+              value={state.quality}
+              options={[
+                { value: "1k", label: "1K（默认）" },
+                { value: "2k", label: "2K（细节更多）" },
+                { value: "4k", label: "4K（大图输出）" },
+              ]}
+              onChange={onQualityChange}
+            />
+          </StackedControl>
+          <div className="studio-fixed-generation-settings" aria-label="固定生成设置">
+            <span>固定生成</span>
+            <strong>10 张</strong>
           </div>
         </>
       ) : (
@@ -271,6 +306,97 @@ function WhiteBackgroundFourViewInput({
         })}
       </div>
       <p className="studio-four-view-upload-note">前两张请分别上传外侧和内侧，顺序不限；第 3 张上传顶部，第 4 张上传鞋底。重新上传会清空当前四张图片。</p>
+      {error ? <p className="studio-error-text" role="alert">{error}</p> : null}
+    </FieldFrame>
+  );
+}
+
+function EcommerceTenPageInput({
+  files,
+  error,
+  onChange,
+  onRemove,
+  onClear,
+}: {
+  files: ImageWorkspaceFile[];
+  error: string;
+  onChange: (files: File[]) => void;
+  onRemove: (index: number) => void;
+  onClear: () => void;
+}) {
+  const logoInputRef = useRef<HTMLInputElement | null>(null);
+  const boardInputRef = useRef<HTMLInputElement | null>(null);
+  const logo = files[0];
+  const boards = files.slice(1);
+
+  return (
+    <FieldFrame
+      label="电商套图素材"
+      required
+      action={files.length ? <button type="button" className="studio-prompt-action" onClick={onClear}><RotateCcw className="size-3.5" aria-hidden="true" />重新上传</button> : undefined}
+    >
+      <input
+        ref={logoInputRef}
+        type="file"
+        accept="image/png,image/jpeg,image/webp"
+        className="studio-file-input"
+        aria-label="上传品牌 Logo"
+        onChange={(event) => {
+          const file = event.target.files?.[0];
+          if (file) onChange([file, ...files.slice(1).map((item) => item.file)]);
+          event.currentTarget.value = "";
+        }}
+      />
+      <div className="studio-ecommerce-logo-upload">
+        <div className="studio-ecommerce-upload-heading">
+          <strong>品牌 Logo</strong>
+          <span>每张图固定放在左上角</span>
+        </div>
+        {logo ? (
+          <div className="studio-ecommerce-logo-preview">
+            <img src={logo.previewUrl} alt="品牌 Logo" />
+            <button type="button" aria-label="删除品牌 Logo" onClick={() => onRemove(0)}>×</button>
+          </div>
+        ) : (
+          <button type="button" className="studio-ecommerce-upload-button" onClick={() => logoInputRef.current?.click()}>
+            <ImagePlus className="size-5" aria-hidden="true" />
+            <span>上传 Logo</span>
+          </button>
+        )}
+      </div>
+      <input
+        ref={boardInputRef}
+        type="file"
+        accept="image/png,image/jpeg,image/webp"
+        multiple
+        className="studio-file-input"
+        aria-label="上传配色四视图白底图"
+        onChange={(event) => {
+          const selected = Array.from(event.target.files || []);
+          if (selected.length) onChange([files[0]?.file, ...boards.map((item) => item.file), ...selected].filter(Boolean) as File[]);
+          event.currentTarget.value = "";
+        }}
+      />
+      <div className="studio-ecommerce-board-upload">
+        <div className="studio-ecommerce-upload-heading">
+          <strong>配色四视图白底图</strong>
+          <span>每张图对应一个颜色</span>
+        </div>
+        <div className="studio-ecommerce-board-grid">
+          {boards.map((board, index) => (
+            <div key={`${board.file.name}-${index}`} className="studio-ecommerce-board-preview">
+              <img src={board.previewUrl} alt={`配色 ${index + 1} 四视图`} />
+              <span>配色 {index + 1}</span>
+              <button type="button" aria-label={`删除配色 ${index + 1}`} onClick={() => onRemove(index + 1)}>×</button>
+            </div>
+          ))}
+          <button type="button" className="studio-ecommerce-upload-button studio-ecommerce-upload-button--board" onClick={() => boardInputRef.current?.click()} disabled={!logo}>
+            <ImagePlus className="size-5" aria-hidden="true" />
+            <span>添加配色</span>
+          </button>
+        </div>
+      </div>
+      <p className="studio-four-view-upload-note">先上传 1 张 Logo，再上传前一个功能生成的配色四视图白底图；一次最多 9 个配色。</p>
       {error ? <p className="studio-error-text" role="alert">{error}</p> : null}
     </FieldFrame>
   );

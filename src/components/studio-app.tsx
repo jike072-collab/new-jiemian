@@ -11,6 +11,13 @@ import { WorkbenchShell } from "@/components/workbench-shell";
 import { ImageGenerator } from "@/components/studio/image-generator";
 import { jsonFetch } from "@/components/studio/json-fetch";
 import {
+  ecommerceTenPageCount,
+  ecommerceTenPageDefaultQuality,
+  ecommerceTenPageDefaultRatio,
+  ecommerceTenPageMaxReferenceCount,
+  ecommerceTenPageMinReferenceCount,
+  ecommerceTenPagePresetId,
+  ecommerceTenPagePrompt,
   whiteBackgroundFourViewCount,
   whiteBackgroundFourViewPresetId,
   whiteBackgroundFourViewPrompt,
@@ -422,8 +429,10 @@ function createTaskId(prefix: string) {
 type ImageWorkspaceScope = "image" | "image-editor";
 
 const imageGenerationExecutionLimit = 4;
+const ecommerceTenPageExecutionLimit = 10;
 
 const runImageGenerationWithSlot = createTaskRunner(imageGenerationExecutionLimit);
+const runEcommerceTenPageWithSlot = createTaskRunner(ecommerceTenPageExecutionLimit);
 
 function createInitialImageWorkspaceState(): ImageWorkspaceState {
   return {
@@ -789,6 +798,7 @@ export function StudioApp() {
   const [imageWorkspace, setImageWorkspace] = useState<ImageWorkspaceState>(() => createInitialImageWorkspaceState());
   const [imageEditorWorkspace, setImageEditorWorkspace] = useState<ImageWorkspaceState>(() => createInitialImageWorkspaceState());
   const [imagePreset, setImagePreset] = useState<string | null>(null);
+  const [imagePresetMenuOpen, setImagePresetMenuOpen] = useState(false);
   const [videoWorkspace, setVideoWorkspace] = useState<VideoWorkspaceState>({
     providerId: "",
     referenceMode: "single",
@@ -1341,6 +1351,7 @@ export function StudioApp() {
   const activeImageWorkspaceSetter = activeImageWorkspaceScope === "image-editor" ? setImageEditorWorkspace : setImageWorkspace;
   const activeImageInFlightCountRef = activeImageWorkspaceScope === "image-editor" ? imageEditorInFlightCountRef : imageInFlightCountRef;
   const whiteBackgroundFourViewMode = activeImageWorkspaceScope === "image" && imagePreset === whiteBackgroundFourViewPresetId;
+  const ecommerceTenPageMode = activeImageWorkspaceScope === "image" && imagePreset === ecommerceTenPagePresetId;
   const activeImageMode: WorkspaceImageMode = activeImageWorkspaceScope === "image-editor" || activeImageWorkspace.files.length
     ? "image-to-image"
     : "text-to-image";
@@ -1670,7 +1681,11 @@ export function StudioApp() {
     setImageResultScope(options?.scope || null);
     setImageOutputs((prev) => {
       if (!options?.append) return [nextOutput];
-      const withoutDuplicate = prev.filter((output) => output.item.id !== item.id);
+      const pageIndex = Number(item.params?.imagePageIndex);
+      const withoutDuplicate = prev.filter((output) => (
+        output.item.id !== item.id
+        && (!Number.isInteger(pageIndex) || Number(output.item.params?.imagePageIndex) !== pageIndex)
+      ));
       return [...withoutDuplicate, nextOutput];
     });
   }, [sessionUser?.local_user_id]);
@@ -1697,33 +1712,46 @@ export function StudioApp() {
   const imageWorkspacePrompt = activeImageWorkspace.prompt.trim();
   const imageWorkspaceRequiresFile = activeImageTemplate?.scope === "image" && activeImageTemplate.requiresImage;
   const imageGenerationCount = Math.min(Math.max(Math.round(Number(activeImageWorkspace.count) || 1), 1), 4);
-  const imageEstimatedQuotaUnits = estimateImageGenerationTotalQuota({
+  const imageBillingCount = ecommerceTenPageMode ? ecommerceTenPageCount : imageGenerationCount;
+  const singleImageEstimatedQuotaUnits = estimateImageGenerationTotalQuota({
     quality: activeImageWorkspace.quality,
-    count: imageGenerationCount,
+    count: 1,
     model: selectedImageProvider?.model,
   });
+  const imageEstimatedQuotaUnits = ecommerceTenPageMode
+    ? singleImageEstimatedQuotaUnits * ecommerceTenPageCount
+    : estimateImageGenerationTotalQuota({
+      quality: activeImageWorkspace.quality,
+      count: imageBillingCount,
+      model: selectedImageProvider?.model,
+    });
   const activeImageBillingOperation: ImageBillingOperation = activeImageWorkspaceScope === "image-editor"
     ? "cloud_image_edit"
     : "cloud_image_generation";
   const imageGenerationCostLabel = imageGenerationEntitlementLabel(
     membershipEntitlements,
-    imageGenerationCount,
+    imageBillingCount,
     activeImageWorkspace.quality,
     formatQuotaSymbolLabel(imageEstimatedQuotaUnits),
   );
-  const imageWorkspaceAtSubmissionLimit = activeImageWorkspaceScope === "image-editor"
-    && activeImageWorkspace.inFlightCount + imageGenerationCount > 1;
+  const imageWorkspaceAtSubmissionLimit = (activeImageWorkspaceScope === "image-editor"
+    && activeImageWorkspace.inFlightCount + imageGenerationCount > 1)
+    || (ecommerceTenPageMode && activeImageWorkspace.inFlightCount > 0);
   const imageWorkspaceCanSubmit = Boolean(selectedImageProvider)
     && !providersLoading
     && !imageWorkspaceAtSubmissionLimit
     && Boolean(imageWorkspacePrompt)
     && (!whiteBackgroundFourViewMode || imageWorkspaceFiles.length === whiteBackgroundFourViewReferenceCount)
+    && (!ecommerceTenPageMode
+      || (Boolean(imageWorkspaceFiles[0])
+        && imageWorkspaceFiles.length >= ecommerceTenPageMinReferenceCount
+        && imageWorkspaceFiles.length <= ecommerceTenPageMaxReferenceCount))
     && (!imageWorkspaceRequiresFile || imageWorkspaceHasFiles);
   const scopedImagePendingCount = imageGenerationProgress
     .filter((progress) => progress.scope === activeImageWorkspaceScope && progress.status === "running")
     .reduce((total, progress) => total + Math.max(0, progress.total - progress.current), 0);
   const scopedImageLoading = scopedImagePendingCount > 0;
-  const imageSubmitLoading = activeImageWorkspaceScope === "image-editor" && scopedImageLoading;
+  const imageSubmitLoading = (activeImageWorkspaceScope === "image-editor" || ecommerceTenPageMode) && scopedImageLoading;
   const scopedImageSubmitError = imageRequestScope === activeImageWorkspaceScope ? activeImageWorkspace.submitError : "";
   const scopedImageSubmitDiagnostic = imageRequestScope === activeImageWorkspaceScope ? activeImageWorkspace.submitDiagnostic : null;
   const scopedImageOutputs = imageResultScope === activeImageWorkspaceScope ? imageOutputs : [];
@@ -1737,10 +1765,11 @@ export function StudioApp() {
     }));
   }, [activeImageWorkspaceSetter]);
 
-  const toggleWhiteBackgroundFourViewMode = useCallback(() => {
-    if (whiteBackgroundFourViewMode) {
+  const selectImagePreset = useCallback((nextPreset: string | null) => {
+    if (nextPreset === imagePreset) {
       const restore = imagePresetRestoreRef.current;
       setImagePreset(null);
+      setImagePresetMenuOpen(false);
       setImageWorkspace((prev) => ({
         ...prev,
         ...(restore || {}),
@@ -1754,23 +1783,28 @@ export function StudioApp() {
       return;
     }
 
-    imagePresetRestoreRef.current = {
-      ratio: imageWorkspace.ratio,
-      quality: imageWorkspace.quality,
-      count: imageWorkspace.count,
-      templateId: imageWorkspace.templateId,
-      prompt: imageWorkspace.prompt,
-    };
+    if (!imagePreset) {
+      imagePresetRestoreRef.current = {
+        ratio: imageWorkspace.ratio,
+        quality: imageWorkspace.quality,
+        count: imageWorkspace.count,
+        templateId: imageWorkspace.templateId,
+        prompt: imageWorkspace.prompt,
+      };
+    }
     imageWorkspaceFilesRef.current.forEach((file) => URL.revokeObjectURL(file.previewUrl));
     imageWorkspaceFilesRef.current = [];
-    setImagePreset(whiteBackgroundFourViewPresetId);
+    setImagePreset(nextPreset);
+    setImagePresetMenuOpen(false);
+    const isWhitePreset = nextPreset === whiteBackgroundFourViewPresetId;
+    const isEcommercePreset = nextPreset === ecommerceTenPagePresetId;
     setImageWorkspace((prev) => ({
       ...prev,
-      ratio: whiteBackgroundFourViewRatio,
-      quality: whiteBackgroundFourViewQuality,
-      count: whiteBackgroundFourViewCount,
+      ratio: isWhitePreset ? whiteBackgroundFourViewRatio : isEcommercePreset ? ecommerceTenPageDefaultRatio : prev.ratio,
+      quality: isWhitePreset ? whiteBackgroundFourViewQuality : isEcommercePreset ? ecommerceTenPageDefaultQuality : prev.quality,
+      count: isWhitePreset ? whiteBackgroundFourViewCount : isEcommercePreset ? ecommerceTenPageCount : prev.count,
       templateId: "",
-      prompt: whiteBackgroundFourViewPrompt,
+      prompt: isWhitePreset ? whiteBackgroundFourViewPrompt : isEcommercePreset ? ecommerceTenPagePrompt(1, ecommerceTenPageDefaultRatio) : prev.prompt,
       promptOptimizing: false,
       promptOptimizeError: "",
       promptOptimizeUndo: "",
@@ -1779,7 +1813,15 @@ export function StudioApp() {
       submitError: "",
       submitDiagnostic: null,
     }));
-  }, [imageWorkspace.count, imageWorkspace.prompt, imageWorkspace.quality, imageWorkspace.ratio, imageWorkspace.templateId, whiteBackgroundFourViewMode]);
+  }, [imagePreset, imageWorkspace.count, imageWorkspace.prompt, imageWorkspace.quality, imageWorkspace.ratio, imageWorkspace.templateId]);
+
+  const toggleWhiteBackgroundFourViewMode = useCallback(() => {
+    selectImagePreset(whiteBackgroundFourViewMode ? null : whiteBackgroundFourViewPresetId);
+  }, [selectImagePreset, whiteBackgroundFourViewMode]);
+
+  const toggleEcommerceTenPageMode = useCallback(() => {
+    selectImagePreset(ecommerceTenPageMode ? null : ecommerceTenPagePresetId);
+  }, [ecommerceTenPageMode, selectImagePreset]);
 
   const updateImageInFlightState = useCallback((nextCount: number, scope: ImageWorkspaceScope = activeImageWorkspaceScope) => {
     const countRef = scope === "image-editor" ? imageEditorInFlightCountRef : imageInFlightCountRef;
@@ -1971,8 +2013,9 @@ export function StudioApp() {
     }));
   }, [activeImageWorkspaceFilesRef, activeImageWorkspaceSetter]);
 
-  const submitImageWorkspace = useCallback(async () => {
+  const submitImageWorkspace = useCallback(async (options?: { pageIndex?: number; batchId?: string }) => {
     if (activeImageWorkspaceScope === "image-editor" && activeImageInFlightCountRef.current >= 1) return;
+    if (ecommerceTenPageMode && activeImageInFlightCountRef.current > 0 && !options?.pageIndex) return;
     if (!selectedImageProvider) {
       activeImageWorkspaceSetter((prev) => ({
         ...prev,
@@ -1997,6 +2040,14 @@ export function StudioApp() {
       }));
       return;
     }
+    if (ecommerceTenPageMode && (activeImageWorkspace.files.length < ecommerceTenPageMinReferenceCount || activeImageWorkspace.files.length > ecommerceTenPageMaxReferenceCount)) {
+      activeImageWorkspaceSetter((prev) => ({
+        ...prev,
+        fileError: "请先上传 1 张 Logo 和至少 1 张配色四视图白底图，最多支持 9 张配色图。",
+      }));
+      return;
+    }
+    if (ecommerceTenPageMode && options?.pageIndex && (options.pageIndex < 1 || options.pageIndex > ecommerceTenPageCount)) return;
     if (imageWorkspaceRequiresFile && !imageWorkspaceHasFiles) {
       activeImageWorkspaceSetter((prev) => ({
         ...prev,
@@ -2005,26 +2056,33 @@ export function StudioApp() {
       return;
     }
 
-    const totalCount = imageGenerationCount;
+    const pageRetry = ecommerceTenPageMode && Number.isInteger(options?.pageIndex);
+    const totalCount = pageRetry ? 1 : ecommerceTenPageMode ? ecommerceTenPageCount : imageGenerationCount;
     const progressId = createTaskId("image-progress");
-    const batchId = createTaskId("image-batch");
+    const batchId = pageRetry && options?.batchId ? options.batchId : createTaskId("image-batch");
     const snapshot = {
       scope: activeImageWorkspaceScope,
       providerId: selectedImageProvider.id,
-      mode: whiteBackgroundFourViewMode ? "image-to-image" : activeImageMode,
+      mode: whiteBackgroundFourViewMode || ecommerceTenPageMode ? "image-to-image" : activeImageMode,
       operation: activeImageBillingOperation,
       ratio: whiteBackgroundFourViewMode ? whiteBackgroundFourViewRatio : activeImageWorkspace.ratio,
       quality: whiteBackgroundFourViewMode ? whiteBackgroundFourViewQuality : activeImageWorkspace.quality,
-      prompt: whiteBackgroundFourViewMode ? whiteBackgroundFourViewPrompt : activeImageWorkspace.prompt,
+      prompt: whiteBackgroundFourViewMode
+        ? whiteBackgroundFourViewPrompt
+        : ecommerceTenPageMode ? ecommerceTenPagePrompt(options?.pageIndex || 1, activeImageWorkspace.ratio) : activeImageWorkspace.prompt,
       files: activeImageWorkspace.files.map((attachment) => attachment.file),
       perImageQuotaUnits: estimateImageGenerationTotalQuota({
         quality: activeImageWorkspace.quality,
         count: 1,
         model: selectedImageProvider.model,
       }),
-      totalCount: whiteBackgroundFourViewMode ? whiteBackgroundFourViewCount : totalCount,
+      totalCount,
+      batchTotal: ecommerceTenPageMode ? ecommerceTenPageCount : totalCount,
       batchId,
-      preset: whiteBackgroundFourViewMode ? whiteBackgroundFourViewPresetId : null,
+      preset: whiteBackgroundFourViewMode ? whiteBackgroundFourViewPresetId : ecommerceTenPageMode ? ecommerceTenPagePresetId : null,
+      pageIndex: pageRetry ? options?.pageIndex : undefined,
+      pageRetry,
+      ecommerceTenPageMode,
     };
 
     latestImageDisplayRef.current[snapshot.scope] = { taskId: batchId, progressId };
@@ -2049,9 +2107,9 @@ export function StudioApp() {
       scope: snapshot.scope,
       status: "running",
       current: 0,
-      total: totalCount,
+      total: snapshot.totalCount,
       startedAt,
-      message: totalCount > 1 ? `正在同时生成 ${totalCount} 张图片` : "正在生成图片",
+      message: snapshot.totalCount > 1 ? `正在同时生成 ${snapshot.totalCount} 张图片` : "正在生成图片",
     }]);
     const findTaskItems = (taskId: string) => fetchJson<{ items: LibraryItem[] }>("/api/library")
       .then((data) => data.items.filter((item) => (
@@ -2062,7 +2120,9 @@ export function StudioApp() {
       )));
     try {
       const taskIds = Array.from({ length: snapshot.totalCount }, () => createTaskId("image"));
-      const runImageTask = async (taskId: string) => runImageGenerationWithSlot(async () => {
+      const runImageTask = async (taskId: string, pageIndex?: number) => {
+        const runWithSlot = snapshot.ecommerceTenPageMode ? runEcommerceTenPageWithSlot : runImageGenerationWithSlot;
+        return runWithSlot(async () => {
         const publishItems = (items: LibraryItem[]) => {
           items.forEach((item) => handleImageResult(item, { append: true, scope: snapshot.scope }));
           updateImageGenerationProgress(progressId, (current) => ({
@@ -2103,7 +2163,8 @@ export function StudioApp() {
         form.set("taskId", taskId);
         form.set("idempotencyKey", taskId);
         form.set("batchId", snapshot.batchId);
-        form.set("batchTotal", String(snapshot.totalCount));
+        form.set("batchTotal", String(snapshot.batchTotal));
+        if (pageIndex) form.set("pageIndex", String(pageIndex));
         form.set("count", "1");
         form.set("estimatedQuotaUnits", String(snapshot.perImageQuotaUnits));
         form.set("operation", snapshot.operation);
@@ -2123,7 +2184,11 @@ export function StudioApp() {
           throw error;
         }
       });
-      const results = await Promise.allSettled(taskIds.map(runImageTask));
+      };
+      const taskPages = snapshot.pageRetry
+        ? [{ taskId: taskIds[0], pageIndex: snapshot.pageIndex }]
+        : taskIds.map((taskId, index) => ({ taskId, pageIndex: snapshot.ecommerceTenPageMode ? index + 1 : undefined }));
+      const results = await Promise.allSettled(taskPages.map(({ taskId, pageIndex }) => runImageTask(taskId, pageIndex)));
       const items = results.flatMap((result) => result.status === "fulfilled" ? result.value : []);
       const failures = results.filter((result): result is PromiseRejectedResult => result.status === "rejected");
       if (!items.length) throw failures[0]?.reason || new Error("图片生成未返回结果。");
@@ -2170,6 +2235,7 @@ export function StudioApp() {
     activeImageWorkspaceSetter,
     activeImageWorkspaceScope,
     activeImageMode,
+    ecommerceTenPageMode,
     handleImageResult,
     imageGenerationCount,
     imageWorkspacePrompt,
@@ -3226,15 +3292,29 @@ export function StudioApp() {
   ]);
 
   const imageToolHeaderSlot = activeBusinessTool === "image" && activeImageWorkspaceScope === "image" ? (
-    <button
-      type="button"
-      className={cn("studio-tool-header-action", whiteBackgroundFourViewMode && "is-active")}
-      aria-pressed={whiteBackgroundFourViewMode}
-      onClick={toggleWhiteBackgroundFourViewMode}
-    >
-      <Grid2X2 className="size-4" aria-hidden="true" />
-      四视图白底
-    </button>
+    <div className="studio-tool-header-preset-menu">
+      <button
+        type="button"
+        className={cn("studio-tool-header-action", (whiteBackgroundFourViewMode || ecommerceTenPageMode) && "is-active")}
+        aria-expanded={imagePresetMenuOpen}
+        onClick={() => setImagePresetMenuOpen((open) => !open)}
+      >
+        <Grid2X2 className="size-4" aria-hidden="true" />
+        功能
+      </button>
+      {imagePresetMenuOpen ? (
+        <div className="studio-tool-header-preset-popover" role="menu" aria-label="图片固定功能">
+          <button type="button" className={cn(whiteBackgroundFourViewMode && "is-active")} onClick={toggleWhiteBackgroundFourViewMode} role="menuitem">
+            <Grid2X2 className="size-4" aria-hidden="true" />
+            <span><strong>四视图白底图</strong><small>4 张视图生成 1 张白底图</small></span>
+          </button>
+          <button type="button" className={cn(ecommerceTenPageMode && "is-active")} onClick={toggleEcommerceTenPageMode} role="menuitem">
+            <Sparkles className="size-4" aria-hidden="true" />
+            <span><strong>电商套图 10 张</strong><small>Logo + 多配色四视图</small></span>
+          </button>
+        </div>
+      ) : null}
+    </div>
   ) : null;
 
   const parameterSlot = (
@@ -3268,6 +3348,8 @@ export function StudioApp() {
           onFilesClear={clearImageWorkspaceFiles}
           whiteBackgroundFourViewMode={whiteBackgroundFourViewMode}
           onWhiteBackgroundFourViewModeChange={toggleWhiteBackgroundFourViewMode}
+          ecommerceTenPageMode={ecommerceTenPageMode}
+          onEcommerceTenPageModeChange={toggleEcommerceTenPageMode}
           onReloadProviders={refreshProviders}
           onSubmit={submitImageWorkspace}
           registerMobileAction={setMobileAction}
@@ -3482,6 +3564,11 @@ export function StudioApp() {
                   setOutputs((prev) => ({ ...prev, image: null }));
                   void submitImageWorkspace();
                 }}
+                onRetryItem={ecommerceTenPageMode ? (item) => {
+                  const pageIndex = Number(item.params?.imagePageIndex);
+                  if (!Number.isInteger(pageIndex) || !imageResultBatchId) return;
+                  void submitImageWorkspace({ pageIndex, batchId: imageResultBatchId });
+                } : undefined}
                 onReloadProviders={refreshProviders}
                 onUpscale={sendResultToUpscale}
                 onCreateVideo={sendImageResultToVideo}
@@ -3668,7 +3755,7 @@ function imageGenerationEntitlementLabel(
 ) {
   const remaining = entitlements?.image_generation.remaining ?? 0;
   const unitsPerImage = estimateImageGenerationEntitlementUnits({ quality });
-  const requestedImages = Math.min(Math.max(Math.round(count), 1), 4);
+  const requestedImages = Math.min(Math.max(Math.round(count), 1), ecommerceTenPageCount);
   const coveredImages = Math.min(requestedImages, Math.floor(remaining / unitsPerImage));
   if (coveredImages <= 0) return fallback;
   const coveredUnits = coveredImages * unitsPerImage;

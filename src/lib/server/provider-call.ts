@@ -1734,6 +1734,7 @@ export async function generateImage(input: {
   count?: number | null;
   batchId?: string | null;
   batchTotal?: number | null;
+  pageIndex?: number | null;
   billingLocalUserId?: string | null;
   billingTaskId?: string | null;
   billingIdempotencyKey?: string | null;
@@ -1805,7 +1806,7 @@ export async function generateImage(input: {
       model: readyProvider.model,
     });
     const batchTotal = Number.isFinite(Number(input.batchTotal)) && Number(input.batchTotal) > 1
-      ? Math.min(Math.max(Math.round(Number(input.batchTotal)), 1), 4)
+      ? Math.min(Math.max(Math.round(Number(input.batchTotal)), 1), 10)
       : Math.min(Math.max(Math.max(providerOutputCount, outputCount), 1), 4);
     const itemResults = await Promise.allSettled(output.map(async (entry, index) => {
       const stored = await outputToLibrary(entry, "image", "image");
@@ -1825,6 +1826,7 @@ export async function generateImage(input: {
         referenceImages: input.files.length,
         ...(input.batchId ? { imageBatchId: input.batchId } : {}),
         ...(batchTotal > 1 ? { imageBatchTotal: batchTotal, imageBatchIndex: index + 1 } : {}),
+        ...(Number.isInteger(input.pageIndex) ? { imagePageIndex: Number(input.pageIndex) } : {}),
         ...(input.billingTaskId ? { billingTaskId: input.billingTaskId } : {}),
         ...(input.billingIdempotencyKey ? { billingIdempotencyKey: input.billingIdempotencyKey } : {}),
         billingOperation: imageOperation,

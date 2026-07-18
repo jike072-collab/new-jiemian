@@ -64,7 +64,10 @@ export function MediaCard({
   });
   const media = item.output;
   const imageGroupItems = item.type === "image"
-    ? (groupItems || [item]).filter((entry) => entry.type === "image" && entry.output?.url && !entry.expired).slice(0, 4)
+    ? (groupItems || [item])
+      .filter((entry) => entry.type === "image" && entry.output?.url && !entry.expired)
+      .sort((left, right) => Number(left.params.imagePageIndex || left.params.imageBatchIndex || 0) - Number(right.params.imagePageIndex || right.params.imageBatchIndex || 0))
+      .slice(0, item.params.imageBatchTotal === 10 ? 10 : 4)
     : [];
   const imageGroupKey = `${item.id}:${imageGroupItems.map((entry) => entry.id).join(",")}`;
   const activeImageIndex = activeImageState.key === imageGroupKey

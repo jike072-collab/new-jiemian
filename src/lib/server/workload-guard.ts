@@ -135,6 +135,14 @@ export function withUserImageWorkload<T>(localUserId: string, handler: () => Pro
   }], handler);
 }
 
+export function withUserEcommerceImageWorkload<T>(localUserId: string, handler: () => Promise<T>) {
+  return withWorkloadSlots([{
+    key: `user:${localUserId}:image-task`,
+    limit: 10,
+    message: "The e-commerce image batch already has 10 active tasks. Please retry shortly.",
+  }], handler);
+}
+
 export function withUserImageEditWorkload<T>(localUserId: string, handler: () => Promise<T>) {
   const limits = getWorkloadLimits();
   return withWorkloadSlots([{

@@ -2,6 +2,15 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import {
+  ecommerceTenPageCount,
+  ecommerceTenPageDefaultQuality,
+  ecommerceTenPageDefaultRatio,
+  ecommerceTenPageMaxReferenceCount,
+  ecommerceTenPageMinReferenceCount,
+  ecommerceTenPagePresetId,
+  ecommerceTenPagePrompt,
+  ecommerceTenPageTitles,
+  isEcommerceTenPagePreset,
   isWhiteBackgroundFourViewPreset,
   whiteBackgroundFourViewCount,
   whiteBackgroundFourViewPresetId,
@@ -10,6 +19,23 @@ import {
   whiteBackgroundFourViewRatio,
   whiteBackgroundFourViewReferenceCount,
 } from "../image-presets";
+
+test("e-commerce ten-page preset defines one page prompt per task", () => {
+  assert.equal(ecommerceTenPageCount, 10);
+  assert.equal(ecommerceTenPageDefaultRatio, "1:1");
+  assert.equal(ecommerceTenPageDefaultQuality, "1k");
+  assert.equal(ecommerceTenPageMinReferenceCount, 2);
+  assert.equal(ecommerceTenPageMaxReferenceCount, 10);
+  assert.equal(ecommerceTenPageTitles.length, ecommerceTenPageCount);
+  assert.equal(new Set(Array.from({ length: ecommerceTenPageCount }, (_, index) => ecommerceTenPagePrompt(index + 1, "1:1"))).size, ecommerceTenPageCount);
+  assert.equal(isEcommerceTenPagePreset(ecommerceTenPagePresetId), true);
+  assert.equal(isEcommerceTenPagePreset("other"), false);
+  const pageSix = ecommerceTenPagePrompt(6, "9:16");
+  assert.match(pageSix, /Page 6 of a 10-page/);
+  assert.match(pageSix, /Canvas ratio: 9:16/);
+  assert.match(pageSix, /original brand logo/);
+  assert.match(pageSix, /Negative prompt/);
+});
 
 test("white background four-view preset fixes the documented shoe view order", () => {
   assert.equal(whiteBackgroundFourViewReferenceCount, 4);

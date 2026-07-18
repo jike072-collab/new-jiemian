@@ -1636,6 +1636,7 @@ export function ImagePreviewPanel({
   hasFiles,
   onSubmit,
   onRetry,
+  onRetryItem,
   onReloadProviders,
   onUpscale,
   onCreateVideo,
@@ -1658,6 +1659,7 @@ export function ImagePreviewPanel({
   hasFiles: boolean;
   onSubmit: () => void;
   onRetry: () => void;
+  onRetryItem?: (item: LibraryItem) => void;
   onReloadProviders: () => Promise<void>;
   onUpscale: (item: LibraryItem) => void;
   onCreateVideo: (item: LibraryItem) => void;
@@ -1670,7 +1672,7 @@ export function ImagePreviewPanel({
   if (loading && !resultOutputs.length) {
     return (
       <PreviewState eyebrow="结果" title="正在生成图片" description="完成的图片会立即替换对应位置。" badge="生成中" role="status" live>
-        <ImageResultGrid cacheOwnerId={cacheOwnerId} outputs={[]} pendingCount={pendingCount} activeBatchId={activeBatchId} canRetry={false} loading onRetry={onRetry} onUpscale={onUpscale} onCreateVideo={onCreateVideo} onEdit={onEdit} onDismiss={onDismiss} />
+        <ImageResultGrid cacheOwnerId={cacheOwnerId} outputs={[]} pendingCount={pendingCount} activeBatchId={activeBatchId} canRetry={false} loading onRetry={onRetry} onRetryItem={onRetryItem} onUpscale={onUpscale} onCreateVideo={onCreateVideo} onEdit={onEdit} onDismiss={onDismiss} />
       </PreviewState>
     );
   }
@@ -1695,6 +1697,7 @@ export function ImagePreviewPanel({
           canRetry={canRetry}
         loading={loading}
         onRetry={onRetry}
+        onRetryItem={onRetryItem}
         onUpscale={onUpscale}
           onCreateVideo={onCreateVideo}
           onEdit={onEdit}
@@ -1727,6 +1730,7 @@ function ImageResultGrid({
   canRetry,
   loading,
   onRetry,
+  onRetryItem,
   onUpscale,
   onCreateVideo,
   onEdit,
@@ -1739,6 +1743,7 @@ function ImageResultGrid({
   canRetry: boolean;
   loading: boolean;
   onRetry: () => void;
+  onRetryItem?: (item: LibraryItem) => void;
   onUpscale: (item: LibraryItem) => void;
   onCreateVideo: (item: LibraryItem) => void;
   onEdit: (item: LibraryItem) => void;
@@ -1750,14 +1755,18 @@ function ImageResultGrid({
   const historicOutputs = activeBatchId
     ? outputs.filter((output) => output.item.params?.imageBatchId !== activeBatchId)
     : [];
+  const orderedCurrentOutputs = [...currentOutputs].sort((left, right) => (
+    Number(left.item.params?.imagePageIndex || left.item.params?.imageBatchIndex || 0)
+    - Number(right.item.params?.imagePageIndex || right.item.params?.imageBatchIndex || 0)
+  ));
   return (
     <div className={cn("studio-image-results", `is-count-${Math.min(Math.max(pendingCount + outputs.length, 1), 4)}`)}>
-      {[...currentOutputs, ...historicOutputs].map((output, index) => (
+      {[...orderedCurrentOutputs, ...historicOutputs].map((output, index) => (
         <article key={output.item.id} className={cn("studio-image-result-card", activeBatchId && output.item.params?.imageBatchId !== activeBatchId && "is-historic")}>
           <div className="studio-image-result-card__media">
             <MediaCard cacheOwnerId={cacheOwnerId} item={output.item} large compact smoothReveal />
             <div className="studio-image-result-card__overlay" aria-label={`图片 ${index + 1} 参数`}>
-              <span className="studio-image-result-card__label">{libraryModelName(output.item) || "Image"} · 图片 {index + 1}</span>
+              <span className="studio-image-result-card__label">{libraryModelName(output.item) || "Image"} · 图片 {Number(output.item.params?.imagePageIndex || index + 1)}</span>
               {imageResultFacts(output.item).map((fact) => <span key={`${output.item.id}-${fact}`}>{fact}</span>)}
               {libraryStatusBadgeLabel(output.item.status) ? <strong>{libraryStatusBadgeLabel(output.item.status)}</strong> : null}
             </div>
@@ -1766,7 +1775,7 @@ function ImageResultGrid({
             </button>
           </div>
           <div className="studio-image-result-card__actions">
-            <button type="button" className="studio-secondary-button" onClick={onRetry} disabled={!canRetry || loading}>
+            <button type="button" className="studio-secondary-button" onClick={() => onRetryItem ? onRetryItem(output.item) : onRetry} disabled={!canRetry || loading}>
               <RefreshCw className="size-4" aria-hidden="true" />
               重做
             </button>

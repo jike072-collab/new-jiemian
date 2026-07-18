@@ -598,13 +598,23 @@ function buildLibraryDisplayEntries(items: LibraryItem[]): LibraryDisplayEntry[]
       continue;
     }
 
+    const groupLimit = typeof item.params.imageBatchTotal === "number" && item.params.imageBatchTotal >= 10 ? 10 : 4;
+    const pageIndex = Number(item.params.imagePageIndex);
     const target = entries.find((entry) => (
       entry.key === batch.key
-      && entry.items.length < 4
+      && (entry.items.length < groupLimit || (Number.isInteger(pageIndex) && pageIndex > 0 && entry.items.some((entryItem) => Number(entryItem.params.imagePageIndex) === pageIndex)))
       && (batch.stable || withinLegacyImageBatchWindow(entry.items[0], item))
     ));
     if (!target) {
       entries.push({ id: batch.stable ? batch.key : item.id, item, items: [item], key: batch.key, stableBatch: batch.stable });
+      continue;
+    }
+    const duplicateIndex = Number.isInteger(pageIndex) && pageIndex > 0
+      ? target.items.findIndex((entryItem) => Number(entryItem.params.imagePageIndex) === pageIndex)
+      : -1;
+    if (duplicateIndex >= 0) {
+      target.items[duplicateIndex] = item;
+      if (target.item.id === target.items[duplicateIndex].id) target.item = item;
       continue;
     }
     target.items.push(item);
