@@ -134,12 +134,17 @@ async function callVisionPromptProvider(input: EcommercePromptRequest): Promise<
   const payload = await response.json() as unknown;
   const parsed = JSON.parse(cleanJsonText(responseText(payload))) as { pages?: unknown };
   const pages = Array.isArray(parsed.pages) ? parsed.pages : [];
-  const prompts = pages.map((page) => {
+  const prompts = Array.from({ length: input.pageCount }, () => "");
+  pages.forEach((page) => {
     if (!page || typeof page !== "object") return "";
+    const pageNumber = Number((page as Record<string, unknown>).page);
     const value = (page as Record<string, unknown>).prompt;
-    return typeof value === "string" ? value.trim().slice(0, 6000) : "";
+    if (!Number.isInteger(pageNumber) || pageNumber < 1 || pageNumber > input.pageCount || typeof value !== "string") return;
+    const prompt = value.trim().slice(0, 6000);
+    if (prompt.length < 80 || !/(鞋|产品|主体)/u.test(prompt) || !/(英文|English)/i.test(prompt)) return;
+    prompts[pageNumber - 1] = prompt;
   });
-  if (prompts.length < input.pageCount || prompts.slice(0, input.pageCount).some((prompt) => !prompt)) {
+  if (prompts.some((prompt) => !prompt)) {
     throw new Error("vision prompt provider returned incomplete page prompts");
   }
   return { prompts: prompts.slice(0, input.pageCount) };
