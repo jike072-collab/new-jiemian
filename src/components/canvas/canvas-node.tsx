@@ -1,0 +1,245 @@
+"use client";
+
+import {
+  AlertCircle,
+  Check,
+  Film,
+  Image as ImageIcon,
+  LoaderCircle,
+  Play,
+  Sparkles,
+  Trash2,
+  Type,
+} from "lucide-react";
+import { createContext, useContext } from "react";
+import {
+  Handle,
+  NodeResizer,
+  Position,
+  type Node,
+  type NodeProps,
+} from "@xyflow/react";
+
+import type { EnabledProviders, WorkspacePublicProvider } from "@/components/studio/types";
+import type { CanvasNodeData } from "@/lib/canvas/types";
+import { cn } from "@/lib/utils";
+
+export type CanvasFlowNode = Node<CanvasNodeData, "canvas">;
+
+export type GeneratorInputSummary = {
+  prompts: number;
+  images: number;
+  videos: number;
+};
+
+type CanvasNodeActions = {
+  providers: EnabledProviders;
+  inputSummary: Record<string, GeneratorInputSummary>;
+  updateNodeData: (id: string, patch: Partial<CanvasNodeData>) => void;
+  removeNode: (id: string) => void;
+  runGenerator: (id: string) => void;
+};
+
+export const CanvasNodeActionsContext = createContext<CanvasNodeActions | null>(null);
+
+const imageRatios = ["1:1", "16:9", "9:16", "4:3", "3:4"];
+const imageQualities = ["1k", "2k", "4k"];
+
+export function CanvasNode({ id, data, selected }: NodeProps<CanvasFlowNode>) {
+  const actions = useCanvasNodeActions();
+  const minWidth = data.kind === "media" ? 260 : 300;
+  const minHeight = data.kind === "prompt" ? 210 : data.kind === "generator" ? 330 : 220;
+
+  return (
+    <article className={cn("canvas-node", `canvas-node--${data.kind}`, selected && "is-selected")}>
+      <NodeResizer
+        color="var(--primary)"
+        isVisible={selected}
+        minWidth={minWidth}
+        minHeight={minHeight}
+        maxWidth={760}
+        maxHeight={720}
+      />
+      {data.kind !== "prompt" ? <Handle type="target" position={Position.Left} id="input" className="canvas-node__handle" /> : null}
+      <NodeHeader data={data} onRemove={() => actions.removeNode(id)} />
+      {data.kind === "prompt" ? <PromptNode id={id} data={data} /> : null}
+      {data.kind === "media" ? <MediaNode data={data} /> : null}
+      {data.kind === "generator" ? <GeneratorNode id={id} data={data} /> : null}
+      <Handle type="source" position={Position.Right} id="output" className="canvas-node__handle" />
+    </article>
+  );
+}
+
+function NodeHeader({ data, onRemove }: { data: CanvasNodeData; onRemove: () => void }) {
+  const Icon = data.kind === "prompt"
+    ? Type
+    : data.kind === "media"
+      ? data.mediaType === "video" ? Film : ImageIcon
+      : data.generationKind === "video" ? Film : Sparkles;
+  return (
+    <header className="canvas-node__header">
+      <span className="canvas-node__type-icon" aria-hidden="true"><Icon /></span>
+      <strong title={data.title}>{data.title}</strong>
+      <button type="button" className="canvas-node__icon-button nodrag" aria-label="删除节点" title="删除节点" onClick={onRemove}>
+        <Trash2 />
+      </button>
+    </header>
+  );
+}
+
+function PromptNode({ id, data }: { id: string; data: CanvasNodeData }) {
+  const actions = useCanvasNodeActions();
+  return (
+    <div className="canvas-node__body canvas-node__body--prompt">
+      <textarea
+        className="canvas-node__textarea nodrag nowheel"
+        value={data.prompt || ""}
+        maxLength={30_000}
+        aria-label="提示词"
+        placeholder="输入画面或镜头描述"
+        onChange={(event) => actions.updateNodeData(id, { prompt: event.target.value })}
+      />
+      <span className="canvas-node__counter">{(data.prompt || "").length}</span>
+    </div>
+  );
+}
+
+function MediaNode({ data }: { data: CanvasNodeData }) {
+  const pending = data.status === "queued" || data.status === "generating";
+  return (
+    <div className="canvas-node__body canvas-node__body--media">
+      {data.mediaUrl && data.mediaType === "image" ? (
+        // eslint-disable-next-line @next/next/no-img-element -- generated media URLs are authenticated runtime assets.
+        <img src={data.mediaUrl} alt={data.title} draggable={false} />
+      ) : null}
+      {data.mediaUrl && data.mediaType === "video" ? (
+        <video src={data.mediaUrl} controls preload="metadata" className="nodrag nowheel" />
+      ) : null}
+      {!data.mediaUrl ? (
+        <div className="canvas-node__media-placeholder">
+          {pending ? <LoaderCircle className="is-spinning" /> : <AlertCircle />}
+          <span>{pending ? "生成中" : "媒体暂不可用"}</span>
+        </div>
+      ) : null}
+      <StatusLine status={data.status} progress={data.progress} error={data.error} />
+    </div>
+  );
+}
+
+function GeneratorNode({ id, data }: { id: string; data: CanvasNodeData }) {
+  const actions = useCanvasNodeActions();
+  const isVideo = data.generationKind === "video";
+  const providers = (isVideo ? actions.providers.video : actions.providers.image) as WorkspacePublicProvider[];
+  const selectedProvider = providers.find((provider) => provider.id === data.providerId) || providers[0];
+  const videoOptions = selectedProvider?.videoOptions;
+  const ratios = isVideo && videoOptions?.ratios?.length ? videoOptions.ratios : isVideo ? ["16:9", "9:16", "1:1"] : imageRatios;
+  const durations = videoOptions?.durations?.length ? videoOptions.durations : [5, 10, 15];
+  const resolutions = videoOptions?.resolutions?.length
+    ? videoOptions.resolutions
+    : [videoOptions?.resolution || "720p"];
+  const selectedRatio = ratios.includes(data.ratio || "") ? data.ratio : ratios[0];
+  const selectedDuration = durations.includes(data.duration || 0) ? data.duration : durations[0];
+  const selectedResolution = resolutions.includes(data.resolution || "") ? data.resolution : resolutions[0];
+  const busy = data.status === "queued" || data.status === "generating";
+  const summary = actions.inputSummary[id] || { prompts: 0, images: 0, videos: 0 };
+
+  return (
+    <div className="canvas-node__body canvas-node__body--generator">
+      <label className="canvas-node__field">
+        <span>模型</span>
+        <select
+          className="nodrag nowheel"
+          value={selectedProvider?.id || ""}
+          disabled={busy || !providers.length}
+          onChange={(event) => {
+            const provider = providers.find((item) => item.id === event.target.value);
+            const options = provider?.videoOptions;
+            actions.updateNodeData(id, {
+              providerId: event.target.value,
+              ...(isVideo ? {
+                duration: options?.durations?.[0] || data.duration || 5,
+                ratio: options?.ratios?.[0] || data.ratio || "16:9",
+                resolution: options?.resolutions?.[0] || options?.resolution || data.resolution || "720p",
+              } : {}),
+            });
+          }}
+        >
+          {providers.map((provider) => <option key={provider.id} value={provider.id}>{provider.displayName}</option>)}
+        </select>
+      </label>
+
+      <div className="canvas-node__field-grid">
+        <label className="canvas-node__field">
+          <span>比例</span>
+          <select className="nodrag nowheel" value={selectedRatio} disabled={busy} onChange={(event) => actions.updateNodeData(id, { ratio: event.target.value })}>
+            {ratios.map((ratio) => <option key={ratio} value={ratio}>{ratio}</option>)}
+          </select>
+        </label>
+        {!isVideo ? (
+          <label className="canvas-node__field">
+            <span>清晰度</span>
+            <select className="nodrag nowheel" value={data.quality || "1k"} disabled={busy} onChange={(event) => actions.updateNodeData(id, { quality: event.target.value })}>
+              {imageQualities.map((quality) => <option key={quality} value={quality}>{quality.toUpperCase()}</option>)}
+            </select>
+          </label>
+        ) : (
+          <label className="canvas-node__field">
+            <span>时长</span>
+            <select className="nodrag nowheel" value={String(selectedDuration)} disabled={busy} onChange={(event) => actions.updateNodeData(id, { duration: Number(event.target.value) })}>
+              {durations.map((duration) => <option key={duration} value={duration}>{duration} 秒</option>)}
+            </select>
+          </label>
+        )}
+      </div>
+
+      {isVideo ? (
+        <label className="canvas-node__field">
+          <span>分辨率</span>
+          <select className="nodrag nowheel" value={selectedResolution} disabled={busy} onChange={(event) => actions.updateNodeData(id, { resolution: event.target.value })}>
+            {resolutions.map((resolution) => <option key={resolution} value={resolution}>{resolution}</option>)}
+          </select>
+        </label>
+      ) : null}
+
+      <div className="canvas-node__inputs" aria-label="已连接输入">
+        <span>{summary.prompts} 个提示词</span>
+        <span>{summary.images} 张图片</span>
+        {isVideo ? <span>{summary.videos} 个视频</span> : null}
+      </div>
+
+      <StatusLine status={data.status} progress={data.progress} error={data.error} />
+      <button
+        type="button"
+        className="canvas-node__generate nodrag"
+        disabled={busy || !selectedProvider || summary.prompts < 1}
+        onClick={() => actions.runGenerator(id)}
+      >
+        {busy ? <LoaderCircle className="is-spinning" /> : <Play />}
+        <span>{busy ? "生成中" : "开始生成"}</span>
+      </button>
+    </div>
+  );
+}
+
+function StatusLine({ status, progress, error }: Pick<CanvasNodeData, "status" | "progress" | "error">) {
+  if (!status || status === "idle") return null;
+  const Icon = status === "done" ? Check : status === "failed" ? AlertCircle : LoaderCircle;
+  const label = status === "done"
+    ? "已完成"
+    : status === "failed"
+      ? "生成失败"
+      : status === "queued" ? "排队中" : "生成中";
+  return (
+    <div className={cn("canvas-node__status", `is-${status}`)} title={error || label}>
+      <Icon className={status === "queued" || status === "generating" ? "is-spinning" : undefined} />
+      <span>{error || label}</span>
+      {typeof progress === "number" && status !== "done" && status !== "failed" ? <strong>{Math.round(progress)}%</strong> : null}
+    </div>
+  );
+}
+
+function useCanvasNodeActions() {
+  const value = useContext(CanvasNodeActionsContext);
+  if (!value) throw new Error("Canvas node actions are unavailable.");
+  return value;
+}

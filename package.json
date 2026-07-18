@@ -109,6 +109,7 @@
     "migrate:auth-data:verify": "node scripts/database/auth-data-migration.mjs verify",
     "verify:auth-persistence": "node scripts/database/verify-auth-persistence.mjs",
     "test:auth-persistence": "node scripts/database/test-auth-persistence.mjs",
+    "test:canvas": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON scripts/test-canvas-document.mjs && node scripts/test-canvas-contracts.mjs",
     "database:boundary": "node scripts/database/test-server-boundary.mjs",
     "db:health": "node scripts/database/migrate.mjs health",
     "test:prompt-optimizer": "node scripts/test-prompt-optimizer.mjs",
@@ -125,6 +126,7 @@
   },
   "dependencies": {
     "@base-ui/react": "^1.3.0",
+    "@xyflow/react": "^12.11.2",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "lucide-react": "^1.6.0",

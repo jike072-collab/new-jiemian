@@ -6,7 +6,10 @@
 | --- | --- | --- | --- |
 | `/` | page | Present | Renders `StudioApp` on the home page. |
 | `/login` | page | Present in current worktree | Imports `CustomerLogin`; historical blocker details are recorded separately in `KNOWN_BASELINE_FAILURES.md`. |
+| `/canvas` | page | Present | Authenticated internal image/video workflow canvas backed by React Flow. |
 | `/admin/providers` | page | Present | Renders provider management UI. |
+| `/api/canvas/projects` | API | Present | Authenticated canvas project list/create entry; mutations require CSRF. |
+| `/api/canvas/projects/[id]` | API | Present | Owner-scoped canvas read/update/delete entry with optimistic version checks. |
 | `/api/generate/image` | API | Present | Image generation entry. |
 | `/api/generate/video` | API | Present | Video generation entry. |
 | `/api/upscale/image` | API | Present | Local image upscale entry. |
