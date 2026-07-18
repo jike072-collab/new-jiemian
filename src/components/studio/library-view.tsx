@@ -342,6 +342,7 @@ export function LibraryWorkspace({
               showDetailFacts
               mediaMissing={selectedMediaMissing}
               onMediaMissing={() => onMediaMissing(selectedItem.id)}
+              onActiveImageItemChange={(item) => onSelectItem(item.id)}
             />
             <div className="studio-library-detail__actions" aria-label="作品操作">
               <button type="button" className="studio-library-detail__action" onClick={() => onRegenerate(selectedItem)}>

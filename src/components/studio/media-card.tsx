@@ -32,6 +32,7 @@ export function MediaCard({
   showDetailFacts = false,
   mediaMissing = false,
   onMediaMissing,
+  onActiveImageItemChange,
 }: {
   cacheOwnerId?: string | null;
   item: LibraryItem;
@@ -42,6 +43,7 @@ export function MediaCard({
   showDetailFacts?: boolean;
   mediaMissing?: boolean;
   onMediaMissing?: () => void;
+  onActiveImageItemChange?: (item: LibraryItem) => void;
 }) {
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const zoomSurfaceRef = useRef<HTMLDivElement | null>(null);
@@ -72,9 +74,10 @@ export function MediaCard({
         : 4)
     : [];
   const imageGroupKey = `${item.id}:${imageGroupItems.map((entry) => entry.id).join(",")}`;
+  const defaultActiveImageIndex = Math.max(0, imageGroupItems.findIndex((entry) => entry.id === item.id));
   const activeImageIndex = activeImageState.key === imageGroupKey
     ? Math.min(activeImageState.index, Math.max(0, imageGroupItems.length - 1))
-    : 0;
+    : defaultActiveImageIndex;
   const imageViewportKey = `${item.id}:${activeImageIndex}:${large ? "large" : "tile"}`;
   const imageZoom = imageViewportState.key === imageViewportKey ? imageViewportState.zoom : 1;
   const imageOffset = imageViewportState.key === imageViewportKey ? imageViewportState.offset : { x: 0, y: 0 };
@@ -375,6 +378,7 @@ export function MediaCard({
                     event.preventDefault();
                     event.stopPropagation();
                     setActiveImageIndex(index);
+                    onActiveImageItemChange?.(entry);
                   }}
                   aria-label={`View image ${index + 1}`}
                   aria-pressed={index === activeImageIndex}
