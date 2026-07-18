@@ -430,7 +430,8 @@ function createTaskId(prefix: string) {
 type ImageWorkspaceScope = "image" | "image-editor";
 
 const imageGenerationExecutionLimit = 4;
-const ecommerceTenPageExecutionLimit = 10;
+// Keep the ten independent tasks, but avoid saturating the single upstream image channel.
+const ecommerceTenPageExecutionLimit = 2;
 const ecommerceBatchStyleStorageKey = "studio:ecommerce-last-batch-style";
 
 const runImageGenerationWithSlot = createTaskRunner(imageGenerationExecutionLimit);
@@ -2227,7 +2228,21 @@ export function StudioApp() {
       const taskPages = snapshot.pageRetry
         ? [{ taskId: taskIds[0], pageIndex: snapshot.pageIndex }]
         : taskIds.map((taskId, index) => ({ taskId, pageIndex: snapshot.ecommerceTenPageMode ? index + 1 : undefined }));
-      const results = await Promise.allSettled(taskPages.map(({ taskId, pageIndex }) => runImageTask(taskId, pageIndex)));
+      const results = await Promise.allSettled(taskPages.map(async ({ taskId, pageIndex }) => {
+        try {
+          return await runImageTask(taskId, pageIndex);
+        } catch (error) {
+          updateImageGenerationProgress(progressId, (current) => {
+            const completed = Math.min(current.total, current.current + 1);
+            return {
+              ...current,
+              current: completed,
+              message: `${completed}/${current.total} 张任务已返回（含失败）`,
+            };
+          });
+          throw error;
+        }
+      }));
       const items = results.flatMap((result) => result.status === "fulfilled" ? result.value : []);
       const failures = results.filter((result): result is PromiseRejectedResult => result.status === "rejected");
       if (!items.length) throw failures[0]?.reason || new Error("图片生成未返回结果。");
@@ -2239,7 +2254,7 @@ export function StudioApp() {
       updateImageGenerationProgress(progressId, (current) => ({
         ...current,
         status: "done",
-        current: items.length,
+        current: items.length + failures.length,
         completedAt: Date.now(),
         message: failureMessage || (items.length > 1 ? `${items.length} 张图片已生成` : "图片已生成"),
       }));
