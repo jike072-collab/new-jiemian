@@ -46,6 +46,18 @@ test("Seedance pricing follows model cost and duration tiers", () => {
   }
 });
 
+test("CLMM Seedance pricing follows the new model tiers", () => {
+  assert.equal(estimateVideoGenerationQuota({ ...baseInput, model: "mg-seedance2.0 -720p mini", resolution: "720p", durationSeconds: 5 }), 300);
+  assert.equal(estimateVideoGenerationQuota({ ...baseInput, model: "mg-seedance2.0 -720p fast", resolution: "720p", durationSeconds: 10 }), 800);
+  assert.equal(estimateVideoGenerationQuota({ ...baseInput, model: "mg-seedance2.0 -720p pro", resolution: "720p", durationSeconds: 15 }), 1500);
+  assert.equal(estimateVideoGenerationQuota({ ...baseInput, model: "seedance2.0 720p-fast-gz-15s", resolution: "720p", durationSeconds: 15 }), 1200);
+  assert.equal(estimateVideoGenerationQuota({ ...baseInput, model: "seedance2.0 720p-pro-gz-15s", resolution: "720p", durationSeconds: 15 }), 1400);
+  assert.equal(estimateVideoGenerationQuota({ ...baseInput, model: "seedance2.0 720p-933-pro-gz-15s", resolution: "720p", durationSeconds: 15 }), 1500);
+  assert.equal(estimateVideoGenerationEntitlementUnits({ resolution: "720p", model: "mg-seedance2.0 -720p fast", durationSeconds: 10 }), 1);
+  assert.equal(estimateVideoGenerationEntitlementUnits({ resolution: "720p", model: "mg-seedance2.0 -720p fast", durationSeconds: 15 }), 2);
+  assert.equal(estimateVideoGenerationEntitlementUnits({ resolution: "720p", model: "seedance2.0 720p-933-pro-gz-15s", durationSeconds: 15 }), 3);
+});
+
 test("Seedance premium models consume multiple membership video entitlements", () => {
   assert.equal(estimateVideoGenerationEntitlementUnits({ resolution: "720p", model: "quanneng2.0-9tu" }), 1);
   assert.equal(estimateVideoGenerationEntitlementUnits({ resolution: "720p", model: "video-2.0-fast-720P" }), 1);
@@ -68,6 +80,8 @@ test("only unpriced legacy Seedance models remain blocked", () => {
   assert.equal(isVideoGenerationPricingPending("quanneng2.0-9tu"), false);
   assert.equal(isVideoGenerationPricingPending("sdquan-2-miao"), false);
   assert.equal(isVideoGenerationPricingPending("Doubao-Seedance-2-0-260128-grid"), false);
+  assert.equal(isVideoGenerationPricingPending("mg-seedance2.0 -720p fast"), false);
+  assert.equal(isVideoGenerationPricingPending("seedance2.0 720p-933-pro-gz-15s"), false);
   assert.equal(isVideoGenerationPricingPending("veo-3.1-pro"), false);
   assert.equal(isVideoGenerationPricingPending("grok-video-1.5"), false);
 });
