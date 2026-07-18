@@ -289,20 +289,20 @@ function ShoeViewOutline({ view, active }: { view: string; active: boolean }) {
     >
       {view === "外侧" || view === "内侧" ? (
         <g transform={view === "内侧" ? "translate(160 0) scale(-1 1)" : undefined}>
-          <path className={strokeClass} d="M18 62c15-3 28-15 41-31 5-7 12-11 20-11h15c5 0 10 3 13 8l11 19c7 9 18 13 28 16 5 1 8 5 8 10v4H18z" />
-          <path className={strokeClass} d="M25 62h117M66 28l17 14M77 25l18 14M89 25l17 13M48 52h42" />
+          <path className={strokeClass} d="M12 68c11-3 20-10 28-22l13-21c4-7 11-11 19-11h15c7 0 13 3 18 9l14 16c6 6 13 10 21 13l17 6c5 2 8 6 8 11v3H12z" />
+          <path className={strokeClass} d="M12 72h143v8H12zM38 56c12-2 22-8 30-18l12-14M57 52h42M74 25l18 16M85 22l18 16M96 25l17 14M120 49c8 4 15 7 24 9M136 63h11" />
         </g>
       ) : view === "顶部" ? (
         <g>
-          <path className={strokeClass} d="M49 79c-7-11-10-25-7-40l5-21c2-7 8-11 15-11h36c7 0 13 4 15 11l5 21c3 15 0 29-7 40z" />
-          <path className={strokeClass} d="M65 12v56M95 12v56M68 27h24M66 39h28M64 51h32M61 64h38" />
-          <path className={strokeClass} d="M49 79h62" />
+          <path className={strokeClass} d="M55 82c-8-11-11-24-8-39l7-24c2-7 8-11 15-11h22c7 0 13 4 15 11l7 24c3 15 0 28-8 39z" />
+          <path className={strokeClass} d="M66 13v53M94 13v53M68 28h24M66 40h28M64 52h32M61 65h38M55 82h50" />
+          <path className={strokeClass} d="M72 73c5 4 11 6 16 6s11-2 16-6" />
         </g>
       ) : (
         <g>
-          <path className={strokeClass} d="M30 75c-9-8-10-22-4-34l13-25c3-6 9-9 15-9h52c7 0 12 3 15 9l13 25c6 12 5 26-4 34z" />
-          <path className={strokeClass} d="M45 20l70 52M63 10l47 68M39 39h83M31 58h98" />
-          <path className={strokeClass} d="M61 32l11 11M89 32l-11 11M56 56l11 11M104 56L93 67" />
+          <path className={strokeClass} d="M56 8c-14 3-25 14-29 30l-7 25c-4 14 7 25 22 25h76c15 0 26-11 22-25l-7-25c-4-16-15-27-29-30z" />
+          <path className={strokeClass} d="M48 18l13 16M77 10v74M112 18L99 34M32 48h96M26 67h108" />
+          <path className={strokeClass} d="M45 40l13 13M109 40L96 53M40 58l13 13M114 58l-13 13" />
         </g>
       )}
     </svg>
