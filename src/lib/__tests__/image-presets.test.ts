@@ -20,5 +20,8 @@ test("white background four-view preset fixes the documented shoe view order", (
   assert.equal(isWhiteBackgroundFourViewPreset("other"), false);
   assert.match(whiteBackgroundFourViewPrompt, /第 1 张为外侧视图/);
   assert.match(whiteBackgroundFourViewPrompt, /第 2 张为内侧视图/);
+  assert.match(whiteBackgroundFourViewPrompt, /同一只实际鞋子/);
+  assert.match(whiteBackgroundFourViewPrompt, /每个格子只放一只鞋/);
+  assert.match(whiteBackgroundFourViewPrompt, /不得把外侧花纹复制到内侧/);
   assert.match(whiteBackgroundFourViewPrompt, /纯白背景 #FFFFFF/);
 });
