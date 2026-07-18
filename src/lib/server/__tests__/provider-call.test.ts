@@ -521,7 +521,7 @@ test("GetToken Banana Pro image edit sends 4K and reference data URIs", async ()
   }
 });
 
-test("GetToken does not create a replacement after upstream accepts a terminally failed task", async () => {
+test("GetToken replaces an accepted task after upstream reports terminal failure", async () => {
   const getTokenProvider = {
     ...provider,
     id: "image-gettoken-banana::model::banana2",
@@ -531,22 +531,31 @@ test("GetToken does not create a replacement after upstream accepts a terminally
   } as const;
   const originalFetch = globalThis.fetch;
   let submitCount = 0;
+  const clientTaskIds: string[] = [];
   const acceptedTaskIds: string[] = [];
-  globalThis.fetch = (async (url) => {
+  globalThis.fetch = (async (url, init) => {
     if (String(url).endsWith("/banana2/text-to-image")) {
       submitCount += 1;
+      clientTaskIds.push(String(JSON.parse(String(init?.body || "{}")).clientTaskId || ""));
+      if (submitCount === 1) {
+        return jsonResponse({
+          taskId: "banana-capacity-failure",
+          status: "FAILURE",
+          failedReason: { message: "all channels failed: status 599 No available account" },
+        });
+      }
       return jsonResponse({
-        taskId: "banana-capacity-failure",
-        status: "FAILED",
-        failedReason: { message: "all channels failed: status 599 No available account" },
+        taskId: "banana-capacity-replacement",
+        status: "SUCCESS",
+        results: [{ url: "https://cdn.example.test/banana-capacity-replacement.png" }],
       });
     }
     throw new Error(`Unexpected URL: ${String(url)}`);
   }) as typeof fetch;
   try {
-    await assert.rejects(() => providerCallInternalsForTests.collectImageProviderOutputs({
+    const outputs = await providerCallInternalsForTests.collectImageProviderOutputs({
       provider: getTokenProvider,
-      prompt: "no replacement task test",
+      prompt: "replacement task test",
       ratio: "1:1",
       quality: "1k",
       files: [],
@@ -554,9 +563,11 @@ test("GetToken does not create a replacement after upstream accepts a terminally
       onTaskAccepted: async (taskId) => {
         acceptedTaskIds.push(taskId);
       },
-    }), /all channels failed/);
-    assert.equal(submitCount, 1);
-    assert.deepEqual(acceptedTaskIds, ["banana-capacity-failure"]);
+    });
+    assert.equal(outputs[0]?.url, "https://cdn.example.test/banana-capacity-replacement.png");
+    assert.equal(submitCount, 2);
+    assert.equal(new Set(clientTaskIds).size, 2);
+    assert.deepEqual(acceptedTaskIds, ["banana-capacity-failure", "banana-capacity-replacement"]);
   } finally {
     globalThis.fetch = originalFetch;
   }

@@ -530,7 +530,7 @@ function isGetTokenTaskSuccess(status: string) {
 }
 
 function isGetTokenTaskFailure(status: string) {
-  return ["FAILED", "FAIL", "ERROR", "TIMEOUT", "TIMED_OUT", "EXPIRED", "CANCELED", "CANCELLED"].includes(status);
+  return ["FAILED", "FAILURE", "FAIL", "ERROR", "TIMEOUT", "TIMED_OUT", "EXPIRED", "CANCELED", "CANCELLED"].includes(status);
 }
 
 async function callGetTokenBananaTask(input: {
@@ -639,10 +639,10 @@ function isGetTokenBananaPeakCapacityError(error: unknown) {
 async function callGetTokenBananaTaskWithRetry(
   input: Omit<Parameters<typeof callGetTokenBananaTask>[0], "clientTaskId">,
 ) {
-  const clientTaskId = randomUUID();
-  let upstreamTaskId = "";
+  let clientTaskId = randomUUID();
   let lastError: unknown;
   for (let attempt = 1; attempt <= getTokenBananaPeakTaskAttempts; attempt += 1) {
+    let upstreamTaskId = "";
     try {
       return await callGetTokenBananaTask({
         ...input,
@@ -654,10 +654,15 @@ async function callGetTokenBananaTaskWithRetry(
       });
     } catch (error) {
       lastError = error;
-      if (upstreamTaskId) throw error;
+      const acceptedTerminalFailure = Boolean(upstreamTaskId)
+        && error instanceof GenerationDiagnosticError
+        && error.code === "TASK_CREATE_FAILED";
       const peakCapacityError = isGetTokenBananaPeakCapacityError(error);
-      const maximumAttempts = peakCapacityError ? getTokenBananaPeakTaskAttempts : getTokenBananaTaskAttempts;
-      if (attempt >= maximumAttempts || !isRetryableGetTokenBananaError(error)) throw error;
+      const maximumAttempts = acceptedTerminalFailure
+        ? getTokenBananaTaskAttempts
+        : peakCapacityError ? getTokenBananaPeakTaskAttempts : getTokenBananaTaskAttempts;
+      if (attempt >= maximumAttempts || (!acceptedTerminalFailure && !isRetryableGetTokenBananaError(error))) throw error;
+      if (acceptedTerminalFailure) clientTaskId = randomUUID();
       const delayMs = peakCapacityError
         ? Math.min(1500 * (2 ** (attempt - 1)), 15000) + Math.floor(Math.random() * 1000)
         : (attempt * 750) + Math.floor(Math.random() * 250);
