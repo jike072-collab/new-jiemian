@@ -430,8 +430,7 @@ function createTaskId(prefix: string) {
 type ImageWorkspaceScope = "image" | "image-editor";
 
 const imageGenerationExecutionLimit = 4;
-// Keep the ten independent tasks, but avoid saturating the single upstream image channel.
-const ecommerceTenPageExecutionLimit = 2;
+const ecommerceTenPageExecutionLimit = 10;
 const ecommerceBatchStyleStorageKey = "studio:ecommerce-last-batch-style";
 
 const runImageGenerationWithSlot = createTaskRunner(imageGenerationExecutionLimit);
