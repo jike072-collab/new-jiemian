@@ -35,16 +35,16 @@ export const ecommerceTenPageTitles = [
 ] as const;
 
 const ecommerceTenPageDirections = [
-  "Create a high-impact hero product poster with the main shoe colorway centered, energetic motion lines, premium lighting, and a clean conversion-ready composition.",
-  "Create a clear e-commerce pain-point solution page with visual callouts for comfort, grip, everyday movement, and breathable visual texture. Do not invent technical certifications.",
-  "Create a TikTok-native movement scene showing the shoe in a believable Southeast Asia street, gym, campus, or commute setting with youthful everyday energy.",
-  "Create a macro upper-material detail page with texture close-ups, airflow-inspired visual lines, and clean premium product annotation without changing the shoe surface.",
-  "Create a side-focused midsole structure page with layered product detail, soft impact waves, and forward-motion graphics while preserving the real midsole shape.",
-  "Create a hard-detail collage focused on outsole grip, heel construction, lace structure, and side texture using only details visible in the references.",
-  "Create a sporty streetwear outfit page with a believable young social setting, product-focused framing, and restrained TikTok-native sticker or camera-frame accents.",
-  "Create a warm daily-comfort lifestyle page for commuting, campus, coffee, or post-workout rest with natural light and a relaxed premium e-commerce mood.",
-  "Create a clean full color lineup page showing every uploaded shoe colorway as separate real options, aligned consistently and never blending colors between shoes.",
-  "Create a final buyer-show and CTA conversion page with the shoe, size information placeholder only when supplied, and general calls to action without inventing discounts or reviews.",
+  "Hero: MOVE WITH ENERGY | Sport Style Sneakers | Lightweight Feel / Street Ready / Daily Comfort. Extreme low angle, main colorway dominant, energy background, speed lines.",
+  "Pain point: BUILT FOR EVERYDAY MOVE | Comfort. Grip. Style. | Soft Step / Breathable Look / Stable Grip. Infographic cards, arrows, airflow and cushion waves.",
+  "Movement: MADE TO MOVE | Run. Walk. Train. | Daily Run / Gym Fit / Street Style. Southeast Asia street, campus, gym, or commute with dynamic panels.",
+  "Upper: BREATHABLE UPPER LOOK | Flexible. Light. Clean. | Texture Detail / Airflow Visual / Soft Touch Look. Macro circles and clean tech labels.",
+  "Midsole: SOFT STEP ENERGY | Cushion Feel for Daily Motion | Impact Wave / Forward Push / Comfort Ride. Side profile, layered sole, and motion arrows.",
+  "Outsole: OUTSOLE GRIP | Heel Detail / Lace Structure / Side Texture. Technical collage with outsole, heel, lace, and side insets.",
+  "Outfit: MATCH YOUR MOVE | Sport Meets Street | OOTD / Daily Fit / Hot Pick. Streetwear, friends, and restrained camera-frame accents.",
+  "Comfort: ALL DAY COMFORT | Easy Walk / Daily Wear / Relaxed Fit. Warm cafe, campus, commute, or post-workout lifestyle with soft light.",
+  "Colors: CHOOSE YOUR COLOR | One Style. More Energy. Show every real colorway as separate cards with short color labels and clean lineup.",
+  "CTA: READY FOR YOUR NEXT MOVE | Size Options Available | Hot Pick / Daily Training Ready / Street Style / Choose Your Color. Buyer-show collage, size card, and CTA.",
 ] as const;
 
 export function ecommerceTenPagePrompt(pageIndex: number, ratio: string, pageCount = ecommerceTenPageCount, batchStyleIndex = 0) {
@@ -54,16 +54,14 @@ export function ecommerceTenPagePrompt(pageIndex: number, ratio: string, pageCou
   const pageTitle = ecommerceTenPageTitles[index];
   const direction = ecommerceTenPageDirections[index];
   const batchStyle = ecommerceTenPageBatchStyles[normalizedBatchStyleIndex];
+  const suggestedColorwayIndex = Math.min(index + 1, ecommerceTenPageMaxReferenceCount - 1);
   return [
-    `Create page ${index + 1} of a ${normalizedPageCount}-image TikTok shoe e-commerce detail series. Page concept: ${pageTitle}.`,
-    `Canvas ratio: ${ratio}. Target market: Southeast Asia. All visible text must be English only.`,
-    "The first uploaded reference image is the original brand logo. Place it in the top-left corner of this page, small and clear at about 5% to 8% of the canvas width. Preserve it exactly: do not stretch, redraw, recolor, redesign, or print it on the shoe.",
-    "Every remaining uploaded reference image is one completed four-view white-background board for one real shoe colorway. Preserve the shoe shape, proportions, material appearance, side details, top view, outsole, and each original colorway. Never invent, merge, mirror, or recolor a colorway.",
-    `Batch visual direction: ${batchStyle}`,
-    `Apply this exact visual direction consistently across all ${normalizedPageCount} images in this batch. Keep the palette, typography family, lighting language, graphic treatment, and overall brand mood cohesive. Do not change or recolor the referenced shoes to match the campaign palette. This page must still use a clearly different composition, scene, product angle, information density, and visual emphasis from every other page; do not repeat a layout.`,
-    direction,
-    "Use short, legible English product copy only when it is supported by the references. Do not add fake certifications, medical claims, fake reviews, fake discounts, or unsupported performance promises.",
-    "Negative prompt: no Chinese text, no unreadable text, no random letters, no distorted logo, no redesigned logo, no wrong shoe shape, no wrong colorway, no mismatched left and right shoes, no extra shoes, no broken outsole, no cluttered layout, no low-resolution product.",
+    `Page ${index + 1}/${normalizedPageCount}: ${pageTitle}, ${ratio} square.`,
+    `Unified style: ${batchStyle} High-tension sports ad, bold contrast, diagonal motion, dramatic light, premium depth.`,
+    "Analyze all references. File 1 is the exact logo at top-left, 5%-8% width; files 2+ are real colorways. Preserve shoe shape, material, pattern, sole, and color.",
+    `Primary: Colorway ${suggestedColorwayIndex} if available (Colorway 1=file 2); otherwise choose any uploaded colorway. Vary density: some pages single-color, some show 2+ colorways, page 9 shows all. Across the series use every colorway; never default to Colorway 1 or recolor/merge/mirror shoes.`,
+    `${direction} Change this page's layout, scene, density, and angle from the others.`,
+    "English only. Short headline/subline/labels. No Chinese, invented claims/numbers, fake reviews/discounts, or distorted logo/shoe.",
   ].join("\n\n");
 }
 

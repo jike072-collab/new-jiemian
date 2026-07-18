@@ -37,10 +37,13 @@ test("e-commerce ten-page preset defines one page prompt per task", () => {
   assert.match(pageSix, /original brand logo/);
   assert.match(pageSix, /Negative prompt/);
   assert.match(ecommerceTenPagePrompt(3, "1:1", 5), /page 3 of a 5-image/);
-  assert.match(pageSix, /do not repeat a layout/);
+  assert.match(pageSix, /OUTSOLE GRIP/);
+  assert.match(ecommerceTenPagePrompt(3, "1:1", 10, 1), /Suggested primary colorway: Colorway 3/);
   assert.ok(ecommerceTenPageBatchStyleCount > 1);
   assert.notEqual(ecommerceTenPagePrompt(1, "1:1", 10, 0), ecommerceTenPagePrompt(1, "1:1", 10, 1));
-  assert.match(ecommerceTenPagePrompt(2, "1:1", 10, 1), /Apply this exact visual direction consistently/);
+  assert.match(ecommerceTenPagePrompt(2, "1:1", 10, 1), /Unified style:/);
+  assert.match(pageSix, /Vary colorway density by page/);
+  assert.ok(pageSix.length < 1400);
 });
 
 test("white background four-view preset fixes the documented shoe view order", () => {
