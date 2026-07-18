@@ -1,6 +1,9 @@
 "use client";
 
+/* eslint-disable @next/next/no-img-element */
+
 import { useCallback, useEffect, useRef, useState } from "react";
+import { ImagePlus, RotateCcw } from "lucide-react";
 
 import { featuredImageGenerationPromptTemplates } from "@/lib/template-catalog";
 import type { FrontendProvider } from "@/lib/server/types";
@@ -22,6 +25,7 @@ import {
 } from "@/components/studio/shared";
 import type { ImageWorkspaceFile, ImageWorkspaceState, MobileActionState } from "@/components/studio/types";
 import type { PromptPreferences, PromptPreferenceTool } from "@/lib/prompt-preferences";
+import { cn } from "@/lib/utils";
 
 export function ImageGenerator({
   mode,
@@ -49,6 +53,8 @@ export function ImageGenerator({
   onFilesChange,
   onFileRemove,
   onFilesClear,
+  whiteBackgroundFourViewMode,
+  onWhiteBackgroundFourViewModeChange,
   onReloadProviders,
   onSubmit,
   registerMobileAction,
@@ -78,25 +84,37 @@ export function ImageGenerator({
   onFilesChange: (files: File[]) => void;
   onFileRemove: (index: number) => void;
   onFilesClear: () => void;
+  whiteBackgroundFourViewMode: boolean;
+  onWhiteBackgroundFourViewModeChange: () => void;
   onReloadProviders: () => Promise<void>;
   onSubmit: () => void;
   registerMobileAction: (action: MobileActionState) => void;
 }) {
   const meta = imageWorkspaceModeMeta[mode];
+  const submitLabel = whiteBackgroundFourViewMode ? "生成四视图白底图" : meta.submitLabel;
+  const loadingLabel = whiteBackgroundFourViewMode ? "正在生成四视图" : meta.loadingLabel;
 
   useEffect(() => {
     registerMobileAction({
-      label: loading ? meta.loadingLabel : meta.submitLabel,
+      label: loading ? loadingLabel : submitLabel,
       costLabel: costLabel || formatQuotaSymbolLabel(estimatedQuotaUnits),
       loading,
       disabled: !canSubmit,
       onClick: onSubmit,
     });
     return () => registerMobileAction(null);
-  }, [canSubmit, costLabel, estimatedQuotaUnits, loading, meta.loadingLabel, meta.submitLabel, onSubmit, registerMobileAction]);
+  }, [canSubmit, costLabel, estimatedQuotaUnits, loading, loadingLabel, onSubmit, registerMobileAction, submitLabel]);
 
   return (
     <FormPanel>
+      <button
+        type="button"
+        className="studio-four-view-mobile-toggle"
+        aria-pressed={whiteBackgroundFourViewMode}
+        onClick={onWhiteBackgroundFourViewModeChange}
+      >
+        四视图白底图
+      </button>
       <ProviderSelect
         providers={providers}
         value={selectedProvider?.id || state.providerId}
@@ -105,7 +123,7 @@ export function ImageGenerator({
         onChange={onProviderChange}
         onReload={onReloadProviders}
       />
-      {showTemplates ? (
+      {showTemplates && !whiteBackgroundFourViewMode ? (
         <TemplateRail
           scope="image"
           title="模板"
@@ -115,71 +133,146 @@ export function ImageGenerator({
           onSelect={(template) => onTemplateChange(template.id)}
         />
       ) : null}
-      <ReferenceImageInput
-        mode={mode}
-        files={state.files}
-        error={state.fileError}
-        onChange={onFilesChange}
-        onRemove={onFileRemove}
-        onClear={onFilesClear}
-      />
-      <StackedControl label="比例" required>
-        <AspectRatioSelector label="比例" value={state.ratio} onChange={onRatioChange} />
-      </StackedControl>
-      <div className="studio-dual-fields">
-        <StackedControl label="清晰度" required>
-          <CustomSelect
-            label="清晰度"
-            value={state.quality}
-            options={[
-              { value: "1k", label: "1K（默认）" },
-              { value: "2k", label: "2K（细节更多）" },
-              { value: "4k", label: "4K（大图输出）" },
-            ]}
-            onChange={onQualityChange}
+      {whiteBackgroundFourViewMode ? (
+        <>
+          <WhiteBackgroundFourViewInput files={state.files} error={state.fileError} onChange={onFilesChange} onClear={onFilesClear} />
+          <div className="studio-fixed-generation-settings" aria-label="固定生成设置">
+            <span>固定生成</span>
+            <strong>1:1</strong>
+            <strong>1K</strong>
+            <strong>1 张</strong>
+          </div>
+        </>
+      ) : (
+        <>
+          <ReferenceImageInput
+            mode={mode}
+            files={state.files}
+            error={state.fileError}
+            onChange={onFilesChange}
+            onRemove={onFileRemove}
+            onClear={onFilesClear}
           />
-        </StackedControl>
-        <StackedControl label="数量" required>
-          <CustomSelect
-            label="数量"
-            value={String(state.count)}
-            options={[
-              { value: "1", label: "1张" },
-              { value: "2", label: "2张" },
-              { value: "3", label: "3张" },
-              { value: "4", label: "4张" },
-            ]}
-            onChange={(value) => onCountChange(Number(value))}
+          <StackedControl label="比例" required>
+            <AspectRatioSelector label="比例" value={state.ratio} onChange={onRatioChange} />
+          </StackedControl>
+          <div className="studio-dual-fields">
+            <StackedControl label="清晰度" required>
+              <CustomSelect
+                label="清晰度"
+                value={state.quality}
+                options={[
+                  { value: "1k", label: "1K（默认）" },
+                  { value: "2k", label: "2K（细节更多）" },
+                  { value: "4k", label: "4K（大图输出）" },
+                ]}
+                onChange={onQualityChange}
+              />
+            </StackedControl>
+            <StackedControl label="数量" required>
+              <CustomSelect
+                label="数量"
+                value={String(state.count)}
+                options={[
+                  { value: "1", label: "1张" },
+                  { value: "2", label: "2张" },
+                  { value: "3", label: "3张" },
+                  { value: "4", label: "4张" },
+                ]}
+                onChange={(value) => onCountChange(Number(value))}
+              />
+            </StackedControl>
+          </div>
+          <PromptBox
+            tool={promptTool}
+            value={state.prompt}
+            onChange={onPromptChange}
+            optimizeCostLabel={promptOptimizeCostLabel || promptOptimizationCostLabel}
+            optimizing={state.promptOptimizing}
+            optimizeError={state.promptOptimizeError}
+            canUndoOptimize={Boolean(state.promptOptimizeUndo)}
+            onOptimize={onPromptOptimize}
+            onUndoOptimize={onPromptOptimizeUndo}
+            required
+            placeholder={meta.promptPlaceholder}
           />
-        </StackedControl>
-      </div>
-      <PromptBox
-        tool={promptTool}
-        value={state.prompt}
-        onChange={onPromptChange}
-        optimizeCostLabel={promptOptimizeCostLabel || promptOptimizationCostLabel}
-        optimizing={state.promptOptimizing}
-        optimizeError={state.promptOptimizeError}
-        canUndoOptimize={Boolean(state.promptOptimizeUndo)}
-        onOptimize={onPromptOptimize}
-        onUndoOptimize={onPromptOptimizeUndo}
-        required
-        placeholder={meta.promptPlaceholder}
-      />
+        </>
+      )}
       <StudioErrorAlert message={state.submitError} diagnostic={state.submitDiagnostic} />
 
       <StickyPrimaryAction>
         <SubmitButton
           disabled={!canSubmit}
           loading={loading}
-          loadingLabel={meta.loadingLabel}
+          loadingLabel={loadingLabel}
           costLabel={costLabel || formatQuotaSymbolLabel(estimatedQuotaUnits)}
           onClick={onSubmit}
         >
-          {meta.submitLabel}
+          {submitLabel}
         </SubmitButton>
       </StickyPrimaryAction>
     </FormPanel>
+  );
+}
+
+function WhiteBackgroundFourViewInput({
+  files,
+  error,
+  onChange,
+  onClear,
+}: {
+  files: ImageWorkspaceFile[];
+  error: string;
+  onChange: (files: File[]) => void;
+  onClear: () => void;
+}) {
+  const inputRef = useRef<HTMLInputElement | null>(null);
+  const views = ["外侧", "内侧", "顶部", "鞋底"];
+  const nextIndex = files.length;
+
+  const applyFile = (file: File | undefined) => {
+    if (!file || nextIndex >= views.length) return;
+    onChange([...files.map((item) => item.file), file]);
+  };
+
+  return (
+    <FieldFrame
+      label="鞋子四视图"
+      required
+      action={files.length ? <button type="button" className="studio-prompt-action" onClick={onClear}><RotateCcw className="size-3.5" aria-hidden="true" />重新上传</button> : undefined}
+    >
+      <input
+        ref={inputRef}
+        type="file"
+        accept="image/png,image/jpeg,image/webp"
+        className="studio-file-input"
+        aria-label={nextIndex < views.length ? `上传${views[nextIndex]}视图` : "四视图已上传"}
+        onChange={(event) => {
+          applyFile(event.target.files?.[0]);
+          event.currentTarget.value = "";
+        }}
+      />
+      <div className="studio-four-view-upload-grid">
+        {views.map((view, index) => {
+          const file = files[index];
+          const canUpload = index === nextIndex;
+          return (
+            <div key={view} className={cn("studio-four-view-upload-slot", file && "is-filled", canUpload && "is-next")}>
+              {file ? <img src={file.previewUrl} alt={`${view}视图`} /> : null}
+              {!file && canUpload ? (
+                <button type="button" onClick={() => inputRef.current?.click()}>
+                  <ImagePlus className="size-5" aria-hidden="true" />
+                  <span>上传{view}</span>
+                </button>
+              ) : null}
+              <span>{`第 ${index + 1} 张 · ${view}`}</span>
+            </div>
+          );
+        })}
+      </div>
+      <p className="studio-four-view-upload-note">请严格按外侧、内侧、顶部、鞋底顺序上传。重新上传会清空当前四张图片。</p>
+      {error ? <p className="studio-error-text" role="alert">{error}</p> : null}
+    </FieldFrame>
   );
 }
 

@@ -52,6 +52,7 @@ type WorkbenchShellProps = {
   mobileActionSlot?: ReactNode;
   mobilePreviewSignal?: number;
   toolTitle?: string;
+  toolHeaderSlot?: ReactNode;
   contentMode?: "default" | "account";
 };
 
@@ -73,6 +74,7 @@ export function WorkbenchShell({
   mobileActionSlot,
   mobilePreviewSignal,
   toolTitle,
+  toolHeaderSlot,
   contentMode = "default",
 }: WorkbenchShellProps) {
   const [drawerOpen, setDrawerOpen] = useState(false);
@@ -318,6 +320,7 @@ export function WorkbenchShell({
               <div>
                 <h2 className="shell-title">{toolTitle || activeTool.label}</h2>
               </div>
+              {toolHeaderSlot ? <div className="shell-panel__header-actions">{toolHeaderSlot}</div> : null}
             </div>
             <div id="shell-parameters-panel" data-shell-scroll="parameters" className="shell-panel__body">
               {parameterSlot}

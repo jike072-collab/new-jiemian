@@ -1,8 +1,16 @@
 import { type NextRequest, NextResponse } from "next/server";
 
 import { estimateImageGenerationEntitlementUnits } from "@/lib/generation-quota";
+import {
+  isWhiteBackgroundFourViewPreset,
+  whiteBackgroundFourViewCount,
+  whiteBackgroundFourViewPrompt,
+  whiteBackgroundFourViewQuality,
+  whiteBackgroundFourViewRatio,
+  whiteBackgroundFourViewReferenceCount,
+} from "@/lib/image-presets";
 import { authResultResponse, csrfFailure, requireAuthSession, requireCsrf } from "@/lib/server/auth";
-import { diagnosticErrorResponse } from "@/lib/server/error-diagnostics";
+import { diagnosticErrorResponse, GenerationDiagnosticError } from "@/lib/server/error-diagnostics";
 import { failImageGenerationBeforeSubmit, generateImage, uploadedMediaFromForm } from "@/lib/server/provider-call";
 import { WorkloadLimitError, withUserImageEditWorkload, withUserImageWorkload, workloadLimitResponse } from "@/lib/server/workload-guard";
 
@@ -14,13 +22,15 @@ export async function POST(request: NextRequest) {
     const session = await requireAuthSession(request);
     if (!session.ok) return authResultResponse(request, session);
     const form = await request.formData();
-    const operation = String(form.get("operation") || "cloud_image_generation").trim() === "cloud_image_edit"
+    const preset = String(form.get("preset") || "").trim();
+    const whiteBackgroundFourView = isWhiteBackgroundFourViewPreset(preset);
+    const operation = whiteBackgroundFourView ? "cloud_image_generation" : String(form.get("operation") || "cloud_image_generation").trim() === "cloud_image_edit"
       ? "cloud_image_edit"
       : "cloud_image_generation";
     const billingTaskId = String(form.get("taskId") || form.get("billingTaskId") || "");
     const billingEstimatedQuotaUnits = Number(form.get("estimatedQuotaUnits") || form.get("billingEstimatedQuotaUnits") || Number.NaN);
-    const quality = String(form.get("quality") || "1k");
-    const count = Number(form.get("count") || Number.NaN);
+    const quality = whiteBackgroundFourView ? whiteBackgroundFourViewQuality : String(form.get("quality") || "1k");
+    const count = whiteBackgroundFourView ? whiteBackgroundFourViewCount : Number(form.get("count") || Number.NaN);
     const membershipEntitlementAmount = estimateImageGenerationEntitlementUnits({ quality, count });
     const failBeforeSubmit = (error: unknown) => failImageGenerationBeforeSubmit({
       localUserId: session.user.local_user_id,
@@ -38,12 +48,22 @@ export async function POST(request: NextRequest) {
         await failBeforeSubmit(error);
         throw error;
       }
+      if (whiteBackgroundFourView && files.length !== whiteBackgroundFourViewReferenceCount) {
+        const error = new GenerationDiagnosticError({
+          code: "INPUT_INVALID_PARAMETERS",
+          message: `White background four-view generation requires ${whiteBackgroundFourViewReferenceCount} reference images.`,
+          publicMessage: "请按外侧、内侧、顶部、鞋底顺序上传 4 张图片。",
+          status: 400,
+        });
+        await failBeforeSubmit(error);
+        throw error;
+      }
       return generateImage({
         providerId: String(form.get("providerId") || ""),
-        mode: String(form.get("mode") || "text-to-image") === "image-to-image" ? "image-to-image" : "text-to-image",
+        mode: whiteBackgroundFourView || String(form.get("mode") || "text-to-image") === "image-to-image" ? "image-to-image" : "text-to-image",
         operation,
-        prompt: String(form.get("prompt") || ""),
-        ratio: String(form.get("ratio") || "1:1"),
+        prompt: whiteBackgroundFourView ? whiteBackgroundFourViewPrompt : String(form.get("prompt") || ""),
+        ratio: whiteBackgroundFourView ? whiteBackgroundFourViewRatio : String(form.get("ratio") || "1:1"),
         quality,
         files,
         count,

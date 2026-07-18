@@ -1703,6 +1703,42 @@
     padding: var(--space-panel);
   }
 
+  .shell-panel__header-actions {
+    display: flex;
+    flex: 0 0 auto;
+    align-items: center;
+  }
+
+  .studio-tool-header-action,
+  .studio-four-view-mobile-toggle {
+    display: inline-flex;
+    min-height: 36px;
+    align-items: center;
+    justify-content: center;
+    gap: 7px;
+    border: 1px solid var(--border-subtle);
+    border-radius: var(--radius-control);
+    background: color-mix(in srgb, var(--surface) 78%, transparent);
+    color: var(--muted);
+    font-size: 13px;
+    font-weight: 600;
+    padding: 0 11px;
+  }
+
+  .studio-tool-header-action:hover,
+  .studio-tool-header-action:focus-visible,
+  .studio-tool-header-action.is-active,
+  .studio-four-view-mobile-toggle[aria-pressed="true"] {
+    border-color: color-mix(in srgb, var(--primary) 62%, var(--border-subtle));
+    background: var(--primary-soft);
+    color: var(--primary);
+    outline: none;
+  }
+
+  .studio-four-view-mobile-toggle {
+    display: none;
+  }
+
   .shell-title {
     margin-top: 6px;
     color: var(--foreground);
@@ -2198,6 +2234,83 @@
     width: 100%;
     height: 100%;
     object-fit: cover;
+  }
+
+  .studio-four-view-upload-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 10px;
+  }
+
+  .studio-four-view-upload-slot {
+    position: relative;
+    display: grid;
+    min-height: 132px;
+    place-items: center;
+    overflow: hidden;
+    border: 1px dashed color-mix(in srgb, var(--border-subtle) 84%, transparent);
+    border-radius: var(--radius-control);
+    background: color-mix(in srgb, var(--surface) 72%, transparent);
+    color: var(--muted);
+  }
+
+  .studio-four-view-upload-slot.is-next {
+    border-color: color-mix(in srgb, var(--primary) 58%, var(--border-subtle));
+  }
+
+  .studio-four-view-upload-slot > img {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+  }
+
+  .studio-four-view-upload-slot > button {
+    display: grid;
+    place-items: center;
+    gap: 6px;
+    border: 0;
+    background: transparent;
+    color: var(--foreground);
+    font-size: 13px;
+  }
+
+  .studio-four-view-upload-slot > span {
+    position: absolute;
+    right: 7px;
+    bottom: 7px;
+    border-radius: 4px;
+    background: rgba(10, 10, 14, 0.76);
+    color: rgba(255, 255, 255, 0.88);
+    font-size: 11px;
+    line-height: 1;
+    padding: 5px 6px;
+  }
+
+  .studio-four-view-upload-note {
+    margin-top: 9px;
+    color: var(--muted);
+    font-size: 12px;
+    line-height: 1.5;
+  }
+
+  .studio-fixed-generation-settings {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 7px;
+    color: var(--muted);
+    font-size: 13px;
+  }
+
+  .studio-fixed-generation-settings strong {
+    border: 1px solid var(--border-subtle);
+    border-radius: 4px;
+    color: var(--foreground);
+    font-size: 12px;
+    font-weight: 600;
+    padding: 4px 7px;
   }
 
   .studio-prompt-settings-trigger {
@@ -13385,6 +13498,11 @@
 
   .shell-panel--controls .shell-panel__header--tool {
     display: none;
+  }
+
+  .studio-four-view-mobile-toggle {
+    display: inline-flex;
+    justify-self: end;
   }
 
   .shell-mobile-tabs {

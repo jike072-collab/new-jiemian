@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import { createPortal } from "react-dom";
-import { ArrowLeft, CalendarCheck, Check, CheckCircle2, Crown, CreditCard, History, LogOut, Sparkles, WalletCards, X } from "lucide-react";
+import { ArrowLeft, CalendarCheck, Check, CheckCircle2, Crown, CreditCard, Grid2X2, History, LogOut, Sparkles, WalletCards, X } from "lucide-react";
 import { useRouter, useSearchParams } from "next/navigation";
 import dynamic from "next/dynamic";
 
@@ -10,6 +10,14 @@ import { FormPanelLoadingFallback, LibraryWorkspaceLoadingFallback, PreviewPanel
 import { WorkbenchShell } from "@/components/workbench-shell";
 import { ImageGenerator } from "@/components/studio/image-generator";
 import { jsonFetch } from "@/components/studio/json-fetch";
+import {
+  whiteBackgroundFourViewCount,
+  whiteBackgroundFourViewPresetId,
+  whiteBackgroundFourViewPrompt,
+  whiteBackgroundFourViewQuality,
+  whiteBackgroundFourViewRatio,
+  whiteBackgroundFourViewReferenceCount,
+} from "@/lib/image-presets";
 import { createTaskRunner } from "@/lib/task-runner";
 import {
   ImageGenerationProgressToast,
@@ -780,6 +788,7 @@ export function StudioApp() {
   const [missingLibraryMediaIds, setMissingLibraryMediaIds] = useState<Set<string>>(() => new Set());
   const [imageWorkspace, setImageWorkspace] = useState<ImageWorkspaceState>(() => createInitialImageWorkspaceState());
   const [imageEditorWorkspace, setImageEditorWorkspace] = useState<ImageWorkspaceState>(() => createInitialImageWorkspaceState());
+  const [imagePreset, setImagePreset] = useState<string | null>(null);
   const [videoWorkspace, setVideoWorkspace] = useState<VideoWorkspaceState>({
     providerId: "",
     referenceMode: "single",
@@ -826,6 +835,7 @@ export function StudioApp() {
   });
   const imageWorkspaceFilesRef = useRef<ImageWorkspaceFile[]>([]);
   const imageEditorWorkspaceFilesRef = useRef<ImageWorkspaceFile[]>([]);
+  const imagePresetRestoreRef = useRef<Pick<ImageWorkspaceState, "ratio" | "quality" | "count" | "templateId" | "prompt"> | null>(null);
   const videoWorkspaceFilesRef = useRef<VideoWorkspaceFile[]>([]);
   const imageUpscaleFileRef = useRef<ImageUpscaleWorkspaceFile | null>(null);
   const videoUpscaleFileRef = useRef<VideoUpscaleWorkspaceFile | null>(null);
@@ -1330,6 +1340,7 @@ export function StudioApp() {
   const activeImageWorkspaceFilesRef = activeImageWorkspaceScope === "image-editor" ? imageEditorWorkspaceFilesRef : imageWorkspaceFilesRef;
   const activeImageWorkspaceSetter = activeImageWorkspaceScope === "image-editor" ? setImageEditorWorkspace : setImageWorkspace;
   const activeImageInFlightCountRef = activeImageWorkspaceScope === "image-editor" ? imageEditorInFlightCountRef : imageInFlightCountRef;
+  const whiteBackgroundFourViewMode = activeImageWorkspaceScope === "image" && imagePreset === whiteBackgroundFourViewPresetId;
   const activeImageMode: WorkspaceImageMode = activeImageWorkspaceScope === "image-editor" || activeImageWorkspace.files.length
     ? "image-to-image"
     : "text-to-image";
@@ -1706,6 +1717,7 @@ export function StudioApp() {
     && !providersLoading
     && !imageWorkspaceAtSubmissionLimit
     && Boolean(imageWorkspacePrompt)
+    && (!whiteBackgroundFourViewMode || imageWorkspaceFiles.length === whiteBackgroundFourViewReferenceCount)
     && (!imageWorkspaceRequiresFile || imageWorkspaceHasFiles);
   const scopedImagePendingCount = imageGenerationProgress
     .filter((progress) => progress.scope === activeImageWorkspaceScope && progress.status === "running")
@@ -1724,6 +1736,50 @@ export function StudioApp() {
       ...("submitError" in patch && !("submitDiagnostic" in patch) ? { submitDiagnostic: null } : {}),
     }));
   }, [activeImageWorkspaceSetter]);
+
+  const toggleWhiteBackgroundFourViewMode = useCallback(() => {
+    if (whiteBackgroundFourViewMode) {
+      const restore = imagePresetRestoreRef.current;
+      setImagePreset(null);
+      setImageWorkspace((prev) => ({
+        ...prev,
+        ...(restore || {}),
+        promptOptimizing: false,
+        promptOptimizeError: "",
+        promptOptimizeUndo: "",
+        submitError: "",
+        submitDiagnostic: null,
+      }));
+      imagePresetRestoreRef.current = null;
+      return;
+    }
+
+    imagePresetRestoreRef.current = {
+      ratio: imageWorkspace.ratio,
+      quality: imageWorkspace.quality,
+      count: imageWorkspace.count,
+      templateId: imageWorkspace.templateId,
+      prompt: imageWorkspace.prompt,
+    };
+    imageWorkspaceFilesRef.current.forEach((file) => URL.revokeObjectURL(file.previewUrl));
+    imageWorkspaceFilesRef.current = [];
+    setImagePreset(whiteBackgroundFourViewPresetId);
+    setImageWorkspace((prev) => ({
+      ...prev,
+      ratio: whiteBackgroundFourViewRatio,
+      quality: whiteBackgroundFourViewQuality,
+      count: whiteBackgroundFourViewCount,
+      templateId: "",
+      prompt: whiteBackgroundFourViewPrompt,
+      promptOptimizing: false,
+      promptOptimizeError: "",
+      promptOptimizeUndo: "",
+      files: [],
+      fileError: "",
+      submitError: "",
+      submitDiagnostic: null,
+    }));
+  }, [imageWorkspace.count, imageWorkspace.prompt, imageWorkspace.quality, imageWorkspace.ratio, imageWorkspace.templateId, whiteBackgroundFourViewMode]);
 
   const updateImageInFlightState = useCallback((nextCount: number, scope: ImageWorkspaceScope = activeImageWorkspaceScope) => {
     const countRef = scope === "image-editor" ? imageEditorInFlightCountRef : imageInFlightCountRef;
@@ -1934,6 +1990,13 @@ export function StudioApp() {
       }));
       return;
     }
+    if (whiteBackgroundFourViewMode && activeImageWorkspace.files.length !== whiteBackgroundFourViewReferenceCount) {
+      activeImageWorkspaceSetter((prev) => ({
+        ...prev,
+        fileError: "请按外侧、内侧、顶部、鞋底顺序上传 4 张图片。",
+      }));
+      return;
+    }
     if (imageWorkspaceRequiresFile && !imageWorkspaceHasFiles) {
       activeImageWorkspaceSetter((prev) => ({
         ...prev,
@@ -1948,19 +2011,20 @@ export function StudioApp() {
     const snapshot = {
       scope: activeImageWorkspaceScope,
       providerId: selectedImageProvider.id,
-      mode: activeImageMode,
+      mode: whiteBackgroundFourViewMode ? "image-to-image" : activeImageMode,
       operation: activeImageBillingOperation,
-      ratio: activeImageWorkspace.ratio,
-      quality: activeImageWorkspace.quality,
-      prompt: activeImageWorkspace.prompt,
+      ratio: whiteBackgroundFourViewMode ? whiteBackgroundFourViewRatio : activeImageWorkspace.ratio,
+      quality: whiteBackgroundFourViewMode ? whiteBackgroundFourViewQuality : activeImageWorkspace.quality,
+      prompt: whiteBackgroundFourViewMode ? whiteBackgroundFourViewPrompt : activeImageWorkspace.prompt,
       files: activeImageWorkspace.files.map((attachment) => attachment.file),
       perImageQuotaUnits: estimateImageGenerationTotalQuota({
         quality: activeImageWorkspace.quality,
         count: 1,
         model: selectedImageProvider.model,
       }),
-      totalCount,
+      totalCount: whiteBackgroundFourViewMode ? whiteBackgroundFourViewCount : totalCount,
       batchId,
+      preset: whiteBackgroundFourViewMode ? whiteBackgroundFourViewPresetId : null,
     };
 
     latestImageDisplayRef.current[snapshot.scope] = { taskId: batchId, progressId };
@@ -2043,6 +2107,7 @@ export function StudioApp() {
         form.set("count", "1");
         form.set("estimatedQuotaUnits", String(snapshot.perImageQuotaUnits));
         form.set("operation", snapshot.operation);
+        if (snapshot.preset) form.set("preset", snapshot.preset);
         snapshot.files.forEach((file) => form.append("files", file));
         try {
           const data = await fetchJsonWithCsrf<{ item: LibraryItem | null; items?: LibraryItem[] }>("/api/generate/image", {
@@ -2110,6 +2175,7 @@ export function StudioApp() {
     imageWorkspacePrompt,
     imageWorkspaceHasFiles,
     imageWorkspaceRequiresFile,
+    whiteBackgroundFourViewMode,
     refreshAccountAfterGeneration,
     refreshLibraryAfterMutation,
     selectedImageProvider,
@@ -3159,6 +3225,18 @@ export function StudioApp() {
     videoWorkspacePrompt,
   ]);
 
+  const imageToolHeaderSlot = activeBusinessTool === "image" && activeImageWorkspaceScope === "image" ? (
+    <button
+      type="button"
+      className={cn("studio-tool-header-action", whiteBackgroundFourViewMode && "is-active")}
+      aria-pressed={whiteBackgroundFourViewMode}
+      onClick={toggleWhiteBackgroundFourViewMode}
+    >
+      <Grid2X2 className="size-4" aria-hidden="true" />
+      四视图白底
+    </button>
+  ) : null;
+
   const parameterSlot = (
     <>
       {activeBusinessTool === "image" ? (
@@ -3188,6 +3266,8 @@ export function StudioApp() {
           onFilesChange={replaceImageWorkspaceFiles}
           onFileRemove={removeImageWorkspaceFile}
           onFilesClear={clearImageWorkspaceFiles}
+          whiteBackgroundFourViewMode={whiteBackgroundFourViewMode}
+          onWhiteBackgroundFourViewModeChange={toggleWhiteBackgroundFourViewMode}
           onReloadProviders={refreshProviders}
           onSubmit={submitImageWorkspace}
           registerMobileAction={setMobileAction}
@@ -3301,6 +3381,7 @@ export function StudioApp() {
         accountPointsLabel={accountSummaryBusy ? "加载中" : quotaSnapshot ? `${formatQuotaUnits(quotaSnapshot.quota_units)} ✦` : "—"}
         accountPlanLabel={accountPlanLabel}
         headerRightSlot={accountHeaderSlot}
+        toolHeaderSlot={imageToolHeaderSlot}
         accountCloseSignal={accountCloseSignal}
         onOpenAccountCenter={handleOpenAccountCenter}
         onOpenAccountRecharge={handleOpenRechargeCenter}
