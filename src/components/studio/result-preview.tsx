@@ -1802,7 +1802,7 @@ function ImageResultGrid({
       ))}
       {Array.from({ length: pendingCount }).map((_, index) => (
         <article key={`pending-${index}`} className="studio-image-result-card studio-image-result-card--pending studio-generation-pending" aria-live="polite">
-          <DotRippleLoader fill expanded={pendingCount === 1} />
+          <DotRippleLoader fill={pendingCount === 1} expanded={pendingCount === 1} />
           <p>{loading ? "图片生成中" : "图片未生成"}</p>
           <small>完成后会自动补到这里。</small>
         </article>
@@ -1969,16 +1969,15 @@ function animatedTaskProgress(elapsedMs: number, baseRatio = 0, ceiling = 0.94) 
 
 export function ImageGenerationProgressToast({
   progress,
-  tick,
   stacked,
   onClose,
 }: {
   progress: ImageGenerationProgressState;
-  tick: number;
   stacked?: boolean;
   onClose: (id: string) => void;
 }) {
   const [dismissedIds, setDismissedIds] = useState<Set<string>>(() => new Set());
+  const [tick, setTick] = useState(() => Date.now());
   const visibleProgress = useMemo(
     () => [...progress]
       .filter((item) => !dismissedIds.has(item.id))
@@ -1986,6 +1985,12 @@ export function ImageGenerationProgressToast({
       .slice(0, 3),
     [dismissedIds, progress],
   );
+
+  useEffect(() => {
+    if (!progress.some((item) => item.status === "running")) return undefined;
+    const timer = window.setInterval(() => setTick(Date.now()), 1000);
+    return () => window.clearInterval(timer);
+  }, [progress]);
 
   useEffect(() => {
     const terminalIds = progress.filter((item) => item.status !== "running").map((item) => item.id);

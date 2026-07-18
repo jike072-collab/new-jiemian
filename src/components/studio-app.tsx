@@ -787,7 +787,6 @@ export function StudioApp() {
   const [message, setMessage] = useState("");
   const [generationNotice, setGenerationNotice] = useState("");
   const [imageGenerationProgress, setImageGenerationProgress] = useState<ImageGenerationProgressState>([]);
-  const [generationProgressTick, setGenerationProgressTick] = useState(() => Date.now());
   const [outputs, setOutputs] = useState<Partial<Record<BusinessToolId, OutputState>>>({});
   const [imageOutputs, setImageOutputs] = useState<OutputItemState[]>([]);
   const [imageRequestScope, setImageRequestScope] = useState<ImageWorkspaceScope | null>(null);
@@ -1706,13 +1705,6 @@ export function StudioApp() {
     setOutputs((prev) => prev.image?.item.id === itemId ? { ...prev, image: null } : prev);
   }, []);
 
-  useEffect(() => {
-    if (!imageGenerationProgress.some((progress) => progress.status === "running")) return undefined;
-
-    const timer = window.setInterval(() => setGenerationProgressTick(Date.now()), 1000);
-    return () => window.clearInterval(timer);
-  }, [imageGenerationProgress]);
-
   const selectedImageProvider = useMemo(() => {
     if (!providers.image.length) return null;
     return providers.image.find((provider) => provider.id === activeImageWorkspace.providerId) || providers.image[0];
@@ -2140,7 +2132,6 @@ export function StudioApp() {
     setMobilePreviewSignal((value) => value + 1);
     setMessage("");
     const startedAt = Date.now();
-    setGenerationProgressTick(startedAt);
     setImageGenerationProgress((prev) => [...prev, {
       id: progressId,
       scope: snapshot.scope,
@@ -3683,7 +3674,6 @@ export function StudioApp() {
       {imageGenerationProgress.length ? (
         <ImageGenerationProgressToast
           progress={imageGenerationProgress}
-          tick={generationProgressTick}
           stacked={Boolean(message)}
           onClose={closeImageGenerationProgress}
         />
