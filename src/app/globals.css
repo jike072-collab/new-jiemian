@@ -4942,6 +4942,13 @@
     pointer-events: none;
   }
 
+  .studio-dot-ripple-loader.is-static-field span {
+    animation: none;
+    opacity: var(--dot-field-opacity);
+    transform: scale(0.82);
+    will-change: auto;
+  }
+
   .studio-dot-ripple-loader.is-vector-field {
     contain: layout paint;
     padding: 3% 2%;

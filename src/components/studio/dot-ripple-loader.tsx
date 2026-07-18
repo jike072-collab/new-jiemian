@@ -46,11 +46,13 @@ const expandedFillDotRippleDots = createDotRippleDots(26);
 export function DotRippleLoader({
   fill = false,
   expanded = false,
+  staticField = false,
   imageSource,
   className,
 }: {
   fill?: boolean;
   expanded?: boolean;
+  staticField?: boolean;
   imageSource?: string;
   className?: string;
 }) {
@@ -62,7 +64,7 @@ export function DotRippleLoader({
   }
   return (
     <div
-      className={cn("studio-dot-ripple-loader", fill && "is-fill", fill && !imageSource && "is-vector-field", fill && expanded && "is-expanded-field", imageSource && "has-image-fragments", className)}
+      className={cn("studio-dot-ripple-loader", fill && "is-fill", fill && !imageSource && "is-vector-field", fill && staticField && "is-static-field", fill && expanded && "is-expanded-field", imageSource && "has-image-fragments", className)}
       style={imageSource ? {
         "--dot-image-source": `url(${JSON.stringify(imageSource)})`,
         "--dot-image-size": `${size * 100}% ${size * 100}%`,
