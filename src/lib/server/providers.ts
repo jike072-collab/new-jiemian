@@ -362,11 +362,11 @@ export function defaultProviders(): ProviderConfig[] {
       kind: "prompt",
       title: "文生识别优化",
       role: "用于图片和视频文生识别优化",
-      apiUrl: env("PROMPT_OPTIMIZER_API_URL", "https://api.deepseek.com/chat/completions"),
-      model: env("PROMPT_OPTIMIZER_MODEL", "deepseek-v4-pro"),
-      displayName: env("PROMPT_OPTIMIZER_DISPLAY_NAME", "DeepSeek V4 Pro"),
-      apiKey: env("PROMPT_OPTIMIZER_API_KEY", env("DEEPSEEK_API_KEY")),
-      enabled: hasKey(env("PROMPT_OPTIMIZER_API_KEY", env("DEEPSEEK_API_KEY"))),
+      apiUrl: env("PROMPT_OPTIMIZER_API_URL", "https://api.qianyi.win/v1/chat/completions"),
+      model: env("PROMPT_OPTIMIZER_MODEL", "gpt-5.5"),
+      displayName: env("PROMPT_OPTIMIZER_DISPLAY_NAME", "GPT-5.5"),
+      apiKey: env("PROMPT_OPTIMIZER_API_KEY"),
+      enabled: hasKey(env("PROMPT_OPTIMIZER_API_KEY")),
       endpointType: "chat-completions",
       custom: false,
     },
@@ -560,6 +560,20 @@ function mergeStoredProvider(fallback: ProviderConfig, stored: ProviderConfig | 
       title: legacyStored.title || fallback.title,
       role: fallback.role,
       displayName: fallback.modelDisplayNames?.[selectedModel] || selectedModel,
+    };
+  }
+  if (fallback.id === "prompt-optimizer") {
+    return {
+      ...fallback,
+      ...legacyStored,
+      apiUrl: fallback.apiUrl,
+      model: fallback.model,
+      displayName: fallback.displayName,
+      apiKey: fallback.apiKey || legacyStored.apiKey,
+      enabled: hasKey(fallback.apiKey || legacyStored.apiKey),
+      endpointType: fallback.endpointType,
+      title: legacyStored.title || fallback.title,
+      role: fallback.role,
     };
   }
   return {

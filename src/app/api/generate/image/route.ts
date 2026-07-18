@@ -6,7 +6,6 @@ import {
   ecommerceTenPageCount,
   ecommerceTenPageMaxReferenceCount,
   ecommerceTenPageMinReferenceCount,
-  ecommerceTenPagePrompt,
   isWhiteBackgroundFourViewPreset,
   isEcommerceTenPagePreset,
   whiteBackgroundFourViewPrompt,
@@ -17,6 +16,7 @@ import {
 import { authResultResponse, csrfFailure, requireAuthSession, requireCsrf } from "@/lib/server/auth";
 import { diagnosticErrorResponse, GenerationDiagnosticError } from "@/lib/server/error-diagnostics";
 import { failImageGenerationBeforeSubmit, generateImage, uploadedMediaFromForm } from "@/lib/server/provider-call";
+import { ecommerceTenPagePromptForPage } from "@/lib/server/prompts/ecommerce";
 import { WorkloadLimitError, withUserEcommerceImageWorkload, withUserImageEditWorkload, withUserImageWorkload, workloadLimitResponse } from "@/lib/server/workload-guard";
 
 export const runtime = "nodejs";
@@ -107,13 +107,24 @@ export async function POST(request: NextRequest) {
         await failBeforeSubmit(error);
         throw error;
       }
+      const prompt = whiteBackgroundFourView
+        ? whiteBackgroundFourViewPrompt
+        : ecommerceTenPage
+          ? await ecommerceTenPagePromptForPage({
+            ownerLocalUserId: session.user.local_user_id,
+            batchId: String(form.get("batchId") || "").trim(),
+            pageCount: requestedBatchTotal,
+            pageIndex,
+            ratio: String(form.get("ratio") || "1:1"),
+            batchStyleIndex: requestedBatchStyleIndex,
+            references: files,
+          })
+          : String(form.get("prompt") || "");
       return generateImage({
         providerId: String(form.get("providerId") || ""),
         mode: whiteBackgroundFourView || ecommerceTenPage || String(form.get("mode") || "text-to-image") === "image-to-image" ? "image-to-image" : "text-to-image",
         operation,
-        prompt: whiteBackgroundFourView
-          ? whiteBackgroundFourViewPrompt
-          : ecommerceTenPage ? ecommerceTenPagePrompt(pageIndex, String(form.get("ratio") || "1:1"), requestedBatchTotal, requestedBatchStyleIndex) : String(form.get("prompt") || ""),
+        prompt,
         ratio: whiteBackgroundFourView ? whiteBackgroundFourViewRatio : String(form.get("ratio") || "1:1"),
         quality,
         files,
