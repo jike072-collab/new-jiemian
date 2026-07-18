@@ -11,14 +11,14 @@ export const ecommerceTenPageMaxReferenceCount = 10;
 export const ecommerceTenPageDefaultRatio = "1:1";
 export const ecommerceTenPageDefaultQuality = "1k";
 export const ecommerceTenPageBatchStyles = [
-  "Electric sport campaign: graphite and bright lime backgrounds, crisp white type, sharp studio lighting, precise motion accents, and high-energy athletic art direction.",
-  "Coastal pop campaign: cobalt blue, coral, and clean white environments, sunlit editorial lighting, bold geometric type, and an upbeat Southeast Asian street mood.",
-  "Technical performance campaign: deep red, brushed silver, charcoal, and white, controlled hard light, modular technical graphics, and a premium engineered mood.",
-  "Fresh city campaign: sky cyan, sunflower yellow, warm white, natural daylight, open compositions, and youthful urban movement with clean retail typography.",
-  "Night social campaign: magenta, near-black, ivory, focused flash lighting, restrained camera-frame accents, and a polished social-first fashion mood.",
-  "Tropical active campaign: emerald green, vivid orange, and white, bright outdoor light, rhythmic shapes, and energetic campus-to-street art direction.",
-  "Modern monochrome campaign: black, white, concrete gray, and small signal-red accents, dramatic directional light, bold grid typography, and a confident editorial mood.",
-  "Playful retail campaign: light blue, cherry red, white, soft studio daylight, lively cut-paper shapes, and friendly conversion-focused product styling.",
+  "石墨黑、亮青柠与白色，高对比硬光、精准速度线，强运动广告张力",
+  "钴蓝、珊瑚红与白色，明亮日光、粗体几何排版，东南亚街头活力",
+  "深红、拉丝银、炭黑与白色，受控硬光、模块化科技图形，高级工程感",
+  "天空蓝、向日葵黄与暖白，自然日光、开放构图，年轻城市运动感",
+  "洋红、近黑与象牙白，聚焦闪光灯、克制相机框，社交时尚质感",
+  "祖母绿、鲜橙与白色，明亮户外光、节奏图形，校园到街头的活力",
+  "黑、白、水泥灰与少量信号红，戏剧性方向光、强网格排版，现代编辑感",
+  "浅蓝、樱桃红与白色，柔和棚拍日光、活泼剪纸形状，友好零售质感",
 ] as const;
 export const ecommerceTenPageBatchStyleCount = ecommerceTenPageBatchStyles.length;
 export const ecommerceTenPageTitles = [
@@ -35,33 +35,40 @@ export const ecommerceTenPageTitles = [
 ] as const;
 
 const ecommerceTenPageDirections = [
-  "Hero: MOVE WITH ENERGY | Sport Style Sneakers | Lightweight Feel / Street Ready / Daily Comfort. Extreme low angle, main colorway dominant, energy background, speed lines.",
-  "Pain point: BUILT FOR EVERYDAY MOVE | Comfort. Grip. Style. | Soft Step / Breathable Look / Stable Grip. Infographic cards, arrows, airflow and cushion waves.",
-  "Movement: MADE TO MOVE | Run. Walk. Train. | Daily Run / Gym Fit / Street Style. Southeast Asia street, campus, gym, or commute with dynamic panels.",
-  "Upper: BREATHABLE UPPER LOOK | Flexible. Light. Clean. | Texture Detail / Airflow Visual / Soft Touch Look. Macro circles and clean tech labels.",
-  "Midsole: SOFT STEP ENERGY | Cushion Feel for Daily Motion | Impact Wave / Forward Push / Comfort Ride. Side profile, layered sole, and motion arrows.",
-  "Outsole: OUTSOLE GRIP | Heel Detail / Lace Structure / Side Texture. Technical collage with outsole, heel, lace, and side insets.",
-  "Outfit: MATCH YOUR MOVE | Sport Meets Street | OOTD / Daily Fit / Hot Pick. Streetwear, friends, and restrained camera-frame accents.",
-  "Comfort: ALL DAY COMFORT | Easy Walk / Daily Wear / Relaxed Fit. Warm cafe, campus, commute, or post-workout lifestyle with soft light.",
-  "Colors: CHOOSE YOUR COLOR | One Style. More Energy. Show every real colorway as separate cards with short color labels and clean lineup.",
-  "CTA: READY FOR YOUR NEXT MOVE | Size Options Available | Hot Pick / Daily Training Ready / Street Style / Choose Your Color. Buyer-show collage, size card, and CTA.",
+  { text: "MOVE WITH ENERGY | Sport Style Sneakers | Lightweight Feel / Street Ready / Daily Comfort", visual: "爆款首图；低机位大主体、能量背景、速度线和强光效，主推真实配色" },
+  { text: "BUILT FOR EVERYDAY MOVE | Comfort. Grip. Style. | Soft Step / Breathable Look / Stable Grip", visual: "痛点解决信息图；卖点卡片、箭头、气流线和缓震波纹，只表达图片可见的视觉感受" },
+  { text: "MADE TO MOVE | Run. Walk. Train. | Daily Run / Gym Fit / Street Style", visual: "TikTok 原生运动场景；东南亚街头、校园、健身房门口或通勤动态，年轻真实" },
+  { text: "BREATHABLE UPPER LOOK | Flexible. Light. Clean. | Texture Detail / Airflow Visual / Soft Touch Look", visual: "鞋面细节页；忠实微距、放大圆框、真实纹理标注和干净科技感" },
+  { text: "SOFT STEP ENERGY | Cushion Feel for Daily Motion | Impact Wave / Forward Push / Comfort Ride", visual: "中底结构页；真实侧面、分层中底、缓震波纹和推进箭头，不虚构内部科技" },
+  { text: "OUTSOLE GRIP | Heel Detail / Lace Structure / Side Texture", visual: "硬核细节拼贴；分别取真实鞋底纹理、后跟、鞋带与侧边特写，不重画结构" },
+  { text: "MATCH YOUR MOVE | Sport Meets Street | OOTD / Daily Fit / Hot Pick", visual: "社交穿搭杂志页；年轻街头穿搭、朋友氛围，少量相机框和贴纸" },
+  { text: "ALL DAY COMFORT | Easy Walk / Daily Wear / Relaxed Fit", visual: "日常舒适生活方式；咖啡店、校园、通勤或运动后休息，阳光与柔和阴影" },
+  { text: "CHOOSE YOUR COLOR | One Style. More Energy.", visual: "完整配色陈列；每个已上传真实配色独立展示，整齐卡片、色点与干净高级背景" },
+  { text: "READY FOR YOUR NEXT MOVE | Size Options Available | Hot Pick / Daily Training Ready / Street Style / Choose Your Color", visual: "买家秀与 CTA 收尾；生活方式拼贴、产品主图、通用尺码信息卡和按钮，不编造折扣或评价" },
 ] as const;
 
-export function ecommerceTenPagePrompt(pageIndex: number, ratio: string, pageCount = ecommerceTenPageCount, batchStyleIndex = 0) {
+export function ecommerceTenPagePrompt(
+  pageIndex: number,
+  ratio: string,
+  pageCount = ecommerceTenPageCount,
+  batchStyleIndex = 0,
+  colorwayCount = 1,
+) {
   const normalizedPageCount = Math.min(Math.max(Math.trunc(pageCount), 1), ecommerceTenPageCount);
   const index = Math.min(Math.max(Math.trunc(pageIndex) - 1, 0), ecommerceTenPageCount - 1);
   const normalizedBatchStyleIndex = Math.min(Math.max(Math.trunc(batchStyleIndex), 0), ecommerceTenPageBatchStyleCount - 1);
+  const normalizedColorwayCount = Math.min(Math.max(Math.trunc(colorwayCount), 1), ecommerceTenPageMaxReferenceCount - 1);
   const pageTitle = ecommerceTenPageTitles[index];
   const direction = ecommerceTenPageDirections[index];
   const batchStyle = ecommerceTenPageBatchStyles[normalizedBatchStyleIndex];
-  const suggestedColorwayIndex = Math.min(index + 1, ecommerceTenPageMaxReferenceCount - 1);
+  const primaryColorwayIndex = (index % normalizedColorwayCount) + 1;
   return [
-    `Page ${index + 1}/${normalizedPageCount}: ${pageTitle}, ${ratio} square.`,
-    `Unified style: ${batchStyle} High-tension sports ad, bold contrast, diagonal motion, dramatic light, premium depth.`,
-    "Analyze all references. File 1 is the exact logo at top-left, 5%-8% width; files 2+ are real colorways. Preserve shoe shape, material, pattern, sole, and color.",
-    `Primary: Colorway ${suggestedColorwayIndex} if available (Colorway 1=file 2); otherwise choose any uploaded colorway. Vary density: some pages single-color, some show 2+ colorways, page 9 shows all. Across the series use every colorway; never default to Colorway 1 or recolor/merge/mirror shoes.`,
-    `${direction} Change this page's layout, scene, density, and angle from the others.`,
-    "English only. Short headline/subline/labels. No Chinese, invented claims/numbers, fake reviews/discounts, or distorted logo/shoe.",
+    `任务：生成 ${normalizedPageCount} 张独立 TikTok 鞋类电商套图中的第 ${index + 1} 张（${pageTitle}），画幅 ${ratio}。`,
+    `先在内部分析全部上传图，不输出分析文字：第 1 张仅是原始品牌 Logo；第 2 张起每张分别是一款真实配色的四视图白底板，共 ${normalizedColorwayCount} 款。识别每款鞋型、真实颜色、鞋面纹理、侧边图案、中底、鞋底、后跟和鞋带结构，再按分析结果生成。`,
+    `统一视觉：${batchStyle}；sporty、energetic、premium、youthful、TikTok-native，面向 Southeast Asia。整套字体与品牌感统一，但本页构图、场景、信息密度、角度和光影须与其他页明显不同。`,
+    `本页方向：${direction.visual}。主参考第 ${primaryColorwayIndex + 1} 张上传图所示配色；可按页面需要展示一款或多款，第 9 页必须展示全部 ${normalizedColorwayCount} 款真实配色。每只鞋只能完整复现某一张配色板，严禁混合不同鞋款细节、改色、镜像、补画花纹或创造未上传配色。`,
+    `画面可见文字只能从以下英文原文中选用并准确拼写：${direction.text}。中文提示仅是操作指令，绝不能出现在画面；宁可减少文字或不放小字，也不要中文、乱码、随机字母或错误品牌名。`,
+    "Logo 必须使用第 1 张原图，固定左上角，宽度约画布 5%-8%，不得拉伸、重绘、改色或印到鞋上。不得虚构认证、医学功效、材料、参数、真实评价、折扣和促销；不得扭曲鞋型、鞋底或缺失鞋带。",
   ].join("\n\n");
 }
 

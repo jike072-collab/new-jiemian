@@ -2116,6 +2116,7 @@ export function StudioApp() {
       totalCount,
       batchTotal: ecommerceTenPageMode ? ecommerceBatchCount : totalCount,
       batchStyleIndex,
+      colorwayCount: ecommerceTenPageMode ? Math.max(activeImageWorkspace.files.length - 1, 1) : 0,
       batchId,
       preset: whiteBackgroundFourViewMode ? whiteBackgroundFourViewPresetId : ecommerceTenPageMode ? ecommerceTenPagePresetId : null,
       pageIndex: pageRetry ? options?.pageIndex : undefined,
@@ -2197,7 +2198,16 @@ export function StudioApp() {
         form.set("mode", snapshot.mode);
         form.set("ratio", snapshot.ratio);
         form.set("quality", snapshot.quality);
-        form.set("prompt", snapshot.prompt);
+        const taskPrompt = snapshot.ecommerceTenPageMode
+          ? ecommerceTenPagePrompt(
+            pageIndex || snapshot.pageIndex || 1,
+            snapshot.ratio,
+            snapshot.batchTotal,
+            snapshot.batchStyleIndex,
+            snapshot.colorwayCount,
+          )
+          : snapshot.prompt;
+        form.set("prompt", taskPrompt);
         form.set("taskId", taskId);
         form.set("idempotencyKey", taskId);
         form.set("batchId", snapshot.batchId);
