@@ -24,7 +24,6 @@ import {
   SubmitButton,
 } from "@/components/studio/shared";
 import type { ImageWorkspaceFile, ImageWorkspaceState, MobileActionState } from "@/components/studio/types";
-import { ShoeViewOutline } from "@/components/studio/shoe-view-outline";
 import type { PromptPreferences, PromptPreferenceTool } from "@/lib/prompt-preferences";
 import { cn } from "@/lib/utils";
 
@@ -260,7 +259,6 @@ function WhiteBackgroundFourViewInput({
           return (
             <div key={view} className={cn("studio-four-view-upload-slot", file && "is-filled", canUpload && "is-next")}>
               {file ? <img src={file.previewUrl} alt={`${view}视图`} /> : null}
-              {!file ? <ShoeViewOutline view={view} active={canUpload} /> : null}
               {!file && canUpload ? (
                 <button type="button" onClick={() => inputRef.current?.click()}>
                   <ImagePlus className="size-5" aria-hidden="true" />

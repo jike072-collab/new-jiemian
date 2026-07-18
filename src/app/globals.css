@@ -2258,34 +2258,6 @@
     border-color: color-mix(in srgb, var(--primary) 58%, var(--border-subtle));
   }
 
-  .studio-four-view-shoe-outline {
-    position: absolute;
-    width: min(78%, 164px);
-    height: 76%;
-    color: #55565d;
-    opacity: 0.82;
-    pointer-events: none;
-  }
-
-  .studio-four-view-shoe-outline__stroke > * {
-    fill: none;
-    stroke: currentColor;
-    stroke-linecap: round;
-    stroke-linejoin: round;
-    stroke-width: 4;
-  }
-
-  .studio-four-view-shoe-outline.is-active {
-    color: var(--primary);
-    opacity: 1;
-  }
-
-  .studio-four-view-shoe-outline.is-active .studio-four-view-shoe-outline__stroke > * {
-    stroke-dasharray: 240;
-    stroke-dashoffset: 240;
-    animation: studio-four-view-shoe-draw 560ms var(--ease-enter) both;
-  }
-
   .studio-four-view-upload-slot > img {
     position: absolute;
     inset: 0;
@@ -2323,20 +2295,6 @@
     color: var(--muted);
     font-size: 12px;
     line-height: 1.5;
-  }
-
-  @keyframes studio-four-view-shoe-draw {
-    to {
-      stroke-dashoffset: 0;
-    }
-  }
-
-  @media (prefers-reduced-motion: reduce) {
-    .studio-four-view-shoe-outline.is-active .studio-four-view-shoe-outline__stroke > * {
-      animation: none;
-      stroke-dasharray: none;
-      stroke-dashoffset: 0;
-    }
   }
 
   .studio-fixed-generation-settings {
