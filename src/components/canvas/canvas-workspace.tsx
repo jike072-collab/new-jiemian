@@ -10,13 +10,12 @@ import {
   Eraser,
   Film,
   FolderOpen,
-  Hand,
   Image as ImageIcon,
   Info,
+  Layers3,
   LoaderCircle,
   Link2,
   Maximize2,
-  MousePointer2,
   PanelLeftClose,
   PanelLeftOpen,
   Palette,
@@ -29,6 +28,7 @@ import {
   Sparkles,
   Star,
   Undo2,
+  Ungroup,
   Trash2,
   Type,
   Upload,
@@ -45,6 +45,7 @@ import {
   useState,
   type CSSProperties,
   type FormEvent,
+  type MouseEvent as ReactMouseEvent,
 } from "react";
 import {
   addEdge,
@@ -57,12 +58,14 @@ import {
   MiniMap,
   ReactFlow,
   ReactFlowProvider,
+  reconnectEdge,
   SelectionMode,
   useReactFlow,
   type Connection,
   type Edge,
   type EdgeChange,
   type NodeChange,
+  type OnConnectEnd,
   type Viewport,
 } from "@xyflow/react";
 
@@ -70,6 +73,7 @@ import { BrandLogo } from "@/components/brand-logo";
 import { CanvasAssistantPanel } from "@/components/canvas/canvas-assistant-panel";
 import { CanvasImageEditor } from "@/components/canvas/canvas-image-editor";
 import {
+  CanvasGroupNode,
   CanvasNode,
   CanvasNodeActionsContext,
   type CanvasFlowNode,
@@ -103,8 +107,17 @@ type CanvasWorkspaceSnapshot = {
 };
 type CanvasTheme = "midnight" | "graphite" | "light";
 type ConnectionStyle = "smoothstep" | "straight";
+type CanvasContextMenuState = {
+  kind: "pane" | "node" | "edge";
+  left: number;
+  top: number;
+  flowPosition: { x: number; y: number };
+  nodeId?: string;
+  edgeId?: string;
+};
+type CanvasClipboard = { nodes: CanvasFlowNode[]; edges: Edge[] };
 
-const nodeTypes = { canvas: CanvasNode };
+const nodeTypes = { canvas: CanvasNode, group: CanvasGroupNode };
 const emptyProviders: EnabledProviders = { image: [], video: [] };
 const defaultViewport: Viewport = { x: 0, y: 0, zoom: 1 };
 const libraryDragType = "application/x-aohuang-library-item";
@@ -140,6 +153,25 @@ function escapeXml(value: unknown) {
   })[character] || character);
 }
 
+function copyableCanvasSelection(nodes: CanvasFlowNode[]) {
+  const selectedIds = new Set(nodes.filter((node) => node.selected).map((node) => node.id));
+  const selected = nodes.filter((node) => selectedIds.has(node.id) || Boolean(node.parentId && selectedIds.has(node.parentId)));
+  const includedIds = new Set(selected.map((node) => node.id));
+  const nodesById = new Map(nodes.map((node) => [node.id, node]));
+  return selected.map((node) => {
+    const copy = { ...node, data: { ...node.data } };
+    if (!node.parentId || includedIds.has(node.parentId)) return copy;
+    const parent = nodesById.get(node.parentId);
+    delete copy.parentId;
+    delete copy.extent;
+    delete copy.expandParent;
+    return {
+      ...copy,
+      position: parent ? { x: parent.position.x + node.position.x, y: parent.position.y + node.position.y } : node.position,
+    };
+  });
+}
+
 export function CanvasWorkspace({ accountName, isTeamOwner, isInternalCanvas }: { accountName: string; isTeamOwner: boolean; isInternalCanvas?: boolean }) {
   return (
     <ReactFlowProvider>
@@ -169,8 +201,9 @@ function CanvasWorkspaceInner({ accountName, isTeamOwner, isInternalCanvas }: { 
   const [assistantOpen, setAssistantOpen] = useState(false);
   const [editingNodeId, setEditingNodeId] = useState("");
   const [teamOpen, setTeamOpen] = useState(false);
-  const [panMode, setPanMode] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [contextMenu, setContextMenu] = useState<CanvasContextMenuState | null>(null);
+  const [clipboardHasNodes, setClipboardHasNodes] = useState(false);
   const [canvasTheme, setCanvasTheme] = useState<CanvasTheme>(() => storedCanvasSettings().theme);
   const [connectionStyle, setConnectionStyle] = useState<ConnectionStyle>(() => storedCanvasSettings().connectionStyle);
   const [snapEnabled, setSnapEnabled] = useState(() => storedCanvasSettings().snapEnabled);
@@ -185,6 +218,7 @@ function CanvasWorkspaceInner({ accountName, isTeamOwner, isInternalCanvas }: { 
   const viewportRef = useRef(viewport);
   const stageRef = useRef<HTMLElement | null>(null);
   const importInputRef = useRef<HTMLInputElement | null>(null);
+  const clipboardRef = useRef<CanvasClipboard | null>(null);
   const collaborationChannelRef = useRef<BroadcastChannel | null>(null);
   const activeProjectRef = useRef<CanvasProject | null>(null);
   const loadedRef = useRef(false);
@@ -270,7 +304,7 @@ function CanvasWorkspaceInner({ accountName, isTeamOwner, isInternalCanvas }: { 
   const hydrateMediaNodes = useCallback((sourceNodes: CanvasStoredNode[] | CanvasFlowNode[], items: LibraryItem[]) => {
     const itemMap = new Map(items.map((item) => [item.id, item]));
     return sourceNodes.map((node) => {
-      if (node.data.kind !== "media" || !node.data.libraryItemId) return { ...node, type: "canvas" as const };
+      if (node.data.kind !== "media" || !node.data.libraryItemId) return { ...node, type: node.data.kind === "group" ? "group" as const : "canvas" as const };
       const item = itemMap.get(node.data.libraryItemId);
       if (!item) return { ...node, type: "canvas" as const, data: { ...node.data, mediaUrl: undefined } };
       return {
@@ -468,16 +502,18 @@ function CanvasWorkspaceInner({ accountName, isTeamOwner, isInternalCanvas }: { 
   }, [markDirty, pushHistorySnapshot]);
 
   const removeNode = useCallback((id: string) => {
+    const ids = new Set([id]);
+    nodesRef.current.forEach((node) => { if (node.parentId === id) ids.add(node.id); });
     pushHistorySnapshot();
-    setNodes((current) => current.filter((node) => node.id !== id));
-    setEdges((current) => current.filter((edge) => edge.source !== id && edge.target !== id));
+    setNodes((current) => current.filter((node) => !ids.has(node.id)));
+    setEdges((current) => current.filter((edge) => !ids.has(edge.source) && !ids.has(edge.target)));
     markDirty();
   }, [markDirty, pushHistorySnapshot]);
 
-  const addNodeAtCenter = useCallback((data: CanvasNodeData, size: { width: number; height: number }) => {
+  const addNodeAtCenter = useCallback((data: CanvasNodeData, size: { width: number; height: number }, preferredCenter?: { x: number; y: number }) => {
     pushHistorySnapshot();
     const stageBounds = stageRef.current?.getBoundingClientRect();
-    const position = flow.screenToFlowPosition({
+    const position = preferredCenter || flow.screenToFlowPosition({
       x: stageBounds ? stageBounds.left + stageBounds.width / 2 : window.innerWidth / 2,
       y: stageBounds ? stageBounds.top + stageBounds.height / 2 : window.innerHeight / 2,
     });
@@ -514,19 +550,19 @@ function CanvasWorkspaceInner({ accountName, isTeamOwner, isInternalCanvas }: { 
     return node;
   }, [flow, markDirty, pushHistorySnapshot]);
 
-  const addPromptNode = useCallback((input?: { title?: string; prompt?: string }) => {
+  const addPromptNode = useCallback((input?: { title?: string; prompt?: string }, position?: { x: number; y: number }) => {
     return addNodeAtCenter({
       kind: "prompt",
       title: input?.title?.trim().slice(0, 80) || "提示词",
       prompt: input?.prompt?.trim().slice(0, 4_000) || "",
       createdAt: new Date().toISOString(),
-    }, { width: 320, height: 230 });
+    }, { width: 320, height: 230 }, position);
   }, [addNodeAtCenter]);
 
-  const addGeneratorNode = useCallback((kind: "image" | "video") => {
+  const addGeneratorNode = useCallback((kind: "image" | "video", position?: { x: number; y: number }) => {
     const available = kind === "image" ? providersRef.current.image : providersRef.current.video;
     const provider = available[0] as WorkspacePublicProvider | undefined;
-    addNodeAtCenter({
+    return addNodeAtCenter({
       kind: "generator",
       title: kind === "image" ? "图片生成" : "视频生成",
       generationKind: kind,
@@ -540,7 +576,7 @@ function CanvasWorkspaceInner({ accountName, isTeamOwner, isInternalCanvas }: { 
       resolution: provider?.videoOptions?.resolutions?.[0] || provider?.videoOptions?.resolution || "720p",
       status: "idle",
       progress: 0,
-    }, { width: 360, height: kind === "image" ? 430 : 410 });
+    }, { width: 360, height: kind === "image" ? 430 : 410 }, position);
   }, [addNodeAtCenter]);
 
   const createGeneratorFromSelected = useCallback((node: CanvasFlowNode, kind: "image" | "video") => {
@@ -755,14 +791,16 @@ function CanvasWorkspaceInner({ accountName, isTeamOwner, isInternalCanvas }: { 
     if (changes.some((change) => change.type !== "select")) markDirty();
   }, [markDirty, pushHistorySnapshot]);
 
-  const isValidConnection = useCallback((connection: Connection | Edge) => {
+  const canConnect = useCallback((connection: Connection | Edge, ignoredEdgeId?: string) => {
     if (!connection.source || !connection.target || connection.source === connection.target) return false;
     const source = nodesRef.current.find((node) => node.id === connection.source);
     const target = nodesRef.current.find((node) => node.id === connection.target);
     if (!source || target?.data.kind !== "generator") return false;
     if (source.data.kind !== "prompt" && source.data.kind !== "media") return false;
-    return !edgesRef.current.some((edge) => edge.source === connection.source && edge.target === connection.target);
+    return !edgesRef.current.some((edge) => edge.id !== ignoredEdgeId && edge.source === connection.source && edge.target === connection.target);
   }, []);
+
+  const isValidConnection = useCallback((connection: Connection | Edge) => canConnect(connection), [canConnect]);
 
   const onConnect = useCallback((connection: Connection) => {
     if (!isValidConnection(connection)) return;
@@ -770,6 +808,36 @@ function CanvasWorkspaceInner({ accountName, isTeamOwner, isInternalCanvas }: { 
     setEdges((current) => addEdge({ ...connection, id: canvasId("edge"), type: connectionStyle }, current));
     markDirty();
   }, [connectionStyle, isValidConnection, markDirty, pushHistorySnapshot]);
+
+  const onConnectEnd = useCallback<OnConnectEnd>((event, connectionState) => {
+    const sourceId = connectionState.fromNode?.id;
+    if (!sourceId || connectionState.fromHandle?.type !== "source" || connectionState.toNode || !("clientX" in event) || !("clientY" in event)) return;
+    const dropTarget = document.elementFromPoint(event.clientX, event.clientY);
+    if (!dropTarget?.closest(".react-flow__pane") || dropTarget.closest(".react-flow__node, .react-flow__edge, .react-flow__panel, .canvas-bottom-dock")) return;
+    const source = nodesRef.current.find((node) => node.id === sourceId);
+    if (!source || (source.data.kind !== "prompt" && source.data.kind !== "media")) return;
+    const generator = addGeneratorNode("image", flow.screenToFlowPosition({ x: event.clientX, y: event.clientY }));
+    if (!generator) return;
+    setEdges((current) => addEdge({
+      id: canvasId("edge"),
+      source: sourceId,
+      sourceHandle: "output",
+      target: generator.id,
+      targetHandle: "input",
+      type: connectionStyle,
+    }, current));
+    markDirty();
+  }, [addGeneratorNode, connectionStyle, flow, markDirty]);
+
+  const onReconnect = useCallback((oldEdge: Edge, connection: Connection) => {
+    if (!canConnect(connection, oldEdge.id)) {
+      setNotice("这条连接不符合输入规则。");
+      return;
+    }
+    pushHistorySnapshot();
+    setEdges((current) => reconnectEdge(oldEdge, connection, current));
+    markDirty();
+  }, [canConnect, markDirty, pushHistorySnapshot]);
 
   const createProject = useCallback(async (skipCurrentSave = false) => {
     if (!skipCurrentSave && !(await saveNow(true))) return;
@@ -868,6 +936,7 @@ function CanvasWorkspaceInner({ accountName, isTeamOwner, isInternalCanvas }: { 
 
   const selectedNodes = useMemo(() => nodes.filter((node) => node.selected), [nodes]);
   const selectedNode = selectedNodes[0] || null;
+  const selectedEdge = edges.find((edge) => edge.selected) || null;
   const editingNode = nodes.find((node) => node.id === editingNodeId && node.data.kind === "media" && node.data.mediaType === "image") || null;
   const selectionToolbarStyle = useMemo<CSSProperties | undefined>(() => {
     if (!selectedNodes.length) return undefined;
@@ -880,29 +949,137 @@ function CanvasWorkspaceInner({ accountName, isTeamOwner, isInternalCanvas }: { 
       transform: "translateX(-50%)",
     };
   }, [selectedNodes, viewport]);
+  const edgeToolbarStyle = useMemo<CSSProperties | undefined>(() => {
+    if (!selectedEdge) return undefined;
+    const source = nodes.find((node) => node.id === selectedEdge.source);
+    const target = nodes.find((node) => node.id === selectedEdge.target);
+    if (!source || !target) return undefined;
+    const sourceCenter = { x: source.position.x + (source.width || 320) / 2, y: source.position.y + (source.height || 280) / 2 };
+    const targetCenter = { x: target.position.x + (target.width || 320) / 2, y: target.position.y + (target.height || 280) / 2 };
+    return {
+      left: ((sourceCenter.x + targetCenter.x) / 2) * viewport.zoom + viewport.x,
+      top: ((sourceCenter.y + targetCenter.y) / 2) * viewport.zoom + viewport.y - 44,
+      transform: "translateX(-50%)",
+    };
+  }, [nodes, selectedEdge, viewport]);
 
   const removeSelectedNodes = useCallback(() => {
     const ids = new Set(nodesRef.current.filter((node) => node.selected).map((node) => node.id));
-    if (!ids.size) return;
+    nodesRef.current.forEach((node) => { if (node.parentId && ids.has(node.parentId)) ids.add(node.id); });
+    const edgeIds = new Set(edgesRef.current.filter((edge) => edge.selected).map((edge) => edge.id));
+    if (!ids.size && !edgeIds.size) return;
     pushHistorySnapshot();
     setNodes((current) => current.filter((node) => !ids.has(node.id)));
-    setEdges((current) => current.filter((edge) => !ids.has(edge.source) && !ids.has(edge.target)));
+    setEdges((current) => current.filter((edge) => !edgeIds.has(edge.id) && !ids.has(edge.source) && !ids.has(edge.target)));
     setInfoOpen(false);
+    setContextMenu(null);
     markDirty();
   }, [markDirty, pushHistorySnapshot]);
 
+  const removeEdge = useCallback((edgeId: string) => {
+    if (!edgesRef.current.some((edge) => edge.id === edgeId)) return;
+    pushHistorySnapshot();
+    setEdges((current) => current.filter((edge) => edge.id !== edgeId));
+    setContextMenu(null);
+    markDirty();
+  }, [markDirty, pushHistorySnapshot]);
+
+  const copySelectedNodes = useCallback(() => {
+    const selected = copyableCanvasSelection(nodesRef.current);
+    if (!selected.length) return;
+    const ids = new Set(selected.map((node) => node.id));
+    clipboardRef.current = {
+      nodes: selected,
+      edges: edgesRef.current.filter((edge) => ids.has(edge.source) && ids.has(edge.target)).map((edge) => ({ ...edge })),
+    };
+    setClipboardHasNodes(true);
+    setNotice(`已复制 ${selected.length} 个节点。`);
+    setContextMenu(null);
+  }, []);
+
+  const pasteCopiedNodes = useCallback((position?: { x: number; y: number }) => {
+    const copied = clipboardRef.current;
+    if (!copied?.nodes.length) {
+      setNotice("还没有复制节点。");
+      return;
+    }
+    pushHistorySnapshot();
+    const copiedIds = new Set(copied.nodes.map((node) => node.id));
+    const roots = copied.nodes.filter((node) => !node.parentId || !copiedIds.has(node.parentId));
+    const minX = Math.min(...roots.map((node) => node.position.x));
+    const minY = Math.min(...roots.map((node) => node.position.y));
+    const target = position || { x: minX + 48, y: minY + 48 };
+    const idMap = new Map(copied.nodes.map((node) => [node.id, canvasId("node")]));
+    const copies = copied.nodes.map((node) => {
+      const parentId = node.parentId ? idMap.get(node.parentId) : undefined;
+      const copy = { ...node };
+      delete copy.parentId;
+      delete copy.extent;
+      delete copy.expandParent;
+      return {
+        ...copy,
+        id: idMap.get(node.id)!,
+        selected: !parentId,
+        ...(parentId ? { parentId, extent: "parent" as const, expandParent: true } : {}),
+        position: parentId ? node.position : { x: target.x + node.position.x - minX, y: target.y + node.position.y - minY },
+        data: { ...node.data, title: `${node.data.title} 副本`, createdAt: new Date().toISOString() },
+      };
+    });
+    const copiedEdges = copied.edges.map((edge) => ({
+      ...edge,
+      id: canvasId("edge"),
+      source: idMap.get(edge.source)!,
+      target: idMap.get(edge.target)!,
+      selected: false,
+    }));
+    setNodes((current) => [...current.map((node) => ({ ...node, selected: false })), ...copies]);
+    setEdges((current) => [...current.map((edge) => ({ ...edge, selected: false })), ...copiedEdges]);
+    setContextMenu(null);
+    markDirty();
+  }, [markDirty, pushHistorySnapshot]);
+
+  const openContextMenu = useCallback((event: ReactMouseEvent | MouseEvent, kind: CanvasContextMenuState["kind"], id?: string) => {
+    event.preventDefault();
+    const bounds = stageRef.current?.getBoundingClientRect();
+    const left = event.clientX - (bounds?.left || 0);
+    const top = event.clientY - (bounds?.top || 0);
+    if (kind === "node" && id) {
+      setNodes((current) => current.map((node) => ({ ...node, selected: node.id === id })));
+      setEdges((current) => current.map((edge) => ({ ...edge, selected: false })));
+    } else if (kind === "edge" && id) {
+      setEdges((current) => current.map((edge) => ({ ...edge, selected: edge.id === id })));
+      setNodes((current) => current.map((node) => ({ ...node, selected: false })));
+    }
+    setContextMenu({
+      kind,
+      left: Math.max(8, Math.min(left, (bounds?.width || 300) - 190)),
+      top: Math.max(8, Math.min(top, (bounds?.height || 300) - 240)),
+      flowPosition: flow.screenToFlowPosition({ x: event.clientX, y: event.clientY }),
+      ...(kind === "node" ? { nodeId: id } : {}),
+      ...(kind === "edge" ? { edgeId: id } : {}),
+    });
+  }, [flow]);
+
   const duplicateSelectedNodes = useCallback(() => {
-    const selected = nodesRef.current.filter((node) => node.selected);
+    const selected = copyableCanvasSelection(nodesRef.current);
     if (!selected.length) return;
     pushHistorySnapshot();
     const idMap = new Map(selected.map((node) => [node.id, canvasId("node")]));
-    const copies = selected.map((node) => ({
-      ...node,
-      id: idMap.get(node.id)!,
-      selected: true,
-      position: { x: node.position.x + 48, y: node.position.y + 48 },
-      data: { ...node.data, title: `${node.data.title} 副本`, createdAt: new Date().toISOString() },
-    }));
+    const copies = selected.map((node) => {
+      const parentId = node.parentId ? idMap.get(node.parentId) : undefined;
+      const copy = { ...node };
+      delete copy.parentId;
+      delete copy.extent;
+      delete copy.expandParent;
+      return {
+        ...copy,
+        id: idMap.get(node.id)!,
+        selected: !parentId,
+        ...(parentId ? { parentId, extent: "parent" as const, expandParent: true } : {}),
+        position: parentId ? node.position : { x: node.position.x + 48, y: node.position.y + 48 },
+        data: { ...node.data, title: `${node.data.title} 副本`, createdAt: new Date().toISOString() },
+      };
+    });
     const copiedEdges = edgesRef.current.flatMap((edge) => {
       const source = idMap.get(edge.source);
       const target = idMap.get(edge.target);
@@ -937,12 +1114,75 @@ function CanvasWorkspaceInner({ accountName, isTeamOwner, isInternalCanvas }: { 
     markDirty();
   }, [connectionStyle, isValidConnection, markDirty, pushHistorySnapshot]);
 
+  const groupSelectedNodes = useCallback(() => {
+    const selected = nodesRef.current.filter((node) => node.selected && !node.parentId && node.data.kind !== "group");
+    if (selected.length < 2) {
+      setNotice("请选择至少两个未分组节点。");
+      return;
+    }
+    pushHistorySnapshot();
+    const padding = 36;
+    const header = 44;
+    const minX = Math.min(...selected.map((node) => node.position.x));
+    const minY = Math.min(...selected.map((node) => node.position.y));
+    const maxX = Math.max(...selected.map((node) => node.position.x + (node.width || 320)));
+    const maxY = Math.max(...selected.map((node) => node.position.y + (node.height || 280)));
+    const groupId = canvasId("group");
+    const groupPosition = { x: minX - padding, y: minY - header - padding / 2 };
+    const selectedIds = new Set(selected.map((node) => node.id));
+    const groupNode: CanvasFlowNode = {
+      id: groupId,
+      type: "group",
+      position: groupPosition,
+      width: Math.max(360, maxX - minX + padding * 2),
+      height: Math.max(280, maxY - minY + header + padding),
+      selected: true,
+      data: { kind: "group", title: `节点分组 ${nodesRef.current.filter((node) => node.data.kind === "group").length + 1}`, createdAt: new Date().toISOString() },
+    };
+    setNodes((current) => [
+      groupNode,
+      ...current.map((node) => selectedIds.has(node.id) ? {
+        ...node,
+        selected: false,
+        parentId: groupId,
+        extent: "parent" as const,
+        expandParent: true,
+        position: { x: node.position.x - groupPosition.x, y: node.position.y - groupPosition.y },
+      } : node),
+    ]);
+    markDirty();
+  }, [markDirty, pushHistorySnapshot]);
+
+  const ungroupSelectedNodes = useCallback(() => {
+    const groups = nodesRef.current.filter((node) => node.selected && node.data.kind === "group");
+    if (!groups.length) {
+      setNotice("请先选择一个节点分组。");
+      return;
+    }
+    pushHistorySnapshot();
+    const positions = new Map(groups.map((group) => [group.id, group.position]));
+    const groupIds = new Set(positions.keys());
+    setNodes((current) => current.flatMap((node) => {
+      if (groupIds.has(node.id)) return [];
+      const parentPosition = node.parentId ? positions.get(node.parentId) : undefined;
+      if (!parentPosition) return [{ ...node, selected: false }];
+      const { parentId: _parentId, extent: _extent, expandParent: _expandParent, ...rest } = node;
+      void _parentId;
+      void _extent;
+      void _expandParent;
+      return [{ ...rest, selected: true, position: { x: node.position.x + parentPosition.x, y: node.position.y + parentPosition.y } } as CanvasFlowNode];
+    }));
+    setContextMenu(null);
+    markDirty();
+  }, [markDirty, pushHistorySnapshot]);
+
   const cleanCanvas = useCallback(() => {
     const selectedIds = new Set(nodesRef.current.filter((node) => node.selected).map((node) => node.id));
     const removable = selectedIds.size ? selectedIds : new Set(nodesRef.current.filter((node) => (
       (node.data.kind === "prompt" && !node.data.prompt?.trim())
       || node.data.status === "failed"
     )).map((node) => node.id));
+    nodesRef.current.forEach((node) => { if (node.parentId && removable.has(node.parentId)) removable.add(node.id); });
     if (!removable.size) {
       setNotice("没有可清理的空节点或失败节点。");
       return;
@@ -990,16 +1230,18 @@ function CanvasWorkspaceInner({ accountName, isTeamOwner, isInternalCanvas }: { 
     if (!nodesRef.current.length) return;
     pushHistorySnapshot();
     setNodes((current) => {
+      const rootIndex = new Map(current.filter((node) => !node.parentId).map((node, index) => [node.id, index]));
       if (layout === "grid") {
-        const columns = Math.max(1, Math.ceil(Math.sqrt(current.length)));
-        return current.map((node, index) => ({
+        const columns = Math.max(1, Math.ceil(Math.sqrt(rootIndex.size)));
+        return current.map((node) => node.parentId ? node : ({
           ...node,
-          position: { x: (index % columns) * 420, y: Math.floor(index / columns) * 390 },
+          position: { x: ((rootIndex.get(node.id) || 0) % columns) * 420, y: Math.floor((rootIndex.get(node.id) || 0) / columns) * 390 },
         }));
       }
       const groupIndex = new Map<CanvasNodeData["kind"], number>();
-      const xByKind = { prompt: 0, generator: 480, media: 980 } as const;
+      const xByKind = { group: 0, prompt: 0, generator: 480, media: 980 } as const;
       return current.map((node) => {
+        if (node.parentId) return node;
         const index = groupIndex.get(node.data.kind) || 0;
         groupIndex.set(node.data.kind, index + 1);
         return { ...node, position: { x: xByKind[node.data.kind], y: index * 390 } };
@@ -1272,6 +1514,12 @@ function CanvasWorkspaceInner({ accountName, isTeamOwner, isInternalCanvas }: { 
       } else if (command && event.key.toLowerCase() === "d" && !typing) {
         event.preventDefault();
         duplicateSelectedNodes();
+      } else if (command && event.key.toLowerCase() === "c" && !typing) {
+        event.preventDefault();
+        copySelectedNodes();
+      } else if (command && event.key.toLowerCase() === "v" && !typing) {
+        event.preventDefault();
+        pasteCopiedNodes();
       } else if (!typing && (event.key === "Delete" || event.key === "Backspace")) {
         event.preventDefault();
         removeSelectedNodes();
@@ -1282,12 +1530,14 @@ function CanvasWorkspaceInner({ accountName, isTeamOwner, isInternalCanvas }: { 
         setAssistantOpen(false);
         setInfoOpen(false);
         setSettingsOpen(false);
+        setContextMenu(null);
         setNodes((current) => current.map((node) => ({ ...node, selected: false })));
+        setEdges((current) => current.map((edge) => ({ ...edge, selected: false })));
       }
     };
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [duplicateSelectedNodes, exportCanvasImage, isInternalCanvas, redoCanvas, removeSelectedNodes, saveNow, undoCanvas]);
+  }, [copySelectedNodes, duplicateSelectedNodes, exportCanvasImage, isInternalCanvas, pasteCopiedNodes, redoCanvas, removeSelectedNodes, saveNow, undoCanvas]);
 
   if (loading) {
     return <div className="canvas-loading"><LoaderCircle className="is-spinning" /><span>正在打开创作画布</span></div>;
@@ -1368,6 +1618,7 @@ function CanvasWorkspaceInner({ accountName, isTeamOwner, isInternalCanvas }: { 
               count={selectedNodes.length}
               style={selectionToolbarStyle}
               onConnect={connectSelectedNodes}
+              onGroup={groupSelectedNodes}
               onDuplicate={duplicateSelectedNodes}
               onDelete={removeSelectedNodes}
             />
@@ -1376,6 +1627,7 @@ function CanvasWorkspaceInner({ accountName, isTeamOwner, isInternalCanvas }: { 
               node={selectedNode}
               style={selectionToolbarStyle}
               onInfo={() => setInfoOpen(true)}
+              onUngroup={ungroupSelectedNodes}
               onDelete={() => removeNode(selectedNode.id)}
               onSaveMaterial={saveSelectedMaterial}
               onEdit={editSelected}
@@ -1384,6 +1636,8 @@ function CanvasWorkspaceInner({ accountName, isTeamOwner, isInternalCanvas }: { 
               onZoomOut={() => { void flow.zoomOut(); }}
               onZoomIn={() => { void flow.zoomIn(); }}
             />
+          ) : selectedEdge ? (
+            <CanvasEdgeSelectionToolbar style={edgeToolbarStyle} onDelete={() => removeEdge(selectedEdge.id)} />
           ) : null}
           <CanvasNodeActionsContext.Provider value={nodeActions}>
             <ReactFlow<CanvasFlowNode, Edge>
@@ -1393,7 +1647,14 @@ function CanvasWorkspaceInner({ accountName, isTeamOwner, isInternalCanvas }: { 
               onNodesChange={onNodesChange}
               onEdgesChange={onEdgesChange}
               onConnect={onConnect}
+              onConnectEnd={onConnectEnd}
+              onReconnect={onReconnect}
               isValidConnection={isValidConnection}
+              onPaneClick={() => setContextMenu(null)}
+              onPaneContextMenu={(event) => openContextMenu(event, "pane")}
+              onNodeContextMenu={(event, node) => openContextMenu(event, "node", node.id)}
+              onEdgeContextMenu={(event, edge) => openContextMenu(event, "edge", edge.id)}
+              onMoveStart={() => setContextMenu(null)}
               onMoveEnd={(_, nextViewport) => {
                 pushHistorySnapshot();
                 setViewportState(nextViewport);
@@ -1418,14 +1679,15 @@ function CanvasWorkspaceInner({ accountName, isTeamOwner, isInternalCanvas }: { 
               minZoom={0.08}
               maxZoom={2.5}
               panOnScroll
-              panOnDrag={panMode}
+              panOnDrag
               panActivationKeyCode="Space"
               snapToGrid={snapEnabled}
               snapGrid={[24, 24]}
-              selectionOnDrag={!panMode}
-              selectionKeyCode={null}
+              selectionOnDrag={false}
+              selectionKeyCode="Shift"
               selectionMode={SelectionMode.Partial}
               multiSelectionKeyCode={["Control", "Meta", "Shift"]}
+              deleteKeyCode={null}
               proOptions={{ hideAttribution: true }}
             >
               <Background variant={BackgroundVariant.Dots} gap={24} size={1.2} />
@@ -1433,10 +1695,26 @@ function CanvasWorkspaceInner({ accountName, isTeamOwner, isInternalCanvas }: { 
               <Controls showInteractive={false} />
             </ReactFlow>
           </CanvasNodeActionsContext.Provider>
+          {contextMenu ? (
+            <CanvasContextMenu
+              state={contextMenu}
+              canPaste={clipboardHasNodes}
+              isGroup={Boolean(contextMenu.nodeId && nodes.find((node) => node.id === contextMenu.nodeId)?.data.kind === "group")}
+              onAddPrompt={() => { addPromptNode(undefined, contextMenu.flowPosition); setContextMenu(null); }}
+              onAddImage={() => { addGeneratorNode("image", contextMenu.flowPosition); setContextMenu(null); }}
+              onAddVideo={() => { addGeneratorNode("video", contextMenu.flowPosition); setContextMenu(null); }}
+              onCopy={copySelectedNodes}
+              onPaste={() => pasteCopiedNodes(contextMenu.flowPosition)}
+              onInfo={() => { setInfoOpen(true); setContextMenu(null); }}
+              onUngroup={ungroupSelectedNodes}
+              onDelete={() => {
+                if (contextMenu.edgeId) removeEdge(contextMenu.edgeId);
+                else removeSelectedNodes();
+              }}
+              onFit={() => { void flow.fitView({ padding: 0.18, duration: 280 }); setContextMenu(null); }}
+            />
+          ) : null}
           <CanvasBottomDock
-            panMode={panMode}
-            onSelectMode={() => setPanMode(false)}
-            onPanMode={() => setPanMode(true)}
             onAddPrompt={addPromptNode}
             onAddImage={() => addGeneratorNode("image")}
             onAddVideo={() => addGeneratorNode("video")}
@@ -1471,13 +1749,13 @@ function CanvasWorkspaceInner({ accountName, isTeamOwner, isInternalCanvas }: { 
           {assistantOpen && isInternalCanvas ? (
             <CanvasAssistantPanel
               canvasTitle={title}
-              nodes={nodes.map((node) => ({
+              nodes={nodes.flatMap((node) => node.data.kind === "group" ? [] : [{
                 id: node.id,
                 kind: node.data.kind,
                 title: node.data.title,
                 prompt: node.data.kind === "prompt" ? node.data.prompt : undefined,
                 selected: Boolean(node.selected),
-              }))}
+              }])}
               onApply={applyAssistantActions}
               onClose={() => setAssistantOpen(false)}
             />
@@ -1642,6 +1920,7 @@ function CanvasSelectionToolbar({
   node,
   style,
   onInfo,
+  onUngroup,
   onDelete,
   onSaveMaterial,
   onEdit,
@@ -1653,6 +1932,7 @@ function CanvasSelectionToolbar({
   node: CanvasFlowNode;
   style?: CSSProperties;
   onInfo: () => void;
+  onUngroup: () => void;
   onDelete: () => void;
   onSaveMaterial: () => void;
   onEdit: () => void;
@@ -1664,11 +1944,12 @@ function CanvasSelectionToolbar({
   return (
     <div className="canvas-selection-toolbar" style={style} role="toolbar" aria-label="选中节点工具">
       <button type="button" onClick={onInfo} title="节点信息" aria-label="节点信息"><Info /><span>信息</span></button>
+      {node.data.kind === "group" ? <button type="button" onClick={onUngroup} title="解除分组" aria-label="解除分组"><Ungroup /><span>解组</span></button> : null}
       <button type="button" onClick={onDelete} title="删除节点" aria-label="删除节点"><Trash2 /><span>删除</span></button>
-      <button type="button" onClick={onSaveMaterial} title="保存到素材库" aria-label="保存到素材库"><FolderOpen /><span>存素材</span></button>
-      <button type="button" onClick={onEdit} title="编辑节点" aria-label="编辑节点"><Sparkles /><span>编辑</span></button>
-      <button type="button" onClick={onEditText} title="编辑文字" aria-label="编辑文字" disabled={node.data.kind !== "prompt"}><Type /><span>编辑文字</span></button>
-      <button type="button" onClick={onGenerate} title="生成图片或视频" aria-label="生成图片或视频"><ImageIcon /><span>{node.data.kind === "media" && node.data.mediaType === "video" ? "生视频" : "生图"}</span></button>
+      {node.data.kind !== "group" ? <button type="button" onClick={onSaveMaterial} title="保存到素材库" aria-label="保存到素材库"><FolderOpen /><span>存素材</span></button> : null}
+      {node.data.kind !== "group" ? <button type="button" onClick={onEdit} title="编辑节点" aria-label="编辑节点"><Sparkles /><span>编辑</span></button> : null}
+      {node.data.kind !== "group" ? <button type="button" onClick={onEditText} title="编辑文字" aria-label="编辑文字" disabled={node.data.kind !== "prompt"}><Type /><span>编辑文字</span></button> : null}
+      {node.data.kind !== "group" ? <button type="button" onClick={onGenerate} title="生成图片或视频" aria-label="生成图片或视频"><ImageIcon /><span>{node.data.kind === "media" && node.data.mediaType === "video" ? "生视频" : "生图"}</span></button> : null}
       <span className="canvas-selection-toolbar__divider" aria-hidden="true" />
       <button type="button" onClick={onZoomOut} title="缩小画布" aria-label="缩小画布"><ZoomOut /></button>
       <button type="button" onClick={onZoomIn} title="放大画布" aria-label="放大画布"><ZoomIn /></button>
@@ -1676,10 +1957,11 @@ function CanvasSelectionToolbar({
   );
 }
 
-function CanvasBatchToolbar({ count, style, onConnect, onDuplicate, onDelete }: {
+function CanvasBatchToolbar({ count, style, onConnect, onGroup, onDuplicate, onDelete }: {
   count: number;
   style?: CSSProperties;
   onConnect: () => void;
+  onGroup: () => void;
   onDuplicate: () => void;
   onDelete: () => void;
 }) {
@@ -1687,8 +1969,71 @@ function CanvasBatchToolbar({ count, style, onConnect, onDuplicate, onDelete }: 
     <div className="canvas-selection-toolbar canvas-selection-toolbar--batch" style={style} role="toolbar" aria-label="批量节点工具">
       <strong>{count} 个节点</strong>
       <button type="button" onClick={onConnect} title="按位置连接" aria-label="按位置连接"><Link2 /><span>连接</span></button>
+      <button type="button" onClick={onGroup} title="建立节点分组" aria-label="建立节点分组"><Layers3 /><span>分组</span></button>
       <button type="button" onClick={onDuplicate} title="批量复制" aria-label="批量复制"><CopyPlus /><span>复制</span></button>
       <button type="button" onClick={onDelete} title="批量删除" aria-label="批量删除"><Trash2 /><span>删除</span></button>
+    </div>
+  );
+}
+
+function CanvasEdgeSelectionToolbar({ style, onDelete }: { style?: CSSProperties; onDelete: () => void }) {
+  return (
+    <div className="canvas-selection-toolbar canvas-selection-toolbar--edge" style={style} role="toolbar" aria-label="选中连线工具">
+      <span><Link2 />连线</span>
+      <button type="button" onClick={onDelete} title="删除连线" aria-label="删除连线"><Trash2 /><span>删除</span></button>
+    </div>
+  );
+}
+
+function CanvasContextMenu({
+  state,
+  canPaste,
+  isGroup,
+  onAddPrompt,
+  onAddImage,
+  onAddVideo,
+  onCopy,
+  onPaste,
+  onInfo,
+  onUngroup,
+  onDelete,
+  onFit,
+}: {
+  state: CanvasContextMenuState;
+  canPaste: boolean;
+  isGroup: boolean;
+  onAddPrompt: () => void;
+  onAddImage: () => void;
+  onAddVideo: () => void;
+  onCopy: () => void;
+  onPaste: () => void;
+  onInfo: () => void;
+  onUngroup: () => void;
+  onDelete: () => void;
+  onFit: () => void;
+}) {
+  return (
+    <div className="canvas-context-menu" style={{ left: state.left, top: state.top }} role="menu" aria-label="画布快捷菜单">
+      {state.kind === "pane" ? (
+        <>
+          <button type="button" role="menuitem" onClick={onAddPrompt}><Type /><span>添加提示词</span></button>
+          <button type="button" role="menuitem" onClick={onAddImage}><ImageIcon /><span>添加生图节点</span></button>
+          <button type="button" role="menuitem" onClick={onAddVideo}><Film /><span>添加视频节点</span></button>
+          <button type="button" role="menuitem" onClick={onPaste} disabled={!canPaste}><CopyPlus /><span>粘贴节点</span><kbd>Ctrl V</kbd></button>
+          <button type="button" role="menuitem" onClick={onFit}><Maximize2 /><span>查看全部</span></button>
+        </>
+      ) : null}
+      {state.kind === "node" ? (
+        <>
+          <button type="button" role="menuitem" onClick={onInfo}><Info /><span>节点信息</span></button>
+          {isGroup ? <button type="button" role="menuitem" onClick={onUngroup}><Ungroup /><span>解除分组</span></button> : null}
+          <button type="button" role="menuitem" onClick={onCopy}><Copy /><span>复制节点</span><kbd>Ctrl C</kbd></button>
+          <button type="button" role="menuitem" onClick={onDelete} className="is-danger"><Trash2 /><span>删除节点</span></button>
+        </>
+      ) : null}
+      {state.kind === "edge" ? (
+        <button type="button" role="menuitem" onClick={onDelete} className="is-danger"><Trash2 /><span>删除连线</span></button>
+      ) : null}
     </div>
   );
 }
@@ -1731,9 +2076,6 @@ function CanvasSettingsPanel({
 }
 
 function CanvasBottomDock({
-  panMode,
-  onSelectMode,
-  onPanMode,
   onAddPrompt,
   onAddImage,
   onAddVideo,
@@ -1750,9 +2092,6 @@ function CanvasBottomDock({
   onFit,
   onHelp,
 }: {
-  panMode: boolean;
-  onSelectMode: () => void;
-  onPanMode: () => void;
   onAddPrompt: () => void;
   onAddImage: () => void;
   onAddVideo: () => void;
@@ -1771,8 +2110,6 @@ function CanvasBottomDock({
 }) {
   return (
     <nav className="canvas-bottom-dock" aria-label="画布工具">
-      <button type="button" className={cn(!panMode && "is-active")} onClick={onSelectMode} title="框选节点" aria-label="框选节点"><MousePointer2 /></button>
-      <button type="button" className={cn(panMode && "is-active")} onClick={onPanMode} title="移动画布" aria-label="移动画布"><Hand /></button>
       <button type="button" onClick={onAddPrompt} title="添加提示词" aria-label="添加提示词"><Type /></button>
       <button type="button" onClick={onAddImage} title="添加生图节点" aria-label="添加生图节点"><ImageIcon /></button>
       <button type="button" onClick={onAddVideo} title="添加生视频节点" aria-label="添加生视频节点"><Film /></button>
@@ -1828,7 +2165,7 @@ function CanvasNodeInfoPanel({
         <div>
           <Info />
           <strong>{data.title}</strong>
-          <small>{isPrompt ? "提示词" : isMedia ? "素材" : "生成节点"}</small>
+          <small>{isPrompt ? "提示词" : isMedia ? "素材" : isGenerator ? "生成节点" : "节点分组"}</small>
         </div>
         <button type="button" className="canvas-icon-button" aria-label="关闭节点信息" title="关闭节点信息" onClick={onClose}><X /></button>
       </header>
@@ -2315,10 +2652,11 @@ function serializeDocument(nodes: CanvasFlowNode[], edges: Edge[], viewport: Vie
       delete data.mediaUrl;
       return {
         id: node.id,
-        type: "canvas",
+        type: node.data.kind === "group" ? "group" : "canvas",
         position: node.position,
         ...(node.width ? { width: node.width } : {}),
         ...(node.height ? { height: node.height } : {}),
+        ...(node.parentId ? { parentId: node.parentId, extent: "parent" as const } : {}),
         data,
       };
     }),

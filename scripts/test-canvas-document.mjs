@@ -50,6 +50,27 @@ const imageGenerator = normalizeCanvasDocument({
 assert.equal(imageGenerator.nodes[0].data.imageMode, "image-to-image");
 assert.equal(imageGenerator.nodes[0].data.count, 8);
 
+const grouped = normalizeCanvasDocument({
+  nodes: [
+    { id: "group-1", type: "group", position: { x: 0, y: 0 }, width: 640, height: 480, data: { kind: "group", title: "广告分组" } },
+    { id: "node-prompt-1", type: "canvas", parentId: "group-1", extent: "parent", position: { x: 24, y: 56 }, data: { kind: "prompt", title: "提示词", prompt: "test" } },
+  ],
+  edges: [],
+  viewport: { x: 0, y: 0, zoom: 1 },
+});
+assert.equal(grouped.nodes[0].type, "group");
+assert.equal(grouped.nodes[1].parentId, "group-1");
+assert.equal(grouped.nodes[1].extent, "parent");
+
+assert.throws(
+  () => normalizeCanvasDocument({
+    nodes: [{ id: "node-1", type: "canvas", parentId: "missing-group", position: { x: 0, y: 0 }, data: { kind: "prompt", title: "提示词" } }],
+    edges: [],
+    viewport: { x: 0, y: 0, zoom: 1 },
+  }),
+  CanvasDocumentError,
+);
+
 assert.throws(
   () => normalizeCanvasDocument({
     nodes: [{ id: "bad", position: { x: 0, y: 0 }, data: { kind: "unknown", title: "bad" } }],
@@ -83,7 +104,7 @@ assert.throws(
 
 console.log(JSON.stringify({
   ok: true,
-  checks: 9,
+  checks: 13,
   generationSubmitted: false,
   databaseWritten: false,
 }));

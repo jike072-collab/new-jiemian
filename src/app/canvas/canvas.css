@@ -400,6 +400,44 @@
 .canvas-bottom-dock svg { width: 16px; height: 16px; }
 .canvas-selection-toolbar__divider,
 .canvas-bottom-dock__divider { width: 1px; height: 22px; margin: 0 6px; background: rgba(255, 255, 255, 0.16); }
+.canvas-selection-toolbar--edge > span { display: inline-flex; align-items: center; gap: 6px; padding: 0 6px; color: var(--muted); font-size: 11px; }
+.canvas-selection-toolbar--edge > span svg { width: 14px; height: 14px; }
+
+.canvas-context-menu {
+  position: absolute;
+  z-index: 30;
+  display: grid;
+  width: 182px;
+  gap: 2px;
+  border: 1px solid var(--border-strong);
+  border-radius: 7px;
+  background: color-mix(in srgb, var(--panel) 98%, transparent);
+  box-shadow: 0 18px 44px rgba(0, 0, 0, 0.34);
+  padding: 5px;
+}
+
+.canvas-context-menu button {
+  display: grid;
+  grid-template-columns: 20px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 7px;
+  min-height: 34px;
+  border: 0;
+  border-radius: 5px;
+  background: transparent;
+  color: var(--muted-strong);
+  cursor: pointer;
+  padding: 0 8px;
+  text-align: left;
+  font-size: 12px;
+}
+
+.canvas-context-menu button:hover:not(:disabled),
+.canvas-context-menu button:focus-visible { background: var(--surface-hover); color: var(--foreground); outline: none; }
+.canvas-context-menu button:disabled { cursor: default; opacity: 0.4; }
+.canvas-context-menu button.is-danger { color: #fb7185; }
+.canvas-context-menu button svg { width: 15px; height: 15px; }
+.canvas-context-menu button kbd { color: var(--muted); font: inherit; font-size: 10px; }
 
 .canvas-bottom-dock {
   bottom: 18px;
@@ -655,6 +693,27 @@
   border: 0;
   background: transparent;
 }
+
+.react-flow__node-group { border: 0; background: transparent; }
+.canvas-node-group {
+  width: 100%;
+  height: 100%;
+  border: 1px dashed color-mix(in srgb, var(--muted) 55%, transparent);
+  border-radius: 7px;
+  background: color-mix(in srgb, var(--surface) 24%, transparent);
+}
+.canvas-node-group.is-selected { border-color: var(--primary); background: color-mix(in srgb, var(--primary) 7%, transparent); }
+.canvas-node-group__header {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  height: 34px;
+  border-bottom: 1px dashed color-mix(in srgb, var(--muted) 35%, transparent);
+  color: var(--muted-strong);
+  padding: 0 10px;
+}
+.canvas-node-group__header svg { width: 15px; height: 15px; }
+.canvas-node-group__header strong { overflow: hidden; font-size: 11px; text-overflow: ellipsis; white-space: nowrap; }
 
 .canvas-node {
   position: relative;

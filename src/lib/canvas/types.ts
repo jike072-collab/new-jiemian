@@ -1,4 +1,4 @@
-export type CanvasNodeKind = "prompt" | "media" | "generator";
+export type CanvasNodeKind = "prompt" | "media" | "generator" | "group";
 export type CanvasMediaType = "image" | "video";
 export type CanvasGenerationKind = "image" | "video";
 export type CanvasGeneratorStatus = "idle" | "queued" | "generating" | "done" | "failed";
@@ -30,10 +30,12 @@ export type CanvasNodeData = Record<string, unknown> & {
 
 export type CanvasStoredNode = {
   id: string;
-  type: "canvas";
+  type: "canvas" | "group";
   position: { x: number; y: number };
   width?: number;
   height?: number;
+  parentId?: string;
+  extent?: "parent";
   data: CanvasNodeData;
 };
 

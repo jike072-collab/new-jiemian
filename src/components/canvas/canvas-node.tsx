@@ -7,6 +7,7 @@ import {
   EyeOff,
   Film,
   Image as ImageIcon,
+  Layers3,
   LoaderCircle,
   Play,
   Sparkles,
@@ -26,7 +27,7 @@ import type { EnabledProviders, WorkspacePublicProvider } from "@/components/stu
 import type { CanvasMediaType, CanvasNodeData } from "@/lib/canvas/types";
 import { cn } from "@/lib/utils";
 
-export type CanvasFlowNode = Node<CanvasNodeData, "canvas">;
+export type CanvasFlowNode = Node<CanvasNodeData, "canvas" | "group">;
 
 export type GeneratorInputSummary = {
   prompts: number;
@@ -71,6 +72,22 @@ export function CanvasNode({ id, data, selected }: NodeProps<CanvasFlowNode>) {
       {data.kind === "generator" ? <GeneratorNode id={id} data={data} /> : null}
       <Handle type="source" position={Position.Right} id="output" className="canvas-node__handle" />
     </article>
+  );
+}
+
+export function CanvasGroupNode({ data, selected }: NodeProps<CanvasFlowNode>) {
+  return (
+    <section className={cn("canvas-node-group", selected && "is-selected")}>
+      <NodeResizer
+        color="var(--primary)"
+        isVisible={selected}
+        minWidth={360}
+        minHeight={280}
+        maxWidth={2_400}
+        maxHeight={1_800}
+      />
+      <header className="canvas-node-group__header"><Layers3 /><strong>{data.title}</strong></header>
+    </section>
   );
 }
 

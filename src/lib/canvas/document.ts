@@ -13,7 +13,7 @@ const maxDocumentBytes = 1_500_000;
 const maxNodes = 500;
 const maxEdges = 1_000;
 
-const nodeKinds = new Set<CanvasNodeKind>(["prompt", "media", "generator"]);
+const nodeKinds = new Set<CanvasNodeKind>(["prompt", "media", "generator", "group"]);
 const mediaTypes = new Set<CanvasMediaType>(["image", "video"]);
 const generationKinds = new Set<CanvasGenerationKind>(["image", "video"]);
 const generatorStatuses = new Set<CanvasGeneratorStatus>(["idle", "queued", "generating", "done", "failed"]);
@@ -58,6 +58,14 @@ export function normalizeCanvasDocument(value: unknown): CanvasProjectDocument {
   const nodes = value.nodes.map(normalizeNode);
   const nodeIds = new Set(nodes.map((node) => node.id));
   if (nodeIds.size !== nodes.length) throw new CanvasDocumentError("画布节点 ID 重复。");
+  const nodesById = new Map(nodes.map((node) => [node.id, node]));
+  for (const node of nodes) {
+    if (!node.parentId) continue;
+    const parent = nodesById.get(node.parentId);
+    if (!parent || parent.data.kind !== "group" || node.data.kind === "group") {
+      throw new CanvasDocumentError("画布分组关系无效。");
+    }
+  }
   const edges = value.edges.map((edge) => normalizeEdge(edge, nodeIds));
   const edgeIds = new Set(edges.map((edge) => edge.id));
   if (edgeIds.size !== edges.length) throw new CanvasDocumentError("画布连线 ID 重复。");
@@ -128,15 +136,17 @@ function normalizeNode(value: unknown): CanvasStoredNode {
 
   const width = optionalDimension(value.width);
   const height = optionalDimension(value.height);
+  const parentId = optionalIdentifier(value.parentId, 160);
   return {
     id,
-    type: "canvas",
+    type: kind === "group" ? "group" : "canvas",
     position: {
       x: boundedNumber(value.position.x, -1_000_000, 1_000_000, 0),
       y: boundedNumber(value.position.y, -1_000_000, 1_000_000, 0),
     },
     ...(width ? { width } : {}),
     ...(height ? { height } : {}),
+    ...(parentId ? { parentId, extent: "parent" as const } : {}),
     data,
   };
 }
@@ -175,6 +185,7 @@ function normalizeStatus(value: unknown, fallback: CanvasGeneratorStatus) {
 }
 
 function defaultNodeTitle(kind: CanvasNodeKind, generationKind: unknown) {
+  if (kind === "group") return "节点分组";
   if (kind === "prompt") return "提示词";
   if (kind === "media") return "素材";
   return generationKind === "video" ? "视频生成" : "图片生成";
