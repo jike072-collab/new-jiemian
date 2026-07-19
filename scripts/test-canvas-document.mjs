@@ -53,7 +53,7 @@ assert.equal(imageGenerator.nodes[0].data.count, 8);
 const grouped = normalizeCanvasDocument({
   nodes: [
     { id: "group-1", type: "group", position: { x: 0, y: 0 }, width: 280, height: 44, data: { kind: "group", title: "广告分组", collapsed: true, expandedWidth: 640, expandedHeight: 480, locked: true, zIndex: 7 } },
-    { id: "node-prompt-1", type: "canvas", parentId: "group-1", extent: "parent", position: { x: 24, y: 56 }, data: { kind: "prompt", title: "提示词", prompt: "test", hidden: true, zIndex: -2 } },
+    { id: "node-prompt-1", type: "canvas", parentId: "group-1", extent: "parent", position: { x: 24, y: 56 }, data: { kind: "prompt", title: "提示词", prompt: "test", notes: "交付前检查品牌文字", hidden: true, zIndex: -2 } },
   ],
   edges: [],
   viewport: { x: 0, y: 0, zoom: 1 },
@@ -69,6 +69,7 @@ assert.equal(grouped.nodes[1].parentId, "group-1");
 assert.equal(grouped.nodes[1].extent, "parent");
 assert.equal(grouped.nodes[1].data.hidden, true);
 assert.equal(grouped.nodes[1].data.zIndex, -2);
+assert.equal(grouped.nodes[1].data.notes, "交付前检查品牌文字");
 
 assert.throws(
   () => normalizeCanvasDocument({

@@ -94,6 +94,8 @@ function normalizeNode(value: unknown): CanvasStoredNode {
   };
   const prompt = optionalString(value.data.prompt, 30_000);
   if (prompt !== undefined) data.prompt = prompt;
+  const notes = optionalString(value.data.notes, 2_000);
+  if (notes !== undefined) data.notes = notes;
   const createdAt = optionalString(value.data.createdAt, 64);
   const model = optionalString(value.data.model, 240);
   if (createdAt) data.createdAt = createdAt;

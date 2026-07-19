@@ -32,6 +32,7 @@ export type CanvasNodeData = Record<string, unknown> & {
   hidden?: boolean;
   locked?: boolean;
   zIndex?: number;
+  notes?: string;
 };
 
 export type CanvasStoredNode = {

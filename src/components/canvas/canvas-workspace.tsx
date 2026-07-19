@@ -2079,8 +2079,12 @@ function CanvasWorkspaceInner({ accountName, isTeamOwner, isInternalCanvas }: { 
           ) : null}
           {infoOpen && selectedNode ? (
             <CanvasNodeInfoPanel
+              key={selectedNode.id}
               node={selectedNode}
               sourceNodes={nodes.filter((node) => edges.some((edge) => edge.target === selectedNode.id && edge.source === node.id) || selectedNode.data.sourceNodeIds?.includes(node.id))}
+              targetNodes={nodes.filter((node) => edges.some((edge) => edge.source === selectedNode.id && edge.target === node.id))}
+              parentNode={nodes.find((node) => node.id === selectedNode.parentId)}
+              childNodes={nodes.filter((node) => node.parentId === selectedNode.id)}
               libraryItem={library.find((item) => item.id === selectedNode.data.libraryItemId)}
               onClose={() => setInfoOpen(false)}
               onFocusText={focusSelectedText}
@@ -2090,6 +2094,7 @@ function CanvasWorkspaceInner({ accountName, isTeamOwner, isInternalCanvas }: { 
               onCreateImage={() => createGeneratorFromSelected(selectedNode, "image")}
               onCreateVideo={() => createGeneratorFromSelected(selectedNode, "video")}
               onGenerate={generateSelected}
+              onSaveMetadata={(nextTitle, notes) => updateNodeData(selectedNode.id, { title: nextTitle, notes: notes || undefined })}
             />
           ) : null}
           {assistantOpen && isInternalCanvas ? (
@@ -2562,6 +2567,9 @@ function CanvasLayersPanel({
 function CanvasNodeInfoPanel({
   node,
   sourceNodes,
+  targetNodes,
+  parentNode,
+  childNodes,
   libraryItem,
   onClose,
   onFocusText,
@@ -2571,9 +2579,13 @@ function CanvasNodeInfoPanel({
   onCreateImage,
   onCreateVideo,
   onGenerate,
+  onSaveMetadata,
 }: {
   node: CanvasFlowNode;
   sourceNodes: CanvasFlowNode[];
+  targetNodes: CanvasFlowNode[];
+  parentNode?: CanvasFlowNode;
+  childNodes: CanvasFlowNode[];
   libraryItem?: LibraryItem;
   onClose: () => void;
   onFocusText: () => void;
@@ -2583,11 +2595,17 @@ function CanvasNodeInfoPanel({
   onCreateImage: () => void;
   onCreateVideo: () => void;
   onGenerate: () => void;
+  onSaveMetadata: (title: string, notes: string) => void;
 }) {
   const data = node.data;
   const isPrompt = data.kind === "prompt";
   const isMedia = data.kind === "media";
   const isGenerator = data.kind === "generator";
+  const [draftTitle, setDraftTitle] = useState(data.title);
+  const [draftNotes, setDraftNotes] = useState(data.notes || "");
+  const normalizedTitle = draftTitle.trim().slice(0, 120);
+  const normalizedNotes = draftNotes.trim().slice(0, 2_000);
+  const metadataChanged = normalizedTitle !== data.title || normalizedNotes !== (data.notes || "");
   return (
     <aside className="canvas-node-info" aria-label="节点信息">
       <header className="canvas-node-info__header">
@@ -2599,9 +2617,23 @@ function CanvasNodeInfoPanel({
         <button type="button" className="canvas-icon-button" aria-label="关闭节点信息" title="关闭节点信息" onClick={onClose}><X /></button>
       </header>
       <div className="canvas-node-info__body">
+        <form className="canvas-node-info__metadata" onSubmit={(event) => {
+          event.preventDefault();
+          if (!normalizedTitle) return;
+          onSaveMetadata(normalizedTitle, normalizedNotes);
+          setDraftTitle(normalizedTitle);
+          setDraftNotes(normalizedNotes);
+        }}>
+          <label><span>节点名称</span><input value={draftTitle} maxLength={120} required onChange={(event) => setDraftTitle(event.target.value)} /></label>
+          <label><span>备注</span><textarea value={draftNotes} maxLength={2_000} placeholder="记录用途、修改要求或交付说明" onChange={(event) => setDraftNotes(event.target.value)} /></label>
+          <button type="submit" disabled={!metadataChanged || !normalizedTitle}><Save />保存信息</button>
+        </form>
         <dl className="canvas-node-info__grid">
+          <div><dt>节点 ID</dt><dd title={node.id}>{node.id}</dd></div>
           <div><dt>类型</dt><dd>{data.kind}</dd></div>
           <div><dt>状态</dt><dd>{data.status || "idle"}</dd></div>
+          <div><dt>位置</dt><dd>{Math.round(node.position.x)}, {Math.round(node.position.y)}</dd></div>
+          <div><dt>尺寸</dt><dd>{Math.round(node.measured?.width || node.width || 0)} × {Math.round(node.measured?.height || node.height || 0)}</dd></div>
           <div><dt>来源</dt><dd>{isMedia ? data.mediaType : isGenerator ? data.providerId || "--" : "--"}</dd></div>
           <div><dt>链接</dt><dd>{isMedia ? (data.mediaUrl ? "可用" : "无") : "--"}</dd></div>
           <div><dt>模型</dt><dd>{data.model || libraryItem?.model || "--"}</dd></div>
@@ -2640,9 +2672,12 @@ function CanvasNodeInfoPanel({
             </ul>
           </div>
         ) : null}
-        <div className="canvas-node-info__section">
-          <strong>来源素材</strong>
-          {sourceNodes.length ? <ul>{sourceNodes.map((source) => <li key={source.id}>{source.data.title} · {source.data.kind}</li>)}</ul> : <p>无连接来源</p>}
+        <div className="canvas-node-info__section canvas-node-info__relations">
+          <strong>节点关系</strong>
+          <div><span>输入来源</span>{sourceNodes.length ? <ul>{sourceNodes.map((source) => <li key={source.id}>{source.data.title} · {canvasEdgeLabel(source)}</li>)}</ul> : <p>无输入连接</p>}</div>
+          <div><span>输出去向</span>{targetNodes.length ? <ul>{targetNodes.map((target) => <li key={target.id}>{target.data.title} · {target.data.kind}</li>)}</ul> : <p>无输出连接</p>}</div>
+          {parentNode ? <div><span>所属分组</span><p>{parentNode.data.title}</p></div> : null}
+          {childNodes.length ? <div><span>分组成员</span><ul>{childNodes.map((child) => <li key={child.id}>{child.data.title} · {child.data.kind}</li>)}</ul></div> : null}
         </div>
         <div className="canvas-node-info__actions">
           {isPrompt ? <button type="button" onClick={onFocusText}><Type />编辑文本</button> : null}
