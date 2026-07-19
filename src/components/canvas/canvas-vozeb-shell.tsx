@@ -22,6 +22,7 @@ import {
 } from "lucide-react";
 import { useRef } from "react";
 
+import type { CanvasPresenceMember } from "@/lib/canvas/presence";
 import { cn } from "@/lib/utils";
 
 // Layout adapted from VOZEB v1.0.0 (AGPL-3.0); see THIRD_PARTY_NOTICES.md.
@@ -45,6 +46,8 @@ export function CanvasVozebTopbar({
   assistantOpen,
   shortcutsOpen,
   isTeamOwner,
+  presenceMembers,
+  presenceClientId,
   onTitleChange,
   onProjectChange,
   onScopeChange,
@@ -76,6 +79,8 @@ export function CanvasVozebTopbar({
   assistantOpen: boolean;
   shortcutsOpen: boolean;
   isTeamOwner: boolean;
+  presenceMembers: CanvasPresenceMember[];
+  presenceClientId: string;
   onTitleChange: (value: string) => void;
   onProjectChange: (id: string) => void;
   onScopeChange: (scope: "personal" | "shared") => void;
@@ -153,6 +158,22 @@ export function CanvasVozebTopbar({
       <div className="canvas-v2-topbar__actions">
         <span className="canvas-v2-free-chip" title="内部画布不扣积分">内部免费</span>
         {syncState ? <span className={cn("canvas-v2-sync-chip", `is-${syncState}`)} title="共享画布同步状态">{syncLabel(syncState)}</span> : null}
+        {presenceMembers.length ? (
+          <details className="canvas-v2-presence">
+            <summary className="canvas-v2-icon-button" aria-label={`在线成员 ${presenceMembers.length} 人`} title="在线成员">
+              <UsersRound /><span>{presenceMembers.length}</span>
+            </summary>
+            <div className="canvas-v2-presence__popover" aria-label="团队在线状态">
+              <strong>团队在线</strong>
+              {presenceMembers.map((member) => (
+                <div className="canvas-v2-presence__member" key={member.clientId}>
+                  <span className="canvas-v2-presence__avatar" style={{ background: member.color }}>{presenceInitial(member.displayName)}</span>
+                  <span><b>{member.displayName}{member.clientId === presenceClientId ? "（你）" : ""}</b><small>{presenceActivityLabel(member.activity)}</small></span>
+                </div>
+              ))}
+            </div>
+          </details>
+        ) : null}
         <button type="button" className="canvas-v2-icon-button" aria-label="切换画布主题" title="切换画布主题" onClick={onThemeCycle}>
           {canvasTheme === "light" ? <Moon /> : <Sun />}
         </button>
@@ -176,4 +197,15 @@ function syncLabel(state: "live" | "syncing" | "paused") {
   if (state === "syncing") return "同步中";
   if (state === "paused") return "同步暂停";
   return "实时同步";
+}
+
+function presenceActivityLabel(activity: CanvasPresenceMember["activity"]) {
+  if (activity === "generating") return "正在生成";
+  if (activity === "editing") return "正在编辑";
+  if (activity === "selected") return "已选择节点";
+  return "正在查看";
+}
+
+function presenceInitial(displayName: string) {
+  return displayName.trim().slice(0, 1).toUpperCase() || "成";
 }

@@ -18,7 +18,7 @@ import {
   Trash2,
   Type,
 } from "lucide-react";
-import { createContext, useContext, useEffect, useRef, useState } from "react";
+import { createContext, useContext, useEffect, useRef, useState, type CSSProperties } from "react";
 import {
   Handle,
   NodeResizer,
@@ -28,10 +28,14 @@ import {
 } from "@xyflow/react";
 
 import type { EnabledProviders, WorkspacePublicProvider } from "@/components/studio/types";
+import { canvasImageCountLimit } from "@/lib/canvas/image-batch";
+import {
+  canvasPresenceNodeActivity,
+  type CanvasPresenceMember,
+} from "@/lib/canvas/presence";
 import type { CanvasMediaType, CanvasNodeData } from "@/lib/canvas/types";
 import { seedanceReferenceIssues } from "@/lib/seedance/prompt-guidance";
 import { cn } from "@/lib/utils";
-import { canvasImageCountLimit } from "@/lib/canvas/image-batch";
 
 export type CanvasFlowNode = Node<CanvasNodeData, "canvas" | "group">;
 
@@ -55,6 +59,7 @@ type CanvasNodeActions = {
   inputSummary: Record<string, GeneratorInputSummary>;
   inputPreviews: Record<string, Array<{ url: string; mediaType: CanvasMediaType; title: string }>>;
   promptReferences: Record<string, CanvasPromptReference[]>;
+  presenceByNode: Record<string, CanvasPresenceMember[]>;
   updateNodeData: (id: string, patch: Partial<CanvasNodeData>) => void;
   removeNode: (id: string) => void;
   runGenerator: (id: string) => void;
@@ -70,9 +75,14 @@ export function CanvasNode({ id, data, selected }: NodeProps<CanvasFlowNode>) {
   const actions = useCanvasNodeActions();
   const minWidth = data.kind === "media" ? 260 : 300;
   const minHeight = data.kind === "prompt" ? 210 : data.kind === "generator" ? 380 : data.mediaType === "audio" ? 180 : 220;
+  const presences = actions.presenceByNode[id] || [];
 
   return (
-    <article data-canvas-node-id={id} className={cn("canvas-node", `canvas-node--${data.kind}`, selected && "is-selected")}>
+    <article
+      data-canvas-node-id={id}
+      className={cn("canvas-node", `canvas-node--${data.kind}`, selected && "is-selected", presences.length && "has-remote-presence")}
+      style={presences[0] ? { "--canvas-presence-color": presences[0].color } as CSSProperties : undefined}
+    >
       <NodeResizer
         color="var(--primary)"
         isVisible={selected}
@@ -83,6 +93,7 @@ export function CanvasNode({ id, data, selected }: NodeProps<CanvasFlowNode>) {
       />
       {data.kind !== "prompt" ? <Handle type="target" position={Position.Left} id="input" className="canvas-node__handle" /> : null}
       <NodeHeader data={data} onRemove={() => actions.removeNode(id)} />
+      {presences.length ? <CanvasPresenceBadges members={presences} nodeId={id} /> : null}
       {data.kind === "prompt" ? <PromptNode id={id} data={data} /> : null}
       {data.kind === "media" ? <MediaNode data={data} /> : null}
       {data.kind === "generator" ? <GeneratorNode id={id} data={data} /> : null}
@@ -91,11 +102,29 @@ export function CanvasNode({ id, data, selected }: NodeProps<CanvasFlowNode>) {
   );
 }
 
+function CanvasPresenceBadges({ members, nodeId }: { members: CanvasPresenceMember[]; nodeId: string }) {
+  return (
+    <div className="canvas-node-presence" aria-label="团队成员正在操作此节点">
+      {members.slice(0, 3).map((member) => {
+        const activity = canvasPresenceNodeActivity(member, nodeId);
+        const label = activity === "generating" ? "生成" : activity === "editing" ? "编辑" : "已选";
+        return <span key={member.clientId} style={{ borderColor: member.color, color: member.color }} title={`${member.displayName} · ${label}`}>{member.displayName} · {label}</span>;
+      })}
+      {members.length > 3 ? <span title={`另有 ${members.length - 3} 人`}>+{members.length - 3}</span> : null}
+    </div>
+  );
+}
+
 export function CanvasGroupNode({ id, data, selected }: NodeProps<CanvasFlowNode>) {
   const actions = useCanvasNodeActions();
   const collapsed = Boolean(data.collapsed);
+  const presences = actions.presenceByNode[id] || [];
   return (
-    <section className={cn("canvas-node-group", selected && "is-selected", collapsed && "is-collapsed")}>
+    <section
+      data-canvas-node-id={id}
+      className={cn("canvas-node-group", selected && "is-selected", collapsed && "is-collapsed", presences.length && "has-remote-presence")}
+      style={presences[0] ? { "--canvas-presence-color": presences[0].color } as CSSProperties : undefined}
+    >
       <NodeResizer
         color="var(--primary)"
         isVisible={selected && !collapsed}
@@ -111,6 +140,7 @@ export function CanvasGroupNode({ id, data, selected }: NodeProps<CanvasFlowNode
           {collapsed ? <ChevronRight /> : <ChevronDown />}
         </button>
       </header>
+      {presences.length ? <CanvasPresenceBadges members={presences} nodeId={id} /> : null}
     </section>
   );
 }

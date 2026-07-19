@@ -2,6 +2,7 @@ import { type NextRequest, NextResponse } from "next/server";
 
 import { authResultResponse, requireAuthSession } from "@/lib/server/auth";
 import { subscribeCanvasProjectEvents, type CanvasNotification } from "@/lib/server/canvas-collaboration";
+import { listCanvasPresence } from "@/lib/server/canvas-presence";
 import { CanvasProjectError, getCanvasProject } from "@/lib/server/canvas-projects";
 import { resolveCanvasWorkspaceOwner } from "@/lib/server/canvas-workspace-access";
 import { diagnosticErrorResponse } from "@/lib/server/error-diagnostics";
@@ -57,6 +58,10 @@ async function openCanvasEvents(request: NextRequest, context: RouteContext) {
         try { controller.close(); } catch { /* stream already closed */ }
       };
       const onNotification = (message: CanvasNotification) => {
+        if (message.type === "presence") {
+          send("presence", { presences: message.presences || listCanvasPresence(id) });
+          return;
+        }
         if (message.sourceId && message.sourceId === sourceId) return;
         if (message.type === "deleted") {
           send("deleted", { id });
@@ -83,6 +88,7 @@ async function openCanvasEvents(request: NextRequest, context: RouteContext) {
         if (closed) return;
         if (latestProject) send("project", { project: latestProject });
         else send("deleted", { id: initialProject.id });
+        send("presence", { presences: listCanvasPresence(id) });
         heartbeat = setInterval(() => {
           if (!closed) controller.enqueue(encoder.encode(": heartbeat\n\n"));
         }, 15_000);

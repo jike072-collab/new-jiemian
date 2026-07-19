@@ -128,6 +128,10 @@ import {
   planCanvasImageRequests,
 } from "@/lib/canvas/image-batch";
 import { mergeCanvasWorkspace } from "@/lib/canvas/merge";
+import {
+  canvasPresenceMembersForNode,
+  type CanvasPresenceMember,
+} from "@/lib/canvas/presence";
 import { normalizeCanvasAssistantResponse, type CanvasAssistantAction } from "@/lib/canvas/assistant";
 import type { FrontendProvider, JobRecord, LibraryItem } from "@/lib/server/types";
 import { cn } from "@/lib/utils";
@@ -216,6 +220,12 @@ function canvasProjectsUrl(id?: string) {
 function canvasProjectEventsUrl(id: string, clientId: string) {
   const query = new URLSearchParams({ scope: canvasScope(), client: clientId });
   return `/api/canvas/projects/${encodeURIComponent(id)}/events?${query}`;
+}
+
+function canvasProjectPresenceUrl(id: string, clientId?: string) {
+  const query = new URLSearchParams({ scope: canvasScope() });
+  if (clientId) query.set("client", clientId);
+  return `/api/canvas/projects/${encodeURIComponent(id)}/presence?${query}`;
 }
 
 function storedCanvasSettings() {
@@ -342,6 +352,9 @@ function CanvasWorkspaceInner({
   const [syncState, setSyncState] = useState<"live" | "syncing" | "paused">("live");
   const [compactViewport, setCompactViewport] = useState(false);
   const [collaborationClientId] = useState(() => canvasId("client"));
+  const [presenceMembers, setPresenceMembers] = useState<CanvasPresenceMember[]>([]);
+  const [presenceEditingNodeId, setPresenceEditingNodeId] = useState("");
+  const [presenceGeneratingNodeIds, setPresenceGeneratingNodeIds] = useState<string[]>([]);
 
   const nodesRef = useRef(nodes);
   const edgesRef = useRef(edges);
@@ -366,6 +379,8 @@ function CanvasWorkspaceInner({
   const historySignatureRef = useRef("");
   const [historyState, setHistoryState] = useState({ undo: 0, redo: 0 });
   const saveNowRef = useRef<(force?: boolean) => Promise<boolean>>(async () => true);
+  const presencePayloadRef = useRef({ selectedNodeIds: [] as string[], editingNodeId: "", generatingNodeIds: [] as string[] });
+  const presenceSendTimerRef = useRef<number | null>(null);
 
   useEffect(() => { nodesRef.current = nodes; }, [nodes]);
   useEffect(() => { edgesRef.current = edges; }, [edges]);
@@ -667,6 +682,58 @@ function CanvasWorkspaceInner({
     if (saveTimerRef.current) window.clearTimeout(saveTimerRef.current);
   }, []);
 
+  const presenceSelectedNodeIds = useMemo(
+    () => nodes.filter((node) => node.selected && !node.hidden).map((node) => node.id).slice(0, 50),
+    [nodes],
+  );
+  const sharedPresenceEnabled = isInternalCanvas && canvasScope() === "shared";
+  const postPresence = useCallback(async () => {
+    if (!sharedPresenceEnabled || !activeProjectId) return;
+    const payload = presencePayloadRef.current;
+    const data = await fetchJsonWithCsrf<{ presences: CanvasPresenceMember[] }>(canvasProjectPresenceUrl(activeProjectId), {
+      method: "POST",
+      body: JSON.stringify({
+        clientId: collaborationClientId,
+        selectedNodeIds: payload.selectedNodeIds,
+        editingNodeId: payload.editingNodeId || undefined,
+        generatingNodeIds: payload.generatingNodeIds,
+      }),
+    });
+    setPresenceMembers(data.presences);
+  }, [activeProjectId, collaborationClientId, sharedPresenceEnabled]);
+
+  useEffect(() => {
+    presencePayloadRef.current = {
+      selectedNodeIds: presenceSelectedNodeIds,
+      editingNodeId: presenceEditingNodeId,
+      generatingNodeIds: presenceGeneratingNodeIds,
+    };
+    if (!sharedPresenceEnabled || !activeProjectId) return;
+    if (presenceSendTimerRef.current) window.clearTimeout(presenceSendTimerRef.current);
+    presenceSendTimerRef.current = window.setTimeout(() => {
+      presenceSendTimerRef.current = null;
+      void postPresence().catch(() => setSyncState("paused"));
+    }, 160);
+    return () => {
+      if (presenceSendTimerRef.current) window.clearTimeout(presenceSendTimerRef.current);
+      presenceSendTimerRef.current = null;
+    };
+  }, [activeProjectId, postPresence, presenceEditingNodeId, presenceGeneratingNodeIds, presenceSelectedNodeIds, sharedPresenceEnabled]);
+
+  useEffect(() => {
+    if (!sharedPresenceEnabled || !activeProjectId) return;
+    void postPresence().catch(() => setSyncState("paused"));
+    const heartbeat = window.setInterval(() => {
+      void postPresence().catch(() => setSyncState("paused"));
+    }, 10_000);
+    const presenceUrl = canvasProjectPresenceUrl(activeProjectId, collaborationClientId);
+    return () => {
+      window.clearInterval(heartbeat);
+      setPresenceMembers([]);
+      void fetchJsonWithCsrf(presenceUrl, { method: "DELETE" }).catch(() => undefined);
+    };
+  }, [activeProjectId, collaborationClientId, postPresence, sharedPresenceEnabled]);
+
   useEffect(() => {
     if (!isInternalCanvas || !activeProjectId) return;
     const source = new EventSource(canvasProjectEventsUrl(activeProjectId, collaborationClientId));
@@ -683,18 +750,31 @@ function CanvasWorkspaceInner({
       setNotice("当前画布已被团队成员删除，正在刷新画布列表。");
       window.setTimeout(() => window.location.reload(), 300);
     };
+    const onPresence = (event: MessageEvent<string>) => {
+      try {
+        const value = JSON.parse(event.data) as { presences?: CanvasPresenceMember[] };
+        setPresenceMembers(Array.isArray(value.presences) ? value.presences : []);
+      } catch {
+        setSyncState("paused");
+      }
+    };
     source.addEventListener("project", onProject as EventListener);
     source.addEventListener("deleted", onDeleted);
+    source.addEventListener("presence", onPresence as EventListener);
     source.onopen = () => setSyncState("live");
     source.onerror = () => setSyncState("paused");
     return () => {
       source.removeEventListener("project", onProject as EventListener);
       source.removeEventListener("deleted", onDeleted);
+      source.removeEventListener("presence", onPresence as EventListener);
       source.close();
     };
   }, [acceptRemoteProject, activeProjectId, collaborationClientId, isInternalCanvas]);
 
   const updateNodeData = useCallback((id: string, patch: Partial<CanvasNodeData>, persist = true) => {
+    if (patch.status && patch.status !== "queued" && patch.status !== "generating") {
+      setPresenceGeneratingNodeIds((current) => current.includes(id) ? current.filter((nodeId) => nodeId !== id) : current);
+    }
     if (persist) pushHistorySnapshot();
     setNodes((current) => current.map((node) => node.id === id
       ? { ...node, data: { ...node.data, ...patch } }
@@ -1080,6 +1160,7 @@ function CanvasWorkspaceInner({
       return;
     }
 
+    setPresenceGeneratingNodeIds((current) => current.includes(generatorId) ? current : [...current, generatorId]);
     updateNodeData(generatorId, { status: "queued", progress: 0, error: undefined, providerId: provider.id });
     setNotice("");
     try {
@@ -1163,17 +1244,23 @@ function CanvasWorkspaceInner({
     return references;
   }, [edges, nodes]);
 
+  const presenceByNode = useMemo(() => Object.fromEntries(nodes.map((node) => [
+    node.id,
+    canvasPresenceMembersForNode(presenceMembers, node.id, collaborationClientId),
+  ])), [collaborationClientId, nodes, presenceMembers]);
+
   const nodeActions = useMemo(() => ({
     providers,
     internalCanvas: isInternalCanvas,
     inputSummary,
     inputPreviews,
     promptReferences,
+    presenceByNode,
     updateNodeData: (id: string, patch: Partial<CanvasNodeData>) => updateNodeData(id, patch),
     removeNode,
     runGenerator: (id: string) => { void executeGenerator(id); },
     toggleGroup: toggleGroupCollapsed,
-  }), [executeGenerator, inputPreviews, inputSummary, isInternalCanvas, promptReferences, providers, removeNode, toggleGroupCollapsed, updateNodeData]);
+  }), [executeGenerator, inputPreviews, inputSummary, isInternalCanvas, presenceByNode, promptReferences, providers, removeNode, toggleGroupCollapsed, updateNodeData]);
 
   const onNodesChange = useCallback((changes: NodeChange<CanvasFlowNode>[]) => {
     if (changes.some((change) => change.type !== "select" && !(change.type === "position" && change.dragging))) {
@@ -2222,6 +2309,8 @@ function CanvasWorkspaceInner({
           assistantOpen={assistantOpen}
           shortcutsOpen={shortcutsOpen}
           isTeamOwner={isTeamOwner}
+          presenceMembers={canvasScope() === "shared" ? presenceMembers : []}
+          presenceClientId={collaborationClientId}
           onTitleChange={(value) => { pushHistorySnapshot(); setTitle(value); markDirty(); }}
           onProjectChange={(id) => { void switchProject(id); }}
           onScopeChange={(scope) => {
@@ -2370,7 +2459,27 @@ function CanvasWorkspaceInner({
           onDownload={downloadLibraryItem}
           onDelete={(item) => { void deleteLibraryItem(item); }}
         />
-        <section ref={stageRef} className="canvas-stage" aria-label="无限画布">
+        <section
+          ref={stageRef}
+          className="canvas-stage"
+          aria-label="无限画布"
+          onFocusCapture={(event) => {
+            const target = event.target instanceof HTMLElement ? event.target : null;
+            if (!target?.matches("textarea, input, select, [contenteditable='true']")) return;
+            setPresenceEditingNodeId(target.closest<HTMLElement>("[data-canvas-node-id]")?.dataset.canvasNodeId || "");
+          }}
+          onBlurCapture={(event) => {
+            const stage = event.currentTarget;
+            window.requestAnimationFrame(() => {
+              const active = document.activeElement;
+              if (!(active instanceof HTMLElement) || !stage.contains(active) || !active.matches("textarea, input, select, [contenteditable='true']")) {
+                setPresenceEditingNodeId("");
+                return;
+              }
+              setPresenceEditingNodeId(active.closest<HTMLElement>("[data-canvas-node-id]")?.dataset.canvasNodeId || "");
+            });
+          }}
+        >
           {selectedNodes.length > 1 ? (
             <CanvasBatchToolbar
               count={selectedNodes.length}

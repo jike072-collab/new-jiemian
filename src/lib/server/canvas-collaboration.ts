@@ -2,13 +2,15 @@ import "server-only";
 
 import type { Notification, PoolClient } from "pg";
 
+import type { CanvasPresenceMember } from "@/lib/canvas/presence";
 import { getApplicationDatabasePool } from "@/lib/server/database";
 
 type CanvasNotification = {
-  type: "project" | "deleted";
+  type: "project" | "deleted" | "presence";
   projectId: string;
   version?: number;
   sourceId?: string;
+  presences?: CanvasPresenceMember[];
 };
 
 type Subscriber = {
@@ -56,6 +58,10 @@ export async function subscribeCanvasProjectEvents(
   return () => removeSubscriber(projectId, subscriber);
 }
 
+export function broadcastCanvasProjectEvent(message: CanvasNotification) {
+  state.subscribers.get(message.projectId)?.forEach((subscriber) => subscriber.onEvent(message));
+}
+
 async function ensureListener() {
   if (state.client) return;
   if (state.connecting) return state.connecting;
@@ -80,8 +86,7 @@ async function ensureListener() {
 
 function onNotification(notification: Notification) {
   const message = parseNotification(notification.payload);
-  if (!message) return;
-  state.subscribers.get(message.projectId)?.forEach((subscriber) => subscriber.onEvent(message));
+  if (message) broadcastCanvasProjectEvent(message);
 }
 
 function onListenerError() {
@@ -116,7 +121,7 @@ function removeSubscriber(projectId: string, subscriber: Subscriber) {
 function parseNotification(payload: string | undefined): CanvasNotification | null {
   try {
     const value = JSON.parse(payload || "") as Partial<CanvasNotification>;
-    if ((value.type !== "project" && value.type !== "deleted") || typeof value.projectId !== "string") return null;
+    if (!(["project", "deleted", "presence"] as const).includes(value.type as CanvasNotification["type"]) || typeof value.projectId !== "string") return null;
     return value as CanvasNotification;
   } catch {
     return null;

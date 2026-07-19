@@ -89,6 +89,45 @@
 .canvas-v2-account-button span,
 .canvas-v2-agent-button span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; }
 
+.canvas-v2-presence { position: relative; }
+.canvas-v2-presence > summary { position: relative; list-style: none; }
+.canvas-v2-presence > summary::-webkit-details-marker { display: none; }
+.canvas-v2-presence > summary span {
+  position: absolute;
+  right: 2px;
+  bottom: 1px;
+  display: grid;
+  min-width: 14px;
+  height: 14px;
+  place-items: center;
+  border-radius: 7px;
+  background: var(--primary);
+  color: white;
+  padding: 0 3px;
+  font-size: 8px;
+  line-height: 1;
+}
+.canvas-v2-presence__popover {
+  position: absolute;
+  z-index: 30;
+  top: calc(100% + 10px);
+  right: 0;
+  display: grid;
+  width: min(260px, calc(100vw - 20px));
+  gap: 8px;
+  border: 1px solid var(--border-subtle);
+  border-radius: 8px;
+  background: var(--panel);
+  box-shadow: 0 20px 54px rgba(15, 23, 42, 0.16);
+  padding: 12px;
+}
+.canvas-v2-presence__popover > strong { font-size: 12px; }
+.canvas-v2-presence__member { display: flex; min-width: 0; align-items: center; gap: 8px; }
+.canvas-v2-presence__avatar { display: grid; width: 28px; height: 28px; flex: 0 0 28px; place-items: center; border-radius: 50%; color: white; font-size: 11px; font-weight: 750; }
+.canvas-v2-presence__member > span:last-child { display: grid; min-width: 0; gap: 2px; }
+.canvas-v2-presence__member b { overflow: hidden; color: var(--foreground); text-overflow: ellipsis; white-space: nowrap; font-size: 11px; }
+.canvas-v2-presence__member small { color: var(--muted); font-size: 9px; }
+
 .canvas-v2-free-chip,
 .canvas-v2-sync-chip,
 .canvas-v2-save-chip {
@@ -210,6 +249,7 @@
   .canvas-v2-agent-button { width: 34px; height: 34px; flex: 0 0 34px; justify-content: center; padding: 0; }
   .canvas-v2-icon-button,
   .canvas-v2-menu > summary { width: 34px; height: 34px; flex-basis: 34px; }
+  .canvas-v2-presence__popover { position: fixed; top: 64px; right: 10px; }
   .canvas-v2-menu__popover { position: fixed; top: 64px; right: 10px; left: 10px; width: auto; max-height: calc(100dvh - 78px); overflow-y: auto; }
   .canvas-v2-page .canvas-library { top: 8px; bottom: 78px; left: 8px; }
   .canvas-v2-page .canvas-library.is-open { width: calc(100vw - 16px); min-width: calc(100vw - 16px); }
