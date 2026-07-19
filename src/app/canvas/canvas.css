@@ -736,6 +736,7 @@
   border-bottom: 1px dashed color-mix(in srgb, var(--muted) 35%, transparent);
   color: var(--muted-strong);
   padding: 0 10px;
+  cursor: grab;
 }
 .canvas-node-group__header svg { width: 15px; height: 15px; }
 .canvas-node-group__header strong { overflow: hidden; font-size: 11px; text-overflow: ellipsis; white-space: nowrap; }
@@ -767,7 +768,10 @@
   padding: 0 7px 0 10px;
   border-bottom: 1px solid var(--border-subtle);
   background: color-mix(in srgb, var(--surface) 80%, transparent);
+  cursor: grab;
 }
+.canvas-node__header:active,
+.canvas-node-group__header:active { cursor: grabbing; }
 
 .canvas-node__header strong {
   min-width: 0;

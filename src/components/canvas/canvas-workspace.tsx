@@ -132,6 +132,10 @@ function canvasEdgeLabel(source: CanvasFlowNode | CanvasStoredNode | undefined) 
   return "输入";
 }
 
+function canvasNodeDragHandle(kind: CanvasNodeData["kind"]) {
+  return kind === "group" ? ".canvas-node-group__header" : ".canvas-node__header";
+}
+
 function decorateCanvasEdge(edge: Edge | CanvasStoredEdge, nodes: Array<CanvasFlowNode | CanvasStoredNode>, routing: ConnectionStyle): Edge {
   const source = nodes.find((node) => node.id === edge.source);
   const data = "data" in edge && edge.data && typeof edge.data === "object" ? edge.data : {};
@@ -324,12 +328,14 @@ function CanvasWorkspaceInner({ accountName, isTeamOwner, isInternalCanvas }: { 
   const hydrateMediaNodes = useCallback((sourceNodes: CanvasStoredNode[] | CanvasFlowNode[], items: LibraryItem[]) => {
     const itemMap = new Map(items.map((item) => [item.id, item]));
     return sourceNodes.map((node) => {
-      if (node.data.kind !== "media" || !node.data.libraryItemId) return { ...node, type: node.data.kind === "group" ? "group" as const : "canvas" as const };
+      const dragHandle = canvasNodeDragHandle(node.data.kind);
+      if (node.data.kind !== "media" || !node.data.libraryItemId) return { ...node, type: node.data.kind === "group" ? "group" as const : "canvas" as const, dragHandle };
       const item = itemMap.get(node.data.libraryItemId);
-      if (!item) return { ...node, type: "canvas" as const, data: { ...node.data, mediaUrl: undefined } };
+      if (!item) return { ...node, type: "canvas" as const, dragHandle, data: { ...node.data, mediaUrl: undefined } };
       return {
         ...node,
         type: "canvas" as const,
+        dragHandle,
         data: {
           ...node.data,
           title: item.title || node.data.title,
@@ -558,6 +564,7 @@ function CanvasWorkspaceInner({ accountName, isTeamOwner, isInternalCanvas }: { 
     const node: CanvasFlowNode = {
       id: canvasId("node"),
       type: "canvas",
+      dragHandle: canvasNodeDragHandle(data.kind),
       position: availablePosition || {
         x: basePosition.x + nodesRef.current.length * 32,
         y: basePosition.y + nodesRef.current.length * 32,
@@ -651,6 +658,7 @@ function CanvasWorkspaceInner({ accountName, isTeamOwner, isInternalCanvas }: { 
     setNodes((current) => [...current, {
       id: canvasId("node"),
       type: "canvas",
+      dragHandle: canvasNodeDragHandle(data.kind),
       position,
       width: 320,
       height: item.type === "image" ? 300 : 340,
@@ -667,6 +675,7 @@ function CanvasWorkspaceInner({ accountName, isTeamOwner, isInternalCanvas }: { 
     const resultNode: CanvasFlowNode = {
       id,
       type: "canvas",
+      dragHandle: ".canvas-node__header",
       position: {
         x: generator.position.x + (generator.width || 340) + 130,
         y: generator.position.y + resultIndex * 380 - ((resultTotal - 1) * 190),
@@ -1139,6 +1148,7 @@ function CanvasWorkspaceInner({ accountName, isTeamOwner, isInternalCanvas }: { 
     const groupNode: CanvasFlowNode = {
       id: groupId,
       type: "group",
+      dragHandle: ".canvas-node-group__header",
       position: groupPosition,
       width: Math.max(360, maxX - minX + padding * 2),
       height: Math.max(280, maxY - minY + header + padding),
