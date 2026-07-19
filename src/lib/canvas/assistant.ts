@@ -1,7 +1,12 @@
 export type CanvasAssistantAction =
   | { type: "add_prompt"; title?: string; prompt: string }
+  | { type: "add_generator"; generationKind: "image" | "video" }
   | { type: "replace_selected_prompt"; prompt: string }
-  | { type: "organize"; layout: "flow" | "grid" };
+  | { type: "organize"; layout: "flow" | "grid" }
+  | { type: "select_nodes"; nodeIds: string[] }
+  | { type: "connect_nodes"; sourceNodeIds: string[]; targetNodeId: string }
+  | { type: "group_nodes"; nodeIds: string[] }
+  | { type: "ungroup"; groupId: string };
 
 export type CanvasAssistantResponse = {
   reply: string;
@@ -11,19 +16,19 @@ export type CanvasAssistantResponse = {
 export function localCanvasAssistantFallback(input: {
   message: string;
   canvasTitle?: string;
-  nodes?: Array<{ kind: "prompt" | "media" | "generator"; title: string }>;
+  nodes?: Array<{ kind: "prompt" | "media" | "generator" | "group"; title: string }>;
 }): CanvasAssistantResponse | null {
   const message = boundedText(input.message, 1_200);
   const nodes = Array.isArray(input.nodes) ? input.nodes.slice(0, 120) : [];
   if (/(有什么|有哪些|概览|总结|查看.{0,4}画布|画布.{0,4}内容)/.test(message)) {
-    const counts = { prompt: 0, media: 0, generator: 0 };
+    const counts = { prompt: 0, media: 0, generator: 0, group: 0 };
     nodes.forEach((node) => { counts[node.kind] += 1; });
     const title = boundedText(input.canvasTitle, 120) || "未命名画布";
     if (!nodes.length) return { reply: `当前画布“${title}”还没有内容节点。`, actions: [] };
     const names = nodes.slice(0, 8).map((node) => boundedText(node.title, 120)).filter(Boolean);
     const more = nodes.length > names.length ? `，另有 ${nodes.length - names.length} 个节点` : "";
     return {
-      reply: `当前画布“${title}”共有 ${nodes.length} 个内容节点：${counts.prompt} 个提示词、${counts.media} 个素材、${counts.generator} 个生成节点。${names.length ? `包括：${names.join("、")}${more}。` : ""}`,
+      reply: `当前画布“${title}”共有 ${nodes.length} 个节点：${counts.prompt} 个提示词、${counts.media} 个素材、${counts.generator} 个生成节点、${counts.group} 个分组。${names.length ? `包括：${names.join("、")}${more}。` : ""}`,
       actions: [],
     };
   }
@@ -60,10 +65,35 @@ export function normalizeCanvasAssistantResponse(value: unknown): CanvasAssistan
       if (prompt) actions.push({ type, prompt });
       continue;
     }
+    if (type === "add_generator" && (action.generationKind === "image" || action.generationKind === "video")) {
+      actions.push({ type, generationKind: action.generationKind });
+      continue;
+    }
     if (type === "organize" && (action.layout === "flow" || action.layout === "grid")) {
       actions.push({ type, layout: action.layout });
+      continue;
+    }
+    if (type === "select_nodes" || type === "group_nodes") {
+      const nodeIds = normalizeIds(action.nodeIds, 32);
+      if (nodeIds.length >= (type === "group_nodes" ? 2 : 1)) actions.push({ type, nodeIds });
+      continue;
+    }
+    if (type === "connect_nodes") {
+      const sourceNodeIds = normalizeIds(action.sourceNodeIds, 16);
+      const targetNodeId = boundedText(action.targetNodeId, 100);
+      if (sourceNodeIds.length && targetNodeId) actions.push({ type, sourceNodeIds, targetNodeId });
+      continue;
+    }
+    if (type === "ungroup") {
+      const groupId = boundedText(action.groupId, 100);
+      if (groupId) actions.push({ type, groupId });
     }
   }
 
   return { reply, actions };
+}
+
+function normalizeIds(value: unknown, limit: number) {
+  if (!Array.isArray(value)) return [];
+  return [...new Set(value.slice(0, limit).map((item) => boundedText(item, 100)).filter(Boolean))];
 }

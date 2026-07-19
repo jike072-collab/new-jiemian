@@ -8,7 +8,7 @@ import { normalizeCanvasAssistantResponse, type CanvasAssistantAction, type Canv
 
 export type CanvasAssistantNodeContext = {
   id: string;
-  kind: "prompt" | "media" | "generator";
+  kind: "prompt" | "media" | "generator" | "group";
   title: string;
   prompt?: string;
   selected?: boolean;

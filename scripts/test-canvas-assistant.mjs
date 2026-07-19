@@ -16,6 +16,10 @@ assert.match(route, /getInternalCanvasAccess/);
 assert.match(route, /requireCsrf/);
 assert.match(service, /禁止自动提交任何生成任务/);
 assert.match(service, /replace_selected_prompt/);
+assert.match(service, /add_generator/);
+assert.match(service, /connect_nodes/);
+assert.match(service, /group_nodes/);
+assert.match(service, /禁止输出删除、运行生成/);
 assert.match(service, /timeoutMs: 45_000/);
 assert.match(service, /canvas_assistant_failed/);
 assert.match(service, /localCanvasAssistantFallback/);
@@ -23,11 +27,21 @@ assert.match(assistantTypes, /sourceActions.*slice\(0, 8\)/);
 assert.doesNotMatch(service, /apiKey|Authorization|child_process|exec\(/);
 assert.match(workspace, /CanvasAssistantPanel/);
 assert.match(workspace, /applyAssistantActions/);
+assert.match(workspace, /action\.type === "add_generator"/);
+assert.match(workspace, /action\.type === "select_nodes"/);
+assert.match(workspace, /action\.type === "connect_nodes"/);
+assert.match(workspace, /action\.type === "group_nodes"/);
+assert.match(workspace, /action\.type === "ungroup"/);
 
 assert.deepEqual(normalizeCanvasAssistantResponse({
   reply: "ok",
   actions: [
     { type: "add_prompt", prompt: "测试提示词" },
+    { type: "add_generator", generationKind: "video" },
+    { type: "select_nodes", nodeIds: ["node-1", "node-1", "node-2"] },
+    { type: "connect_nodes", sourceNodeIds: ["node-1"], targetNodeId: "node-3" },
+    { type: "group_nodes", nodeIds: ["node-1", "node-2"] },
+    { type: "ungroup", groupId: "group-1" },
     { type: "delete_project", id: "forbidden" },
     { type: "organize", layout: "flow" },
   ],
@@ -35,6 +49,11 @@ assert.deepEqual(normalizeCanvasAssistantResponse({
   reply: "ok",
   actions: [
     { type: "add_prompt", prompt: "测试提示词", title: undefined },
+    { type: "add_generator", generationKind: "video" },
+    { type: "select_nodes", nodeIds: ["node-1", "node-2"] },
+    { type: "connect_nodes", sourceNodeIds: ["node-1"], targetNodeId: "node-3" },
+    { type: "group_nodes", nodeIds: ["node-1", "node-2"] },
+    { type: "ungroup", groupId: "group-1" },
     { type: "organize", layout: "flow" },
   ],
 });
@@ -48,7 +67,7 @@ assert.deepEqual(localCanvasAssistantFallback({
     { kind: "generator", title: "图片生成" },
   ],
 }), {
-  reply: "当前画布“新品方案”共有 3 个内容节点：1 个提示词、1 个素材、1 个生成节点。包括：主提示词、参考图、图片生成。",
+  reply: "当前画布“新品方案”共有 3 个节点：1 个提示词、1 个素材、1 个生成节点、0 个分组。包括：主提示词、参考图、图片生成。",
   actions: [],
 });
 

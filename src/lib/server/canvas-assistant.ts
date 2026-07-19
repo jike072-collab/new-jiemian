@@ -7,7 +7,7 @@ import { createNewApiPromptModelCaller, type PromptModelCaller } from "@/lib/ser
 
 type CanvasAssistantNode = {
   id: string;
-  kind: "prompt" | "media" | "generator";
+  kind: "prompt" | "media" | "generator" | "group";
   title: string;
   prompt?: string;
   selected?: boolean;
@@ -29,8 +29,14 @@ const systemPrompt = [
   "仅输出 JSON，不要 Markdown。结构为：{\"reply\":\"简体中文回复\",\"actions\":[...]}",
   "actions 只允许：",
   "{\"type\":\"add_prompt\",\"title\":\"可选标题\",\"prompt\":\"提示词\"}",
+  "{\"type\":\"add_generator\",\"generationKind\":\"image或video\"}",
   "{\"type\":\"replace_selected_prompt\",\"prompt\":\"新提示词\"}",
   "{\"type\":\"organize\",\"layout\":\"flow或grid\"}",
+  "{\"type\":\"select_nodes\",\"nodeIds\":[\"节点ID\"]}",
+  "{\"type\":\"connect_nodes\",\"sourceNodeIds\":[\"提示词或素材节点ID\"],\"targetNodeId\":\"生成节点ID\"}",
+  "{\"type\":\"group_nodes\",\"nodeIds\":[\"至少两个节点ID\"]}",
+  "{\"type\":\"ungroup\",\"groupId\":\"分组节点ID\"}",
+  "这些动作只能改变画布结构。禁止输出删除、运行生成、上传、下载、账号、权限或任何外部操作。",
   "用户没有明确要求改动画布时 actions 必须为空。最多返回 8 个动作。",
 ].join("\n");
 
@@ -42,7 +48,7 @@ function normalizeInput(input: Partial<CanvasAssistantInput>): CanvasAssistantIn
   if (!message) throw new CanvasAssistantError("CANVAS_ASSISTANT_INVALID", "请输入要让助手处理的内容。", 400);
   const nodes = Array.isArray(input.nodes) ? input.nodes.slice(0, 120).flatMap((node) => {
     if (!node || typeof node !== "object") return [];
-    if (!(["prompt", "media", "generator"] as const).includes(node.kind)) return [];
+    if (!(["prompt", "media", "generator", "group"] as const).includes(node.kind)) return [];
     const id = text(node.id, 100);
     const title = text(node.title, 120);
     if (!id || !title) return [];

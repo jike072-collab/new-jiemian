@@ -1114,8 +1114,9 @@ function CanvasWorkspaceInner({ accountName, isTeamOwner, isInternalCanvas }: { 
     markDirty();
   }, [connectionStyle, isValidConnection, markDirty, pushHistorySnapshot]);
 
-  const groupSelectedNodes = useCallback(() => {
-    const selected = nodesRef.current.filter((node) => node.selected && !node.parentId && node.data.kind !== "group");
+  const groupSelectedNodes = useCallback((nodeIds?: string[]) => {
+    const requestedIds = nodeIds?.length ? new Set(nodeIds) : null;
+    const selected = nodesRef.current.filter((node) => (requestedIds ? requestedIds.has(node.id) : node.selected) && !node.parentId && node.data.kind !== "group");
     if (selected.length < 2) {
       setNotice("请选择至少两个未分组节点。");
       return;
@@ -1153,8 +1154,9 @@ function CanvasWorkspaceInner({ accountName, isTeamOwner, isInternalCanvas }: { 
     markDirty();
   }, [markDirty, pushHistorySnapshot]);
 
-  const ungroupSelectedNodes = useCallback(() => {
-    const groups = nodesRef.current.filter((node) => node.selected && node.data.kind === "group");
+  const ungroupSelectedNodes = useCallback((groupIdsInput?: string[]) => {
+    const requestedIds = groupIdsInput?.length ? new Set(groupIdsInput) : null;
+    const groups = nodesRef.current.filter((node) => (requestedIds ? requestedIds.has(node.id) : node.selected) && node.data.kind === "group");
     if (!groups.length) {
       setNotice("请先选择一个节点分组。");
       return;
@@ -1256,15 +1258,43 @@ function CanvasWorkspaceInner({ accountName, isTeamOwner, isInternalCanvas }: { 
     for (const action of actions) {
       if (action.type === "add_prompt") {
         addPromptNode({ title: action.title, prompt: action.prompt });
+      } else if (action.type === "add_generator") {
+        addGeneratorNode(action.generationKind);
       } else if (action.type === "replace_selected_prompt") {
         const selected = nodesRef.current.find((node) => node.selected && node.data.kind === "prompt");
         if (selected) updateNodeData(selected.id, { prompt: action.prompt });
       } else if (action.type === "organize") {
         organizeCanvas(action.layout);
+      } else if (action.type === "select_nodes") {
+        const ids = new Set(action.nodeIds);
+        setNodes((current) => current.map((node) => ({ ...node, selected: ids.has(node.id) })));
+        setEdges((current) => current.map((edge) => ({ ...edge, selected: false })));
+      } else if (action.type === "connect_nodes") {
+        const target = nodesRef.current.find((node) => node.id === action.targetNodeId && node.data.kind === "generator");
+        const sources = nodesRef.current.filter((node) => action.sourceNodeIds.includes(node.id) && (node.data.kind === "prompt" || node.data.kind === "media"));
+        if (target && sources.length) {
+          const additions = sources.filter((source) => !edgesRef.current.some((edge) => edge.source === source.id && edge.target === target.id));
+          if (additions.length) {
+            pushHistorySnapshot();
+            setEdges((current) => [...current, ...additions.map((source) => ({
+              id: canvasId("edge"),
+              source: source.id,
+              sourceHandle: "output",
+              target: target.id,
+              targetHandle: "input",
+              type: connectionStyle,
+            }))]);
+            markDirty();
+          }
+        }
+      } else if (action.type === "group_nodes") {
+        groupSelectedNodes(action.nodeIds);
+      } else if (action.type === "ungroup") {
+        ungroupSelectedNodes([action.groupId]);
       }
     }
     setNotice(actions.length ? `已应用 ${actions.length} 项助手操作。` : "助手没有请求可应用的画布操作。");
-  }, [addPromptNode, organizeCanvas, updateNodeData]);
+  }, [addGeneratorNode, addPromptNode, connectionStyle, groupSelectedNodes, markDirty, organizeCanvas, pushHistorySnapshot, ungroupSelectedNodes, updateNodeData]);
 
   const submitEditedImage = useCallback(async (file: File, prompt: string) => {
     const source = nodesRef.current.find((node) => node.id === editingNodeId && node.data.kind === "media");
@@ -1749,13 +1779,13 @@ function CanvasWorkspaceInner({ accountName, isTeamOwner, isInternalCanvas }: { 
           {assistantOpen && isInternalCanvas ? (
             <CanvasAssistantPanel
               canvasTitle={title}
-              nodes={nodes.flatMap((node) => node.data.kind === "group" ? [] : [{
+              nodes={nodes.map((node) => ({
                 id: node.id,
                 kind: node.data.kind,
                 title: node.data.title,
                 prompt: node.data.kind === "prompt" ? node.data.prompt : undefined,
                 selected: Boolean(node.selected),
-              }])}
+              }))}
               onApply={applyAssistantActions}
               onClose={() => setAssistantOpen(false)}
             />
