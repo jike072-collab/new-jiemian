@@ -1,10 +1,8 @@
 "use client";
 
-import { Trash2 } from "lucide-react";
-import { createContext, useContext } from "react";
 import {
   BaseEdge,
-  EdgeToolbar,
+  getBezierPath,
   getSmoothStepPath,
   getStraightPath,
   type ConnectionLineComponentProps,
@@ -13,40 +11,55 @@ import {
 } from "@xyflow/react";
 
 export type CanvasEdgeData = Record<string, unknown> & {
-  routing: "smoothstep" | "straight";
-  label: string;
+  routing: "bezier" | "smoothstep" | "straight";
+  active?: boolean;
 };
 
 export type CanvasFlowEdge = Edge<CanvasEdgeData, "canvas-edge">;
 
-export const CanvasEdgeActionsContext = createContext<{ removeEdge: (id: string) => void } | null>(null);
-
 export function CanvasEdge(props: EdgeProps<CanvasFlowEdge>) {
-  const actions = useContext(CanvasEdgeActionsContext);
-  const [path, labelX, labelY] = props.data?.routing === "straight"
+  const routing = props.data?.routing || "bezier";
+  const [path] = routing === "straight"
     ? getStraightPath(props)
-    : getSmoothStepPath(props);
+    : routing === "smoothstep"
+      ? getSmoothStepPath(props)
+      : getBezierPath({ ...props, curvature: 0.5 });
 
-  return (
-    <>
-      <BaseEdge id={props.id} path={path} markerEnd={props.markerEnd} style={props.style} interactionWidth={24} />
-      <EdgeToolbar edgeId={props.id} x={labelX} y={labelY} isVisible className="canvas-edge-toolbar">
-        <span>{props.data?.label || "输入"}</span>
-        {props.selected ? (
-          <button type="button" onClick={() => actions?.removeEdge(props.id)} title="删除连线" aria-label="删除连线"><Trash2 /></button>
-        ) : null}
-      </EdgeToolbar>
-    </>
-  );
+  const active = props.selected || props.data?.active;
+  return <BaseEdge id={props.id} path={path} markerEnd={props.markerEnd} style={active ? { ...props.style, stroke: "var(--canvas-active-stroke)", filter: "drop-shadow(0 0 5px color-mix(in srgb, var(--canvas-active-stroke) 35%, transparent))" } : props.style} interactionWidth={24} />;
 }
 
-export function CanvasConnectionLine({ fromX, fromY, toX, toY, connectionStatus }: ConnectionLineComponentProps) {
+function CanvasConnectionLine({ fromX, fromY, fromPosition, toX, toY, toPosition, connectionStatus, routing }: ConnectionLineComponentProps & { routing: CanvasEdgeData["routing"] }) {
   const stroke = connectionStatus === "invalid" ? "#fb7185" : connectionStatus === "valid" ? "var(--primary)" : "#a1a1aa";
-  const path = "M" + fromX + "," + fromY + " C" + (fromX + 80) + "," + fromY + " " + (toX - 80) + "," + toY + " " + toX + "," + toY;
+  const pathOptions = {
+    sourceX: fromX,
+    sourceY: fromY,
+    sourcePosition: fromPosition,
+    targetX: toX,
+    targetY: toY,
+    targetPosition: toPosition,
+  };
+  const [path] = routing === "straight"
+    ? getStraightPath(pathOptions)
+    : routing === "smoothstep"
+      ? getSmoothStepPath(pathOptions)
+      : getBezierPath({ ...pathOptions, curvature: 0.5 });
   return (
     <>
       <path className="canvas-connection-line" d={path} fill="none" stroke={stroke} strokeWidth={2} />
       <circle cx={toX} cy={toY} r={4} fill={stroke} />
     </>
   );
+}
+
+export function CanvasBezierConnectionLine(props: ConnectionLineComponentProps) {
+  return <CanvasConnectionLine {...props} routing="bezier" />;
+}
+
+export function CanvasSmoothStepConnectionLine(props: ConnectionLineComponentProps) {
+  return <CanvasConnectionLine {...props} routing="smoothstep" />;
+}
+
+export function CanvasStraightConnectionLine(props: ConnectionLineComponentProps) {
+  return <CanvasConnectionLine {...props} routing="straight" />;
 }

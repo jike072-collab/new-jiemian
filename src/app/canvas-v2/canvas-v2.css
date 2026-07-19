@@ -1,7 +1,5 @@
 .canvas-v2-page {
   grid-template-rows: 64px minmax(0, 1fr);
-  --primary: #0f766e;
-  --primary-hover: #115e59;
 }
 
 .canvas-v2-topbar {
@@ -210,9 +208,10 @@
 }
 .canvas-v2-page .canvas-library-scrim { position: absolute; z-index: 17; inset: 0; display: block; border: 0; background: rgba(15, 23, 42, 0.08); padding: 0; }
 .canvas-v2-page .canvas-stage,
-.canvas-v2-page .react-flow { background: #f7f9fc; }
-.canvas-v2-page .canvas-stage .react-flow__background { color: rgba(100, 116, 139, 0.18); }
-.canvas-v2-page .canvas-stage .react-flow__edge-path { stroke: rgba(71, 85, 105, 0.42); }
+.canvas-v2-page .react-flow { background: var(--background); }
+.canvas-v2-page .canvas-stage .react-flow__background { color: color-mix(in srgb, var(--muted) 34%, transparent); }
+.canvas-v2-page .canvas-stage .react-flow__edge-path { stroke: color-mix(in srgb, var(--muted-strong) 55%, transparent); }
+.canvas-v2-page .canvas-stage .react-flow__edge.selected .react-flow__edge-path { stroke: var(--canvas-active-stroke); }
 
 .canvas-v2-page .canvas-bottom-dock.is-vozeb {
   bottom: 18px;
@@ -233,6 +232,8 @@
 .canvas-v2-page .canvas-bottom-dock__divider { background: var(--border-subtle); }
 .canvas-v2-page .react-flow__minimap { display: none; }
 .canvas-v2-page .react-flow__controls { bottom: 18px; left: 18px; overflow: hidden; border: 1px solid var(--border-subtle); border-radius: 8px; box-shadow: 0 12px 32px rgba(15, 23, 42, 0.1); }
+.canvas-v2-page .react-flow__controls-button { border-bottom-color: var(--border-subtle); background: var(--panel); color: var(--muted-strong); fill: currentColor; }
+.canvas-v2-page .react-flow__controls-button:hover { background: var(--surface-hover); color: var(--foreground); }
 
 @media (max-width: 820px) {
   .canvas-v2-page { grid-template-rows: 58px minmax(0, 1fr); }

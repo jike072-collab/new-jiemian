@@ -412,8 +412,8 @@
 
 .canvas-stage .react-flow__selection,
 .canvas-stage .react-flow__nodesselection-rect {
-  border: 1px solid color-mix(in srgb, var(--primary) 85%, white 8%);
-  background: color-mix(in srgb, var(--primary) 12%, transparent);
+  border: 1px solid var(--canvas-active-stroke);
+  background: var(--canvas-selection-fill);
 }
 
 .canvas-selection-toolbar,
@@ -434,6 +434,9 @@
 .canvas-selection-toolbar {
   top: 18px;
   left: 50%;
+  border-color: rgba(255, 255, 255, 0.16);
+  background: rgba(28, 28, 32, 0.96);
+  color: #f7f7f8;
   transform: translateX(-50%);
   padding: 7px 9px;
 }
@@ -456,6 +459,9 @@
   white-space: nowrap;
 }
 
+.canvas-selection-toolbar button,
+.canvas-selection-toolbar summary { color: rgba(255, 255, 255, 0.72); }
+
 .canvas-selection-toolbar button:hover,
 .canvas-selection-toolbar button:focus-visible,
 .canvas-selection-toolbar summary:hover,
@@ -467,6 +473,10 @@
   color: var(--foreground);
   outline: none;
 }
+.canvas-selection-toolbar button:hover,
+.canvas-selection-toolbar button:focus-visible,
+.canvas-selection-toolbar summary:hover,
+.canvas-selection-toolbar summary:focus-visible { color: #ffffff; }
 
 .canvas-selection-toolbar button:disabled { cursor: default; opacity: 0.35; }
 .canvas-selection-toolbar svg,
@@ -494,31 +504,6 @@
 .canvas-batch-menu__label { grid-column: 1 / -1; color: var(--muted); padding: 5px 7px 2px; font-size: 9px; }
 .canvas-selection-toolbar__divider,
 .canvas-bottom-dock__divider { width: 1px; height: 22px; margin: 0 6px; background: rgba(255, 255, 255, 0.16); }
-.canvas-edge-toolbar {
-  pointer-events: all;
-  display: flex;
-  align-items: center;
-  gap: 3px;
-  border: 1px solid var(--border-subtle);
-  border-radius: 6px;
-  background: color-mix(in srgb, var(--panel) 94%, transparent);
-  box-shadow: 0 8px 22px rgba(0, 0, 0, 0.24);
-  padding: 3px 5px;
-}
-.canvas-edge-toolbar > span { color: var(--muted-strong); font-size: 10px; white-space: nowrap; }
-.canvas-edge-toolbar button {
-  display: grid;
-  width: 24px;
-  height: 24px;
-  place-items: center;
-  border: 0;
-  border-radius: 4px;
-  background: transparent;
-  color: #fb7185;
-  cursor: pointer;
-}
-.canvas-edge-toolbar button:hover { background: rgba(251, 113, 133, 0.14); }
-.canvas-edge-toolbar button svg { width: 13px; height: 13px; }
 .canvas-connection-line { stroke-linecap: round; stroke-dasharray: 7 5; animation: canvas-connection-dash 0.8s linear infinite; }
 @keyframes canvas-connection-dash { to { stroke-dashoffset: -12; } }
 
@@ -557,6 +542,18 @@
 .canvas-context-menu button.is-danger { color: #fb7185; }
 .canvas-context-menu button svg { width: 15px; height: 15px; }
 .canvas-context-menu button kbd { color: var(--muted); font: inherit; font-size: 10px; }
+.canvas-context-menu__label { color: var(--muted); padding: 5px 8px 3px; font-size: 10px; font-weight: 650; }
+.canvas-context-menu.is-connection-create { width: 280px; gap: 4px; padding: 9px; }
+.canvas-context-menu__heading { display: flex; align-items: center; justify-content: space-between; gap: 10px; color: var(--muted-strong); padding: 1px 4px 5px 7px; font-size: 11px; font-weight: 650; }
+.canvas-context-menu .canvas-context-menu__heading button { display: grid; width: 28px; min-height: 28px; grid-template-columns: 1fr; place-items: center; padding: 0; }
+.canvas-context-menu .canvas-context-menu__heading svg { width: 14px; height: 14px; }
+.canvas-context-menu .canvas-context-menu__create-option { min-height: 62px; grid-template-columns: 42px minmax(0, 1fr); gap: 10px; padding: 7px; }
+.canvas-context-menu__create-option > span:first-child { display: grid; width: 42px; height: 42px; place-items: center; border-radius: 7px; background: var(--surface); color: var(--muted-strong); }
+.canvas-context-menu__create-option > span:last-child { display: grid; min-width: 0; gap: 3px; }
+.canvas-context-menu__create-option b,
+.canvas-context-menu__create-option small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.canvas-context-menu__create-option b { color: var(--foreground); font-size: 12px; }
+.canvas-context-menu__create-option small { color: var(--muted); font-size: 10px; }
 
 .canvas-bottom-dock {
   bottom: 18px;
@@ -833,7 +830,7 @@
   border-radius: 7px;
   background: color-mix(in srgb, var(--surface) 24%, transparent);
 }
-.canvas-node-group.is-selected { border-color: var(--primary); background: color-mix(in srgb, var(--primary) 7%, transparent); }
+.canvas-node-group.is-selected { border-color: var(--border-strong); background: var(--canvas-selection-fill); }
 .canvas-node-group.is-collapsed { overflow: hidden; border-style: solid; background: var(--panel-2); }
 .canvas-node-group.is-collapsed .canvas-node-group__header { height: 42px; border-bottom: 0; }
 .canvas-node-group__header {
@@ -868,8 +865,8 @@
 .canvas-node--prompt:focus-within { z-index: 20; overflow: visible; }
 
 .canvas-node.is-selected {
-  border-color: color-mix(in srgb, var(--primary) 75%, white 8%);
-  box-shadow: 0 0 0 1px color-mix(in srgb, var(--primary) 25%, transparent), 0 16px 38px rgba(0, 0, 0, 0.32);
+  border-color: var(--border-strong);
+  box-shadow: 0 18px 42px rgba(0, 0, 0, 0.34);
 }
 
 .canvas-node.has-remote-presence,
@@ -983,7 +980,9 @@
   line-height: 1.65;
 }
 
-.canvas-node__textarea::placeholder { color: rgba(255, 255, 255, 0.3); }
+.aohuang-canvas-page .canvas-node__textarea:focus-visible { outline: none; }
+
+.canvas-node__textarea::placeholder { color: var(--muted); }
 .canvas-node__prompt-footer { position: absolute; right: 0; bottom: 0; left: 0; display: flex; align-items: center; gap: 6px; min-height: 24px; padding: 2px 0 0 2px; pointer-events: none; }
 .canvas-node__mention-hint { min-width: 0; overflow: hidden; color: var(--muted); font-size: 10px; text-overflow: ellipsis; white-space: nowrap; }
 .canvas-node__counter {
@@ -1042,12 +1041,12 @@
 
 .react-flow__node-canvas:has(.canvas-node--generator) {
   height: auto !important;
-  min-height: 410px;
+  min-height: 370px;
 }
 
 .canvas-node--generator {
   height: auto;
-  min-height: 410px;
+  min-height: 370px;
 }
 
 .canvas-assistant {
@@ -1228,34 +1227,6 @@
 .canvas-selection-hint .canvas-selection-hint__close { width: 28px; justify-content: center; padding: 0; }
 .canvas-selection-hint__close svg { width: 13px; }
 
-.canvas-node__mode-tabs {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  height: 34px;
-  padding: 3px;
-  border: 1px solid var(--border-subtle);
-  border-radius: 6px;
-  background: #17171b;
-}
-
-.canvas-node__mode-tabs button {
-  display: flex;
-  min-width: 0;
-  align-items: center;
-  justify-content: center;
-  gap: 5px;
-  border: 0;
-  border-radius: 4px;
-  background: transparent;
-  color: var(--muted);
-  cursor: pointer;
-  font-size: 11px;
-}
-
-.canvas-node__mode-tabs button svg { width: 14px; height: 14px; }
-.canvas-node__mode-tabs button.is-active { background: var(--surface-hover); color: var(--foreground); }
-.canvas-node__mode-tabs button:disabled { cursor: default; opacity: 0.5; }
-
 .canvas-node__field {
   display: grid;
   min-width: 0;
@@ -1283,12 +1254,6 @@
 }
 
 .canvas-node__field-grid.is-image { grid-template-columns: repeat(3, minmax(0, 1fr)); }
-
-.canvas-node__mode-warning {
-  margin-top: -4px;
-  color: #fbbf24;
-  font-size: 10px;
-}
 
 .canvas-node__inputs {
   min-width: 0;
@@ -1413,6 +1378,7 @@
 }
 
 .canvas-scope-switch { flex: 0 0 92px; }
+.canvas-settings__segments { grid-template-columns: repeat(3, minmax(0, 1fr)); }
 
 .canvas-scope-switch button,
 .canvas-settings__segments button {
@@ -1460,21 +1426,20 @@
 .canvas-settings section { display: grid; gap: 8px; }
 .canvas-settings section > strong { color: var(--muted-strong); font-size: 11px; }
 .canvas-settings svg { width: 15px; }
-.canvas-settings__swatches { display: grid; grid-template-columns: repeat(3, 1fr); gap: 7px; }
+.canvas-settings__swatches { display: grid; grid-template-columns: repeat(2, 1fr); gap: 7px; }
 .canvas-settings__swatches button { height: 34px; border: 2px solid transparent; border-radius: 6px; cursor: pointer; }
 .canvas-settings__swatches button.is-active { border-color: var(--primary); }
 .canvas-settings__swatches .is-midnight { background: #09090b; }
-.canvas-settings__swatches .is-graphite { background: #27272a; }
 .canvas-settings__swatches .is-light { background: #f4f4f5; }
 .canvas-settings__toggle { justify-content: space-between; color: var(--muted-strong); font-size: 11px; }
 .canvas-settings__toggle input { width: 16px; height: 16px; accent-color: var(--primary); }
 .canvas-settings__commands button { justify-content: center; min-height: 32px; flex: 1; border: 1px solid var(--border-subtle); border-radius: 6px; background: var(--surface); color: var(--muted-strong); cursor: pointer; font-size: 11px; }
 .canvas-settings__commands button.is-danger { color: #fb7185; }
 
-.aohuang-canvas-page[data-canvas-theme="graphite"] { --background: #202024; --panel: #29292e; --panel-2: #303036; --surface: #38383f; --surface-hover: #414149; }
-.aohuang-canvas-page[data-canvas-theme="light"] { --background: #f4f4f5; --panel: #ffffff; --panel-2: #ffffff; --surface: #f4f4f5; --surface-hover: #e4e4e7; --foreground: #18181b; --muted: #71717a; --muted-strong: #52525b; --border-subtle: #d4d4d8; --border-strong: #a1a1aa; }
+.aohuang-canvas-page[data-canvas-theme="midnight"] { color-scheme: dark; --background: #07080b; --panel: #0f1115; --panel-2: #111318; --surface: #171a20; --surface-hover: #1f2937; --foreground: #f8fafc; --muted: #94a3b8; --muted-strong: #cbd5e1; --border-subtle: #252a34; --border-strong: #303642; --primary: #ff2b88; --primary-hover: #ff4b9b; --canvas-active-stroke: #ffffff; --canvas-selection-fill: rgba(255, 255, 255, 0.08); }
+.aohuang-canvas-page[data-canvas-theme="light"] { color-scheme: light; --background: #f8fbff; --panel: #ffffff; --panel-2: #ffffff; --surface: #eef6fb; --surface-hover: #e2edf3; --foreground: #1e293b; --muted: #64748b; --muted-strong: #475569; --border-subtle: #d9e7ee; --border-strong: #b9cbd5; --primary: #db2777; --primary-hover: #be185d; --canvas-active-stroke: #0f172a; --canvas-selection-fill: rgba(14, 116, 144, 0.08); }
 .aohuang-canvas-page[data-canvas-theme="light"] .canvas-stage,
-.aohuang-canvas-page[data-canvas-theme="light"] .react-flow { background: #f4f4f5; }
+.aohuang-canvas-page[data-canvas-theme="light"] .react-flow { background: var(--background); }
 
 .canvas-editor-backdrop {
   position: fixed;

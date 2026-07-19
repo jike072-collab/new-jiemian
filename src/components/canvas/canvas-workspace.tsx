@@ -92,7 +92,12 @@ import {
 import { BrandLogo } from "@/components/brand-logo";
 import { CanvasAssistantPanel } from "@/components/canvas/canvas-assistant-panel";
 import { CanvasSelectionHint, CanvasShortcutsPanel } from "@/components/canvas/canvas-shortcuts-panel";
-import { CanvasConnectionLine, CanvasEdge, CanvasEdgeActionsContext } from "@/components/canvas/canvas-edge";
+import {
+  CanvasBezierConnectionLine,
+  CanvasEdge,
+  CanvasSmoothStepConnectionLine,
+  CanvasStraightConnectionLine,
+} from "@/components/canvas/canvas-edge";
 import { CanvasImageEditor } from "@/components/canvas/canvas-image-editor";
 import { CanvasVozebTopbar } from "@/components/canvas/canvas-vozeb-shell";
 import {
@@ -143,15 +148,16 @@ type CanvasWorkspaceSnapshot = {
   title: string;
   document: CanvasProjectDocument;
 };
-type CanvasTheme = "midnight" | "graphite" | "light";
-type ConnectionStyle = "smoothstep" | "straight";
+type CanvasTheme = "midnight" | "light";
+type ConnectionStyle = "bezier" | "smoothstep" | "straight";
 type CanvasContextMenuState = {
-  kind: "pane" | "node" | "edge";
+  kind: "pane" | "node" | "edge" | "connection";
   left: number;
   top: number;
   flowPosition: { x: number; y: number };
   nodeId?: string;
   edgeId?: string;
+  sourceNodeId?: string;
 };
 type CanvasClipboard = { nodes: CanvasFlowNode[]; edges: Edge[] };
 type CanvasBatchArrangeMode = "left" | "horizontal-center" | "right" | "top" | "vertical-center" | "bottom" | "distribute-horizontal" | "distribute-vertical";
@@ -164,28 +170,26 @@ type CanvasMediaReference = {
 
 const nodeTypes = { canvas: CanvasNode, group: CanvasGroupNode };
 const edgeTypes = { "canvas-edge": CanvasEdge };
+const connectionLineComponents = {
+  bezier: CanvasBezierConnectionLine,
+  smoothstep: CanvasSmoothStepConnectionLine,
+  straight: CanvasStraightConnectionLine,
+};
 const emptyProviders: EnabledProviders = { image: [], video: [] };
 const defaultViewport: Viewport = { x: 0, y: 0, zoom: 1 };
 const libraryDragType = "application/x-aohuang-library-item";
-
-function canvasEdgeLabel(source: CanvasFlowNode | CanvasStoredNode | undefined) {
-  if (source?.data.kind === "prompt") return "提示词";
-  if (source?.data.kind === "media") return source.data.mediaType === "video" ? "参考视频" : source.data.mediaType === "audio" ? "参考音频" : "参考图";
-  if (source?.data.kind === "generator") return "生成结果";
-  return "输入";
-}
 
 function canvasNodeDragHandle(kind: CanvasNodeData["kind"]) {
   return kind === "group" ? ".canvas-node-group__header" : ".canvas-node__header";
 }
 
 function decorateCanvasEdge(edge: Edge | CanvasStoredEdge, nodes: Array<CanvasFlowNode | CanvasStoredNode>, routing: ConnectionStyle): Edge {
-  const source = nodes.find((node) => node.id === edge.source);
+  void nodes;
   const data = "data" in edge && edge.data && typeof edge.data === "object" ? edge.data : {};
   return {
     ...edge,
     type: "canvas-edge",
-    data: { ...data, routing, label: canvasEdgeLabel(source) },
+    data: { ...data, routing },
   };
 }
 
@@ -228,14 +232,15 @@ function canvasProjectPresenceUrl(id: string, clientId?: string) {
   return `/api/canvas/projects/${encodeURIComponent(id)}/presence?${query}`;
 }
 
-function storedCanvasSettings() {
-  const defaults = { theme: "midnight" as CanvasTheme, connectionStyle: "smoothstep" as ConnectionStyle, snapEnabled: false };
+function storedCanvasSettings(presentation: CanvasPresentation) {
+  const defaults = { theme: "midnight" as CanvasTheme, connectionStyle: "bezier" as ConnectionStyle, snapEnabled: false };
   if (typeof window === "undefined") return defaults;
   try {
-    const value = JSON.parse(window.localStorage.getItem("aohuang-canvas-settings") || "{}") as Partial<typeof defaults>;
+    const storageKey = presentation === "vozeb" ? "aohuang-canvas-v2-settings" : "aohuang-canvas-settings";
+    const value = JSON.parse(window.localStorage.getItem(storageKey) || "{}") as Partial<typeof defaults>;
     return {
-      theme: (["midnight", "graphite", "light"] as const).includes(value.theme as CanvasTheme) ? value.theme as CanvasTheme : defaults.theme,
-      connectionStyle: value.connectionStyle === "straight" ? "straight" as const : defaults.connectionStyle,
+      theme: (["midnight", "light"] as const).includes(value.theme as CanvasTheme) ? value.theme as CanvasTheme : defaults.theme,
+      connectionStyle: (["bezier", "smoothstep", "straight"] as const).includes(value.connectionStyle as ConnectionStyle) ? value.connectionStyle as ConnectionStyle : defaults.connectionStyle,
       snapEnabled: Boolean(value.snapEnabled),
     };
   } catch {
@@ -346,11 +351,12 @@ function CanvasWorkspaceInner({
   const [touchMultiSelect, setTouchMultiSelect] = useState(false);
   const [contextMenu, setContextMenu] = useState<CanvasContextMenuState | null>(null);
   const [clipboardHasNodes, setClipboardHasNodes] = useState(false);
-  const [canvasTheme, setCanvasTheme] = useState<CanvasTheme>(() => presentation === "vozeb" ? "light" : storedCanvasSettings().theme);
-  const [connectionStyle, setConnectionStyle] = useState<ConnectionStyle>(() => storedCanvasSettings().connectionStyle);
-  const [snapEnabled, setSnapEnabled] = useState(() => storedCanvasSettings().snapEnabled);
+  const [canvasTheme, setCanvasTheme] = useState<CanvasTheme>(() => storedCanvasSettings(presentation).theme);
+  const [connectionStyle, setConnectionStyle] = useState<ConnectionStyle>(() => storedCanvasSettings(presentation).connectionStyle);
+  const [snapEnabled, setSnapEnabled] = useState(() => storedCanvasSettings(presentation).snapEnabled);
   const [syncState, setSyncState] = useState<"live" | "syncing" | "paused">("live");
   const [compactViewport, setCompactViewport] = useState(false);
+  const [hoveredNodeId, setHoveredNodeId] = useState("");
   const [collaborationClientId] = useState(() => canvasId("client"));
   const [presenceMembers, setPresenceMembers] = useState<CanvasPresenceMember[]>([]);
   const [presenceEditingNodeId, setPresenceEditingNodeId] = useState("");
@@ -900,14 +906,14 @@ function CanvasWorkspaceInner({
       providerId: provider?.id || "",
       model: provider?.model || "",
       createdAt: new Date().toISOString(),
-      ...(kind === "image" ? { imageMode: "text-to-image" as const, count: 1 } : {}),
+      ...(kind === "image" ? { count: 1 } : {}),
       ratio: kind === "image" ? "1:1" : provider?.videoOptions?.ratios?.[0] || "16:9",
       quality: "1k",
       duration: provider?.videoOptions?.durations?.[0] || 5,
       resolution: provider?.videoOptions?.resolutions?.[0] || provider?.videoOptions?.resolution || "720p",
       status: "idle",
       progress: 0,
-    }, { width: 360, height: kind === "image" ? 430 : 410 }, position);
+    }, { width: 360, height: 370 }, position);
   }, [addNodeAtCenter]);
 
   const createGeneratorFromSelected = useCallback((node: CanvasFlowNode, kind: "image" | "video") => {
@@ -921,14 +927,14 @@ function CanvasWorkspaceInner({
       model: provider?.model || "",
       createdAt: new Date().toISOString(),
       sourceNodeIds: [node.id],
-      ...(kind === "image" ? { imageMode: node.data.kind === "media" ? "image-to-image" as const : "text-to-image" as const, count: 1 } : {}),
+      ...(kind === "image" ? { count: 1 } : {}),
       ratio: kind === "image" ? "1:1" : provider?.videoOptions?.ratios?.[0] || "16:9",
       quality: "1k",
       duration: provider?.videoOptions?.durations?.[0] || 5,
       resolution: provider?.videoOptions?.resolutions?.[0] || provider?.videoOptions?.resolution || "720p",
       status: "idle",
       progress: 0,
-    }, { width: 360, height: kind === "image" ? 430 : 410 });
+    }, { width: 360, height: 370 });
     setEdges((current) => [...current, decorateCanvasEdge({
       id: canvasId("edge"),
       source: node.id,
@@ -1166,11 +1172,7 @@ function CanvasWorkspaceInner({
     try {
       if (generator.data.generationKind === "image") {
         if (mediaItems.some((item) => item.type !== "image")) throw new Error("图片生成节点只能连接图片素材。");
-        const imageMode = generator.data.imageMode === "image-to-image" || (!generator.data.imageMode && mediaItems.length)
-          ? "image-to-image" as const
-          : "text-to-image" as const;
-        if (imageMode === "image-to-image" && !mediaItems.length) throw new Error("图生图需要至少连接一张图片素材。");
-        if (imageMode === "text-to-image" && mediaItems.length) throw new Error("文生图不能连接参考图，请切换到图生图。");
+        const imageMode = mediaItems.length ? "image-to-image" as const : "text-to-image" as const;
         await submitImageGeneration(generatorId, { ...generator.data, imageMode }, provider, prompt, mediaItems, addResultNode, updateNodeData, isInternalCanvas);
       } else {
         await submitVideoGeneration(generatorId, generator.data, provider as WorkspacePublicProvider, prompt, mediaItems, addResultNode, updateNodeData);
@@ -1301,17 +1303,40 @@ function CanvasWorkspaceInner({
     if (!dropTarget?.closest(".react-flow__pane") || dropTarget.closest(".react-flow__node, .react-flow__edge, .react-flow__panel, .canvas-bottom-dock")) return;
     const source = nodesRef.current.find((node) => node.id === sourceId);
     if (!source || (source.data.kind !== "prompt" && source.data.kind !== "media")) return;
-    const generator = addGeneratorNode("image", flow.screenToFlowPosition({ x: event.clientX, y: event.clientY }));
-    if (!generator) return;
-    setEdges((current) => addEdge(decorateCanvasEdge({
-      id: canvasId("edge"),
-      source: sourceId,
-      sourceHandle: "output",
-      target: generator.id,
-      targetHandle: "input",
-    }, nodesRef.current, connectionStyle), current));
-    markDirty();
-  }, [addGeneratorNode, connectionStyle, flow, markDirty]);
+    const bounds = stageRef.current?.getBoundingClientRect();
+    const left = event.clientX - (bounds?.left || 0);
+    const top = event.clientY - (bounds?.top || 0);
+    setContextMenu({
+      kind: "connection",
+      sourceNodeId: sourceId,
+      left: Math.max(8, Math.min(left, (bounds?.width || 320) - 296)),
+      top: Math.max(8, Math.min(top, (bounds?.height || 220) - 168)),
+      flowPosition: flow.screenToFlowPosition({ x: event.clientX, y: event.clientY }),
+    });
+  }, [flow]);
+
+  const addContextGenerator = useCallback((kind: "image" | "video", state: CanvasContextMenuState) => {
+    const source = state.kind === "connection" && state.sourceNodeId
+      ? nodesRef.current.find((node) => node.id === state.sourceNodeId)
+      : undefined;
+    if (state.kind === "connection" && (!source || (source.data.kind !== "prompt" && source.data.kind !== "media"))) {
+      setContextMenu(null);
+      return;
+    }
+    const generator = addGeneratorNode(kind, state.flowPosition);
+    if (generator && source) {
+      setEdges((current) => addEdge(decorateCanvasEdge({
+        id: canvasId("edge"),
+        source: source.id,
+        sourceHandle: "output",
+        target: generator.id,
+        targetHandle: "input",
+      }, nodesRef.current, connectionStyle), current));
+      setNodes((current) => current.map((node) => ({ ...node, selected: node.id === generator.id })));
+      markDirty();
+    }
+    setContextMenu(null);
+  }, [addGeneratorNode, connectionStyle, markDirty]);
 
   const onReconnect = useCallback((oldEdge: Edge, connection: Connection) => {
     if (!canConnect(connection, oldEdge.id)) {
@@ -1420,6 +1445,17 @@ function CanvasWorkspaceInner({
 
   const selectedNodes = useMemo(() => nodes.filter((node) => node.selected), [nodes]);
   const selectedNode = selectedNodes[0] || null;
+  const activeRelationNodeId = hoveredNodeId || (selectedNodes.length === 1 ? selectedNode?.id || "" : "");
+  const displayEdges = useMemo(() => edges.map((edge) => ({
+    ...edge,
+    data: { ...(edge.data || {}), active: Boolean(activeRelationNodeId && (edge.source === activeRelationNodeId || edge.target === activeRelationNodeId)) },
+  })), [activeRelationNodeId, edges]);
+  const contextSourceNode = contextMenu?.kind === "connection" && contextMenu.sourceNodeId
+    ? nodes.find((node) => node.id === contextMenu.sourceNodeId)
+    : undefined;
+  const contextCanAddImage = !contextSourceNode
+    || contextSourceNode.data.kind === "prompt"
+    || (contextSourceNode.data.kind === "media" && contextSourceNode.data.mediaType === "image");
   const editingNode = nodes.find((node) => node.id === editingNodeId && node.data.kind === "media" && node.data.mediaType === "image") || null;
   const selectionToolbarStyle = useMemo<CSSProperties | undefined>(() => {
     if (!selectedNodes.length) return undefined;
@@ -1453,8 +1489,6 @@ function CanvasWorkspaceInner({
     setContextMenu(null);
     markDirty();
   }, [markDirty, pushHistorySnapshot]);
-  const edgeActions = useMemo(() => ({ removeEdge }), [removeEdge]);
-
   const copySelectedNodes = useCallback(() => {
     const selected = copyableCanvasSelection(nodesRef.current);
     if (!selected.length) return;
@@ -2507,10 +2541,9 @@ function CanvasWorkspaceInner({
             />
           ) : null}
           <CanvasNodeActionsContext.Provider value={nodeActions}>
-            <CanvasEdgeActionsContext.Provider value={edgeActions}>
             <ReactFlow<CanvasFlowNode, Edge>
               nodes={nodes}
-              edges={edges}
+              edges={displayEdges}
               nodeTypes={nodeTypes}
               edgeTypes={edgeTypes}
               onNodesChange={onNodesChange}
@@ -2522,6 +2555,8 @@ function CanvasWorkspaceInner({
               onPaneClick={() => setContextMenu(null)}
               onPaneContextMenu={(event) => openContextMenu(event, "pane")}
               onNodeContextMenu={(event, node) => openContextMenu(event, "node", node.id)}
+              onNodeMouseEnter={(_, node) => setHoveredNodeId(node.id)}
+              onNodeMouseLeave={(_, node) => setHoveredNodeId((current) => current === node.id ? "" : current)}
               onNodeClick={(event, node) => {
                 if (!touchMultiSelect) return;
                 event.preventDefault();
@@ -2551,7 +2586,7 @@ function CanvasWorkspaceInner({
                 markerEnd: { type: MarkerType.ArrowClosed },
                 style: { strokeWidth: 1.5 },
               }}
-              connectionLineComponent={CanvasConnectionLine}
+              connectionLineComponent={connectionLineComponents[connectionStyle]}
               connectionDragThreshold={10}
               defaultViewport={viewport}
               minZoom={0.08}
@@ -2573,16 +2608,16 @@ function CanvasWorkspaceInner({
               <MiniMap pannable zoomable nodeColor={miniMapColor} />
               <Controls showInteractive={false} />
             </ReactFlow>
-            </CanvasEdgeActionsContext.Provider>
           </CanvasNodeActionsContext.Provider>
           {contextMenu ? (
             <CanvasContextMenu
               state={contextMenu}
               canPaste={clipboardHasNodes}
+              canAddImage={contextCanAddImage}
               isGroup={Boolean(contextMenu.nodeId && nodes.find((node) => node.id === contextMenu.nodeId)?.data.kind === "group")}
               onAddPrompt={() => { addPromptNode(undefined, contextMenu.flowPosition); setContextMenu(null); }}
-              onAddImage={() => { addGeneratorNode("image", contextMenu.flowPosition); setContextMenu(null); }}
-              onAddVideo={() => { addGeneratorNode("video", contextMenu.flowPosition); setContextMenu(null); }}
+              onAddImage={() => addContextGenerator("image", contextMenu)}
+              onAddVideo={() => addContextGenerator("video", contextMenu)}
               onAddAudio={isInternalCanvas ? () => { audioInputRef.current?.click(); setContextMenu(null); } : undefined}
               onCopy={copySelectedNodes}
               onPaste={() => pasteCopiedNodes(contextMenu.flowPosition)}
@@ -2594,6 +2629,7 @@ function CanvasWorkspaceInner({
                 else removeSelectedNodes();
               }}
               onFit={() => { void flow.fitView({ padding: 0.18, duration: 280 }); setContextMenu(null); }}
+              onClose={() => setContextMenu(null)}
             />
           ) : null}
           <CanvasBottomDock
@@ -2955,6 +2991,7 @@ function chooseBatchArrange(event: ReactMouseEvent<HTMLButtonElement>, onArrange
 function CanvasContextMenu({
   state,
   canPaste,
+  canAddImage,
   isGroup,
   onAddPrompt,
   onAddImage,
@@ -2967,9 +3004,11 @@ function CanvasContextMenu({
   onUngroup,
   onDelete,
   onFit,
+  onClose,
 }: {
   state: CanvasContextMenuState;
   canPaste: boolean;
+  canAddImage: boolean;
   isGroup: boolean;
   onAddPrompt: () => void;
   onAddImage: () => void;
@@ -2982,9 +3021,17 @@ function CanvasContextMenu({
   onUngroup: () => void;
   onDelete: () => void;
   onFit: () => void;
+  onClose: () => void;
 }) {
   return (
-    <div className="canvas-context-menu" style={{ left: state.left, top: state.top }} role="menu" aria-label="画布快捷菜单">
+    <div className={cn("canvas-context-menu", state.kind === "connection" && "is-connection-create")} style={{ left: state.left, top: state.top }} role="menu" aria-label={state.kind === "connection" ? "选择连接目标" : "画布快捷菜单"} onPointerDown={(event) => event.stopPropagation()}>
+      {state.kind === "connection" ? (
+        <>
+          <div className="canvas-context-menu__heading"><span>引用该节点生成</span><button type="button" onClick={onClose} aria-label="关闭选择菜单" title="关闭"><X /></button></div>
+          <button type="button" role="menuitem" className="canvas-context-menu__create-option" onClick={onAddImage} disabled={!canAddImage} title={canAddImage ? "创建图片生成节点" : "视频和音频素材不能连接图片生成节点"}><span><ImageIcon /></span><span><b>图片生成</b><small>使用提示词或参考图生成</small></span></button>
+          <button type="button" role="menuitem" className="canvas-context-menu__create-option" onClick={onAddVideo}><span><Film /></span><span><b>视频生成</b><small>支持提示词、图片、视频和音频</small></span></button>
+        </>
+      ) : null}
       {state.kind === "pane" ? (
         <>
           <button type="button" role="menuitem" onClick={onAddPrompt}><Type /><span>添加提示词</span></button>
@@ -3038,9 +3085,9 @@ function CanvasSettingsPanel({
     <aside className="canvas-settings" aria-label="画布设置">
       <header><div><Settings2 /><strong>画布设置</strong></div><button type="button" className="canvas-icon-button" onClick={onClose} title="关闭画布设置" aria-label="关闭画布设置"><X /></button></header>
       <section><strong><Palette />主题</strong><div className="canvas-settings__swatches">
-        {(["midnight", "graphite", "light"] as const).map((value) => <button key={value} type="button" className={cn(`is-${value}`, theme === value && "is-active")} onClick={() => onTheme(value)} aria-label={value === "midnight" ? "深夜主题" : value === "graphite" ? "石墨主题" : "明亮主题"} title={value === "midnight" ? "深夜" : value === "graphite" ? "石墨" : "明亮"} />)}
+        {(["midnight", "light"] as const).map((value) => <button key={value} type="button" className={cn(`is-${value}`, theme === value && "is-active")} onClick={() => onTheme(value)} aria-label={value === "midnight" ? "深色主题" : "亮色主题"} title={value === "midnight" ? "深色" : "亮色"} />)}
       </div></section>
-      <section><strong>连接线</strong><div className="canvas-settings__segments"><button type="button" className={connectionStyle === "smoothstep" ? "is-active" : undefined} onClick={() => onConnectionStyle("smoothstep")}>曲线</button><button type="button" className={connectionStyle === "straight" ? "is-active" : undefined} onClick={() => onConnectionStyle("straight")}>直线</button></div></section>
+      <section><strong>连接线</strong><div className="canvas-settings__segments"><button type="button" className={connectionStyle === "bezier" ? "is-active" : undefined} onClick={() => onConnectionStyle("bezier")}>弧线</button><button type="button" className={connectionStyle === "smoothstep" ? "is-active" : undefined} onClick={() => onConnectionStyle("smoothstep")}>折线</button><button type="button" className={connectionStyle === "straight" ? "is-active" : undefined} onClick={() => onConnectionStyle("straight")}>直线</button></div></section>
       <label className="canvas-settings__toggle"><input type="checkbox" checked={snapEnabled} onChange={(event) => onSnapEnabled(event.target.checked)} /><span>节点对齐网格</span></label>
       <section><strong>排列</strong><div className="canvas-settings__commands"><button type="button" onClick={() => onOrganize("flow")}>流程排列</button><button type="button" onClick={() => onOrganize("grid")}>网格排列</button></div></section>
       <div className="canvas-settings__commands"><button type="button" onClick={onExportImage}><Download />导出图片</button><button type="button" className="is-danger" onClick={onClean}><Eraser />清理节点</button></div>
@@ -3301,7 +3348,6 @@ function CanvasNodeInfoPanel({
             <strong>生成参数</strong>
             <ul>
               <li>模式: {data.generationKind}</li>
-              <li>图片模式: {data.imageMode || "--"}</li>
               <li>数量: {data.count || 1}</li>
               <li>比例: {data.ratio || "--"}</li>
               <li>清晰度: {data.quality || "--"}</li>
@@ -3315,7 +3361,7 @@ function CanvasNodeInfoPanel({
         ) : null}
         <div className="canvas-node-info__section canvas-node-info__relations">
           <strong>节点关系</strong>
-          <div><span>输入来源</span>{sourceNodes.length ? <ul>{sourceNodes.map((source) => <li key={source.id}>{source.data.title} · {canvasEdgeLabel(source)}</li>)}</ul> : <p>无输入连接</p>}</div>
+          <div><span>输入来源</span>{sourceNodes.length ? <ul>{sourceNodes.map((source) => <li key={source.id}>{source.data.title} · {source.data.kind}</li>)}</ul> : <p>无输入连接</p>}</div>
           <div><span>输出去向</span>{targetNodes.length ? <ul>{targetNodes.map((target) => <li key={target.id}>{target.data.title} · {target.data.kind}</li>)}</ul> : <p>无输出连接</p>}</div>
           {parentNode ? <div><span>所属分组</span><p>{parentNode.data.title}</p></div> : null}
           {childNodes.length ? <div><span>分组成员</span><ul>{childNodes.map((child) => <li key={child.id}>{child.data.title} · {child.data.kind}</li>)}</ul></div> : null}
@@ -3846,13 +3892,12 @@ function starterDocument(): CanvasProjectDocument {
         type: "canvas",
         position: { x: 540, y: 90 },
         width: 360,
-        height: 430,
+        height: 370,
         data: {
           kind: "generator",
           title: "图片生成",
           generationKind: "image",
           providerId: "",
-          imageMode: "text-to-image",
           count: 1,
           ratio: "1:1",
           quality: "1k",
