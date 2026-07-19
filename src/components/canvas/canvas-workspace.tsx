@@ -36,6 +36,7 @@ import {
   Play,
   Plus,
   Redo2,
+  RefreshCw,
   Save,
   Search,
   Settings2,
@@ -726,6 +727,14 @@ function CanvasWorkspaceInner({ accountName, isTeamOwner, isInternalCanvas }: { 
   }, [addNodeAtCenter, connectionStyle, markDirty]);
 
   const addLibraryNode = useCallback((item: LibraryItem, position?: { x: number; y: number }) => {
+    const existing = nodesRef.current.find((node) => node.data.kind === "media" && node.data.libraryItemId === item.id);
+    if (existing) {
+      setNodes((current) => current.map((node) => ({ ...node, selected: node.id === existing.id })));
+      setEdges((current) => current.map((edge) => ({ ...edge, selected: false })));
+      setNotice(`素材“${item.title}”已在画布中。`);
+      void flow.setCenter(existing.position.x + (existing.width || 320) / 2, existing.position.y + (existing.height || 300) / 2, { duration: 240, zoom: Math.max(flow.getZoom(), 0.7) });
+      return;
+    }
     pushHistorySnapshot();
     const data: CanvasNodeData = {
       kind: "media",
@@ -753,7 +762,74 @@ function CanvasWorkspaceInner({ accountName, isTeamOwner, isInternalCanvas }: { 
       data,
     }]);
     markDirty();
-  }, [addNodeAtCenter, markDirty, pushHistorySnapshot]);
+  }, [addNodeAtCenter, flow, markDirty, pushHistorySnapshot]);
+
+  const addLibraryNodes = useCallback((items: LibraryItem[]) => {
+    const existingIds = new Set(nodesRef.current.flatMap((node) => node.data.kind === "media" && node.data.libraryItemId ? [node.data.libraryItemId] : []));
+    const seen = new Set<string>();
+    const additions = items.filter((item) => !existingIds.has(item.id) && !seen.has(item.id) && seen.add(item.id));
+    const skipped = items.length - additions.length;
+    if (!additions.length) {
+      setNotice("所选素材已全部在画布中。");
+      return;
+    }
+    pushHistorySnapshot();
+    const center = flow.screenToFlowPosition({ x: window.innerWidth / 2, y: window.innerHeight / 2 });
+    const columns = Math.min(3, additions.length);
+    const nextNodes = additions.map((item, index): CanvasFlowNode => ({
+      id: canvasId("node"),
+      type: "canvas",
+      dragHandle: ".canvas-node__header",
+      position: { x: center.x + (index % columns) * 350, y: center.y + Math.floor(index / columns) * 370 },
+      width: 320,
+      height: item.type === "image" ? 300 : 340,
+      data: {
+        kind: "media",
+        title: item.title || (item.type === "image" ? "图片素材" : "视频素材"),
+        mediaType: item.type,
+        libraryItemId: item.id,
+        model: item.model,
+        createdAt: item.createdAt,
+        mediaUrl: item.output?.url,
+        status: libraryStatus(item),
+        progress: 0,
+        error: item.error || undefined,
+      },
+    }));
+    setNodes((current) => [...current.map((node) => ({ ...node, selected: false })), ...nextNodes.map((node) => ({ ...node, selected: true }))]);
+    markDirty();
+    setNotice(`已添加 ${additions.length} 个素材${skipped ? `，跳过 ${skipped} 个重复项` : ""}。`);
+  }, [flow, markDirty, pushHistorySnapshot]);
+
+  const replaceSelectedMaterial = useCallback((item: LibraryItem) => {
+    const selected = nodesRef.current.find((node) => node.selected && node.data.kind === "media");
+    if (!selected) {
+      setNotice("请先选择一个素材节点再替换。");
+      return;
+    }
+    if (nodesRef.current.some((node) => node.id !== selected.id && node.data.kind === "media" && node.data.libraryItemId === item.id)) {
+      setNotice(`素材“${item.title}”已在画布中，未重复替换。`);
+      return;
+    }
+    pushHistorySnapshot();
+    setNodes((current) => current.map((node) => node.id === selected.id ? {
+      ...node,
+      data: {
+        ...node.data,
+        title: item.title || (item.type === "image" ? "图片素材" : "视频素材"),
+        mediaType: item.type,
+        libraryItemId: item.id,
+        model: item.model,
+        createdAt: item.createdAt,
+        mediaUrl: item.output?.url,
+        status: libraryStatus(item),
+        progress: 0,
+        error: item.error || undefined,
+      },
+    } : node));
+    markDirty();
+    setNotice(`已将节点替换为“${item.title}”。`);
+  }, [markDirty, pushHistorySnapshot]);
 
   const addResultNode = useCallback((generatorId: string, item: LibraryItem, job?: JobRecord | null, resultIndex = 0, resultTotal = 1) => {
     const generator = nodesRef.current.find((node) => node.id === generatorId);
@@ -1908,6 +1984,9 @@ function CanvasWorkspaceInner({ accountName, isTeamOwner, isInternalCanvas }: { 
           onFilter={setLibraryFilter}
           onSearch={setLibrarySearch}
           onAdd={addLibraryNode}
+          onAddMany={addLibraryNodes}
+          canReplace={selectedNode?.data.kind === "media"}
+          onReplace={replaceSelectedMaterial}
           onRename={(item) => { void renameLibraryItem(item); }}
           onFavorite={(item) => { void toggleLibraryFavorite(item); }}
           onCopyLink={(item) => { void copyLibraryItemLink(item); }}
@@ -2884,7 +2963,7 @@ function TeamPanel({ onClose, allowCreateMembers }: { onClose: () => void; allow
   );
 }
 
-function LibraryPanel({ open, items, filter, search, onClose, onFilter, onSearch, onAdd, onRename, onFavorite, onCopyLink, onDownload, onDelete }: {
+function LibraryPanel({ open, items, filter, search, onClose, onFilter, onSearch, onAdd, onAddMany, canReplace, onReplace, onRename, onFavorite, onCopyLink, onDownload, onDelete }: {
   open: boolean;
   items: LibraryItem[];
   filter: LibraryFilter;
@@ -2893,12 +2972,17 @@ function LibraryPanel({ open, items, filter, search, onClose, onFilter, onSearch
   onFilter: (filter: LibraryFilter) => void;
   onSearch: (search: string) => void;
   onAdd: (item: LibraryItem) => void;
+  onAddMany: (items: LibraryItem[]) => void;
+  canReplace: boolean;
+  onReplace: (item: LibraryItem) => void;
   onRename: (item: LibraryItem) => void;
   onFavorite: (item: LibraryItem) => void;
   onCopyLink: (item: LibraryItem) => void;
   onDownload: (item: LibraryItem) => void;
   onDelete: (item: LibraryItem) => void;
 }) {
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(() => new Set());
+  const selectedItems = items.filter((item) => selectedIds.has(item.id));
   return (
     <aside className={cn("canvas-library", open && "is-open")} aria-hidden={!open}>
       <div className="canvas-library__header">
@@ -2916,17 +3000,28 @@ function LibraryPanel({ open, items, filter, search, onClose, onFilter, onSearch
           </button>
         ))}
       </div>
+      <div className="canvas-library__batch">
+        <span>{selectedItems.length ? `已选 ${selectedItems.length} 项` : "批量选择素材"}</span>
+        <button type="button" disabled={!selectedItems.length} onClick={() => { onAddMany(selectedItems); setSelectedIds(new Set()); }}><Plus />添加所选</button>
+        <button type="button" disabled={!selectedIds.size} onClick={() => setSelectedIds(new Set())}>清除</button>
+      </div>
       <div className="canvas-library__list">
         {items.map((item) => (
           <div
             key={item.id}
-            className="canvas-library-item"
+            className={cn("canvas-library-item", selectedIds.has(item.id) && "is-selected")}
             draggable
             onDragStart={(event) => {
               event.dataTransfer.setData(libraryDragType, item.id);
               event.dataTransfer.effectAllowed = "copy";
             }}
           >
+            <label className="canvas-library-item__select"><input type="checkbox" checked={selectedIds.has(item.id)} aria-label={`选择${item.title}`} onChange={(event) => setSelectedIds((current) => {
+              const next = new Set(current);
+              if (event.target.checked) next.add(item.id);
+              else next.delete(item.id);
+              return next;
+            })} /></label>
             <button type="button" className="canvas-library-item__main" onClick={() => onAdd(item)}>
               <span className="canvas-library-item__preview">
                 {item.output?.url && item.type === "image" ? (
@@ -2941,6 +3036,7 @@ function LibraryPanel({ open, items, filter, search, onClose, onFilter, onSearch
               <Plus />
             </button>
             <div className="canvas-library-item__actions">
+              <button type="button" disabled={!canReplace} onClick={() => onReplace(item)} title="替换选中素材" aria-label="替换选中素材"><RefreshCw /></button>
               <button type="button" className={cn(Boolean(item.favorite || item.params.favorite) && "is-active")} onClick={() => onFavorite(item)} title="收藏" aria-label="收藏"><Star /></button>
               <button type="button" onClick={() => onRename(item)} title="重命名" aria-label="重命名"><Type /></button>
               <button type="button" disabled={!item.output?.url} onClick={() => onCopyLink(item)} title="复制链接" aria-label="复制链接"><Copy /></button>

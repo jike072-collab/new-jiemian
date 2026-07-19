@@ -615,7 +615,7 @@
   display: grid;
   width: 0;
   min-width: 0;
-  grid-template-rows: auto auto auto minmax(0, 1fr);
+  grid-template-rows: auto auto auto auto minmax(0, 1fr);
   overflow: hidden;
   border-right: 0 solid var(--border-subtle);
   background: var(--panel);
@@ -682,6 +682,12 @@
 
 .canvas-library__tabs button.is-active { border-bottom-color: var(--primary); }
 
+.canvas-library__batch { display: flex; min-width: 0; align-items: center; gap: 5px; padding: 8px 10px; border-bottom: 1px solid var(--border-subtle); }
+.canvas-library__batch span { min-width: 0; flex: 1; overflow: hidden; color: var(--muted); text-overflow: ellipsis; white-space: nowrap; font-size: 10px; }
+.canvas-library__batch button { display: inline-flex; height: 28px; align-items: center; gap: 4px; border: 1px solid var(--border-subtle); border-radius: 5px; background: var(--surface); color: var(--muted-strong); cursor: pointer; padding: 0 7px; font-size: 10px; }
+.canvas-library__batch button:disabled { cursor: default; opacity: 0.4; }
+.canvas-library__batch svg { width: 13px; }
+
 .canvas-library__list {
   min-height: 0;
   overflow: auto;
@@ -692,7 +698,8 @@
   display: grid;
   width: 100%;
   min-width: 0;
-  gap: 9px;
+  grid-template-columns: 18px minmax(0, 1fr);
+  gap: 9px 5px;
   padding: 8px;
   border: 1px solid transparent;
   border-radius: 7px;
@@ -701,6 +708,9 @@
   text-align: left;
   cursor: grab;
 }
+.canvas-library-item.is-selected { border-color: color-mix(in srgb, var(--primary) 55%, transparent); background: color-mix(in srgb, var(--primary) 7%, transparent); }
+.canvas-library-item__select { display: grid; align-self: center; place-items: center; }
+.canvas-library-item__select input { width: 15px; height: 15px; margin: 0; accent-color: var(--primary); }
 
 .canvas-library-item__main {
   display: flex;
@@ -722,6 +732,7 @@
   gap: 3px;
   padding-top: 6px;
   border-top: 1px solid var(--border-subtle);
+  grid-column: 1 / -1;
 }
 
 .canvas-library-item__actions button {
