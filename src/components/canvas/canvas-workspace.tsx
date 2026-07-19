@@ -21,6 +21,7 @@ import {
   Link2,
   Lock,
   Maximize2,
+  MousePointer2,
   PanelLeftClose,
   PanelLeftOpen,
   Palette,
@@ -1624,6 +1625,32 @@ function CanvasWorkspaceInner({ accountName, isTeamOwner, isInternalCanvas }: { 
     anchor.click();
   }, []);
 
+  const selectAllVisibleNodes = useCallback(() => {
+    setNodes((current) => current.map((node) => ({ ...node, selected: !node.hidden })));
+    setEdges((current) => current.map((edge) => ({ ...edge, selected: false })));
+    setContextMenu(null);
+  }, []);
+
+  const nudgeSelectedNodes = useCallback((deltaX: number, deltaY: number) => {
+    const selected = nodesRef.current.filter((node) => node.selected && !node.hidden && !node.data.locked);
+    if (!selected.length) return;
+    const movableIds = new Set(selected.map((node) => node.id));
+    const nodeById = new Map(nodesRef.current.map((node) => [node.id, node]));
+    pushHistorySnapshot();
+    setNodes((current) => current.map((node) => {
+      if (!movableIds.has(node.id) || (node.parentId && movableIds.has(node.parentId))) return node;
+      let x = node.position.x + deltaX;
+      let y = node.position.y + deltaY;
+      const parent = node.parentId ? nodeById.get(node.parentId) : undefined;
+      if (parent?.width && parent.height && node.width && node.height) {
+        x = Math.max(0, Math.min(parent.width - node.width, x));
+        y = Math.max(0, Math.min(parent.height - node.height, y));
+      }
+      return { ...node, position: { x, y } };
+    }));
+    markDirty();
+  }, [markDirty, pushHistorySnapshot]);
+
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
       const target = event.target as HTMLElement | null;
@@ -1641,6 +1668,9 @@ function CanvasWorkspaceInner({ accountName, isTeamOwner, isInternalCanvas }: { 
       } else if (command && event.shiftKey && event.key.toLowerCase() === "e") {
         event.preventDefault();
         exportCanvasImage();
+      } else if (command && event.key.toLowerCase() === "a" && !typing) {
+        event.preventDefault();
+        selectAllVisibleNodes();
       } else if (command && event.key.toLowerCase() === "d" && !typing) {
         event.preventDefault();
         duplicateSelectedNodes();
@@ -1650,6 +1680,13 @@ function CanvasWorkspaceInner({ accountName, isTeamOwner, isInternalCanvas }: { 
       } else if (command && event.key.toLowerCase() === "v" && !typing) {
         event.preventDefault();
         pasteCopiedNodes();
+      } else if (!typing && ["ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown"].includes(event.key)) {
+        event.preventDefault();
+        const distance = event.shiftKey ? 10 : 1;
+        nudgeSelectedNodes(
+          event.key === "ArrowLeft" ? -distance : event.key === "ArrowRight" ? distance : 0,
+          event.key === "ArrowUp" ? -distance : event.key === "ArrowDown" ? distance : 0,
+        );
       } else if (!typing && (event.key === "Delete" || event.key === "Backspace")) {
         event.preventDefault();
         removeSelectedNodes();
@@ -1668,7 +1705,7 @@ function CanvasWorkspaceInner({ accountName, isTeamOwner, isInternalCanvas }: { 
     };
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [copySelectedNodes, duplicateSelectedNodes, exportCanvasImage, isInternalCanvas, pasteCopiedNodes, redoCanvas, removeSelectedNodes, saveNow, undoCanvas]);
+  }, [copySelectedNodes, duplicateSelectedNodes, exportCanvasImage, isInternalCanvas, nudgeSelectedNodes, pasteCopiedNodes, redoCanvas, removeSelectedNodes, saveNow, selectAllVisibleNodes, undoCanvas]);
 
   if (loading) {
     return <div className="canvas-loading"><LoaderCircle className="is-spinning" /><span>正在打开创作画布</span></div>;
@@ -1858,6 +1895,7 @@ function CanvasWorkspaceInner({ accountName, isTeamOwner, isInternalCanvas }: { 
               onAddVideo={() => { addGeneratorNode("video", contextMenu.flowPosition); setContextMenu(null); }}
               onCopy={copySelectedNodes}
               onPaste={() => pasteCopiedNodes(contextMenu.flowPosition)}
+              onSelectAll={selectAllVisibleNodes}
               onInfo={() => { setInfoOpen(true); setContextMenu(null); }}
               onUngroup={ungroupSelectedNodes}
               onDelete={() => {
@@ -2184,6 +2222,7 @@ function CanvasContextMenu({
   onAddVideo,
   onCopy,
   onPaste,
+  onSelectAll,
   onInfo,
   onUngroup,
   onDelete,
@@ -2197,6 +2236,7 @@ function CanvasContextMenu({
   onAddVideo: () => void;
   onCopy: () => void;
   onPaste: () => void;
+  onSelectAll: () => void;
   onInfo: () => void;
   onUngroup: () => void;
   onDelete: () => void;
@@ -2210,6 +2250,7 @@ function CanvasContextMenu({
           <button type="button" role="menuitem" onClick={onAddImage}><ImageIcon /><span>添加生图节点</span></button>
           <button type="button" role="menuitem" onClick={onAddVideo}><Film /><span>添加视频节点</span></button>
           <button type="button" role="menuitem" onClick={onPaste} disabled={!canPaste}><CopyPlus /><span>粘贴节点</span><kbd>Ctrl V</kbd></button>
+          <button type="button" role="menuitem" onClick={onSelectAll}><MousePointer2 /><span>全选节点</span><kbd>Ctrl A</kbd></button>
           <button type="button" role="menuitem" onClick={onFit}><Maximize2 /><span>查看全部</span></button>
         </>
       ) : null}
