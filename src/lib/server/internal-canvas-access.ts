@@ -80,6 +80,24 @@ export async function requireInternalCanvasOwner(localUserId: string) {
   return access;
 }
 
+export async function getInternalCanvasWorkspaceOwner(localUserId: string) {
+  const access = await getInternalCanvasAccess(localUserId);
+  if (!access?.enabled) {
+    throw new InternalCanvasAccessError("INTERNAL_ACCESS_FORBIDDEN", "当前账号没有内部画布权限。", 403);
+  }
+  if (access.role === "owner") return localUserId;
+  const result = await applicationQuery<{ local_user_id: string }>(`
+    select local_user_id
+    from internal_canvas_access
+    where access_role = 'owner' and enabled = true
+    order by created_at asc
+    limit 1
+  `);
+  const ownerId = result.rows[0]?.local_user_id;
+  if (!ownerId) throw new InternalCanvasAccessError("INTERNAL_ACCESS_NOT_FOUND", "内部画布所有者不存在。", 404);
+  return ownerId;
+}
+
 export async function listInternalCanvasAccessCandidates(ownerId: string, query = "") {
   await requireInternalCanvasOwner(ownerId);
   const normalizedQuery = normalizeIdentifier(query);

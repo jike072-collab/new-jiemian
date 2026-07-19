@@ -223,6 +223,27 @@ export async function updateLibraryItem(id: string, patch: Partial<LibraryItem>)
   return updated;
 }
 
+export async function updateLibraryItemForOwner(
+  id: string,
+  ownerLocalUserId: string,
+  input: { title?: string; favorite?: boolean },
+) {
+  const item = (await readLibrary()).find((candidate) => candidate.id === id && isOwnedBy(candidate, ownerLocalUserId));
+  if (!item) throw new LibraryOperationError(404, "Library item not found.");
+  const title = typeof input.title === "string" ? input.title.trim().slice(0, 120) : undefined;
+  if (input.title !== undefined && !title) throw new LibraryOperationError(400, "Library title is required.");
+  const patch: Partial<LibraryItem> = {
+    ...(title ? { title } : {}),
+    ...(typeof input.favorite === "boolean" ? {
+      favorite: input.favorite,
+      params: { ...item.params, favorite: input.favorite },
+    } : {}),
+  };
+  const updated = await updateLibraryItem(id, patch);
+  if (!updated) throw new LibraryOperationError(404, "Library item not found.");
+  return updated;
+}
+
 export async function expireLibraryItemMedia(item: LibraryItem, expiredAt: string) {
   const patch: Partial<LibraryItem> = {
     output: undefined,

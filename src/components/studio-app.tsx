@@ -1588,7 +1588,7 @@ export function StudioApp() {
     setDeletingLibraryItemId(id);
     setLibraryError("");
     try {
-      await jsonFetch("/api/library", {
+      await fetchJsonWithCsrf("/api/library", {
         method: "DELETE",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ id }),
@@ -1629,7 +1629,7 @@ export function StudioApp() {
     setBulkDeletingLibrary(true);
     setLibraryError("");
     try {
-      const result = await jsonFetch<{ deletedIds?: string[] }>("/api/library", {
+      const result = await fetchJsonWithCsrf<{ deletedIds?: string[] }>("/api/library", {
         method: "DELETE",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ ids: deleteIds }),

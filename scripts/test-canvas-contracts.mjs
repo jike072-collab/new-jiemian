@@ -11,6 +11,10 @@ const projectRoute = read("src/app/api/canvas/projects/[id]/route.ts");
 const workspace = read("src/components/canvas/canvas-workspace.tsx");
 const canvasNode = read("src/components/canvas/canvas-node.tsx");
 const canvasCss = read("src/app/canvas/canvas.css");
+const assistantPanel = read("src/components/canvas/canvas-assistant-panel.tsx");
+const imageEditor = read("src/components/canvas/canvas-image-editor.tsx");
+const libraryRoute = read("src/app/api/library/route.ts");
+const workspaceAccess = read("src/lib/server/canvas-workspace-access.ts");
 const repository = read("src/lib/server/canvas-projects.ts");
 const migration = read("db/migrations/017_canvas_projects.sql");
 
@@ -69,6 +73,24 @@ assert.match(canvasNode, /inputPreviews/);
 assert.match(canvasNode, /canvas-node__preview-strip/);
 assert.match(canvasCss, /canvas-node-info/);
 assert.match(canvasCss, /canvas-node__preview-strip/);
+assert.match(workspace, /selectedNodes/);
+assert.match(workspace, /duplicateSelectedNodes/);
+assert.match(workspace, /connectSelectedNodes/);
+assert.match(workspace, /cleanCanvas/);
+assert.match(workspace, /exportCanvasImage/);
+assert.match(workspace, /window\.addEventListener\("keydown"/);
+assert.match(workspace, /BroadcastChannel\("aohuang-internal-canvas"\)/);
+assert.match(workspace, /scope=\$\{canvasScope\(\)\}/);
+assert.match(workspaceAccess, /scope.*personal/);
+assert.match(assistantPanel, /\/api\/canvas\/assistant/);
+assert.match(imageEditor, /destination-out/);
+assert.match(imageEditor, /cropToAspect/);
+assert.match(libraryRoute, /export async function PATCH/);
+assert.match(libraryRoute, /requireCsrf/);
+assert.match(canvasCss, /\.canvas-node__body--generator[^}]+overflow: visible/s);
+assert.match(canvasCss, /\.react-flow__node-canvas:has\(\.canvas-node--generator\)/);
+assert.match(canvasCss, /canvas-image-editor/);
+assert.match(canvasCss, /data-canvas-theme="light"/);
 
 console.log(JSON.stringify({
   ok: true,

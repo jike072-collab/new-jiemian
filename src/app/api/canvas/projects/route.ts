@@ -3,7 +3,9 @@ import { type NextRequest, NextResponse } from "next/server";
 import { CanvasDocumentError, emptyCanvasDocument } from "@/lib/canvas/document";
 import { authResultResponse, csrfFailure, requireAuthSession, requireCsrf } from "@/lib/server/auth";
 import { CanvasProjectError, createCanvasProject, listCanvasProjects } from "@/lib/server/canvas-projects";
+import { resolveCanvasWorkspaceOwner } from "@/lib/server/canvas-workspace-access";
 import { diagnosticErrorResponse } from "@/lib/server/error-diagnostics";
+import { InternalCanvasAccessError } from "@/lib/server/internal-canvas-access";
 
 export const runtime = "nodejs";
 
@@ -11,7 +13,8 @@ export async function GET(request: NextRequest) {
   try {
     const session = await requireAuthSession(request);
     if (!session.ok) return authResultResponse(request, session);
-    return NextResponse.json({ projects: await listCanvasProjects(session.user.local_user_id) });
+    const ownerId = await resolveCanvasWorkspaceOwner(request, session.user.local_user_id);
+    return NextResponse.json({ projects: await listCanvasProjects(ownerId) });
   } catch (error) {
     return canvasProjectErrorResponse(request, error, "读取画布失败。");
   }
@@ -23,8 +26,9 @@ export async function POST(request: NextRequest) {
     const session = await requireAuthSession(request);
     if (!session.ok) return authResultResponse(request, session);
     const body = await readCanvasBody(request);
+    const ownerId = await resolveCanvasWorkspaceOwner(request, session.user.local_user_id);
     const project = await createCanvasProject({
-      userId: session.user.local_user_id,
+      userId: ownerId,
       title: body.title || "未命名画布",
       document: body.document || emptyCanvasDocument(),
     });
@@ -48,7 +52,7 @@ async function readCanvasBody(request: NextRequest) {
 }
 
 function canvasProjectErrorResponse(request: NextRequest, error: unknown, fallbackMessage: string) {
-  if (error instanceof CanvasDocumentError || error instanceof CanvasProjectError) {
+  if (error instanceof CanvasDocumentError || error instanceof CanvasProjectError || error instanceof InternalCanvasAccessError) {
     return NextResponse.json({ ok: false, code: error.code, message: error.message }, { status: error.status });
   }
   return diagnosticErrorResponse(error, {

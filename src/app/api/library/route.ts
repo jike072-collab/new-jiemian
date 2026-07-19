@@ -1,8 +1,8 @@
 import { type NextRequest, NextResponse } from "next/server";
 
-import { authResultResponse, requireAuthSession } from "@/lib/server/auth";
+import { authResultResponse, csrfFailure, requireAuthSession, requireCsrf } from "@/lib/server/auth";
 import { diagnosticErrorResponse, GenerationDiagnosticError } from "@/lib/server/error-diagnostics";
-import { deleteLibraryItemForOwner, deleteLibraryItemsForOwner, LibraryOperationError, readLibraryMetadataForOwner } from "@/lib/server/library";
+import { deleteLibraryItemForOwner, deleteLibraryItemsForOwner, LibraryOperationError, readLibraryMetadataForOwner, updateLibraryItemForOwner } from "@/lib/server/library";
 
 export const runtime = "nodejs";
 
@@ -18,6 +18,7 @@ export async function GET(request: NextRequest) {
 
 export async function DELETE(request: NextRequest) {
   try {
+    if (!requireCsrf(request)) return authResultResponse(request, csrfFailure());
     const session = await requireAuthSession(request);
     if (!session.ok) return authResultResponse(request, session);
     const body = await request.json() as { id?: string; ids?: string[] };
@@ -47,6 +48,37 @@ export async function DELETE(request: NextRequest) {
       requestId: request.headers.get("x-request-id"),
       fallbackMessage: "Delete failed.",
       operation: "delete-library-item",
+      defaultCode: "LIBRARY_SAVE_FAILED",
+    });
+  }
+}
+
+export async function PATCH(request: NextRequest) {
+  try {
+    if (!requireCsrf(request)) return authResultResponse(request, csrfFailure());
+    const session = await requireAuthSession(request);
+    if (!session.ok) return authResultResponse(request, session);
+    const body = await request.json() as { id?: string; title?: string; favorite?: boolean };
+    if (!body.id?.trim()) throw new LibraryOperationError(400, "Missing library item id.");
+    const item = await updateLibraryItemForOwner(body.id, session.user.local_user_id, {
+      title: body.title,
+      favorite: body.favorite,
+    });
+    return NextResponse.json({ item });
+  } catch (error) {
+    if (error instanceof LibraryOperationError) {
+      return diagnosticErrorResponse(error, {
+        requestId: request.headers.get("x-request-id"),
+        fallbackMessage: error.message,
+        operation: "update-library-item",
+        defaultCode: "LIBRARY_SAVE_FAILED",
+        status: error.status,
+      });
+    }
+    return diagnosticErrorResponse(error, {
+      requestId: request.headers.get("x-request-id"),
+      fallbackMessage: "Update failed.",
+      operation: "update-library-item",
       defaultCode: "LIBRARY_SAVE_FAILED",
     });
   }

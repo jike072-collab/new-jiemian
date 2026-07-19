@@ -171,6 +171,7 @@ function GeneratorNode({ id, data }: { id: string; data: CanvasNodeData }) {
             const options = provider?.videoOptions;
             actions.updateNodeData(id, {
               providerId: event.target.value,
+              model: provider?.model || "",
               ...(isVideo ? {
                 duration: options?.durations?.[0] || data.duration || 5,
                 ratio: options?.ratios?.[0] || data.ratio || "16:9",

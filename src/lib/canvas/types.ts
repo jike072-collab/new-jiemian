@@ -6,6 +6,9 @@ export type CanvasGeneratorStatus = "idle" | "queued" | "generating" | "done" | 
 export type CanvasNodeData = Record<string, unknown> & {
   kind: CanvasNodeKind;
   title: string;
+  createdAt?: string;
+  model?: string;
+  sourceNodeIds?: string[];
   prompt?: string;
   mediaType?: CanvasMediaType;
   libraryItemId?: string;

@@ -3,6 +3,7 @@
 import Link from "next/link";
 import {
   Copy,
+  CopyPlus,
   ArrowLeft,
   Download,
   CircleHelp,
@@ -14,14 +15,18 @@ import {
   Info,
   LoaderCircle,
   Link2,
+  Maximize2,
   PanelLeftClose,
   PanelLeftOpen,
+  Palette,
   Play,
   Plus,
   Redo2,
   Save,
   Search,
+  Settings2,
   Sparkles,
+  Star,
   Undo2,
   Trash2,
   Type,
@@ -37,6 +42,7 @@ import {
   useMemo,
   useRef,
   useState,
+  type CSSProperties,
   type FormEvent,
 } from "react";
 import {
@@ -59,6 +65,8 @@ import {
 } from "@xyflow/react";
 
 import { BrandLogo } from "@/components/brand-logo";
+import { CanvasAssistantPanel } from "@/components/canvas/canvas-assistant-panel";
+import { CanvasImageEditor } from "@/components/canvas/canvas-image-editor";
 import {
   CanvasNode,
   CanvasNodeActionsContext,
@@ -81,6 +89,7 @@ import type {
   CanvasStoredNode,
 } from "@/lib/canvas/types";
 import { normalizeCanvasDocument } from "@/lib/canvas/document";
+import { normalizeCanvasAssistantResponse, type CanvasAssistantAction } from "@/lib/canvas/assistant";
 import type { FrontendProvider, JobRecord, LibraryItem } from "@/lib/server/types";
 import { cn } from "@/lib/utils";
 
@@ -90,11 +99,44 @@ type CanvasWorkspaceSnapshot = {
   title: string;
   document: CanvasProjectDocument;
 };
+type CanvasTheme = "midnight" | "graphite" | "light";
+type ConnectionStyle = "smoothstep" | "straight";
 
 const nodeTypes = { canvas: CanvasNode };
 const emptyProviders: EnabledProviders = { image: [], video: [] };
 const defaultViewport: Viewport = { x: 0, y: 0, zoom: 1 };
 const libraryDragType = "application/x-aohuang-library-item";
+
+function canvasScope() {
+  if (typeof window === "undefined") return "shared" as const;
+  return new URLSearchParams(window.location.search).get("scope") === "personal" ? "personal" as const : "shared" as const;
+}
+
+function canvasProjectsUrl(id?: string) {
+  const base = id ? `/api/canvas/projects/${encodeURIComponent(id)}` : "/api/canvas/projects";
+  return `${base}?scope=${canvasScope()}`;
+}
+
+function storedCanvasSettings() {
+  const defaults = { theme: "midnight" as CanvasTheme, connectionStyle: "smoothstep" as ConnectionStyle, snapEnabled: false };
+  if (typeof window === "undefined") return defaults;
+  try {
+    const value = JSON.parse(window.localStorage.getItem("aohuang-canvas-settings") || "{}") as Partial<typeof defaults>;
+    return {
+      theme: (["midnight", "graphite", "light"] as const).includes(value.theme as CanvasTheme) ? value.theme as CanvasTheme : defaults.theme,
+      connectionStyle: value.connectionStyle === "straight" ? "straight" as const : defaults.connectionStyle,
+      snapEnabled: Boolean(value.snapEnabled),
+    };
+  } catch {
+    return defaults;
+  }
+}
+
+function escapeXml(value: unknown) {
+  return String(value ?? "").replace(/[&<>"']/g, (character) => ({
+    "&": "&amp;", "<": "&lt;", ">": "&gt;", "\"": "&quot;", "'": "&apos;",
+  })[character] || character);
+}
 
 export function CanvasWorkspace({ accountName, isTeamOwner, isInternalCanvas }: { accountName: string; isTeamOwner: boolean; isInternalCanvas?: boolean }) {
   return (
@@ -122,8 +164,15 @@ function CanvasWorkspaceInner({ accountName, isTeamOwner, isInternalCanvas }: { 
   const [saveState, setSaveState] = useState<SaveState>("saved");
   const [notice, setNotice] = useState("");
   const [infoOpen, setInfoOpen] = useState(false);
+  const [assistantOpen, setAssistantOpen] = useState(false);
+  const [editingNodeId, setEditingNodeId] = useState("");
   const [teamOpen, setTeamOpen] = useState(false);
   const [panMode, setPanMode] = useState(false);
+  const [settingsOpen, setSettingsOpen] = useState(false);
+  const [canvasTheme, setCanvasTheme] = useState<CanvasTheme>(() => storedCanvasSettings().theme);
+  const [connectionStyle, setConnectionStyle] = useState<ConnectionStyle>(() => storedCanvasSettings().connectionStyle);
+  const [snapEnabled, setSnapEnabled] = useState(() => storedCanvasSettings().snapEnabled);
+  const [syncState, setSyncState] = useState<"live" | "syncing" | "paused">("live");
 
   const nodesRef = useRef(nodes);
   const edgesRef = useRef(edges);
@@ -134,6 +183,7 @@ function CanvasWorkspaceInner({ accountName, isTeamOwner, isInternalCanvas }: { 
   const viewportRef = useRef(viewport);
   const stageRef = useRef<HTMLElement | null>(null);
   const importInputRef = useRef<HTMLInputElement | null>(null);
+  const collaborationChannelRef = useRef<BroadcastChannel | null>(null);
   const activeProjectRef = useRef<CanvasProject | null>(null);
   const loadedRef = useRef(false);
   const revisionRef = useRef(0);
@@ -155,6 +205,14 @@ function CanvasWorkspaceInner({ accountName, isTeamOwner, isInternalCanvas }: { 
   useEffect(() => { titleRef.current = title; }, [title]);
   useEffect(() => { viewportRef.current = viewport; }, [viewport]);
   useEffect(() => { flowRef.current = flow; }, [flow]);
+  useEffect(() => {
+    window.localStorage.setItem("aohuang-canvas-settings", JSON.stringify({ theme: canvasTheme, connectionStyle, snapEnabled }));
+  }, [canvasTheme, connectionStyle, snapEnabled]);
+
+  const changeConnectionStyle = useCallback((value: ConnectionStyle) => {
+    setConnectionStyle(value);
+    setEdges((current) => current.map((edge) => ({ ...edge, type: value })));
+  }, []);
   useEffect(() => {
     const mobileViewport = window.matchMedia("(max-width: 820px)");
     const closeLibraryOnMobile = (matches: boolean) => {
@@ -234,7 +292,7 @@ function CanvasWorkspaceInner({ accountName, isTeamOwner, isInternalCanvas }: { 
     setActiveProjectId(project.id);
     setTitle(project.title);
     setNodes(hydrateMediaNodes(project.document.nodes, items));
-    setEdges(project.document.edges.map((edge) => ({ ...edge, type: "smoothstep" })));
+    setEdges(project.document.edges.map((edge) => ({ ...edge, type: connectionStyle })));
     setViewportState(project.document.viewport);
     revisionRef.current = 0;
     savedRevisionRef.current = 0;
@@ -246,7 +304,19 @@ function CanvasWorkspaceInner({ accountName, isTeamOwner, isInternalCanvas }: { 
       loadedRef.current = true;
     });
     resetHistory();
-  }, [hydrateMediaNodes, resetHistory]);
+  }, [connectionStyle, hydrateMediaNodes, resetHistory]);
+
+  const acceptRemoteProject = useCallback((project: CanvasProject) => {
+    const active = activeProjectRef.current;
+    if (!active || active.id !== project.id || project.version <= active.version) return;
+    if (revisionRef.current !== savedRevisionRef.current || savePromiseRef.current) {
+      setSyncState("paused");
+      return;
+    }
+    activateProject(project);
+    setSyncState("live");
+    setNotice("已同步团队成员的最新画布。");
+  }, [activateProject]);
 
   const refreshLibrary = useCallback(async () => {
     const data = await fetchJson<{ items: LibraryItem[] }>("/api/library");
@@ -262,14 +332,14 @@ function CanvasWorkspaceInner({ accountName, isTeamOwner, isInternalCanvas }: { 
       setLoading(true);
       try {
         const [projectData, providerData, libraryData] = await Promise.all([
-          fetchJson<{ projects: CanvasProject[] }>("/api/canvas/projects"),
+          fetchJson<{ projects: CanvasProject[] }>(canvasProjectsUrl()),
           fetchJson<{ providers: EnabledProviders }>("/api/providers/enabled"),
           fetchJson<{ items: LibraryItem[] }>("/api/library"),
         ]);
         if (cancelled) return;
         let nextProjects = projectData.projects;
         if (!nextProjects.length) {
-          const created = await fetchJsonWithCsrf<{ project: CanvasProject }>("/api/canvas/projects", {
+          const created = await fetchJsonWithCsrf<{ project: CanvasProject }>(canvasProjectsUrl(), {
             method: "POST",
             body: JSON.stringify({ title: "第一个画布", document: starterDocument() }),
           });
@@ -313,7 +383,7 @@ function CanvasWorkspaceInner({ accountName, isTeamOwner, isInternalCanvas }: { 
     setSaveState("saving");
     const savePromise = (async () => {
       try {
-        const response = await fetchJsonWithCsrf<{ project: CanvasProject }>(`/api/canvas/projects/${encodeURIComponent(project.id)}`, {
+        const response = await fetchJsonWithCsrf<{ project: CanvasProject }>(canvasProjectsUrl(project.id), {
           method: "PATCH",
           body: JSON.stringify({
             title: titleRef.current,
@@ -325,6 +395,8 @@ function CanvasWorkspaceInner({ accountName, isTeamOwner, isInternalCanvas }: { 
         setProjects((current) => current
           .map((item) => item.id === response.project.id ? response.project : item)
           .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt)));
+        collaborationChannelRef.current?.postMessage(response.project);
+        setSyncState("live");
         savedRevisionRef.current = snapshotRevision;
         if (revisionRef.current === snapshotRevision) {
           setSaveState("saved");
@@ -353,6 +425,37 @@ function CanvasWorkspaceInner({ accountName, isTeamOwner, isInternalCanvas }: { 
   useEffect(() => () => {
     if (saveTimerRef.current) window.clearTimeout(saveTimerRef.current);
   }, []);
+
+  useEffect(() => {
+    if (!isInternalCanvas || typeof BroadcastChannel === "undefined") return;
+    const channel = new BroadcastChannel("aohuang-internal-canvas");
+    collaborationChannelRef.current = channel;
+    channel.onmessage = (event) => {
+      if (event.data && typeof event.data === "object") acceptRemoteProject(event.data as CanvasProject);
+    };
+    return () => {
+      collaborationChannelRef.current = null;
+      channel.close();
+    };
+  }, [acceptRemoteProject, isInternalCanvas]);
+
+  useEffect(() => {
+    if (!isInternalCanvas || !activeProjectId) return;
+    let busy = false;
+    const poll = window.setInterval(() => {
+      if (busy || document.visibilityState === "hidden") return;
+      busy = true;
+      setSyncState((current) => current === "paused" ? current : "syncing");
+      void fetchJson<{ project: CanvasProject }>(canvasProjectsUrl(activeProjectId))
+        .then(({ project }) => acceptRemoteProject(project))
+        .catch(() => setSyncState("paused"))
+        .finally(() => {
+          busy = false;
+          setSyncState((current) => current === "paused" ? current : "live");
+        });
+    }, 2_500);
+    return () => window.clearInterval(poll);
+  }, [acceptRemoteProject, activeProjectId, isInternalCanvas]);
 
   const updateNodeData = useCallback((id: string, patch: Partial<CanvasNodeData>, persist = true) => {
     if (persist) pushHistorySnapshot();
@@ -409,8 +512,13 @@ function CanvasWorkspaceInner({ accountName, isTeamOwner, isInternalCanvas }: { 
     return node;
   }, [flow, markDirty, pushHistorySnapshot]);
 
-  const addPromptNode = useCallback(() => {
-    addNodeAtCenter({ kind: "prompt", title: "提示词", prompt: "" }, { width: 320, height: 230 });
+  const addPromptNode = useCallback((input?: { title?: string; prompt?: string }) => {
+    return addNodeAtCenter({
+      kind: "prompt",
+      title: input?.title?.trim().slice(0, 80) || "提示词",
+      prompt: input?.prompt?.trim().slice(0, 4_000) || "",
+      createdAt: new Date().toISOString(),
+    }, { width: 320, height: 230 });
   }, [addNodeAtCenter]);
 
   const addGeneratorNode = useCallback((kind: "image" | "video") => {
@@ -421,6 +529,8 @@ function CanvasWorkspaceInner({ accountName, isTeamOwner, isInternalCanvas }: { 
       title: kind === "image" ? "图片生成" : "视频生成",
       generationKind: kind,
       providerId: provider?.id || "",
+      model: provider?.model || "",
+      createdAt: new Date().toISOString(),
       ...(kind === "image" ? { imageMode: "text-to-image" as const, count: 1 } : {}),
       ratio: kind === "image" ? "1:1" : provider?.videoOptions?.ratios?.[0] || "16:9",
       quality: "1k",
@@ -439,6 +549,9 @@ function CanvasWorkspaceInner({ accountName, isTeamOwner, isInternalCanvas }: { 
       title: kind === "image" ? "图片生成" : "视频生成",
       generationKind: kind,
       providerId: provider?.id || "",
+      model: provider?.model || "",
+      createdAt: new Date().toISOString(),
+      sourceNodeIds: [node.id],
       ...(kind === "image" ? { imageMode: node.data.kind === "media" ? "image-to-image" as const : "text-to-image" as const, count: 1 } : {}),
       ratio: kind === "image" ? "1:1" : provider?.videoOptions?.ratios?.[0] || "16:9",
       quality: "1k",
@@ -453,10 +566,11 @@ function CanvasWorkspaceInner({ accountName, isTeamOwner, isInternalCanvas }: { 
       sourceHandle: "output",
       target: generator.id,
       targetHandle: "input",
-      type: "smoothstep",
+      type: connectionStyle,
     }]);
     markDirty();
-  }, [addNodeAtCenter, markDirty]);
+    return generator;
+  }, [addNodeAtCenter, connectionStyle, markDirty]);
 
   const addLibraryNode = useCallback((item: LibraryItem, position?: { x: number; y: number }) => {
     pushHistorySnapshot();
@@ -465,6 +579,8 @@ function CanvasWorkspaceInner({ accountName, isTeamOwner, isInternalCanvas }: { 
       title: item.title || (item.type === "image" ? "图片素材" : "视频素材"),
       mediaType: item.type,
       libraryItemId: item.id,
+      model: item.model,
+      createdAt: item.createdAt,
       mediaUrl: item.output?.url,
       status: libraryStatus(item),
       progress: 0,
@@ -504,6 +620,9 @@ function CanvasWorkspaceInner({ accountName, isTeamOwner, isInternalCanvas }: { 
         title: item.title || (item.type === "image" ? "图片结果" : "视频结果"),
         mediaType: item.type,
         libraryItemId: item.id,
+        model: item.model,
+        createdAt: item.createdAt,
+        sourceNodeIds: [generatorId],
         mediaUrl: item.output?.url,
         status: libraryStatus(item),
         progress: job?.progress || 0,
@@ -522,10 +641,10 @@ function CanvasWorkspaceInner({ accountName, isTeamOwner, isInternalCanvas }: { 
       sourceHandle: "output",
       target: id,
       targetHandle: "input",
-      type: "smoothstep",
+      type: connectionStyle,
     }]);
     markDirty();
-  }, [markDirty, pushHistorySnapshot]);
+  }, [connectionStyle, markDirty, pushHistorySnapshot]);
 
   const executeGenerator = useCallback(async (generatorId: string) => {
     const generator = nodesRef.current.find((node) => node.id === generatorId);
@@ -646,14 +765,14 @@ function CanvasWorkspaceInner({ accountName, isTeamOwner, isInternalCanvas }: { 
   const onConnect = useCallback((connection: Connection) => {
     if (!isValidConnection(connection)) return;
     pushHistorySnapshot();
-    setEdges((current) => addEdge({ ...connection, id: canvasId("edge"), type: "smoothstep" }, current));
+    setEdges((current) => addEdge({ ...connection, id: canvasId("edge"), type: connectionStyle }, current));
     markDirty();
-  }, [isValidConnection, markDirty, pushHistorySnapshot]);
+  }, [connectionStyle, isValidConnection, markDirty, pushHistorySnapshot]);
 
   const createProject = useCallback(async (skipCurrentSave = false) => {
     if (!skipCurrentSave && !(await saveNow(true))) return;
     try {
-      const data = await fetchJsonWithCsrf<{ project: CanvasProject }>("/api/canvas/projects", {
+      const data = await fetchJsonWithCsrf<{ project: CanvasProject }>(canvasProjectsUrl(), {
         method: "POST",
         body: JSON.stringify({ title: `新画布 ${projectsRef.current.length + 1}`, document: starterDocument() }),
       });
@@ -676,7 +795,7 @@ function CanvasWorkspaceInner({ accountName, isTeamOwner, isInternalCanvas }: { 
     const pendingSave = savePromiseRef.current;
     if (pendingSave && !(await pendingSave)) return;
     try {
-      await fetchJsonWithCsrf(`/api/canvas/projects/${encodeURIComponent(project.id)}`, { method: "DELETE" });
+      await fetchJsonWithCsrf(canvasProjectsUrl(project.id), { method: "DELETE" });
       const remaining = projectsRef.current.filter((item) => item.id !== project.id);
       projectsRef.current = remaining;
       setProjects(remaining);
@@ -742,10 +861,96 @@ function CanvasWorkspaceInner({ accountName, isTeamOwner, isInternalCanvas }: { 
     return library.filter((item) => {
       if (libraryFilter !== "all" && item.type !== libraryFilter) return false;
       return !query || item.title.toLowerCase().includes(query) || item.prompt.toLowerCase().includes(query);
-    });
+    }).sort((a, b) => Number(Boolean(b.favorite || b.params.favorite)) - Number(Boolean(a.favorite || a.params.favorite)) || b.updatedAt.localeCompare(a.updatedAt));
   }, [library, libraryFilter, librarySearch]);
 
-  const selectedNode = useMemo(() => nodes.find((node) => node.selected) || null, [nodes]);
+  const selectedNodes = useMemo(() => nodes.filter((node) => node.selected), [nodes]);
+  const selectedNode = selectedNodes[0] || null;
+  const editingNode = nodes.find((node) => node.id === editingNodeId && node.data.kind === "media" && node.data.mediaType === "image") || null;
+  const selectionToolbarStyle = useMemo<CSSProperties | undefined>(() => {
+    if (!selectedNodes.length) return undefined;
+    const minX = Math.min(...selectedNodes.map((node) => node.position.x));
+    const maxX = Math.max(...selectedNodes.map((node) => node.position.x + (node.width || 340)));
+    const minY = Math.min(...selectedNodes.map((node) => node.position.y));
+    return {
+      left: (minX + maxX) / 2 * viewport.zoom + viewport.x,
+      top: Math.max(8, minY * viewport.zoom + viewport.y - 52),
+      transform: "translateX(-50%)",
+    };
+  }, [selectedNodes, viewport]);
+
+  const removeSelectedNodes = useCallback(() => {
+    const ids = new Set(nodesRef.current.filter((node) => node.selected).map((node) => node.id));
+    if (!ids.size) return;
+    pushHistorySnapshot();
+    setNodes((current) => current.filter((node) => !ids.has(node.id)));
+    setEdges((current) => current.filter((edge) => !ids.has(edge.source) && !ids.has(edge.target)));
+    setInfoOpen(false);
+    markDirty();
+  }, [markDirty, pushHistorySnapshot]);
+
+  const duplicateSelectedNodes = useCallback(() => {
+    const selected = nodesRef.current.filter((node) => node.selected);
+    if (!selected.length) return;
+    pushHistorySnapshot();
+    const idMap = new Map(selected.map((node) => [node.id, canvasId("node")]));
+    const copies = selected.map((node) => ({
+      ...node,
+      id: idMap.get(node.id)!,
+      selected: true,
+      position: { x: node.position.x + 48, y: node.position.y + 48 },
+      data: { ...node.data, title: `${node.data.title} 副本`, createdAt: new Date().toISOString() },
+    }));
+    const copiedEdges = edgesRef.current.flatMap((edge) => {
+      const source = idMap.get(edge.source);
+      const target = idMap.get(edge.target);
+      return source && target ? [{ ...edge, id: canvasId("edge"), source, target }] : [];
+    });
+    setNodes((current) => [...current.map((node) => ({ ...node, selected: false })), ...copies]);
+    setEdges((current) => [...current, ...copiedEdges]);
+    markDirty();
+  }, [markDirty, pushHistorySnapshot]);
+
+  const connectSelectedNodes = useCallback(() => {
+    const selected = nodesRef.current.filter((node) => node.selected);
+    const sources = selected.filter((node) => node.data.kind === "prompt" || node.data.kind === "media");
+    const targets = selected.filter((node) => node.data.kind === "generator");
+    if (!sources.length || !targets.length) {
+      setNotice("批量连接需要同时选择提示词/素材节点和生成节点。");
+      return;
+    }
+    pushHistorySnapshot();
+    setEdges((current) => {
+      const next = [...current];
+      for (const target of targets) {
+        for (const source of sources) {
+          const connection = { source: source.id, target: target.id, sourceHandle: "output", targetHandle: "input" };
+          if (isValidConnection(connection) && !next.some((edge) => edge.source === source.id && edge.target === target.id)) {
+            next.push({ ...connection, id: canvasId("edge"), type: connectionStyle });
+          }
+        }
+      }
+      return next;
+    });
+    markDirty();
+  }, [connectionStyle, isValidConnection, markDirty, pushHistorySnapshot]);
+
+  const cleanCanvas = useCallback(() => {
+    const selectedIds = new Set(nodesRef.current.filter((node) => node.selected).map((node) => node.id));
+    const removable = selectedIds.size ? selectedIds : new Set(nodesRef.current.filter((node) => (
+      (node.data.kind === "prompt" && !node.data.prompt?.trim())
+      || node.data.status === "failed"
+    )).map((node) => node.id));
+    if (!removable.size) {
+      setNotice("没有可清理的空节点或失败节点。");
+      return;
+    }
+    if (!window.confirm(`确认清理 ${removable.size} 个节点？`)) return;
+    pushHistorySnapshot();
+    setNodes((current) => current.filter((node) => !removable.has(node.id)));
+    setEdges((current) => current.filter((edge) => !removable.has(edge.source) && !removable.has(edge.target)));
+    markDirty();
+  }, [markDirty, pushHistorySnapshot]);
   const focusSelectedText = useCallback(() => {
     if (!selectedNode) return;
     const textarea = document.querySelector<HTMLTextAreaElement>(`[data-canvas-node-id="${selectedNode.id}"] textarea`);
@@ -761,7 +966,11 @@ function CanvasWorkspaceInner({ accountName, isTeamOwner, isInternalCanvas }: { 
       return;
     }
     if (selectedNode.data.kind === "media") {
-      createGeneratorFromSelected(selectedNode, "image");
+      if (selectedNode.data.mediaType === "image" && selectedNode.data.mediaUrl) {
+        setEditingNodeId(selectedNode.id);
+      } else {
+        createGeneratorFromSelected(selectedNode, "image");
+      }
       return;
     }
     setNotice("请先选择提示词或媒体节点进行编辑。");
@@ -775,6 +984,86 @@ function CanvasWorkspaceInner({ accountName, isTeamOwner, isInternalCanvas }: { 
     createGeneratorFromSelected(selectedNode, selectedNode.data.kind === "media" && selectedNode.data.mediaType === "video" ? "video" : "image");
   }, [createGeneratorFromSelected, executeGenerator, selectedNode]);
 
+  const organizeCanvas = useCallback((layout: "flow" | "grid" = "flow") => {
+    if (!nodesRef.current.length) return;
+    pushHistorySnapshot();
+    setNodes((current) => {
+      if (layout === "grid") {
+        const columns = Math.max(1, Math.ceil(Math.sqrt(current.length)));
+        return current.map((node, index) => ({
+          ...node,
+          position: { x: (index % columns) * 420, y: Math.floor(index / columns) * 390 },
+        }));
+      }
+      const groupIndex = new Map<CanvasNodeData["kind"], number>();
+      const xByKind = { prompt: 0, generator: 480, media: 980 } as const;
+      return current.map((node) => {
+        const index = groupIndex.get(node.data.kind) || 0;
+        groupIndex.set(node.data.kind, index + 1);
+        return { ...node, position: { x: xByKind[node.data.kind], y: index * 390 } };
+      });
+    });
+    markDirty();
+    window.requestAnimationFrame(() => { void flowRef.current.fitView({ duration: 260, padding: 0.16 }); });
+  }, [markDirty, pushHistorySnapshot]);
+
+  const applyAssistantActions = useCallback((input: CanvasAssistantAction[]) => {
+    const actions = normalizeCanvasAssistantResponse({ reply: "已应用", actions: input }).actions;
+    for (const action of actions) {
+      if (action.type === "add_prompt") {
+        addPromptNode({ title: action.title, prompt: action.prompt });
+      } else if (action.type === "replace_selected_prompt") {
+        const selected = nodesRef.current.find((node) => node.selected && node.data.kind === "prompt");
+        if (selected) updateNodeData(selected.id, { prompt: action.prompt });
+      } else if (action.type === "organize") {
+        organizeCanvas(action.layout);
+      }
+    }
+    setNotice(actions.length ? `已应用 ${actions.length} 项助手操作。` : "助手没有请求可应用的画布操作。");
+  }, [addPromptNode, organizeCanvas, updateNodeData]);
+
+  const submitEditedImage = useCallback(async (file: File, prompt: string) => {
+    const source = nodesRef.current.find((node) => node.id === editingNodeId && node.data.kind === "media");
+    const provider = providersRef.current.image[0] as WorkspacePublicProvider | undefined;
+    if (!source || !provider) throw new Error("当前没有可用的图片编辑模型。");
+    const promptNode = addPromptNode({ title: "局部重绘提示词", prompt });
+    const generator = createGeneratorFromSelected(source, "image");
+    setEdges((current) => [...current, {
+      id: canvasId("edge"),
+      source: promptNode.id,
+      sourceHandle: "output",
+      target: generator.id,
+      targetHandle: "input",
+      type: connectionStyle,
+    }]);
+    updateNodeData(generator.id, { imageMode: "image-to-image", status: "generating", progress: 5 }, false);
+    const objectUrl = URL.createObjectURL(file);
+    const now = new Date().toISOString();
+    const reference: LibraryItem = {
+      id: `canvas-edit-${Date.now()}`,
+      type: "image",
+      mode: "image-to-image",
+      title: source.data.title,
+      prompt,
+      providerId: provider.id,
+      model: provider.model,
+      status: "done",
+      createdAt: now,
+      updatedAt: now,
+      params: {},
+      output: { url: objectUrl, mimeType: "image/png", size: file.size },
+    };
+    try {
+      await submitImageGeneration(generator.id, { ...generator.data, imageMode: "image-to-image", count: 1 }, provider, prompt, [reference], addResultNode, updateNodeData, isInternalCanvas);
+      updateNodeData(generator.id, { status: "done", progress: 100 }, false);
+    } catch (error) {
+      updateNodeData(generator.id, { status: "failed", error: apiMessage(error, "局部重绘失败。") }, false);
+      throw error;
+    } finally {
+      URL.revokeObjectURL(objectUrl);
+    }
+  }, [addPromptNode, addResultNode, connectionStyle, createGeneratorFromSelected, editingNodeId, isInternalCanvas, updateNodeData]);
+
   const undoCanvas = useCallback(() => {
     const snapshot = historyPastRef.current.pop();
     if (!snapshot) return;
@@ -783,7 +1072,7 @@ function CanvasWorkspaceInner({ accountName, isTeamOwner, isInternalCanvas }: { 
     const document = normalizeCanvasDocument(snapshot.document);
     setTitle(snapshot.title);
     setNodes(hydrateMediaNodes(document.nodes, libraryRef.current));
-    setEdges(document.edges.map((edge) => ({ ...edge, type: "smoothstep" })));
+    setEdges(document.edges.map((edge) => ({ ...edge, type: connectionStyle })));
     setViewportState(document.viewport);
     setInfoOpen(false);
     historySignatureRef.current = "";
@@ -791,7 +1080,7 @@ function CanvasWorkspaceInner({ accountName, isTeamOwner, isInternalCanvas }: { 
       void flowRef.current.setViewport(document.viewport, { duration: 0 });
     });
     markDirty();
-  }, [hydrateMediaNodes, markDirty, snapshotWorkspace, syncHistoryState]);
+  }, [connectionStyle, hydrateMediaNodes, markDirty, snapshotWorkspace, syncHistoryState]);
 
   const redoCanvas = useCallback(() => {
     const snapshot = historyFutureRef.current.pop();
@@ -801,7 +1090,7 @@ function CanvasWorkspaceInner({ accountName, isTeamOwner, isInternalCanvas }: { 
     const document = normalizeCanvasDocument(snapshot.document);
     setTitle(snapshot.title);
     setNodes(hydrateMediaNodes(document.nodes, libraryRef.current));
-    setEdges(document.edges.map((edge) => ({ ...edge, type: "smoothstep" })));
+    setEdges(document.edges.map((edge) => ({ ...edge, type: connectionStyle })));
     setViewportState(document.viewport);
     setInfoOpen(false);
     historySignatureRef.current = "";
@@ -809,7 +1098,7 @@ function CanvasWorkspaceInner({ accountName, isTeamOwner, isInternalCanvas }: { 
       void flowRef.current.setViewport(document.viewport, { duration: 0 });
     });
     markDirty();
-  }, [hydrateMediaNodes, markDirty, snapshotWorkspace, syncHistoryState]);
+  }, [connectionStyle, hydrateMediaNodes, markDirty, snapshotWorkspace, syncHistoryState]);
 
   const exportCanvas = useCallback(() => {
     const payload = JSON.stringify({
@@ -824,6 +1113,44 @@ function CanvasWorkspaceInner({ accountName, isTeamOwner, isInternalCanvas }: { 
     anchor.click();
     window.setTimeout(() => URL.revokeObjectURL(url), 1_000);
     setNotice("鐢诲竷宸茶緭鍑恒€?");
+  }, []);
+
+  const exportCanvasImage = useCallback(() => {
+    const source = nodesRef.current;
+    if (!source.length) return;
+    const minX = Math.min(...source.map((node) => node.position.x));
+    const minY = Math.min(...source.map((node) => node.position.y));
+    const maxX = Math.max(...source.map((node) => node.position.x + (node.width || 340)));
+    const maxY = Math.max(...source.map((node) => node.position.y + (node.height || (node.data.kind === "generator" ? 560 : 280))));
+    const padding = 80;
+    const width = Math.max(320, maxX - minX + padding * 2);
+    const height = Math.max(240, maxY - minY + padding * 2);
+    const nodeMap = new Map(source.map((node) => [node.id, node]));
+    const lines = edgesRef.current.flatMap((edge) => {
+      const from = nodeMap.get(edge.source);
+      const to = nodeMap.get(edge.target);
+      if (!from || !to) return [];
+      const x1 = from.position.x - minX + padding + (from.width || 340);
+      const y1 = from.position.y - minY + padding + (from.height || 280) / 2;
+      const x2 = to.position.x - minX + padding;
+      const y2 = to.position.y - minY + padding + (to.height || 280) / 2;
+      return [`<path d="M ${x1} ${y1} C ${x1 + 80} ${y1}, ${x2 - 80} ${y2}, ${x2} ${y2}" fill="none" stroke="#71717a" stroke-width="2"/>`];
+    });
+    const cards = source.map((node) => {
+      const x = node.position.x - minX + padding;
+      const y = node.position.y - minY + padding;
+      const nodeWidth = node.width || 340;
+      const nodeHeight = node.height || (node.data.kind === "generator" ? 560 : 280);
+      const subtitle = node.data.kind === "prompt" ? node.data.prompt || "" : node.data.kind === "generator" ? `${node.data.generationKind || ""} · ${node.data.providerId || ""}` : node.data.mediaType || "";
+      return `<g><rect x="${x}" y="${y}" width="${nodeWidth}" height="${nodeHeight}" rx="8" fill="#18181b" stroke="#3f3f46"/><text x="${x + 18}" y="${y + 32}" fill="#fafafa" font-size="15" font-family="sans-serif" font-weight="700">${escapeXml(node.data.title)}</text><foreignObject x="${x + 18}" y="${y + 48}" width="${nodeWidth - 36}" height="${nodeHeight - 66}"><div xmlns="http://www.w3.org/1999/xhtml" style="color:#a1a1aa;font:13px/1.55 sans-serif;overflow:hidden;white-space:pre-wrap">${escapeXml(subtitle)}</div></foreignObject></g>`;
+    });
+    const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}"><rect width="100%" height="100%" fill="#09090b"/>${lines.join("")}${cards.join("")}</svg>`;
+    const url = URL.createObjectURL(new Blob([svg], { type: "image/svg+xml" }));
+    const anchor = document.createElement("a");
+    anchor.href = url;
+    anchor.download = `${slugifyCanvasTitle(titleRef.current)}.svg`;
+    anchor.click();
+    window.setTimeout(() => URL.revokeObjectURL(url), 1_000);
   }, []);
 
   const importCanvasFromText = useCallback(async (text: string) => {
@@ -843,7 +1170,7 @@ function CanvasWorkspaceInner({ accountName, isTeamOwner, isInternalCanvas }: { 
     pushHistorySnapshot();
     setTitle(nextTitle);
     setNodes(hydrateMediaNodes(document.nodes, libraryRef.current));
-    setEdges(document.edges.map((edge) => ({ ...edge, type: "smoothstep" })));
+    setEdges(document.edges.map((edge) => ({ ...edge, type: connectionStyle })));
     setViewportState(document.viewport);
     setInfoOpen(false);
     historySignatureRef.current = "";
@@ -852,7 +1179,7 @@ function CanvasWorkspaceInner({ accountName, isTeamOwner, isInternalCanvas }: { 
     });
     markDirty();
     setNotice("鐢诲竷宸茶鍏ャ€?");
-  }, [hydrateMediaNodes, markDirty, pushHistorySnapshot]);
+  }, [connectionStyle, hydrateMediaNodes, markDirty, pushHistorySnapshot]);
 
   const triggerImport = useCallback(() => {
     importInputRef.current?.click();
@@ -882,23 +1209,108 @@ function CanvasWorkspaceInner({ accountName, isTeamOwner, isInternalCanvas }: { 
     }
   }, []);
 
+  const renameLibraryItem = useCallback(async (item: LibraryItem) => {
+    const title = window.prompt("素材名称", item.title)?.trim();
+    if (!title || title === item.title) return;
+    await fetchJsonWithCsrf("/api/library", { method: "PATCH", body: JSON.stringify({ id: item.id, title }) });
+    await refreshLibrary();
+    setNotice("素材已重命名。");
+  }, [refreshLibrary]);
+
+  const toggleLibraryFavorite = useCallback(async (item: LibraryItem) => {
+    const favorite = !Boolean(item.favorite || item.params.favorite);
+    await fetchJsonWithCsrf("/api/library", { method: "PATCH", body: JSON.stringify({ id: item.id, favorite }) });
+    await refreshLibrary();
+  }, [refreshLibrary]);
+
+  const deleteLibraryItem = useCallback(async (item: LibraryItem) => {
+    if (!window.confirm(`确认删除素材“${item.title}”？`)) return;
+    await fetchJsonWithCsrf("/api/library", { method: "DELETE", body: JSON.stringify({ id: item.id }) });
+    setNodes((current) => current.filter((node) => node.data.libraryItemId !== item.id));
+    setEdges((current) => {
+      const remaining = new Set(nodesRef.current.filter((node) => node.data.libraryItemId !== item.id).map((node) => node.id));
+      return current.filter((edge) => remaining.has(edge.source) && remaining.has(edge.target));
+    });
+    await refreshLibrary();
+    markDirty();
+  }, [markDirty, refreshLibrary]);
+
+  const copyLibraryItemLink = useCallback(async (item: LibraryItem) => {
+    if (!item.output?.url) return;
+    await navigator.clipboard.writeText(item.output.url);
+    setNotice("素材链接已复制。");
+  }, []);
+
+  const downloadLibraryItem = useCallback((item: LibraryItem) => {
+    if (!item.output?.url) return;
+    const anchor = document.createElement("a");
+    anchor.href = item.output.url;
+    anchor.download = slugifyCanvasTitle(item.title);
+    anchor.rel = "noopener";
+    anchor.click();
+  }, []);
+
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => {
+      const target = event.target as HTMLElement | null;
+      const typing = target?.matches("input, textarea, select, [contenteditable='true']");
+      const command = event.ctrlKey || event.metaKey;
+      if (command && event.key.toLowerCase() === "s") {
+        event.preventDefault();
+        void saveNow(true);
+      } else if (command && event.key.toLowerCase() === "z" && !event.shiftKey) {
+        event.preventDefault();
+        undoCanvas();
+      } else if ((command && event.key.toLowerCase() === "y") || (command && event.shiftKey && event.key.toLowerCase() === "z")) {
+        event.preventDefault();
+        redoCanvas();
+      } else if (command && event.shiftKey && event.key.toLowerCase() === "e") {
+        event.preventDefault();
+        exportCanvasImage();
+      } else if (command && event.key.toLowerCase() === "d" && !typing) {
+        event.preventDefault();
+        duplicateSelectedNodes();
+      } else if (!typing && (event.key === "Delete" || event.key === "Backspace")) {
+        event.preventDefault();
+        removeSelectedNodes();
+      } else if (!typing && event.key === "?") {
+        event.preventDefault();
+        if (isInternalCanvas) setAssistantOpen(true);
+      } else if (event.key === "Escape") {
+        setAssistantOpen(false);
+        setInfoOpen(false);
+        setSettingsOpen(false);
+        setNodes((current) => current.map((node) => ({ ...node, selected: false })));
+      }
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [duplicateSelectedNodes, exportCanvasImage, isInternalCanvas, redoCanvas, removeSelectedNodes, saveNow, undoCanvas]);
+
   if (loading) {
     return <div className="canvas-loading"><LoaderCircle className="is-spinning" /><span>正在打开创作画布</span></div>;
   }
 
   return (
-    <main className="aohuang-canvas-page">
+    <main className="aohuang-canvas-page" data-canvas-theme={canvasTheme}>
       <CanvasToolbar
         accountName={accountName}
         projects={projects}
         activeProjectId={activeProjectId}
+        scope={isInternalCanvas ? canvasScope() : undefined}
         title={title}
         saveState={saveState}
+        syncState={isInternalCanvas ? syncState : undefined}
         libraryOpen={libraryOpen}
         canUndo={historyState.undo > 0}
         canRedo={historyState.redo > 0}
         onTitleChange={(value) => { pushHistorySnapshot(); setTitle(value); markDirty(); }}
         onProjectChange={(id) => { void switchProject(id); }}
+        onScopeChange={(scope) => {
+          const url = new URL(window.location.href);
+          url.searchParams.set("scope", scope);
+          window.location.assign(url);
+        }}
         onCreateProject={() => { void createProject(); }}
         onDeleteProject={() => { void deleteProject(); }}
         onSave={() => { void saveNow(true); }}
@@ -910,10 +1322,12 @@ function CanvasWorkspaceInner({ accountName, isTeamOwner, isInternalCanvas }: { 
         onRedo={redoCanvas}
         onImport={triggerImport}
         onExport={exportCanvas}
+        settingsOpen={settingsOpen}
+        onSettings={() => setSettingsOpen((value) => !value)}
         isTeamOwner={isTeamOwner}
         teamOpen={teamOpen}
         onToggleTeam={() => setTeamOpen((value) => !value)}
-        onHelp={() => setNotice("连接提示词到生成节点，再连接图片或视频素材；选中节点后可使用快捷工具。")}
+        onHelp={() => isInternalCanvas ? setAssistantOpen(true) : setNotice("连接提示词到生成节点，再连接图片或视频素材；选中节点后可使用快捷工具。")}
       />
       <input
         ref={importInputRef}
@@ -940,11 +1354,25 @@ function CanvasWorkspaceInner({ accountName, isTeamOwner, isInternalCanvas }: { 
           onFilter={setLibraryFilter}
           onSearch={setLibrarySearch}
           onAdd={addLibraryNode}
+          onRename={(item) => { void renameLibraryItem(item); }}
+          onFavorite={(item) => { void toggleLibraryFavorite(item); }}
+          onCopyLink={(item) => { void copyLibraryItemLink(item); }}
+          onDownload={downloadLibraryItem}
+          onDelete={(item) => { void deleteLibraryItem(item); }}
         />
         <section ref={stageRef} className="canvas-stage" aria-label="无限画布">
-          {selectedNode ? (
+          {selectedNodes.length > 1 ? (
+            <CanvasBatchToolbar
+              count={selectedNodes.length}
+              style={selectionToolbarStyle}
+              onConnect={connectSelectedNodes}
+              onDuplicate={duplicateSelectedNodes}
+              onDelete={removeSelectedNodes}
+            />
+          ) : selectedNode ? (
             <CanvasSelectionToolbar
               node={selectedNode}
+              style={selectionToolbarStyle}
               onInfo={() => setInfoOpen(true)}
               onDelete={() => removeNode(selectedNode.id)}
               onSaveMaterial={saveSelectedMaterial}
@@ -980,7 +1408,7 @@ function CanvasWorkspaceInner({ accountName, isTeamOwner, isInternalCanvas }: { 
                 if (item) addLibraryNode(item, flow.screenToFlowPosition({ x: event.clientX, y: event.clientY }));
               }}
               defaultEdgeOptions={{
-                type: "smoothstep",
+                type: connectionStyle,
                 markerEnd: { type: MarkerType.ArrowClosed },
                 style: { strokeWidth: 1.5 },
               }}
@@ -989,6 +1417,8 @@ function CanvasWorkspaceInner({ accountName, isTeamOwner, isInternalCanvas }: { 
               maxZoom={2.5}
               panOnScroll
               panOnDrag={panMode}
+              snapToGrid={snapEnabled}
+              snapGrid={[24, 24]}
               selectionOnDrag={!panMode}
               proOptions={{ hideAttribution: true }}
             >
@@ -1008,15 +1438,19 @@ function CanvasWorkspaceInner({ accountName, isTeamOwner, isInternalCanvas }: { 
             onRedo={redoCanvas}
             onImport={triggerImport}
             onExport={exportCanvas}
-            onDelete={() => { if (selectedNode) removeNode(selectedNode.id); }}
+            onDelete={removeSelectedNodes}
+            onClean={cleanCanvas}
+            onSettings={() => setSettingsOpen((value) => !value)}
             onZoomOut={() => { void flow.zoomOut(); }}
             onZoomIn={() => { void flow.zoomIn(); }}
             onFit={() => { void flow.fitView({ duration: 260, padding: 0.18 }); }}
-            onHelp={() => setNotice("连接提示词到生成节点，再连接图片或视频素材；选中节点后可使用上方快捷工具。")}
+            onHelp={() => isInternalCanvas ? setAssistantOpen(true) : setNotice("连接提示词到生成节点，再连接图片或视频素材；选中节点后可使用上方快捷工具。")}
           />
           {infoOpen && selectedNode ? (
             <CanvasNodeInfoPanel
               node={selectedNode}
+              sourceNodes={nodes.filter((node) => edges.some((edge) => edge.target === selectedNode.id && edge.source === node.id) || selectedNode.data.sourceNodeIds?.includes(node.id))}
+              libraryItem={library.find((item) => item.id === selectedNode.data.libraryItemId)}
               onClose={() => setInfoOpen(false)}
               onFocusText={focusSelectedText}
               onDownload={() => downloadCanvasMedia(selectedNode)}
@@ -1027,10 +1461,47 @@ function CanvasWorkspaceInner({ accountName, isTeamOwner, isInternalCanvas }: { 
               onGenerate={generateSelected}
             />
           ) : null}
+          {assistantOpen && isInternalCanvas ? (
+            <CanvasAssistantPanel
+              canvasTitle={title}
+              nodes={nodes.map((node) => ({
+                id: node.id,
+                kind: node.data.kind,
+                title: node.data.title,
+                prompt: node.data.kind === "prompt" ? node.data.prompt : undefined,
+                selected: Boolean(node.selected),
+              }))}
+              onApply={applyAssistantActions}
+              onClose={() => setAssistantOpen(false)}
+            />
+          ) : null}
+          {settingsOpen ? (
+            <CanvasSettingsPanel
+              theme={canvasTheme}
+              connectionStyle={connectionStyle}
+              snapEnabled={snapEnabled}
+              onTheme={setCanvasTheme}
+              onConnectionStyle={changeConnectionStyle}
+              onSnapEnabled={setSnapEnabled}
+              onOrganize={organizeCanvas}
+              onClean={cleanCanvas}
+              onExportImage={exportCanvasImage}
+              onClose={() => setSettingsOpen(false)}
+            />
+          ) : null}
         </section>
       </div>
 
       {isTeamOwner && teamOpen ? <TeamPanel onClose={() => setTeamOpen(false)} allowCreateMembers={!isInternalCanvas} /> : null}
+
+      {editingNode?.data.mediaUrl ? (
+        <CanvasImageEditor
+          imageUrl={editingNode.data.mediaUrl}
+          title={editingNode.data.title}
+          onSubmit={submitEditedImage}
+          onClose={() => setEditingNodeId("")}
+        />
+      ) : null}
 
       {notice ? (
         <div className="canvas-notice" role="status">
@@ -1046,13 +1517,16 @@ function CanvasToolbar({
   accountName,
   projects,
   activeProjectId,
+  scope,
   title,
   saveState,
+  syncState,
   libraryOpen,
   canUndo,
   canRedo,
   onTitleChange,
   onProjectChange,
+  onScopeChange,
   onCreateProject,
   onDeleteProject,
   onSave,
@@ -1064,6 +1538,8 @@ function CanvasToolbar({
   onRedo,
   onImport,
   onExport,
+  settingsOpen,
+  onSettings,
   isTeamOwner,
   teamOpen,
   onToggleTeam,
@@ -1072,13 +1548,16 @@ function CanvasToolbar({
   accountName: string;
   projects: CanvasProject[];
   activeProjectId: string;
+  scope?: "personal" | "shared";
   title: string;
   saveState: SaveState;
+  syncState?: "live" | "syncing" | "paused";
   libraryOpen: boolean;
   canUndo: boolean;
   canRedo: boolean;
   onTitleChange: (value: string) => void;
   onProjectChange: (id: string) => void;
+  onScopeChange: (scope: "personal" | "shared") => void;
   onCreateProject: () => void;
   onDeleteProject: () => void;
   onSave: () => void;
@@ -1090,6 +1569,8 @@ function CanvasToolbar({
   onRedo: () => void;
   onImport: () => void;
   onExport: () => void;
+  settingsOpen: boolean;
+  onSettings: () => void;
   isTeamOwner: boolean;
   teamOpen: boolean;
   onToggleTeam: () => void;
@@ -1103,6 +1584,12 @@ function CanvasToolbar({
         <span><strong>奥皇 AI</strong><small>创作画布</small></span>
       </div>
       <div className="canvas-toolbar__projects">
+        {scope ? (
+          <div className="canvas-scope-switch" role="tablist" aria-label="画布空间">
+            <button type="button" role="tab" aria-selected={scope === "personal"} className={scope === "personal" ? "is-active" : undefined} onClick={() => onScopeChange("personal")}>个人</button>
+            <button type="button" role="tab" aria-selected={scope === "shared"} className={scope === "shared" ? "is-active" : undefined} onClick={() => onScopeChange("shared")}>团队</button>
+          </div>
+        ) : null}
         <select value={activeProjectId} aria-label="选择画布" onChange={(event) => onProjectChange(event.target.value)}>
           {projects.map((project) => <option key={project.id} value={project.id}>{project.title}</option>)}
         </select>
@@ -1127,9 +1614,11 @@ function CanvasToolbar({
         <button type="button" className="canvas-icon-button" aria-label="重做" title="重做" disabled={!canRedo} onClick={onRedo}><Redo2 /></button>
         <button type="button" className="canvas-icon-button" aria-label="导入画布" title="导入画布" onClick={onImport}><Upload /></button>
         <button type="button" className="canvas-icon-button" aria-label="导出画布" title="导出画布" onClick={onExport}><Download /></button>
+        <button type="button" className={cn("canvas-icon-button", settingsOpen && "is-active")} aria-label="画布设置" title="画布设置" onClick={onSettings}><Settings2 /></button>
       </div>
       <div className="canvas-toolbar__account">
         {isTeamOwner ? <button type="button" className={cn("canvas-tool-button", teamOpen && "is-active")} aria-label="团队用量" title="团队用量" onClick={onToggleTeam}><UsersRound /><span>团队</span></button> : null}
+        {syncState ? <span className={cn("canvas-sync-state", `is-${syncState}`)}>{syncState === "live" ? "实时同步" : syncState === "syncing" ? "同步中" : "等待同步"}</span> : null}
         <span className={cn("canvas-save-state", `is-${saveState}`)}>{saveStateLabel(saveState)}</span>
         <span className="canvas-toolbar__version">v0.0.1</span>
         <button type="button" className="canvas-tool-button" aria-label="画布帮助" title="画布帮助" onClick={onHelp}><CircleHelp /><span>助手</span></button>
@@ -1144,6 +1633,7 @@ function CanvasToolbar({
 
 function CanvasSelectionToolbar({
   node,
+  style,
   onInfo,
   onDelete,
   onSaveMaterial,
@@ -1154,6 +1644,7 @@ function CanvasSelectionToolbar({
   onZoomIn,
 }: {
   node: CanvasFlowNode;
+  style?: CSSProperties;
   onInfo: () => void;
   onDelete: () => void;
   onSaveMaterial: () => void;
@@ -1164,7 +1655,7 @@ function CanvasSelectionToolbar({
   onZoomIn: () => void;
 }) {
   return (
-    <div className="canvas-selection-toolbar" role="toolbar" aria-label="选中节点工具">
+    <div className="canvas-selection-toolbar" style={style} role="toolbar" aria-label="选中节点工具">
       <button type="button" onClick={onInfo} title="节点信息" aria-label="节点信息"><Info /><span>信息</span></button>
       <button type="button" onClick={onDelete} title="删除节点" aria-label="删除节点"><Trash2 /><span>删除</span></button>
       <button type="button" onClick={onSaveMaterial} title="保存到素材库" aria-label="保存到素材库"><FolderOpen /><span>存素材</span></button>
@@ -1175,6 +1666,60 @@ function CanvasSelectionToolbar({
       <button type="button" onClick={onZoomOut} title="缩小画布" aria-label="缩小画布"><ZoomOut /></button>
       <button type="button" onClick={onZoomIn} title="放大画布" aria-label="放大画布"><ZoomIn /></button>
     </div>
+  );
+}
+
+function CanvasBatchToolbar({ count, style, onConnect, onDuplicate, onDelete }: {
+  count: number;
+  style?: CSSProperties;
+  onConnect: () => void;
+  onDuplicate: () => void;
+  onDelete: () => void;
+}) {
+  return (
+    <div className="canvas-selection-toolbar canvas-selection-toolbar--batch" style={style} role="toolbar" aria-label="批量节点工具">
+      <strong>{count} 个节点</strong>
+      <button type="button" onClick={onConnect} title="按位置连接" aria-label="按位置连接"><Link2 /><span>连接</span></button>
+      <button type="button" onClick={onDuplicate} title="批量复制" aria-label="批量复制"><CopyPlus /><span>复制</span></button>
+      <button type="button" onClick={onDelete} title="批量删除" aria-label="批量删除"><Trash2 /><span>删除</span></button>
+    </div>
+  );
+}
+
+function CanvasSettingsPanel({
+  theme,
+  connectionStyle,
+  snapEnabled,
+  onTheme,
+  onConnectionStyle,
+  onSnapEnabled,
+  onOrganize,
+  onClean,
+  onExportImage,
+  onClose,
+}: {
+  theme: CanvasTheme;
+  connectionStyle: ConnectionStyle;
+  snapEnabled: boolean;
+  onTheme: (value: CanvasTheme) => void;
+  onConnectionStyle: (value: ConnectionStyle) => void;
+  onSnapEnabled: (value: boolean) => void;
+  onOrganize: (layout: "flow" | "grid") => void;
+  onClean: () => void;
+  onExportImage: () => void;
+  onClose: () => void;
+}) {
+  return (
+    <aside className="canvas-settings" aria-label="画布设置">
+      <header><div><Settings2 /><strong>画布设置</strong></div><button type="button" className="canvas-icon-button" onClick={onClose} title="关闭画布设置" aria-label="关闭画布设置"><X /></button></header>
+      <section><strong><Palette />主题</strong><div className="canvas-settings__swatches">
+        {(["midnight", "graphite", "light"] as const).map((value) => <button key={value} type="button" className={cn(`is-${value}`, theme === value && "is-active")} onClick={() => onTheme(value)} aria-label={value === "midnight" ? "深夜主题" : value === "graphite" ? "石墨主题" : "明亮主题"} title={value === "midnight" ? "深夜" : value === "graphite" ? "石墨" : "明亮"} />)}
+      </div></section>
+      <section><strong>连接线</strong><div className="canvas-settings__segments"><button type="button" className={connectionStyle === "smoothstep" ? "is-active" : undefined} onClick={() => onConnectionStyle("smoothstep")}>曲线</button><button type="button" className={connectionStyle === "straight" ? "is-active" : undefined} onClick={() => onConnectionStyle("straight")}>直线</button></div></section>
+      <label className="canvas-settings__toggle"><input type="checkbox" checked={snapEnabled} onChange={(event) => onSnapEnabled(event.target.checked)} /><span>节点对齐网格</span></label>
+      <section><strong>排列</strong><div className="canvas-settings__commands"><button type="button" onClick={() => onOrganize("flow")}>流程排列</button><button type="button" onClick={() => onOrganize("grid")}>网格排列</button></div></section>
+      <div className="canvas-settings__commands"><button type="button" onClick={onExportImage}><Download />导出图片</button><button type="button" className="is-danger" onClick={onClean}><Eraser />清理节点</button></div>
+    </aside>
   );
 }
 
@@ -1189,6 +1734,8 @@ function CanvasBottomDock({
   onRedo,
   onImport,
   onExport,
+  onClean,
+  onSettings,
   onDelete,
   onZoomOut,
   onZoomIn,
@@ -1205,6 +1752,8 @@ function CanvasBottomDock({
   onRedo: () => void;
   onImport: () => void;
   onExport: () => void;
+  onClean: () => void;
+  onSettings: () => void;
   onDelete: () => void;
   onZoomOut: () => void;
   onZoomIn: () => void;
@@ -1222,7 +1771,9 @@ function CanvasBottomDock({
       <button type="button" onClick={onRedo} title="重做" aria-label="重做"><Redo2 /></button>
       <button type="button" onClick={onImport} title="导入画布" aria-label="导入画布"><Upload /></button>
       <button type="button" onClick={onExport} title="导出画布" aria-label="导出画布"><Download /></button>
-      <button type="button" onClick={onFit} title="查看全部节点" aria-label="查看全部节点"><Eraser /></button>
+      <button type="button" onClick={onSettings} title="画布设置" aria-label="画布设置"><Settings2 /></button>
+      <button type="button" onClick={onFit} title="查看全部节点" aria-label="查看全部节点"><Maximize2 /></button>
+      <button type="button" onClick={onClean} title="清理节点" aria-label="清理节点"><Eraser /></button>
       <span className="canvas-bottom-dock__divider" aria-hidden="true" />
       <button type="button" onClick={onZoomOut} title="缩小" aria-label="缩小"><ZoomOut /></button>
       <button type="button" onClick={onZoomIn} title="放大" aria-label="放大"><ZoomIn /></button>
@@ -1234,6 +1785,8 @@ function CanvasBottomDock({
 
 function CanvasNodeInfoPanel({
   node,
+  sourceNodes,
+  libraryItem,
   onClose,
   onFocusText,
   onDownload,
@@ -1244,6 +1797,8 @@ function CanvasNodeInfoPanel({
   onGenerate,
 }: {
   node: CanvasFlowNode;
+  sourceNodes: CanvasFlowNode[];
+  libraryItem?: LibraryItem;
   onClose: () => void;
   onFocusText: () => void;
   onDownload: () => void;
@@ -1273,6 +1828,8 @@ function CanvasNodeInfoPanel({
           <div><dt>状态</dt><dd>{data.status || "idle"}</dd></div>
           <div><dt>来源</dt><dd>{isMedia ? data.mediaType : isGenerator ? data.providerId || "--" : "--"}</dd></div>
           <div><dt>链接</dt><dd>{isMedia ? (data.mediaUrl ? "可用" : "无") : "--"}</dd></div>
+          <div><dt>模型</dt><dd>{data.model || libraryItem?.model || "--"}</dd></div>
+          <div><dt>创建时间</dt><dd>{data.createdAt || libraryItem?.createdAt ? new Date(data.createdAt || libraryItem!.createdAt).toLocaleString("zh-CN") : "--"}</dd></div>
         </dl>
         {isPrompt ? (
           <div className="canvas-node-info__section">
@@ -1307,6 +1864,10 @@ function CanvasNodeInfoPanel({
             </ul>
           </div>
         ) : null}
+        <div className="canvas-node-info__section">
+          <strong>来源素材</strong>
+          {sourceNodes.length ? <ul>{sourceNodes.map((source) => <li key={source.id}>{source.data.title} · {source.data.kind}</li>)}</ul> : <p>无连接来源</p>}
+        </div>
         <div className="canvas-node-info__actions">
           {isPrompt ? <button type="button" onClick={onFocusText}><Type />编辑文本</button> : null}
           {isMedia ? (
@@ -1512,7 +2073,7 @@ function TeamPanel({ onClose, allowCreateMembers }: { onClose: () => void; allow
   );
 }
 
-function LibraryPanel({ open, items, filter, search, onClose, onFilter, onSearch, onAdd }: {
+function LibraryPanel({ open, items, filter, search, onClose, onFilter, onSearch, onAdd, onRename, onFavorite, onCopyLink, onDownload, onDelete }: {
   open: boolean;
   items: LibraryItem[];
   filter: LibraryFilter;
@@ -1521,6 +2082,11 @@ function LibraryPanel({ open, items, filter, search, onClose, onFilter, onSearch
   onFilter: (filter: LibraryFilter) => void;
   onSearch: (search: string) => void;
   onAdd: (item: LibraryItem) => void;
+  onRename: (item: LibraryItem) => void;
+  onFavorite: (item: LibraryItem) => void;
+  onCopyLink: (item: LibraryItem) => void;
+  onDownload: (item: LibraryItem) => void;
+  onDelete: (item: LibraryItem) => void;
 }) {
   return (
     <aside className={cn("canvas-library", open && "is-open")} aria-hidden={!open}>
@@ -1541,29 +2107,36 @@ function LibraryPanel({ open, items, filter, search, onClose, onFilter, onSearch
       </div>
       <div className="canvas-library__list">
         {items.map((item) => (
-          <button
+          <div
             key={item.id}
-            type="button"
             className="canvas-library-item"
             draggable
             onDragStart={(event) => {
               event.dataTransfer.setData(libraryDragType, item.id);
               event.dataTransfer.effectAllowed = "copy";
             }}
-            onClick={() => onAdd(item)}
           >
-            <span className="canvas-library-item__preview">
-              {item.output?.url && item.type === "image" ? (
-                // eslint-disable-next-line @next/next/no-img-element -- authenticated runtime media is not a static Next image.
-                <img src={item.output.url} alt="" draggable={false} />
-              ) : item.type === "video" ? <Film /> : <ImageIcon />}
-            </span>
-            <span className="canvas-library-item__copy">
-              <strong title={item.title}>{item.title}</strong>
-              <small>{item.status === "done" ? "已完成" : item.status === "failed" ? "失败" : "生成中"}</small>
-            </span>
-            <Plus />
-          </button>
+            <button type="button" className="canvas-library-item__main" onClick={() => onAdd(item)}>
+              <span className="canvas-library-item__preview">
+                {item.output?.url && item.type === "image" ? (
+                  // eslint-disable-next-line @next/next/no-img-element -- authenticated runtime media is not a static Next image.
+                  <img src={item.output.url} alt="" draggable={false} />
+                ) : item.type === "video" ? <Film /> : <ImageIcon />}
+              </span>
+              <span className="canvas-library-item__copy">
+                <strong title={item.title}>{item.title}</strong>
+                <small>{item.status === "done" ? "已完成" : item.status === "failed" ? "失败" : "生成中"}</small>
+              </span>
+              <Plus />
+            </button>
+            <div className="canvas-library-item__actions">
+              <button type="button" className={cn(Boolean(item.favorite || item.params.favorite) && "is-active")} onClick={() => onFavorite(item)} title="收藏" aria-label="收藏"><Star /></button>
+              <button type="button" onClick={() => onRename(item)} title="重命名" aria-label="重命名"><Type /></button>
+              <button type="button" disabled={!item.output?.url} onClick={() => onCopyLink(item)} title="复制链接" aria-label="复制链接"><Copy /></button>
+              <button type="button" disabled={!item.output?.url} onClick={() => onDownload(item)} title="下载" aria-label="下载"><Download /></button>
+              <button type="button" className="is-danger" onClick={() => onDelete(item)} title="删除素材" aria-label="删除素材"><Trash2 /></button>
+            </div>
+          </div>
         ))}
         {!items.length ? <div className="canvas-library__empty"><FolderOpen /><span>暂无可用素材</span></div> : null}
       </div>

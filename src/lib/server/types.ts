@@ -107,6 +107,7 @@ export type LibraryItem = {
   expirationQuarantineName?: string;
   output?: LibraryOutput;
   params: Record<string, string | number | boolean>;
+  favorite?: boolean;
   error?: string;
   fileAvailable?: boolean;
 };

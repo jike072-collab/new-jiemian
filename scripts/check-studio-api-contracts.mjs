@@ -167,13 +167,13 @@ for (const contract of contracts) {
 assertSequence("library delete confirmation order", studioApp, [
   "setLibraryDeleteConfirmItemId(id)",
   "const handleConfirmDeleteLibraryItem",
-  "await jsonFetch(\"/api/library\"",
+  "await fetchJsonWithCsrf(\"/api/library\"",
 ]);
 const requestDeleteStart = studioApp.indexOf("const handleRequestDeleteLibraryItem");
 const requestDeleteEnd = studioApp.indexOf("const handleCancelDeleteLibraryItem", requestDeleteStart);
 assert(requestDeleteStart >= 0 && requestDeleteEnd > requestDeleteStart, "delete request handler boundary exists");
 const requestDeleteBody = studioApp.slice(requestDeleteStart, requestDeleteEnd);
-assert(!requestDeleteBody.includes("jsonFetch(\"/api/library\""), "delete request must not call DELETE before confirmation");
+assert(!requestDeleteBody.includes("fetchJsonWithCsrf(\"/api/library\""), "delete request must not call DELETE before confirmation");
 assert(libraryView.includes("LibraryDeleteConfirmDialog"), "delete confirmation dialog export exists");
 assert(libraryView.includes("onClick={onCancel}"), "delete confirmation cancel path exists");
 assert(libraryView.includes("onClick={onConfirm}"), "delete confirmation confirm path exists");

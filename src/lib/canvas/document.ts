@@ -83,6 +83,16 @@ function normalizeNode(value: unknown): CanvasStoredNode {
   };
   const prompt = optionalString(value.data.prompt, 30_000);
   if (prompt !== undefined) data.prompt = prompt;
+  const createdAt = optionalString(value.data.createdAt, 64);
+  const model = optionalString(value.data.model, 240);
+  if (createdAt) data.createdAt = createdAt;
+  if (model) data.model = model;
+  if (Array.isArray(value.data.sourceNodeIds)) {
+    data.sourceNodeIds = value.data.sourceNodeIds
+      .slice(0, 32)
+      .map((source) => optionalIdentifier(source, 160))
+      .filter((source): source is string => Boolean(source));
+  }
 
   if (kind === "media") {
     const mediaType = boundedString(value.data.mediaType, 16) as CanvasMediaType;
