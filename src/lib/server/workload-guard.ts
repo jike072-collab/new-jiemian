@@ -138,7 +138,7 @@ export function withUserImageWorkload<T>(localUserId: string, handler: () => Pro
 export function withInternalCanvasImageWorkload<T>(localUserId: string, handler: () => Promise<T>) {
   return withWorkloadSlots([{
     key: `user:${localUserId}:image-task`,
-    limit: 12,
+    limit: 24,
     message: "内部画布图片任务已达到并发上限，请稍后重试。",
   }], handler);
 }
@@ -163,7 +163,7 @@ export function withUserImageEditWorkload<T>(localUserId: string, handler: () =>
 export function withInternalCanvasImageEditWorkload<T>(localUserId: string, handler: () => Promise<T>) {
   return withWorkloadSlots([{
     key: `user:${localUserId}:image-edit-task`,
-    limit: 8,
+    limit: 16,
     message: "内部画布图片编辑任务已达到并发上限，请稍后重试。",
   }], handler);
 }

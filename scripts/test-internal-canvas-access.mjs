@@ -39,12 +39,12 @@ assert.match(promptOptimize, /estimatedQuotaUnits = billingMode === "internal_fr
 assert.match(promptOptimize, /billingMode,/);
 assert.match(promptOptimize, /actualQuotaUnits: estimatedQuotaUnits/);
 assert.match(workload, /withInternalCanvasImageWorkload/);
-assert.match(workload, /limit: 12/);
-assert.match(workload, /limit: 8/);
+assert.match(workload, /limit: 24/);
+assert.match(workload, /limit: 16/);
 assert.match(workload, /limit: 6/);
 assert.match(providerCall, /billingMode === "internal_free" \? 8 : 4/);
-assert.match(canvasWorkspace, /internalCanvas \? 8 : 4/);
-assert.match(canvasNode, /actions\.internalCanvas \? 8 : 4/);
-assert.match(canvasDocument, /boundedNumber\(value\.data\.count, 1, 8, 1\)/);
+assert.match(canvasWorkspace, /planCanvasImageRequests\(Number\(data\.count\), internalCanvas\)/);
+assert.match(canvasNode, /canvasImageCountLimit\(actions\.internalCanvas\)/);
+assert.match(canvasDocument, /boundedNumber\(value\.data\.count, 1, 15, 1\)/);
 
 console.log("internal canvas access and billing contracts passed");

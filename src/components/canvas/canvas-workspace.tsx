@@ -94,6 +94,7 @@ import { CanvasAssistantPanel } from "@/components/canvas/canvas-assistant-panel
 import { CanvasSelectionHint, CanvasShortcutsPanel } from "@/components/canvas/canvas-shortcuts-panel";
 import { CanvasConnectionLine, CanvasEdge, CanvasEdgeActionsContext } from "@/components/canvas/canvas-edge";
 import { CanvasImageEditor } from "@/components/canvas/canvas-image-editor";
+import { CanvasVozebTopbar } from "@/components/canvas/canvas-vozeb-shell";
 import {
   CanvasGroupNode,
   CanvasNode,
@@ -121,12 +122,18 @@ import type {
   CanvasStoredNode,
 } from "@/lib/canvas/types";
 import { normalizeCanvasDocument } from "@/lib/canvas/document";
+import {
+  canvasImageResultGrid,
+  INTERNAL_CANVAS_IMAGE_REQUEST_CONCURRENCY,
+  planCanvasImageRequests,
+} from "@/lib/canvas/image-batch";
 import { mergeCanvasWorkspace } from "@/lib/canvas/merge";
 import { normalizeCanvasAssistantResponse, type CanvasAssistantAction } from "@/lib/canvas/assistant";
 import type { FrontendProvider, JobRecord, LibraryItem } from "@/lib/server/types";
 import { cn } from "@/lib/utils";
 
 type SaveState = "saved" | "dirty" | "saving" | "error";
+type CanvasPresentation = "classic" | "vozeb";
 type LibraryFilter = "all" | "image" | "video";
 type CanvasWorkspaceSnapshot = {
   title: string;
@@ -268,15 +275,40 @@ function copyableCanvasSelection(nodes: CanvasFlowNode[]) {
   });
 }
 
-export function CanvasWorkspace({ accountName, isTeamOwner, isInternalCanvas }: { accountName: string; isTeamOwner: boolean; isInternalCanvas?: boolean }) {
+export function CanvasWorkspace({
+  accountName,
+  isTeamOwner,
+  isInternalCanvas,
+  presentation = "classic",
+}: {
+  accountName: string;
+  isTeamOwner: boolean;
+  isInternalCanvas?: boolean;
+  presentation?: CanvasPresentation;
+}) {
   return (
     <ReactFlowProvider>
-      <CanvasWorkspaceInner accountName={accountName} isTeamOwner={isTeamOwner} isInternalCanvas={Boolean(isInternalCanvas)} />
+      <CanvasWorkspaceInner
+        accountName={accountName}
+        isTeamOwner={isTeamOwner}
+        isInternalCanvas={Boolean(isInternalCanvas)}
+        presentation={presentation}
+      />
     </ReactFlowProvider>
   );
 }
 
-function CanvasWorkspaceInner({ accountName, isTeamOwner, isInternalCanvas }: { accountName: string; isTeamOwner: boolean; isInternalCanvas: boolean }) {
+function CanvasWorkspaceInner({
+  accountName,
+  isTeamOwner,
+  isInternalCanvas,
+  presentation,
+}: {
+  accountName: string;
+  isTeamOwner: boolean;
+  isInternalCanvas: boolean;
+  presentation: CanvasPresentation;
+}) {
   const flow = useReactFlow<CanvasFlowNode, Edge>();
   const flowRef = useRef(flow);
   const [nodes, setNodes] = useState<CanvasFlowNode[]>([]);
@@ -287,7 +319,7 @@ function CanvasWorkspaceInner({ accountName, isTeamOwner, isInternalCanvas }: { 
   const [viewport, setViewportState] = useState<Viewport>(defaultViewport);
   const [providers, setProviders] = useState<EnabledProviders>(emptyProviders);
   const [library, setLibrary] = useState<LibraryItem[]>([]);
-  const [libraryOpen, setLibraryOpen] = useState(true);
+  const [libraryOpen, setLibraryOpen] = useState(presentation === "classic");
   const [libraryFilter, setLibraryFilter] = useState<LibraryFilter>("all");
   const [librarySearch, setLibrarySearch] = useState("");
   const [loading, setLoading] = useState(true);
@@ -296,7 +328,7 @@ function CanvasWorkspaceInner({ accountName, isTeamOwner, isInternalCanvas }: { 
   const [infoOpen, setInfoOpen] = useState(false);
   const [assistantOpen, setAssistantOpen] = useState(false);
   const [shortcutsOpen, setShortcutsOpen] = useState(false);
-  const [selectionHintOpen, setSelectionHintOpen] = useState(shouldShowShortcutHint);
+  const [selectionHintOpen, setSelectionHintOpen] = useState(() => presentation === "classic" && shouldShowShortcutHint());
   const [editingNodeId, setEditingNodeId] = useState("");
   const [teamOpen, setTeamOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
@@ -304,10 +336,11 @@ function CanvasWorkspaceInner({ accountName, isTeamOwner, isInternalCanvas }: { 
   const [touchMultiSelect, setTouchMultiSelect] = useState(false);
   const [contextMenu, setContextMenu] = useState<CanvasContextMenuState | null>(null);
   const [clipboardHasNodes, setClipboardHasNodes] = useState(false);
-  const [canvasTheme, setCanvasTheme] = useState<CanvasTheme>(() => storedCanvasSettings().theme);
+  const [canvasTheme, setCanvasTheme] = useState<CanvasTheme>(() => presentation === "vozeb" ? "light" : storedCanvasSettings().theme);
   const [connectionStyle, setConnectionStyle] = useState<ConnectionStyle>(() => storedCanvasSettings().connectionStyle);
   const [snapEnabled, setSnapEnabled] = useState(() => storedCanvasSettings().snapEnabled);
   const [syncState, setSyncState] = useState<"live" | "syncing" | "paused">("live");
+  const [compactViewport, setCompactViewport] = useState(false);
   const [collaborationClientId] = useState(() => canvasId("client"));
 
   const nodesRef = useRef(nodes);
@@ -343,8 +376,9 @@ function CanvasWorkspaceInner({ accountName, isTeamOwner, isInternalCanvas }: { 
   useEffect(() => { viewportRef.current = viewport; }, [viewport]);
   useEffect(() => { flowRef.current = flow; }, [flow]);
   useEffect(() => {
-    window.localStorage.setItem("aohuang-canvas-settings", JSON.stringify({ theme: canvasTheme, connectionStyle, snapEnabled }));
-  }, [canvasTheme, connectionStyle, snapEnabled]);
+    const storageKey = presentation === "vozeb" ? "aohuang-canvas-v2-settings" : "aohuang-canvas-settings";
+    window.localStorage.setItem(storageKey, JSON.stringify({ theme: canvasTheme, connectionStyle, snapEnabled }));
+  }, [canvasTheme, connectionStyle, presentation, snapEnabled]);
   const openShortcuts = useCallback(() => {
     markShortcutHintSeen();
     setSelectionHintOpen(false);
@@ -372,6 +406,7 @@ function CanvasWorkspaceInner({ accountName, isTeamOwner, isInternalCanvas }: { 
   useEffect(() => {
     const mobileViewport = window.matchMedia("(max-width: 820px)");
     const closeLibraryOnMobile = (matches: boolean) => {
+      setCompactViewport(matches);
       if (matches) setLibraryOpen(false);
     };
     closeLibraryOnMobile(mobileViewport.matches);
@@ -960,13 +995,14 @@ function CanvasWorkspaceInner({ accountName, isTeamOwner, isInternalCanvas }: { 
     if (!generator) return;
     pushHistorySnapshot();
     const id = canvasId("node");
+    const resultGrid = canvasImageResultGrid(resultIndex, resultTotal);
     const resultNode: CanvasFlowNode = {
       id,
       type: "canvas",
       dragHandle: ".canvas-node__header",
       position: {
-        x: generator.position.x + (generator.width || 340) + 130,
-        y: generator.position.y + resultIndex * 380 - ((resultTotal - 1) * 190),
+        x: generator.position.x + (generator.width || 340) + 130 + resultGrid.column * 380,
+        y: generator.position.y + resultGrid.row * 360 - ((resultGrid.rowCount - 1) * 180),
       },
       width: 340,
       height: item.type === "image" ? 320 : 360,
@@ -2164,8 +2200,69 @@ function CanvasWorkspaceInner({ accountName, isTeamOwner, isInternalCanvas }: { 
   }
 
   return (
-    <main className="aohuang-canvas-page" data-canvas-theme={canvasTheme}>
-      <CanvasToolbar
+    <main
+      className={cn("aohuang-canvas-page", presentation === "vozeb" && "canvas-v2-page")}
+      data-canvas-theme={canvasTheme}
+      data-canvas-presentation={presentation}
+    >
+      {presentation === "vozeb" ? (
+        <CanvasVozebTopbar
+          accountName={accountName}
+          projects={projects}
+          activeProjectId={activeProjectId}
+          scope={isInternalCanvas ? canvasScope() : undefined}
+          title={title}
+          saveState={saveState}
+          syncState={isInternalCanvas ? syncState : undefined}
+          canvasTheme={canvasTheme}
+          libraryOpen={libraryOpen}
+          layersOpen={layersOpen}
+          settingsOpen={settingsOpen}
+          teamOpen={teamOpen}
+          assistantOpen={assistantOpen}
+          shortcutsOpen={shortcutsOpen}
+          isTeamOwner={isTeamOwner}
+          onTitleChange={(value) => { pushHistorySnapshot(); setTitle(value); markDirty(); }}
+          onProjectChange={(id) => { void switchProject(id); }}
+          onScopeChange={(scope) => {
+            const url = new URL(window.location.href);
+            url.searchParams.set("scope", scope);
+            window.location.assign(url);
+          }}
+          onCreateProject={() => { void createProject(); }}
+          onDeleteProject={() => { void deleteProject(); }}
+          onSave={() => { void saveNow(true); }}
+          onToggleLibrary={() => setLibraryOpen((value) => !value)}
+          onToggleLayers={() => {
+            setLayersOpen((value) => !value);
+            setInfoOpen(false);
+            setAssistantOpen(false);
+            setShortcutsOpen(false);
+            setSettingsOpen(false);
+          }}
+          onImport={triggerImport}
+          onExport={exportCanvas}
+          onSettings={() => {
+            setSettingsOpen((value) => !value);
+            setLayersOpen(false);
+            setInfoOpen(false);
+            setAssistantOpen(false);
+            setShortcutsOpen(false);
+          }}
+          onToggleTeam={() => setTeamOpen((value) => !value)}
+          onAssistant={() => {
+            setLayersOpen(false);
+            setInfoOpen(false);
+            setSettingsOpen(false);
+            setShortcutsOpen(false);
+            if (isInternalCanvas) setAssistantOpen((value) => !value);
+            else setNotice("智能助手仅供内部画布使用。");
+          }}
+          onShortcuts={toggleShortcuts}
+          onThemeCycle={() => setCanvasTheme((value) => value === "light" ? "midnight" : "light")}
+        />
+      ) : (
+        <CanvasToolbar
         accountName={accountName}
         projects={projects}
         activeProjectId={activeProjectId}
@@ -2224,8 +2321,9 @@ function CanvasWorkspaceInner({ accountName, isTeamOwner, isInternalCanvas }: { 
           if (isInternalCanvas) setAssistantOpen((value) => !value);
           else setNotice("智能助手仅供内部画布使用。");
         }}
-        onShortcuts={toggleShortcuts}
-      />
+          onShortcuts={toggleShortcuts}
+        />
+      )}
       <input
         ref={importInputRef}
         type="file"
@@ -2350,12 +2448,12 @@ function CanvasWorkspaceInner({ accountName, isTeamOwner, isInternalCanvas }: { 
               minZoom={0.08}
               maxZoom={2.5}
               panOnScroll
-              panOnDrag
+              panOnDrag={presentation === "vozeb" && !compactViewport ? [1] : true}
               panActivationKeyCode="Space"
               snapToGrid={snapEnabled}
               snapGrid={[24, 24]}
-              selectionOnDrag={false}
-              selectionKeyCode="Shift"
+              selectionOnDrag={presentation === "vozeb" && !compactViewport}
+              selectionKeyCode={presentation === "vozeb" ? null : "Shift"}
               selectionMode={SelectionMode.Partial}
               multiSelectionKeyCode={["Control", "Meta", "Shift"]}
               elementsSelectable={!touchMultiSelect}
@@ -2390,6 +2488,14 @@ function CanvasWorkspaceInner({ accountName, isTeamOwner, isInternalCanvas }: { 
             />
           ) : null}
           <CanvasBottomDock
+            variant={presentation}
+            canUndo={historyState.undo > 0}
+            canRedo={historyState.redo > 0}
+            onDeselect={() => {
+              setTouchMultiSelect(false);
+              setNodes((current) => current.map((node) => ({ ...node, selected: false })));
+              setEdges((current) => current.map((edge) => ({ ...edge, selected: false })));
+            }}
             onAddPrompt={addPromptNode}
             onAddImage={() => addGeneratorNode("image")}
             onAddVideo={() => addGeneratorNode("video")}
@@ -2422,7 +2528,7 @@ function CanvasWorkspaceInner({ accountName, isTeamOwner, isInternalCanvas }: { 
             onFit={() => { void flow.fitView({ duration: 260, padding: 0.18 }); }}
             onShortcuts={toggleShortcuts}
           />
-          {selectionHintOpen && !shortcutsOpen ? <CanvasSelectionHint onOpen={openShortcuts} onDismiss={dismissSelectionHint} /> : null}
+          {presentation === "classic" && selectionHintOpen && !shortcutsOpen ? <CanvasSelectionHint onOpen={openShortcuts} onDismiss={dismissSelectionHint} /> : null}
           {layersOpen ? (
             <CanvasLayersPanel
               nodes={nodes}
@@ -2834,6 +2940,10 @@ function CanvasSettingsPanel({
 }
 
 function CanvasBottomDock({
+  variant,
+  canUndo,
+  canRedo,
+  onDeselect,
   onAddPrompt,
   onAddImage,
   onAddVideo,
@@ -2854,6 +2964,10 @@ function CanvasBottomDock({
   onFit,
   onShortcuts,
 }: {
+  variant: CanvasPresentation;
+  canUndo: boolean;
+  canRedo: boolean;
+  onDeselect: () => void;
   onAddPrompt: () => void;
   onAddImage: () => void;
   onAddVideo: () => void;
@@ -2874,6 +2988,32 @@ function CanvasBottomDock({
   onFit: () => void;
   onShortcuts: () => void;
 }) {
+  if (variant === "vozeb") {
+    return (
+      <nav className="canvas-bottom-dock is-vozeb" aria-label="画布工具">
+        <button type="button" onClick={onDeselect} title="移动/选择" aria-label="移动或清除选择"><MousePointer2 /></button>
+        <span className="canvas-bottom-dock__divider" aria-hidden="true" />
+        <button type="button" disabled={!canUndo} onClick={onUndo} title="撤销" aria-label="撤销"><Undo2 /></button>
+        <button type="button" disabled={!canRedo} onClick={onRedo} title="重做" aria-label="重做"><Redo2 /></button>
+        <span className="canvas-bottom-dock__divider" aria-hidden="true" />
+        <button type="button" onClick={onAddPrompt} title="添加提示词" aria-label="添加提示词"><Type /></button>
+        <button type="button" onClick={onAddImage} title="添加生图节点" aria-label="添加生图节点"><ImageIcon /></button>
+        <button type="button" onClick={onAddVideo} title="添加生视频节点" aria-label="添加生视频节点"><Film /></button>
+        {onAddAudio ? <button type="button" onClick={onAddAudio} title="添加音频参考" aria-label="添加音频参考"><Music /></button> : null}
+        <button type="button" onClick={onSettings} title="生成与画布设置" aria-label="生成与画布设置"><Settings2 /></button>
+        <button type="button" onClick={onOpenLibrary} title="素材库" aria-label="打开素材库"><FolderOpen /></button>
+        <button type="button" onClick={onLayers} title="图层" aria-label="打开图层"><Layers3 /></button>
+        <button type="button" onClick={onImport} title="导入画布" aria-label="导入画布"><Upload /></button>
+        <button type="button" onClick={onExport} title="导出画布" aria-label="导出画布"><Download /></button>
+        <button type="button" className={cn("canvas-touch-only", touchMultiSelect && "is-active")} aria-pressed={touchMultiSelect} onClick={onTouchMultiSelect} title="触控多选" aria-label="触控多选"><ListChecks /></button>
+        <button type="button" onClick={onFit} title="查看全部节点" aria-label="查看全部节点"><Maximize2 /></button>
+        <button type="button" onClick={onClean} title="清理画布" aria-label="清理画布"><Eraser /></button>
+        <button type="button" className="is-danger" onClick={onDelete} title="删除选中节点" aria-label="删除选中节点"><Trash2 /></button>
+        <button type="button" onClick={onShortcuts} title="操作与快捷键" aria-label="操作与快捷键"><CircleHelp /></button>
+      </nav>
+    );
+  }
+
   return (
     <nav className="canvas-bottom-dock" aria-label="画布工具">
       <button type="button" onClick={onAddPrompt} title="添加提示词" aria-label="添加提示词"><Type /></button>
@@ -3375,53 +3515,80 @@ async function submitImageGeneration(
   internalCanvas: boolean,
 ) {
   const files = await Promise.all(references.map(libraryItemFile));
-  const taskId = canvasId("canvas-image");
   const mode = data.imageMode === "image-to-image" ? "image-to-image" as const : "text-to-image" as const;
   const operation = mode === "image-to-image" ? "cloud_image_edit" as const : "cloud_image_generation" as const;
-  const count = Math.min(Math.max(Math.round(Number(data.count) || 1), 1), internalCanvas ? 8 : 4);
+  const requests = planCanvasImageRequests(Number(data.count), internalCanvas);
+  const count = requests.reduce((total, requestCount) => total + requestCount, 0);
   const ratio = data.ratio || "1:1";
   const quality = data.quality || "1k";
-  const estimatedQuotaUnits = estimateImageGenerationTotalQuota({ quality, count, model: provider.model });
-  const requestFingerprint = generationBillingFingerprint({
-    kind: "image",
-    operation,
-    providerId: provider.id,
-    mode,
-    ratio,
-    quality,
-    referenceImages: references.length,
-    model: provider.model,
-    taskId,
-    estimatedQuotaUnits,
-  });
-  await fetchJsonWithCsrf("/api/quota/precheck", {
-    method: "POST",
-    body: JSON.stringify({
-      operation,
-      taskId,
-      idempotencyKey: taskId,
-      estimatedQuotaUnits,
-      membershipEntitlementAmount: estimateImageGenerationEntitlementUnits({ quality, count }),
-      requestFingerprint,
-    }),
-  });
-  const form = new FormData();
-  form.set("providerId", provider.id);
-  form.set("mode", mode);
-  form.set("operation", operation);
-  form.set("ratio", ratio);
-  form.set("quality", quality);
-  form.set("prompt", prompt);
-  form.set("count", String(count));
-  form.set("taskId", taskId);
-  form.set("idempotencyKey", taskId);
-  form.set("estimatedQuotaUnits", String(estimatedQuotaUnits));
-  files.forEach((file) => form.append("files", file));
   updateNodeData(generatorId, { status: "generating", progress: 35 });
-  const response = await fetchJsonWithCsrf<{ item: LibraryItem | null; items?: LibraryItem[] }>("/api/generate/image", { method: "POST", body: form });
-  const items = response.items?.length ? response.items : response.item ? [response.item] : [];
-  if (!items.length) throw new Error("图片生成未返回结果。");
-  items.forEach((item, index) => addResultNode(generatorId, item, null, index, items.length));
+
+  const requestOffsets = requests.map((_, index) => requests.slice(0, index).reduce((total, value) => total + value, 0));
+  const errors: unknown[] = [];
+  let nextRequestIndex = 0;
+  let completedCount = 0;
+
+  const runRequest = async (requestIndex: number) => {
+    const requestCount = requests[requestIndex];
+    const taskId = canvasId("canvas-image");
+    const estimatedQuotaUnits = estimateImageGenerationTotalQuota({ quality, count: requestCount, model: provider.model });
+    const requestFingerprint = generationBillingFingerprint({
+      kind: "image",
+      operation,
+      providerId: provider.id,
+      mode,
+      ratio,
+      quality,
+      referenceImages: references.length,
+      model: provider.model,
+      taskId,
+      estimatedQuotaUnits,
+    });
+    await fetchJsonWithCsrf("/api/quota/precheck", {
+      method: "POST",
+      body: JSON.stringify({
+        operation,
+        taskId,
+        idempotencyKey: taskId,
+        estimatedQuotaUnits,
+        membershipEntitlementAmount: estimateImageGenerationEntitlementUnits({ quality, count: requestCount }),
+        requestFingerprint,
+      }),
+    });
+    const form = new FormData();
+    form.set("providerId", provider.id);
+    form.set("mode", mode);
+    form.set("operation", operation);
+    form.set("ratio", ratio);
+    form.set("quality", quality);
+    form.set("prompt", prompt);
+    form.set("count", String(requestCount));
+    form.set("taskId", taskId);
+    form.set("idempotencyKey", taskId);
+    form.set("estimatedQuotaUnits", String(estimatedQuotaUnits));
+    files.forEach((file) => form.append("files", file));
+    const response = await fetchJsonWithCsrf<{ item: LibraryItem | null; items?: LibraryItem[] }>("/api/generate/image", { method: "POST", body: form });
+    const items = response.items?.length ? response.items : response.item ? [response.item] : [];
+    if (!items.length) throw new Error("图片生成未返回结果。");
+    items.forEach((item, index) => addResultNode(generatorId, item, null, requestOffsets[requestIndex] + index, count));
+    completedCount += items.length;
+    updateNodeData(generatorId, { progress: Math.min(95, 35 + Math.round((completedCount / count) * 60)) }, false);
+  };
+
+  const worker = async () => {
+    while (nextRequestIndex < requests.length) {
+      const requestIndex = nextRequestIndex;
+      nextRequestIndex += 1;
+      try {
+        await runRequest(requestIndex);
+      } catch (error) {
+        errors.push(error);
+      }
+    }
+  };
+  const concurrency = internalCanvas ? INTERNAL_CANVAS_IMAGE_REQUEST_CONCURRENCY : 1;
+  await Promise.all(Array.from({ length: Math.min(concurrency, requests.length) }, () => worker()));
+  if (errors.length) throw errors[0];
   updateNodeData(generatorId, { status: "done", progress: 100, error: undefined });
 }
 

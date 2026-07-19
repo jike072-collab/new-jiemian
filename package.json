@@ -113,6 +113,8 @@
     "test:internal-team": "node scripts/test-internal-team.mjs",
     "test:internal-canvas": "node scripts/test-internal-canvas-access.mjs",
     "test:canvas-assistant": "node scripts/test-canvas-assistant.mjs",
+    "test:canvas-image-batching": "node scripts/test-canvas-image-batching.mjs",
+    "test:canvas-vozeb-shell": "node scripts/test-canvas-vozeb-shell.mjs",
     "database:boundary": "node scripts/database/test-server-boundary.mjs",
     "db:health": "node scripts/database/migrate.mjs health",
     "test:prompt-optimizer": "node scripts/test-prompt-optimizer.mjs",

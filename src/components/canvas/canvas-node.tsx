@@ -31,6 +31,7 @@ import type { EnabledProviders, WorkspacePublicProvider } from "@/components/stu
 import type { CanvasMediaType, CanvasNodeData } from "@/lib/canvas/types";
 import { seedanceReferenceIssues } from "@/lib/seedance/prompt-guidance";
 import { cn } from "@/lib/utils";
+import { canvasImageCountLimit } from "@/lib/canvas/image-batch";
 
 export type CanvasFlowNode = Node<CanvasNodeData, "canvas" | "group">;
 
@@ -337,7 +338,7 @@ function GeneratorNode({ id, data }: { id: string; data: CanvasNodeData }) {
   const selectedDuration = durations.includes(data.duration || 0) ? data.duration : durations[0];
   const selectedResolution = resolutions.includes(data.resolution || "") ? data.resolution : resolutions[0];
   const imageMode = data.imageMode === "image-to-image" ? "image-to-image" : "text-to-image";
-  const maxImageCount = actions.internalCanvas ? 8 : 4;
+  const maxImageCount = canvasImageCountLimit(actions.internalCanvas);
   const imageCount = Math.min(Math.max(Math.round(Number(data.count) || 1), 1), maxImageCount);
   const busy = data.status === "queued" || data.status === "generating";
   const summary = actions.inputSummary[id] || { prompts: 0, images: 0, videos: 0, audios: 0 };

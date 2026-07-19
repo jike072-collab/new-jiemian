@@ -137,7 +137,7 @@ function normalizeNode(value: unknown): CanvasStoredNode {
     if (generationKind === "image") {
       const imageMode = optionalString(value.data.imageMode, 32);
       data.imageMode = imageMode === "image-to-image" ? "image-to-image" : "text-to-image";
-      data.count = boundedNumber(value.data.count, 1, 8, 1);
+      data.count = boundedNumber(value.data.count, 1, 15, 1);
     }
     data.ratio = optionalString(value.data.ratio, 32) || (generationKind === "image" ? "1:1" : "16:9");
     data.quality = optionalString(value.data.quality, 32) || "1k";

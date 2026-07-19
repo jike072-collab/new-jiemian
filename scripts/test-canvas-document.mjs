@@ -71,7 +71,19 @@ const imageGenerator = normalizeCanvasDocument({
   viewport: { x: 0, y: 0, zoom: 1 },
 });
 assert.equal(imageGenerator.nodes[0].data.imageMode, "image-to-image");
-assert.equal(imageGenerator.nodes[0].data.count, 8);
+assert.equal(imageGenerator.nodes[0].data.count, 9);
+
+const maxImageGenerator = normalizeCanvasDocument({
+  nodes: [{
+    id: "node-generator-max",
+    type: "canvas",
+    position: { x: 0, y: 0 },
+    data: { kind: "generator", title: "批量图片生成", generationKind: "image", count: 99 },
+  }],
+  edges: [],
+  viewport: { x: 0, y: 0, zoom: 1 },
+});
+assert.equal(maxImageGenerator.nodes[0].data.count, 15);
 
 const grouped = normalizeCanvasDocument({
   nodes: [
