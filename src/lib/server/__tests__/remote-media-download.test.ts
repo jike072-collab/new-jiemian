@@ -412,6 +412,13 @@ test("CLMM Seedance result storage allows the documented result host", async () 
   });
 });
 
+test("CLMM Seedance result storage allows the current MegaVideos result host", async () => {
+  await withEnv({ NODE_ENV: "production", REMOTE_MEDIA_ALLOWED_HOSTS: undefined }, async () => {
+    assert.doesNotThrow(() => remoteMediaDownloadInternalsForTests.assertAllowedRemoteHost("megavideos.oss-cn-hangzhou.aliyuncs.com"));
+    assert.throws(() => remoteMediaDownloadInternalsForTests.assertAllowedRemoteHost("megavideos.oss-cn-hangzhou.aliyuncs.com.evil.test"));
+  });
+});
+
 test("same-origin redirects keep auth headers but cross-origin redirects reject them", async () => {
   const authHeader = "Bearer test-token";
   await withEnv({ NODE_ENV: "production", REMOTE_MEDIA_ALLOWED_HOSTS: "media.example.test,*.media.example.test" }, async () => {
