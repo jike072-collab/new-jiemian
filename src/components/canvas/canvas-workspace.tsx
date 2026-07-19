@@ -365,13 +365,14 @@ function CanvasWorkspaceInner({ accountName, isTeamOwner }: { accountName: strin
       title: kind === "image" ? "图片生成" : "视频生成",
       generationKind: kind,
       providerId: provider?.id || "",
+      ...(kind === "image" ? { imageMode: "text-to-image" as const, count: 1 } : {}),
       ratio: kind === "image" ? "1:1" : provider?.videoOptions?.ratios?.[0] || "16:9",
       quality: "1k",
       duration: provider?.videoOptions?.durations?.[0] || 5,
       resolution: provider?.videoOptions?.resolutions?.[0] || provider?.videoOptions?.resolution || "720p",
       status: "idle",
       progress: 0,
-    }, { width: 340, height: kind === "image" ? 360 : 410 });
+    }, { width: 360, height: kind === "image" ? 430 : 410 });
   }, [addNodeAtCenter]);
 
   const addLibraryNode = useCallback((item: LibraryItem, position?: { x: number; y: number }) => {
@@ -400,14 +401,17 @@ function CanvasWorkspaceInner({ accountName, isTeamOwner }: { accountName: strin
     markDirty();
   }, [addNodeAtCenter, markDirty]);
 
-  const addResultNode = useCallback((generatorId: string, item: LibraryItem, job?: JobRecord | null) => {
+  const addResultNode = useCallback((generatorId: string, item: LibraryItem, job?: JobRecord | null, resultIndex = 0, resultTotal = 1) => {
     const generator = nodesRef.current.find((node) => node.id === generatorId);
     if (!generator) return;
     const id = canvasId("node");
     const resultNode: CanvasFlowNode = {
       id,
       type: "canvas",
-      position: { x: generator.position.x + (generator.width || 340) + 130, y: generator.position.y },
+      position: {
+        x: generator.position.x + (generator.width || 340) + 130,
+        y: generator.position.y + resultIndex * 380 - ((resultTotal - 1) * 190),
+      },
       width: 340,
       height: item.type === "image" ? 320 : 360,
       data: {
@@ -423,7 +427,7 @@ function CanvasWorkspaceInner({ accountName, isTeamOwner }: { accountName: strin
     };
     setNodes((current) => [
       ...current.map((node) => node.id === generatorId
-        ? { ...node, data: { ...node.data, outputNodeId: id, jobId: job?.id || node.data.jobId } }
+        ? { ...node, data: { ...node.data, ...(resultIndex === 0 ? { outputNodeId: id } : {}), jobId: job?.id || node.data.jobId } }
         : node),
       resultNode,
     ]);
@@ -469,7 +473,12 @@ function CanvasWorkspaceInner({ accountName, isTeamOwner }: { accountName: strin
     try {
       if (generator.data.generationKind === "image") {
         if (mediaItems.some((item) => item.type !== "image")) throw new Error("图片生成节点只能连接图片素材。");
-        await submitImageGeneration(generatorId, generator.data, provider, prompt, mediaItems, addResultNode, updateNodeData);
+        const imageMode = generator.data.imageMode === "image-to-image" || (!generator.data.imageMode && mediaItems.length)
+          ? "image-to-image" as const
+          : "text-to-image" as const;
+        if (imageMode === "image-to-image" && !mediaItems.length) throw new Error("图生图需要至少连接一张图片素材。");
+        if (imageMode === "text-to-image" && mediaItems.length) throw new Error("文生图不能连接参考图，请切换到图生图。");
+        await submitImageGeneration(generatorId, { ...generator.data, imageMode }, provider, prompt, mediaItems, addResultNode, updateNodeData);
       } else {
         await submitVideoGeneration(generatorId, generator.data, provider as WorkspacePublicProvider, prompt, mediaItems, addResultNode, updateNodeData);
       }
@@ -962,16 +971,17 @@ async function submitImageGeneration(
   provider: FrontendProvider,
   prompt: string,
   references: LibraryItem[],
-  addResultNode: (generatorId: string, item: LibraryItem, job?: JobRecord | null) => void,
+  addResultNode: (generatorId: string, item: LibraryItem, job?: JobRecord | null, resultIndex?: number, resultTotal?: number) => void,
   updateNodeData: (id: string, patch: Partial<CanvasNodeData>, persist?: boolean) => void,
 ) {
   const files = await Promise.all(references.map(libraryItemFile));
   const taskId = canvasId("canvas-image");
-  const mode = references.length ? "image-to-image" as const : "text-to-image" as const;
-  const operation = references.length ? "cloud_image_edit" as const : "cloud_image_generation" as const;
+  const mode = data.imageMode === "image-to-image" ? "image-to-image" as const : "text-to-image" as const;
+  const operation = mode === "image-to-image" ? "cloud_image_edit" as const : "cloud_image_generation" as const;
+  const count = Math.min(Math.max(Math.round(Number(data.count) || 1), 1), 4);
   const ratio = data.ratio || "1:1";
   const quality = data.quality || "1k";
-  const estimatedQuotaUnits = estimateImageGenerationTotalQuota({ quality, count: 1, model: provider.model });
+  const estimatedQuotaUnits = estimateImageGenerationTotalQuota({ quality, count, model: provider.model });
   const requestFingerprint = generationBillingFingerprint({
     kind: "image",
     operation,
@@ -991,7 +1001,7 @@ async function submitImageGeneration(
       taskId,
       idempotencyKey: taskId,
       estimatedQuotaUnits,
-      membershipEntitlementAmount: estimateImageGenerationEntitlementUnits({ quality }),
+      membershipEntitlementAmount: estimateImageGenerationEntitlementUnits({ quality, count }),
       requestFingerprint,
     }),
   });
@@ -1002,16 +1012,16 @@ async function submitImageGeneration(
   form.set("ratio", ratio);
   form.set("quality", quality);
   form.set("prompt", prompt);
-  form.set("count", "1");
+  form.set("count", String(count));
   form.set("taskId", taskId);
   form.set("idempotencyKey", taskId);
   form.set("estimatedQuotaUnits", String(estimatedQuotaUnits));
   files.forEach((file) => form.append("files", file));
   updateNodeData(generatorId, { status: "generating", progress: 35 });
   const response = await fetchJsonWithCsrf<{ item: LibraryItem | null; items?: LibraryItem[] }>("/api/generate/image", { method: "POST", body: form });
-  const item = response.items?.[0] || response.item;
-  if (!item) throw new Error("图片生成未返回结果。");
-  addResultNode(generatorId, item);
+  const items = response.items?.length ? response.items : response.item ? [response.item] : [];
+  if (!items.length) throw new Error("图片生成未返回结果。");
+  items.forEach((item, index) => addResultNode(generatorId, item, null, index, items.length));
   updateNodeData(generatorId, { status: "done", progress: 100, error: undefined });
 }
 
@@ -1021,7 +1031,7 @@ async function submitVideoGeneration(
   provider: WorkspacePublicProvider,
   prompt: string,
   references: LibraryItem[],
-  addResultNode: (generatorId: string, item: LibraryItem, job?: JobRecord | null) => void,
+  addResultNode: (generatorId: string, item: LibraryItem, job?: JobRecord | null, resultIndex?: number, resultTotal?: number) => void,
   updateNodeData: (id: string, patch: Partial<CanvasNodeData>, persist?: boolean) => void,
 ) {
   const images = references.filter((item) => item.type === "image");
@@ -1150,13 +1160,15 @@ function starterDocument(): CanvasProjectDocument {
         id: generatorId,
         type: "canvas",
         position: { x: 540, y: 90 },
-        width: 340,
-        height: 360,
+        width: 360,
+        height: 430,
         data: {
           kind: "generator",
           title: "图片生成",
           generationKind: "image",
           providerId: "",
+          imageMode: "text-to-image",
+          count: 1,
           ratio: "1:1",
           quality: "1k",
           duration: 5,

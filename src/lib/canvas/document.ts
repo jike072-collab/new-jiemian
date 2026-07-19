@@ -97,6 +97,11 @@ function normalizeNode(value: unknown): CanvasStoredNode {
     if (!generationKinds.has(generationKind)) throw new CanvasDocumentError("生成节点类型无效。");
     data.generationKind = generationKind;
     data.providerId = optionalString(value.data.providerId, 240) || "";
+    if (generationKind === "image") {
+      const imageMode = optionalString(value.data.imageMode, 32);
+      data.imageMode = imageMode === "image-to-image" ? "image-to-image" : "text-to-image";
+      data.count = boundedNumber(value.data.count, 1, 4, 1);
+    }
     data.ratio = optionalString(value.data.ratio, 32) || (generationKind === "image" ? "1:1" : "16:9");
     data.quality = optionalString(value.data.quality, 32) || "1k";
     data.duration = boundedNumber(value.data.duration, 1, 60, 5);

@@ -48,7 +48,7 @@ const imageQualities = ["1k", "2k", "4k"];
 export function CanvasNode({ id, data, selected }: NodeProps<CanvasFlowNode>) {
   const actions = useCanvasNodeActions();
   const minWidth = data.kind === "media" ? 260 : 300;
-  const minHeight = data.kind === "prompt" ? 210 : data.kind === "generator" ? 330 : 220;
+  const minHeight = data.kind === "prompt" ? 210 : data.kind === "generator" ? 380 : 220;
 
   return (
     <article className={cn("canvas-node", `canvas-node--${data.kind}`, selected && "is-selected")}>
@@ -140,11 +140,19 @@ function GeneratorNode({ id, data }: { id: string; data: CanvasNodeData }) {
   const selectedRatio = ratios.includes(data.ratio || "") ? data.ratio : ratios[0];
   const selectedDuration = durations.includes(data.duration || 0) ? data.duration : durations[0];
   const selectedResolution = resolutions.includes(data.resolution || "") ? data.resolution : resolutions[0];
+  const imageMode = data.imageMode === "image-to-image" ? "image-to-image" : "text-to-image";
+  const imageCount = Math.min(Math.max(Math.round(Number(data.count) || 1), 1), 4);
   const busy = data.status === "queued" || data.status === "generating";
   const summary = actions.inputSummary[id] || { prompts: 0, images: 0, videos: 0 };
 
   return (
     <div className="canvas-node__body canvas-node__body--generator">
+      {!isVideo ? (
+        <div className="canvas-node__mode-tabs nodrag" role="tablist" aria-label="图片生成模式">
+          <button type="button" role="tab" aria-selected={imageMode === "text-to-image"} className={imageMode === "text-to-image" ? "is-active" : undefined} disabled={busy} onClick={() => actions.updateNodeData(id, { imageMode: "text-to-image" })}><Type />文生图</button>
+          <button type="button" role="tab" aria-selected={imageMode === "image-to-image"} className={imageMode === "image-to-image" ? "is-active" : undefined} disabled={busy} onClick={() => actions.updateNodeData(id, { imageMode: "image-to-image" })}><ImageIcon />图生图</button>
+        </div>
+      ) : null}
       <label className="canvas-node__field">
         <span>模型</span>
         <select
@@ -168,7 +176,7 @@ function GeneratorNode({ id, data }: { id: string; data: CanvasNodeData }) {
         </select>
       </label>
 
-      <div className="canvas-node__field-grid">
+      <div className={cn("canvas-node__field-grid", !isVideo && "is-image")}>
         <label className="canvas-node__field">
           <span>比例</span>
           <select className="nodrag nowheel" value={selectedRatio} disabled={busy} onChange={(event) => actions.updateNodeData(id, { ratio: event.target.value })}>
@@ -190,6 +198,14 @@ function GeneratorNode({ id, data }: { id: string; data: CanvasNodeData }) {
             </select>
           </label>
         )}
+        {!isVideo ? (
+          <label className="canvas-node__field">
+            <span>数量</span>
+            <select className="nodrag nowheel" value={String(imageCount)} disabled={busy} onChange={(event) => actions.updateNodeData(id, { count: Number(event.target.value) })}>
+              {[1, 2, 3, 4].map((count) => <option key={count} value={count}>{count} 张</option>)}
+            </select>
+          </label>
+        ) : null}
       </div>
 
       {isVideo ? (
@@ -207,11 +223,13 @@ function GeneratorNode({ id, data }: { id: string; data: CanvasNodeData }) {
         {isVideo ? <span>{summary.videos} 个视频</span> : null}
       </div>
 
+      {!isVideo && imageMode === "image-to-image" && summary.images < 1 ? <div className="canvas-node__mode-warning">请连接至少一张参考图</div> : null}
+
       <StatusLine status={data.status} progress={data.progress} error={data.error} />
       <button
         type="button"
         className="canvas-node__generate nodrag"
-        disabled={busy || !selectedProvider || summary.prompts < 1}
+        disabled={busy || !selectedProvider || summary.prompts < 1 || (!isVideo && imageMode === "image-to-image" && summary.images < 1)}
         onClick={() => actions.runGenerator(id)}
       >
         {busy ? <LoaderCircle className="is-spinning" /> : <Play />}

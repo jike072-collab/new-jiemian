@@ -53,6 +53,10 @@ assert.match(workspace, /const flowRef = useRef\(flow\)/);
 assert.match(workspace, /flowRef\.current\.setViewport/);
 assert.match(workspace, /defaultViewport=\{viewport\}/);
 assert.doesNotMatch(workspace, /\sfitView\s/);
+assert.match(imageSubmission, /form\.set\("count", String\(count\)\)/);
+assert.match(imageSubmission, /estimateImageGenerationTotalQuota\(\{ quality, count,/);
+assert.match(imageSubmission, /items\.forEach\(\(item, index\) => addResultNode\(generatorId, item, null, index, items\.length\)\)/);
+assert.match(workspace, /imageMode === "image-to-image"/);
 
 console.log(JSON.stringify({
   ok: true,

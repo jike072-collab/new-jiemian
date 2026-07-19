@@ -31,6 +31,25 @@ const normalized = normalizeCanvasDocument({
 assert.equal(normalized.nodes[0].data.libraryItemId, "library-item-1");
 assert.equal(normalized.nodes[0].data.mediaUrl, undefined);
 
+const imageGenerator = normalizeCanvasDocument({
+  nodes: [{
+    id: "node-generator-1",
+    type: "canvas",
+    position: { x: 0, y: 0 },
+    data: {
+      kind: "generator",
+      title: "图片生成",
+      generationKind: "image",
+      imageMode: "image-to-image",
+      count: 9,
+    },
+  }],
+  edges: [],
+  viewport: { x: 0, y: 0, zoom: 1 },
+});
+assert.equal(imageGenerator.nodes[0].data.imageMode, "image-to-image");
+assert.equal(imageGenerator.nodes[0].data.count, 4);
+
 assert.throws(
   () => normalizeCanvasDocument({
     nodes: [{ id: "bad", position: { x: 0, y: 0 }, data: { kind: "unknown", title: "bad" } }],
@@ -64,7 +83,7 @@ assert.throws(
 
 console.log(JSON.stringify({
   ok: true,
-  checks: 7,
+  checks: 9,
   generationSubmitted: false,
   databaseWritten: false,
 }));

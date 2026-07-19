@@ -11,6 +11,8 @@ export type CanvasNodeData = Record<string, unknown> & {
   libraryItemId?: string;
   generationKind?: CanvasGenerationKind;
   providerId?: string;
+  imageMode?: "text-to-image" | "image-to-image";
+  count?: number;
   ratio?: string;
   quality?: string;
   duration?: number;
