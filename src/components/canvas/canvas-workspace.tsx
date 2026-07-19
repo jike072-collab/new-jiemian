@@ -17,11 +17,13 @@ import {
   CircleHelp,
   ArrowDown,
   ArrowUp,
+  Bot,
   Eraser,
   Film,
   FolderOpen,
   Image as ImageIcon,
   Info,
+  Keyboard,
   Eye,
   EyeOff,
   Layers3,
@@ -89,6 +91,7 @@ import {
 
 import { BrandLogo } from "@/components/brand-logo";
 import { CanvasAssistantPanel } from "@/components/canvas/canvas-assistant-panel";
+import { CanvasSelectionHint, CanvasShortcutsPanel } from "@/components/canvas/canvas-shortcuts-panel";
 import { CanvasConnectionLine, CanvasEdge, CanvasEdgeActionsContext } from "@/components/canvas/canvas-edge";
 import { CanvasImageEditor } from "@/components/canvas/canvas-image-editor";
 import {
@@ -223,6 +226,23 @@ function storedCanvasSettings() {
   }
 }
 
+function shouldShowShortcutHint() {
+  if (typeof window === "undefined") return false;
+  try {
+    return window.localStorage.getItem("aohuang-canvas-shortcuts-seen") !== "1";
+  } catch {
+    return true;
+  }
+}
+
+function markShortcutHintSeen() {
+  try {
+    window.localStorage.setItem("aohuang-canvas-shortcuts-seen", "1");
+  } catch {
+    // The hint can still be dismissed for the current page when storage is unavailable.
+  }
+}
+
 function escapeXml(value: unknown) {
   return String(value ?? "").replace(/[&<>"']/g, (character) => ({
     "&": "&amp;", "<": "&lt;", ">": "&gt;", "\"": "&quot;", "'": "&apos;",
@@ -275,6 +295,8 @@ function CanvasWorkspaceInner({ accountName, isTeamOwner, isInternalCanvas }: { 
   const [notice, setNotice] = useState("");
   const [infoOpen, setInfoOpen] = useState(false);
   const [assistantOpen, setAssistantOpen] = useState(false);
+  const [shortcutsOpen, setShortcutsOpen] = useState(false);
+  const [selectionHintOpen, setSelectionHintOpen] = useState(shouldShowShortcutHint);
   const [editingNodeId, setEditingNodeId] = useState("");
   const [teamOpen, setTeamOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
@@ -323,6 +345,25 @@ function CanvasWorkspaceInner({ accountName, isTeamOwner, isInternalCanvas }: { 
   useEffect(() => {
     window.localStorage.setItem("aohuang-canvas-settings", JSON.stringify({ theme: canvasTheme, connectionStyle, snapEnabled }));
   }, [canvasTheme, connectionStyle, snapEnabled]);
+  const openShortcuts = useCallback(() => {
+    markShortcutHintSeen();
+    setSelectionHintOpen(false);
+    setAssistantOpen(false);
+    setInfoOpen(false);
+    setLayersOpen(false);
+    setSettingsOpen(false);
+    setShortcutsOpen(true);
+  }, []);
+
+  const dismissSelectionHint = useCallback(() => {
+    markShortcutHintSeen();
+    setSelectionHintOpen(false);
+  }, []);
+
+  const toggleShortcuts = useCallback(() => {
+    if (shortcutsOpen) setShortcutsOpen(false);
+    else openShortcuts();
+  }, [openShortcuts, shortcutsOpen]);
 
   const changeConnectionStyle = useCallback((value: ConnectionStyle) => {
     setConnectionStyle(value);
@@ -2102,9 +2143,10 @@ function CanvasWorkspaceInner({ accountName, isTeamOwner, isInternalCanvas }: { 
         removeSelectedNodes();
       } else if (!typing && event.key === "?") {
         event.preventDefault();
-        if (isInternalCanvas) setAssistantOpen(true);
+        openShortcuts();
       } else if (event.key === "Escape") {
         setAssistantOpen(false);
+        setShortcutsOpen(false);
         setInfoOpen(false);
         setLayersOpen(false);
         setSettingsOpen(false);
@@ -2115,7 +2157,7 @@ function CanvasWorkspaceInner({ accountName, isTeamOwner, isInternalCanvas }: { 
     };
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [copySelectedNodes, duplicateSelectedNodes, exportCanvasImage, isInternalCanvas, nudgeSelectedNodes, pasteCopiedNodes, redoCanvas, removeSelectedNodes, saveNow, selectAllVisibleNodes, undoCanvas]);
+  }, [copySelectedNodes, duplicateSelectedNodes, exportCanvasImage, nudgeSelectedNodes, openShortcuts, pasteCopiedNodes, redoCanvas, removeSelectedNodes, saveNow, selectAllVisibleNodes, undoCanvas]);
 
   if (loading) {
     return <div className="canvas-loading"><LoaderCircle className="is-spinning" /><span>正在打开创作画布</span></div>;
@@ -2150,6 +2192,7 @@ function CanvasWorkspaceInner({ accountName, isTeamOwner, isInternalCanvas }: { 
           setLayersOpen((value) => !value);
           setInfoOpen(false);
           setAssistantOpen(false);
+          setShortcutsOpen(false);
           setSettingsOpen(false);
         }}
         onAddPrompt={addPromptNode}
@@ -2166,17 +2209,22 @@ function CanvasWorkspaceInner({ accountName, isTeamOwner, isInternalCanvas }: { 
           setLayersOpen(false);
           setInfoOpen(false);
           setAssistantOpen(false);
+          setShortcutsOpen(false);
         }}
         isTeamOwner={isTeamOwner}
         teamOpen={teamOpen}
         onToggleTeam={() => setTeamOpen((value) => !value)}
-        onHelp={() => {
+        assistantOpen={assistantOpen}
+        shortcutsOpen={shortcutsOpen}
+        onAssistant={() => {
           setLayersOpen(false);
           setInfoOpen(false);
           setSettingsOpen(false);
-          if (isInternalCanvas) setAssistantOpen(true);
-          else setNotice("连接提示词到生成节点，再连接图片或视频素材；选中节点后可使用快捷工具。");
+          setShortcutsOpen(false);
+          if (isInternalCanvas) setAssistantOpen((value) => !value);
+          else setNotice("智能助手仅供内部画布使用。");
         }}
+        onShortcuts={toggleShortcuts}
       />
       <input
         ref={importInputRef}
@@ -2239,7 +2287,7 @@ function CanvasWorkspaceInner({ accountName, isTeamOwner, isInternalCanvas }: { 
             <CanvasSelectionToolbar
               node={selectedNode}
               style={selectionToolbarStyle}
-              onInfo={() => { setInfoOpen(true); setLayersOpen(false); setAssistantOpen(false); setSettingsOpen(false); }}
+              onInfo={() => { setInfoOpen(true); setLayersOpen(false); setAssistantOpen(false); setShortcutsOpen(false); setSettingsOpen(false); }}
               onUngroup={ungroupSelectedNodes}
               onToggleGroup={() => toggleGroupCollapsed(selectedNode.id)}
               onDelete={() => removeNode(selectedNode.id)}
@@ -2355,6 +2403,7 @@ function CanvasWorkspaceInner({ accountName, isTeamOwner, isInternalCanvas }: { 
               setLayersOpen((value) => !value);
               setInfoOpen(false);
               setAssistantOpen(false);
+              setShortcutsOpen(false);
               setSettingsOpen(false);
             }}
             touchMultiSelect={touchMultiSelect}
@@ -2366,18 +2415,14 @@ function CanvasWorkspaceInner({ accountName, isTeamOwner, isInternalCanvas }: { 
               setLayersOpen(false);
               setInfoOpen(false);
               setAssistantOpen(false);
+              setShortcutsOpen(false);
             }}
             onZoomOut={() => { void flow.zoomOut(); }}
             onZoomIn={() => { void flow.zoomIn(); }}
             onFit={() => { void flow.fitView({ duration: 260, padding: 0.18 }); }}
-            onHelp={() => {
-              setLayersOpen(false);
-              setInfoOpen(false);
-              setSettingsOpen(false);
-              if (isInternalCanvas) setAssistantOpen(true);
-              else setNotice("连接提示词到生成节点，再连接图片或视频素材；选中节点后可使用上方快捷工具。");
-            }}
+            onShortcuts={toggleShortcuts}
           />
+          {selectionHintOpen && !shortcutsOpen ? <CanvasSelectionHint onOpen={openShortcuts} onDismiss={dismissSelectionHint} /> : null}
           {layersOpen ? (
             <CanvasLayersPanel
               nodes={nodes}
@@ -2436,6 +2481,7 @@ function CanvasWorkspaceInner({ accountName, isTeamOwner, isInternalCanvas }: { 
               onClose={() => setAssistantOpen(false)}
             />
           ) : null}
+          {shortcutsOpen ? <CanvasShortcutsPanel onClose={() => setShortcutsOpen(false)} /> : null}
           {settingsOpen ? (
             <CanvasSettingsPanel
               theme={canvasTheme}
@@ -2507,7 +2553,10 @@ function CanvasToolbar({
   isTeamOwner,
   teamOpen,
   onToggleTeam,
-  onHelp,
+  assistantOpen,
+  shortcutsOpen,
+  onAssistant,
+  onShortcuts,
 }: {
   accountName: string;
   projects: CanvasProject[];
@@ -2541,7 +2590,10 @@ function CanvasToolbar({
   isTeamOwner: boolean;
   teamOpen: boolean;
   onToggleTeam: () => void;
-  onHelp: () => void;
+  assistantOpen: boolean;
+  shortcutsOpen: boolean;
+  onAssistant: () => void;
+  onShortcuts: () => void;
 }) {
   return (
     <header className="canvas-toolbar">
@@ -2590,7 +2642,8 @@ function CanvasToolbar({
         {syncState ? <span className={cn("canvas-sync-state", `is-${syncState}`)}>{syncState === "live" ? "实时同步" : syncState === "syncing" ? "同步中" : "等待同步"}</span> : null}
         <span className={cn("canvas-save-state", `is-${saveState}`)}>{saveStateLabel(saveState)}</span>
         <span className="canvas-toolbar__version">v0.0.1</span>
-        <button type="button" className="canvas-tool-button" aria-label="画布帮助" title="画布帮助" onClick={onHelp}><CircleHelp /><span>助手</span></button>
+        <button type="button" className={cn("canvas-tool-button", assistantOpen && "is-active")} aria-label="智能助手" title="智能助手" onClick={onAssistant}><Bot /><span>助手</span></button>
+        <button type="button" className={cn("canvas-tool-button", shortcutsOpen && "is-active")} aria-label="操作与快捷键" title="操作与快捷键 (?)" onClick={onShortcuts}><Keyboard /><span>快捷键</span></button>
         <button type="button" className="canvas-icon-button" aria-label="保存画布" title="保存画布" disabled={saveState === "saving"} onClick={onSave}>
           {saveState === "saving" ? <LoaderCircle className="is-spinning" /> : <Save />}
         </button>
@@ -2799,7 +2852,7 @@ function CanvasBottomDock({
   onZoomOut,
   onZoomIn,
   onFit,
-  onHelp,
+  onShortcuts,
 }: {
   onAddPrompt: () => void;
   onAddImage: () => void;
@@ -2819,7 +2872,7 @@ function CanvasBottomDock({
   onZoomOut: () => void;
   onZoomIn: () => void;
   onFit: () => void;
-  onHelp: () => void;
+  onShortcuts: () => void;
 }) {
   return (
     <nav className="canvas-bottom-dock" aria-label="画布工具">
@@ -2841,7 +2894,7 @@ function CanvasBottomDock({
       <button type="button" onClick={onZoomOut} title="缩小" aria-label="缩小"><ZoomOut /></button>
       <button type="button" onClick={onZoomIn} title="放大" aria-label="放大"><ZoomIn /></button>
       <button type="button" className="is-danger" onClick={onDelete} title="删除选中节点" aria-label="删除选中节点"><Trash2 /></button>
-      <button type="button" onClick={onHelp} title="画布帮助" aria-label="画布帮助"><CircleHelp /></button>
+      <button type="button" onClick={onShortcuts} title="操作与快捷键" aria-label="操作与快捷键"><CircleHelp /></button>
     </nav>
   );
 }
