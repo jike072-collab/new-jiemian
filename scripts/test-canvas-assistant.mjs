@@ -21,6 +21,8 @@ assert.match(service, /connect_nodes/);
 assert.match(service, /group_nodes/);
 assert.match(service, /禁止输出删除、运行生成/);
 assert.match(service, /timeoutMs: 45_000/);
+assert.match(service, /canvasAssistantRetryDelayMs/);
+assert.match(service, /error\.retryable/);
 assert.match(service, /canvas_assistant_failed/);
 assert.match(service, /localCanvasAssistantFallback/);
 assert.match(assistantTypes, /sourceActions.*slice\(0, 8\)/);
@@ -76,6 +78,24 @@ assert.deepEqual(localCanvasAssistantFallback({ message: "按网格整理画布"
   actions: [{ type: "organize", layout: "grid" }],
 });
 
-assert.equal(localCanvasAssistantFallback({ message: "帮我写一段产品提示词" }), null);
+assert.deepEqual(localCanvasAssistantFallback({
+  message: "根据当前画布主题，新增一个可直接用于生图的详细提示词。",
+  canvasTitle: "新品方案",
+  nodes: [{ kind: "prompt", title: "主体", prompt: "白色产品展示" }],
+}), {
+  reply: "上游助手暂时不可用，我已根据当前画布内容生成一条可继续编辑的提示词。",
+  actions: [{
+    type: "add_prompt",
+    title: "画布助手提示词",
+    prompt: "白色产品展示，主体清晰完整，构图有层次，画面重点突出，材质与颜色自然，光线统一，背景干净，不添加未要求的文字、Logo 或额外对象。",
+  }],
+});
+
+assert.equal(localCanvasAssistantFallback({
+  message: "优化选中的提示词",
+  nodes: [{ kind: "prompt", title: "主体", prompt: "红色鞋子，白色背景", selected: true }],
+}).actions[0].type, "replace_selected_prompt");
+
+assert.equal(localCanvasAssistantFallback({ message: "帮我写一段产品提示词" }).actions[0].type, "add_prompt");
 
 console.log("restricted canvas assistant contracts passed");

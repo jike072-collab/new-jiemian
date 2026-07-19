@@ -40,6 +40,12 @@ const systemPrompt = [
   "用户没有明确要求改动画布时 actions 必须为空。最多返回 8 个动作。",
 ].join("\n");
 
+const canvasAssistantRetryDelayMs = 350;
+
+function delay(milliseconds: number) {
+  return new Promise((resolve) => setTimeout(resolve, milliseconds));
+}
+
 function text(value: unknown, maxLength: number) {
   return typeof value === "string" ? value.trim().slice(0, maxLength) : "";
 }
@@ -89,7 +95,7 @@ export function createCanvasAssistantService(caller: PromptModelCaller = createN
     async answer(input: Partial<CanvasAssistantInput>, requestId?: string) {
       const normalized = normalizeInput(input);
       try {
-        const output = await caller({
+        const callInput = {
           systemPrompt,
           userPrompt: JSON.stringify({
             userRequest: normalized.message,
@@ -98,7 +104,15 @@ export function createCanvasAssistantService(caller: PromptModelCaller = createN
           }),
           requestId,
           timeoutMs: 45_000,
-        });
+        } satisfies Parameters<PromptModelCaller>[0];
+        let output: string;
+        try {
+          output = await caller(callInput);
+        } catch (error) {
+          if (!(error instanceof NewApiError) || !error.retryable) throw error;
+          await delay(canvasAssistantRetryDelayMs);
+          output = await caller(callInput);
+        }
         return parseModelResponse(output);
       } catch (error) {
         newApiLogger.warn({

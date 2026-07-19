@@ -16,7 +16,7 @@ export type CanvasAssistantResponse = {
 export function localCanvasAssistantFallback(input: {
   message: string;
   canvasTitle?: string;
-  nodes?: Array<{ kind: "prompt" | "media" | "generator" | "group"; title: string }>;
+  nodes?: Array<{ kind: "prompt" | "media" | "generator" | "group"; title: string; prompt?: string; selected?: boolean }>;
 }): CanvasAssistantResponse | null {
   const message = boundedText(input.message, 1_200);
   const nodes = Array.isArray(input.nodes) ? input.nodes.slice(0, 120) : [];
@@ -35,6 +35,26 @@ export function localCanvasAssistantFallback(input: {
   if (/(整理|排列|布局)/.test(message)) {
     const layout = /网格/.test(message) ? "grid" as const : "flow" as const;
     return { reply: `可以按${layout === "grid" ? "网格" : "从左到右的创作流程"}整理当前画布。`, actions: [{ type: "organize", layout }] };
+  }
+  const selectedPrompt = nodes.find((node) => node.kind === "prompt" && node.selected)?.prompt?.trim();
+  const sourcePrompt = selectedPrompt || nodes.find((node) => node.kind === "prompt")?.prompt?.trim();
+  if (/(优化|改写|润色)/.test(message) && sourcePrompt) {
+    const optimizedPrompt = `${sourcePrompt.replace(/[。！？!?.]+$/u, "")}，保持主体、数量、颜色和结构不变，补充清晰的画面层次、自然光线与可执行的细节。`;
+    return {
+      reply: "上游助手暂时不可用，我已在当前画布内完成保守优化，可继续编辑后使用。",
+      actions: [{ type: "replace_selected_prompt", prompt: optimizedPrompt }],
+    };
+  }
+  if (/(提示词|prompt)/i.test(message) && /(写|新增|生成|补充|创建)/.test(message)) {
+    const subject = sourcePrompt || boundedText(input.canvasTitle, 120) || "当前画布主题";
+    return {
+      reply: "上游助手暂时不可用，我已根据当前画布内容生成一条可继续编辑的提示词。",
+      actions: [{
+        type: "add_prompt",
+        title: "画布助手提示词",
+        prompt: `${subject}，主体清晰完整，构图有层次，画面重点突出，材质与颜色自然，光线统一，背景干净，不添加未要求的文字、Logo 或额外对象。`,
+      }],
+    };
   }
   return null;
 }
