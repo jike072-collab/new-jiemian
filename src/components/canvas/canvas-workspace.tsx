@@ -3,9 +3,13 @@
 import Link from "next/link";
 import {
   ArrowLeft,
+  CircleHelp,
+  Eraser,
   Film,
   FolderOpen,
+  Hand,
   Image as ImageIcon,
+  Info,
   LoaderCircle,
   PanelLeftClose,
   PanelLeftOpen,
@@ -15,8 +19,11 @@ import {
   Sparkles,
   Trash2,
   Type,
+  Upload,
   UsersRound,
   X,
+  ZoomIn,
+  ZoomOut,
 } from "lucide-react";
 import {
   useCallback,
@@ -78,15 +85,15 @@ const emptyProviders: EnabledProviders = { image: [], video: [] };
 const defaultViewport: Viewport = { x: 0, y: 0, zoom: 1 };
 const libraryDragType = "application/x-aohuang-library-item";
 
-export function CanvasWorkspace({ accountName, isTeamOwner }: { accountName: string; isTeamOwner: boolean }) {
+export function CanvasWorkspace({ accountName, isTeamOwner, isInternalCanvas }: { accountName: string; isTeamOwner: boolean; isInternalCanvas?: boolean }) {
   return (
     <ReactFlowProvider>
-      <CanvasWorkspaceInner accountName={accountName} isTeamOwner={isTeamOwner} />
+      <CanvasWorkspaceInner accountName={accountName} isTeamOwner={isTeamOwner} isInternalCanvas={Boolean(isInternalCanvas)} />
     </ReactFlowProvider>
   );
 }
 
-function CanvasWorkspaceInner({ accountName, isTeamOwner }: { accountName: string; isTeamOwner: boolean }) {
+function CanvasWorkspaceInner({ accountName, isTeamOwner, isInternalCanvas }: { accountName: string; isTeamOwner: boolean; isInternalCanvas: boolean }) {
   const flow = useReactFlow<CanvasFlowNode, Edge>();
   const flowRef = useRef(flow);
   const [nodes, setNodes] = useState<CanvasFlowNode[]>([]);
@@ -104,6 +111,7 @@ function CanvasWorkspaceInner({ accountName, isTeamOwner }: { accountName: strin
   const [saveState, setSaveState] = useState<SaveState>("saved");
   const [notice, setNotice] = useState("");
   const [teamOpen, setTeamOpen] = useState(false);
+  const [panMode, setPanMode] = useState(false);
 
   const nodesRef = useRef(nodes);
   const edgesRef = useRef(edges);
@@ -375,6 +383,33 @@ function CanvasWorkspaceInner({ accountName, isTeamOwner }: { accountName: strin
     }, { width: 360, height: kind === "image" ? 430 : 410 });
   }, [addNodeAtCenter]);
 
+  const createGeneratorFromSelected = useCallback((node: CanvasFlowNode, kind: "image" | "video") => {
+    const available = kind === "image" ? providersRef.current.image : providersRef.current.video;
+    const provider = available[0] as WorkspacePublicProvider | undefined;
+    const generator = addNodeAtCenter({
+      kind: "generator",
+      title: kind === "image" ? "图片生成" : "视频生成",
+      generationKind: kind,
+      providerId: provider?.id || "",
+      ...(kind === "image" ? { imageMode: node.data.kind === "media" ? "image-to-image" as const : "text-to-image" as const, count: 1 } : {}),
+      ratio: kind === "image" ? "1:1" : provider?.videoOptions?.ratios?.[0] || "16:9",
+      quality: "1k",
+      duration: provider?.videoOptions?.durations?.[0] || 5,
+      resolution: provider?.videoOptions?.resolutions?.[0] || provider?.videoOptions?.resolution || "720p",
+      status: "idle",
+      progress: 0,
+    }, { width: 360, height: kind === "image" ? 430 : 410 });
+    setEdges((current) => [...current, {
+      id: canvasId("edge"),
+      source: node.id,
+      sourceHandle: "output",
+      target: generator.id,
+      targetHandle: "input",
+      type: "smoothstep",
+    }]);
+    markDirty();
+  }, [addNodeAtCenter, markDirty]);
+
   const addLibraryNode = useCallback((item: LibraryItem, position?: { x: number; y: number }) => {
     const data: CanvasNodeData = {
       kind: "media",
@@ -634,6 +669,36 @@ function CanvasWorkspaceInner({ accountName, isTeamOwner }: { accountName: strin
     });
   }, [library, libraryFilter, librarySearch]);
 
+  const selectedNode = useMemo(() => nodes.find((node) => node.selected) || null, [nodes]);
+  const focusSelectedText = useCallback(() => {
+    if (!selectedNode) return;
+    const textarea = document.querySelector<HTMLTextAreaElement>(`[data-canvas-node-id="${selectedNode.id}"] textarea`);
+    textarea?.focus();
+  }, [selectedNode]);
+  const saveSelectedMaterial = useCallback(() => {
+    setNotice(selectedNode?.data.kind === "media" ? "素材已保存在作品库，可从左侧素材库再次使用。" : "只有图片或视频节点可以保存素材。");
+  }, [selectedNode]);
+  const editSelected = useCallback(() => {
+    if (!selectedNode) return;
+    if (selectedNode.data.kind === "prompt") {
+      focusSelectedText();
+      return;
+    }
+    if (selectedNode.data.kind === "media") {
+      createGeneratorFromSelected(selectedNode, "image");
+      return;
+    }
+    setNotice("请先选择提示词或媒体节点进行编辑。");
+  }, [createGeneratorFromSelected, focusSelectedText, selectedNode]);
+  const generateSelected = useCallback(() => {
+    if (!selectedNode) return;
+    if (selectedNode.data.kind === "generator") {
+      void executeGenerator(selectedNode.id);
+      return;
+    }
+    createGeneratorFromSelected(selectedNode, selectedNode.data.kind === "media" && selectedNode.data.mediaType === "video" ? "video" : "image");
+  }, [createGeneratorFromSelected, executeGenerator, selectedNode]);
+
   if (loading) {
     return <div className="canvas-loading"><LoaderCircle className="is-spinning" /><span>正在打开创作画布</span></div>;
   }
@@ -659,6 +724,7 @@ function CanvasWorkspaceInner({ accountName, isTeamOwner }: { accountName: strin
         isTeamOwner={isTeamOwner}
         teamOpen={teamOpen}
         onToggleTeam={() => setTeamOpen((value) => !value)}
+        onHelp={() => setNotice("连接提示词到生成节点，再连接图片或视频素材；选中节点后可使用快捷工具。")}
       />
 
       <div className="canvas-workspace">
@@ -673,6 +739,19 @@ function CanvasWorkspaceInner({ accountName, isTeamOwner }: { accountName: strin
           onAdd={addLibraryNode}
         />
         <section ref={stageRef} className="canvas-stage" aria-label="无限画布">
+          {selectedNode ? (
+            <CanvasSelectionToolbar
+              node={selectedNode}
+              onInfo={() => setNotice(`${selectedNode.data.title} · ${selectedNode.data.kind}`)}
+              onDelete={() => removeNode(selectedNode.id)}
+              onSaveMaterial={saveSelectedMaterial}
+              onEdit={editSelected}
+              onEditText={focusSelectedText}
+              onGenerate={generateSelected}
+              onZoomOut={() => { void flow.zoomOut(); }}
+            onZoomIn={() => { void flow.zoomIn(); }}
+          />
+          ) : null}
           <CanvasNodeActionsContext.Provider value={nodeActions}>
             <ReactFlow<CanvasFlowNode, Edge>
               nodes={nodes}
@@ -705,7 +784,8 @@ function CanvasWorkspaceInner({ accountName, isTeamOwner }: { accountName: strin
               minZoom={0.08}
               maxZoom={2.5}
               panOnScroll
-              selectionOnDrag
+              panOnDrag={panMode}
+              selectionOnDrag={!panMode}
               proOptions={{ hideAttribution: true }}
             >
               <Background variant={BackgroundVariant.Dots} gap={24} size={1.2} />
@@ -713,10 +793,23 @@ function CanvasWorkspaceInner({ accountName, isTeamOwner }: { accountName: strin
               <Controls showInteractive={false} />
             </ReactFlow>
           </CanvasNodeActionsContext.Provider>
+          <CanvasBottomDock
+            panMode={panMode}
+            onTogglePan={() => setPanMode((value) => !value)}
+            onAddPrompt={addPromptNode}
+            onAddImage={() => addGeneratorNode("image")}
+            onAddVideo={() => addGeneratorNode("video")}
+            onOpenLibrary={() => setLibraryOpen(true)}
+            onDelete={() => { if (selectedNode) removeNode(selectedNode.id); }}
+            onZoomOut={() => { void flow.zoomOut(); }}
+            onZoomIn={() => { void flow.zoomIn(); }}
+            onFit={() => { void flow.fitView({ duration: 260, padding: 0.18 }); }}
+            onHelp={() => setNotice("连接提示词到生成节点，再连接图片或视频素材；选中节点后可使用上方快捷工具。")}
+          />
         </section>
       </div>
 
-      {isTeamOwner && teamOpen ? <TeamPanel onClose={() => setTeamOpen(false)} /> : null}
+      {isTeamOwner && teamOpen ? <TeamPanel onClose={() => setTeamOpen(false)} allowCreateMembers={!isInternalCanvas} /> : null}
 
       {notice ? (
         <div className="canvas-notice" role="status">
@@ -747,6 +840,7 @@ function CanvasToolbar({
   isTeamOwner,
   teamOpen,
   onToggleTeam,
+  onHelp,
 }: {
   accountName: string;
   projects: CanvasProject[];
@@ -766,6 +860,7 @@ function CanvasToolbar({
   isTeamOwner: boolean;
   teamOpen: boolean;
   onToggleTeam: () => void;
+  onHelp: () => void;
 }) {
   return (
     <header className="canvas-toolbar">
@@ -799,12 +894,92 @@ function CanvasToolbar({
       <div className="canvas-toolbar__account">
         {isTeamOwner ? <button type="button" className={cn("canvas-tool-button", teamOpen && "is-active")} aria-label="团队用量" title="团队用量" onClick={onToggleTeam}><UsersRound /><span>团队</span></button> : null}
         <span className={cn("canvas-save-state", `is-${saveState}`)}>{saveStateLabel(saveState)}</span>
+        <span className="canvas-toolbar__version">v0.0.1</span>
+        <button type="button" className="canvas-tool-button" aria-label="画布帮助" title="画布帮助" onClick={onHelp}><CircleHelp /><span>助手</span></button>
         <button type="button" className="canvas-icon-button" aria-label="保存画布" title="保存画布" disabled={saveState === "saving"} onClick={onSave}>
           {saveState === "saving" ? <LoaderCircle className="is-spinning" /> : <Save />}
         </button>
         <strong title={accountName}>{accountName}</strong>
       </div>
     </header>
+  );
+}
+
+function CanvasSelectionToolbar({
+  node,
+  onInfo,
+  onDelete,
+  onSaveMaterial,
+  onEdit,
+  onEditText,
+  onGenerate,
+  onZoomOut,
+  onZoomIn,
+}: {
+  node: CanvasFlowNode;
+  onInfo: () => void;
+  onDelete: () => void;
+  onSaveMaterial: () => void;
+  onEdit: () => void;
+  onEditText: () => void;
+  onGenerate: () => void;
+  onZoomOut: () => void;
+  onZoomIn: () => void;
+}) {
+  return (
+    <div className="canvas-selection-toolbar" role="toolbar" aria-label="选中节点工具">
+      <button type="button" onClick={onInfo} title="节点信息" aria-label="节点信息"><Info /><span>信息</span></button>
+      <button type="button" onClick={onDelete} title="删除节点" aria-label="删除节点"><Trash2 /><span>删除</span></button>
+      <button type="button" onClick={onSaveMaterial} title="保存到素材库" aria-label="保存到素材库"><FolderOpen /><span>存素材</span></button>
+      <button type="button" onClick={onEdit} title="编辑节点" aria-label="编辑节点"><Sparkles /><span>编辑</span></button>
+      <button type="button" onClick={onEditText} title="编辑文字" aria-label="编辑文字" disabled={node.data.kind !== "prompt"}><Type /><span>编辑文字</span></button>
+      <button type="button" onClick={onGenerate} title="生成图片或视频" aria-label="生成图片或视频"><ImageIcon /><span>{node.data.kind === "media" && node.data.mediaType === "video" ? "生视频" : "生图"}</span></button>
+      <span className="canvas-selection-toolbar__divider" aria-hidden="true" />
+      <button type="button" onClick={onZoomOut} title="缩小画布" aria-label="缩小画布"><ZoomOut /></button>
+      <button type="button" onClick={onZoomIn} title="放大画布" aria-label="放大画布"><ZoomIn /></button>
+    </div>
+  );
+}
+
+function CanvasBottomDock({
+  panMode,
+  onTogglePan,
+  onAddPrompt,
+  onAddImage,
+  onAddVideo,
+  onOpenLibrary,
+  onDelete,
+  onZoomOut,
+  onZoomIn,
+  onFit,
+  onHelp,
+}: {
+  panMode: boolean;
+  onTogglePan: () => void;
+  onAddPrompt: () => void;
+  onAddImage: () => void;
+  onAddVideo: () => void;
+  onOpenLibrary: () => void;
+  onDelete: () => void;
+  onZoomOut: () => void;
+  onZoomIn: () => void;
+  onFit: () => void;
+  onHelp: () => void;
+}) {
+  return (
+    <nav className="canvas-bottom-dock" aria-label="画布工具">
+      <button type="button" className={cn(panMode && "is-active")} onClick={onTogglePan} title="移动画布" aria-label="移动画布"><Hand /></button>
+      <button type="button" onClick={onAddPrompt} title="添加提示词" aria-label="添加提示词"><Type /></button>
+      <button type="button" onClick={onAddImage} title="添加生图节点" aria-label="添加生图节点"><ImageIcon /></button>
+      <button type="button" onClick={onAddVideo} title="添加生视频节点" aria-label="添加生视频节点"><Film /></button>
+      <button type="button" onClick={onOpenLibrary} title="打开素材库" aria-label="打开素材库"><Upload /></button>
+      <button type="button" onClick={onFit} title="查看全部节点" aria-label="查看全部节点"><Eraser /></button>
+      <span className="canvas-bottom-dock__divider" aria-hidden="true" />
+      <button type="button" onClick={onZoomOut} title="缩小" aria-label="缩小"><ZoomOut /></button>
+      <button type="button" onClick={onZoomIn} title="放大" aria-label="放大"><ZoomIn /></button>
+      <button type="button" className="is-danger" onClick={onDelete} title="删除选中节点" aria-label="删除选中节点"><Trash2 /></button>
+      <button type="button" onClick={onHelp} title="画布帮助" aria-label="画布帮助"><CircleHelp /></button>
+    </nav>
   );
 }
 
@@ -819,13 +994,28 @@ type TeamOverviewResponse = {
   totals: { creditUnits: number; imageTasks: number; videoTasks: number };
 };
 
-function TeamPanel({ onClose }: { onClose: () => void }) {
+type InternalAccessAccount = {
+  localUserId: string;
+  email: string;
+  username: string;
+  displayName: string;
+  status: string;
+  role: "owner" | "member" | null;
+  enabled: boolean;
+};
+
+function TeamPanel({ onClose, allowCreateMembers }: { onClose: () => void; allowCreateMembers: boolean }) {
   const [rangeDays, setRangeDays] = useState("30");
   const [data, setData] = useState<TeamOverviewResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [message, setMessage] = useState("");
   const [form, setForm] = useState({ email: "", username: "", displayName: "", password: "" });
   const [creating, setCreating] = useState(false);
+  const [accessAccounts, setAccessAccounts] = useState<InternalAccessAccount[]>([]);
+  const [accessQuery, setAccessQuery] = useState("");
+  const [accessLoading, setAccessLoading] = useState(true);
+  const [accessMessage, setAccessMessage] = useState("");
+  const [accessBusy, setAccessBusy] = useState("");
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -841,7 +1031,46 @@ function TeamPanel({ onClose }: { onClose: () => void }) {
     }
   }, [rangeDays]);
 
-  useEffect(() => { void load(); }, [load]);
+  useEffect(() => {
+    const timer = window.setTimeout(() => { void load(); }, 0);
+    return () => window.clearTimeout(timer);
+  }, [load]);
+
+  const loadAccess = useCallback(async () => {
+    setAccessLoading(true);
+    try {
+      const result = await fetchJson<{ accounts: InternalAccessAccount[] }>(`/api/account/internal-access?query=${encodeURIComponent(accessQuery)}`);
+      setAccessAccounts(result.accounts);
+      setAccessMessage("");
+    } catch (error) {
+      setAccessAccounts([]);
+      setAccessMessage(error instanceof ApiError && error.status === 403 ? "当前账号没有 CN 白名单管理权限" : apiMessage(error, "CN 白名单加载失败"));
+    } finally {
+      setAccessLoading(false);
+    }
+  }, [accessQuery]);
+
+  useEffect(() => {
+    const timer = window.setTimeout(() => { void loadAccess(); }, 180);
+    return () => window.clearTimeout(timer);
+  }, [loadAccess]);
+
+  async function toggleAccess(account: InternalAccessAccount) {
+    if (account.role === "owner") return;
+    setAccessBusy(account.localUserId);
+    setAccessMessage("");
+    try {
+      await fetchJsonWithCsrf("/api/account/internal-access", {
+        method: "PATCH",
+        body: JSON.stringify({ localUserId: account.localUserId, enabled: !account.enabled }),
+      });
+      await loadAccess();
+    } catch (error) {
+      setAccessMessage(apiMessage(error, "CN 白名单更新失败"));
+    } finally {
+      setAccessBusy("");
+    }
+  }
 
   async function createMember(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -893,14 +1122,49 @@ function TeamPanel({ onClose }: { onClose: () => void }) {
             </div>
           </>
         ) : null}
-        <form className="canvas-team-form" onSubmit={createMember}>
+        <section className="canvas-team-access" aria-label="CN 登录白名单">
+          <div className="canvas-team-access__header">
+            <strong>CN 登录白名单</strong>
+            <small>只有已授权账号可以登录 aohuang888.cn</small>
+          </div>
+          <input
+            className="canvas-team-access__search"
+            value={accessQuery}
+            placeholder="搜索已注册账号"
+            onChange={(event) => setAccessQuery(event.target.value)}
+          />
+          {accessMessage ? <div className="canvas-team-panel__message" role="status">{accessMessage}</div> : null}
+          {accessLoading ? <div className="canvas-team-panel__empty">正在读取登录权限</div> : (
+            <div className="canvas-team-access__list">
+              {accessAccounts.map((account) => (
+                <div className="canvas-team-access__row" key={account.localUserId}>
+                  <div>
+                    <strong>{account.displayName || account.username}</strong>
+                    <small>{account.email} · {account.role === "owner" ? "CN 所有者" : account.enabled ? "允许登录" : "未授权"}</small>
+                  </div>
+                  <button
+                    type="button"
+                    className={cn("canvas-access-toggle", account.enabled && "is-enabled")}
+                    disabled={account.role === "owner" || accessBusy === account.localUserId || account.status !== "active"}
+                    onClick={() => { void toggleAccess(account); }}
+                    aria-label={`${account.enabled ? "关闭" : "开启"} ${account.email} 的 CN 登录`}
+                  >
+                    {account.role === "owner" ? "所有者" : account.enabled ? "已开启" : "开启"}
+                  </button>
+                </div>
+              ))}
+              {!accessAccounts.length && !accessMessage ? <div className="canvas-team-panel__empty">暂无匹配的已注册账号</div> : null}
+            </div>
+          )}
+        </section>
+        {allowCreateMembers ? <form className="canvas-team-form" onSubmit={createMember}>
           <strong>创建子账号</strong>
           <input required type="email" placeholder="员工邮箱" value={form.email} onChange={(event) => setForm((current) => ({ ...current, email: event.target.value }))} />
           <input required minLength={3} maxLength={6} placeholder="用户名（3-6 位）" value={form.username} onChange={(event) => setForm((current) => ({ ...current, username: event.target.value }))} />
           <input placeholder="显示名称" value={form.displayName} onChange={(event) => setForm((current) => ({ ...current, displayName: event.target.value }))} />
           <input required type="password" minLength={8} placeholder="初始密码（含大小写和数字）" value={form.password} onChange={(event) => setForm((current) => ({ ...current, password: event.target.value }))} />
           <button type="submit" disabled={creating}>{creating ? "创建中" : "创建子账号"}</button>
-        </form>
+        </form> : null}
       </div>
     </aside>
   );

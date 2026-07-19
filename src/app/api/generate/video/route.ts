@@ -1,9 +1,9 @@
 import { type NextRequest, NextResponse } from "next/server";
 
-import { authResultResponse, csrfFailure, requireAuthSession, requireCsrf } from "@/lib/server/auth";
+import { authResultResponse, csrfFailure, isInternalCanvasHostname, requireAuthSession, requireCsrf } from "@/lib/server/auth";
 import { diagnosticErrorResponse } from "@/lib/server/error-diagnostics";
 import { failVideoGenerationBeforeSubmit, submitVideo, uploadedMediaFromForm } from "@/lib/server/provider-call";
-import { WorkloadLimitError, withUserVideoWorkload, withVideoUploadPhase, workloadLimitResponse } from "@/lib/server/workload-guard";
+import { WorkloadLimitError, withInternalCanvasVideoUploadPhase, withInternalCanvasVideoWorkload, withUserVideoWorkload, withVideoUploadPhase, workloadLimitResponse } from "@/lib/server/workload-guard";
 import { estimateVideoGenerationEntitlementUnits } from "@/lib/generation-quota";
 import { providerById } from "@/lib/server/providers";
 
@@ -14,6 +14,7 @@ export async function POST(request: NextRequest) {
     if (!requireCsrf(request)) return authResultResponse(request, csrfFailure());
     const session = await requireAuthSession(request);
     if (!session.ok) return authResultResponse(request, session);
+    const billingMode = isInternalCanvasHostname(request.headers.get("host")) ? "internal_free" as const : "standard" as const;
     const form = await request.formData();
     const duration = Number(form.get("duration") || 5);
     const mode = String(form.get("mode") || "text-to-video") === "image-to-video" ? "image-to-video" : "text-to-video";
@@ -27,10 +28,10 @@ export async function POST(request: NextRequest) {
     const imageCount = referenceImages.length || legacyFiles.length;
     const referenceCount = imageCount + referenceVideos.length + referenceAudios.length;
     const billingTaskId = String(form.get("taskId") || form.get("billingTaskId") || "");
-    const billingEstimatedQuotaUnits = Number(form.get("estimatedQuotaUnits") || form.get("billingEstimatedQuotaUnits") || Number.NaN);
+    const billingEstimatedQuotaUnits = billingMode === "internal_free" ? 0 : Number(form.get("estimatedQuotaUnits") || form.get("billingEstimatedQuotaUnits") || Number.NaN);
     const providerId = String(form.get("providerId") || "");
     const selectedProvider = await providerById(providerId);
-    const membershipEntitlementAmount = estimateVideoGenerationEntitlementUnits({ resolution, model: selectedProvider?.model, durationSeconds: duration });
+    const membershipEntitlementAmount = billingMode === "internal_free" ? 0 : estimateVideoGenerationEntitlementUnits({ resolution, model: selectedProvider?.model, durationSeconds: duration });
     const failBeforeSubmit = (error: unknown) => failVideoGenerationBeforeSubmit({
       localUserId: session.user.local_user_id,
       taskId: billingTaskId,
@@ -66,11 +67,11 @@ export async function POST(request: NextRequest) {
       await failBeforeSubmit(error);
       throw error;
     }
-    const result = await withUserVideoWorkload(session.user.local_user_id, async () => {
+    const result = await (billingMode === "internal_free" ? withInternalCanvasVideoWorkload : withUserVideoWorkload)(session.user.local_user_id, async () => {
       let guardedFiles;
       try {
         guardedFiles = referenceCount
-          ? await withVideoUploadPhase(
+          ? await (billingMode === "internal_free" ? withInternalCanvasVideoUploadPhase : withVideoUploadPhase)(
             session.user.local_user_id,
             async () => {
               const [images, videos, audios] = await Promise.all([
@@ -99,6 +100,7 @@ export async function POST(request: NextRequest) {
       billingTaskId,
       billingIdempotencyKey: String(form.get("idempotencyKey") || form.get("billingIdempotencyKey") || ""),
       billingEstimatedQuotaUnits,
+      billingMode,
       });
     });
     return NextResponse.json(result);

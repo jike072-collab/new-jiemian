@@ -34,6 +34,7 @@ import {
   type TaskBillingAcceptInput,
   type TaskBillingVerifyPrecheckInput,
 } from "./task-billing-types";
+import { type TaskBillingMode } from "./task-billing-types";
 import {
   type BillableOperation,
   type QuotaErrorCode,
@@ -329,20 +330,25 @@ export class TaskBillingService {
 
     const quota = await this.getQuotaSnapshot(input.localUserId);
     if (!quota.ok) return quota;
+    const billingMode: TaskBillingMode = input.billingMode === "internal_free" ? "internal_free" : "standard";
     const requestedMembershipEntitlementKind = membershipEntitlementKindForOperation(input.operation);
-    const requestedMembershipEntitlementAmount = input.operation === "cloud_image_generation"
+    const requestedMembershipEntitlementAmount = billingMode === "internal_free"
+      ? 0
+      : input.operation === "cloud_image_generation"
       || input.operation === "cloud_image_edit"
       || input.operation === "cloud_video_generation"
       ? (input.membershipEntitlementAmount ?? 1)
       : 1;
     if (
       !Number.isInteger(requestedMembershipEntitlementAmount)
-      || requestedMembershipEntitlementAmount < 1
+      || requestedMembershipEntitlementAmount < (billingMode === "internal_free" ? 0 : 1)
       || requestedMembershipEntitlementAmount > 8
     ) {
       return invalidTaskBillingRequest();
     }
-    const membershipEntitlementUnits = requestedMembershipEntitlementKind
+    const membershipEntitlementUnits = billingMode === "internal_free"
+      ? 0
+      : requestedMembershipEntitlementKind
       ? (await this.membershipService.consumeEntitlement({
         localUserId: input.localUserId,
         kind: requestedMembershipEntitlementKind,
@@ -353,7 +359,7 @@ export class TaskBillingService {
       })).consumed
       : 0;
     const membershipEntitlementKind = membershipEntitlementUnits > 0 ? requestedMembershipEntitlementKind : null;
-    const chargeableEstimatedQuotaUnits = membershipEntitlementUnits > 0 ? 0 : input.estimatedQuotaUnits;
+    const chargeableEstimatedQuotaUnits = billingMode === "internal_free" || membershipEntitlementUnits > 0 ? 0 : input.estimatedQuotaUnits;
     if (quota.snapshot.available_quota_units < chargeableEstimatedQuotaUnits) {
       await this.recordUsage({
         localUserId: input.localUserId,

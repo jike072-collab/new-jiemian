@@ -1,9 +1,11 @@
 import { type NextRequest, NextResponse } from "next/server";
 
 import { authRequestContext, requireAuthSession, readJsonBody } from "../auth";
+import { isInternalCanvasHostname } from "../auth";
 import { getTaskBillingService } from "./task-billing-service";
 import { getQuotaService } from "./service";
 import { type BillableOperation, type QuotaErrorCode } from "./types";
+import { type TaskBillingMode } from "./task-billing-types";
 
 const billableOperations = new Set<BillableOperation>([
   "cloud_image_generation",
@@ -92,15 +94,21 @@ export async function precheckResponse(request: NextRequest) {
   const idempotencyKey = String(body.idempotencyKey || body.taskId || "").trim();
   const membershipEntitlementAmount = Number(body.membershipEntitlementAmount);
   if (!operation || !taskId || !idempotencyKey) return invalidQuotaRequest();
+  const billingMode: TaskBillingMode = isInternalCanvasHostname(request.headers.get("host")) ? "internal_free" : "standard";
+  const estimatedQuotaUnits = billingMode === "internal_free" ? 0 : Number(body.estimatedQuotaUnits);
+  const requestFingerprint = billingMode === "internal_free"
+    ? zeroQuotaFingerprint(String(body.requestFingerprint || "").trim() || null)
+    : String(body.requestFingerprint || "").trim() || null;
 
   const result = await getTaskBillingService().precheck({
     localUserId: auth.localUserId,
-    estimatedQuotaUnits: Number(body.estimatedQuotaUnits),
-    membershipEntitlementAmount: Number.isFinite(membershipEntitlementAmount) ? membershipEntitlementAmount : null,
+    estimatedQuotaUnits,
+    membershipEntitlementAmount: billingMode === "internal_free" ? 0 : Number.isFinite(membershipEntitlementAmount) ? membershipEntitlementAmount : null,
     operation,
     taskId,
     idempotencyKey,
-    requestFingerprint: String(body.requestFingerprint || "").trim() || null,
+    requestFingerprint,
+    billingMode,
   });
   if (!result.ok) return quotaErrorResponse(result);
   const quota = await getQuotaService().getCurrentQuota(auth.localUserId, { allowCached: false });
@@ -111,6 +119,12 @@ export async function precheckResponse(request: NextRequest) {
     taskBilling: result.record,
     usage: result.usage,
   });
+}
+
+function zeroQuotaFingerprint(value: string | null) {
+  if (!value) return value;
+  const separator = value.lastIndexOf(":");
+  return separator < 0 ? value : `${value.slice(0, separator)}:${encodeURIComponent("0")}`;
 }
 
 export function readonlyAdminQuotaQueryResponse(request: NextRequest) {

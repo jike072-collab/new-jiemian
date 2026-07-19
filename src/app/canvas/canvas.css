@@ -203,6 +203,7 @@
 .canvas-save-state.is-error { color: #fb7185; }
 .canvas-save-state.is-dirty { color: #fbbf24; }
 .canvas-save-state.is-saving { color: #22d3ee; }
+.canvas-toolbar__version { color: var(--muted); font-size: 10px; white-space: nowrap; }
 
 .canvas-workspace {
   position: relative;
@@ -262,6 +263,19 @@
 .canvas-team-form button:disabled { cursor: default; opacity: 0.5; }
 .canvas-team-panel__message { margin-top: 10px; color: #fda4af; font-size: 11px; }
 .canvas-team-panel__empty { display: grid; min-height: 60px; place-items: center; }
+.canvas-team-access { display: grid; gap: 8px; margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--border-subtle); }
+.canvas-team-access__header { display: grid; gap: 3px; }
+.canvas-team-access__header strong { font-size: 12px; }
+.canvas-team-access__header small { color: var(--muted); font-size: 10px; line-height: 1.4; }
+.canvas-team-access__search { height: 32px; width: 100%; border: 1px solid var(--border-subtle); border-radius: 6px; background: var(--surface); color: var(--foreground); padding: 0 9px; outline: none; font-size: 11px; }
+.canvas-team-access__list { display: grid; gap: 6px; max-height: 220px; overflow: auto; }
+.canvas-team-access__row { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 8px; border: 1px solid var(--border-subtle); border-radius: 6px; background: var(--surface); }
+.canvas-team-access__row > div { min-width: 0; display: grid; gap: 3px; }
+.canvas-team-access__row strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 11px; }
+.canvas-team-access__row small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--muted); font-size: 9px; }
+.canvas-access-toggle { flex: 0 0 auto; min-width: 48px; height: 27px; border: 1px solid var(--border-subtle); border-radius: 5px; background: transparent; color: var(--muted); cursor: pointer; font-size: 10px; }
+.canvas-access-toggle.is-enabled { border-color: rgba(52, 211, 153, 0.45); background: rgba(52, 211, 153, 0.12); color: #6ee7b7; }
+.canvas-access-toggle:disabled { cursor: default; opacity: 0.6; }
 
 .canvas-stage {
   position: relative;
@@ -270,6 +284,71 @@
   flex: 1;
   background: #0b0b0e;
 }
+
+.canvas-selection-toolbar,
+.canvas-bottom-dock {
+  position: absolute;
+  z-index: 8;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: 12px;
+  background: rgba(38, 35, 35, 0.96);
+  box-shadow: 0 16px 36px rgba(0, 0, 0, 0.28);
+  color: var(--foreground);
+  backdrop-filter: blur(12px);
+}
+
+.canvas-selection-toolbar {
+  top: 18px;
+  left: 50%;
+  transform: translateX(-50%);
+  padding: 7px 9px;
+}
+
+.canvas-selection-toolbar button,
+.canvas-bottom-dock button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-width: 34px;
+  height: 32px;
+  border: 0;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--muted-strong);
+  cursor: pointer;
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+.canvas-selection-toolbar button:hover,
+.canvas-selection-toolbar button:focus-visible,
+.canvas-bottom-dock button:hover,
+.canvas-bottom-dock button:focus-visible,
+.canvas-bottom-dock button.is-active {
+  background: rgba(255, 255, 255, 0.1);
+  color: var(--foreground);
+  outline: none;
+}
+
+.canvas-selection-toolbar button:disabled { cursor: default; opacity: 0.35; }
+.canvas-selection-toolbar svg,
+.canvas-bottom-dock svg { width: 16px; height: 16px; }
+.canvas-selection-toolbar__divider,
+.canvas-bottom-dock__divider { width: 1px; height: 22px; margin: 0 6px; background: rgba(255, 255, 255, 0.16); }
+
+.canvas-bottom-dock {
+  bottom: 18px;
+  left: 50%;
+  transform: translateX(-50%);
+  padding: 6px 8px;
+}
+
+.canvas-bottom-dock button.is-danger { color: #fb7185; }
+.canvas-bottom-dock button.is-danger:hover { background: rgba(251, 113, 133, 0.14); color: #fda4af; }
 
 .canvas-stage .react-flow {
   width: 100%;
@@ -786,6 +865,10 @@
 }
 
 @media (max-width: 820px) {
+  .canvas-selection-toolbar { left: 8px; right: 8px; transform: none; justify-content: center; padding: 5px; }
+  .canvas-selection-toolbar button { min-width: 30px; padding: 0 4px; }
+  .canvas-selection-toolbar button span { display: none; }
+  .canvas-bottom-dock { right: 8px; left: 8px; transform: none; justify-content: flex-start; overflow-x: auto; }
   .aohuang-canvas-page { grid-template-rows: 104px minmax(0, 1fr); }
   .canvas-toolbar {
     grid-template-columns: minmax(130px, 1fr) auto;
@@ -811,6 +894,7 @@
     grid-row: 2;
   }
   .canvas-toolbar__account .canvas-save-state { display: none; }
+  .canvas-toolbar__version { display: none; }
   .canvas-tool-button span { display: none; }
   .canvas-tool-button { width: 36px; padding: 0; }
 

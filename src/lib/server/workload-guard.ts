@@ -135,6 +135,14 @@ export function withUserImageWorkload<T>(localUserId: string, handler: () => Pro
   }], handler);
 }
 
+export function withInternalCanvasImageWorkload<T>(localUserId: string, handler: () => Promise<T>) {
+  return withWorkloadSlots([{
+    key: `user:${localUserId}:image-task`,
+    limit: 12,
+    message: "内部画布图片任务已达到并发上限，请稍后重试。",
+  }], handler);
+}
+
 export function withUserEcommerceImageWorkload<T>(localUserId: string, handler: () => Promise<T>) {
   return withWorkloadSlots([{
     key: `user:${localUserId}:image-task`,
@@ -152,12 +160,28 @@ export function withUserImageEditWorkload<T>(localUserId: string, handler: () =>
   }], handler);
 }
 
+export function withInternalCanvasImageEditWorkload<T>(localUserId: string, handler: () => Promise<T>) {
+  return withWorkloadSlots([{
+    key: `user:${localUserId}:image-edit-task`,
+    limit: 8,
+    message: "内部画布图片编辑任务已达到并发上限，请稍后重试。",
+  }], handler);
+}
+
 export function withUserVideoWorkload<T>(localUserId: string, handler: () => Promise<T>) {
   const limits = getWorkloadLimits();
   return withWorkloadSlots([{
     key: `user:${localUserId}:video-task`,
     limit: limits.userVideoTasks,
     message: "Video generation is already running for this account. Please retry shortly.",
+  }], handler);
+}
+
+export function withInternalCanvasVideoWorkload<T>(localUserId: string, handler: () => Promise<T>) {
+  return withWorkloadSlots([{
+    key: `user:${localUserId}:video-task`,
+    limit: 6,
+    message: "内部画布视频任务已达到并发上限，请稍后重试。",
   }], handler);
 }
 
@@ -185,6 +209,14 @@ export function withVideoUploadPhase<T>(localUserId: string, handler: () => Prom
     key: `user:${localUserId}:large-upload`,
     limit: limits.userLargeUploads,
     message: "A large upload is already running for this account. Please retry shortly.",
+  }], handler);
+}
+
+export function withInternalCanvasVideoUploadPhase<T>(localUserId: string, handler: () => Promise<T>) {
+  return withWorkloadSlots([{
+    key: `user:${localUserId}:large-upload`,
+    limit: 6,
+    message: "内部画布素材上传已达到并发上限，请稍后重试。",
   }], handler);
 }
 

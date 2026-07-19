@@ -51,7 +51,7 @@ export function CanvasNode({ id, data, selected }: NodeProps<CanvasFlowNode>) {
   const minHeight = data.kind === "prompt" ? 210 : data.kind === "generator" ? 380 : 220;
 
   return (
-    <article className={cn("canvas-node", `canvas-node--${data.kind}`, selected && "is-selected")}>
+    <article data-canvas-node-id={id} className={cn("canvas-node", `canvas-node--${data.kind}`, selected && "is-selected")}>
       <NodeResizer
         color="var(--primary)"
         isVisible={selected}

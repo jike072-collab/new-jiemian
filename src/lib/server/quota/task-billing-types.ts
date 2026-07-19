@@ -11,6 +11,8 @@ export type TaskBillingState =
   | "cancelled"
   | "reconciliation_required";
 
+export type TaskBillingMode = "standard" | "internal_free";
+
 export type TaskBillingAction =
   | "prechecked"
   | "dispatching"
@@ -78,6 +80,7 @@ export type TaskBillingPrecheckInput = {
   membershipEntitlementAmount?: number | null;
   idempotencyKey: string;
   requestFingerprint?: string | null;
+  billingMode?: TaskBillingMode;
 };
 
 export type TaskBillingVerifyPrecheckInput = {

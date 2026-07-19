@@ -13,11 +13,11 @@ import {
   whiteBackgroundFourViewRatio,
   whiteBackgroundFourViewReferenceCount,
 } from "@/lib/image-presets";
-import { authResultResponse, csrfFailure, requireAuthSession, requireCsrf } from "@/lib/server/auth";
+import { authResultResponse, csrfFailure, isInternalCanvasHostname, requireAuthSession, requireCsrf } from "@/lib/server/auth";
 import { diagnosticErrorResponse, GenerationDiagnosticError } from "@/lib/server/error-diagnostics";
 import { failImageGenerationBeforeSubmit, generateImage, uploadedMediaFromForm } from "@/lib/server/provider-call";
 import { ecommerceTenPagePromptForPage } from "@/lib/server/prompts/ecommerce";
-import { WorkloadLimitError, withUserEcommerceImageWorkload, withUserImageEditWorkload, withUserImageWorkload, workloadLimitResponse } from "@/lib/server/workload-guard";
+import { WorkloadLimitError, withInternalCanvasImageEditWorkload, withInternalCanvasImageWorkload, withUserEcommerceImageWorkload, withUserImageEditWorkload, withUserImageWorkload, workloadLimitResponse } from "@/lib/server/workload-guard";
 
 export const runtime = "nodejs";
 
@@ -26,6 +26,7 @@ export async function POST(request: NextRequest) {
     if (!requireCsrf(request)) return authResultResponse(request, csrfFailure());
     const session = await requireAuthSession(request);
     if (!session.ok) return authResultResponse(request, session);
+    const billingMode = isInternalCanvasHostname(request.headers.get("host")) ? "internal_free" as const : "standard" as const;
     const form = await request.formData();
     const preset = String(form.get("preset") || "").trim();
     const whiteBackgroundFourView = isWhiteBackgroundFourViewPreset(preset);
@@ -34,13 +35,13 @@ export async function POST(request: NextRequest) {
       ? "cloud_image_edit"
       : "cloud_image_generation";
     const billingTaskId = String(form.get("taskId") || form.get("billingTaskId") || "");
-    const billingEstimatedQuotaUnits = Number(form.get("estimatedQuotaUnits") || form.get("billingEstimatedQuotaUnits") || Number.NaN);
+    const billingEstimatedQuotaUnits = billingMode === "internal_free" ? 0 : Number(form.get("estimatedQuotaUnits") || form.get("billingEstimatedQuotaUnits") || Number.NaN);
     const quality = whiteBackgroundFourView ? whiteBackgroundFourViewQuality : String(form.get("quality") || "1k");
     const count = whiteBackgroundFourView || ecommerceTenPage ? 1 : Number(form.get("count") || Number.NaN);
     const pageIndex = Number(form.get("pageIndex") || Number.NaN);
     const requestedBatchTotal = Number(form.get("batchTotal") || Number.NaN);
     const requestedBatchStyleIndex = Number(form.get("batchStyleIndex") || Number.NaN);
-    const membershipEntitlementAmount = estimateImageGenerationEntitlementUnits({ quality, count });
+    const membershipEntitlementAmount = billingMode === "internal_free" ? 0 : estimateImageGenerationEntitlementUnits({ quality, count });
     const failBeforeSubmit = (error: unknown) => failImageGenerationBeforeSubmit({
       localUserId: session.user.local_user_id,
       taskId: billingTaskId,
@@ -137,15 +138,20 @@ export async function POST(request: NextRequest) {
         billingTaskId,
         billingIdempotencyKey: String(form.get("idempotencyKey") || form.get("billingIdempotencyKey") || ""),
         billingEstimatedQuotaUnits,
+        billingMode,
       });
     };
     let items;
     try {
       items = await (operation === "cloud_image_edit"
-        ? withUserImageEditWorkload(session.user.local_user_id, run)
+        ? billingMode === "internal_free"
+          ? withInternalCanvasImageEditWorkload(session.user.local_user_id, run)
+          : withUserImageEditWorkload(session.user.local_user_id, run)
         : ecommerceTenPage
           ? withUserEcommerceImageWorkload(session.user.local_user_id, run)
-          : withUserImageWorkload(session.user.local_user_id, run));
+          : billingMode === "internal_free"
+            ? withInternalCanvasImageWorkload(session.user.local_user_id, run)
+            : withUserImageWorkload(session.user.local_user_id, run));
     } catch (error) {
       if (error instanceof WorkloadLimitError) await failBeforeSubmit(error);
       throw error;

@@ -1,0 +1,37 @@
+#!/usr/bin/env node
+import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
+
+const root = process.cwd();
+const read = (path) => readFileSync(join(root, path), "utf8");
+const migration = read("db/migrations/019_internal_canvas_access.sql");
+const access = read("src/lib/server/internal-canvas-access.ts");
+const authHttp = read("src/lib/server/auth/http.ts");
+const login = read("src/app/api/auth/login/route.ts");
+const verification = read("src/app/api/auth/verification-code/route.ts");
+const session = read("src/app/api/auth/session/route.ts");
+const quota = read("src/lib/server/quota/http.ts");
+const billing = read("src/lib/server/quota/task-billing-service.ts");
+const image = read("src/app/api/generate/image/route.ts");
+const video = read("src/app/api/generate/video/route.ts");
+const workload = read("src/lib/server/workload-guard.ts");
+
+assert.match(migration, /create table if not exists internal_canvas_access/);
+assert.match(migration, /lower\(u\.email\) = '2411897106@qq\.com'/);
+assert.match(migration, /access_role = 'owner'/);
+assert.match(access, /requireInternalCanvasOwner/);
+assert.match(authHttp, /AUTH_INTERNAL_ACCESS_REQUIRED/);
+assert.match(login, /canIdentifierAccessInternalCanvas/);
+assert.match(verification, /purpose === "login"/);
+assert.match(session, /requireAuthSession/);
+assert.match(quota, /billingMode.*internal_free/);
+assert.match(billing, /requestedMembershipEntitlementAmount = billingMode === "internal_free"/);
+assert.match(image, /billingMode = isInternalCanvasHostname/);
+assert.match(video, /billingMode = isInternalCanvasHostname/);
+assert.match(workload, /withInternalCanvasImageWorkload/);
+assert.match(workload, /limit: 12/);
+assert.match(workload, /limit: 8/);
+assert.match(workload, /limit: 6/);
+
+console.log("internal canvas access and billing contracts passed");

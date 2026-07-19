@@ -143,6 +143,7 @@ function friendlyAuthError(error: unknown) {
       : "操作太频繁，请稍后再试";
   }
   if (error.code === "AUTH_CSRF_REQUIRED") return "页面已过期，请刷新后重试";
+  if (error.code === "AUTH_INTERNAL_ACCESS_REQUIRED") return "此内部域名暂未授权此账号登录";
   if (error.code === "AUTH_VALIDATION_ERROR") return "请检查账号和密码格式";
   if (error.code === "AUTH_SERVICE_UNAVAILABLE") return "注册暂时不可用，请稍后重试";
   if (error.status >= 500) return "验证码发送失败，请稍后重试";

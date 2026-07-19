@@ -1645,6 +1645,8 @@ async function restoreMembershipEntitlementOnFailure(input: {
   amount?: number | null;
 }) {
   if (!input.localUserId || !input.taskId || !input.operation) return;
+  const requestedAmount = Math.round(Number(input.amount) || 0);
+  if (requestedAmount <= 0) return;
   const kind = input.operation === "cloud_video_generation"
     ? "video_generation"
     : input.operation === "cloud_video_upscale"
@@ -1659,7 +1661,7 @@ async function restoreMembershipEntitlementOnFailure(input: {
   await getMembershipService().restoreEntitlement({
     localUserId: input.localUserId,
     kind,
-    amount: Math.min(Math.max(Math.round(Number(input.amount) || 1), 1), 8),
+    amount: Math.min(Math.max(requestedAmount, 1), 8),
     idempotencyKey: `membership:restore:${kind}:${input.taskId}`,
     taskId: input.taskId,
   }).catch(() => undefined);
@@ -1782,16 +1784,19 @@ export async function generateImage(input: {
   billingTaskId?: string | null;
   billingIdempotencyKey?: string | null;
   billingEstimatedQuotaUnits?: number | null;
+  billingMode?: "standard" | "internal_free";
 }) {
   const provider = await providerById(input.providerId);
   const outputCount = Math.min(Math.max(Math.round(Number(input.count) || 1), 1), 4);
   const imageOperation = input.operation === "cloud_image_edit" ? "cloud_image_edit" : "cloud_image_generation";
-  const estimatedQuotaUnits = estimateImageGenerationTotalQuota({
+  const rawEstimatedQuotaUnits = estimateImageGenerationTotalQuota({
     quality: input.quality,
     count: outputCount,
     model: provider?.model,
   });
-  const membershipEntitlementAmount = estimateImageGenerationEntitlementUnits({
+  const billingMode = input.billingMode === "internal_free" ? "internal_free" : "standard";
+  const estimatedQuotaUnits = billingMode === "internal_free" ? 0 : rawEstimatedQuotaUnits;
+  const membershipEntitlementAmount = billingMode === "internal_free" ? 0 : estimateImageGenerationEntitlementUnits({
     quality: input.quality,
     count: outputCount,
   });
@@ -1843,7 +1848,7 @@ export async function generateImage(input: {
     });
     if (!output.length) throw new Error("Image provider returned no outputs.");
     const providerOutputCount = output.length;
-    const providerQuotaUnits = estimateImageGenerationTotalQuota({
+    const providerQuotaUnits = billingMode === "internal_free" ? 0 : estimateImageGenerationTotalQuota({
       quality: input.quality,
       count: providerOutputCount,
       model: readyProvider.model,
@@ -1886,7 +1891,7 @@ export async function generateImage(input: {
       throw rejected?.reason instanceof Error ? rejected.reason : new Error("Image results could not be saved.");
     }
     const actualOutputCount = items.length;
-    const actualQuotaUnits = estimateImageGenerationTotalQuota({
+    const actualQuotaUnits = billingMode === "internal_free" ? 0 : estimateImageGenerationTotalQuota({
       quality: input.quality,
       count: actualOutputCount,
       model: readyProvider.model,
@@ -1974,6 +1979,7 @@ export async function submitVideo(input: {
   billingTaskId?: string | null;
   billingIdempotencyKey?: string | null;
   billingEstimatedQuotaUnits?: number | null;
+  billingMode?: "standard" | "internal_free";
 }) {
   const provider = await providerById(input.providerId);
   const referenceImageCount = mediaFiles(input, "image").length;
@@ -1987,7 +1993,7 @@ export async function submitVideo(input: {
       publicMessage: "当前 Seedance 模型价格待定，暂未开放生成。",
     });
   }
-  const estimatedQuotaUnits = estimateGenerationQuota({
+  const rawEstimatedQuotaUnits = estimateGenerationQuota({
     kind: "video",
     providerId: input.providerId,
     mode: input.mode,
@@ -1997,6 +2003,8 @@ export async function submitVideo(input: {
     referenceImages: referenceImageCount,
     model: provider?.model,
   });
+  const billingMode = input.billingMode === "internal_free" ? "internal_free" : "standard";
+  const estimatedQuotaUnits = billingMode === "internal_free" ? 0 : rawEstimatedQuotaUnits;
   const billingFingerprint = generationBillingFingerprint({
     kind: "video",
     providerId: input.providerId,
@@ -2009,7 +2017,7 @@ export async function submitVideo(input: {
     taskId: input.billingTaskId || "",
     estimatedQuotaUnits,
   });
-  const membershipEntitlementAmount = estimateVideoGenerationEntitlementUnits({
+  const membershipEntitlementAmount = billingMode === "internal_free" ? 0 : estimateVideoGenerationEntitlementUnits({
     resolution: input.resolution,
     model: provider?.model,
     durationSeconds: input.duration,

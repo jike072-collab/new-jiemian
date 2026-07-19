@@ -177,6 +177,36 @@ test("prechecks sufficient quota and denies insufficient quota before upstream s
   assert.equal(low.adjustments.length, 0);
 });
 
+test("internal canvas billing records zero quota without consuming membership", async () => {
+  const harness = service({ availableQuota: 0, providerQuota: 0 });
+  const prechecked = await harness.taskBilling.precheck({
+    localUserId: "local-user",
+    taskId: "internal-free-task",
+    operation: "cloud_image_generation",
+    estimatedQuotaUnits: 0,
+    membershipEntitlementAmount: 0,
+    billingMode: "internal_free",
+    idempotencyKey: "internal-free-task",
+    requestFingerprint: "image:internal-free-task:0",
+  });
+  assert.equal(prechecked.ok, true);
+  if (!prechecked.ok) return;
+  assert.equal(prechecked.record.estimated_quota_units, 0);
+  assert.equal(prechecked.record.membership_entitlement_units, 0);
+
+  const accepted = await harness.taskBilling.accept({ localUserId: "local-user", taskId: "internal-free-task" });
+  assert.equal(accepted.ok, true);
+  const settled = await harness.taskBilling.settleSuccess({
+    localUserId: "local-user",
+    taskId: "internal-free-task",
+    actualQuotaUnits: 0,
+  });
+  assert.equal(settled.ok, true);
+  if (!settled.ok) return;
+  assert.equal(settled.record.final_quota_units, 0);
+  assert.equal(harness.adjustments.length, 0);
+});
+
 test("uses membership image entitlement before charging quota", async () => {
   const harness = service({ availableQuota: 0, providerQuota: 0 });
   await harness.membershipService.applyPaidMembership({

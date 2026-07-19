@@ -4,6 +4,10 @@ import { AUTH_CSRF_COOKIE, AUTH_SESSION_COOKIE, clearSessionCookieOptions, csrfC
 import { createCsrfToken, verifyCsrfToken } from "./csrf";
 import { getAuthService } from "./service";
 import { safeRedirectPath } from "./normalize";
+import { isInternalCanvasHostname } from "./registration-policy";
+// eslint-disable-next-line @typescript-eslint/ban-ts-comment
+// @ts-ignore -- the standalone auth test compiler requires explicit extensions for this server import.
+import { getInternalCanvasAccess } from "../internal-canvas-access";
 import { type AuthActionResult, type AuthFailure, type AuthRequestContext, type AuthResult } from "./types";
 
 type JsonBody = Record<string, unknown>;
@@ -116,7 +120,17 @@ export function csrfResponse(request: NextRequest) {
 }
 
 export async function requireAuthSession(request: NextRequest) {
-  return getAuthService().currentUser(sessionTokenFromRequest(request), authRequestContext(request));
+  const result = await getAuthService().currentUser(sessionTokenFromRequest(request), authRequestContext(request));
+  if (!result.ok || !isInternalCanvasHostname(request.headers.get("host"))) return result;
+  const access = await getInternalCanvasAccess(result.user.local_user_id);
+  if (access?.enabled) return result;
+  return {
+    ok: false as const,
+    status: 403,
+    code: "AUTH_INTERNAL_ACCESS_REQUIRED" as const,
+    uiState: "validation_error" as const,
+    message: "此域名仅允许已授权的内部账号登录。",
+  };
 }
 
 export function redirectFromBody(body: JsonBody) {
