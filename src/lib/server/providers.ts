@@ -142,7 +142,14 @@ export function clmmSeedanceVideoOptionsForModel(model: string): ProviderConfig[
 }
 
 export function clmmSeedanceVideoRequestSecondsForModel(model: string, duration: number) {
-  return model.trim().toLowerCase().endsWith("-15s") ? 1 : duration;
+  return /(?:^|-)\d+s(?:-|$)/.test(model.trim().toLowerCase()) ? 1 : duration;
+}
+
+export function clmmSeedanceVideoMySecondsForModel(model: string) {
+  const normalized = model.trim().toLowerCase();
+  if (!/(?:^|-)gz(?:-|$)/.test(normalized)) return undefined;
+  const durationMatch = normalized.match(/(?:^|-)\d+s(?:-|$)/)?.[0].match(/(\d+)s/);
+  return durationMatch ? Number(durationMatch[1]) : undefined;
 }
 
 function grokVideoOptionsForModel(model: string): ProviderConfig["videoOptions"] {

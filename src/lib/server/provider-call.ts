@@ -22,6 +22,7 @@ import { storeRemoteUrlStreamed } from "./remote-media-download";
 import { getTaskBillingService } from "./quota";
 import {
   clmmSeedanceVideoOptionsForModel,
+  clmmSeedanceVideoMySecondsForModel,
   clmmSeedanceVideoRequestSecondsForModel,
   providerById,
   seedanceVideoOptionsForModel,
@@ -346,6 +347,64 @@ function mediaFiles(input: { files: UploadedMedia[] }, mediaType: "image" | "vid
   return input.files.filter((file) => (file.mediaType || "image") === mediaType);
 }
 
+const clmmReferenceTokenPattern = /@(Image|Video|Audio)(\d+)/g;
+
+function resolveClmmSeedanceReferences(provider: ProviderConfig, input: {
+  prompt: string;
+  files: UploadedMedia[];
+}) {
+  const matches = [...input.prompt.matchAll(clmmReferenceTokenPattern)];
+  if (!matches.length) return input;
+
+  const mediaTypes = {
+    Image: "image",
+    Video: "video",
+    Audio: "audio",
+  } as const;
+  const filesByType = {
+    image: mediaFiles(input, "image"),
+    video: mediaFiles(input, "video"),
+    audio: mediaFiles(input, "audio"),
+  } as const;
+  const selectedIndexes = {
+    image: new Set<number>(),
+    video: new Set<number>(),
+    audio: new Set<number>(),
+  };
+
+  for (const match of matches) {
+    const mediaType = mediaTypes[match[1] as keyof typeof mediaTypes];
+    const index = Number(match[2]) - 1;
+    if (!Number.isInteger(index) || index < 0 || !filesByType[mediaType][index]) {
+      throw new GenerationDiagnosticError({
+        code: "INPUT_INVALID_PARAMETERS",
+        providerId: provider.id,
+        model: provider.model,
+        publicMessage: `提示词中的 @${match[1]}${match[2]} 没有对应的参考素材。`,
+      });
+    }
+    selectedIndexes[mediaType].add(index);
+  }
+
+  const compactIndexes = {
+    image: new Map<number, number>(),
+    video: new Map<number, number>(),
+    audio: new Map<number, number>(),
+  };
+  const selectedFiles = (Object.keys(filesByType) as Array<keyof typeof filesByType>).flatMap((mediaType) => {
+    const indexes = [...selectedIndexes[mediaType]].sort((left, right) => left - right);
+    indexes.forEach((index, compactIndex) => compactIndexes[mediaType].set(index, compactIndex));
+    return indexes.map((index) => filesByType[mediaType][index]);
+  });
+  const prompt = input.prompt.replace(clmmReferenceTokenPattern, (token, label: keyof typeof mediaTypes, rawIndex: string) => {
+    const mediaType = mediaTypes[label];
+    const compactIndex = compactIndexes[mediaType].get(Number(rawIndex) - 1);
+    return compactIndex === undefined ? token : `@${label}${compactIndex + 1}`;
+  });
+
+  return { prompt, files: selectedFiles };
+}
+
 function redbirdVideoPayload(provider: ProviderConfig, input: {
   prompt: string;
   ratio: string;
@@ -377,6 +436,7 @@ function clmmSeedanceVideoPayload(provider: ProviderConfig, input: {
   videoUrls?: string[];
   audioUrls?: string[];
 }) {
+  const mySeconds = clmmSeedanceVideoMySecondsForModel(provider.model);
   return {
     model: provider.model,
     prompt: input.prompt,
@@ -384,6 +444,7 @@ function clmmSeedanceVideoPayload(provider: ProviderConfig, input: {
     resolution: "720p",
     size: ratioTo720pSize(input.ratio),
     seconds: String(clmmSeedanceVideoRequestSecondsForModel(provider.model, input.duration)),
+    ...(mySeconds ? { mySeconds: String(mySeconds) } : {}),
     ...(input.imageUrls?.length ? { reference_image_urls: input.imageUrls } : {}),
     ...(input.videoUrls?.length ? { reference_videos: input.videoUrls } : {}),
     ...(input.audioUrls?.length ? { reference_audios: input.audioUrls } : {}),
@@ -2046,7 +2107,10 @@ export async function submitVideo(input: {
     }
 
     const readyProvider = assertProviderReady(provider, "video", "MODEL_MISSING_VIDEO");
-    validateVideoInput(readyProvider, input);
+    const providerInput = isClmmSeedanceProvider(readyProvider)
+      ? { ...input, ...resolveClmmSeedanceReferences(readyProvider, input) }
+      : input;
+    validateVideoInput(readyProvider, providerInput);
     await claimGenerationBillingDispatch({
       localUserId: input.billingLocalUserId,
       taskId: input.billingTaskId,
@@ -2067,9 +2131,9 @@ export async function submitVideo(input: {
     } else if (isGrokVideoProvider(readyProvider)) {
       output = await callGrokVideoProvider(readyProvider, { ...input, files: mediaFiles(input, "image") });
     } else if (isRedbirdSeedanceProvider(readyProvider) || isClmmSeedanceProvider(readyProvider)) {
-      const referenceImages = mediaFiles(input, "image");
-      const referenceVideos = mediaFiles(input, "video");
-      const referenceAudios = mediaFiles(input, "audio");
+      const referenceImages = mediaFiles(providerInput, "image");
+      const referenceVideos = mediaFiles(providerInput, "video");
+      const referenceAudios = mediaFiles(providerInput, "audio");
       const [imageUrls, videoUrls, audioUrls] = await Promise.all([
         prepareRedbirdReferenceUrls(referenceImages),
         prepareRedbirdReferenceUrls(referenceVideos),
@@ -2082,8 +2146,8 @@ export async function submitVideo(input: {
           ...authHeaders(readyProvider),
         },
         body: JSON.stringify(isClmmSeedanceProvider(readyProvider)
-          ? clmmSeedanceVideoPayload(readyProvider, { ...input, imageUrls, videoUrls, audioUrls })
-          : redbirdVideoPayload(readyProvider, { ...input, files: referenceImages, imageUrls, videoUrls, audioUrls })),
+          ? clmmSeedanceVideoPayload(readyProvider, { ...providerInput, imageUrls, videoUrls, audioUrls })
+          : redbirdVideoPayload(readyProvider, { ...providerInput, files: referenceImages, imageUrls, videoUrls, audioUrls })),
         signal: AbortSignal.timeout(180000),
       });
       const payload = await readProviderJson(response, readyProvider);
@@ -2549,6 +2613,7 @@ export const providerCallInternalsForTests = {
   isGetTokenVeoProvider,
   isRedbirdSeedanceProvider,
   isClmmSeedanceProvider,
+  resolveClmmSeedanceReferences,
   redbirdVideoPayload,
   clmmSeedanceVideoPayload,
   shouldKeepGetTokenVeoJobPending,

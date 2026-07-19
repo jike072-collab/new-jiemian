@@ -9,6 +9,7 @@ import { providerCallInternalsForTests } from "../provider-call";
 import { providerReferenceMimeType } from "../provider-reference";
 import {
   clmmSeedanceVideoOptionsForModel,
+  clmmSeedanceVideoMySecondsForModel,
   clmmSeedanceVideoRequestSecondsForModel,
   defaultProviders,
   seedanceVideoOptionsForModel,
@@ -134,6 +135,8 @@ test("CLMM Seedance defaults expose exactly the six 720P models", () => {
   assert.equal(clmmSeedanceVideoOptionsForModel(models[4])?.maxReferenceVideos, 1);
   assert.equal(clmmSeedanceVideoRequestSecondsForModel(models[0], 12), 12);
   assert.equal(clmmSeedanceVideoRequestSecondsForModel(models[3], 15), 1);
+  assert.equal(clmmSeedanceVideoMySecondsForModel(models[3]), 15);
+  assert.equal(clmmSeedanceVideoMySecondsForModel(models[0]), undefined);
   assert.equal(isSeedance20VideoModel(models[0]), true);
   assert.equal(seedanceLibraryModelName(models[3]), "Seedance 2.0 新 · 满血 933 不卡真人");
 });
@@ -157,10 +160,48 @@ test("CLMM Seedance payload uses documented multi-reference fields", () => {
     audioUrls: ["https://example.test/reference.mp3"],
   });
   assert.equal(payload.seconds, "1");
+  assert.equal(payload.mySeconds, "15");
   assert.equal(payload.size, "720x1280");
   assert.deepEqual(payload.reference_image_urls, ["https://example.test/reference-1.png", "https://example.test/reference-2.png"]);
   assert.deepEqual(payload.reference_videos, ["https://example.test/reference.mp4"]);
   assert.deepEqual(payload.reference_audios, ["https://example.test/reference.mp3"]);
+});
+
+test("CLMM Seedance resolves @ references to the selected media and compact labels", () => {
+  const selected: ProviderConfig = {
+    ...provider,
+    id: "video-seedance-new::model::mg-seedance2.0%20-720p%20fast",
+    kind: "video",
+    model: "mg-seedance2.0 -720p fast",
+    endpointType: "videos-generations",
+  };
+  const image1 = { bytes: Buffer.from("image-1"), mimeType: "image/png", fileName: "image-1.png", mediaType: "image" as const };
+  const image2 = { bytes: Buffer.from("image-2"), mimeType: "image/png", fileName: "image-2.png", mediaType: "image" as const };
+  const video1 = { bytes: Buffer.from("video-1"), mimeType: "video/mp4", fileName: "video-1.mp4", mediaType: "video" as const };
+  const audio1 = { bytes: Buffer.from("audio-1"), mimeType: "audio/mpeg", fileName: "audio-1.mp3", mediaType: "audio" as const };
+  const resolved = providerCallInternalsForTests.resolveClmmSeedanceReferences(selected, {
+    prompt: "使用 @Image2 的人物，参考 @Audio1",
+    files: [image1, image2, video1, audio1],
+  });
+  assert.equal(resolved.prompt, "使用 @Image1 的人物，参考 @Audio1");
+  assert.deepEqual(resolved.files.map((file) => file.fileName), ["image-2.png", "audio-1.mp3"]);
+});
+
+test("CLMM Seedance keeps all references when the prompt has no @ tokens", () => {
+  const selected: ProviderConfig = {
+    ...provider,
+    id: "video-seedance-new::model::mg-seedance2.0%20-720p%20fast",
+    kind: "video",
+    model: "mg-seedance2.0 -720p fast",
+    endpointType: "videos-generations",
+  };
+  const files = [{ bytes: Buffer.from("image"), mimeType: "image/png", fileName: "image.png", mediaType: "image" as const }];
+  const resolved = providerCallInternalsForTests.resolveClmmSeedanceReferences(selected, {
+    prompt: "电影感产品展示",
+    files,
+  });
+  assert.equal(resolved.prompt, "电影感产品展示");
+  assert.equal(resolved.files, files);
 });
 
 test("Provider output reads object-shaped data responses", () => {
