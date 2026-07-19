@@ -17,6 +17,7 @@ import {
   Sparkles,
   Trash2,
   Type,
+  WandSparkles,
 } from "lucide-react";
 import { createContext, useContext, useEffect, useRef, useState, type CSSProperties } from "react";
 import {
@@ -63,6 +64,7 @@ type CanvasNodeActions = {
   updateNodeData: (id: string, patch: Partial<CanvasNodeData>) => void;
   removeNode: (id: string) => void;
   previewMedia: (id: string) => void;
+  optimizePrompt: (id: string, prompt: string) => Promise<void>;
   runGenerator: (id: string) => void;
   toggleGroup: (id: string) => void;
 };
@@ -173,6 +175,7 @@ function PromptNode({ id, data }: { id: string; data: CanvasNodeData }) {
   const promptCursorRef = useRef(value.length);
   const [mentionContext, setMentionContext] = useState<{ start: number; end: number; query: string } | null>(null);
   const [activeMentionIndex, setActiveMentionIndex] = useState(0);
+  const [optimizing, setOptimizing] = useState(false);
   const filteredReferences = mentionContext
     ? references.filter((reference) => reference.label.toLowerCase().includes(mentionContext.query.toLowerCase()))
     : [];
@@ -295,6 +298,20 @@ function PromptNode({ id, data }: { id: string; data: CanvasNodeData }) {
         ) : null}
         <div className="canvas-node__prompt-footer">
           {references.length ? <span className="canvas-node__mention-hint">输入 @ 引用素材</span> : null}
+          <button
+            type="button"
+            className="canvas-node__prompt-optimize nodrag"
+            disabled={optimizing || !value.trim()}
+            aria-label="优化提示词"
+            title="使用站内提示词优化"
+            onClick={() => {
+              setOptimizing(true);
+              void actions.optimizePrompt(id, value).catch(() => undefined).finally(() => setOptimizing(false));
+            }}
+          >
+            {optimizing ? <LoaderCircle className="is-spinning" /> : <WandSparkles />}
+            <span>{optimizing ? "优化中" : "优化"}</span>
+          </button>
           <span className="canvas-node__counter">{value.length}</span>
           {references.length ? (
             <button type="button" className="canvas-node__mention-trigger nodrag" aria-label="插入参考素材" title="插入参考素材" onClick={openReferenceMenu}>
@@ -483,7 +500,6 @@ function GeneratorNode({ id, data }: { id: string; data: CanvasNodeData }) {
         </div>
       ) : null}
 
-      <StatusLine status={data.status} progress={data.progress} error={data.error} />
       <button
         type="button"
         className="canvas-node__generate nodrag"

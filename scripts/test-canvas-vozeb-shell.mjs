@@ -6,7 +6,7 @@ import { fileURLToPath } from "node:url";
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const read = (file) => readFile(path.join(root, file), "utf8");
 
-const [route, primaryRoute, workspace, shell, assistant, promptGuidance, notices, agpl] = await Promise.all([
+const [route, primaryRoute, workspace, shell, assistant, promptGuidance, notices, agpl, canvasNode, promptHttp] = await Promise.all([
   read("src/app/canvas-v2/page.tsx"),
   read("src/app/canvas/page.tsx"),
   read("src/components/canvas/canvas-workspace.tsx"),
@@ -15,6 +15,8 @@ const [route, primaryRoute, workspace, shell, assistant, promptGuidance, notices
   read("src/lib/seedance/prompt-guidance.ts"),
   read("THIRD_PARTY_NOTICES.md"),
   read("LICENSES/VOZEB-AGPL-3.0.txt"),
+  read("src/components/canvas/canvas-node.tsx"),
+  read("src/lib/server/prompts/http.ts"),
 ]);
 
 assert.match(route, /getAuthService\(\)\.currentUser\(sessionToken\)/, "v2 must reuse the existing session service");
@@ -37,6 +39,14 @@ assert.match(promptGuidance, /reference|Image|Video|Audio/i, "Seedance reference
 
 assert.match(shell, /对应源码/, "the network UI must expose the corresponding-source entry");
 assert.match(shell, /aria-label=\{libraryOpen \? "关闭素材库" : "打开素材库"\}/, "the topbar must open the library in one click");
+assert.match(shell, /aria-label="一键整理画布"/, "the topbar must expose one-click canvas organization");
+assert.match(workspace, /onOrganize=\{\(\) => organizeCanvas\("flow"\)\}/, "one-click organization must use the existing flow layout");
+assert.match(workspace, /optimizePromptNode/, "prompt nodes must reuse the existing prompt optimizer");
+assert.match(workspace, /\/api\/prompts\/optimize/, "prompt nodes must call the established prompt optimizer endpoint");
+assert.doesNotMatch(workspace, /编辑文字/, "the selected prompt toolbar must not duplicate direct text editing");
+assert.match(canvasNode, /aria-label="优化提示词"/, "prompt nodes must expose prompt optimization directly");
+assert.equal((canvasNode.match(/<StatusLine/g) || []).length, 1, "generation status must render only on result media nodes");
+assert.match(promptHttp, /isInternalCanvasHostname.*\? "internal_free"/, "CN prompt optimization must remain free");
 assert.match(notices, /csyqlz\/vozeb/, "third-party notice must identify the VOZEB source");
 assert.match(notices, /a2c52c7aacf68d825563b7455efa9c34f3db0123/, "third-party notice must pin the imported source commit");
 assert.match(agpl, /GNU AFFERO GENERAL PUBLIC LICENSE/, "the complete AGPL license must be included");

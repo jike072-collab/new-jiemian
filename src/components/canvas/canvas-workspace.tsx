@@ -29,6 +29,7 @@ import {
   Eye,
   EyeOff,
   Layers3,
+  LayoutDashboard,
   LoaderCircle,
   Link2,
   ListChecks,
@@ -1420,6 +1421,47 @@ function CanvasWorkspaceInner({
     canvasPresenceMembersForNode(presenceMembers, node.id, collaborationClientId),
   ])), [collaborationClientId, nodes, presenceMembers]);
 
+  const optimizePromptNode = useCallback(async (id: string, prompt: string) => {
+    const source = prompt.trim();
+    if (!source) return;
+    const generator = edgesRef.current
+      .filter((edge) => edge.source === id)
+      .map((edge) => nodesRef.current.find((node) => node.id === edge.target))
+      .find((node) => node?.data.kind === "generator");
+    const referenceMediaTypes = generator
+      ? edgesRef.current
+        .filter((edge) => edge.target === generator.id)
+        .map((edge) => nodesRef.current.find((node) => node.id === edge.source))
+        .filter((node): node is CanvasFlowNode => Boolean(node?.data.kind === "media" && node.data.mediaType))
+        .map((node) => node.data.mediaType as CanvasMediaType)
+      : [];
+    const taskId = canvasId("prompt-optimize");
+    try {
+      const response = await fetchJsonWithCsrf<{ optimizedPrompt?: string }>("/api/prompts/optimize", {
+        method: "POST",
+        body: JSON.stringify({
+          taskId,
+          idempotencyKey: taskId,
+          tool: generator?.data.generationKind === "video" ? "video-generator" : "image-generator",
+          prompt: source,
+          hasImage: referenceMediaTypes.includes("image"),
+          aspectRatio: generator?.data.ratio,
+          quality: generator?.data.quality,
+          duration: generator?.data.duration,
+          model: generator?.data.model,
+          referenceMediaTypes,
+        }),
+      });
+      const optimizedPrompt = String(response.optimizedPrompt || "").trim();
+      if (!optimizedPrompt) throw new Error("提示词优化未返回内容。");
+      updateNodeData(id, { prompt: optimizedPrompt });
+      setNotice("提示词已优化，可继续编辑或撤销。");
+    } catch (error) {
+      setNotice(apiMessage(error, "提示词优化失败，请稍后重试。"));
+      throw error;
+    }
+  }, [updateNodeData]);
+
   const nodeActions = useMemo(() => ({
     providers,
     internalCanvas: isInternalCanvas,
@@ -1430,9 +1472,10 @@ function CanvasWorkspaceInner({
     updateNodeData: (id: string, patch: Partial<CanvasNodeData>) => updateNodeData(id, patch),
     removeNode,
     previewMedia: setPreviewingNodeId,
+    optimizePrompt: optimizePromptNode,
     runGenerator: (id: string) => { void executeGenerator(id); },
     toggleGroup: toggleGroupCollapsed,
-  }), [executeGenerator, inputPreviews, inputSummary, isInternalCanvas, presenceByNode, promptReferences, providers, removeNode, toggleGroupCollapsed, updateNodeData]);
+  }), [executeGenerator, inputPreviews, inputSummary, isInternalCanvas, optimizePromptNode, presenceByNode, promptReferences, providers, removeNode, toggleGroupCollapsed, updateNodeData]);
 
   const onNodesChange = useCallback((changes: NodeChange<CanvasFlowNode>[]) => {
     if (changes.some((change) => change.type !== "select" && !(change.type === "position" && change.dragging))) {
@@ -1974,13 +2017,25 @@ function CanvasWorkspaceInner({
           position: { x: ((rootIndex.get(node.id) || 0) % columns) * 420, y: Math.floor((rootIndex.get(node.id) || 0) / columns) * 390 },
         }));
       }
-      const groupIndex = new Map<CanvasNodeData["kind"], number>();
-      const xByKind = { group: 0, prompt: 0, generator: 480, media: 980 } as const;
+      const nodeMap = new Map(current.map((node) => [node.id, node]));
+      const roots = current.filter((node) => !node.parentId);
+      const layerFor = (node: CanvasFlowNode) => {
+        if (node.data.kind === "generator") return 1;
+        if (node.data.kind !== "media") return 0;
+        const generatedResult = Boolean(node.data.sourceNodeIds?.length)
+          || edgesRef.current.some((edge) => edge.target === node.id && nodeMap.get(edge.source)?.data.kind === "generator");
+        return generatedResult ? 2 : 0;
+      };
+      const layerNodes = [0, 1, 2].map((layer) => roots.filter((node) => layerFor(node) === layer));
+      const layerColumns = layerNodes.map((items) => Math.max(1, Math.ceil(Math.sqrt(items.length))));
+      const layerOffsets = layerColumns.map((_, layer) => layerColumns.slice(0, layer).reduce((sum, columns) => sum + columns * 420 + 180, 0));
+      const placement = new Map(layerNodes.flatMap((items, layer) => items.map((node, index) => [node.id, {
+        x: layerOffsets[layer] + (index % layerColumns[layer]) * 420,
+        y: Math.floor(index / layerColumns[layer]) * 390,
+      }] as const)));
       return current.map((node) => {
         if (node.parentId) return node;
-        const index = groupIndex.get(node.data.kind) || 0;
-        groupIndex.set(node.data.kind, index + 1);
-        return { ...node, position: { x: xByKind[node.data.kind], y: index * 390 } };
+        return { ...node, position: placement.get(node.id) || node.position };
       });
     });
     markDirty();
@@ -2647,6 +2702,7 @@ function CanvasWorkspaceInner({
           }}
           onShortcuts={toggleShortcuts}
           onCommand={() => commandOpen ? closeCommandPalette() : openCommandPalette()}
+          onOrganize={() => organizeCanvas("flow")}
           onThemeCycle={() => setCanvasTheme((value) => value === "light" ? "midnight" : "light")}
         />
       ) : (
@@ -2826,7 +2882,6 @@ function CanvasWorkspaceInner({
               onToggleGroup={() => toggleGroupCollapsed(selectedNode.id)}
               onDelete={() => removeNode(selectedNode.id)}
               onEdit={editSelected}
-              onEditText={focusSelectedText}
               onGenerate={generateSelected}
               onZoomOut={() => { void flow.zoomOut(); }}
               onZoomIn={() => { void flow.zoomIn(); }}
@@ -2963,6 +3018,7 @@ function CanvasWorkspaceInner({
             onTouchMultiSelect={() => setTouchMultiSelect((value) => !value)}
             onDelete={removeSelectedNodes}
             onClean={cleanCanvas}
+            onOrganize={() => organizeCanvas("flow")}
             onSettings={() => {
               setSettingsOpen((value) => !value);
               setLayersOpen(false);
@@ -3220,7 +3276,6 @@ function CanvasSelectionToolbar({
   onToggleGroup,
   onDelete,
   onEdit,
-  onEditText,
   onGenerate,
   onZoomOut,
   onZoomIn,
@@ -3232,7 +3287,6 @@ function CanvasSelectionToolbar({
   onToggleGroup: () => void;
   onDelete: () => void;
   onEdit: () => void;
-  onEditText: () => void;
   onGenerate: () => void;
   onZoomOut: () => void;
   onZoomIn: () => void;
@@ -3247,7 +3301,6 @@ function CanvasSelectionToolbar({
       {node.data.kind === "group" ? <button type="button" onClick={onToggleGroup} title={node.data.collapsed ? "展开分组" : "折叠分组"} aria-label={node.data.collapsed ? "展开选中分组" : "折叠选中分组"}><Layers3 /><span>{node.data.collapsed ? "展开" : "折叠"}</span></button> : null}
       {node.data.kind === "group" ? <button type="button" onClick={onUngroup} title="解除分组" aria-label="解除分组"><Ungroup /><span>解组</span></button> : null}
       <button type="button" onClick={onDelete} title="删除节点" aria-label="删除节点"><Trash2 /><span>删除</span></button>
-      {isPrompt ? <button type="button" onClick={onEditText} title="编辑提示词" aria-label="编辑提示词"><Type /><span>编辑文字</span></button> : null}
       {isImage ? <button type="button" onClick={onEdit} title="裁剪、擦除或局部重绘" aria-label="图片编辑"><Sparkles /><span>图片编辑</span></button> : null}
       {isPrompt || isMedia ? <button type="button" onClick={onGenerate} title={isImage || isPrompt ? "引用当前节点生成图片" : "引用当前素材生成视频"} aria-label={isImage || isPrompt ? "生成图片" : "生成视频"}><ImageIcon /><span>{isImage || isPrompt ? "生图" : "生视频"}</span></button> : null}
       {isGenerator ? <button type="button" onClick={onGenerate} title="运行当前生成节点" aria-label="运行生成"><Sparkles /><span>运行</span></button> : null}
@@ -3423,6 +3476,7 @@ function CanvasBottomDock({
   touchMultiSelect,
   onTouchMultiSelect,
   onClean,
+  onOrganize,
   onSettings,
   onDelete,
   onZoomOut,
@@ -3447,6 +3501,7 @@ function CanvasBottomDock({
   touchMultiSelect: boolean;
   onTouchMultiSelect: () => void;
   onClean: () => void;
+  onOrganize: () => void;
   onSettings: () => void;
   onDelete: () => void;
   onZoomOut: () => void;
@@ -3469,6 +3524,7 @@ function CanvasBottomDock({
         <button type="button" onClick={onSettings} title="生成与画布设置" aria-label="生成与画布设置"><Settings2 /></button>
         <button type="button" onClick={onOpenLibrary} title="素材库" aria-label="打开素材库"><FolderOpen /></button>
         <button type="button" onClick={onLayers} title="图层" aria-label="打开图层"><Layers3 /></button>
+        <button type="button" onClick={onOrganize} title="一键整理画布" aria-label="一键整理画布"><LayoutDashboard /></button>
         <button type="button" onClick={onImport} title="导入画布" aria-label="导入画布"><Upload /></button>
         <button type="button" onClick={onExport} title="导出画布" aria-label="导出画布"><Download /></button>
         <button type="button" className={cn("canvas-touch-only", touchMultiSelect && "is-active")} aria-pressed={touchMultiSelect} onClick={onTouchMultiSelect} title="触控多选" aria-label="触控多选"><ListChecks /></button>
@@ -3492,6 +3548,7 @@ function CanvasBottomDock({
       <button type="button" onClick={onImport} title="导入画布" aria-label="导入画布"><Upload /></button>
       <button type="button" onClick={onExport} title="导出画布" aria-label="导出画布"><Download /></button>
       <button type="button" onClick={onLayers} title="打开图层" aria-label="打开图层"><Layers3 /></button>
+      <button type="button" onClick={onOrganize} title="一键整理画布" aria-label="一键整理画布"><LayoutDashboard /></button>
       <button type="button" className={cn("canvas-touch-only", touchMultiSelect && "is-active")} aria-pressed={touchMultiSelect} onClick={onTouchMultiSelect} title="触控多选" aria-label="触控多选"><ListChecks /></button>
       <button type="button" onClick={onSettings} title="画布设置" aria-label="画布设置"><Settings2 /></button>
       <button type="button" onClick={onFit} title="查看全部节点" aria-label="查看全部节点"><Maximize2 /></button>

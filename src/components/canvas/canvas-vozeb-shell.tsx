@@ -8,6 +8,7 @@ import {
   FolderOpen,
   Keyboard,
   Layers3,
+  LayoutDashboard,
   Menu,
   Moon,
   Palette,
@@ -65,6 +66,7 @@ export function CanvasVozebTopbar({
   onAssistant,
   onShortcuts,
   onCommand,
+  onOrganize,
   onThemeCycle,
 }: {
   accountName: string;
@@ -100,6 +102,7 @@ export function CanvasVozebTopbar({
   onAssistant: () => void;
   onShortcuts: () => void;
   onCommand: () => void;
+  onOrganize: () => void;
   onThemeCycle: () => void;
 }) {
   const menuRef = useRef<HTMLDetailsElement | null>(null);
@@ -181,6 +184,7 @@ export function CanvasVozebTopbar({
 
       <div className="canvas-v2-topbar__actions">
         <span className="canvas-v2-free-chip" title="内部画布不扣积分">内部免费</span>
+        <button type="button" className="canvas-v2-organize-button" aria-label="一键整理画布" title="按创作流程一键整理画布" onClick={onOrganize}><LayoutDashboard /><span>一键整理</span></button>
         {syncState ? <span className={cn("canvas-v2-sync-chip", `is-${syncState}`)} title="共享画布同步状态">{syncLabel(syncState)}</span> : null}
         {presenceMembers.length ? (
           <details className="canvas-v2-presence">

@@ -21,6 +21,7 @@
 .canvas-v2-topbar__actions,
 .canvas-v2-account-button,
 .canvas-v2-agent-button,
+.canvas-v2-organize-button,
 .canvas-v2-menu__footer,
 .canvas-v2-menu__footer a {
   display: flex;
@@ -33,6 +34,7 @@
 .canvas-v2-icon-button,
 .canvas-v2-account-button,
 .canvas-v2-agent-button,
+.canvas-v2-organize-button,
 .canvas-v2-command-button,
 .canvas-v2-menu > summary {
   height: 36px;
@@ -58,6 +60,7 @@
 .canvas-v2-icon-button:hover,
 .canvas-v2-account-button:hover,
 .canvas-v2-agent-button:hover,
+.canvas-v2-organize-button:hover,
 .canvas-v2-command-button:hover,
 .canvas-v2-icon-button.is-active,
 .canvas-v2-account-button.is-active,
@@ -66,7 +69,10 @@
 .canvas-v2-icon-button svg,
 .canvas-v2-account-button svg,
 .canvas-v2-agent-button svg,
+.canvas-v2-organize-button svg,
 .canvas-v2-menu svg { width: 17px; height: 17px; }
+
+.canvas-v2-organize-button { align-items: center; gap: 6px; padding: 0 10px; font-size: 11px; }
 
 .canvas-v2-command-button { display: flex; min-width: 126px; align-items: center; gap: 7px; padding: 0 8px; }
 .canvas-v2-command-button svg { width: 15px; flex: 0 0 15px; }
@@ -255,11 +261,13 @@
   .canvas-v2-free-chip,
   .canvas-v2-sync-chip,
   .canvas-v2-agent-button span,
+  .canvas-v2-organize-button span,
   .canvas-v2-account-button span,
   .canvas-v2-topbar__actions > .canvas-v2-icon-button:last-child { display: none; }
   .canvas-v2-topbar__actions { gap: 4px; }
   .canvas-v2-account-button,
-  .canvas-v2-agent-button { width: 34px; height: 34px; flex: 0 0 34px; justify-content: center; padding: 0; }
+  .canvas-v2-agent-button,
+  .canvas-v2-organize-button { width: 34px; height: 34px; flex: 0 0 34px; justify-content: center; padding: 0; }
   .canvas-v2-icon-button,
   .canvas-v2-menu > summary { width: 34px; height: 34px; flex-basis: 34px; }
   .canvas-v2-presence__popover { position: fixed; top: 64px; right: 10px; }
