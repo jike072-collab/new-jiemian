@@ -16,6 +16,10 @@ const billing = read("src/lib/server/quota/task-billing-service.ts");
 const image = read("src/app/api/generate/image/route.ts");
 const video = read("src/app/api/generate/video/route.ts");
 const workload = read("src/lib/server/workload-guard.ts");
+const providerCall = read("src/lib/server/provider-call.ts");
+const canvasWorkspace = read("src/components/canvas/canvas-workspace.tsx");
+const canvasNode = read("src/components/canvas/canvas-node.tsx");
+const canvasDocument = read("src/lib/canvas/document.ts");
 
 assert.match(migration, /create table if not exists internal_canvas_access/);
 assert.match(migration, /lower\(u\.email\) = '2411897106@qq\.com'/);
@@ -33,5 +37,9 @@ assert.match(workload, /withInternalCanvasImageWorkload/);
 assert.match(workload, /limit: 12/);
 assert.match(workload, /limit: 8/);
 assert.match(workload, /limit: 6/);
+assert.match(providerCall, /billingMode === "internal_free" \? 8 : 4/);
+assert.match(canvasWorkspace, /internalCanvas \? 8 : 4/);
+assert.match(canvasNode, /actions\.internalCanvas \? 8 : 4/);
+assert.match(canvasDocument, /boundedNumber\(value\.data\.count, 1, 8, 1\)/);
 
 console.log("internal canvas access and billing contracts passed");

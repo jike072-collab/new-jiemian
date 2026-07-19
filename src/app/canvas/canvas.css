@@ -24,6 +24,7 @@
 .canvas-toolbar svg,
 .canvas-library svg,
 .canvas-node svg,
+.canvas-node-info svg,
 .canvas-notice svg {
   width: 17px;
   height: 17px;
@@ -204,6 +205,7 @@
 .canvas-save-state.is-dirty { color: #fbbf24; }
 .canvas-save-state.is-saving { color: #22d3ee; }
 .canvas-toolbar__version { color: var(--muted); font-size: 10px; white-space: nowrap; }
+.canvas-import-input { display: none; }
 
 .canvas-workspace {
   position: relative;
@@ -276,6 +278,59 @@
 .canvas-access-toggle { flex: 0 0 auto; min-width: 48px; height: 27px; border: 1px solid var(--border-subtle); border-radius: 5px; background: transparent; color: var(--muted); cursor: pointer; font-size: 10px; }
 .canvas-access-toggle.is-enabled { border-color: rgba(52, 211, 153, 0.45); background: rgba(52, 211, 153, 0.12); color: #6ee7b7; }
 .canvas-access-toggle:disabled { cursor: default; opacity: 0.6; }
+
+.canvas-node-info {
+  position: absolute;
+  z-index: 9;
+  top: 72px;
+  right: 14px;
+  display: grid;
+  width: min(360px, calc(100vw - 28px));
+  max-height: calc(100% - 150px);
+  grid-template-rows: auto minmax(0, 1fr);
+  overflow: hidden;
+  border: 1px solid var(--border-strong);
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--panel) 96%, transparent);
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.38);
+  backdrop-filter: blur(16px);
+}
+
+.canvas-node-info__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 10px 10px 10px 14px;
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.canvas-node-info__header > div {
+  display: grid;
+  min-width: 0;
+  grid-template-columns: auto 1fr;
+  gap: 2px 8px;
+  align-items: center;
+}
+
+.canvas-node-info__header svg { grid-row: span 2; color: var(--primary); }
+.canvas-node-info__header strong { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 13px; }
+.canvas-node-info__header small { color: var(--muted); font-size: 10px; }
+.canvas-node-info__body { min-height: 0; overflow: auto; padding: 12px; }
+.canvas-node-info__grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 7px; margin: 0; }
+.canvas-node-info__grid > div { display: grid; gap: 4px; padding: 8px; border: 1px solid var(--border-subtle); border-radius: 6px; background: var(--surface); }
+.canvas-node-info dt { color: var(--muted); font-size: 10px; }
+.canvas-node-info dd { margin: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; }
+.canvas-node-info__section { display: grid; gap: 8px; margin-top: 12px; }
+.canvas-node-info__section strong { font-size: 12px; }
+.canvas-node-info__section p,
+.canvas-node-info__section ul { margin: 0; color: var(--muted-strong); font-size: 11px; line-height: 1.5; }
+.canvas-node-info__section p { max-height: 140px; overflow: auto; white-space: pre-wrap; }
+.canvas-node-info__section ul { display: grid; gap: 5px; padding: 0; list-style: none; }
+.canvas-node-info__actions { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 14px; }
+.canvas-node-info__actions button { display: inline-flex; align-items: center; gap: 6px; height: 31px; border: 1px solid var(--border-subtle); border-radius: 6px; background: var(--surface); color: var(--muted-strong); cursor: pointer; padding: 0 9px; font-size: 11px; }
+.canvas-node-info__actions button:hover:not(:disabled) { background: var(--surface-hover); color: var(--foreground); }
+.canvas-node-info__actions button:disabled { cursor: default; opacity: 0.45; }
 
 .canvas-stage {
   position: relative;
@@ -761,6 +816,16 @@
   font-size: 10px;
 }
 
+.canvas-node__preview { display: grid; gap: 7px; }
+.canvas-node__preview-toggle { justify-self: start; display: inline-flex; align-items: center; gap: 6px; height: 28px; border: 1px solid var(--border-subtle); border-radius: 6px; background: var(--surface); color: var(--muted-strong); cursor: pointer; padding: 0 8px; font-size: 10px; }
+.canvas-node__preview-toggle:hover { background: var(--surface-hover); color: var(--foreground); }
+.canvas-node__preview-toggle svg { width: 13px; height: 13px; }
+.canvas-node__preview-strip { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 6px; }
+.canvas-node__preview-item { display: grid; gap: 4px; min-width: 0; margin: 0; }
+.canvas-node__preview-item img,
+.canvas-node__preview-item video { width: 100%; aspect-ratio: 1; object-fit: cover; overflow: hidden; border: 1px solid var(--border-subtle); border-radius: 6px; background: #09090b; }
+.canvas-node__preview-item figcaption { overflow: hidden; color: var(--muted); font-size: 9px; text-overflow: ellipsis; white-space: nowrap; }
+
 .canvas-node__status {
   min-width: 0;
   gap: 6px;
@@ -869,6 +934,7 @@
   .canvas-selection-toolbar button { min-width: 30px; padding: 0 4px; }
   .canvas-selection-toolbar button span { display: none; }
   .canvas-bottom-dock { right: 8px; left: 8px; transform: none; justify-content: flex-start; overflow-x: auto; }
+  .canvas-node-info { top: 56px; right: 8px; left: 8px; width: auto; max-height: calc(100% - 132px); }
   .aohuang-canvas-page { grid-template-rows: 104px minmax(0, 1fr); }
   .canvas-toolbar {
     grid-template-columns: minmax(130px, 1fr) auto;

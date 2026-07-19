@@ -9,6 +9,8 @@ const read = (path) => readFileSync(join(root, path), "utf8");
 const collectionRoute = read("src/app/api/canvas/projects/route.ts");
 const projectRoute = read("src/app/api/canvas/projects/[id]/route.ts");
 const workspace = read("src/components/canvas/canvas-workspace.tsx");
+const canvasNode = read("src/components/canvas/canvas-node.tsx");
+const canvasCss = read("src/app/canvas/canvas.css");
 const repository = read("src/lib/server/canvas-projects.ts");
 const migration = read("db/migrations/017_canvas_projects.sql");
 
@@ -57,6 +59,16 @@ assert.match(imageSubmission, /form\.set\("count", String\(count\)\)/);
 assert.match(imageSubmission, /estimateImageGenerationTotalQuota\(\{ quality, count,/);
 assert.match(imageSubmission, /items\.forEach\(\(item, index\) => addResultNode\(generatorId, item, null, index, items\.length\)\)/);
 assert.match(workspace, /imageMode === "image-to-image"/);
+assert.match(workspace, /historyPastRef/);
+assert.match(workspace, /undoCanvas/);
+assert.match(workspace, /redoCanvas/);
+assert.match(workspace, /importCanvasFromText/);
+assert.match(workspace, /exportCanvas/);
+assert.match(workspace, /CanvasNodeInfoPanel/);
+assert.match(canvasNode, /inputPreviews/);
+assert.match(canvasNode, /canvas-node__preview-strip/);
+assert.match(canvasCss, /canvas-node-info/);
+assert.match(canvasCss, /canvas-node__preview-strip/);
 
 console.log(JSON.stringify({
   ok: true,

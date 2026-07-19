@@ -714,9 +714,10 @@ async function callGetTokenBananaProvider(input: {
   quality: string;
   files: UploadedMedia[];
   count: number;
+  maxCount?: number;
   onTaskAccepted?: (taskId: string) => Promise<void>;
 }) {
-  const outputCount = Math.min(Math.max(Math.round(input.count || 1), 1), 4);
+  const outputCount = Math.min(Math.max(Math.round(input.count || 1), 1), input.maxCount || 4);
   return Promise.all(Array.from({ length: outputCount }, () => callGetTokenBananaTaskWithRetry(input)));
 }
 
@@ -1410,6 +1411,7 @@ async function callImageProvider({
   quality,
   files,
   count,
+  maxCount,
   onTaskAccepted,
 }: {
   provider: ProviderConfig;
@@ -1418,10 +1420,11 @@ async function callImageProvider({
   quality: string;
   files: UploadedMedia[];
   count: number;
+  maxCount?: number;
   onTaskAccepted?: (taskId: string) => Promise<void>;
 }) {
   try {
-    return await callImageProviderOnce({ provider, prompt, ratio, quality, files, count, onTaskAccepted });
+    return await callImageProviderOnce({ provider, prompt, ratio, quality, files, count, maxCount, onTaskAccepted });
   } catch (error) {
     if (isGetTokenBananaProvider(provider)) throw error;
     const transientStatus = error instanceof GenerationDiagnosticError
@@ -1431,7 +1434,7 @@ async function callImageProvider({
       && /pre_resolve_stall_timeout|no image_ref_resolve_start/i.test(error.message);
     if (!transientStatus && !stalledBeforeGeneration) throw error;
     await wait(1000);
-    return callImageProviderOnce({ provider, prompt, ratio, quality, files, count, onTaskAccepted });
+    return callImageProviderOnce({ provider, prompt, ratio, quality, files, count, maxCount, onTaskAccepted });
   }
 }
 
@@ -1442,6 +1445,7 @@ async function callImageProviderOnce({
   quality,
   files,
   count,
+  maxCount,
   onTaskAccepted,
 }: {
   provider: ProviderConfig;
@@ -1450,14 +1454,15 @@ async function callImageProviderOnce({
   quality: string;
   files: UploadedMedia[];
   count: number;
+  maxCount?: number;
   onTaskAccepted?: (taskId: string) => Promise<void>;
 }) {
   const size = ratioToSize(ratio);
   const useMultipart = files.length > 0;
-  const outputCount = Math.min(Math.max(Math.round(count || 1), 1), 4);
+  const outputCount = Math.min(Math.max(Math.round(count || 1), 1), maxCount || 4);
 
   if (isGetTokenBananaProvider(provider)) {
-    return callGetTokenBananaProvider({ provider, prompt, ratio, quality, files, count: outputCount, onTaskAccepted });
+    return callGetTokenBananaProvider({ provider, prompt, ratio, quality, files, count: outputCount, maxCount, onTaskAccepted });
   }
 
   const apiUrl = imageEndpoint(provider, useMultipart);
@@ -1535,9 +1540,11 @@ async function collectImageProviderOutputs(input: {
   quality: string;
   files: UploadedMedia[];
   count: number;
+  maxCount?: number;
   onTaskAccepted?: (taskId: string) => Promise<void>;
 }) {
-  const targetCount = Math.min(Math.max(Math.round(input.count || 1), 1), 4);
+  const maxCount = input.maxCount || 4;
+  const targetCount = Math.min(Math.max(Math.round(input.count || 1), 1), maxCount);
   const outputs = await callImageProvider({ ...input, count: targetCount });
   if (outputs.length >= targetCount) return outputs.slice(0, targetCount);
 
@@ -1568,8 +1575,9 @@ async function waitForExistingImageItemsForBillingTask(input: {
   localUserId?: string | null;
   taskId?: string | null;
   expectedCount: number;
+  maxCount?: number;
 }) {
-  const expectedCount = Math.min(Math.max(Math.round(input.expectedCount || 1), 1), 4);
+  const expectedCount = Math.min(Math.max(Math.round(input.expectedCount || 1), 1), input.maxCount || 4);
   const deadline = Date.now() + duplicateImageDispatchWaitMs;
   while (Date.now() <= deadline) {
     const items = await findExistingImageItemsForBillingTask(input.localUserId, input.taskId);
@@ -1787,14 +1795,15 @@ export async function generateImage(input: {
   billingMode?: "standard" | "internal_free";
 }) {
   const provider = await providerById(input.providerId);
-  const outputCount = Math.min(Math.max(Math.round(Number(input.count) || 1), 1), 4);
+  const billingMode = input.billingMode === "internal_free" ? "internal_free" : "standard";
+  const maxOutputCount = billingMode === "internal_free" ? 8 : 4;
+  const outputCount = Math.min(Math.max(Math.round(Number(input.count) || 1), 1), maxOutputCount);
   const imageOperation = input.operation === "cloud_image_edit" ? "cloud_image_edit" : "cloud_image_generation";
   const rawEstimatedQuotaUnits = estimateImageGenerationTotalQuota({
     quality: input.quality,
     count: outputCount,
     model: provider?.model,
   });
-  const billingMode = input.billingMode === "internal_free" ? "internal_free" : "standard";
   const estimatedQuotaUnits = billingMode === "internal_free" ? 0 : rawEstimatedQuotaUnits;
   const membershipEntitlementAmount = billingMode === "internal_free" ? 0 : estimateImageGenerationEntitlementUnits({
     quality: input.quality,
@@ -1839,6 +1848,7 @@ export async function generateImage(input: {
       quality: input.quality,
       files: input.files,
       count: outputCount,
+      maxCount: maxOutputCount,
       onTaskAccepted: (taskId) => acceptGenerationBilling({
         localUserId: input.billingLocalUserId,
         taskId: input.billingTaskId,
@@ -1855,7 +1865,7 @@ export async function generateImage(input: {
     });
     const batchTotal = Number.isFinite(Number(input.batchTotal)) && Number(input.batchTotal) > 1
       ? Math.min(Math.max(Math.round(Number(input.batchTotal)), 1), 10)
-      : Math.min(Math.max(Math.max(providerOutputCount, outputCount), 1), 4);
+      : Math.min(Math.max(Math.max(providerOutputCount, outputCount), 1), maxOutputCount);
     const itemResults = await Promise.allSettled(output.map(async (entry, index) => {
       const stored = await outputToLibrary(entry, "image", "image");
       return addLibraryItem({
@@ -1931,6 +1941,7 @@ export async function generateImage(input: {
         localUserId: input.billingLocalUserId,
         taskId: input.billingTaskId,
         expectedCount: outputCount,
+        maxCount: maxOutputCount,
       });
       if (existingItems.length) return existingItems;
       await restoreMembershipEntitlementOnFailure({

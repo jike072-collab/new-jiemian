@@ -2,7 +2,9 @@
 
 import Link from "next/link";
 import {
+  Copy,
   ArrowLeft,
+  Download,
   CircleHelp,
   Eraser,
   Film,
@@ -11,12 +13,16 @@ import {
   Image as ImageIcon,
   Info,
   LoaderCircle,
+  Link2,
   PanelLeftClose,
   PanelLeftOpen,
+  Play,
   Plus,
+  Redo2,
   Save,
   Search,
   Sparkles,
+  Undo2,
   Trash2,
   Type,
   Upload,
@@ -74,11 +80,16 @@ import type {
   CanvasProjectDocument,
   CanvasStoredNode,
 } from "@/lib/canvas/types";
+import { normalizeCanvasDocument } from "@/lib/canvas/document";
 import type { FrontendProvider, JobRecord, LibraryItem } from "@/lib/server/types";
 import { cn } from "@/lib/utils";
 
 type SaveState = "saved" | "dirty" | "saving" | "error";
 type LibraryFilter = "all" | "image" | "video";
+type CanvasWorkspaceSnapshot = {
+  title: string;
+  document: CanvasProjectDocument;
+};
 
 const nodeTypes = { canvas: CanvasNode };
 const emptyProviders: EnabledProviders = { image: [], video: [] };
@@ -110,6 +121,7 @@ function CanvasWorkspaceInner({ accountName, isTeamOwner, isInternalCanvas }: { 
   const [loading, setLoading] = useState(true);
   const [saveState, setSaveState] = useState<SaveState>("saved");
   const [notice, setNotice] = useState("");
+  const [infoOpen, setInfoOpen] = useState(false);
   const [teamOpen, setTeamOpen] = useState(false);
   const [panMode, setPanMode] = useState(false);
 
@@ -121,6 +133,7 @@ function CanvasWorkspaceInner({ accountName, isTeamOwner, isInternalCanvas }: { 
   const titleRef = useRef(title);
   const viewportRef = useRef(viewport);
   const stageRef = useRef<HTMLElement | null>(null);
+  const importInputRef = useRef<HTMLInputElement | null>(null);
   const activeProjectRef = useRef<CanvasProject | null>(null);
   const loadedRef = useRef(false);
   const revisionRef = useRef(0);
@@ -128,6 +141,10 @@ function CanvasWorkspaceInner({ accountName, isTeamOwner, isInternalCanvas }: { 
   const saveTimerRef = useRef<number | null>(null);
   const savePromiseRef = useRef<Promise<boolean> | null>(null);
   const queuedSaveRef = useRef(false);
+  const historyPastRef = useRef<CanvasWorkspaceSnapshot[]>([]);
+  const historyFutureRef = useRef<CanvasWorkspaceSnapshot[]>([]);
+  const historySignatureRef = useRef("");
+  const [historyState, setHistoryState] = useState({ undo: 0, redo: 0 });
   const saveNowRef = useRef<(force?: boolean) => Promise<boolean>>(async () => true);
 
   useEffect(() => { nodesRef.current = nodes; }, [nodes]);
@@ -148,6 +165,32 @@ function CanvasWorkspaceInner({ accountName, isTeamOwner, isInternalCanvas }: { 
     mobileViewport.addEventListener("change", onViewportChange);
     return () => mobileViewport.removeEventListener("change", onViewportChange);
   }, []);
+
+  const syncHistoryState = useCallback(() => {
+    setHistoryState({ undo: historyPastRef.current.length, redo: historyFutureRef.current.length });
+  }, []);
+
+  const snapshotWorkspace = useCallback((): CanvasWorkspaceSnapshot => ({
+    title: titleRef.current,
+    document: serializeDocument(nodesRef.current, edgesRef.current, viewportRef.current),
+  }), []);
+
+  const pushHistorySnapshot = useCallback((snapshot = snapshotWorkspace()) => {
+    const signature = JSON.stringify(snapshot);
+    if (signature === historySignatureRef.current) return;
+    historyPastRef.current.push(snapshot);
+    if (historyPastRef.current.length > 50) historyPastRef.current.shift();
+    historyFutureRef.current = [];
+    historySignatureRef.current = signature;
+    syncHistoryState();
+  }, [snapshotWorkspace, syncHistoryState]);
+
+  const resetHistory = useCallback(() => {
+    historyPastRef.current = [];
+    historyFutureRef.current = [];
+    historySignatureRef.current = "";
+    syncHistoryState();
+  }, [syncHistoryState]);
 
   const scheduleSave = useCallback(() => {
     if (saveTimerRef.current) window.clearTimeout(saveTimerRef.current);
@@ -197,11 +240,13 @@ function CanvasWorkspaceInner({ accountName, isTeamOwner, isInternalCanvas }: { 
     savedRevisionRef.current = 0;
     setSaveState("saved");
     setNotice("");
+    setInfoOpen(false);
     window.requestAnimationFrame(() => {
       void flowRef.current.setViewport(project.document.viewport, { duration: 0 });
       loadedRef.current = true;
     });
-  }, [hydrateMediaNodes]);
+    resetHistory();
+  }, [hydrateMediaNodes, resetHistory]);
 
   const refreshLibrary = useCallback(async () => {
     const data = await fetchJson<{ items: LibraryItem[] }>("/api/library");
@@ -310,19 +355,22 @@ function CanvasWorkspaceInner({ accountName, isTeamOwner, isInternalCanvas }: { 
   }, []);
 
   const updateNodeData = useCallback((id: string, patch: Partial<CanvasNodeData>, persist = true) => {
+    if (persist) pushHistorySnapshot();
     setNodes((current) => current.map((node) => node.id === id
       ? { ...node, data: { ...node.data, ...patch } }
       : node));
     if (persist) markDirty();
-  }, [markDirty]);
+  }, [markDirty, pushHistorySnapshot]);
 
   const removeNode = useCallback((id: string) => {
+    pushHistorySnapshot();
     setNodes((current) => current.filter((node) => node.id !== id));
     setEdges((current) => current.filter((edge) => edge.source !== id && edge.target !== id));
     markDirty();
-  }, [markDirty]);
+  }, [markDirty, pushHistorySnapshot]);
 
   const addNodeAtCenter = useCallback((data: CanvasNodeData, size: { width: number; height: number }) => {
+    pushHistorySnapshot();
     const stageBounds = stageRef.current?.getBoundingClientRect();
     const position = flow.screenToFlowPosition({
       x: stageBounds ? stageBounds.left + stageBounds.width / 2 : window.innerWidth / 2,
@@ -359,7 +407,7 @@ function CanvasWorkspaceInner({ accountName, isTeamOwner, isInternalCanvas }: { 
     setNodes((current) => [...current, node]);
     markDirty();
     return node;
-  }, [flow, markDirty]);
+  }, [flow, markDirty, pushHistorySnapshot]);
 
   const addPromptNode = useCallback(() => {
     addNodeAtCenter({ kind: "prompt", title: "提示词", prompt: "" }, { width: 320, height: 230 });
@@ -411,6 +459,7 @@ function CanvasWorkspaceInner({ accountName, isTeamOwner, isInternalCanvas }: { 
   }, [addNodeAtCenter, markDirty]);
 
   const addLibraryNode = useCallback((item: LibraryItem, position?: { x: number; y: number }) => {
+    pushHistorySnapshot();
     const data: CanvasNodeData = {
       kind: "media",
       title: item.title || (item.type === "image" ? "图片素材" : "视频素材"),
@@ -434,11 +483,12 @@ function CanvasWorkspaceInner({ accountName, isTeamOwner, isInternalCanvas }: { 
       data,
     }]);
     markDirty();
-  }, [addNodeAtCenter, markDirty]);
+  }, [addNodeAtCenter, markDirty, pushHistorySnapshot]);
 
   const addResultNode = useCallback((generatorId: string, item: LibraryItem, job?: JobRecord | null, resultIndex = 0, resultTotal = 1) => {
     const generator = nodesRef.current.find((node) => node.id === generatorId);
     if (!generator) return;
+    pushHistorySnapshot();
     const id = canvasId("node");
     const resultNode: CanvasFlowNode = {
       id,
@@ -475,7 +525,7 @@ function CanvasWorkspaceInner({ accountName, isTeamOwner, isInternalCanvas }: { 
       type: "smoothstep",
     }]);
     markDirty();
-  }, [markDirty]);
+  }, [markDirty, pushHistorySnapshot]);
 
   const executeGenerator = useCallback(async (generatorId: string) => {
     const generator = nodesRef.current.find((node) => node.id === generatorId);
@@ -513,7 +563,7 @@ function CanvasWorkspaceInner({ accountName, isTeamOwner, isInternalCanvas }: { 
           : "text-to-image" as const;
         if (imageMode === "image-to-image" && !mediaItems.length) throw new Error("图生图需要至少连接一张图片素材。");
         if (imageMode === "text-to-image" && mediaItems.length) throw new Error("文生图不能连接参考图，请切换到图生图。");
-        await submitImageGeneration(generatorId, { ...generator.data, imageMode }, provider, prompt, mediaItems, addResultNode, updateNodeData);
+        await submitImageGeneration(generatorId, { ...generator.data, imageMode }, provider, prompt, mediaItems, addResultNode, updateNodeData, isInternalCanvas);
       } else {
         await submitVideoGeneration(generatorId, generator.data, provider as WorkspacePublicProvider, prompt, mediaItems, addResultNode, updateNodeData);
       }
@@ -523,7 +573,7 @@ function CanvasWorkspaceInner({ accountName, isTeamOwner, isInternalCanvas }: { 
       updateNodeData(generatorId, { status: "failed", error: message });
       setNotice(message);
     }
-  }, [addResultNode, refreshLibrary, updateNodeData]);
+  }, [addResultNode, isInternalCanvas, refreshLibrary, updateNodeData]);
 
   const inputSummary = useMemo(() => {
     const summaries: Record<string, GeneratorInputSummary> = {};
@@ -541,23 +591,48 @@ function CanvasWorkspaceInner({ accountName, isTeamOwner, isInternalCanvas }: { 
     return summaries;
   }, [edges, nodes]);
 
+  const inputPreviews = useMemo(() => {
+    const previews: Record<string, Array<{ url: string; mediaType: "image" | "video"; title: string }>> = {};
+    const nodeMap = new Map(nodes.map((node) => [node.id, node]));
+    edges.forEach((edge) => {
+      const target = nodeMap.get(edge.target);
+      const source = nodeMap.get(edge.source);
+      if (target?.data.kind !== "generator" || source?.data.kind !== "media" || !source.data.mediaUrl) return;
+      const current = previews[target.id] || [];
+      if (current.length >= 4) return;
+      current.push({
+        url: source.data.mediaUrl,
+        mediaType: source.data.mediaType === "video" ? "video" : "image",
+        title: source.data.title,
+      });
+      previews[target.id] = current;
+    });
+    return previews;
+  }, [edges, nodes]);
+
   const nodeActions = useMemo(() => ({
     providers,
+    internalCanvas: isInternalCanvas,
     inputSummary,
+    inputPreviews,
     updateNodeData: (id: string, patch: Partial<CanvasNodeData>) => updateNodeData(id, patch),
     removeNode,
     runGenerator: (id: string) => { void executeGenerator(id); },
-  }), [executeGenerator, inputSummary, providers, removeNode, updateNodeData]);
+  }), [executeGenerator, inputPreviews, inputSummary, isInternalCanvas, providers, removeNode, updateNodeData]);
 
   const onNodesChange = useCallback((changes: NodeChange<CanvasFlowNode>[]) => {
+    if (changes.some((change) => change.type !== "select" && !(change.type === "position" && change.dragging))) {
+      pushHistorySnapshot();
+    }
     setNodes((current) => applyNodeChanges(changes, current));
     if (changes.some((change) => change.type !== "select")) markDirty();
-  }, [markDirty]);
+  }, [markDirty, pushHistorySnapshot]);
 
   const onEdgesChange = useCallback((changes: EdgeChange<Edge>[]) => {
+    if (changes.some((change) => change.type !== "select")) pushHistorySnapshot();
     setEdges((current) => applyEdgeChanges(changes, current));
     if (changes.some((change) => change.type !== "select")) markDirty();
-  }, [markDirty]);
+  }, [markDirty, pushHistorySnapshot]);
 
   const isValidConnection = useCallback((connection: Connection | Edge) => {
     if (!connection.source || !connection.target || connection.source === connection.target) return false;
@@ -570,9 +645,10 @@ function CanvasWorkspaceInner({ accountName, isTeamOwner, isInternalCanvas }: { 
 
   const onConnect = useCallback((connection: Connection) => {
     if (!isValidConnection(connection)) return;
+    pushHistorySnapshot();
     setEdges((current) => addEdge({ ...connection, id: canvasId("edge"), type: "smoothstep" }, current));
     markDirty();
-  }, [isValidConnection, markDirty]);
+  }, [isValidConnection, markDirty, pushHistorySnapshot]);
 
   const createProject = useCallback(async (skipCurrentSave = false) => {
     if (!skipCurrentSave && !(await saveNow(true))) return;
@@ -699,6 +775,113 @@ function CanvasWorkspaceInner({ accountName, isTeamOwner, isInternalCanvas }: { 
     createGeneratorFromSelected(selectedNode, selectedNode.data.kind === "media" && selectedNode.data.mediaType === "video" ? "video" : "image");
   }, [createGeneratorFromSelected, executeGenerator, selectedNode]);
 
+  const undoCanvas = useCallback(() => {
+    const snapshot = historyPastRef.current.pop();
+    if (!snapshot) return;
+    historyFutureRef.current.push(snapshotWorkspace());
+    syncHistoryState();
+    const document = normalizeCanvasDocument(snapshot.document);
+    setTitle(snapshot.title);
+    setNodes(hydrateMediaNodes(document.nodes, libraryRef.current));
+    setEdges(document.edges.map((edge) => ({ ...edge, type: "smoothstep" })));
+    setViewportState(document.viewport);
+    setInfoOpen(false);
+    historySignatureRef.current = "";
+    window.requestAnimationFrame(() => {
+      void flowRef.current.setViewport(document.viewport, { duration: 0 });
+    });
+    markDirty();
+  }, [hydrateMediaNodes, markDirty, snapshotWorkspace, syncHistoryState]);
+
+  const redoCanvas = useCallback(() => {
+    const snapshot = historyFutureRef.current.pop();
+    if (!snapshot) return;
+    historyPastRef.current.push(snapshotWorkspace());
+    syncHistoryState();
+    const document = normalizeCanvasDocument(snapshot.document);
+    setTitle(snapshot.title);
+    setNodes(hydrateMediaNodes(document.nodes, libraryRef.current));
+    setEdges(document.edges.map((edge) => ({ ...edge, type: "smoothstep" })));
+    setViewportState(document.viewport);
+    setInfoOpen(false);
+    historySignatureRef.current = "";
+    window.requestAnimationFrame(() => {
+      void flowRef.current.setViewport(document.viewport, { duration: 0 });
+    });
+    markDirty();
+  }, [hydrateMediaNodes, markDirty, snapshotWorkspace, syncHistoryState]);
+
+  const exportCanvas = useCallback(() => {
+    const payload = JSON.stringify({
+      title: titleRef.current,
+      document: serializeDocument(nodesRef.current, edgesRef.current, viewportRef.current),
+    }, null, 2);
+    const blob = new Blob([payload], { type: "application/json" });
+    const url = URL.createObjectURL(blob);
+    const anchor = document.createElement("a");
+    anchor.href = url;
+    anchor.download = `${slugifyCanvasTitle(titleRef.current)}.json`;
+    anchor.click();
+    window.setTimeout(() => URL.revokeObjectURL(url), 1_000);
+    setNotice("鐢诲竷宸茶緭鍑恒€?");
+  }, []);
+
+  const importCanvasFromText = useCallback(async (text: string) => {
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(text);
+    } catch {
+      throw new Error("鐢诲竷 JSON 鏍煎紡鏃犳晥銆?");
+    }
+    const projectLike = isRecord(parsed) && "document" in parsed
+      ? parsed as { title?: unknown; document: unknown }
+      : { title: undefined, document: parsed };
+    const document = normalizeCanvasDocument(projectLike.document);
+    const nextTitle = typeof projectLike.title === "string" && projectLike.title.trim()
+      ? projectLike.title.trim().slice(0, 120)
+      : titleRef.current;
+    pushHistorySnapshot();
+    setTitle(nextTitle);
+    setNodes(hydrateMediaNodes(document.nodes, libraryRef.current));
+    setEdges(document.edges.map((edge) => ({ ...edge, type: "smoothstep" })));
+    setViewportState(document.viewport);
+    setInfoOpen(false);
+    historySignatureRef.current = "";
+    window.requestAnimationFrame(() => {
+      void flowRef.current.setViewport(document.viewport, { duration: 0 });
+    });
+    markDirty();
+    setNotice("鐢诲竷宸茶鍏ャ€?");
+  }, [hydrateMediaNodes, markDirty, pushHistorySnapshot]);
+
+  const triggerImport = useCallback(() => {
+    importInputRef.current?.click();
+  }, []);
+
+  const openCanvasMedia = useCallback((node: CanvasFlowNode) => {
+    if (node.data.kind !== "media" || !node.data.mediaUrl) return;
+    window.open(node.data.mediaUrl, "_blank", "noopener,noreferrer");
+  }, []);
+
+  const downloadCanvasMedia = useCallback((node: CanvasFlowNode) => {
+    if (node.data.kind !== "media" || !node.data.mediaUrl) return;
+    const anchor = document.createElement("a");
+    anchor.href = node.data.mediaUrl;
+    anchor.download = slugifyCanvasTitle(node.data.title);
+    anchor.rel = "noopener";
+    anchor.click();
+  }, []);
+
+  const copyCanvasMediaLink = useCallback(async (node: CanvasFlowNode) => {
+    if (node.data.kind !== "media" || !node.data.mediaUrl) return;
+    try {
+      await navigator.clipboard.writeText(node.data.mediaUrl);
+      setNotice("濯掍綋閾炬帴宸插鍒帮紝鍙互鐩存帴閲嶇敤銆?");
+    } catch {
+      setNotice("褰撳墠娴忚鍣ㄦ殏涓嶅厑璁稿鍒堕摼鎺ワ紝璇风洿鎺ユ墦寮€濯掍綋銆?");
+    }
+  }, []);
+
   if (loading) {
     return <div className="canvas-loading"><LoaderCircle className="is-spinning" /><span>正在打开创作画布</span></div>;
   }
@@ -712,7 +895,9 @@ function CanvasWorkspaceInner({ accountName, isTeamOwner, isInternalCanvas }: { 
         title={title}
         saveState={saveState}
         libraryOpen={libraryOpen}
-        onTitleChange={(value) => { setTitle(value); markDirty(); }}
+        canUndo={historyState.undo > 0}
+        canRedo={historyState.redo > 0}
+        onTitleChange={(value) => { pushHistorySnapshot(); setTitle(value); markDirty(); }}
         onProjectChange={(id) => { void switchProject(id); }}
         onCreateProject={() => { void createProject(); }}
         onDeleteProject={() => { void deleteProject(); }}
@@ -721,10 +906,28 @@ function CanvasWorkspaceInner({ accountName, isTeamOwner, isInternalCanvas }: { 
         onAddPrompt={addPromptNode}
         onAddImage={() => addGeneratorNode("image")}
         onAddVideo={() => addGeneratorNode("video")}
+        onUndo={undoCanvas}
+        onRedo={redoCanvas}
+        onImport={triggerImport}
+        onExport={exportCanvas}
         isTeamOwner={isTeamOwner}
         teamOpen={teamOpen}
         onToggleTeam={() => setTeamOpen((value) => !value)}
         onHelp={() => setNotice("连接提示词到生成节点，再连接图片或视频素材；选中节点后可使用快捷工具。")}
+      />
+      <input
+        ref={importInputRef}
+        type="file"
+        accept="application/json"
+        className="canvas-import-input"
+        onChange={(event) => {
+          const file = event.target.files?.[0];
+          event.target.value = "";
+          if (!file) return;
+          void file.text().then((text) => importCanvasFromText(text)).catch((error) => {
+            setNotice(apiMessage(error, "Canvas import failed."));
+          });
+        }}
       />
 
       <div className="canvas-workspace">
@@ -742,15 +945,15 @@ function CanvasWorkspaceInner({ accountName, isTeamOwner, isInternalCanvas }: { 
           {selectedNode ? (
             <CanvasSelectionToolbar
               node={selectedNode}
-              onInfo={() => setNotice(`${selectedNode.data.title} · ${selectedNode.data.kind}`)}
+              onInfo={() => setInfoOpen(true)}
               onDelete={() => removeNode(selectedNode.id)}
               onSaveMaterial={saveSelectedMaterial}
               onEdit={editSelected}
               onEditText={focusSelectedText}
               onGenerate={generateSelected}
               onZoomOut={() => { void flow.zoomOut(); }}
-            onZoomIn={() => { void flow.zoomIn(); }}
-          />
+              onZoomIn={() => { void flow.zoomIn(); }}
+            />
           ) : null}
           <CanvasNodeActionsContext.Provider value={nodeActions}>
             <ReactFlow<CanvasFlowNode, Edge>
@@ -762,6 +965,7 @@ function CanvasWorkspaceInner({ accountName, isTeamOwner, isInternalCanvas }: { 
               onConnect={onConnect}
               isValidConnection={isValidConnection}
               onMoveEnd={(_, nextViewport) => {
+                pushHistorySnapshot();
                 setViewportState(nextViewport);
                 markDirty();
               }}
@@ -800,12 +1004,29 @@ function CanvasWorkspaceInner({ accountName, isTeamOwner, isInternalCanvas }: { 
             onAddImage={() => addGeneratorNode("image")}
             onAddVideo={() => addGeneratorNode("video")}
             onOpenLibrary={() => setLibraryOpen(true)}
+            onUndo={undoCanvas}
+            onRedo={redoCanvas}
+            onImport={triggerImport}
+            onExport={exportCanvas}
             onDelete={() => { if (selectedNode) removeNode(selectedNode.id); }}
             onZoomOut={() => { void flow.zoomOut(); }}
             onZoomIn={() => { void flow.zoomIn(); }}
             onFit={() => { void flow.fitView({ duration: 260, padding: 0.18 }); }}
             onHelp={() => setNotice("连接提示词到生成节点，再连接图片或视频素材；选中节点后可使用上方快捷工具。")}
           />
+          {infoOpen && selectedNode ? (
+            <CanvasNodeInfoPanel
+              node={selectedNode}
+              onClose={() => setInfoOpen(false)}
+              onFocusText={focusSelectedText}
+              onDownload={() => downloadCanvasMedia(selectedNode)}
+              onCopyLink={() => copyCanvasMediaLink(selectedNode)}
+              onOpenSource={() => openCanvasMedia(selectedNode)}
+              onCreateImage={() => createGeneratorFromSelected(selectedNode, "image")}
+              onCreateVideo={() => createGeneratorFromSelected(selectedNode, "video")}
+              onGenerate={generateSelected}
+            />
+          ) : null}
         </section>
       </div>
 
@@ -828,6 +1049,8 @@ function CanvasToolbar({
   title,
   saveState,
   libraryOpen,
+  canUndo,
+  canRedo,
   onTitleChange,
   onProjectChange,
   onCreateProject,
@@ -837,6 +1060,10 @@ function CanvasToolbar({
   onAddPrompt,
   onAddImage,
   onAddVideo,
+  onUndo,
+  onRedo,
+  onImport,
+  onExport,
   isTeamOwner,
   teamOpen,
   onToggleTeam,
@@ -848,6 +1075,8 @@ function CanvasToolbar({
   title: string;
   saveState: SaveState;
   libraryOpen: boolean;
+  canUndo: boolean;
+  canRedo: boolean;
   onTitleChange: (value: string) => void;
   onProjectChange: (id: string) => void;
   onCreateProject: () => void;
@@ -857,6 +1086,10 @@ function CanvasToolbar({
   onAddPrompt: () => void;
   onAddImage: () => void;
   onAddVideo: () => void;
+  onUndo: () => void;
+  onRedo: () => void;
+  onImport: () => void;
+  onExport: () => void;
   isTeamOwner: boolean;
   teamOpen: boolean;
   onToggleTeam: () => void;
@@ -890,6 +1123,10 @@ function CanvasToolbar({
         <button type="button" className="canvas-tool-button" aria-label="添加提示词节点" title="添加提示词节点" onClick={onAddPrompt}><Type /><span>提示词</span></button>
         <button type="button" className="canvas-tool-button" aria-label="添加图片生成节点" title="添加图片生成节点" onClick={onAddImage}><Sparkles /><span>生图</span></button>
         <button type="button" className="canvas-tool-button" aria-label="添加视频生成节点" title="添加视频生成节点" onClick={onAddVideo}><Film /><span>生视频</span></button>
+        <button type="button" className="canvas-icon-button" aria-label="撤销" title="撤销" disabled={!canUndo} onClick={onUndo}><Undo2 /></button>
+        <button type="button" className="canvas-icon-button" aria-label="重做" title="重做" disabled={!canRedo} onClick={onRedo}><Redo2 /></button>
+        <button type="button" className="canvas-icon-button" aria-label="导入画布" title="导入画布" onClick={onImport}><Upload /></button>
+        <button type="button" className="canvas-icon-button" aria-label="导出画布" title="导出画布" onClick={onExport}><Download /></button>
       </div>
       <div className="canvas-toolbar__account">
         {isTeamOwner ? <button type="button" className={cn("canvas-tool-button", teamOpen && "is-active")} aria-label="团队用量" title="团队用量" onClick={onToggleTeam}><UsersRound /><span>团队</span></button> : null}
@@ -948,6 +1185,10 @@ function CanvasBottomDock({
   onAddImage,
   onAddVideo,
   onOpenLibrary,
+  onUndo,
+  onRedo,
+  onImport,
+  onExport,
   onDelete,
   onZoomOut,
   onZoomIn,
@@ -960,6 +1201,10 @@ function CanvasBottomDock({
   onAddImage: () => void;
   onAddVideo: () => void;
   onOpenLibrary: () => void;
+  onUndo: () => void;
+  onRedo: () => void;
+  onImport: () => void;
+  onExport: () => void;
   onDelete: () => void;
   onZoomOut: () => void;
   onZoomIn: () => void;
@@ -973,6 +1218,10 @@ function CanvasBottomDock({
       <button type="button" onClick={onAddImage} title="添加生图节点" aria-label="添加生图节点"><ImageIcon /></button>
       <button type="button" onClick={onAddVideo} title="添加生视频节点" aria-label="添加生视频节点"><Film /></button>
       <button type="button" onClick={onOpenLibrary} title="打开素材库" aria-label="打开素材库"><Upload /></button>
+      <button type="button" onClick={onUndo} title="撤销" aria-label="撤销"><Undo2 /></button>
+      <button type="button" onClick={onRedo} title="重做" aria-label="重做"><Redo2 /></button>
+      <button type="button" onClick={onImport} title="导入画布" aria-label="导入画布"><Upload /></button>
+      <button type="button" onClick={onExport} title="导出画布" aria-label="导出画布"><Download /></button>
       <button type="button" onClick={onFit} title="查看全部节点" aria-label="查看全部节点"><Eraser /></button>
       <span className="canvas-bottom-dock__divider" aria-hidden="true" />
       <button type="button" onClick={onZoomOut} title="缩小" aria-label="缩小"><ZoomOut /></button>
@@ -980,6 +1229,99 @@ function CanvasBottomDock({
       <button type="button" className="is-danger" onClick={onDelete} title="删除选中节点" aria-label="删除选中节点"><Trash2 /></button>
       <button type="button" onClick={onHelp} title="画布帮助" aria-label="画布帮助"><CircleHelp /></button>
     </nav>
+  );
+}
+
+function CanvasNodeInfoPanel({
+  node,
+  onClose,
+  onFocusText,
+  onDownload,
+  onCopyLink,
+  onOpenSource,
+  onCreateImage,
+  onCreateVideo,
+  onGenerate,
+}: {
+  node: CanvasFlowNode;
+  onClose: () => void;
+  onFocusText: () => void;
+  onDownload: () => void;
+  onCopyLink: () => void;
+  onOpenSource: () => void;
+  onCreateImage: () => void;
+  onCreateVideo: () => void;
+  onGenerate: () => void;
+}) {
+  const data = node.data;
+  const isPrompt = data.kind === "prompt";
+  const isMedia = data.kind === "media";
+  const isGenerator = data.kind === "generator";
+  return (
+    <aside className="canvas-node-info" aria-label="节点信息">
+      <header className="canvas-node-info__header">
+        <div>
+          <Info />
+          <strong>{data.title}</strong>
+          <small>{isPrompt ? "提示词" : isMedia ? "素材" : "生成节点"}</small>
+        </div>
+        <button type="button" className="canvas-icon-button" aria-label="关闭节点信息" title="关闭节点信息" onClick={onClose}><X /></button>
+      </header>
+      <div className="canvas-node-info__body">
+        <dl className="canvas-node-info__grid">
+          <div><dt>类型</dt><dd>{data.kind}</dd></div>
+          <div><dt>状态</dt><dd>{data.status || "idle"}</dd></div>
+          <div><dt>来源</dt><dd>{isMedia ? data.mediaType : isGenerator ? data.providerId || "--" : "--"}</dd></div>
+          <div><dt>链接</dt><dd>{isMedia ? (data.mediaUrl ? "可用" : "无") : "--"}</dd></div>
+        </dl>
+        {isPrompt ? (
+          <div className="canvas-node-info__section">
+            <strong>提示词</strong>
+            <p>{data.prompt || "暂无内容"}</p>
+          </div>
+        ) : null}
+        {isMedia ? (
+          <div className="canvas-node-info__section">
+            <strong>素材信息</strong>
+            <ul>
+              <li>素材 ID: {data.libraryItemId || "--"}</li>
+              <li>媒体类型: {data.mediaType || "--"}</li>
+              <li>错误: {data.error || "--"}</li>
+            </ul>
+          </div>
+        ) : null}
+        {isGenerator ? (
+          <div className="canvas-node-info__section">
+            <strong>生成参数</strong>
+            <ul>
+              <li>模式: {data.generationKind}</li>
+              <li>图片模式: {data.imageMode || "--"}</li>
+              <li>数量: {data.count || 1}</li>
+              <li>比例: {data.ratio || "--"}</li>
+              <li>清晰度: {data.quality || "--"}</li>
+              <li>时长: {data.duration || "--"}</li>
+              <li>分辨率: {data.resolution || "--"}</li>
+              <li>任务 ID: {data.jobId || "--"}</li>
+              <li>结果节点: {data.outputNodeId || "--"}</li>
+              <li>错误: {data.error || "--"}</li>
+            </ul>
+          </div>
+        ) : null}
+        <div className="canvas-node-info__actions">
+          {isPrompt ? <button type="button" onClick={onFocusText}><Type />编辑文本</button> : null}
+          {isMedia ? (
+            <>
+              <button type="button" disabled={!data.mediaUrl} onClick={onOpenSource}><Link2 />打开原图</button>
+              <button type="button" disabled={!data.mediaUrl} onClick={onCopyLink}><Copy />复制链接</button>
+              <button type="button" disabled={!data.mediaUrl} onClick={onDownload}><Download />下载</button>
+              <button type="button" onClick={onCreateImage}><Sparkles />图生图</button>
+              <button type="button" onClick={onCreateVideo}><Film />生视频</button>
+            </>
+          ) : null}
+          {isGenerator ? <button type="button" onClick={onGenerate}><Play />开始生成</button> : null}
+        </div>
+      </div>
+    </aside>
   );
 }
 
@@ -1237,12 +1579,13 @@ async function submitImageGeneration(
   references: LibraryItem[],
   addResultNode: (generatorId: string, item: LibraryItem, job?: JobRecord | null, resultIndex?: number, resultTotal?: number) => void,
   updateNodeData: (id: string, patch: Partial<CanvasNodeData>, persist?: boolean) => void,
+  internalCanvas: boolean,
 ) {
   const files = await Promise.all(references.map(libraryItemFile));
   const taskId = canvasId("canvas-image");
   const mode = data.imageMode === "image-to-image" ? "image-to-image" as const : "text-to-image" as const;
   const operation = mode === "image-to-image" ? "cloud_image_edit" as const : "cloud_image_generation" as const;
-  const count = Math.min(Math.max(Math.round(Number(data.count) || 1), 1), 4);
+  const count = Math.min(Math.max(Math.round(Number(data.count) || 1), 1), internalCanvas ? 8 : 4);
   const ratio = data.ratio || "1:1";
   const quality = data.quality || "1k";
   const estimatedQuotaUnits = estimateImageGenerationTotalQuota({ quality, count, model: provider.model });
@@ -1458,6 +1801,10 @@ function canvasId(prefix: string) {
   return `${prefix}-${crypto.randomUUID()}`;
 }
 
+function slugifyCanvasTitle(value: string) {
+  return value.trim().toLowerCase().replace(/[^a-z0-9\u4e00-\u9fa5]+/g, "-").replace(/^-+|-+$/g, "") || "canvas";
+}
+
 function miniMapColor(node: CanvasFlowNode) {
   if (node.data.kind === "prompt") return "#a1a1aa";
   if (node.data.kind === "media") return node.data.mediaType === "video" ? "#f59e0b" : "#22d3ee";
@@ -1474,4 +1821,8 @@ function saveStateLabel(state: SaveState) {
 function apiMessage(error: unknown, fallback: string) {
   if (error instanceof ApiError || error instanceof Error) return error.message || fallback;
   return fallback;
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
 }

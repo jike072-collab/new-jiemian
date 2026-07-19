@@ -3,6 +3,8 @@
 import {
   AlertCircle,
   Check,
+  Eye,
+  EyeOff,
   Film,
   Image as ImageIcon,
   LoaderCircle,
@@ -11,7 +13,7 @@ import {
   Trash2,
   Type,
 } from "lucide-react";
-import { createContext, useContext } from "react";
+import { createContext, useContext, useState } from "react";
 import {
   Handle,
   NodeResizer,
@@ -21,7 +23,7 @@ import {
 } from "@xyflow/react";
 
 import type { EnabledProviders, WorkspacePublicProvider } from "@/components/studio/types";
-import type { CanvasNodeData } from "@/lib/canvas/types";
+import type { CanvasMediaType, CanvasNodeData } from "@/lib/canvas/types";
 import { cn } from "@/lib/utils";
 
 export type CanvasFlowNode = Node<CanvasNodeData, "canvas">;
@@ -34,7 +36,9 @@ export type GeneratorInputSummary = {
 
 type CanvasNodeActions = {
   providers: EnabledProviders;
+  internalCanvas: boolean;
   inputSummary: Record<string, GeneratorInputSummary>;
+  inputPreviews: Record<string, Array<{ url: string; mediaType: CanvasMediaType; title: string }>>;
   updateNodeData: (id: string, patch: Partial<CanvasNodeData>) => void;
   removeNode: (id: string) => void;
   runGenerator: (id: string) => void;
@@ -141,9 +145,12 @@ function GeneratorNode({ id, data }: { id: string; data: CanvasNodeData }) {
   const selectedDuration = durations.includes(data.duration || 0) ? data.duration : durations[0];
   const selectedResolution = resolutions.includes(data.resolution || "") ? data.resolution : resolutions[0];
   const imageMode = data.imageMode === "image-to-image" ? "image-to-image" : "text-to-image";
-  const imageCount = Math.min(Math.max(Math.round(Number(data.count) || 1), 1), 4);
+  const maxImageCount = actions.internalCanvas ? 8 : 4;
+  const imageCount = Math.min(Math.max(Math.round(Number(data.count) || 1), 1), maxImageCount);
   const busy = data.status === "queued" || data.status === "generating";
   const summary = actions.inputSummary[id] || { prompts: 0, images: 0, videos: 0 };
+  const previews = actions.inputPreviews[id] || [];
+  const [previewOpen, setPreviewOpen] = useState(false);
 
   return (
     <div className="canvas-node__body canvas-node__body--generator">
@@ -202,7 +209,7 @@ function GeneratorNode({ id, data }: { id: string; data: CanvasNodeData }) {
           <label className="canvas-node__field">
             <span>数量</span>
             <select className="nodrag nowheel" value={String(imageCount)} disabled={busy} onChange={(event) => actions.updateNodeData(id, { count: Number(event.target.value) })}>
-              {[1, 2, 3, 4].map((count) => <option key={count} value={count}>{count} 张</option>)}
+              {Array.from({ length: maxImageCount }, (_, index) => index + 1).map((count) => <option key={count} value={count}>{count} 张</option>)}
             </select>
           </label>
         ) : null}
@@ -222,6 +229,29 @@ function GeneratorNode({ id, data }: { id: string; data: CanvasNodeData }) {
         <span>{summary.images} 张图片</span>
         {isVideo ? <span>{summary.videos} 个视频</span> : null}
       </div>
+      {previews.length ? (
+        <div className="canvas-node__preview">
+          <button type="button" className="canvas-node__preview-toggle nodrag" onClick={() => setPreviewOpen((value) => !value)}>
+            {previewOpen ? <EyeOff /> : <Eye />}
+            <span>{previewOpen ? "关闭预览" : `预览 ${previews.length}`}</span>
+          </button>
+          {previewOpen ? (
+            <div className="canvas-node__preview-strip" aria-label="请求素材预览">
+              {previews.map((item, index) => (
+                <figure key={`${item.url}-${index}`} className="canvas-node__preview-item">
+                  {item.mediaType === "video" ? (
+                    <video src={item.url} muted playsInline preload="metadata" />
+                  ) : (
+                    // eslint-disable-next-line @next/next/no-img-element -- generated media URLs are authenticated runtime assets.
+                    <img src={item.url} alt={item.title} draggable={false} />
+                  )}
+                  <figcaption title={item.title}>{item.title}</figcaption>
+                </figure>
+              ))}
+            </div>
+          ) : null}
+        </div>
+      ) : null}
 
       {!isVideo && imageMode === "image-to-image" && summary.images < 1 ? <div className="canvas-node__mode-warning">请连接至少一张参考图</div> : null}
 

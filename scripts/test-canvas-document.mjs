@@ -48,7 +48,7 @@ const imageGenerator = normalizeCanvasDocument({
   viewport: { x: 0, y: 0, zoom: 1 },
 });
 assert.equal(imageGenerator.nodes[0].data.imageMode, "image-to-image");
-assert.equal(imageGenerator.nodes[0].data.count, 4);
+assert.equal(imageGenerator.nodes[0].data.count, 8);
 
 assert.throws(
   () => normalizeCanvasDocument({
