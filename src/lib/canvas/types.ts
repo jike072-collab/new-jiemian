@@ -29,6 +29,9 @@ export type CanvasNodeData = Record<string, unknown> & {
   collapsed?: boolean;
   expandedWidth?: number;
   expandedHeight?: number;
+  hidden?: boolean;
+  locked?: boolean;
+  zIndex?: number;
 };
 
 export type CanvasStoredNode = {

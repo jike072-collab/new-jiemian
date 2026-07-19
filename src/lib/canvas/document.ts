@@ -88,6 +88,9 @@ function normalizeNode(value: unknown): CanvasStoredNode {
   const data: CanvasNodeData = {
     kind,
     title: boundedString(value.data.title, 120).trim() || defaultNodeTitle(kind, value.data.generationKind),
+    hidden: Boolean(value.data.hidden),
+    locked: Boolean(value.data.locked),
+    zIndex: boundedNumber(value.data.zIndex, -10_000, 10_000, 0),
   };
   const prompt = optionalString(value.data.prompt, 30_000);
   if (prompt !== undefined) data.prompt = prompt;

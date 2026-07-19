@@ -7,14 +7,19 @@ import {
   ArrowLeft,
   Download,
   CircleHelp,
+  ArrowDown,
+  ArrowUp,
   Eraser,
   Film,
   FolderOpen,
   Image as ImageIcon,
   Info,
+  Eye,
+  EyeOff,
   Layers3,
   LoaderCircle,
   Link2,
+  Lock,
   Maximize2,
   PanelLeftClose,
   PanelLeftOpen,
@@ -29,6 +34,7 @@ import {
   Star,
   Undo2,
   Ungroup,
+  Unlock,
   Trash2,
   Type,
   Upload,
@@ -146,11 +152,20 @@ function decorateCanvasEdge(edge: Edge | CanvasStoredEdge, nodes: Array<CanvasFl
   };
 }
 
-function applyCollapsedGroupVisibility(nodes: CanvasFlowNode[], edges: Edge[]) {
-  const collapsedGroups = new Set(nodes.filter((node) => node.data.kind === "group" && node.data.collapsed).map((node) => node.id));
-  const hiddenNodes = new Set(nodes.filter((node) => node.parentId && collapsedGroups.has(node.parentId)).map((node) => node.id));
+function applyCanvasNodePresentation(nodes: CanvasFlowNode[], edges: Edge[]) {
+  const inactiveGroups = new Set(nodes.filter((node) => node.data.kind === "group" && (node.data.collapsed || node.data.hidden)).map((node) => node.id));
+  const hiddenNodes = new Set(nodes.filter((node) => node.data.hidden || (node.parentId && inactiveGroups.has(node.parentId))).map((node) => node.id));
   return {
-    nodes: nodes.map((node) => ({ ...node, hidden: hiddenNodes.has(node.id) })),
+    nodes: nodes.map((node) => {
+      const hidden = hiddenNodes.has(node.id);
+      return {
+        ...node,
+        hidden,
+        selected: hidden ? false : node.selected,
+        draggable: !node.data.locked,
+        zIndex: Number(node.data.zIndex) || 0,
+      };
+    }),
     edges: edges.map((edge) => ({ ...edge, hidden: hiddenNodes.has(edge.source) || hiddenNodes.has(edge.target) })),
   };
 }
@@ -235,6 +250,7 @@ function CanvasWorkspaceInner({ accountName, isTeamOwner, isInternalCanvas }: { 
   const [editingNodeId, setEditingNodeId] = useState("");
   const [teamOpen, setTeamOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [layersOpen, setLayersOpen] = useState(false);
   const [contextMenu, setContextMenu] = useState<CanvasContextMenuState | null>(null);
   const [clipboardHasNodes, setClipboardHasNodes] = useState(false);
   const [canvasTheme, setCanvasTheme] = useState<CanvasTheme>(() => storedCanvasSettings().theme);
@@ -363,7 +379,7 @@ function CanvasWorkspaceInner({ accountName, isTeamOwner, isInternalCanvas }: { 
     setActiveProjectId(project.id);
     setTitle(project.title);
     const hydratedNodes = hydrateMediaNodes(project.document.nodes, items);
-    const hydrated = applyCollapsedGroupVisibility(
+    const hydrated = applyCanvasNodePresentation(
       hydratedNodes,
       project.document.edges.map((edge) => decorateCanvasEdge(edge, hydratedNodes, connectionStyle)),
     );
@@ -572,9 +588,30 @@ function CanvasWorkspaceInner({ accountName, isTeamOwner, isInternalCanvas }: { 
       if (node.parentId === id) return { ...node, hidden: collapsed, selected: collapsed ? false : node.selected };
       return node;
     });
-    const hiddenNodes = new Set(nextNodes.filter((node) => node.hidden).map((node) => node.id));
+    const presented = applyCanvasNodePresentation(nextNodes, edgesRef.current);
+    setNodes(presented.nodes);
+    setEdges(presented.edges);
+    markDirty();
+  }, [markDirty, pushHistorySnapshot]);
+
+  const updateNodeLayerState = useCallback((id: string, patch: Pick<CanvasNodeData, "hidden" | "locked">) => {
+    if (!nodesRef.current.some((node) => node.id === id)) return;
+    pushHistorySnapshot();
+    const nextNodes = nodesRef.current.map((node) => node.id === id ? { ...node, data: { ...node.data, ...patch } } : node);
+    const presented = applyCanvasNodePresentation(nextNodes, edgesRef.current);
+    setNodes(presented.nodes);
+    setEdges(presented.edges);
+    markDirty();
+  }, [markDirty, pushHistorySnapshot]);
+
+  const moveNodeLayer = useCallback((id: string, direction: "front" | "back") => {
+    const node = nodesRef.current.find((item) => item.id === id);
+    if (!node) return;
+    pushHistorySnapshot();
+    const levels = nodesRef.current.map((item) => Number(item.data.zIndex) || 0);
+    const zIndex = direction === "front" ? Math.max(...levels, 0) + 1 : Math.min(...levels, 0) - 1;
+    const nextNodes = nodesRef.current.map((item) => item.id === id ? { ...item, data: { ...item.data, zIndex }, zIndex } : item);
     setNodes(nextNodes);
-    setEdges((current) => current.map((edge) => ({ ...edge, hidden: hiddenNodes.has(edge.source) || hiddenNodes.has(edge.target) })));
     markDirty();
   }, [markDirty, pushHistorySnapshot]);
 
@@ -1403,7 +1440,7 @@ function CanvasWorkspaceInner({ accountName, isTeamOwner, isInternalCanvas }: { 
     const document = normalizeCanvasDocument(snapshot.document);
     setTitle(snapshot.title);
     const hydratedNodes = hydrateMediaNodes(document.nodes, libraryRef.current);
-    const hydrated = applyCollapsedGroupVisibility(hydratedNodes, document.edges.map((edge) => decorateCanvasEdge(edge, hydratedNodes, connectionStyle)));
+    const hydrated = applyCanvasNodePresentation(hydratedNodes, document.edges.map((edge) => decorateCanvasEdge(edge, hydratedNodes, connectionStyle)));
     setNodes(hydrated.nodes);
     setEdges(hydrated.edges);
     setViewportState(document.viewport);
@@ -1423,7 +1460,7 @@ function CanvasWorkspaceInner({ accountName, isTeamOwner, isInternalCanvas }: { 
     const document = normalizeCanvasDocument(snapshot.document);
     setTitle(snapshot.title);
     const hydratedNodes = hydrateMediaNodes(document.nodes, libraryRef.current);
-    const hydrated = applyCollapsedGroupVisibility(hydratedNodes, document.edges.map((edge) => decorateCanvasEdge(edge, hydratedNodes, connectionStyle)));
+    const hydrated = applyCanvasNodePresentation(hydratedNodes, document.edges.map((edge) => decorateCanvasEdge(edge, hydratedNodes, connectionStyle)));
     setNodes(hydrated.nodes);
     setEdges(hydrated.edges);
     setViewportState(document.viewport);
@@ -1505,7 +1542,7 @@ function CanvasWorkspaceInner({ accountName, isTeamOwner, isInternalCanvas }: { 
     pushHistorySnapshot();
     setTitle(nextTitle);
     const hydratedNodes = hydrateMediaNodes(document.nodes, libraryRef.current);
-    const hydrated = applyCollapsedGroupVisibility(hydratedNodes, document.edges.map((edge) => decorateCanvasEdge(edge, hydratedNodes, connectionStyle)));
+    const hydrated = applyCanvasNodePresentation(hydratedNodes, document.edges.map((edge) => decorateCanvasEdge(edge, hydratedNodes, connectionStyle)));
     setNodes(hydrated.nodes);
     setEdges(hydrated.edges);
     setViewportState(document.viewport);
@@ -1622,6 +1659,7 @@ function CanvasWorkspaceInner({ accountName, isTeamOwner, isInternalCanvas }: { 
       } else if (event.key === "Escape") {
         setAssistantOpen(false);
         setInfoOpen(false);
+        setLayersOpen(false);
         setSettingsOpen(false);
         setContextMenu(null);
         setNodes((current) => current.map((node) => ({ ...node, selected: false })));
@@ -1647,6 +1685,7 @@ function CanvasWorkspaceInner({ accountName, isTeamOwner, isInternalCanvas }: { 
         saveState={saveState}
         syncState={isInternalCanvas ? syncState : undefined}
         libraryOpen={libraryOpen}
+        layersOpen={layersOpen}
         canUndo={historyState.undo > 0}
         canRedo={historyState.redo > 0}
         onTitleChange={(value) => { pushHistorySnapshot(); setTitle(value); markDirty(); }}
@@ -1660,6 +1699,12 @@ function CanvasWorkspaceInner({ accountName, isTeamOwner, isInternalCanvas }: { 
         onDeleteProject={() => { void deleteProject(); }}
         onSave={() => { void saveNow(true); }}
         onToggleLibrary={() => setLibraryOpen((value) => !value)}
+        onToggleLayers={() => {
+          setLayersOpen((value) => !value);
+          setInfoOpen(false);
+          setAssistantOpen(false);
+          setSettingsOpen(false);
+        }}
         onAddPrompt={addPromptNode}
         onAddImage={() => addGeneratorNode("image")}
         onAddVideo={() => addGeneratorNode("video")}
@@ -1668,11 +1713,22 @@ function CanvasWorkspaceInner({ accountName, isTeamOwner, isInternalCanvas }: { 
         onImport={triggerImport}
         onExport={exportCanvas}
         settingsOpen={settingsOpen}
-        onSettings={() => setSettingsOpen((value) => !value)}
+        onSettings={() => {
+          setSettingsOpen((value) => !value);
+          setLayersOpen(false);
+          setInfoOpen(false);
+          setAssistantOpen(false);
+        }}
         isTeamOwner={isTeamOwner}
         teamOpen={teamOpen}
         onToggleTeam={() => setTeamOpen((value) => !value)}
-        onHelp={() => isInternalCanvas ? setAssistantOpen(true) : setNotice("连接提示词到生成节点，再连接图片或视频素材；选中节点后可使用快捷工具。")}
+        onHelp={() => {
+          setLayersOpen(false);
+          setInfoOpen(false);
+          setSettingsOpen(false);
+          if (isInternalCanvas) setAssistantOpen(true);
+          else setNotice("连接提示词到生成节点，再连接图片或视频素材；选中节点后可使用快捷工具。");
+        }}
       />
       <input
         ref={importInputRef}
@@ -1719,7 +1775,7 @@ function CanvasWorkspaceInner({ accountName, isTeamOwner, isInternalCanvas }: { 
             <CanvasSelectionToolbar
               node={selectedNode}
               style={selectionToolbarStyle}
-              onInfo={() => setInfoOpen(true)}
+              onInfo={() => { setInfoOpen(true); setLayersOpen(false); setAssistantOpen(false); setSettingsOpen(false); }}
               onUngroup={ungroupSelectedNodes}
               onToggleGroup={() => toggleGroupCollapsed(selectedNode.id)}
               onDelete={() => removeNode(selectedNode.id)}
@@ -1820,14 +1876,52 @@ function CanvasWorkspaceInner({ accountName, isTeamOwner, isInternalCanvas }: { 
             onRedo={redoCanvas}
             onImport={triggerImport}
             onExport={exportCanvas}
+            onLayers={() => {
+              setLayersOpen((value) => !value);
+              setInfoOpen(false);
+              setAssistantOpen(false);
+              setSettingsOpen(false);
+            }}
             onDelete={removeSelectedNodes}
             onClean={cleanCanvas}
-            onSettings={() => setSettingsOpen((value) => !value)}
+            onSettings={() => {
+              setSettingsOpen((value) => !value);
+              setLayersOpen(false);
+              setInfoOpen(false);
+              setAssistantOpen(false);
+            }}
             onZoomOut={() => { void flow.zoomOut(); }}
             onZoomIn={() => { void flow.zoomIn(); }}
             onFit={() => { void flow.fitView({ duration: 260, padding: 0.18 }); }}
-            onHelp={() => isInternalCanvas ? setAssistantOpen(true) : setNotice("连接提示词到生成节点，再连接图片或视频素材；选中节点后可使用上方快捷工具。")}
+            onHelp={() => {
+              setLayersOpen(false);
+              setInfoOpen(false);
+              setSettingsOpen(false);
+              if (isInternalCanvas) setAssistantOpen(true);
+              else setNotice("连接提示词到生成节点，再连接图片或视频素材；选中节点后可使用上方快捷工具。");
+            }}
           />
+          {layersOpen ? (
+            <CanvasLayersPanel
+              nodes={nodes}
+              onClose={() => setLayersOpen(false)}
+              onSelect={(id) => {
+                const node = nodesRef.current.find((item) => item.id === id);
+                if (!node || node.hidden) return;
+                setNodes((current) => current.map((item) => ({ ...item, selected: item.id === id })));
+                setEdges((current) => current.map((edge) => ({ ...edge, selected: false })));
+                setInfoOpen(false);
+                void flow.setCenter(
+                  node.position.x + (node.width || 340) / 2,
+                  node.position.y + (node.height || 280) / 2,
+                  { duration: 240, zoom: Math.max(flow.getZoom(), 0.7) },
+                );
+              }}
+              onVisibility={(id, hidden) => updateNodeLayerState(id, { hidden })}
+              onLock={(id, locked) => updateNodeLayerState(id, { locked })}
+              onMove={moveNodeLayer}
+            />
+          ) : null}
           {infoOpen && selectedNode ? (
             <CanvasNodeInfoPanel
               node={selectedNode}
@@ -1904,6 +1998,7 @@ function CanvasToolbar({
   saveState,
   syncState,
   libraryOpen,
+  layersOpen,
   canUndo,
   canRedo,
   onTitleChange,
@@ -1913,6 +2008,7 @@ function CanvasToolbar({
   onDeleteProject,
   onSave,
   onToggleLibrary,
+  onToggleLayers,
   onAddPrompt,
   onAddImage,
   onAddVideo,
@@ -1935,6 +2031,7 @@ function CanvasToolbar({
   saveState: SaveState;
   syncState?: "live" | "syncing" | "paused";
   libraryOpen: boolean;
+  layersOpen: boolean;
   canUndo: boolean;
   canRedo: boolean;
   onTitleChange: (value: string) => void;
@@ -1944,6 +2041,7 @@ function CanvasToolbar({
   onDeleteProject: () => void;
   onSave: () => void;
   onToggleLibrary: () => void;
+  onToggleLayers: () => void;
   onAddPrompt: () => void;
   onAddImage: () => void;
   onAddVideo: () => void;
@@ -1989,6 +2087,7 @@ function CanvasToolbar({
         >
           {libraryOpen ? <PanelLeftClose /> : <PanelLeftOpen />}<span>素材</span>
         </button>
+        <button type="button" className={cn("canvas-tool-button", layersOpen && "is-active")} aria-label={layersOpen ? "关闭图层" : "打开图层"} title={layersOpen ? "关闭图层" : "打开图层"} onClick={onToggleLayers}><Layers3 /><span>图层</span></button>
         <button type="button" className="canvas-tool-button" aria-label="添加提示词节点" title="添加提示词节点" onClick={onAddPrompt}><Type /><span>提示词</span></button>
         <button type="button" className="canvas-tool-button" aria-label="添加图片生成节点" title="添加图片生成节点" onClick={onAddImage}><Sparkles /><span>生图</span></button>
         <button type="button" className="canvas-tool-button" aria-label="添加视频生成节点" title="添加视频生成节点" onClick={onAddVideo}><Film /><span>生视频</span></button>
@@ -2175,6 +2274,7 @@ function CanvasBottomDock({
   onRedo,
   onImport,
   onExport,
+  onLayers,
   onClean,
   onSettings,
   onDelete,
@@ -2191,6 +2291,7 @@ function CanvasBottomDock({
   onRedo: () => void;
   onImport: () => void;
   onExport: () => void;
+  onLayers: () => void;
   onClean: () => void;
   onSettings: () => void;
   onDelete: () => void;
@@ -2209,6 +2310,7 @@ function CanvasBottomDock({
       <button type="button" onClick={onRedo} title="重做" aria-label="重做"><Redo2 /></button>
       <button type="button" onClick={onImport} title="导入画布" aria-label="导入画布"><Upload /></button>
       <button type="button" onClick={onExport} title="导出画布" aria-label="导出画布"><Download /></button>
+      <button type="button" onClick={onLayers} title="打开图层" aria-label="打开图层"><Layers3 /></button>
       <button type="button" onClick={onSettings} title="画布设置" aria-label="画布设置"><Settings2 /></button>
       <button type="button" onClick={onFit} title="查看全部节点" aria-label="查看全部节点"><Maximize2 /></button>
       <button type="button" onClick={onClean} title="清理节点" aria-label="清理节点"><Eraser /></button>
@@ -2218,6 +2320,63 @@ function CanvasBottomDock({
       <button type="button" className="is-danger" onClick={onDelete} title="删除选中节点" aria-label="删除选中节点"><Trash2 /></button>
       <button type="button" onClick={onHelp} title="画布帮助" aria-label="画布帮助"><CircleHelp /></button>
     </nav>
+  );
+}
+
+function CanvasLayersPanel({
+  nodes,
+  onClose,
+  onSelect,
+  onVisibility,
+  onLock,
+  onMove,
+}: {
+  nodes: CanvasFlowNode[];
+  onClose: () => void;
+  onSelect: (id: string) => void;
+  onVisibility: (id: string, hidden: boolean) => void;
+  onLock: (id: string, locked: boolean) => void;
+  onMove: (id: string, direction: "front" | "back") => void;
+}) {
+  const byLayer = (left: CanvasFlowNode, right: CanvasFlowNode) => (Number(right.data.zIndex) || 0) - (Number(left.data.zIndex) || 0);
+  const topLevel = nodes.filter((node) => !node.parentId).sort(byLayer);
+  const childIds = new Set<string>();
+  const orderedNodes = topLevel.flatMap((node) => {
+    const children = nodes.filter((child) => child.parentId === node.id).sort(byLayer);
+    children.forEach((child) => childIds.add(child.id));
+    return [node, ...children];
+  });
+  nodes.filter((node) => node.parentId && !childIds.has(node.id)).sort(byLayer).forEach((node) => orderedNodes.push(node));
+  const nodeById = new Map(nodes.map((node) => [node.id, node]));
+
+  return (
+    <aside className="canvas-layers" aria-label="画布图层">
+      <header className="canvas-layers__header">
+        <div><Layers3 /><span><strong>图层</strong><small>{nodes.length} 个节点</small></span></div>
+        <button type="button" className="canvas-icon-button" aria-label="关闭图层" title="关闭图层" onClick={onClose}><X /></button>
+      </header>
+      <div className="canvas-layers__list">
+        {orderedNodes.length ? orderedNodes.map((node) => {
+          const inheritedHidden = Boolean(node.parentId && nodeById.get(node.parentId)?.hidden);
+          const visible = !node.hidden;
+          const kindLabel = node.data.kind === "prompt" ? "提示词" : node.data.kind === "media" ? (node.data.mediaType === "video" ? "视频" : "图片") : node.data.kind === "generator" ? (node.data.generationKind === "video" ? "视频生成" : "图片生成") : "分组";
+          return (
+            <div key={node.id} className={cn("canvas-layers__row", node.parentId && "is-child", node.selected && "is-selected", !visible && "is-hidden")}>
+              <button type="button" className="canvas-layers__name" disabled={!visible} aria-label={`定位到${node.data.title}`} title={visible ? `定位到${node.data.title}` : "节点已隐藏，请先恢复显示"} onClick={() => onSelect(node.id)}>
+                {node.data.kind === "group" ? <Layers3 /> : node.data.kind === "prompt" ? <Type /> : node.data.kind === "media" ? (node.data.mediaType === "video" ? <Film /> : <ImageIcon />) : <Sparkles />}
+                <span><strong>{node.data.title}</strong><small>{kindLabel}</small></span>
+              </button>
+              <div className="canvas-layers__actions">
+                <button type="button" disabled={inheritedHidden} aria-label={node.data.hidden ? `显示${node.data.title}` : `隐藏${node.data.title}`} title={inheritedHidden ? "由上级分组隐藏" : node.data.hidden ? "显示节点" : "隐藏节点"} onClick={() => onVisibility(node.id, !node.data.hidden)}>{visible ? <Eye /> : <EyeOff />}</button>
+                <button type="button" aria-label={node.data.locked ? `解锁${node.data.title}` : `锁定${node.data.title}`} title={node.data.locked ? "解锁节点" : "锁定节点"} onClick={() => onLock(node.id, !node.data.locked)}>{node.data.locked ? <Lock /> : <Unlock />}</button>
+                <button type="button" aria-label={`上移${node.data.title}`} title="移到顶层" onClick={() => onMove(node.id, "front")}><ArrowUp /></button>
+                <button type="button" aria-label={`下移${node.data.title}`} title="移到底层" onClick={() => onMove(node.id, "back")}><ArrowDown /></button>
+              </div>
+            </div>
+          );
+        }) : <p className="canvas-layers__empty">画布中暂无节点</p>}
+      </div>
+    </aside>
   );
 }
 
