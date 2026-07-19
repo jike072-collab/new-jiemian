@@ -1556,12 +1556,29 @@ function CanvasWorkspaceInner({ accountName, isTeamOwner, isInternalCanvas }: { 
   }, []);
 
   const exportCanvasImage = useCallback(() => {
-    const source = nodesRef.current;
-    if (!source.length) return;
+    const visibleNodes = nodesRef.current.filter((node) => !node.hidden);
+    if (!visibleNodes.length) {
+      setNotice("当前没有可导出的可见节点。");
+      return;
+    }
+    const rawNodeMap = new Map(visibleNodes.map((node) => [node.id, node]));
+    const source = visibleNodes.map((node) => {
+      let x = node.position.x;
+      let y = node.position.y;
+      let parentId = node.parentId;
+      while (parentId) {
+        const parent = rawNodeMap.get(parentId);
+        if (!parent) break;
+        x += parent.position.x;
+        y += parent.position.y;
+        parentId = parent.parentId;
+      }
+      return { ...node, position: { x, y } };
+    });
     const minX = Math.min(...source.map((node) => node.position.x));
     const minY = Math.min(...source.map((node) => node.position.y));
-    const maxX = Math.max(...source.map((node) => node.position.x + (node.width || 340)));
-    const maxY = Math.max(...source.map((node) => node.position.y + (node.height || (node.data.kind === "generator" ? 560 : 280))));
+    const maxX = Math.max(...source.map((node) => node.position.x + (node.measured?.width || node.width || 340)));
+    const maxY = Math.max(...source.map((node) => node.position.y + (node.measured?.height || node.height || (node.data.kind === "generator" ? 560 : 280))));
     const padding = 80;
     const width = Math.max(320, maxX - minX + padding * 2);
     const height = Math.max(240, maxY - minY + padding * 2);
@@ -1570,27 +1587,55 @@ function CanvasWorkspaceInner({ accountName, isTeamOwner, isInternalCanvas }: { 
       const from = nodeMap.get(edge.source);
       const to = nodeMap.get(edge.target);
       if (!from || !to) return [];
-      const x1 = from.position.x - minX + padding + (from.width || 340);
-      const y1 = from.position.y - minY + padding + (from.height || 280) / 2;
+      const x1 = from.position.x - minX + padding + (from.measured?.width || from.width || 340);
+      const y1 = from.position.y - minY + padding + (from.measured?.height || from.height || 280) / 2;
       const x2 = to.position.x - minX + padding;
-      const y2 = to.position.y - minY + padding + (to.height || 280) / 2;
+      const y2 = to.position.y - minY + padding + (to.measured?.height || to.height || 280) / 2;
       return [`<path d="M ${x1} ${y1} C ${x1 + 80} ${y1}, ${x2 - 80} ${y2}, ${x2} ${y2}" fill="none" stroke="#71717a" stroke-width="2"/>`];
     });
     const cards = source.map((node) => {
       const x = node.position.x - minX + padding;
       const y = node.position.y - minY + padding;
-      const nodeWidth = node.width || 340;
-      const nodeHeight = node.height || (node.data.kind === "generator" ? 560 : 280);
+      const nodeWidth = node.measured?.width || node.width || 340;
+      const nodeHeight = node.measured?.height || node.height || (node.data.kind === "generator" ? 560 : 280);
       const subtitle = node.data.kind === "prompt" ? node.data.prompt || "" : node.data.kind === "generator" ? `${node.data.generationKind || ""} · ${node.data.providerId || ""}` : node.data.mediaType || "";
-      return `<g><rect x="${x}" y="${y}" width="${nodeWidth}" height="${nodeHeight}" rx="8" fill="#18181b" stroke="#3f3f46"/><text x="${x + 18}" y="${y + 32}" fill="#fafafa" font-size="15" font-family="sans-serif" font-weight="700">${escapeXml(node.data.title)}</text><foreignObject x="${x + 18}" y="${y + 48}" width="${nodeWidth - 36}" height="${nodeHeight - 66}"><div xmlns="http://www.w3.org/1999/xhtml" style="color:#a1a1aa;font:13px/1.55 sans-serif;overflow:hidden;white-space:pre-wrap">${escapeXml(subtitle)}</div></foreignObject></g>`;
+      return `<g><rect x="${x}" y="${y}" width="${nodeWidth}" height="${nodeHeight}" rx="8" fill="#18181b" stroke="#3f3f46"/><text x="${x + 18}" y="${y + 32}" fill="#fafafa" font-size="15" font-family="sans-serif" font-weight="700">${escapeXml(node.data.title)}</text><text x="${x + 18}" y="${y + 58}" fill="#a1a1aa" font-size="13" font-family="sans-serif">${escapeXml(String(subtitle).replace(/\s+/g, " ").slice(0, 120))}</text></g>`;
     });
     const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}"><rect width="100%" height="100%" fill="#09090b"/>${lines.join("")}${cards.join("")}</svg>`;
-    const url = URL.createObjectURL(new Blob([svg], { type: "image/svg+xml" }));
-    const anchor = document.createElement("a");
-    anchor.href = url;
-    anchor.download = `${slugifyCanvasTitle(titleRef.current)}.svg`;
-    anchor.click();
-    window.setTimeout(() => URL.revokeObjectURL(url), 1_000);
+    const svgUrl = URL.createObjectURL(new Blob([svg], { type: "image/svg+xml;charset=utf-8" }));
+    const image = new Image();
+    image.onload = () => {
+      const scale = Math.min(1, 8_192 / width, 8_192 / height);
+      const canvas = document.createElement("canvas");
+      canvas.width = Math.max(1, Math.ceil(width * scale));
+      canvas.height = Math.max(1, Math.ceil(height * scale));
+      const context = canvas.getContext("2d");
+      if (!context) {
+        URL.revokeObjectURL(svgUrl);
+        setNotice("浏览器无法创建 PNG 画布。");
+        return;
+      }
+      context.drawImage(image, 0, 0, canvas.width, canvas.height);
+      URL.revokeObjectURL(svgUrl);
+      canvas.toBlob((blob) => {
+        if (!blob) {
+          setNotice("PNG 导出失败，请缩小画布后重试。");
+          return;
+        }
+        const pngUrl = URL.createObjectURL(blob);
+        const anchor = document.createElement("a");
+        anchor.href = pngUrl;
+        anchor.download = `${slugifyCanvasTitle(titleRef.current)}.png`;
+        anchor.click();
+        window.setTimeout(() => URL.revokeObjectURL(pngUrl), 1_000);
+        setNotice("画布 PNG 已导出。");
+      }, "image/png");
+    };
+    image.onerror = () => {
+      URL.revokeObjectURL(svgUrl);
+      setNotice("PNG 导出失败，请重试。");
+    };
+    image.src = svgUrl;
   }, []);
 
   const importCanvasFromText = useCallback(async (text: string) => {
@@ -1598,30 +1643,34 @@ function CanvasWorkspaceInner({ accountName, isTeamOwner, isInternalCanvas }: { 
     try {
       parsed = JSON.parse(text);
     } catch {
-      throw new Error("鐢诲竷 JSON 鏍煎紡鏃犳晥銆?");
+      throw new Error("画布 JSON 格式无效。");
     }
     const projectLike = isRecord(parsed) && "document" in parsed
       ? parsed as { title?: unknown; document: unknown }
       : { title: undefined, document: parsed };
     const document = normalizeCanvasDocument(projectLike.document);
-    const nextTitle = typeof projectLike.title === "string" && projectLike.title.trim()
+    const requestedTitle = typeof projectLike.title === "string" && projectLike.title.trim()
       ? projectLike.title.trim().slice(0, 120)
-      : titleRef.current;
-    pushHistorySnapshot();
-    setTitle(nextTitle);
-    const hydratedNodes = hydrateMediaNodes(document.nodes, libraryRef.current);
-    const hydrated = applyCanvasNodePresentation(hydratedNodes, document.edges.map((edge) => decorateCanvasEdge(edge, hydratedNodes, connectionStyle)));
-    setNodes(hydrated.nodes);
-    setEdges(hydrated.edges);
-    setViewportState(document.viewport);
-    setInfoOpen(false);
-    historySignatureRef.current = "";
-    window.requestAnimationFrame(() => {
-      void flowRef.current.setViewport(document.viewport, { duration: 0 });
+      : `${titleRef.current} 导入`.slice(0, 120);
+    const usedTitles = new Set(projectsRef.current.map((project) => project.title.trim().toLocaleLowerCase("zh-CN")));
+    let nextTitle = requestedTitle;
+    if (usedTitles.has(nextTitle.toLocaleLowerCase("zh-CN"))) {
+      nextTitle = `${requestedTitle.slice(0, 115)} (导入)`;
+      let index = 2;
+      while (usedTitles.has(nextTitle.toLocaleLowerCase("zh-CN"))) {
+        const suffix = ` (导入 ${index})`;
+        nextTitle = `${requestedTitle.slice(0, 120 - suffix.length)}${suffix}`;
+        index += 1;
+      }
+    }
+    const created = await fetchJsonWithCsrf<{ project: CanvasProject }>(canvasProjectsUrl(), {
+      method: "POST",
+      body: JSON.stringify({ title: nextTitle, document }),
     });
-    markDirty();
-    setNotice("鐢诲竷宸茶鍏ャ€?");
-  }, [connectionStyle, hydrateMediaNodes, markDirty, pushHistorySnapshot]);
+    setProjects((current) => [created.project, ...current]);
+    activateProject(created.project);
+    setNotice(`已导入为新画布“${nextTitle}”。`);
+  }, [activateProject]);
 
   const triggerImport = useCallback(() => {
     importInputRef.current?.click();
