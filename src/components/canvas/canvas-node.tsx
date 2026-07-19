@@ -2,6 +2,7 @@
 
 import {
   AlertCircle,
+  AtSign,
   Check,
   ChevronDown,
   ChevronRight,
@@ -16,7 +17,7 @@ import {
   Trash2,
   Type,
 } from "lucide-react";
-import { createContext, useContext, useState } from "react";
+import { createContext, useContext, useEffect, useRef, useState } from "react";
 import {
   Handle,
   NodeResizer,
@@ -37,11 +38,19 @@ export type GeneratorInputSummary = {
   videos: number;
 };
 
+export type CanvasPromptReference = {
+  label: string;
+  mediaType: CanvasMediaType;
+  title: string;
+  url: string;
+};
+
 type CanvasNodeActions = {
   providers: EnabledProviders;
   internalCanvas: boolean;
   inputSummary: Record<string, GeneratorInputSummary>;
   inputPreviews: Record<string, Array<{ url: string; mediaType: CanvasMediaType; title: string }>>;
+  promptReferences: Record<string, CanvasPromptReference[]>;
   updateNodeData: (id: string, patch: Partial<CanvasNodeData>) => void;
   removeNode: (id: string) => void;
   runGenerator: (id: string) => void;
@@ -121,17 +130,143 @@ function NodeHeader({ data, onRemove }: { data: CanvasNodeData; onRemove: () => 
 
 function PromptNode({ id, data }: { id: string; data: CanvasNodeData }) {
   const actions = useCanvasNodeActions();
+  const references = actions.promptReferences[id] || [];
+  const value = data.prompt || "";
+  const textareaRef = useRef<HTMLTextAreaElement | null>(null);
+  const promptWrapRef = useRef<HTMLDivElement | null>(null);
+  const promptCursorRef = useRef(value.length);
+  const [mentionContext, setMentionContext] = useState<{ start: number; end: number; query: string } | null>(null);
+  const [activeMentionIndex, setActiveMentionIndex] = useState(0);
+  const filteredReferences = mentionContext
+    ? references.filter((reference) => reference.label.toLowerCase().includes(mentionContext.query.toLowerCase()))
+    : [];
+  const mentionOpen = Boolean(mentionContext && filteredReferences.length);
+
+  useEffect(() => {
+    if (!mentionOpen) return;
+    const closeOnOutsidePointer = (event: PointerEvent) => {
+      if (!promptWrapRef.current?.contains(event.target as globalThis.Node)) setMentionContext(null);
+    };
+    document.addEventListener("pointerdown", closeOnOutsidePointer);
+    return () => document.removeEventListener("pointerdown", closeOnOutsidePointer);
+  }, [mentionOpen]);
+
+  const updateMentionContext = (nextValue: string, cursor: number) => {
+    const prefix = nextValue.slice(0, cursor);
+    const atIndex = prefix.lastIndexOf("@");
+    const query = atIndex >= 0 ? prefix.slice(atIndex + 1) : "";
+    if (atIndex < 0 || !/^[A-Za-z0-9]*$/.test(query) || !references.length) {
+      setMentionContext(null);
+      return;
+    }
+    setMentionContext({ start: atIndex, end: cursor, query });
+    setActiveMentionIndex(0);
+  };
+
+  const focusPromptAt = (cursor: number) => {
+    promptCursorRef.current = cursor;
+    requestAnimationFrame(() => {
+      textareaRef.current?.focus();
+      textareaRef.current?.setSelectionRange(cursor, cursor);
+    });
+  };
+
+  const insertReference = (label: string) => {
+    if (!mentionContext) return;
+    const token = `@${label}`;
+    const suffix = value.slice(mentionContext.end);
+    const trailingSpace = suffix && /^\s/.test(suffix) ? "" : " ";
+    const nextValue = `${value.slice(0, mentionContext.start)}${token}${trailingSpace}${suffix}`;
+    const cursor = mentionContext.start + token.length + trailingSpace.length;
+    actions.updateNodeData(id, { prompt: nextValue });
+    setMentionContext(null);
+    focusPromptAt(cursor);
+  };
+
+  const openReferenceMenu = () => {
+    if (!references.length) return;
+    const cursor = Math.min(promptCursorRef.current, value.length);
+    const needsLeadingSpace = cursor > 0 && !/\s/.test(value[cursor - 1]);
+    const insertion = `${needsLeadingSpace ? " " : ""}@`;
+    const nextValue = `${value.slice(0, cursor)}${insertion}${value.slice(cursor)}`;
+    const start = cursor + (needsLeadingSpace ? 1 : 0);
+    actions.updateNodeData(id, { prompt: nextValue });
+    setMentionContext({ start, end: start + 1, query: "" });
+    setActiveMentionIndex(0);
+    focusPromptAt(start + 1);
+  };
+
   return (
     <div className="canvas-node__body canvas-node__body--prompt">
-      <textarea
-        className="canvas-node__textarea nodrag nowheel"
-        value={data.prompt || ""}
-        maxLength={30_000}
-        aria-label="提示词"
-        placeholder="输入画面或镜头描述"
-        onChange={(event) => actions.updateNodeData(id, { prompt: event.target.value })}
-      />
-      <span className="canvas-node__counter">{(data.prompt || "").length}</span>
+      <div ref={promptWrapRef} className="canvas-node__prompt-editor">
+        <textarea
+          ref={textareaRef}
+          className="canvas-node__textarea nodrag nowheel"
+          value={value}
+          maxLength={30_000}
+          aria-label="提示词"
+          placeholder="输入画面或镜头描述"
+          onChange={(event) => {
+            const nextValue = event.target.value;
+            actions.updateNodeData(id, { prompt: nextValue });
+            updateMentionContext(nextValue, event.target.selectionStart ?? nextValue.length);
+          }}
+          onSelect={(event) => {
+            promptCursorRef.current = event.currentTarget.selectionStart ?? event.currentTarget.value.length;
+          }}
+          onKeyDown={(event) => {
+            if (!mentionOpen) return;
+            if (event.key === "ArrowDown" || event.key === "ArrowUp") {
+              event.preventDefault();
+              const direction = event.key === "ArrowDown" ? 1 : -1;
+              setActiveMentionIndex((current) => (current + direction + filteredReferences.length) % filteredReferences.length);
+              return;
+            }
+            if (event.key === "Enter" || event.key === "Tab") {
+              event.preventDefault();
+              insertReference(filteredReferences[activeMentionIndex]?.label || filteredReferences[0].label);
+              return;
+            }
+            if (event.key === "Escape") {
+              event.preventDefault();
+              setMentionContext(null);
+            }
+          }}
+        />
+        {mentionOpen ? (
+          <div className="canvas-prompt-reference-menu" role="listbox" aria-label="选择参考素材">
+            {filteredReferences.map((reference, index) => (
+              <button
+                key={`${reference.label}-${reference.title}`}
+                type="button"
+                className={cn("canvas-prompt-reference-option", index === activeMentionIndex && "is-active", "nodrag")}
+                role="option"
+                aria-selected={index === activeMentionIndex}
+                onMouseEnter={() => setActiveMentionIndex(index)}
+                onMouseDown={(event) => event.preventDefault()}
+                onClick={() => insertReference(reference.label)}
+              >
+                <span className="canvas-prompt-reference-option__preview" aria-hidden="true">
+                  {reference.mediaType === "video" ? <Film /> : <ImageIcon />}
+                </span>
+                <span className="canvas-prompt-reference-option__copy">
+                  <strong>{reference.label}</strong>
+                  <small>{reference.title}</small>
+                </span>
+              </button>
+            ))}
+          </div>
+        ) : null}
+        <div className="canvas-node__prompt-footer">
+          {references.length ? <span className="canvas-node__mention-hint">输入 @ 引用素材</span> : null}
+          <span className="canvas-node__counter">{value.length}</span>
+          {references.length ? (
+            <button type="button" className="canvas-node__mention-trigger nodrag" aria-label="插入参考素材" title="插入参考素材" onClick={openReferenceMenu}>
+              <AtSign />
+            </button>
+          ) : null}
+        </div>
+      </div>
     </div>
   );
 }

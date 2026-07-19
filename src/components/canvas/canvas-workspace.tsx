@@ -27,6 +27,7 @@ import {
   Layers3,
   LoaderCircle,
   Link2,
+  ListChecks,
   Lock,
   Maximize2,
   MousePointer2,
@@ -93,6 +94,7 @@ import {
   CanvasGroupNode,
   CanvasNode,
   CanvasNodeActionsContext,
+  type CanvasPromptReference,
   type CanvasFlowNode,
   type GeneratorInputSummary,
 } from "@/components/canvas/canvas-node";
@@ -106,6 +108,7 @@ import {
 } from "@/lib/generation-quota";
 import { ApiError, fetchJson, fetchJsonWithCsrf } from "@/lib/client/api";
 import type {
+  CanvasMediaType,
   CanvasNodeData,
   CanvasProject,
   CanvasProjectDocument,
@@ -262,6 +265,7 @@ function CanvasWorkspaceInner({ accountName, isTeamOwner, isInternalCanvas }: { 
   const [teamOpen, setTeamOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [layersOpen, setLayersOpen] = useState(false);
+  const [touchMultiSelect, setTouchMultiSelect] = useState(false);
   const [contextMenu, setContextMenu] = useState<CanvasContextMenuState | null>(null);
   const [clipboardHasNodes, setClipboardHasNodes] = useState(false);
   const [canvasTheme, setCanvasTheme] = useState<CanvasTheme>(() => storedCanvasSettings().theme);
@@ -959,16 +963,42 @@ function CanvasWorkspaceInner({ accountName, isTeamOwner, isInternalCanvas }: { 
     return previews;
   }, [edges, nodes]);
 
+  const promptReferences = useMemo(() => {
+    const references: Record<string, CanvasPromptReference[]> = {};
+    const nodeMap = new Map(nodes.map((node) => [node.id, node]));
+    nodes.filter((node) => node.data.kind === "prompt").forEach((promptNode) => {
+      const generatorId = edges.find((edge) => edge.source === promptNode.id && nodeMap.get(edge.target)?.data.kind === "generator")?.target;
+      if (!generatorId) return;
+      const mediaIds = new Set(edges.filter((edge) => edge.target === generatorId && nodeMap.get(edge.source)?.data.kind === "media").map((edge) => edge.source));
+      const counts: Record<CanvasMediaType, number> = { image: 0, video: 0 };
+      const options: CanvasPromptReference[] = [];
+      nodes.forEach((node) => {
+        if (!mediaIds.has(node.id) || node.data.kind !== "media" || !node.data.mediaUrl) return;
+        const mediaType = node.data.mediaType === "video" ? "video" : "image";
+        counts[mediaType] += 1;
+        options.push({
+          label: `${mediaType === "video" ? "Video" : "Image"}${counts[mediaType]}`,
+          mediaType,
+          title: node.data.title,
+          url: node.data.mediaUrl,
+        });
+      });
+      references[promptNode.id] = options;
+    });
+    return references;
+  }, [edges, nodes]);
+
   const nodeActions = useMemo(() => ({
     providers,
     internalCanvas: isInternalCanvas,
     inputSummary,
     inputPreviews,
+    promptReferences,
     updateNodeData: (id: string, patch: Partial<CanvasNodeData>) => updateNodeData(id, patch),
     removeNode,
     runGenerator: (id: string) => { void executeGenerator(id); },
     toggleGroup: toggleGroupCollapsed,
-  }), [executeGenerator, inputPreviews, inputSummary, isInternalCanvas, providers, removeNode, toggleGroupCollapsed, updateNodeData]);
+  }), [executeGenerator, inputPreviews, inputSummary, isInternalCanvas, promptReferences, providers, removeNode, toggleGroupCollapsed, updateNodeData]);
 
   const onNodesChange = useCallback((changes: NodeChange<CanvasFlowNode>[]) => {
     if (changes.some((change) => change.type !== "select" && !(change.type === "position" && change.dragging))) {
@@ -2037,6 +2067,13 @@ function CanvasWorkspaceInner({ accountName, isTeamOwner, isInternalCanvas }: { 
               onPaneClick={() => setContextMenu(null)}
               onPaneContextMenu={(event) => openContextMenu(event, "pane")}
               onNodeContextMenu={(event, node) => openContextMenu(event, "node", node.id)}
+              onNodeClick={(event, node) => {
+                if (!touchMultiSelect) return;
+                event.preventDefault();
+                const selected = Boolean(nodesRef.current.find((item) => item.id === node.id)?.selected);
+                setNodes((current) => current.map((item) => item.id === node.id ? { ...item, selected: !selected } : item));
+                setEdges((current) => current.map((edge) => ({ ...edge, selected: false })));
+              }}
               onEdgeContextMenu={(event, edge) => openContextMenu(event, "edge", edge.id)}
               onMoveStart={() => setContextMenu(null)}
               onMoveEnd={(_, nextViewport) => {
@@ -2117,6 +2154,8 @@ function CanvasWorkspaceInner({ accountName, isTeamOwner, isInternalCanvas }: { 
               setAssistantOpen(false);
               setSettingsOpen(false);
             }}
+            touchMultiSelect={touchMultiSelect}
+            onTouchMultiSelect={() => setTouchMultiSelect((value) => !value)}
             onDelete={removeSelectedNodes}
             onClean={cleanCanvas}
             onSettings={() => {
@@ -2220,7 +2259,7 @@ function CanvasWorkspaceInner({ accountName, isTeamOwner, isInternalCanvas }: { 
       ) : null}
 
       {notice ? (
-        <div className="canvas-notice" role="status">
+        <div className="canvas-notice" role="status" aria-live="polite">
           <span>{notice}</span>
           <button type="button" aria-label="关闭提示" title="关闭提示" onClick={() => setNotice("")}><X /></button>
         </div>
@@ -2539,6 +2578,8 @@ function CanvasBottomDock({
   onImport,
   onExport,
   onLayers,
+  touchMultiSelect,
+  onTouchMultiSelect,
   onClean,
   onSettings,
   onDelete,
@@ -2556,6 +2597,8 @@ function CanvasBottomDock({
   onImport: () => void;
   onExport: () => void;
   onLayers: () => void;
+  touchMultiSelect: boolean;
+  onTouchMultiSelect: () => void;
   onClean: () => void;
   onSettings: () => void;
   onDelete: () => void;
@@ -2575,6 +2618,7 @@ function CanvasBottomDock({
       <button type="button" onClick={onImport} title="导入画布" aria-label="导入画布"><Upload /></button>
       <button type="button" onClick={onExport} title="导出画布" aria-label="导出画布"><Download /></button>
       <button type="button" onClick={onLayers} title="打开图层" aria-label="打开图层"><Layers3 /></button>
+      <button type="button" className={cn("canvas-touch-only", touchMultiSelect && "is-active")} aria-pressed={touchMultiSelect} onClick={onTouchMultiSelect} title="触控多选" aria-label="触控多选"><ListChecks /></button>
       <button type="button" onClick={onSettings} title="画布设置" aria-label="画布设置"><Settings2 /></button>
       <button type="button" onClick={onFit} title="查看全部节点" aria-label="查看全部节点"><Maximize2 /></button>
       <button type="button" onClick={onClean} title="清理节点" aria-label="清理节点"><Eraser /></button>
@@ -2985,14 +3029,14 @@ function LibraryPanel({ open, items, filter, search, onClose, onFilter, onSearch
   const [selectedIds, setSelectedIds] = useState<Set<string>>(() => new Set());
   const selectedItems = items.filter((item) => selectedIds.has(item.id));
   return (
-    <aside className={cn("canvas-library", open && "is-open")} aria-hidden={!open}>
+    <aside className={cn("canvas-library", open && "is-open")} aria-label="作品素材库" aria-hidden={!open} inert={open ? undefined : true}>
       <div className="canvas-library__header">
         <div><FolderOpen /><strong>作品素材</strong></div>
         <button type="button" className="canvas-icon-button" aria-label="关闭素材库" title="关闭素材库" onClick={onClose}><X /></button>
       </div>
       <label className="canvas-library__search">
         <Search />
-        <input value={search} placeholder="搜索作品" onChange={(event) => onSearch(event.target.value)} />
+        <input value={search} placeholder="搜索作品" aria-label="搜索素材" onChange={(event) => onSearch(event.target.value)} />
       </label>
       <div className="canvas-library__tabs" role="tablist" aria-label="素材类型">
         {(["all", "image", "video"] as const).map((value) => (
