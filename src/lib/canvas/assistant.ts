@@ -8,6 +8,32 @@ export type CanvasAssistantResponse = {
   actions: CanvasAssistantAction[];
 };
 
+export function localCanvasAssistantFallback(input: {
+  message: string;
+  canvasTitle?: string;
+  nodes?: Array<{ kind: "prompt" | "media" | "generator"; title: string }>;
+}): CanvasAssistantResponse | null {
+  const message = boundedText(input.message, 1_200);
+  const nodes = Array.isArray(input.nodes) ? input.nodes.slice(0, 120) : [];
+  if (/(有什么|有哪些|概览|总结|查看.{0,4}画布|画布.{0,4}内容)/.test(message)) {
+    const counts = { prompt: 0, media: 0, generator: 0 };
+    nodes.forEach((node) => { counts[node.kind] += 1; });
+    const title = boundedText(input.canvasTitle, 120) || "未命名画布";
+    if (!nodes.length) return { reply: `当前画布“${title}”还没有内容节点。`, actions: [] };
+    const names = nodes.slice(0, 8).map((node) => boundedText(node.title, 120)).filter(Boolean);
+    const more = nodes.length > names.length ? `，另有 ${nodes.length - names.length} 个节点` : "";
+    return {
+      reply: `当前画布“${title}”共有 ${nodes.length} 个内容节点：${counts.prompt} 个提示词、${counts.media} 个素材、${counts.generator} 个生成节点。${names.length ? `包括：${names.join("、")}${more}。` : ""}`,
+      actions: [],
+    };
+  }
+  if (/(整理|排列|布局)/.test(message)) {
+    const layout = /网格/.test(message) ? "grid" as const : "flow" as const;
+    return { reply: `可以按${layout === "grid" ? "网格" : "从左到右的创作流程"}整理当前画布。`, actions: [{ type: "organize", layout }] };
+  }
+  return null;
+}
+
 function boundedText(value: unknown, maxLength: number) {
   return typeof value === "string" ? value.trim().slice(0, maxLength) : "";
 }

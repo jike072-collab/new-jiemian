@@ -1,6 +1,8 @@
 import "server-only";
 
-import { normalizeCanvasAssistantResponse, type CanvasAssistantResponse } from "@/lib/canvas/assistant";
+import { localCanvasAssistantFallback, normalizeCanvasAssistantResponse, type CanvasAssistantResponse } from "@/lib/canvas/assistant";
+import { NewApiError } from "@/lib/server/integrations/new-api";
+import { newApiLogger } from "@/lib/server/integrations/new-api/logger";
 import { createNewApiPromptModelCaller, type PromptModelCaller } from "@/lib/server/prompts";
 
 type CanvasAssistantNode = {
@@ -89,10 +91,23 @@ export function createCanvasAssistantService(caller: PromptModelCaller = createN
             recentConversation: normalized.history,
           }),
           requestId,
-          timeoutMs: 20_000,
+          timeoutMs: 45_000,
         });
         return parseModelResponse(output);
-      } catch {
+      } catch (error) {
+        newApiLogger.warn({
+          event: "canvas_assistant_failed",
+          requestId,
+          context: "canvas-assistant",
+          retryable: error instanceof NewApiError ? error.retryable : false,
+          details: {
+            errorCode: error instanceof NewApiError ? error.code : error instanceof Error ? error.name : "UNKNOWN_ERROR",
+            nodeCount: normalized.nodes?.length || 0,
+            promptCharacters: normalized.nodes?.reduce((sum, node) => sum + (node.prompt?.length || 0), 0) || 0,
+          },
+        });
+        const fallback = localCanvasAssistantFallback(normalized);
+        if (fallback) return fallback;
         throw new CanvasAssistantError("CANVAS_ASSISTANT_FAILED", "助手暂时不可用，请稍后重试。", 502);
       }
     },
