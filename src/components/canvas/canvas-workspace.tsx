@@ -2110,6 +2110,7 @@ function CanvasWorkspaceInner({ accountName, isTeamOwner, isInternalCanvas }: { 
               selectionKeyCode="Shift"
               selectionMode={SelectionMode.Partial}
               multiSelectionKeyCode={["Control", "Meta", "Shift"]}
+              elementsSelectable={!touchMultiSelect}
               deleteKeyCode={null}
               proOptions={{ hideAttribution: true }}
             >

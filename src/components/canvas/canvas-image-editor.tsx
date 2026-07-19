@@ -210,14 +210,14 @@ export function CanvasImageEditor({ imageUrl, title, onSubmit, onClose }: {
 
   return (
     <div className="canvas-editor-backdrop" role="presentation">
-      <section className="canvas-image-editor" role="dialog" aria-modal="true" aria-label="图片局部编辑器">
-        <header><div><Eraser /><span><strong>图片编辑</strong><small>裁剪、擦除与局部重绘</small></span></div><button type="button" className="canvas-icon-button" onClick={onClose} title="关闭图片编辑" aria-label="关闭图片编辑"><X /></button></header>
+      <section className="canvas-image-editor" role="dialog" aria-modal="true" aria-label="图片局部编辑器" onKeyDown={(event) => { if (event.key === "Escape") { event.stopPropagation(); onClose(); } }}>
+        <header><div><Eraser /><span><strong>图片编辑</strong><small>裁剪、擦除与局部重绘</small></span></div><button type="button" className="canvas-icon-button" autoFocus onClick={onClose} title="关闭图片编辑" aria-label="关闭图片编辑"><X /></button></header>
         <div className="canvas-image-editor__tools" role="toolbar" aria-label="编辑工具">
           <button type="button" onClick={() => cropToAspect(1)}><Crop />1:1</button>
           <button type="button" onClick={() => cropToAspect(4 / 3)}><Crop />4:3</button>
           <button type="button" onClick={() => cropToAspect(16 / 9)}><Crop />16:9</button>
-          <label><Eraser /><input type="range" min="12" max="120" value={brushSize} onChange={(event) => setBrushSize(Number(event.target.value))} /><span>{brushSize}px</span></label>
-          <button type="button" className={showMask ? "is-active" : undefined} onClick={() => setShowMask((value) => !value)}>{showMask ? <Eye /> : <EyeOff />}蒙版</button>
+          <label><Eraser /><input type="range" min="12" max="120" value={brushSize} aria-label="蒙版画笔大小" onChange={(event) => setBrushSize(Number(event.target.value))} /><span>{brushSize}px</span></label>
+          <button type="button" className={showMask ? "is-active" : undefined} aria-pressed={showMask} onClick={() => setShowMask((value) => !value)}>{showMask ? <Eye /> : <EyeOff />}蒙版</button>
           <button type="button" disabled={!historyCount} onClick={undoEdit}><Undo2 />撤销编辑</button>
           <button type="button" disabled={!redoCount} onClick={redoEdit}><Redo2 />重做编辑</button>
           <button type="button" onClick={resetEdit}><RotateCcw />重置</button>

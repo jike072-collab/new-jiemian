@@ -162,6 +162,7 @@ assert.match(workspace, /canvas-library-scrim/);
 assert.match(canvasCss, /@media \(pointer: coarse\)/);
 assert.match(canvasCss, /safe-area-inset-bottom/);
 assert.match(workspace, /touchMultiSelect/);
+assert.match(workspace, /elementsSelectable=\{!touchMultiSelect\}/);
 assert.match(workspace, /aria-live="polite"/);
 assert.match(workspace, /aria-label="作品素材库"/);
 assert.match(imageEditor, /aria-label="蒙版画笔大小"/);
