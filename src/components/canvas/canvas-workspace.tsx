@@ -116,6 +116,7 @@ import type {
   CanvasStoredNode,
 } from "@/lib/canvas/types";
 import { normalizeCanvasDocument } from "@/lib/canvas/document";
+import { mergeCanvasWorkspace } from "@/lib/canvas/merge";
 import { normalizeCanvasAssistantResponse, type CanvasAssistantAction } from "@/lib/canvas/assistant";
 import type { FrontendProvider, JobRecord, LibraryItem } from "@/lib/server/types";
 import { cn } from "@/lib/utils";
@@ -192,6 +193,11 @@ function canvasScope() {
 function canvasProjectsUrl(id?: string) {
   const base = id ? `/api/canvas/projects/${encodeURIComponent(id)}` : "/api/canvas/projects";
   return `${base}?scope=${canvasScope()}`;
+}
+
+function canvasProjectEventsUrl(id: string, clientId: string) {
+  const query = new URLSearchParams({ scope: canvasScope(), client: clientId });
+  return `/api/canvas/projects/${encodeURIComponent(id)}/events?${query}`;
 }
 
 function storedCanvasSettings() {
@@ -272,6 +278,7 @@ function CanvasWorkspaceInner({ accountName, isTeamOwner, isInternalCanvas }: { 
   const [connectionStyle, setConnectionStyle] = useState<ConnectionStyle>(() => storedCanvasSettings().connectionStyle);
   const [snapEnabled, setSnapEnabled] = useState(() => storedCanvasSettings().snapEnabled);
   const [syncState, setSyncState] = useState<"live" | "syncing" | "paused">("live");
+  const [collaborationClientId] = useState(() => canvasId("client"));
 
   const nodesRef = useRef(nodes);
   const edgesRef = useRef(edges);
@@ -283,7 +290,6 @@ function CanvasWorkspaceInner({ accountName, isTeamOwner, isInternalCanvas }: { 
   const stageRef = useRef<HTMLElement | null>(null);
   const importInputRef = useRef<HTMLInputElement | null>(null);
   const clipboardRef = useRef<CanvasClipboard | null>(null);
-  const collaborationChannelRef = useRef<BroadcastChannel | null>(null);
   const activeProjectRef = useRef<CanvasProject | null>(null);
   const loadedRef = useRef(false);
   const revisionRef = useRef(0);
@@ -388,42 +394,66 @@ function CanvasWorkspaceInner({ accountName, isTeamOwner, isInternalCanvas }: { 
     }) as CanvasFlowNode[];
   }, []);
 
+  const applyWorkspaceDocument = useCallback((document: CanvasProjectDocument, items = libraryRef.current) => {
+    const hydratedNodes = hydrateMediaNodes(document.nodes, items);
+    const hydrated = applyCanvasNodePresentation(
+      hydratedNodes,
+      document.edges.map((edge) => decorateCanvasEdge(edge, hydratedNodes, connectionStyle)),
+    );
+    nodesRef.current = hydrated.nodes;
+    edgesRef.current = hydrated.edges;
+    viewportRef.current = document.viewport;
+    setNodes(hydrated.nodes);
+    setEdges(hydrated.edges);
+    setViewportState(document.viewport);
+    void flowRef.current.setViewport(document.viewport, { duration: 0 });
+  }, [connectionStyle, hydrateMediaNodes]);
+
   const activateProject = useCallback((project: CanvasProject, items = libraryRef.current) => {
     loadedRef.current = false;
     activeProjectRef.current = project;
     setActiveProjectId(project.id);
+    titleRef.current = project.title;
     setTitle(project.title);
-    const hydratedNodes = hydrateMediaNodes(project.document.nodes, items);
-    const hydrated = applyCanvasNodePresentation(
-      hydratedNodes,
-      project.document.edges.map((edge) => decorateCanvasEdge(edge, hydratedNodes, connectionStyle)),
-    );
-    setNodes(hydrated.nodes);
-    setEdges(hydrated.edges);
-    setViewportState(project.document.viewport);
+    applyWorkspaceDocument(project.document, items);
     revisionRef.current = 0;
     savedRevisionRef.current = 0;
     setSaveState("saved");
     setNotice("");
     setInfoOpen(false);
     window.requestAnimationFrame(() => {
-      void flowRef.current.setViewport(project.document.viewport, { duration: 0 });
       loadedRef.current = true;
     });
     resetHistory();
-  }, [connectionStyle, hydrateMediaNodes, resetHistory]);
+  }, [applyWorkspaceDocument, resetHistory]);
 
   const acceptRemoteProject = useCallback((project: CanvasProject) => {
     const active = activeProjectRef.current;
     if (!active || active.id !== project.id || project.version <= active.version) return;
-    if (revisionRef.current !== savedRevisionRef.current || savePromiseRef.current) {
-      setSyncState("paused");
+    const hasLocalChanges = revisionRef.current !== savedRevisionRef.current;
+    if (hasLocalChanges || savePromiseRef.current) {
+      const merged = mergeCanvasWorkspace(active, snapshotWorkspace(), project);
+      activeProjectRef.current = project;
+      setProjects((current) => current
+        .map((item) => item.id === project.id ? project : item)
+        .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt)));
+      titleRef.current = merged.title;
+      setTitle(merged.title);
+      applyWorkspaceDocument(merged.document);
+      setSyncState("live");
+      setNotice(merged.conflictCount
+        ? `已合并团队更新，并按当前编辑处理 ${merged.conflictCount} 处冲突。`
+        : "已实时合并团队成员的画布更新。");
+      if (hasLocalChanges) {
+        setSaveState("dirty");
+        scheduleSave();
+      }
       return;
     }
     activateProject(project);
     setSyncState("live");
     setNotice("已同步团队成员的最新画布。");
-  }, [activateProject]);
+  }, [activateProject, applyWorkspaceDocument, scheduleSave, snapshotWorkspace]);
 
   const refreshLibrary = useCallback(async () => {
     const data = await fetchJson<{ items: LibraryItem[] }>("/api/library");
@@ -487,29 +517,48 @@ function CanvasWorkspaceInner({ accountName, isTeamOwner, isInternalCanvas }: { 
     }
     queuedSaveRef.current = false;
     const snapshotRevision = revisionRef.current;
+    const submitted = snapshotWorkspace();
     setSaveState("saving");
     const savePromise = (async () => {
       try {
-        const response = await fetchJsonWithCsrf<{ project: CanvasProject }>(canvasProjectsUrl(project.id), {
+        const response = await fetchJsonWithCsrf<{ project: CanvasProject; merged: boolean; conflictCount: number }>(canvasProjectsUrl(project.id), {
           method: "PATCH",
           body: JSON.stringify({
-            title: titleRef.current,
-            document: serializeDocument(nodesRef.current, edgesRef.current, viewportRef.current),
+            title: submitted.title,
+            document: submitted.document,
             version: project.version,
+            baseTitle: project.title,
+            baseDocument: project.document,
+            sourceId: collaborationClientId,
           }),
         });
         activeProjectRef.current = response.project;
         setProjects((current) => current
           .map((item) => item.id === response.project.id ? response.project : item)
           .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt)));
-        collaborationChannelRef.current?.postMessage(response.project);
         setSyncState("live");
-        savedRevisionRef.current = snapshotRevision;
         if (revisionRef.current === snapshotRevision) {
+          savedRevisionRef.current = snapshotRevision;
+          if (response.merged) {
+            titleRef.current = response.project.title;
+            setTitle(response.project.title);
+            applyWorkspaceDocument(response.project.document);
+          }
           setSaveState("saved");
         } else {
+          const mergedLive = mergeCanvasWorkspace(submitted, snapshotWorkspace(), response.project);
+          activeProjectRef.current = response.project;
+          titleRef.current = mergedLive.title;
+          setTitle(mergedLive.title);
+          applyWorkspaceDocument(mergedLive.document);
+          savedRevisionRef.current = snapshotRevision;
           queuedSaveRef.current = true;
           setSaveState("dirty");
+        }
+        if (response.merged) {
+          setNotice(response.conflictCount
+            ? `已保存并处理 ${response.conflictCount} 处并发冲突。`
+            : "已保存并合并团队成员的同时修改。");
         }
         return true;
       } catch (error) {
@@ -526,7 +575,7 @@ function CanvasWorkspaceInner({ accountName, isTeamOwner, isInternalCanvas }: { 
     } finally {
       if (savePromiseRef.current === savePromise) savePromiseRef.current = null;
     }
-  }, [scheduleSave]);
+  }, [applyWorkspaceDocument, collaborationClientId, scheduleSave, snapshotWorkspace]);
 
   useEffect(() => { saveNowRef.current = saveNow; }, [saveNow]);
   useEffect(() => () => {
@@ -534,35 +583,31 @@ function CanvasWorkspaceInner({ accountName, isTeamOwner, isInternalCanvas }: { 
   }, []);
 
   useEffect(() => {
-    if (!isInternalCanvas || typeof BroadcastChannel === "undefined") return;
-    const channel = new BroadcastChannel("aohuang-internal-canvas");
-    collaborationChannelRef.current = channel;
-    channel.onmessage = (event) => {
-      if (event.data && typeof event.data === "object") acceptRemoteProject(event.data as CanvasProject);
-    };
-    return () => {
-      collaborationChannelRef.current = null;
-      channel.close();
-    };
-  }, [acceptRemoteProject, isInternalCanvas]);
-
-  useEffect(() => {
     if (!isInternalCanvas || !activeProjectId) return;
-    let busy = false;
-    const poll = window.setInterval(() => {
-      if (busy || document.visibilityState === "hidden") return;
-      busy = true;
-      setSyncState((current) => current === "paused" ? current : "syncing");
-      void fetchJson<{ project: CanvasProject }>(canvasProjectsUrl(activeProjectId))
-        .then(({ project }) => acceptRemoteProject(project))
-        .catch(() => setSyncState("paused"))
-        .finally(() => {
-          busy = false;
-          setSyncState((current) => current === "paused" ? current : "live");
-        });
-    }, 2_500);
-    return () => window.clearInterval(poll);
-  }, [acceptRemoteProject, activeProjectId, isInternalCanvas]);
+    const source = new EventSource(canvasProjectEventsUrl(activeProjectId, collaborationClientId));
+    const onProject = (event: MessageEvent<string>) => {
+      try {
+        const value = JSON.parse(event.data) as { project?: CanvasProject };
+        if (value.project) acceptRemoteProject(value.project);
+      } catch {
+        setSyncState("paused");
+      }
+    };
+    const onDeleted = () => {
+      setSyncState("paused");
+      setNotice("当前画布已被团队成员删除，正在刷新画布列表。");
+      window.setTimeout(() => window.location.reload(), 300);
+    };
+    source.addEventListener("project", onProject as EventListener);
+    source.addEventListener("deleted", onDeleted);
+    source.onopen = () => setSyncState("live");
+    source.onerror = () => setSyncState("paused");
+    return () => {
+      source.removeEventListener("project", onProject as EventListener);
+      source.removeEventListener("deleted", onDeleted);
+      source.close();
+    };
+  }, [acceptRemoteProject, activeProjectId, collaborationClientId, isInternalCanvas]);
 
   const updateNodeData = useCallback((id: string, patch: Partial<CanvasNodeData>, persist = true) => {
     if (persist) pushHistorySnapshot();
@@ -1087,7 +1132,7 @@ function CanvasWorkspaceInner({ accountName, isTeamOwner, isInternalCanvas }: { 
     const pendingSave = savePromiseRef.current;
     if (pendingSave && !(await pendingSave)) return;
     try {
-      await fetchJsonWithCsrf(canvasProjectsUrl(project.id), { method: "DELETE" });
+      await fetchJsonWithCsrf(`${canvasProjectsUrl(project.id)}&client=${encodeURIComponent(collaborationClientId)}`, { method: "DELETE" });
       const remaining = projectsRef.current.filter((item) => item.id !== project.id);
       projectsRef.current = remaining;
       setProjects(remaining);
@@ -1101,7 +1146,7 @@ function CanvasWorkspaceInner({ accountName, isTeamOwner, isInternalCanvas }: { 
     } catch (error) {
       setNotice(apiMessage(error, "删除画布失败。"));
     }
-  }, [activateProject, createProject]);
+  }, [activateProject, collaborationClientId, createProject]);
 
   const activeJobsKey = useMemo(() => nodes
     .filter((node) => node.data.kind === "generator" && node.data.jobId && (node.data.status === "queued" || node.data.status === "generating"))

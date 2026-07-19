@@ -8,6 +8,7 @@ const read = (path) => readFileSync(join(root, path), "utf8");
 
 const collectionRoute = read("src/app/api/canvas/projects/route.ts");
 const projectRoute = read("src/app/api/canvas/projects/[id]/route.ts");
+const collaborationRoute = read("src/app/api/canvas/projects/[id]/events/route.ts");
 const workspace = read("src/components/canvas/canvas-workspace.tsx");
 const canvasEdge = read("src/components/canvas/canvas-edge.tsx");
 const canvasNode = read("src/components/canvas/canvas-node.tsx");
@@ -17,6 +18,8 @@ const imageEditor = read("src/components/canvas/canvas-image-editor.tsx");
 const libraryRoute = read("src/app/api/library/route.ts");
 const workspaceAccess = read("src/lib/server/canvas-workspace-access.ts");
 const repository = read("src/lib/server/canvas-projects.ts");
+const collaboration = read("src/lib/server/canvas-collaboration.ts");
+const merge = read("src/lib/canvas/merge.ts");
 const migration = read("db/migrations/017_canvas_projects.sql");
 
 for (const source of [collectionRoute, projectRoute]) {
@@ -24,7 +27,22 @@ for (const source of [collectionRoute, projectRoute]) {
 }
 assert.match(collectionRoute, /requireCsrf/);
 assert.match(projectRoute, /requireCsrf/);
+assert.match(collaborationRoute, /requireAuthSession/);
+assert.match(collaborationRoute, /text\/event-stream/);
+assert.match(collaborationRoute, /subscribeCanvasProjectEvents/);
+assert.match(collaborationRoute, /X-Accel-Buffering/);
+assert.ok(
+  collaborationRoute.indexOf("subscribeCanvasProjectEvents(id") < collaborationRoute.indexOf("const latestProject = await getCanvasProject"),
+  "collaboration stream must subscribe before re-reading the latest project",
+);
+assert.match(collaboration, /listen canvas_project_events/);
+assert.match(collaboration, /__aohuangCanvasCollaboration/);
 assert.match(repository, /CANVAS_PROJECT_CONFLICT/);
+assert.match(repository, /pg_notify\('canvas_project_events'/);
+assert.match(repository, /type: "deleted", projectId: id, sourceId/);
+assert.match(repository, /mergeCanvasWorkspace/);
+assert.match(projectRoute, /baseDocument: body\.baseDocument/);
+assert.match(merge, /conflictCount/);
 
 for (const endpoint of [
   "/api/providers/enabled",
@@ -145,7 +163,11 @@ assert.match(workspace, /请选择同一分组层级中的节点进行排列/);
 assert.match(canvasCss, /canvas-batch-menu__popover/);
 assert.match(workspace, /event\.key === "ArrowLeft"/);
 assert.match(workspace, /<span>全选节点<\/span>/);
-assert.match(workspace, /BroadcastChannel\("aohuang-internal-canvas"\)/);
+assert.match(workspace, /new EventSource\(canvasProjectEventsUrl/);
+assert.match(workspace, /baseDocument: project\.document/);
+assert.match(workspace, /mergeCanvasWorkspace\(submitted, snapshotWorkspace\(\), response\.project\)/);
+assert.doesNotMatch(workspace, /BroadcastChannel\("aohuang-internal-canvas"\)/);
+assert.doesNotMatch(workspace, /}, 2_500\)/);
 assert.match(workspace, /scope=\$\{canvasScope\(\)\}/);
 assert.match(workspaceAccess, /scope.*personal/);
 assert.match(assistantPanel, /\/api\/canvas\/assistant/);
@@ -177,7 +199,7 @@ assert.match(canvasCss, /data-canvas-theme="light"/);
 
 console.log(JSON.stringify({
   ok: true,
-  authenticatedRoutes: 2,
+  authenticatedRoutes: 3,
   reusedGenerationEndpoints: 6,
   generationSubmitted: false,
   databaseWritten: false,

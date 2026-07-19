@@ -33,14 +33,17 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
     const { id } = await context.params;
     const body = await readCanvasBody(request);
     const ownerId = await resolveCanvasWorkspaceOwner(request, session.user.local_user_id);
-    const project = await updateCanvasProject({
+    const result = await updateCanvasProject({
       id,
       userId: ownerId,
       title: body.title,
       document: body.document,
       version: body.version,
+      baseTitle: body.baseTitle,
+      baseDocument: body.baseDocument,
+      sourceId: body.sourceId,
     });
-    return NextResponse.json({ project });
+    return NextResponse.json(result);
   } catch (error) {
     return canvasProjectErrorResponse(request, error, "保存画布失败。");
   }
@@ -53,7 +56,10 @@ export async function DELETE(request: NextRequest, context: RouteContext) {
     if (!session.ok) return authResultResponse(request, session);
     const { id } = await context.params;
     const ownerId = await resolveCanvasWorkspaceOwner(request, session.user.local_user_id);
-    return NextResponse.json({ ok: true, id: await deleteCanvasProject(id, ownerId) });
+    return NextResponse.json({
+      ok: true,
+      id: await deleteCanvasProject(id, ownerId, request.nextUrl.searchParams.get("client")),
+    });
   } catch (error) {
     return canvasProjectErrorResponse(request, error, "删除画布失败。");
   }

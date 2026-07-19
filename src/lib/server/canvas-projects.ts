@@ -3,8 +3,9 @@ import "server-only";
 import { randomUUID } from "node:crypto";
 
 import { normalizeCanvasDocument, normalizeCanvasTitle } from "@/lib/canvas/document";
+import { mergeCanvasWorkspace } from "@/lib/canvas/merge";
 import type { CanvasProject, CanvasProjectDocument } from "@/lib/canvas/types";
-import { applicationQuery } from "@/lib/server/database";
+import { applicationQuery, withApplicationTransaction } from "@/lib/server/database";
 
 type CanvasProjectRow = {
   id: string;
@@ -78,6 +79,9 @@ export async function updateCanvasProject(input: {
   title: unknown;
   document: unknown;
   version: unknown;
+  baseTitle?: unknown;
+  baseDocument?: unknown;
+  sourceId?: unknown;
 }) {
   const version = Number(input.version);
   if (!Number.isInteger(version) || version < 1) {
@@ -85,33 +89,91 @@ export async function updateCanvasProject(input: {
   }
   const title = normalizeCanvasTitle(input.title);
   const document = normalizeCanvasDocument(input.document);
-  const result = await applicationQuery<CanvasProjectRow>(
-    `update canvas_projects
-        set title = $3,
-            document = $4::jsonb,
-            version = version + 1,
-            updated_at = $5
-      where id = $1 and user_id = $2 and version = $6
-      returning id, title, document, version, created_at, updated_at`,
-    [input.id, input.userId, title, JSON.stringify(document), new Date().toISOString(), version],
-  );
-  if (result.rows[0]) return mapCanvasProject(result.rows[0]);
-  const existing = await getCanvasProject(input.id, input.userId);
+  const sourceId = normalizeSourceId(input.sourceId);
+  const direct = await writeCanvasProject({ ...input, title, document, expectedVersion: version, sourceId });
+  if (direct) return { project: direct, merged: false, conflictCount: 0 };
+
+  let existing = await getCanvasProject(input.id, input.userId);
   if (!existing) {
     throw new CanvasProjectError("CANVAS_PROJECT_NOT_FOUND", "未找到画布。", 404);
   }
-  throw new CanvasProjectError("CANVAS_PROJECT_CONFLICT", "画布已在其他页面被修改，请刷新后重试。", 409);
+  if (version > existing.version || input.baseTitle === undefined || input.baseDocument === undefined) {
+    throw new CanvasProjectError("CANVAS_PROJECT_CONFLICT", "画布已在其他页面被修改，请刷新后重试。", 409);
+  }
+
+  const base = {
+    title: normalizeCanvasTitle(input.baseTitle),
+    document: normalizeCanvasDocument(input.baseDocument),
+  };
+  for (let attempt = 0; attempt < 4; attempt += 1) {
+    const merged = mergeCanvasWorkspace(base, { title, document }, existing);
+    const mergedTitle = normalizeCanvasTitle(merged.title);
+    const mergedDocument = normalizeCanvasDocument(merged.document);
+    const updated = await writeCanvasProject({
+      ...input,
+      title: mergedTitle,
+      document: mergedDocument,
+      expectedVersion: existing.version,
+      sourceId,
+    });
+    if (updated) return { project: updated, merged: true, conflictCount: merged.conflictCount };
+    const latest = await getCanvasProject(input.id, input.userId);
+    if (!latest) throw new CanvasProjectError("CANVAS_PROJECT_NOT_FOUND", "未找到画布。", 404);
+    existing = latest;
+  }
+  throw new CanvasProjectError("CANVAS_PROJECT_CONFLICT", "画布更新过于频繁，请稍后重试。", 409);
 }
 
-export async function deleteCanvasProject(id: string, userId: string) {
-  const result = await applicationQuery<{ id: string }>(
-    "delete from canvas_projects where id = $1 and user_id = $2 returning id",
-    [id, userId],
-  );
-  if (!result.rows[0]) {
+export async function deleteCanvasProject(id: string, userId: string, sourceIdValue?: unknown) {
+  const sourceId = normalizeSourceId(sourceIdValue);
+  const deletedId = await withApplicationTransaction(async (client) => {
+    const result = await client.query<{ id: string }>(
+      "delete from canvas_projects where id = $1 and user_id = $2 returning id",
+      [id, userId],
+    );
+    if (!result.rows[0]) return "";
+    await client.query("select pg_notify('canvas_project_events', $1)", [JSON.stringify({ type: "deleted", projectId: id, sourceId })]);
+    return result.rows[0].id;
+  });
+  if (!deletedId) {
     throw new CanvasProjectError("CANVAS_PROJECT_NOT_FOUND", "未找到画布。", 404);
   }
-  return result.rows[0].id;
+  return deletedId;
+}
+
+async function writeCanvasProject(input: {
+  id: string;
+  userId: string;
+  title: string;
+  document: CanvasProjectDocument;
+  expectedVersion: number;
+  sourceId: string;
+}) {
+  const row = await withApplicationTransaction(async (client) => {
+    const result = await client.query<CanvasProjectRow>(
+      `update canvas_projects
+          set title = $3,
+              document = $4::jsonb,
+              version = version + 1,
+              updated_at = $5
+        where id = $1 and user_id = $2 and version = $6
+        returning id, title, document, version, created_at, updated_at`,
+      [input.id, input.userId, input.title, JSON.stringify(input.document), new Date().toISOString(), input.expectedVersion],
+    );
+    if (!result.rows[0]) return null;
+    await client.query("select pg_notify('canvas_project_events', $1)", [JSON.stringify({
+      type: "project",
+      projectId: input.id,
+      version: Number(result.rows[0].version),
+      sourceId: input.sourceId,
+    })]);
+    return result.rows[0];
+  });
+  return row ? mapCanvasProject(row) : null;
+}
+
+function normalizeSourceId(value: unknown) {
+  return typeof value === "string" && /^[a-zA-Z0-9_.:-]{1,160}$/.test(value) ? value : "";
 }
 
 function mapCanvasProject(row: CanvasProjectRow): CanvasProject {
