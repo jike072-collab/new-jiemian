@@ -1022,16 +1022,25 @@
   min-height: 0;
   object-fit: contain;
 }
+.canvas-node__image-preview { display: block; width: 100%; height: 100%; min-height: 0; overflow: hidden; border: 0; background: transparent; cursor: zoom-in; padding: 0; }
+.canvas-node__image-preview img { display: block; }
 .canvas-node__body--media audio { width: 100%; margin: auto 0; }
 
 .canvas-node__media-placeholder {
+  position: relative;
   display: grid;
   place-items: center;
   align-content: center;
   gap: 8px;
   color: var(--muted);
   font-size: 12px;
+  overflow: hidden;
 }
+.canvas-node__media-placeholder > * { position: relative; z-index: 1; }
+.canvas-node__media-placeholder svg { width: 24px; color: #22d3ee; }
+.canvas-node__media-placeholder small { color: #22d3ee; font-size: 10px; }
+.canvas-node__media-placeholder.is-pending::before { position: absolute; inset: 0; background: linear-gradient(105deg, transparent 25%, rgba(34, 211, 238, 0.08) 45%, rgba(255, 43, 136, 0.1) 55%, transparent 75%); content: ""; transform: translateX(-100%); animation: canvas-media-sweep 1.7s ease-in-out infinite; }
+@keyframes canvas-media-sweep { to { transform: translateX(100%); } }
 
 .canvas-node__body--generator {
   display: grid;
@@ -1435,6 +1444,28 @@
   background: rgba(0, 0, 0, 0.72);
   padding: 20px;
 }
+
+.canvas-media-viewer-backdrop {
+  position: fixed;
+  z-index: 62;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  background: rgba(0, 0, 0, 0.82);
+  padding: 20px;
+}
+.canvas-media-viewer { display: grid; width: min(1280px, 100%); height: min(860px, calc(100dvh - 40px)); grid-template-rows: auto minmax(0, 1fr); overflow: hidden; border: 1px solid var(--border-strong); border-radius: 8px; background: #090a0d; box-shadow: 0 26px 90px rgba(0, 0, 0, 0.62); }
+.canvas-media-viewer > header { display: flex; min-width: 0; min-height: 52px; align-items: center; justify-content: space-between; gap: 12px; border-bottom: 1px solid var(--border-subtle); background: var(--panel); padding: 8px 10px 8px 14px; }
+.canvas-media-viewer > header > strong { overflow: hidden; color: var(--foreground); text-overflow: ellipsis; white-space: nowrap; font-size: 13px; }
+.canvas-media-viewer > header [role="toolbar"] { display: flex; align-items: center; gap: 4px; }
+.canvas-media-viewer > header button,
+.canvas-media-viewer > header a { display: grid; width: 34px; height: 34px; place-items: center; border: 0; border-radius: 6px; background: transparent; color: var(--muted-strong); cursor: pointer; text-decoration: none; }
+.canvas-media-viewer > header button:hover,
+.canvas-media-viewer > header a:hover { background: var(--surface); color: var(--foreground); }
+.canvas-media-viewer > header svg { width: 16px; }
+.canvas-media-viewer > header [role="toolbar"] > span { min-width: 44px; color: var(--muted); text-align: center; font-size: 10px; }
+.canvas-media-viewer__stage { display: grid; min-width: 0; min-height: 0; place-items: center; overflow: auto; padding: 18px; }
+.canvas-media-viewer__stage img { display: block; height: auto; object-fit: contain; box-shadow: 0 12px 48px rgba(0, 0, 0, 0.42); }
 
 .canvas-image-editor {
   display: grid;

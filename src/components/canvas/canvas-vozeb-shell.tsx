@@ -147,6 +147,16 @@ export function CanvasVozebTopbar({
           </div>
         </details>
 
+        <button
+          type="button"
+          className={cn("canvas-v2-icon-button", libraryOpen && "is-active")}
+          aria-label={libraryOpen ? "关闭素材库" : "打开素材库"}
+          title={libraryOpen ? "关闭素材库" : "打开素材库"}
+          onClick={onToggleLibrary}
+        >
+          <FolderOpen />
+        </button>
+
         <input
           className="canvas-v2-title"
           value={title}

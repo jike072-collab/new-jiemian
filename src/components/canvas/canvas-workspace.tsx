@@ -102,6 +102,7 @@ import {
   CanvasStraightConnectionLine,
 } from "@/components/canvas/canvas-edge";
 import { CanvasImageEditor } from "@/components/canvas/canvas-image-editor";
+import { CanvasMediaViewer } from "@/components/canvas/canvas-media-viewer";
 import { CanvasVozebTopbar } from "@/components/canvas/canvas-vozeb-shell";
 import {
   CanvasGroupNode,
@@ -348,6 +349,7 @@ function CanvasWorkspaceInner({
   const [shortcutsOpen, setShortcutsOpen] = useState(false);
   const [selectionHintOpen, setSelectionHintOpen] = useState(() => presentation === "classic" && shouldShowShortcutHint());
   const [editingNodeId, setEditingNodeId] = useState("");
+  const [previewingNodeId, setPreviewingNodeId] = useState("");
   const [teamOpen, setTeamOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [layersOpen, setLayersOpen] = useState(false);
@@ -1089,9 +1091,33 @@ function CanvasWorkspaceInner({
     setNotice(`已将节点替换为“${item.title}”。`);
   }, [markDirty, pushHistorySnapshot]);
 
-  const addResultNode = useCallback((generatorId: string, item: LibraryItem, job?: JobRecord | null, resultIndex = 0, resultTotal = 1) => {
+  const addResultNode = useCallback((generatorId: string, item: LibraryItem, job?: JobRecord | null, resultIndex = 0, resultTotal = 1, existingNodeId?: string) => {
     const generator = nodesRef.current.find((node) => node.id === generatorId);
     if (!generator) return;
+    if (existingNodeId) {
+      setNodes((current) => current.map((node) => {
+        if (node.id === generatorId) return { ...node, data: { ...node.data, jobId: job?.id || node.data.jobId } };
+        if (node.id !== existingNodeId) return node;
+        return {
+          ...node,
+          height: item.type === "image" ? 320 : 360,
+          data: {
+            ...node.data,
+            title: item.title || (item.type === "image" ? "图片结果" : "视频结果"),
+            mediaType: item.type,
+            libraryItemId: item.id,
+            model: item.model,
+            createdAt: item.createdAt,
+            mediaUrl: item.output?.url,
+            status: libraryStatus(item),
+            progress: job?.progress || (item.status === "done" ? 100 : 0),
+            error: item.error || undefined,
+          },
+        };
+      }));
+      markDirty();
+      return;
+    }
     pushHistorySnapshot();
     const id = canvasId("node");
     const resultGrid = canvasImageResultGrid(resultIndex, resultTotal);
@@ -1141,6 +1167,64 @@ function CanvasWorkspaceInner({
     markDirty();
   }, [connectionStyle, markDirty, pushHistorySnapshot]);
 
+  const createPendingImageResultNodes = useCallback((generatorId: string, resultTotal: number) => {
+    const generator = nodesRef.current.find((node) => node.id === generatorId);
+    if (!generator || resultTotal < 1) return [];
+    pushHistorySnapshot();
+    const createdAt = new Date().toISOString();
+    const pendingNodes = Array.from({ length: resultTotal }, (_, resultIndex): CanvasFlowNode => {
+      const resultGrid = canvasImageResultGrid(resultIndex, resultTotal);
+      return {
+        id: canvasId("node"),
+        type: "canvas",
+        dragHandle: ".canvas-node__header",
+        position: {
+          x: generator.position.x + (generator.width || 340) + 130 + resultGrid.column * 380,
+          y: generator.position.y + resultGrid.row * 360 - ((resultGrid.rowCount - 1) * 180),
+        },
+        width: 340,
+        height: 320,
+        data: {
+          kind: "media",
+          title: resultTotal > 1 ? `图片生成中 ${resultIndex + 1}/${resultTotal}` : "图片生成中",
+          mediaType: "image",
+          createdAt,
+          sourceNodeIds: [generatorId],
+          status: "queued",
+          progress: 5,
+        },
+      };
+    });
+    const pendingIds = pendingNodes.map((node) => node.id);
+    setNodes((current) => [
+      ...current.map((node) => node.id === generatorId ? { ...node, data: { ...node.data, outputNodeId: pendingIds[0] } } : node),
+      ...pendingNodes,
+    ]);
+    setEdges((current) => [...current, ...pendingNodes.map((node) => decorateCanvasEdge({
+      id: canvasId("edge"),
+      source: generatorId,
+      sourceHandle: "output",
+      target: node.id,
+      targetHandle: "input",
+    }, [...nodesRef.current, ...pendingNodes], connectionStyle))]);
+    markDirty();
+    return pendingIds;
+  }, [connectionStyle, markDirty, pushHistorySnapshot]);
+
+  const updatePendingImageResults = useCallback((ids: string[], patch: Partial<CanvasNodeData>) => {
+    if (!ids.length) return;
+    const targets = new Set(ids);
+    setNodes((current) => current.map((node) => targets.has(node.id) && !node.data.mediaUrl ? {
+      ...node,
+      data: {
+        ...node.data,
+        ...patch,
+        ...(patch.status === "failed" ? { title: node.data.title.replace("生成中", "生成失败") } : {}),
+      },
+    } : node));
+    markDirty();
+  }, [markDirty]);
+
   const executeGenerator = useCallback(async (generatorId: string) => {
     const generator = nodesRef.current.find((node) => node.id === generatorId);
     if (!generator || generator.data.kind !== "generator" || !generator.data.generationKind) return;
@@ -1182,11 +1266,16 @@ function CanvasWorkspaceInner({
     setPresenceGeneratingNodeIds((current) => current.includes(generatorId) ? current : [...current, generatorId]);
     updateNodeData(generatorId, { status: "queued", progress: 0, error: undefined, providerId: provider.id });
     setNotice("");
+    let pendingImageResultIds: string[] = [];
     try {
       if (generator.data.generationKind === "image") {
         if (mediaItems.some((item) => item.type !== "image")) throw new Error("图片生成节点只能连接图片素材。");
         const imageMode = mediaItems.length ? "image-to-image" as const : "text-to-image" as const;
-        await submitImageGeneration(generatorId, { ...generator.data, imageMode }, provider, prompt, mediaItems, addResultNode, updateNodeData, isInternalCanvas);
+        const resultTotal = planCanvasImageRequests(Number(generator.data.count), isInternalCanvas).reduce((total, value) => total + value, 0);
+        pendingImageResultIds = createPendingImageResultNodes(generatorId, resultTotal);
+        updatePendingImageResults(pendingImageResultIds, { status: "generating", progress: 35 });
+        await submitImageGeneration(generatorId, { ...generator.data, imageMode }, provider, prompt, mediaItems, addResultNode, updateNodeData, isInternalCanvas, pendingImageResultIds);
+        updatePendingImageResults(pendingImageResultIds, { status: "failed", progress: 0, error: "生成接口未返回对应图片。" });
       } else {
         await submitVideoGeneration(generatorId, generator.data, provider as WorkspacePublicProvider, prompt, mediaItems, addResultNode, updateNodeData);
       }
@@ -1194,9 +1283,10 @@ function CanvasWorkspaceInner({
     } catch (error) {
       const message = apiMessage(error, "生成失败。");
       updateNodeData(generatorId, { status: "failed", error: message });
+      updatePendingImageResults(pendingImageResultIds, { status: "failed", progress: 0, error: message });
       setNotice(message);
     }
-  }, [addResultNode, isInternalCanvas, refreshLibrary, updateNodeData]);
+  }, [addResultNode, createPendingImageResultNodes, isInternalCanvas, refreshLibrary, updateNodeData, updatePendingImageResults]);
 
   const inputSummary = useMemo(() => {
     const summaries: Record<string, GeneratorInputSummary> = {};
@@ -1273,6 +1363,7 @@ function CanvasWorkspaceInner({
     presenceByNode,
     updateNodeData: (id: string, patch: Partial<CanvasNodeData>) => updateNodeData(id, patch),
     removeNode,
+    previewMedia: setPreviewingNodeId,
     runGenerator: (id: string) => { void executeGenerator(id); },
     toggleGroup: toggleGroupCollapsed,
   }), [executeGenerator, inputPreviews, inputSummary, isInternalCanvas, presenceByNode, promptReferences, providers, removeNode, toggleGroupCollapsed, updateNodeData]);
@@ -1470,6 +1561,7 @@ function CanvasWorkspaceInner({
     || contextSourceNode.data.kind === "prompt"
     || (contextSourceNode.data.kind === "media" && contextSourceNode.data.mediaType === "image");
   const editingNode = nodes.find((node) => node.id === editingNodeId && node.data.kind === "media" && node.data.mediaType === "image") || null;
+  const previewingNode = nodes.find((node) => node.id === previewingNodeId && node.data.kind === "media" && node.data.mediaType === "image" && node.data.mediaUrl) || null;
   const selectionToolbarStyle = useMemo<CSSProperties | undefined>(() => {
     if (!selectedNodes.length) return undefined;
     const minX = Math.min(...selectedNodes.map((node) => node.position.x));
@@ -1991,16 +2083,21 @@ function CanvasWorkspaceInner({
       params: {},
       output: { url: objectUrl, mimeType: "image/png", size: file.size },
     };
+    const pendingResultIds = createPendingImageResultNodes(generator.id, 1);
+    updatePendingImageResults(pendingResultIds, { status: "generating", progress: 35 });
     try {
-      await submitImageGeneration(generator.id, { ...generator.data, imageMode: "image-to-image", count: 1 }, provider, prompt, [reference], addResultNode, updateNodeData, isInternalCanvas);
+      await submitImageGeneration(generator.id, { ...generator.data, imageMode: "image-to-image", count: 1 }, provider, prompt, [reference], addResultNode, updateNodeData, isInternalCanvas, pendingResultIds);
+      updatePendingImageResults(pendingResultIds, { status: "failed", progress: 0, error: "生成接口未返回对应图片。" });
       updateNodeData(generator.id, { status: "done", progress: 100 }, false);
     } catch (error) {
-      updateNodeData(generator.id, { status: "failed", error: apiMessage(error, "局部重绘失败。") }, false);
+      const message = apiMessage(error, "局部重绘失败。");
+      updateNodeData(generator.id, { status: "failed", error: message }, false);
+      updatePendingImageResults(pendingResultIds, { status: "failed", progress: 0, error: message });
       throw error;
     } finally {
       URL.revokeObjectURL(objectUrl);
     }
-  }, [addPromptNode, addResultNode, connectionStyle, createGeneratorFromSelected, editingNodeId, isInternalCanvas, updateNodeData]);
+  }, [addPromptNode, addResultNode, connectionStyle, createGeneratorFromSelected, createPendingImageResultNodes, editingNodeId, isInternalCanvas, updateNodeData, updatePendingImageResults]);
 
   const undoCanvas = useCallback(() => {
     const snapshot = historyPastRef.current.pop();
@@ -2770,6 +2867,10 @@ function CanvasWorkspaceInner({
           onSubmit={submitEditedImage}
           onClose={() => setEditingNodeId("")}
         />
+      ) : null}
+
+      {previewingNode?.data.mediaUrl ? (
+        <CanvasMediaViewer imageUrl={previewingNode.data.mediaUrl} title={previewingNode.data.title} onClose={() => setPreviewingNodeId("")} />
       ) : null}
 
       {notice ? (
@@ -3692,9 +3793,10 @@ async function submitImageGeneration(
   provider: FrontendProvider,
   prompt: string,
   references: CanvasMediaReference[],
-  addResultNode: (generatorId: string, item: LibraryItem, job?: JobRecord | null, resultIndex?: number, resultTotal?: number) => void,
+  addResultNode: (generatorId: string, item: LibraryItem, job?: JobRecord | null, resultIndex?: number, resultTotal?: number, existingNodeId?: string) => void,
   updateNodeData: (id: string, patch: Partial<CanvasNodeData>, persist?: boolean) => void,
   internalCanvas: boolean,
+  pendingResultNodeIds: string[],
 ) {
   const files = await Promise.all(references.map(libraryItemFile));
   const mode = data.imageMode === "image-to-image" ? "image-to-image" as const : "text-to-image" as const;
@@ -3752,7 +3854,10 @@ async function submitImageGeneration(
     const response = await fetchJsonWithCsrf<{ item: LibraryItem | null; items?: LibraryItem[] }>("/api/generate/image", { method: "POST", body: form });
     const items = response.items?.length ? response.items : response.item ? [response.item] : [];
     if (!items.length) throw new Error("图片生成未返回结果。");
-    items.forEach((item, index) => addResultNode(generatorId, item, null, requestOffsets[requestIndex] + index, count));
+    items.forEach((item, index) => {
+      const resultIndex = requestOffsets[requestIndex] + index;
+      addResultNode(generatorId, item, null, resultIndex, count, pendingResultNodeIds[resultIndex]);
+    });
     completedCount += items.length;
     updateNodeData(generatorId, { progress: Math.min(95, 35 + Math.round((completedCount / count) * 60)) }, false);
   };

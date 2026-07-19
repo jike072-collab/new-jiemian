@@ -62,6 +62,7 @@ type CanvasNodeActions = {
   presenceByNode: Record<string, CanvasPresenceMember[]>;
   updateNodeData: (id: string, patch: Partial<CanvasNodeData>) => void;
   removeNode: (id: string) => void;
+  previewMedia: (id: string) => void;
   runGenerator: (id: string) => void;
   toggleGroup: (id: string) => void;
 };
@@ -95,7 +96,7 @@ export function CanvasNode({ id, data, selected }: NodeProps<CanvasFlowNode>) {
       <NodeHeader data={data} onRemove={() => actions.removeNode(id)} />
       {presences.length ? <CanvasPresenceBadges members={presences} nodeId={id} /> : null}
       {data.kind === "prompt" ? <PromptNode id={id} data={data} /> : null}
-      {data.kind === "media" ? <MediaNode data={data} /> : null}
+      {data.kind === "media" ? <MediaNode id={id} data={data} /> : null}
       {data.kind === "generator" ? <GeneratorNode id={id} data={data} /> : null}
       <Handle type="source" position={Position.Right} id="output" className="canvas-node__handle" />
     </article>
@@ -328,13 +329,16 @@ function referenceRoleLabel(role: NonNullable<CanvasNodeData["referenceBindings"
   }[role];
 }
 
-function MediaNode({ data }: { data: CanvasNodeData }) {
+function MediaNode({ id, data }: { id: string; data: CanvasNodeData }) {
+  const actions = useCanvasNodeActions();
   const pending = data.status === "queued" || data.status === "generating";
   return (
     <div className="canvas-node__body canvas-node__body--media">
       {data.mediaUrl && data.mediaType === "image" ? (
-        // eslint-disable-next-line @next/next/no-img-element -- generated media URLs are authenticated runtime assets.
-        <img src={data.mediaUrl} alt={data.title} draggable={false} loading="lazy" decoding="async" />
+        <button type="button" className="canvas-node__image-preview nodrag" onClick={(event) => { event.stopPropagation(); actions.previewMedia(id); }} aria-label={`放大查看${data.title}`} title="放大查看">
+          {/* eslint-disable-next-line @next/next/no-img-element -- generated media URLs are authenticated runtime assets. */}
+          <img src={data.mediaUrl} alt={data.title} draggable={false} loading="lazy" decoding="async" />
+        </button>
       ) : null}
       {data.mediaUrl && data.mediaType === "video" ? (
         <video src={data.mediaUrl} controls preload="metadata" className="nodrag nowheel" />
@@ -343,9 +347,10 @@ function MediaNode({ data }: { data: CanvasNodeData }) {
         <audio src={data.mediaUrl} controls preload="metadata" className="nodrag nowheel" />
       ) : null}
       {!data.mediaUrl ? (
-        <div className="canvas-node__media-placeholder">
+        <div className={cn("canvas-node__media-placeholder", pending && "is-pending")}>
           {pending ? <LoaderCircle className="is-spinning" /> : <AlertCircle />}
           <span>{pending ? "生成中" : "媒体暂不可用"}</span>
+          {pending && typeof data.progress === "number" ? <small>{Math.round(data.progress)}%</small> : null}
         </div>
       ) : null}
       <StatusLine status={data.status} progress={data.progress} error={data.error} />
@@ -357,6 +362,7 @@ function GeneratorNode({ id, data }: { id: string; data: CanvasNodeData }) {
   const actions = useCanvasNodeActions();
   const isVideo = data.generationKind === "video";
   const providers = (isVideo ? actions.providers.video : actions.providers.image) as WorkspacePublicProvider[];
+  const providerGroups = isVideo ? groupVideoProviders(providers) : [];
   const selectedProvider = providers.find((provider) => provider.id === data.providerId) || providers[0];
   const videoOptions = selectedProvider?.videoOptions;
   const ratios = isVideo && videoOptions?.ratios?.length ? videoOptions.ratios : isVideo ? ["16:9", "9:16", "1:1"] : imageRatios;
@@ -396,7 +402,11 @@ function GeneratorNode({ id, data }: { id: string; data: CanvasNodeData }) {
             });
           }}
         >
-          {providers.map((provider) => <option key={provider.id} value={provider.id}>{provider.displayName}</option>)}
+          {isVideo ? providerGroups.map((group) => (
+            <optgroup key={group.label} label={group.label}>
+              {group.providers.map((provider) => <option key={provider.id} value={provider.id}>{provider.displayName}</option>)}
+            </optgroup>
+          )) : providers.map((provider) => <option key={provider.id} value={provider.id}>{provider.displayName}</option>)}
         </select>
       </label>
 
@@ -485,6 +495,23 @@ function GeneratorNode({ id, data }: { id: string; data: CanvasNodeData }) {
       </button>
     </div>
   );
+}
+
+function groupVideoProviders(providers: WorkspacePublicProvider[]) {
+  const definitions = [
+    { label: "Veo", matches: (provider: WorkspacePublicProvider) => provider.model.toLowerCase().startsWith("veo-") },
+    { label: "Grok", matches: (provider: WorkspacePublicProvider) => provider.model.toLowerCase().startsWith("grok") },
+    { label: "Seedance 2.0", matches: (provider: WorkspacePublicProvider) => provider.id.startsWith("video-main::model::") },
+    { label: "Seedance 2.0 新", matches: (provider: WorkspacePublicProvider) => provider.id.startsWith("video-seedance-new::model::") },
+  ];
+  const grouped = new Set<string>();
+  const groups = definitions.flatMap((definition) => {
+    const matches = providers.filter((provider) => definition.matches(provider));
+    matches.forEach((provider) => grouped.add(provider.id));
+    return matches.length ? [{ label: definition.label, providers: matches }] : [];
+  });
+  const other = providers.filter((provider) => !grouped.has(provider.id));
+  return other.length ? [...groups, { label: "其他视频", providers: other }] : groups;
 }
 
 function StatusLine({ status, progress, error }: Pick<CanvasNodeData, "status" | "progress" | "error">) {

@@ -36,6 +36,7 @@ assert.match(assistant, /seedancePromptGuidance/, "assistant must retain Seedanc
 assert.match(promptGuidance, /reference|Image|Video|Audio/i, "Seedance reference validation must remain available");
 
 assert.match(shell, /对应源码/, "the network UI must expose the corresponding-source entry");
+assert.match(shell, /aria-label=\{libraryOpen \? "关闭素材库" : "打开素材库"\}/, "the topbar must open the library in one click");
 assert.match(notices, /csyqlz\/vozeb/, "third-party notice must identify the VOZEB source");
 assert.match(notices, /a2c52c7aacf68d825563b7455efa9c34f3db0123/, "third-party notice must pin the imported source commit");
 assert.match(agpl, /GNU AFFERO GENERAL PUBLIC LICENSE/, "the complete AGPL license must be included");
