@@ -22,5 +22,5 @@ export default async function CanvasPage() {
 
   const session = await getAuthService().currentUser(sessionToken).catch(() => null);
   if (!session?.ok) redirect("/login");
-  return <CanvasWorkspace accountName={session.user.display_name || session.user.username} />;
+  return <CanvasWorkspace accountName={session.user.display_name || session.user.username} isTeamOwner={!session.user.account_owner_id} />;
 }

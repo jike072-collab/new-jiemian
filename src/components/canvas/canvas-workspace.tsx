@@ -15,6 +15,7 @@ import {
   Sparkles,
   Trash2,
   Type,
+  UsersRound,
   X,
 } from "lucide-react";
 import {
@@ -23,6 +24,7 @@ import {
   useMemo,
   useRef,
   useState,
+  type FormEvent,
 } from "react";
 import {
   addEdge,
@@ -76,15 +78,15 @@ const emptyProviders: EnabledProviders = { image: [], video: [] };
 const defaultViewport: Viewport = { x: 0, y: 0, zoom: 1 };
 const libraryDragType = "application/x-aohuang-library-item";
 
-export function CanvasWorkspace({ accountName }: { accountName: string }) {
+export function CanvasWorkspace({ accountName, isTeamOwner }: { accountName: string; isTeamOwner: boolean }) {
   return (
     <ReactFlowProvider>
-      <CanvasWorkspaceInner accountName={accountName} />
+      <CanvasWorkspaceInner accountName={accountName} isTeamOwner={isTeamOwner} />
     </ReactFlowProvider>
   );
 }
 
-function CanvasWorkspaceInner({ accountName }: { accountName: string }) {
+function CanvasWorkspaceInner({ accountName, isTeamOwner }: { accountName: string; isTeamOwner: boolean }) {
   const flow = useReactFlow<CanvasFlowNode, Edge>();
   const flowRef = useRef(flow);
   const [nodes, setNodes] = useState<CanvasFlowNode[]>([]);
@@ -101,6 +103,7 @@ function CanvasWorkspaceInner({ accountName }: { accountName: string }) {
   const [loading, setLoading] = useState(true);
   const [saveState, setSaveState] = useState<SaveState>("saved");
   const [notice, setNotice] = useState("");
+  const [teamOpen, setTeamOpen] = useState(false);
 
   const nodesRef = useRef(nodes);
   const edgesRef = useRef(edges);
@@ -644,6 +647,9 @@ function CanvasWorkspaceInner({ accountName }: { accountName: string }) {
         onAddPrompt={addPromptNode}
         onAddImage={() => addGeneratorNode("image")}
         onAddVideo={() => addGeneratorNode("video")}
+        isTeamOwner={isTeamOwner}
+        teamOpen={teamOpen}
+        onToggleTeam={() => setTeamOpen((value) => !value)}
       />
 
       <div className="canvas-workspace">
@@ -701,6 +707,8 @@ function CanvasWorkspaceInner({ accountName }: { accountName: string }) {
         </section>
       </div>
 
+      {isTeamOwner && teamOpen ? <TeamPanel onClose={() => setTeamOpen(false)} /> : null}
+
       {notice ? (
         <div className="canvas-notice" role="status">
           <span>{notice}</span>
@@ -727,6 +735,9 @@ function CanvasToolbar({
   onAddPrompt,
   onAddImage,
   onAddVideo,
+  isTeamOwner,
+  teamOpen,
+  onToggleTeam,
 }: {
   accountName: string;
   projects: CanvasProject[];
@@ -743,6 +754,9 @@ function CanvasToolbar({
   onAddPrompt: () => void;
   onAddImage: () => void;
   onAddVideo: () => void;
+  isTeamOwner: boolean;
+  teamOpen: boolean;
+  onToggleTeam: () => void;
 }) {
   return (
     <header className="canvas-toolbar">
@@ -774,6 +788,7 @@ function CanvasToolbar({
         <button type="button" className="canvas-tool-button" aria-label="添加视频生成节点" title="添加视频生成节点" onClick={onAddVideo}><Film /><span>生视频</span></button>
       </div>
       <div className="canvas-toolbar__account">
+        {isTeamOwner ? <button type="button" className={cn("canvas-tool-button", teamOpen && "is-active")} aria-label="团队用量" title="团队用量" onClick={onToggleTeam}><UsersRound /><span>团队</span></button> : null}
         <span className={cn("canvas-save-state", `is-${saveState}`)}>{saveStateLabel(saveState)}</span>
         <button type="button" className="canvas-icon-button" aria-label="保存画布" title="保存画布" disabled={saveState === "saving"} onClick={onSave}>
           {saveState === "saving" ? <LoaderCircle className="is-spinning" /> : <Save />}
@@ -781,6 +796,104 @@ function CanvasToolbar({
         <strong title={accountName}>{accountName}</strong>
       </div>
     </header>
+  );
+}
+
+type TeamOverviewResponse = {
+  members: Array<{
+    localUserId: string;
+    username: string;
+    displayName: string;
+    currentCredits: number | null;
+    usage: { creditUnits: number; imageTasks: number; videoTasks: number };
+  }>;
+  totals: { creditUnits: number; imageTasks: number; videoTasks: number };
+};
+
+function TeamPanel({ onClose }: { onClose: () => void }) {
+  const [rangeDays, setRangeDays] = useState("30");
+  const [data, setData] = useState<TeamOverviewResponse | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [message, setMessage] = useState("");
+  const [form, setForm] = useState({ email: "", username: "", displayName: "", password: "" });
+  const [creating, setCreating] = useState(false);
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    setMessage("");
+    const to = new Date();
+    const from = new Date(to.getTime() - Number(rangeDays) * 24 * 60 * 60 * 1000);
+    try {
+      setData(await fetchJson<TeamOverviewResponse>(`/api/account/team?from=${encodeURIComponent(from.toISOString())}&to=${encodeURIComponent(to.toISOString())}`));
+    } catch (error) {
+      setMessage(apiMessage(error, "团队用量加载失败。"));
+    } finally {
+      setLoading(false);
+    }
+  }, [rangeDays]);
+
+  useEffect(() => { void load(); }, [load]);
+
+  async function createMember(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setCreating(true);
+    setMessage("");
+    try {
+      await fetchJsonWithCsrf("/api/account/team", { method: "POST", body: JSON.stringify(form) });
+      setForm({ email: "", username: "", displayName: "", password: "" });
+      await load();
+    } catch (error) {
+      setMessage(apiMessage(error, "子账号创建失败。"));
+    } finally {
+      setCreating(false);
+    }
+  }
+
+  return (
+    <aside className="canvas-team-panel" aria-label="团队用量">
+      <header className="canvas-team-panel__header">
+        <div><UsersRound /><strong>团队用量</strong><small>主账号管理</small></div>
+        <button type="button" className="canvas-icon-button" aria-label="关闭团队用量" title="关闭团队用量" onClick={onClose}><X /></button>
+      </header>
+      <div className="canvas-team-panel__body">
+        <div className="canvas-team-panel__range">
+          <span>统计周期</span>
+          <select value={rangeDays} onChange={(event) => setRangeDays(event.target.value)} aria-label="统计周期">
+            <option value="7">近 7 天</option>
+            <option value="30">近 30 天</option>
+            <option value="90">近 90 天</option>
+          </select>
+        </div>
+        {loading ? <div className="canvas-team-panel__empty">正在读取团队数据</div> : null}
+        {message ? <div className="canvas-team-panel__message" role="status">{message}</div> : null}
+        {!loading && data ? (
+          <>
+            <div className="canvas-team-stats">
+              <div><span>积分消耗</span><strong>{data.totals.creditUnits.toLocaleString()}</strong></div>
+              <div><span>图片任务</span><strong>{data.totals.imageTasks}</strong></div>
+              <div><span>视频任务</span><strong>{data.totals.videoTasks}</strong></div>
+            </div>
+            <div className="canvas-team-members">
+              {data.members.map((member) => (
+                <div className="canvas-team-member" key={member.localUserId}>
+                  <div className="canvas-team-member__head"><strong>{member.displayName || member.username}</strong><span>{member.username}</span></div>
+                  <div className="canvas-team-member__metrics"><span>余额 {member.currentCredits === null ? "--" : member.currentCredits.toLocaleString()}</span><span>积分 {member.usage.creditUnits.toLocaleString()}</span><span>图 {member.usage.imageTasks}</span><span>视频 {member.usage.videoTasks}</span></div>
+                </div>
+              ))}
+              {!data.members.length ? <div className="canvas-team-panel__empty">暂无团队成员</div> : null}
+            </div>
+          </>
+        ) : null}
+        <form className="canvas-team-form" onSubmit={createMember}>
+          <strong>创建子账号</strong>
+          <input required type="email" placeholder="员工邮箱" value={form.email} onChange={(event) => setForm((current) => ({ ...current, email: event.target.value }))} />
+          <input required minLength={3} maxLength={6} placeholder="用户名（3-6 位）" value={form.username} onChange={(event) => setForm((current) => ({ ...current, username: event.target.value }))} />
+          <input placeholder="显示名称" value={form.displayName} onChange={(event) => setForm((current) => ({ ...current, displayName: event.target.value }))} />
+          <input required type="password" minLength={8} placeholder="初始密码（含大小写和数字）" value={form.password} onChange={(event) => setForm((current) => ({ ...current, password: event.target.value }))} />
+          <button type="submit" disabled={creating}>{creating ? "创建中" : "创建子账号"}</button>
+        </form>
+      </div>
+    </aside>
   );
 }
 

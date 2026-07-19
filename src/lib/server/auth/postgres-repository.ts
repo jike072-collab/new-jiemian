@@ -25,6 +25,7 @@ import {
 
 type UserRow = QueryResultRow & {
   local_user_id: string;
+  account_owner_id: string | null;
   email: string;
   phone: string | null;
   username: string;
@@ -91,6 +92,7 @@ function isoOrNull(value: Date | string | null) {
 function userFromRow(row: UserRow): AuthUser {
   return {
     local_user_id: row.local_user_id,
+    account_owner_id: row.account_owner_id,
     email: row.email,
     phone: row.phone,
     username: row.username,
@@ -228,13 +230,14 @@ export class PostgresAuthRepository implements AuthRepository {
     const timestamp = nowIso(input.now);
     try {
       const result = await applicationQuery<UserRow>(`
-        insert into app_users(
-          local_user_id, email, phone, username, display_name, password_hash, status, role,
+      insert into app_users(
+          local_user_id, account_owner_id, email, phone, username, display_name, password_hash, status, role,
           session_version, created_at, updated_at, last_login_at
-        ) values ($1,$2,$3,$4,$5,$6,$7,$8,1,$9,$9,null)
+        ) values ($1,$2,$3,$4,$5,$6,$7,$8,$9,1,$10,$10,null)
         returning *
       `, [
         input.localUserId || randomUUID(),
+        input.accountOwnerId || null,
         email,
         phone,
         username,

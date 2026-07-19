@@ -5,6 +5,7 @@ import {
   authResultResponse,
   csrfFailure,
   getAuthService,
+  isRegistrationAllowedForHost,
   readJsonBody,
   redirectFromBody,
   requireCsrf,
@@ -13,6 +14,15 @@ import {
 export const runtime = "nodejs";
 
 export async function POST(request: NextRequest) {
+  if (!isRegistrationAllowedForHost(request.headers.get("host"))) {
+    return authResultResponse(request, {
+      ok: false,
+      status: 403,
+      code: "AUTH_VALIDATION_ERROR",
+      uiState: "validation_error",
+      message: "该域名仅供内部登录使用。",
+    });
+  }
   if (!requireCsrf(request)) return authResultResponse(request, csrfFailure());
   const body = await readJsonBody(request);
   const result = await getAuthService().register({

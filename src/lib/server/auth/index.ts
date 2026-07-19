@@ -5,6 +5,7 @@ export { InMemoryRateLimiter } from "./rate-limit";
 export { createAuthPersistenceRepositories, getAuthPersistenceMode, AuthPersistenceConfigError } from "./persistence";
 export { createJsonAuthRepository, createMemoryAuthRepository, AuthRepositoryError } from "./repository";
 export { AuthService, createAuthService, getAuthService } from "./service";
+export { isInternalCanvasHostname, isRegistrationAllowedForHost } from "./registration-policy";
 export {
   authActionResponse,
   authRequestContext,

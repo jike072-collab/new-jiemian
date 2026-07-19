@@ -34,6 +34,7 @@ export type AuthVerificationPurpose = "register" | "password_reset" | "login";
 
 export type AuthUser = {
   local_user_id: string;
+  account_owner_id?: string | null;
   email: string;
   phone?: string | null;
   username: string;
@@ -49,6 +50,7 @@ export type AuthUser = {
 
 export type PublicAuthUser = {
   local_user_id: string;
+  account_owner_id?: string | null;
   email: string;
   phone?: string | null;
   username: string;

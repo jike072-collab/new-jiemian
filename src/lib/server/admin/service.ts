@@ -148,6 +148,7 @@ function pageSize(value?: number) {
 function publicUser(user: AuthUser) {
   return {
     local_user_id: user.local_user_id,
+    account_owner_id: user.account_owner_id ?? null,
     email: user.email,
     username: user.username,
     display_name: user.display_name,

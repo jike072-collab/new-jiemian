@@ -110,6 +110,7 @@
     "verify:auth-persistence": "node scripts/database/verify-auth-persistence.mjs",
     "test:auth-persistence": "node scripts/database/test-auth-persistence.mjs",
     "test:canvas": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON scripts/test-canvas-document.mjs && node scripts/test-canvas-contracts.mjs",
+    "test:internal-team": "node scripts/test-internal-team.mjs",
     "database:boundary": "node scripts/database/test-server-boundary.mjs",
     "db:health": "node scripts/database/migrate.mjs health",
     "test:prompt-optimizer": "node scripts/test-prompt-optimizer.mjs",

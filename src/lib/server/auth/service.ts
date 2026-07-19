@@ -161,6 +161,7 @@ function failure(input: Omit<AuthFailure, "ok">): AuthFailure {
 function publicUser(user: AuthUser): PublicAuthUser {
   return {
     local_user_id: user.local_user_id,
+    account_owner_id: user.account_owner_id ?? null,
     email: user.email,
     phone: user.phone,
     username: user.username,

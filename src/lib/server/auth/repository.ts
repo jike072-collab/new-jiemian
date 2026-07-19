@@ -20,6 +20,7 @@ type AuthStorage = {
 
 export type CreateAuthUserInput = {
   localUserId?: string;
+  accountOwnerId?: string | null;
   email: string;
   phone?: string | null;
   username: string;
@@ -179,6 +180,7 @@ class StoreAuthRepository implements AuthRepository {
 
       const user: AuthUser = {
         local_user_id: input.localUserId || randomUUID(),
+        account_owner_id: input.accountOwnerId ?? null,
         email,
         phone,
         username,
