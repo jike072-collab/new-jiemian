@@ -1337,12 +1337,18 @@
 .canvas-image-editor > header small { color: var(--muted); font-size: 10px; }
 .canvas-image-editor__tools { flex-wrap: wrap; padding: 9px 12px; border-bottom: 1px solid var(--border-subtle); }
 .canvas-image-editor__tools button { min-height: 31px; border: 1px solid var(--border-subtle); border-radius: 6px; background: var(--surface); color: var(--muted-strong); cursor: pointer; padding: 0 8px; font-size: 11px; }
+.canvas-image-editor__tools button.is-active { border-color: color-mix(in srgb, var(--primary) 55%, transparent); color: var(--foreground); }
 .canvas-image-editor__tools button:disabled { opacity: 0.4; }
 .canvas-image-editor__tools svg { width: 14px; }
 .canvas-image-editor__tools label { margin-left: auto; color: var(--muted-strong); font-size: 10px; }
 .canvas-image-editor__tools input { width: 120px; accent-color: var(--primary); }
-.canvas-image-editor__stage { display: grid; min-height: 0; place-items: center; overflow: auto; background: repeating-conic-gradient(#202025 0 25%, #151519 0 50%) 50% / 20px 20px; padding: 14px; }
-.canvas-image-editor__stage canvas { display: block; max-width: 100%; max-height: 100%; cursor: crosshair; touch-action: none; box-shadow: 0 8px 30px rgba(0, 0, 0, 0.35); }
+.canvas-image-editor__zoom { flex: 0 0 42px; color: var(--muted); text-align: center; font-size: 10px; }
+.canvas-image-editor__stage { display: block; min-height: 0; overflow: auto; background: repeating-conic-gradient(#202025 0 25%, #151519 0 50%) 50% / 20px 20px; }
+.canvas-image-editor__viewport { position: relative; display: grid; min-width: 100%; min-height: 100%; place-items: center; box-sizing: border-box; padding: 14px; }
+.canvas-image-editor__viewport canvas { grid-area: 1 / 1; display: block; max-width: none; max-height: none; }
+.canvas-image-editor__canvas { cursor: crosshair; touch-action: none; box-shadow: 0 8px 30px rgba(0, 0, 0, 0.35); }
+.canvas-image-editor__mask { z-index: 1; pointer-events: none; }
+.canvas-image-editor__mask[hidden] { display: none; }
 .canvas-image-editor footer { padding: 11px 12px; border-top: 1px solid var(--border-subtle); }
 .canvas-image-editor footer textarea { min-height: 62px; flex: 1; resize: vertical; border: 1px solid var(--border-subtle); border-radius: 6px; background: var(--surface); color: var(--foreground); outline: none; padding: 8px; font: inherit; font-size: 12px; }
 .canvas-image-editor footer button { display: inline-flex; min-width: 118px; min-height: 38px; align-items: center; justify-content: center; gap: 7px; border: 0; border-radius: 6px; background: var(--primary); color: white; cursor: pointer; }
