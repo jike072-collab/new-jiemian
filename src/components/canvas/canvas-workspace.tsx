@@ -94,6 +94,7 @@ import {
 
 import { BrandLogo } from "@/components/brand-logo";
 import { CanvasAssistantPanel } from "@/components/canvas/canvas-assistant-panel";
+import { CanvasCommandPalette, type CanvasCommand } from "@/components/canvas/canvas-command-palette";
 import { CanvasSelectionHint, CanvasShortcutsPanel } from "@/components/canvas/canvas-shortcuts-panel";
 import {
   CanvasBezierConnectionLine,
@@ -347,6 +348,8 @@ function CanvasWorkspaceInner({
   const [infoOpen, setInfoOpen] = useState(false);
   const [assistantOpen, setAssistantOpen] = useState(false);
   const [shortcutsOpen, setShortcutsOpen] = useState(false);
+  const [commandOpen, setCommandOpen] = useState(false);
+  const [commandInsertPosition, setCommandInsertPosition] = useState<{ x: number; y: number } | undefined>();
   const [selectionHintOpen, setSelectionHintOpen] = useState(() => presentation === "classic" && shouldShowShortcutHint());
   const [editingNodeId, setEditingNodeId] = useState("");
   const [previewingNodeId, setPreviewingNodeId] = useState("");
@@ -366,6 +369,7 @@ function CanvasWorkspaceInner({
   const [presenceMembers, setPresenceMembers] = useState<CanvasPresenceMember[]>([]);
   const [presenceEditingNodeId, setPresenceEditingNodeId] = useState("");
   const [presenceGeneratingNodeIds, setPresenceGeneratingNodeIds] = useState<string[]>([]);
+  const [fileDropActive, setFileDropActive] = useState(false);
 
   const nodesRef = useRef(nodes);
   const edgesRef = useRef(edges);
@@ -377,6 +381,8 @@ function CanvasWorkspaceInner({
   const stageRef = useRef<HTMLElement | null>(null);
   const importInputRef = useRef<HTMLInputElement | null>(null);
   const audioInputRef = useRef<HTMLInputElement | null>(null);
+  const mediaInputRef = useRef<HTMLInputElement | null>(null);
+  const fileDragDepthRef = useRef(0);
   const clipboardRef = useRef<CanvasClipboard | null>(null);
   const activeProjectRef = useRef<CanvasProject | null>(null);
   const loadedRef = useRef(false);
@@ -424,6 +430,22 @@ function CanvasWorkspaceInner({
     if (shortcutsOpen) setShortcutsOpen(false);
     else openShortcuts();
   }, [openShortcuts, shortcutsOpen]);
+
+  const openCommandPalette = useCallback((position?: { x: number; y: number }) => {
+    setCommandInsertPosition(position);
+    setContextMenu(null);
+    setAssistantOpen(false);
+    setInfoOpen(false);
+    setLayersOpen(false);
+    setSettingsOpen(false);
+    setShortcutsOpen(false);
+    setCommandOpen(true);
+  }, []);
+
+  const closeCommandPalette = useCallback(() => {
+    setCommandOpen(false);
+    setCommandInsertPosition(undefined);
+  }, []);
 
   const changeConnectionStyle = useCallback((value: ConnectionStyle) => {
     setConnectionStyle(value);
@@ -1023,6 +1045,50 @@ function CanvasWorkspaceInner({
       setNotice(apiMessage(error, "音频上传失败。"));
     }
   }, [addNodeAtCenter, isInternalCanvas]);
+
+  const uploadCanvasMediaFiles = useCallback(async (input: File[], position?: { x: number; y: number }) => {
+    if (!isInternalCanvas) {
+      setNotice("本地素材上传只在内部画布可用。");
+      return;
+    }
+    const files = input.filter((file) => file.type.startsWith("image/") || file.type.startsWith("video/") || /\.(png|jpe?g|webp|mp4|webm|mov)$/i.test(file.name)).slice(0, 10);
+    if (!files.length) {
+      setNotice("请拖入图片或视频文件。");
+      return;
+    }
+    setNotice(`正在上传 ${files.length} 个素材…`);
+    const results: Array<LibraryItem | undefined> = new Array(files.length);
+    const errors: unknown[] = [];
+    let nextIndex = 0;
+    const worker = async () => {
+      while (nextIndex < files.length) {
+        const index = nextIndex;
+        nextIndex += 1;
+        try {
+          const form = new FormData();
+          form.append("file", files[index]);
+          const response = await fetchJsonWithCsrf<{ item: LibraryItem }>("/api/canvas/media", { method: "POST", body: form });
+          results[index] = response.item;
+        } catch (error) {
+          errors.push(error);
+        }
+      }
+    };
+    await Promise.all(Array.from({ length: Math.min(3, files.length) }, () => worker()));
+    const uploaded = results.filter((item): item is LibraryItem => Boolean(item));
+    if (uploaded.length) {
+      setLibrary((current) => [...uploaded, ...current]);
+      uploaded.forEach((item, index) => addLibraryNode(item, position ? {
+        x: position.x + (index % 3) * 350,
+        y: position.y + Math.floor(index / 3) * 370,
+      } : undefined));
+    }
+    if (errors.length) {
+      setNotice(`${uploaded.length ? `已添加 ${uploaded.length} 个素材；` : ""}${errors.length} 个上传失败：${apiMessage(errors[0], "素材上传失败。")}`);
+    } else {
+      setNotice(`已添加 ${uploaded.length} 个素材到画布和作品库。`);
+    }
+  }, [addLibraryNode, isInternalCanvas]);
 
   const addLibraryNodes = useCallback((items: LibraryItem[]) => {
     const existingIds = new Set(nodesRef.current.flatMap((node) => node.data.kind === "media" && node.data.libraryItemId ? [node.data.libraryItemId] : []));
@@ -2366,12 +2432,69 @@ function CanvasWorkspaceInner({
     markDirty();
   }, [markDirty, pushHistorySnapshot]);
 
+  const fitCanvasSelection = useCallback(() => {
+    const selected = nodesRef.current.filter((node) => node.selected && !node.hidden);
+    if (!selected.length) {
+      void flow.fitView({ padding: 0.18, duration: 280 });
+      return;
+    }
+    void flow.fitView({ nodes: selected, padding: 0.28, duration: 280, maxZoom: 1.2 });
+  }, [flow]);
+
+  const focusCanvasNode = useCallback((id: string) => {
+    const node = nodesRef.current.find((item) => item.id === id && !item.hidden);
+    if (!node) return;
+    setNodes((current) => current.map((item) => ({ ...item, selected: item.id === id })));
+    setEdges((current) => current.map((edge) => ({ ...edge, selected: false })));
+    window.requestAnimationFrame(() => {
+      void flow.fitView({ nodes: [node], padding: 0.35, duration: 260, maxZoom: 1.15 });
+    });
+  }, [flow]);
+
+  const commandItems = useMemo<CanvasCommand[]>(() => {
+    const actions: CanvasCommand[] = [
+      { id: "add-prompt", label: "添加提示词", description: "在画布中创建提示词节点", group: "创建", keywords: ["文字", "prompt", "text"], icon: Type, run: () => addPromptNode(undefined, commandInsertPosition) },
+      { id: "add-image-generator", label: "添加图片生成", description: "由连接的提示词和素材决定生成模式", group: "创建", keywords: ["生图", "image"], icon: ImageIcon, run: () => addGeneratorNode("image", commandInsertPosition) },
+      { id: "add-video-generator", label: "添加视频生成", description: "选择模型并连接提示词或参考素材", group: "创建", keywords: ["生视频", "video"], icon: Film, run: () => addGeneratorNode("video", commandInsertPosition) },
+      ...(isInternalCanvas ? [{ id: "upload-media", label: "上传图片或视频", description: "文件会同时进入画布和作品库", group: "创建", keywords: ["拖入", "导入素材", "upload"], icon: Upload, run: () => mediaInputRef.current?.click() } satisfies CanvasCommand] : []),
+      { id: "open-library", label: "打开作品素材库", description: "搜索、批量添加和管理素材", group: "面板", keywords: ["素材", "作品", "library"], icon: FolderOpen, run: () => setLibraryOpen(true) },
+      { id: "open-layers", label: "打开图层", description: "定位、隐藏、锁定或调整节点层级", group: "面板", keywords: ["layers", "锁定"], icon: Layers3, run: () => setLayersOpen(true) },
+      ...(isInternalCanvas ? [{ id: "open-assistant", label: "打开智能助手", description: "只处理提示词、镜头和画布内容", group: "面板", keywords: ["AI", "agent", "助手"], icon: Bot, run: () => setAssistantOpen(true) } satisfies CanvasCommand] : []),
+      { id: "open-settings", label: "打开画布设置", description: "主题、连接线、吸附和自动排列", group: "面板", keywords: ["主题", "线条", "设置"], icon: Settings2, run: () => setSettingsOpen(true) },
+      { id: "open-shortcuts", label: "查看操作与快捷键", description: "鼠标、键盘和触屏操作总览", group: "面板", keywords: ["帮助", "快捷键", "help"], icon: Keyboard, shortcut: "?", run: openShortcuts },
+      { id: "fit-selection", label: selectedNodes.length ? "适应选中节点" : "查看全部节点", description: selectedNodes.length ? `在视口中显示已选的 ${selectedNodes.length} 个节点` : "让全部画布内容进入视口", group: "视图", keywords: ["定位", "聚焦", "fit", "zoom"], icon: Maximize2, shortcut: ".", run: fitCanvasSelection },
+      { id: "organize-flow", label: "流程排列", description: "按提示词、素材、生成和结果整理画布", group: "视图", keywords: ["自动布局", "layout", "arrange"], icon: AlignCenterHorizontal, run: () => organizeCanvas("flow") },
+      { id: "organize-grid", label: "网格排列", description: "按规整网格重新摆放节点", group: "视图", keywords: ["自动布局", "grid", "arrange"], icon: AlignCenterVertical, run: () => organizeCanvas("grid") },
+      { id: "select-all", label: "选择全部节点", group: "编辑", keywords: ["全选", "select all"], icon: MousePointer2, shortcut: "Ctrl A", run: selectAllVisibleNodes },
+      ...(selectedNodes.length > 1 ? [{ id: "group-selection", label: "组合选中节点", description: `将 ${selectedNodes.length} 个节点放入分组`, group: "编辑", keywords: ["分组", "group"], icon: Layers3, shortcut: "Ctrl G", run: () => groupSelectedNodes() } satisfies CanvasCommand] : []),
+      ...(selectedNodes.length ? [{ id: "duplicate-selection", label: "重复选中节点", description: `复制 ${selectedNodes.length} 个节点及内部连接`, group: "编辑", keywords: ["复制", "duplicate"], icon: CopyPlus, shortcut: "Ctrl D", run: duplicateSelectedNodes } satisfies CanvasCommand] : []),
+      ...(historyState.undo ? [{ id: "undo", label: "撤销", group: "编辑", keywords: ["undo"], icon: Undo2, shortcut: "Ctrl Z", run: undoCanvas } satisfies CanvasCommand] : []),
+      ...(historyState.redo ? [{ id: "redo", label: "重做", group: "编辑", keywords: ["redo"], icon: Redo2, shortcut: "Ctrl Y", run: redoCanvas } satisfies CanvasCommand] : []),
+      { id: "save", label: "立即保存画布", group: "文件", keywords: ["save"], icon: Save, shortcut: "Ctrl S", run: () => { void saveNow(true); } },
+      { id: "export-image", label: "导出画布图片", description: "将当前节点和连接导出为 PNG", group: "文件", keywords: ["PNG", "截图", "export"], icon: Download, shortcut: "Ctrl Shift E", run: exportCanvasImage },
+    ];
+    const nodeCommands = nodes.filter((node) => !node.hidden).map((node): CanvasCommand => ({
+      id: `focus-node-${node.id}`,
+      label: node.data.title || "未命名节点",
+      description: node.data.kind === "prompt" ? String(node.data.prompt || "提示词节点").slice(0, 80) : node.data.kind === "generator" ? `${node.data.generationKind === "video" ? "视频" : "图片"}生成节点` : node.data.kind === "group" ? "画布分组" : `${node.data.mediaType === "video" ? "视频" : node.data.mediaType === "audio" ? "音频" : "图片"}素材`,
+      group: "跳转到节点",
+      keywords: [node.data.kind, String(node.data.prompt || ""), String(node.data.model || "")],
+      icon: node.data.kind === "prompt" ? Type : node.data.kind === "generator" ? Sparkles : node.data.kind === "group" ? Layers3 : node.data.mediaType === "video" ? Film : ImageIcon,
+      run: () => focusCanvasNode(node.id),
+    }));
+    return [...actions, ...nodeCommands];
+  }, [addGeneratorNode, addPromptNode, commandInsertPosition, duplicateSelectedNodes, exportCanvasImage, fitCanvasSelection, focusCanvasNode, groupSelectedNodes, historyState.redo, historyState.undo, isInternalCanvas, nodes, openShortcuts, organizeCanvas, redoCanvas, saveNow, selectAllVisibleNodes, selectedNodes.length, undoCanvas]);
+
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
       const target = event.target as HTMLElement | null;
       const typing = target?.matches("input, textarea, select, [contenteditable='true']");
       const command = event.ctrlKey || event.metaKey;
-      if (command && event.key.toLowerCase() === "s") {
+      if (command && event.key.toLowerCase() === "k") {
+        event.preventDefault();
+        if (commandOpen) closeCommandPalette();
+        else openCommandPalette();
+      } else if (command && event.key.toLowerCase() === "s") {
         event.preventDefault();
         void saveNow(true);
       } else if (command && event.key.toLowerCase() === "z" && !event.shiftKey) {
@@ -2392,9 +2515,12 @@ function CanvasWorkspaceInner({
       } else if (command && event.key.toLowerCase() === "c" && !typing) {
         event.preventDefault();
         copySelectedNodes();
-      } else if (command && event.key.toLowerCase() === "v" && !typing) {
+      } else if (command && event.key.toLowerCase() === "g" && !typing) {
         event.preventDefault();
-        pasteCopiedNodes();
+        groupSelectedNodes();
+      } else if (!typing && event.key === ".") {
+        event.preventDefault();
+        fitCanvasSelection();
       } else if (!typing && ["ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown"].includes(event.key)) {
         event.preventDefault();
         const distance = event.shiftKey ? 10 : 1;
@@ -2414,6 +2540,7 @@ function CanvasWorkspaceInner({
         setInfoOpen(false);
         setLayersOpen(false);
         setSettingsOpen(false);
+        setCommandOpen(false);
         setContextMenu(null);
         setNodes((current) => current.map((node) => ({ ...node, selected: false })));
         setEdges((current) => current.map((edge) => ({ ...edge, selected: false })));
@@ -2421,7 +2548,36 @@ function CanvasWorkspaceInner({
     };
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [copySelectedNodes, duplicateSelectedNodes, exportCanvasImage, nudgeSelectedNodes, openShortcuts, pasteCopiedNodes, redoCanvas, removeSelectedNodes, saveNow, selectAllVisibleNodes, undoCanvas]);
+  }, [closeCommandPalette, commandOpen, copySelectedNodes, duplicateSelectedNodes, exportCanvasImage, fitCanvasSelection, groupSelectedNodes, nudgeSelectedNodes, openCommandPalette, openShortcuts, redoCanvas, removeSelectedNodes, saveNow, selectAllVisibleNodes, undoCanvas]);
+
+  useEffect(() => {
+    const onPaste = (event: ClipboardEvent) => {
+      const target = event.target instanceof Element ? event.target : null;
+      if (target?.matches("input, textarea, select, [contenteditable='true']")) return;
+      const stageBounds = stageRef.current?.getBoundingClientRect();
+      const position = flow.screenToFlowPosition({
+        x: stageBounds ? stageBounds.left + stageBounds.width / 2 : window.innerWidth / 2,
+        y: stageBounds ? stageBounds.top + stageBounds.height / 2 : window.innerHeight / 2,
+      });
+      const files = Array.from(event.clipboardData?.files || []).filter((file) => file.type.startsWith("image/") || file.type.startsWith("video/") || /\.(png|jpe?g|webp|mp4|webm|mov)$/i.test(file.name));
+      if (files.length) {
+        event.preventDefault();
+        void uploadCanvasMediaFiles(files, position);
+        return;
+      }
+      if (clipboardRef.current?.nodes.length) {
+        event.preventDefault();
+        pasteCopiedNodes(position);
+        return;
+      }
+      const text = event.clipboardData?.getData("text/plain").trim();
+      if (!text) return;
+      event.preventDefault();
+      addPromptNode({ title: "粘贴文本", prompt: text.slice(0, 4_000) }, position);
+    };
+    window.addEventListener("paste", onPaste);
+    return () => window.removeEventListener("paste", onPaste);
+  }, [addPromptNode, flow, pasteCopiedNodes, uploadCanvasMediaFiles]);
 
   if (loading) {
     return <div className="canvas-loading"><LoaderCircle className="is-spinning" /><span>正在打开创作画布</span></div>;
@@ -2449,6 +2605,7 @@ function CanvasWorkspaceInner({
           teamOpen={teamOpen}
           assistantOpen={assistantOpen}
           shortcutsOpen={shortcutsOpen}
+          commandOpen={commandOpen}
           isTeamOwner={isTeamOwner}
           presenceMembers={canvasScope() === "shared" ? presenceMembers : []}
           presenceClientId={collaborationClientId}
@@ -2489,6 +2646,7 @@ function CanvasWorkspaceInner({
             else setNotice("智能助手仅供内部画布使用。");
           }}
           onShortcuts={toggleShortcuts}
+          onCommand={() => commandOpen ? closeCommandPalette() : openCommandPalette()}
           onThemeCycle={() => setCanvasTheme((value) => value === "light" ? "midnight" : "light")}
         />
       ) : (
@@ -2579,6 +2737,18 @@ function CanvasWorkspaceInner({
           if (file) void addAudioReference(file);
         }}
       />
+      <input
+        ref={mediaInputRef}
+        type="file"
+        multiple
+        accept="image/png,image/jpeg,image/webp,video/mp4,video/webm,video/quicktime,.png,.jpg,.jpeg,.webp,.mp4,.webm,.mov"
+        className="canvas-import-input"
+        onChange={(event) => {
+          const files = Array.from(event.target.files || []);
+          event.target.value = "";
+          if (files.length) void uploadCanvasMediaFiles(files);
+        }}
+      />
 
       <div className="canvas-workspace">
         {libraryOpen ? <button type="button" className="canvas-library-scrim" aria-label="关闭素材库" title="关闭素材库" onClick={() => setLibraryOpen(false)} /> : null}
@@ -2590,6 +2760,7 @@ function CanvasWorkspaceInner({
           onClose={() => setLibraryOpen(false)}
           onFilter={setLibraryFilter}
           onSearch={setLibrarySearch}
+          onUpload={isInternalCanvas ? () => mediaInputRef.current?.click() : undefined}
           onAdd={addLibraryNode}
           onAddMany={addLibraryNodes}
           canReplace={selectedNode?.data.kind === "media"}
@@ -2604,6 +2775,21 @@ function CanvasWorkspaceInner({
           ref={stageRef}
           className="canvas-stage"
           aria-label="无限画布"
+          onDoubleClickCapture={(event) => {
+            const target = event.target instanceof Element ? event.target : null;
+            if (!target || target.closest(".react-flow__node, .react-flow__edge, .react-flow__panel, .canvas-bottom-dock, aside, button, input, textarea, select, [role='dialog']")) return;
+            openCommandPalette(flow.screenToFlowPosition({ x: event.clientX, y: event.clientY }));
+          }}
+          onDragEnter={(event) => {
+            if (!Array.from(event.dataTransfer.types).includes("Files")) return;
+            fileDragDepthRef.current += 1;
+            setFileDropActive(true);
+          }}
+          onDragLeave={(event) => {
+            if (!Array.from(event.dataTransfer.types).includes("Files")) return;
+            fileDragDepthRef.current = Math.max(0, fileDragDepthRef.current - 1);
+            if (!fileDragDepthRef.current) setFileDropActive(false);
+          }}
           onFocusCapture={(event) => {
             const target = event.target instanceof HTMLElement ? event.target : null;
             if (!target?.matches("textarea, input, select, [contenteditable='true']")) return;
@@ -2683,9 +2869,17 @@ function CanvasWorkspaceInner({
               }}
               onDrop={(event) => {
                 event.preventDefault();
+                fileDragDepthRef.current = 0;
+                setFileDropActive(false);
                 const itemId = event.dataTransfer.getData(libraryDragType);
                 const item = libraryRef.current.find((entry) => entry.id === itemId);
-                if (item) addLibraryNode(item, flow.screenToFlowPosition({ x: event.clientX, y: event.clientY }));
+                const position = flow.screenToFlowPosition({ x: event.clientX, y: event.clientY });
+                if (item) {
+                  addLibraryNode(item, position);
+                  return;
+                }
+                const files = Array.from(event.dataTransfer.files || []);
+                if (files.length) void uploadCanvasMediaFiles(files, position);
               }}
               defaultEdgeOptions={{
                 type: "canvas-edge",
@@ -2716,6 +2910,7 @@ function CanvasWorkspaceInner({
               <Controls showInteractive={false} />
             </ReactFlow>
           </CanvasNodeActionsContext.Provider>
+          {fileDropActive ? <div className="canvas-file-drop" role="status"><Upload /><strong>松开添加到画布</strong><span>支持图片和视频，上传后自动进入作品库</span></div> : null}
           {contextMenu ? (
             <CanvasContextMenu
               state={contextMenu}
@@ -2854,6 +3049,7 @@ function CanvasWorkspaceInner({
               onClose={() => setSettingsOpen(false)}
             />
           ) : null}
+          {commandOpen ? <CanvasCommandPalette commands={commandItems} onClose={closeCommandPalette} /> : null}
         </section>
       </div>
 
@@ -3685,7 +3881,7 @@ function TeamPanel({ onClose, allowCreateMembers }: { onClose: () => void; allow
   );
 }
 
-function LibraryPanel({ open, items, filter, search, onClose, onFilter, onSearch, onAdd, onAddMany, canReplace, onReplace, onRename, onFavorite, onCopyLink, onDownload, onDelete }: {
+function LibraryPanel({ open, items, filter, search, onClose, onFilter, onSearch, onUpload, onAdd, onAddMany, canReplace, onReplace, onRename, onFavorite, onCopyLink, onDownload, onDelete }: {
   open: boolean;
   items: LibraryItem[];
   filter: LibraryFilter;
@@ -3693,6 +3889,7 @@ function LibraryPanel({ open, items, filter, search, onClose, onFilter, onSearch
   onClose: () => void;
   onFilter: (filter: LibraryFilter) => void;
   onSearch: (search: string) => void;
+  onUpload?: () => void;
   onAdd: (item: LibraryItem) => void;
   onAddMany: (items: LibraryItem[]) => void;
   canReplace: boolean;
@@ -3714,7 +3911,10 @@ function LibraryPanel({ open, items, filter, search, onClose, onFilter, onSearch
     <aside className={cn("canvas-library", open && "is-open")} aria-label="作品素材库" aria-hidden={!open} inert={open ? undefined : true}>
       <div className="canvas-library__header">
         <div><FolderOpen /><strong>作品素材</strong></div>
-        <button type="button" className="canvas-icon-button" aria-label="关闭素材库" title="关闭素材库" onClick={onClose}><X /></button>
+        <span className="canvas-library__header-actions">
+          {onUpload ? <button type="button" className="canvas-icon-button" aria-label="上传图片或视频" title="上传图片或视频" onClick={onUpload}><Upload /></button> : null}
+          <button type="button" className="canvas-icon-button" aria-label="关闭素材库" title="关闭素材库" onClick={onClose}><X /></button>
+        </span>
       </div>
       <label className="canvas-library__search">
         <Search />

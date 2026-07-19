@@ -13,6 +13,7 @@ import {
   Palette,
   Plus,
   Save,
+  Search,
   Settings2,
   Sun,
   Trash2,
@@ -45,6 +46,7 @@ export function CanvasVozebTopbar({
   teamOpen,
   assistantOpen,
   shortcutsOpen,
+  commandOpen,
   isTeamOwner,
   presenceMembers,
   presenceClientId,
@@ -62,6 +64,7 @@ export function CanvasVozebTopbar({
   onToggleTeam,
   onAssistant,
   onShortcuts,
+  onCommand,
   onThemeCycle,
 }: {
   accountName: string;
@@ -78,6 +81,7 @@ export function CanvasVozebTopbar({
   teamOpen: boolean;
   assistantOpen: boolean;
   shortcutsOpen: boolean;
+  commandOpen: boolean;
   isTeamOwner: boolean;
   presenceMembers: CanvasPresenceMember[];
   presenceClientId: string;
@@ -95,6 +99,7 @@ export function CanvasVozebTopbar({
   onToggleTeam: () => void;
   onAssistant: () => void;
   onShortcuts: () => void;
+  onCommand: () => void;
   onThemeCycle: () => void;
 }) {
   const menuRef = useRef<HTMLDetailsElement | null>(null);
@@ -163,6 +168,15 @@ export function CanvasVozebTopbar({
           aria-label="画布名称"
           onChange={(event) => onTitleChange(event.target.value)}
         />
+        <button
+          type="button"
+          className={cn("canvas-v2-command-button", commandOpen && "is-active")}
+          aria-label="搜索节点和操作"
+          title="搜索节点和操作（Ctrl K）"
+          onClick={onCommand}
+        >
+          <Search /><span>搜索与命令</span><kbd>Ctrl K</kbd>
+        </button>
       </div>
 
       <div className="canvas-v2-topbar__actions">

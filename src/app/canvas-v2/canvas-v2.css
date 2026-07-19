@@ -33,6 +33,7 @@
 .canvas-v2-icon-button,
 .canvas-v2-account-button,
 .canvas-v2-agent-button,
+.canvas-v2-command-button,
 .canvas-v2-menu > summary {
   height: 36px;
   border: 1px solid var(--border-subtle);
@@ -57,13 +58,20 @@
 .canvas-v2-icon-button:hover,
 .canvas-v2-account-button:hover,
 .canvas-v2-agent-button:hover,
+.canvas-v2-command-button:hover,
 .canvas-v2-icon-button.is-active,
 .canvas-v2-account-button.is-active,
-.canvas-v2-agent-button.is-active { border-color: color-mix(in srgb, var(--primary) 45%, var(--border-subtle)); background: color-mix(in srgb, var(--primary) 9%, var(--panel)); color: var(--foreground); }
+.canvas-v2-agent-button.is-active,
+.canvas-v2-command-button.is-active { border-color: color-mix(in srgb, var(--primary) 45%, var(--border-subtle)); background: color-mix(in srgb, var(--primary) 9%, var(--panel)); color: var(--foreground); }
 .canvas-v2-icon-button svg,
 .canvas-v2-account-button svg,
 .canvas-v2-agent-button svg,
 .canvas-v2-menu svg { width: 17px; height: 17px; }
+
+.canvas-v2-command-button { display: flex; min-width: 126px; align-items: center; gap: 7px; padding: 0 8px; }
+.canvas-v2-command-button svg { width: 15px; flex: 0 0 15px; }
+.canvas-v2-command-button span { min-width: 0; flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 10px; text-align: left; }
+.canvas-v2-command-button kbd { border: 1px solid var(--border-subtle); border-radius: 4px; background: var(--surface); color: var(--muted); padding: 2px 4px; font: inherit; font-size: 8px; white-space: nowrap; }
 
 .canvas-v2-title {
   width: min(300px, 34vw);
@@ -239,7 +247,11 @@
   .canvas-v2-page { grid-template-rows: 58px minmax(0, 1fr); }
   .canvas-v2-topbar { gap: 8px; padding: 0 10px; }
   .canvas-v2-topbar__left { gap: 6px; }
-  .canvas-v2-title { width: min(150px, 34vw); font-size: 13px; }
+  .canvas-v2-title { width: min(120px, 30vw); min-width: 76px; font-size: 13px; }
+  .canvas-v2-command-button { width: 34px; min-width: 34px; height: 34px; flex: 0 0 34px; justify-content: center; padding: 0; }
+  .canvas-v2-command-button span,
+  .canvas-v2-command-button kbd { display: none; }
+  .canvas-v2-topbar__actions > button[aria-label="操作与快捷键"] { display: none; }
   .canvas-v2-free-chip,
   .canvas-v2-sync-chip,
   .canvas-v2-agent-button span,

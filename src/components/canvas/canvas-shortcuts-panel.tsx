@@ -11,17 +11,21 @@ const shortcutGroups = [
       { label: "移动画布", keys: ["中键拖动 / 滚轮"] },
       { label: "追加或取消选中", keys: ["Ctrl / ⌘ / Shift", "+", "点击节点"] },
       { label: "选择全部节点", keys: ["Ctrl / ⌘", "+", "A"] },
+      { label: "适应选中或查看全部", keys: ["."] },
       { label: "清除选择或关闭面板", keys: ["Esc"] },
       { label: "打开快捷菜单", keys: ["右键"] },
+      { label: "搜索节点与操作", keys: ["Ctrl / ⌘", "+", "K"] },
     ],
   },
   {
     title: "节点编辑",
     items: [
       { label: "复制选中节点", keys: ["Ctrl / ⌘", "+", "C"] },
-      { label: "粘贴节点", keys: ["Ctrl / ⌘", "+", "V"] },
+      { label: "粘贴节点、文字或图片", keys: ["Ctrl / ⌘", "+", "V"] },
       { label: "重复选中节点", keys: ["Ctrl / ⌘", "+", "D"] },
+      { label: "组合选中节点", keys: ["Ctrl / ⌘", "+", "G"] },
       { label: "删除选中节点", keys: ["Delete / Backspace"] },
+      { label: "空白处快速添加", keys: ["双击空白处"] },
       { label: "微移 1 像素", keys: ["方向键"] },
       { label: "微移 10 像素", keys: ["Shift", "+", "方向键"] },
     ],
@@ -60,7 +64,7 @@ export function CanvasShortcutsPanel({ onClose }: { onClose: () => void }) {
             </dl>
           </section>
         ))}
-        <p className="canvas-shortcuts__touch">触屏设备可点击底部“多选”图标，再逐个点选节点。</p>
+        <p className="canvas-shortcuts__touch">触屏设备可点击底部“多选”图标逐个点选节点；图片和视频可直接拖入画布。</p>
       </div>
     </aside>
   );
