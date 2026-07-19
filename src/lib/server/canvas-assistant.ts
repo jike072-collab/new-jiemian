@@ -182,6 +182,8 @@ export function createCanvasAssistantService(caller: PromptModelCaller = createN
           retryable: error instanceof NewApiError ? error.retryable : false,
           details: {
             errorCode: error instanceof NewApiError ? error.code : error instanceof Error ? error.name : "UNKNOWN_ERROR",
+            upstreamStatus: error instanceof NewApiError ? error.upstreamStatus || null : null,
+            upstreamBody: error instanceof NewApiError && typeof error.safeDetails?.body === "string" ? error.safeDetails.body.slice(0, 500) : null,
             nodeCount: normalized.nodes?.length || 0,
             promptCharacters: normalized.nodes?.reduce((sum, node) => sum + (node.prompt?.length || 0), 0) || 0,
           },

@@ -187,6 +187,39 @@ export async function readLibraryMetadataForOwner(ownerLocalUserId: string) {
   ));
 }
 
+const libraryMediaCacheJobs = new Map<string, Promise<NonNullable<LibraryItem["output"]>>>();
+
+export async function resolveLibraryMediaForOwner(id: string, ownerLocalUserId: string) {
+  const item = (await readLibraryMetadata()).find((candidate) => (
+    candidate.id === id
+    && isOwnedBy(candidate, ownerLocalUserId)
+    && !candidate.expired
+    && candidate.status === "done"
+  ));
+  if (!item?.output || item.type !== "image") throw new LibraryOperationError(404, "Library media not found.");
+
+  if (item.output.storedName) {
+    if (!await storedFileExists(item.output.storedName)) throw new LibraryOperationError(404, "Library media file not found.");
+    return { ...item.output, url: runtimeFileUrl(item.output.storedName) };
+  }
+
+  const sourceUrl = item.output.url;
+  if (!/^https?:\/\//i.test(sourceUrl)) throw new LibraryOperationError(404, "Library media file not found.");
+  const cacheKey = `${ownerLocalUserId}:${id}`;
+  const pending = libraryMediaCacheJobs.get(cacheKey);
+  if (pending) return pending;
+
+  const job = (async () => {
+    const stored = await storeRemoteUrl(sourceUrl, `canvas-editor-${id}`, item.output?.mimeType || "image/png");
+    const output = { ...stored, sourceUrl: item.output?.sourceUrl || sourceUrl };
+    const updated = await updateLibraryItem(id, { output });
+    if (!updated) throw new LibraryOperationError(404, "Library media not found.");
+    return output;
+  })().finally(() => libraryMediaCacheJobs.delete(cacheKey));
+  libraryMediaCacheJobs.set(cacheKey, job);
+  return job;
+}
+
 export async function saveLibrary(items: LibraryItem[]) {
   await writeJsonFile(libraryPath, items);
 }

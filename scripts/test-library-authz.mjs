@@ -6,6 +6,7 @@ import { join } from "node:path";
 const root = process.cwd();
 const libraryRoute = read("src/app/api/library/route.ts");
 const filesRoute = read("src/app/api/files/[name]/route.ts");
+const libraryMediaRoute = read("src/app/api/library/[id]/media/route.ts");
 const library = read("src/lib/server/library.ts");
 const types = read("src/lib/server/types.ts");
 const providerCall = read("src/lib/server/provider-call.ts");
@@ -15,7 +16,7 @@ const upscaleVideoRoute = read("src/app/api/upscale/video/route.ts");
 const authService = read("src/lib/server/auth/service.ts");
 const paths = read("src/lib/server/paths.ts");
 
-for (const source of [libraryRoute, filesRoute]) {
+for (const source of [libraryRoute, filesRoute, libraryMediaRoute]) {
   assert(source.includes("type NextRequest"), "protected route must accept NextRequest");
   assert(source.includes("requireAuthSession"), "protected route must require auth session");
   assert(source.includes("authResultResponse"), "protected route must return auth failures through authResultResponse");
@@ -37,6 +38,8 @@ assert(!filesRoute.includes("readStoredFile(name)"), "/api/files route must not 
 assert(!filesRoute.includes("resolveUploadPath"), "/api/files route must not resolve upload paths directly");
 assert(!filesRoute.includes("join("), "/api/files route must not raw-join file paths");
 assert(filesRoute.includes("private, max-age="), "/api/files route may cache assets only as private responses");
+assert(libraryMediaRoute.includes("resolveLibraryMediaForOwner(id, session.user.local_user_id)"), "library media route must resolve only owner media");
+assert(libraryMediaRoute.includes('Vary: "Cookie"'), "library media redirect must remain private to the session");
 
 assert(types.includes("ownerLocalUserId?: string | null"), "LibraryItem must include ownerLocalUserId");
 assert(library.includes("item.ownerLocalUserId === ownerLocalUserId"), "owner checks must use exact owner equality");
@@ -46,6 +49,14 @@ assert(library.includes("readStoredFileForOwner(storedName: string, ownerLocalUs
 assert(library.includes("candidate.output?.storedName === storedName"), "file authz must bind storedName to the current owner item");
 assert(library.includes("if (!safeName || safeName !== storedName) return null"), "invalid storedName must be rejected before reading disk");
 assert(library.includes("resolveStoredFileForOwner(storedName: string, ownerLocalUserId: string)"), "library must expose owner-aware file resolution");
+assert(library.includes("resolveLibraryMediaForOwner(id: string, ownerLocalUserId: string)"), "library must expose owner-aware media caching");
+assertSequence("media owner check before remote caching", library, [
+  "export async function resolveLibraryMediaForOwner",
+  "candidate.id === id",
+  "isOwnedBy(candidate, ownerLocalUserId)",
+  "if (!item?.output",
+  "storeRemoteUrl(sourceUrl",
+]);
 assertSequence("file owner check before disk resolution", library, [
   "export async function resolveStoredFileForOwner",
   "if (!safeName || safeName !== storedName) return null",

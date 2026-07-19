@@ -6,8 +6,9 @@ const shortcutGroups = [
   {
     title: "画布与选择",
     items: [
-      { label: "移动画布", keys: ["拖动空白处"] },
-      { label: "框选多个节点", keys: ["Shift", "+", "拖动空白处"] },
+      { label: "框选多个节点", keys: ["拖动空白处"] },
+      { label: "移动画布", keys: ["Space", "+", "拖动"] },
+      { label: "移动画布", keys: ["中键拖动 / 滚轮"] },
       { label: "追加或取消选中", keys: ["Ctrl / ⌘ / Shift", "+", "点击节点"] },
       { label: "选择全部节点", keys: ["Ctrl / ⌘", "+", "A"] },
       { label: "清除选择或关闭面板", keys: ["Esc"] },
@@ -46,11 +47,6 @@ export function CanvasShortcutsPanel({ onClose }: { onClose: () => void }) {
         <button type="button" className="canvas-icon-button" onClick={onClose} aria-label="关闭快捷键" title="关闭快捷键"><X /></button>
       </header>
       <div className="canvas-shortcuts__content">
-        <div className="canvas-shortcuts__primary">
-          <MousePointer2 />
-          <span><strong>框选节点</strong><small>按住 Shift，再从画布空白处拖动</small></span>
-          <kbd>Shift</kbd><span>+</span><kbd>拖动</kbd>
-        </div>
         {shortcutGroups.map((group) => (
           <section key={group.title} className="canvas-shortcuts__group">
             <h3>{group.title}</h3>
@@ -74,7 +70,7 @@ export function CanvasSelectionHint({ onOpen, onDismiss }: { onOpen: () => void;
   return (
     <div className="canvas-selection-hint" role="status">
       <MousePointer2 />
-      <button type="button" onClick={onOpen}><kbd>Shift</kbd><span>+</span><strong>拖动画布框选</strong></button>
+      <button type="button" onClick={onOpen}><strong>拖动空白处框选</strong></button>
       <button type="button" className="canvas-selection-hint__close" onClick={onDismiss} aria-label="关闭框选提示" title="关闭框选提示"><X /></button>
     </div>
   );

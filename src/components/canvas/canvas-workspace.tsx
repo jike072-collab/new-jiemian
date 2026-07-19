@@ -13,6 +13,8 @@ import {
   Copy,
   CopyPlus,
   ArrowLeft,
+  ChevronLeft,
+  ChevronRight,
   Download,
   CircleHelp,
   ArrowDown,
@@ -33,6 +35,7 @@ import {
   Lock,
   Maximize2,
   MousePointer2,
+  MoreHorizontal,
   Music,
   PanelLeftClose,
   PanelLeftOpen,
@@ -880,10 +883,20 @@ function CanvasWorkspaceInner({
       },
       width: size.width,
       height: size.height,
+      selected: true,
       data,
     };
-    setNodes((current) => [...current, node]);
+    const nextNodes = [...nodesRef.current.map((current) => ({ ...current, selected: false })), node];
+    nodesRef.current = nextNodes;
+    setNodes(nextNodes);
+    setEdges((current) => current.map((edge) => ({ ...edge, selected: false })));
     markDirty();
+    window.requestAnimationFrame(() => {
+      void flowRef.current.setCenter(node.position.x + size.width / 2, node.position.y + size.height / 2, {
+        duration: 220,
+        zoom: Math.max(flowRef.current.getZoom(), 0.7),
+      });
+    });
     return node;
   }, [flow, markDirty, pushHistorySnapshot]);
 
@@ -1766,9 +1779,6 @@ function CanvasWorkspaceInner({
     const textarea = document.querySelector<HTMLTextAreaElement>(`[data-canvas-node-id="${selectedNode.id}"] textarea`);
     textarea?.focus();
   }, [selectedNode]);
-  const saveSelectedMaterial = useCallback(() => {
-    setNotice(selectedNode?.data.kind === "media" && selectedNode.data.mediaType !== "audio" ? "素材已保存在作品库，可从左侧素材库再次使用。" : selectedNode?.data.kind === "media" ? "音频参考已保留在当前画布中。" : "只有媒体节点可以保存素材。");
-  }, [selectedNode]);
   const editSelected = useCallback(() => {
     if (!selectedNode) return;
     if (selectedNode.data.kind === "prompt") {
@@ -2532,7 +2542,6 @@ function CanvasWorkspaceInner({
               onUngroup={ungroupSelectedNodes}
               onToggleGroup={() => toggleGroupCollapsed(selectedNode.id)}
               onDelete={() => removeNode(selectedNode.id)}
-              onSaveMaterial={saveSelectedMaterial}
               onEdit={editSelected}
               onEditText={focusSelectedText}
               onGenerate={generateSelected}
@@ -2591,6 +2600,7 @@ function CanvasWorkspaceInner({
               defaultViewport={viewport}
               minZoom={0.08}
               maxZoom={2.5}
+              onlyRenderVisibleElements
               panOnScroll
               panOnDrag={presentation === "vozeb" && !compactViewport ? [1] : true}
               panActivationKeyCode="Space"
@@ -2754,7 +2764,8 @@ function CanvasWorkspaceInner({
 
       {editingNode?.data.mediaUrl ? (
         <CanvasImageEditor
-          imageUrl={editingNode.data.mediaUrl}
+          key={editingNode.id}
+          imageUrl={editingNode.data.libraryItemId ? `/api/library/${encodeURIComponent(editingNode.data.libraryItemId)}/media` : editingNode.data.mediaUrl}
           title={editingNode.data.title}
           onSubmit={submitEditedImage}
           onClose={() => setEditingNodeId("")}
@@ -2911,7 +2922,6 @@ function CanvasSelectionToolbar({
   onUngroup,
   onToggleGroup,
   onDelete,
-  onSaveMaterial,
   onEdit,
   onEditText,
   onGenerate,
@@ -2924,23 +2934,26 @@ function CanvasSelectionToolbar({
   onUngroup: () => void;
   onToggleGroup: () => void;
   onDelete: () => void;
-  onSaveMaterial: () => void;
   onEdit: () => void;
   onEditText: () => void;
   onGenerate: () => void;
   onZoomOut: () => void;
   onZoomIn: () => void;
 }) {
+  const isPrompt = node.data.kind === "prompt";
+  const isImage = node.data.kind === "media" && node.data.mediaType === "image";
+  const isMedia = node.data.kind === "media";
+  const isGenerator = node.data.kind === "generator";
   return (
     <div className="canvas-selection-toolbar" style={style} role="toolbar" aria-label="选中节点工具">
       <button type="button" onClick={onInfo} title="节点信息" aria-label="节点信息"><Info /><span>信息</span></button>
       {node.data.kind === "group" ? <button type="button" onClick={onToggleGroup} title={node.data.collapsed ? "展开分组" : "折叠分组"} aria-label={node.data.collapsed ? "展开选中分组" : "折叠选中分组"}><Layers3 /><span>{node.data.collapsed ? "展开" : "折叠"}</span></button> : null}
       {node.data.kind === "group" ? <button type="button" onClick={onUngroup} title="解除分组" aria-label="解除分组"><Ungroup /><span>解组</span></button> : null}
       <button type="button" onClick={onDelete} title="删除节点" aria-label="删除节点"><Trash2 /><span>删除</span></button>
-      {node.data.kind !== "group" ? <button type="button" onClick={onSaveMaterial} title="保存到素材库" aria-label="保存到素材库"><FolderOpen /><span>存素材</span></button> : null}
-      {node.data.kind !== "group" ? <button type="button" onClick={onEdit} title="编辑节点" aria-label="编辑节点"><Sparkles /><span>编辑</span></button> : null}
-      {node.data.kind !== "group" ? <button type="button" onClick={onEditText} title="编辑文字" aria-label="编辑文字" disabled={node.data.kind !== "prompt"}><Type /><span>编辑文字</span></button> : null}
-      {node.data.kind !== "group" ? <button type="button" onClick={onGenerate} title="生成图片或视频" aria-label="生成图片或视频"><ImageIcon /><span>{node.data.kind === "media" && node.data.mediaType !== "image" ? "生视频" : "生图"}</span></button> : null}
+      {isPrompt ? <button type="button" onClick={onEditText} title="编辑提示词" aria-label="编辑提示词"><Type /><span>编辑文字</span></button> : null}
+      {isImage ? <button type="button" onClick={onEdit} title="裁剪、擦除或局部重绘" aria-label="图片编辑"><Sparkles /><span>图片编辑</span></button> : null}
+      {isPrompt || isMedia ? <button type="button" onClick={onGenerate} title={isImage || isPrompt ? "引用当前节点生成图片" : "引用当前素材生成视频"} aria-label={isImage || isPrompt ? "生成图片" : "生成视频"}><ImageIcon /><span>{isImage || isPrompt ? "生图" : "生视频"}</span></button> : null}
+      {isGenerator ? <button type="button" onClick={onGenerate} title="运行当前生成节点" aria-label="运行生成"><Sparkles /><span>运行</span></button> : null}
       <span className="canvas-selection-toolbar__divider" aria-hidden="true" />
       <button type="button" onClick={onZoomOut} title="缩小画布" aria-label="缩小画布"><ZoomOut /></button>
       <button type="button" onClick={onZoomIn} title="放大画布" aria-label="放大画布"><ZoomIn /></button>
@@ -3590,6 +3603,11 @@ function LibraryPanel({ open, items, filter, search, onClose, onFilter, onSearch
   onDelete: (item: LibraryItem) => void;
 }) {
   const [selectedIds, setSelectedIds] = useState<Set<string>>(() => new Set());
+  const [page, setPage] = useState(0);
+  const pageSize = 20;
+  const pageCount = Math.max(1, Math.ceil(items.length / pageSize));
+  const visiblePage = Math.min(page, pageCount - 1);
+  const pageItems = items.slice(visiblePage * pageSize, (visiblePage + 1) * pageSize);
   const selectedItems = items.filter((item) => selectedIds.has(item.id));
   return (
     <aside className={cn("canvas-library", open && "is-open")} aria-label="作品素材库" aria-hidden={!open} inert={open ? undefined : true}>
@@ -3599,11 +3617,11 @@ function LibraryPanel({ open, items, filter, search, onClose, onFilter, onSearch
       </div>
       <label className="canvas-library__search">
         <Search />
-        <input value={search} placeholder="搜索作品" aria-label="搜索素材" onChange={(event) => onSearch(event.target.value)} />
+        <input value={search} placeholder="搜索作品" aria-label="搜索素材" onChange={(event) => { setPage(0); onSearch(event.target.value); }} />
       </label>
       <div className="canvas-library__tabs" role="tablist" aria-label="素材类型">
         {(["all", "image", "video"] as const).map((value) => (
-          <button key={value} type="button" role="tab" aria-selected={filter === value} className={filter === value ? "is-active" : undefined} onClick={() => onFilter(value)}>
+          <button key={value} type="button" role="tab" aria-selected={filter === value} className={filter === value ? "is-active" : undefined} onClick={() => { setPage(0); onFilter(value); }}>
             {value === "all" ? "全部" : value === "image" ? "图片" : "视频"}
           </button>
         ))}
@@ -3614,7 +3632,7 @@ function LibraryPanel({ open, items, filter, search, onClose, onFilter, onSearch
         <button type="button" disabled={!selectedIds.size} onClick={() => setSelectedIds(new Set())}>清除</button>
       </div>
       <div className="canvas-library__list">
-        {items.map((item) => (
+        {pageItems.map((item) => (
           <div
             key={item.id}
             className={cn("canvas-library-item", selectedIds.has(item.id) && "is-selected")}
@@ -3634,27 +3652,36 @@ function LibraryPanel({ open, items, filter, search, onClose, onFilter, onSearch
               <span className="canvas-library-item__preview">
                 {item.output?.url && item.type === "image" ? (
                   // eslint-disable-next-line @next/next/no-img-element -- authenticated runtime media is not a static Next image.
-                  <img src={item.output.url} alt="" draggable={false} />
+                  <img src={item.output.url.startsWith("/api/files/") ? `${item.output.url}?view=thumb` : item.output.url} alt="" draggable={false} loading="lazy" decoding="async" />
                 ) : item.type === "video" ? <Film /> : <ImageIcon />}
               </span>
               <span className="canvas-library-item__copy">
                 <strong title={item.title}>{item.title}</strong>
                 <small>{item.status === "done" ? "已完成" : item.status === "failed" ? "失败" : "生成中"}</small>
               </span>
-              <Plus />
             </button>
-            <div className="canvas-library-item__actions">
-              <button type="button" disabled={!canReplace} onClick={() => onReplace(item)} title="替换选中素材" aria-label="替换选中素材"><RefreshCw /></button>
-              <button type="button" className={cn(Boolean(item.favorite || item.params.favorite) && "is-active")} onClick={() => onFavorite(item)} title="收藏" aria-label="收藏"><Star /></button>
-              <button type="button" onClick={() => onRename(item)} title="重命名" aria-label="重命名"><Type /></button>
-              <button type="button" disabled={!item.output?.url} onClick={() => onCopyLink(item)} title="复制链接" aria-label="复制链接"><Copy /></button>
-              <button type="button" disabled={!item.output?.url} onClick={() => onDownload(item)} title="下载" aria-label="下载"><Download /></button>
-              <button type="button" className="is-danger" onClick={() => onDelete(item)} title="删除素材" aria-label="删除素材"><Trash2 /></button>
-            </div>
+            <details className="canvas-library-item__menu">
+              <summary title="素材操作" aria-label={`${item.title}的操作`}><MoreHorizontal /></summary>
+              <div className="canvas-library-item__actions">
+                <button type="button" disabled={!canReplace} onClick={() => onReplace(item)}><RefreshCw /><span>替换节点</span></button>
+                <button type="button" className={cn(Boolean(item.favorite || item.params.favorite) && "is-active")} onClick={() => onFavorite(item)}><Star /><span>收藏</span></button>
+                <button type="button" onClick={() => onRename(item)}><Type /><span>重命名</span></button>
+                <button type="button" disabled={!item.output?.url} onClick={() => onCopyLink(item)}><Copy /><span>复制链接</span></button>
+                <button type="button" disabled={!item.output?.url} onClick={() => onDownload(item)}><Download /><span>下载</span></button>
+                <button type="button" className="is-danger" onClick={() => onDelete(item)}><Trash2 /><span>删除</span></button>
+              </div>
+            </details>
           </div>
         ))}
         {!items.length ? <div className="canvas-library__empty"><FolderOpen /><span>暂无可用素材</span></div> : null}
       </div>
+      {items.length ? (
+        <div className="canvas-library__pagination" aria-label="素材分页">
+          <button type="button" disabled={visiblePage === 0} onClick={() => setPage((value) => Math.max(0, value - 1))} aria-label="上一页" title="上一页"><ChevronLeft /></button>
+          <span>{visiblePage + 1} / {pageCount}<small>共 {items.length} 项</small></span>
+          <button type="button" disabled={visiblePage >= pageCount - 1} onClick={() => setPage((value) => Math.min(pageCount - 1, value + 1))} aria-label="下一页" title="下一页"><ChevronRight /></button>
+        </div>
+      ) : null}
     </aside>
   );
 }

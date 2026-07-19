@@ -334,7 +334,7 @@ function MediaNode({ data }: { data: CanvasNodeData }) {
     <div className="canvas-node__body canvas-node__body--media">
       {data.mediaUrl && data.mediaType === "image" ? (
         // eslint-disable-next-line @next/next/no-img-element -- generated media URLs are authenticated runtime assets.
-        <img src={data.mediaUrl} alt={data.title} draggable={false} />
+        <img src={data.mediaUrl} alt={data.title} draggable={false} loading="lazy" decoding="async" />
       ) : null}
       {data.mediaUrl && data.mediaType === "video" ? (
         <video src={data.mediaUrl} controls preload="metadata" className="nodrag nowheel" />
@@ -463,7 +463,7 @@ function GeneratorNode({ id, data }: { id: string; data: CanvasNodeData }) {
                     <Music aria-hidden="true" />
                   ) : (
                     // eslint-disable-next-line @next/next/no-img-element -- generated media URLs are authenticated runtime assets.
-                    <img src={item.url} alt={item.title} draggable={false} />
+                    <img src={item.url} alt={item.title} draggable={false} loading="lazy" decoding="async" />
                   )}
                   <figcaption title={item.title}>{item.title}</figcaption>
                 </figure>

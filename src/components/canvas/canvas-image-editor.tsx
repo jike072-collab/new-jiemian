@@ -1,6 +1,6 @@
 "use client";
 
-import { Crop, Download, Eraser, Eye, EyeOff, LoaderCircle, Maximize2, Redo2, RotateCcw, Send, Undo2, X, ZoomIn, ZoomOut } from "lucide-react";
+import { CircleAlert, Crop, Download, Eraser, Eye, EyeOff, LoaderCircle, Maximize2, Redo2, RefreshCw, RotateCcw, Send, Undo2, X, ZoomIn, ZoomOut } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 
 export function CanvasImageEditor({ imageUrl, title, onSubmit, onClose }: {
@@ -17,6 +17,8 @@ export function CanvasImageEditor({ imageUrl, title, onSubmit, onClose }: {
   const futureRef = useRef<ImageData[]>([]);
   const drawingRef = useRef(false);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState("");
+  const [loadAttempt, setLoadAttempt] = useState(0);
   const [busy, setBusy] = useState(false);
   const [brushSize, setBrushSize] = useState(42);
   const [prompt, setPrompt] = useState("");
@@ -88,12 +90,15 @@ export function CanvasImageEditor({ imageUrl, title, onSubmit, onClose }: {
         originalRef.current = bitmap;
         drawOriginal(bitmap);
       })
+      .catch(() => {
+        if (!cancelled) setLoadError("图片读取失败，请重试或确认素材仍然可用。");
+      })
       .finally(() => { if (!cancelled) setLoading(false); });
     return () => {
       cancelled = true;
       originalRef.current?.close();
     };
-  }, [drawOriginal, imageUrl]);
+  }, [drawOriginal, imageUrl, loadAttempt]);
 
   function pushHistory() {
     const canvas = canvasRef.current;
@@ -229,6 +234,14 @@ export function CanvasImageEditor({ imageUrl, title, onSubmit, onClose }: {
         </div>
         <div ref={stageRef} className="canvas-image-editor__stage">
           {loading ? <LoaderCircle className="is-spinning" /> : null}
+          {!loading && loadError ? (
+            <div className="canvas-image-editor__error" role="alert">
+              <CircleAlert />
+              <strong>无法打开这张图片</strong>
+              <span>{loadError}</span>
+              <button type="button" onClick={() => { setLoading(true); setLoadError(""); setLoadAttempt((value) => value + 1); }}><RefreshCw />重试</button>
+            </div>
+          ) : null}
           <div className="canvas-image-editor__viewport" style={{ width: Math.max(canvasSize.width * zoom + 28, 1), height: Math.max(canvasSize.height * zoom + 28, 1) }}>
             <canvas
               ref={canvasRef}
@@ -242,7 +255,7 @@ export function CanvasImageEditor({ imageUrl, title, onSubmit, onClose }: {
             <canvas ref={maskRef} className="canvas-image-editor__mask" hidden={!showMask} style={{ width: canvasSize.width * zoom, height: canvasSize.height * zoom }} aria-hidden="true" />
           </div>
         </div>
-        <footer><textarea value={prompt} maxLength={2_000} onChange={(event) => setPrompt(event.target.value)} placeholder="描述透明/擦除区域需要生成的内容，未擦除区域将作为保留参考" aria-label="局部重绘要求" /><button type="button" disabled={busy || !prompt.trim()} onClick={() => { void submitEdit(); }}>{busy ? <LoaderCircle className="is-spinning" /> : <Send />}局部重绘</button></footer>
+        <footer><textarea value={prompt} maxLength={2_000} disabled={Boolean(loadError)} onChange={(event) => setPrompt(event.target.value)} placeholder="描述透明/擦除区域需要生成的内容，未擦除区域将作为保留参考" aria-label="局部重绘要求" /><button type="button" disabled={busy || Boolean(loadError) || !prompt.trim()} onClick={() => { void submitEdit(); }}>{busy ? <LoaderCircle className="is-spinning" /> : <Send />}局部重绘</button></footer>
       </section>
     </div>
   );

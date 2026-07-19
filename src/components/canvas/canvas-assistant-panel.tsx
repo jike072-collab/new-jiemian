@@ -42,9 +42,8 @@ export function CanvasAssistantPanel({
   const [pendingActions, setPendingActions] = useState<CanvasAssistantAction[]>([]);
   const contextNodes = useMemo(() => nodes.slice(0, 120), [nodes]);
 
-  async function submit(event?: FormEvent) {
-    event?.preventDefault();
-    const message = input.trim();
+  async function submitMessage(value: string) {
+    const message = value.trim();
     if (!message || busy) return;
     const nextMessages = [...messages, { role: "user" as const, content: message }];
     setMessages(nextMessages);
@@ -74,8 +73,9 @@ export function CanvasAssistantPanel({
     }
   }
 
-  function setQuickPrompt(value: string) {
-    setInput(value);
+  function submit(event: FormEvent) {
+    event.preventDefault();
+    void submitMessage(input);
   }
 
   return (
@@ -85,10 +85,10 @@ export function CanvasAssistantPanel({
         <button type="button" className="canvas-icon-button" onClick={onClose} aria-label="关闭智能助手" title="关闭智能助手"><X /></button>
       </header>
       <div className="canvas-assistant__quick" aria-label="快捷请求">
-        <button type="button" onClick={() => setQuickPrompt("根据当前画布主题，新增一个可直接用于生图的详细提示词。")}>写提示词</button>
-        <button type="button" disabled={!selectedPrompt} onClick={() => setQuickPrompt("优化当前选中的提示词，保留原意并让它更适合生成。")}>优化选中</button>
-        <button type="button" onClick={() => setQuickPrompt("按从左到右的创作流程整理当前画布节点。")}>整理画布</button>
-        <button type="button" onClick={() => setQuickPrompt("把当前故事拆成 3-5 个 Seedance 分镜节点，分别生成提示词和视频生成节点。")}>生成分镜</button>
+        <button type="button" disabled={busy} onClick={() => { void submitMessage("根据当前画布主题，新增一个可直接用于生图的详细提示词。"); }}>写提示词</button>
+        <button type="button" disabled={busy || !selectedPrompt} onClick={() => { void submitMessage("优化当前选中的提示词，保留原意并让它更适合生成。"); }}>优化选中</button>
+        <button type="button" disabled={busy} onClick={() => { void submitMessage("按从左到右的创作流程整理当前画布节点。"); }}>整理画布</button>
+        <button type="button" disabled={busy} onClick={() => { void submitMessage("把当前故事拆成 3-5 个 Seedance 分镜节点，分别生成提示词和视频生成节点。"); }}>生成分镜</button>
       </div>
       <label className="canvas-assistant__template">
         <span>Seedance 模板</span>
@@ -97,7 +97,7 @@ export function CanvasAssistantPanel({
           defaultValue=""
           onChange={(event) => {
             const template = seedanceTemplates.find((item) => item.id === event.target.value);
-            if (template) setQuickPrompt(template.prompt);
+            if (template) setInput(template.prompt);
             event.currentTarget.value = "";
           }}
         >
@@ -117,7 +117,12 @@ export function CanvasAssistantPanel({
       {pendingActions.length ? (
         <div className="canvas-assistant__actions">
           <span><WandSparkles />建议执行 {pendingActions.length} 项画布操作</span>
-          <button type="button" onClick={() => { onApply(pendingActions); setPendingActions([]); }}><Check />应用到画布</button>
+          <button type="button" onClick={() => {
+            const count = pendingActions.length;
+            onApply(pendingActions);
+            setPendingActions([]);
+            setMessages((current) => [...current, { role: "assistant", content: `已应用 ${count} 项操作，画布未自动开始生成。` }]);
+          }}><Check />应用到画布</button>
         </div>
       ) : null}
       <form className="canvas-assistant__composer" onSubmit={submit}>

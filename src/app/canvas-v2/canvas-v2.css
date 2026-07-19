@@ -199,8 +199,8 @@
   pointer-events: none;
 }
 .canvas-v2-page .canvas-library.is-open {
-  width: min(320px, calc(100vw - 28px));
-  min-width: min(320px, calc(100vw - 28px));
+  width: min(460px, calc(100vw - 28px));
+  min-width: min(460px, calc(100vw - 28px));
   border: 1px solid var(--border-subtle);
   opacity: 1;
   transform: translateX(0);
