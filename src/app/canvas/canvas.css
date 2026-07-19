@@ -400,8 +400,33 @@
 .canvas-bottom-dock svg { width: 16px; height: 16px; }
 .canvas-selection-toolbar__divider,
 .canvas-bottom-dock__divider { width: 1px; height: 22px; margin: 0 6px; background: rgba(255, 255, 255, 0.16); }
-.canvas-selection-toolbar--edge > span { display: inline-flex; align-items: center; gap: 6px; padding: 0 6px; color: var(--muted); font-size: 11px; }
-.canvas-selection-toolbar--edge > span svg { width: 14px; height: 14px; }
+.canvas-edge-toolbar {
+  pointer-events: all;
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  border: 1px solid var(--border-subtle);
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--panel) 94%, transparent);
+  box-shadow: 0 8px 22px rgba(0, 0, 0, 0.24);
+  padding: 3px 5px;
+}
+.canvas-edge-toolbar > span { color: var(--muted-strong); font-size: 10px; white-space: nowrap; }
+.canvas-edge-toolbar button {
+  display: grid;
+  width: 24px;
+  height: 24px;
+  place-items: center;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  color: #fb7185;
+  cursor: pointer;
+}
+.canvas-edge-toolbar button:hover { background: rgba(251, 113, 133, 0.14); }
+.canvas-edge-toolbar button svg { width: 13px; height: 13px; }
+.canvas-connection-line { stroke-linecap: round; stroke-dasharray: 7 5; animation: canvas-connection-dash 0.8s linear infinite; }
+@keyframes canvas-connection-dash { to { stroke-dashoffset: -12; } }
 
 .canvas-context-menu {
   position: absolute;

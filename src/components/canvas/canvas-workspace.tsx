@@ -71,6 +71,7 @@ import {
 
 import { BrandLogo } from "@/components/brand-logo";
 import { CanvasAssistantPanel } from "@/components/canvas/canvas-assistant-panel";
+import { CanvasConnectionLine, CanvasEdge, CanvasEdgeActionsContext } from "@/components/canvas/canvas-edge";
 import { CanvasImageEditor } from "@/components/canvas/canvas-image-editor";
 import {
   CanvasGroupNode,
@@ -92,6 +93,7 @@ import type {
   CanvasNodeData,
   CanvasProject,
   CanvasProjectDocument,
+  CanvasStoredEdge,
   CanvasStoredNode,
 } from "@/lib/canvas/types";
 import { normalizeCanvasDocument } from "@/lib/canvas/document";
@@ -118,9 +120,27 @@ type CanvasContextMenuState = {
 type CanvasClipboard = { nodes: CanvasFlowNode[]; edges: Edge[] };
 
 const nodeTypes = { canvas: CanvasNode, group: CanvasGroupNode };
+const edgeTypes = { "canvas-edge": CanvasEdge };
 const emptyProviders: EnabledProviders = { image: [], video: [] };
 const defaultViewport: Viewport = { x: 0, y: 0, zoom: 1 };
 const libraryDragType = "application/x-aohuang-library-item";
+
+function canvasEdgeLabel(source: CanvasFlowNode | CanvasStoredNode | undefined) {
+  if (source?.data.kind === "prompt") return "提示词";
+  if (source?.data.kind === "media") return source.data.mediaType === "video" ? "参考视频" : "参考图";
+  if (source?.data.kind === "generator") return "生成结果";
+  return "输入";
+}
+
+function decorateCanvasEdge(edge: Edge | CanvasStoredEdge, nodes: Array<CanvasFlowNode | CanvasStoredNode>, routing: ConnectionStyle): Edge {
+  const source = nodes.find((node) => node.id === edge.source);
+  const data = "data" in edge && edge.data && typeof edge.data === "object" ? edge.data : {};
+  return {
+    ...edge,
+    type: "canvas-edge",
+    data: { ...data, routing, label: canvasEdgeLabel(source) },
+  };
+}
 
 function canvasScope() {
   if (typeof window === "undefined") return "shared" as const;
@@ -247,7 +267,7 @@ function CanvasWorkspaceInner({ accountName, isTeamOwner, isInternalCanvas }: { 
 
   const changeConnectionStyle = useCallback((value: ConnectionStyle) => {
     setConnectionStyle(value);
-    setEdges((current) => current.map((edge) => ({ ...edge, type: value })));
+    setEdges((current) => current.map((edge) => decorateCanvasEdge(edge, nodesRef.current, value)));
   }, []);
   useEffect(() => {
     const mobileViewport = window.matchMedia("(max-width: 820px)");
@@ -327,8 +347,9 @@ function CanvasWorkspaceInner({ accountName, isTeamOwner, isInternalCanvas }: { 
     activeProjectRef.current = project;
     setActiveProjectId(project.id);
     setTitle(project.title);
-    setNodes(hydrateMediaNodes(project.document.nodes, items));
-    setEdges(project.document.edges.map((edge) => ({ ...edge, type: connectionStyle })));
+    const hydratedNodes = hydrateMediaNodes(project.document.nodes, items);
+    setNodes(hydratedNodes);
+    setEdges(project.document.edges.map((edge) => decorateCanvasEdge(edge, hydratedNodes, connectionStyle)));
     setViewportState(project.document.viewport);
     revisionRef.current = 0;
     savedRevisionRef.current = 0;
@@ -598,14 +619,13 @@ function CanvasWorkspaceInner({ accountName, isTeamOwner, isInternalCanvas }: { 
       status: "idle",
       progress: 0,
     }, { width: 360, height: kind === "image" ? 430 : 410 });
-    setEdges((current) => [...current, {
+    setEdges((current) => [...current, decorateCanvasEdge({
       id: canvasId("edge"),
       source: node.id,
       sourceHandle: "output",
       target: generator.id,
       targetHandle: "input",
-      type: connectionStyle,
-    }]);
+    }, nodesRef.current, connectionStyle)]);
     markDirty();
     return generator;
   }, [addNodeAtCenter, connectionStyle, markDirty]);
@@ -673,14 +693,13 @@ function CanvasWorkspaceInner({ accountName, isTeamOwner, isInternalCanvas }: { 
         : node),
       resultNode,
     ]);
-    setEdges((current) => [...current, {
+    setEdges((current) => [...current, decorateCanvasEdge({
       id: canvasId("edge"),
       source: generatorId,
       sourceHandle: "output",
       target: id,
       targetHandle: "input",
-      type: connectionStyle,
-    }]);
+    }, nodesRef.current, connectionStyle)]);
     markDirty();
   }, [connectionStyle, markDirty, pushHistorySnapshot]);
 
@@ -805,7 +824,7 @@ function CanvasWorkspaceInner({ accountName, isTeamOwner, isInternalCanvas }: { 
   const onConnect = useCallback((connection: Connection) => {
     if (!isValidConnection(connection)) return;
     pushHistorySnapshot();
-    setEdges((current) => addEdge({ ...connection, id: canvasId("edge"), type: connectionStyle }, current));
+    setEdges((current) => addEdge(decorateCanvasEdge({ ...connection, id: canvasId("edge") } as Edge, nodesRef.current, connectionStyle), current));
     markDirty();
   }, [connectionStyle, isValidConnection, markDirty, pushHistorySnapshot]);
 
@@ -818,14 +837,13 @@ function CanvasWorkspaceInner({ accountName, isTeamOwner, isInternalCanvas }: { 
     if (!source || (source.data.kind !== "prompt" && source.data.kind !== "media")) return;
     const generator = addGeneratorNode("image", flow.screenToFlowPosition({ x: event.clientX, y: event.clientY }));
     if (!generator) return;
-    setEdges((current) => addEdge({
+    setEdges((current) => addEdge(decorateCanvasEdge({
       id: canvasId("edge"),
       source: sourceId,
       sourceHandle: "output",
       target: generator.id,
       targetHandle: "input",
-      type: connectionStyle,
-    }, current));
+    }, nodesRef.current, connectionStyle), current));
     markDirty();
   }, [addGeneratorNode, connectionStyle, flow, markDirty]);
 
@@ -936,7 +954,6 @@ function CanvasWorkspaceInner({ accountName, isTeamOwner, isInternalCanvas }: { 
 
   const selectedNodes = useMemo(() => nodes.filter((node) => node.selected), [nodes]);
   const selectedNode = selectedNodes[0] || null;
-  const selectedEdge = edges.find((edge) => edge.selected) || null;
   const editingNode = nodes.find((node) => node.id === editingNodeId && node.data.kind === "media" && node.data.mediaType === "image") || null;
   const selectionToolbarStyle = useMemo<CSSProperties | undefined>(() => {
     if (!selectedNodes.length) return undefined;
@@ -949,19 +966,6 @@ function CanvasWorkspaceInner({ accountName, isTeamOwner, isInternalCanvas }: { 
       transform: "translateX(-50%)",
     };
   }, [selectedNodes, viewport]);
-  const edgeToolbarStyle = useMemo<CSSProperties | undefined>(() => {
-    if (!selectedEdge) return undefined;
-    const source = nodes.find((node) => node.id === selectedEdge.source);
-    const target = nodes.find((node) => node.id === selectedEdge.target);
-    if (!source || !target) return undefined;
-    const sourceCenter = { x: source.position.x + (source.width || 320) / 2, y: source.position.y + (source.height || 280) / 2 };
-    const targetCenter = { x: target.position.x + (target.width || 320) / 2, y: target.position.y + (target.height || 280) / 2 };
-    return {
-      left: ((sourceCenter.x + targetCenter.x) / 2) * viewport.zoom + viewport.x,
-      top: ((sourceCenter.y + targetCenter.y) / 2) * viewport.zoom + viewport.y - 44,
-      transform: "translateX(-50%)",
-    };
-  }, [nodes, selectedEdge, viewport]);
 
   const removeSelectedNodes = useCallback(() => {
     const ids = new Set(nodesRef.current.filter((node) => node.selected).map((node) => node.id));
@@ -983,6 +987,7 @@ function CanvasWorkspaceInner({ accountName, isTeamOwner, isInternalCanvas }: { 
     setContextMenu(null);
     markDirty();
   }, [markDirty, pushHistorySnapshot]);
+  const edgeActions = useMemo(() => ({ removeEdge }), [removeEdge]);
 
   const copySelectedNodes = useCallback(() => {
     const selected = copyableCanvasSelection(nodesRef.current);
@@ -1105,7 +1110,7 @@ function CanvasWorkspaceInner({ accountName, isTeamOwner, isInternalCanvas }: { 
         for (const source of sources) {
           const connection = { source: source.id, target: target.id, sourceHandle: "output", targetHandle: "input" };
           if (isValidConnection(connection) && !next.some((edge) => edge.source === source.id && edge.target === target.id)) {
-            next.push({ ...connection, id: canvasId("edge"), type: connectionStyle });
+            next.push(decorateCanvasEdge({ ...connection, id: canvasId("edge") } as Edge, nodesRef.current, connectionStyle));
           }
         }
       }
@@ -1276,14 +1281,13 @@ function CanvasWorkspaceInner({ accountName, isTeamOwner, isInternalCanvas }: { 
           const additions = sources.filter((source) => !edgesRef.current.some((edge) => edge.source === source.id && edge.target === target.id));
           if (additions.length) {
             pushHistorySnapshot();
-            setEdges((current) => [...current, ...additions.map((source) => ({
+            setEdges((current) => [...current, ...additions.map((source) => decorateCanvasEdge({
               id: canvasId("edge"),
               source: source.id,
               sourceHandle: "output",
               target: target.id,
               targetHandle: "input",
-              type: connectionStyle,
-            }))]);
+            }, nodesRef.current, connectionStyle))]);
             markDirty();
           }
         }
@@ -1302,14 +1306,13 @@ function CanvasWorkspaceInner({ accountName, isTeamOwner, isInternalCanvas }: { 
     if (!source || !provider) throw new Error("当前没有可用的图片编辑模型。");
     const promptNode = addPromptNode({ title: "局部重绘提示词", prompt });
     const generator = createGeneratorFromSelected(source, "image");
-    setEdges((current) => [...current, {
+    setEdges((current) => [...current, decorateCanvasEdge({
       id: canvasId("edge"),
       source: promptNode.id,
       sourceHandle: "output",
       target: generator.id,
       targetHandle: "input",
-      type: connectionStyle,
-    }]);
+    }, [...nodesRef.current, promptNode], connectionStyle)]);
     updateNodeData(generator.id, { imageMode: "image-to-image", status: "generating", progress: 5 }, false);
     const objectUrl = URL.createObjectURL(file);
     const now = new Date().toISOString();
@@ -1346,7 +1349,7 @@ function CanvasWorkspaceInner({ accountName, isTeamOwner, isInternalCanvas }: { 
     const document = normalizeCanvasDocument(snapshot.document);
     setTitle(snapshot.title);
     setNodes(hydrateMediaNodes(document.nodes, libraryRef.current));
-    setEdges(document.edges.map((edge) => ({ ...edge, type: connectionStyle })));
+    setEdges(document.edges.map((edge) => decorateCanvasEdge(edge, document.nodes, connectionStyle)));
     setViewportState(document.viewport);
     setInfoOpen(false);
     historySignatureRef.current = "";
@@ -1364,7 +1367,7 @@ function CanvasWorkspaceInner({ accountName, isTeamOwner, isInternalCanvas }: { 
     const document = normalizeCanvasDocument(snapshot.document);
     setTitle(snapshot.title);
     setNodes(hydrateMediaNodes(document.nodes, libraryRef.current));
-    setEdges(document.edges.map((edge) => ({ ...edge, type: connectionStyle })));
+    setEdges(document.edges.map((edge) => decorateCanvasEdge(edge, document.nodes, connectionStyle)));
     setViewportState(document.viewport);
     setInfoOpen(false);
     historySignatureRef.current = "";
@@ -1444,7 +1447,7 @@ function CanvasWorkspaceInner({ accountName, isTeamOwner, isInternalCanvas }: { 
     pushHistorySnapshot();
     setTitle(nextTitle);
     setNodes(hydrateMediaNodes(document.nodes, libraryRef.current));
-    setEdges(document.edges.map((edge) => ({ ...edge, type: connectionStyle })));
+    setEdges(document.edges.map((edge) => decorateCanvasEdge(edge, document.nodes, connectionStyle)));
     setViewportState(document.viewport);
     setInfoOpen(false);
     historySignatureRef.current = "";
@@ -1666,14 +1669,14 @@ function CanvasWorkspaceInner({ accountName, isTeamOwner, isInternalCanvas }: { 
               onZoomOut={() => { void flow.zoomOut(); }}
               onZoomIn={() => { void flow.zoomIn(); }}
             />
-          ) : selectedEdge ? (
-            <CanvasEdgeSelectionToolbar style={edgeToolbarStyle} onDelete={() => removeEdge(selectedEdge.id)} />
           ) : null}
           <CanvasNodeActionsContext.Provider value={nodeActions}>
+            <CanvasEdgeActionsContext.Provider value={edgeActions}>
             <ReactFlow<CanvasFlowNode, Edge>
               nodes={nodes}
               edges={edges}
               nodeTypes={nodeTypes}
+              edgeTypes={edgeTypes}
               onNodesChange={onNodesChange}
               onEdgesChange={onEdgesChange}
               onConnect={onConnect}
@@ -1701,10 +1704,12 @@ function CanvasWorkspaceInner({ accountName, isTeamOwner, isInternalCanvas }: { 
                 if (item) addLibraryNode(item, flow.screenToFlowPosition({ x: event.clientX, y: event.clientY }));
               }}
               defaultEdgeOptions={{
-                type: connectionStyle,
+                type: "canvas-edge",
                 markerEnd: { type: MarkerType.ArrowClosed },
                 style: { strokeWidth: 1.5 },
               }}
+              connectionLineComponent={CanvasConnectionLine}
+              connectionDragThreshold={10}
               defaultViewport={viewport}
               minZoom={0.08}
               maxZoom={2.5}
@@ -1724,6 +1729,7 @@ function CanvasWorkspaceInner({ accountName, isTeamOwner, isInternalCanvas }: { 
               <MiniMap pannable zoomable nodeColor={miniMapColor} />
               <Controls showInteractive={false} />
             </ReactFlow>
+            </CanvasEdgeActionsContext.Provider>
           </CanvasNodeActionsContext.Provider>
           {contextMenu ? (
             <CanvasContextMenu
@@ -2002,15 +2008,6 @@ function CanvasBatchToolbar({ count, style, onConnect, onGroup, onDuplicate, onD
       <button type="button" onClick={onGroup} title="建立节点分组" aria-label="建立节点分组"><Layers3 /><span>分组</span></button>
       <button type="button" onClick={onDuplicate} title="批量复制" aria-label="批量复制"><CopyPlus /><span>复制</span></button>
       <button type="button" onClick={onDelete} title="批量删除" aria-label="批量删除"><Trash2 /><span>删除</span></button>
-    </div>
-  );
-}
-
-function CanvasEdgeSelectionToolbar({ style, onDelete }: { style?: CSSProperties; onDelete: () => void }) {
-  return (
-    <div className="canvas-selection-toolbar canvas-selection-toolbar--edge" style={style} role="toolbar" aria-label="选中连线工具">
-      <span><Link2 />连线</span>
-      <button type="button" onClick={onDelete} title="删除连线" aria-label="删除连线"><Trash2 /><span>删除</span></button>
     </div>
   );
 }
