@@ -134,8 +134,14 @@ function normalizeNode(value: unknown): CanvasStoredNode {
     if (error) data.error = error;
   }
 
-  const width = optionalDimension(value.width);
-  const height = optionalDimension(value.height);
+  if (kind === "group") {
+    data.collapsed = Boolean(value.data.collapsed);
+    data.expandedWidth = boundedNumber(value.data.expandedWidth, 360, 2_400, 640);
+    data.expandedHeight = boundedNumber(value.data.expandedHeight, 280, 1_800, 480);
+  }
+
+  const width = optionalDimension(value.width, kind === "group" ? 220 : 160, kind === "group" ? 2_400 : 1_200);
+  const height = optionalDimension(value.height, kind === "group" ? 44 : 160, kind === "group" ? 1_800 : 1_200);
   const parentId = optionalIdentifier(value.parentId, 160);
   return {
     id,
@@ -191,9 +197,9 @@ function defaultNodeTitle(kind: CanvasNodeKind, generationKind: unknown) {
   return generationKind === "video" ? "视频生成" : "图片生成";
 }
 
-function optionalDimension(value: unknown) {
+function optionalDimension(value: unknown, min = 160, max = 1_200) {
   if (value === undefined || value === null) return undefined;
-  return boundedNumber(value, 160, 1_200, 320);
+  return boundedNumber(value, min, max, 320);
 }
 
 function identifier(value: unknown, label: string, maxLength = 160) {

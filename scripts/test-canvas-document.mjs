@@ -52,13 +52,17 @@ assert.equal(imageGenerator.nodes[0].data.count, 8);
 
 const grouped = normalizeCanvasDocument({
   nodes: [
-    { id: "group-1", type: "group", position: { x: 0, y: 0 }, width: 640, height: 480, data: { kind: "group", title: "广告分组" } },
+    { id: "group-1", type: "group", position: { x: 0, y: 0 }, width: 280, height: 44, data: { kind: "group", title: "广告分组", collapsed: true, expandedWidth: 640, expandedHeight: 480 } },
     { id: "node-prompt-1", type: "canvas", parentId: "group-1", extent: "parent", position: { x: 24, y: 56 }, data: { kind: "prompt", title: "提示词", prompt: "test" } },
   ],
   edges: [],
   viewport: { x: 0, y: 0, zoom: 1 },
 });
 assert.equal(grouped.nodes[0].type, "group");
+assert.equal(grouped.nodes[0].height, 44);
+assert.equal(grouped.nodes[0].data.collapsed, true);
+assert.equal(grouped.nodes[0].data.expandedWidth, 640);
+assert.equal(grouped.nodes[0].data.expandedHeight, 480);
 assert.equal(grouped.nodes[1].parentId, "group-1");
 assert.equal(grouped.nodes[1].extent, "parent");
 
@@ -104,7 +108,7 @@ assert.throws(
 
 console.log(JSON.stringify({
   ok: true,
-  checks: 13,
+  checks: 17,
   generationSubmitted: false,
   databaseWritten: false,
 }));

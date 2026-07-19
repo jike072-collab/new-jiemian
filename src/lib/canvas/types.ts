@@ -26,6 +26,9 @@ export type CanvasNodeData = Record<string, unknown> & {
   outputNodeId?: string;
   error?: string;
   mediaUrl?: string;
+  collapsed?: boolean;
+  expandedWidth?: number;
+  expandedHeight?: number;
 };
 
 export type CanvasStoredNode = {

@@ -146,6 +146,15 @@ function decorateCanvasEdge(edge: Edge | CanvasStoredEdge, nodes: Array<CanvasFl
   };
 }
 
+function applyCollapsedGroupVisibility(nodes: CanvasFlowNode[], edges: Edge[]) {
+  const collapsedGroups = new Set(nodes.filter((node) => node.data.kind === "group" && node.data.collapsed).map((node) => node.id));
+  const hiddenNodes = new Set(nodes.filter((node) => node.parentId && collapsedGroups.has(node.parentId)).map((node) => node.id));
+  return {
+    nodes: nodes.map((node) => ({ ...node, hidden: hiddenNodes.has(node.id) })),
+    edges: edges.map((edge) => ({ ...edge, hidden: hiddenNodes.has(edge.source) || hiddenNodes.has(edge.target) })),
+  };
+}
+
 function canvasScope() {
   if (typeof window === "undefined") return "shared" as const;
   return new URLSearchParams(window.location.search).get("scope") === "personal" ? "personal" as const : "shared" as const;
@@ -354,8 +363,12 @@ function CanvasWorkspaceInner({ accountName, isTeamOwner, isInternalCanvas }: { 
     setActiveProjectId(project.id);
     setTitle(project.title);
     const hydratedNodes = hydrateMediaNodes(project.document.nodes, items);
-    setNodes(hydratedNodes);
-    setEdges(project.document.edges.map((edge) => decorateCanvasEdge(edge, hydratedNodes, connectionStyle)));
+    const hydrated = applyCollapsedGroupVisibility(
+      hydratedNodes,
+      project.document.edges.map((edge) => decorateCanvasEdge(edge, hydratedNodes, connectionStyle)),
+    );
+    setNodes(hydrated.nodes);
+    setEdges(hydrated.edges);
     setViewportState(project.document.viewport);
     revisionRef.current = 0;
     savedRevisionRef.current = 0;
@@ -534,6 +547,34 @@ function CanvasWorkspaceInner({ accountName, isTeamOwner, isInternalCanvas }: { 
     pushHistorySnapshot();
     setNodes((current) => current.filter((node) => !ids.has(node.id)));
     setEdges((current) => current.filter((edge) => !ids.has(edge.source) && !ids.has(edge.target)));
+    markDirty();
+  }, [markDirty, pushHistorySnapshot]);
+
+  const toggleGroupCollapsed = useCallback((id: string) => {
+    const group = nodesRef.current.find((node) => node.id === id && node.data.kind === "group");
+    if (!group) return;
+    pushHistorySnapshot();
+    const collapsed = !group.data.collapsed;
+    const expandedWidth = collapsed ? group.width || 640 : Number(group.data.expandedWidth) || 640;
+    const expandedHeight = collapsed ? group.height || 480 : Number(group.data.expandedHeight) || 480;
+    const nextNodes = nodesRef.current.map((node) => {
+      if (node.id === id) {
+        const width = collapsed ? 280 : expandedWidth;
+        const height = collapsed ? 44 : expandedHeight;
+        return {
+          ...node,
+          width,
+          height,
+          style: { ...node.style, width, height },
+          data: { ...node.data, collapsed, expandedWidth, expandedHeight },
+        };
+      }
+      if (node.parentId === id) return { ...node, hidden: collapsed, selected: collapsed ? false : node.selected };
+      return node;
+    });
+    const hiddenNodes = new Set(nextNodes.filter((node) => node.hidden).map((node) => node.id));
+    setNodes(nextNodes);
+    setEdges((current) => current.map((edge) => ({ ...edge, hidden: hiddenNodes.has(edge.source) || hiddenNodes.has(edge.target) })));
     markDirty();
   }, [markDirty, pushHistorySnapshot]);
 
@@ -803,7 +844,8 @@ function CanvasWorkspaceInner({ accountName, isTeamOwner, isInternalCanvas }: { 
     updateNodeData: (id: string, patch: Partial<CanvasNodeData>) => updateNodeData(id, patch),
     removeNode,
     runGenerator: (id: string) => { void executeGenerator(id); },
-  }), [executeGenerator, inputPreviews, inputSummary, isInternalCanvas, providers, removeNode, updateNodeData]);
+    toggleGroup: toggleGroupCollapsed,
+  }), [executeGenerator, inputPreviews, inputSummary, isInternalCanvas, providers, removeNode, toggleGroupCollapsed, updateNodeData]);
 
   const onNodesChange = useCallback((changes: NodeChange<CanvasFlowNode>[]) => {
     if (changes.some((change) => change.type !== "select" && !(change.type === "position" && change.dragging))) {
@@ -1145,15 +1187,17 @@ function CanvasWorkspaceInner({ accountName, isTeamOwner, isInternalCanvas }: { 
     const groupId = canvasId("group");
     const groupPosition = { x: minX - padding, y: minY - header - padding / 2 };
     const selectedIds = new Set(selected.map((node) => node.id));
+    const groupWidth = Math.max(360, maxX - minX + padding * 2);
+    const groupHeight = Math.max(280, maxY - minY + header + padding);
     const groupNode: CanvasFlowNode = {
       id: groupId,
       type: "group",
       dragHandle: ".canvas-node-group__header",
       position: groupPosition,
-      width: Math.max(360, maxX - minX + padding * 2),
-      height: Math.max(280, maxY - minY + header + padding),
+      width: groupWidth,
+      height: groupHeight,
       selected: true,
-      data: { kind: "group", title: `节点分组 ${nodesRef.current.filter((node) => node.data.kind === "group").length + 1}`, createdAt: new Date().toISOString() },
+      data: { kind: "group", title: `节点分组 ${nodesRef.current.filter((node) => node.data.kind === "group").length + 1}`, createdAt: new Date().toISOString(), collapsed: false, expandedWidth: groupWidth, expandedHeight: groupHeight },
     };
     setNodes((current) => [
       groupNode,
@@ -1187,7 +1231,7 @@ function CanvasWorkspaceInner({ accountName, isTeamOwner, isInternalCanvas }: { 
       void _parentId;
       void _extent;
       void _expandParent;
-      return [{ ...rest, selected: true, position: { x: node.position.x + parentPosition.x, y: node.position.y + parentPosition.y } } as CanvasFlowNode];
+      return [{ ...rest, hidden: false, selected: true, position: { x: node.position.x + parentPosition.x, y: node.position.y + parentPosition.y } } as CanvasFlowNode];
     }));
     setContextMenu(null);
     markDirty();
@@ -1358,8 +1402,10 @@ function CanvasWorkspaceInner({ accountName, isTeamOwner, isInternalCanvas }: { 
     syncHistoryState();
     const document = normalizeCanvasDocument(snapshot.document);
     setTitle(snapshot.title);
-    setNodes(hydrateMediaNodes(document.nodes, libraryRef.current));
-    setEdges(document.edges.map((edge) => decorateCanvasEdge(edge, document.nodes, connectionStyle)));
+    const hydratedNodes = hydrateMediaNodes(document.nodes, libraryRef.current);
+    const hydrated = applyCollapsedGroupVisibility(hydratedNodes, document.edges.map((edge) => decorateCanvasEdge(edge, hydratedNodes, connectionStyle)));
+    setNodes(hydrated.nodes);
+    setEdges(hydrated.edges);
     setViewportState(document.viewport);
     setInfoOpen(false);
     historySignatureRef.current = "";
@@ -1376,8 +1422,10 @@ function CanvasWorkspaceInner({ accountName, isTeamOwner, isInternalCanvas }: { 
     syncHistoryState();
     const document = normalizeCanvasDocument(snapshot.document);
     setTitle(snapshot.title);
-    setNodes(hydrateMediaNodes(document.nodes, libraryRef.current));
-    setEdges(document.edges.map((edge) => decorateCanvasEdge(edge, document.nodes, connectionStyle)));
+    const hydratedNodes = hydrateMediaNodes(document.nodes, libraryRef.current);
+    const hydrated = applyCollapsedGroupVisibility(hydratedNodes, document.edges.map((edge) => decorateCanvasEdge(edge, hydratedNodes, connectionStyle)));
+    setNodes(hydrated.nodes);
+    setEdges(hydrated.edges);
     setViewportState(document.viewport);
     setInfoOpen(false);
     historySignatureRef.current = "";
@@ -1456,8 +1504,10 @@ function CanvasWorkspaceInner({ accountName, isTeamOwner, isInternalCanvas }: { 
       : titleRef.current;
     pushHistorySnapshot();
     setTitle(nextTitle);
-    setNodes(hydrateMediaNodes(document.nodes, libraryRef.current));
-    setEdges(document.edges.map((edge) => decorateCanvasEdge(edge, document.nodes, connectionStyle)));
+    const hydratedNodes = hydrateMediaNodes(document.nodes, libraryRef.current);
+    const hydrated = applyCollapsedGroupVisibility(hydratedNodes, document.edges.map((edge) => decorateCanvasEdge(edge, hydratedNodes, connectionStyle)));
+    setNodes(hydrated.nodes);
+    setEdges(hydrated.edges);
     setViewportState(document.viewport);
     setInfoOpen(false);
     historySignatureRef.current = "";
@@ -1671,6 +1721,7 @@ function CanvasWorkspaceInner({ accountName, isTeamOwner, isInternalCanvas }: { 
               style={selectionToolbarStyle}
               onInfo={() => setInfoOpen(true)}
               onUngroup={ungroupSelectedNodes}
+              onToggleGroup={() => toggleGroupCollapsed(selectedNode.id)}
               onDelete={() => removeNode(selectedNode.id)}
               onSaveMaterial={saveSelectedMaterial}
               onEdit={editSelected}
@@ -1967,6 +2018,7 @@ function CanvasSelectionToolbar({
   style,
   onInfo,
   onUngroup,
+  onToggleGroup,
   onDelete,
   onSaveMaterial,
   onEdit,
@@ -1979,6 +2031,7 @@ function CanvasSelectionToolbar({
   style?: CSSProperties;
   onInfo: () => void;
   onUngroup: () => void;
+  onToggleGroup: () => void;
   onDelete: () => void;
   onSaveMaterial: () => void;
   onEdit: () => void;
@@ -1990,6 +2043,7 @@ function CanvasSelectionToolbar({
   return (
     <div className="canvas-selection-toolbar" style={style} role="toolbar" aria-label="选中节点工具">
       <button type="button" onClick={onInfo} title="节点信息" aria-label="节点信息"><Info /><span>信息</span></button>
+      {node.data.kind === "group" ? <button type="button" onClick={onToggleGroup} title={node.data.collapsed ? "展开分组" : "折叠分组"} aria-label={node.data.collapsed ? "展开选中分组" : "折叠选中分组"}><Layers3 /><span>{node.data.collapsed ? "展开" : "折叠"}</span></button> : null}
       {node.data.kind === "group" ? <button type="button" onClick={onUngroup} title="解除分组" aria-label="解除分组"><Ungroup /><span>解组</span></button> : null}
       <button type="button" onClick={onDelete} title="删除节点" aria-label="删除节点"><Trash2 /><span>删除</span></button>
       {node.data.kind !== "group" ? <button type="button" onClick={onSaveMaterial} title="保存到素材库" aria-label="保存到素材库"><FolderOpen /><span>存素材</span></button> : null}

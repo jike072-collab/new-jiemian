@@ -3,6 +3,8 @@
 import {
   AlertCircle,
   Check,
+  ChevronDown,
+  ChevronRight,
   Eye,
   EyeOff,
   Film,
@@ -43,6 +45,7 @@ type CanvasNodeActions = {
   updateNodeData: (id: string, patch: Partial<CanvasNodeData>) => void;
   removeNode: (id: string) => void;
   runGenerator: (id: string) => void;
+  toggleGroup: (id: string) => void;
 };
 
 export const CanvasNodeActionsContext = createContext<CanvasNodeActions | null>(null);
@@ -75,18 +78,26 @@ export function CanvasNode({ id, data, selected }: NodeProps<CanvasFlowNode>) {
   );
 }
 
-export function CanvasGroupNode({ data, selected }: NodeProps<CanvasFlowNode>) {
+export function CanvasGroupNode({ id, data, selected }: NodeProps<CanvasFlowNode>) {
+  const actions = useCanvasNodeActions();
+  const collapsed = Boolean(data.collapsed);
   return (
-    <section className={cn("canvas-node-group", selected && "is-selected")}>
+    <section className={cn("canvas-node-group", selected && "is-selected", collapsed && "is-collapsed")}>
       <NodeResizer
         color="var(--primary)"
-        isVisible={selected}
+        isVisible={selected && !collapsed}
         minWidth={360}
         minHeight={280}
         maxWidth={2_400}
         maxHeight={1_800}
       />
-      <header className="canvas-node-group__header"><Layers3 /><strong>{data.title}</strong></header>
+      <header className="canvas-node-group__header">
+        <Layers3 />
+        <strong>{data.title}</strong>
+        <button type="button" className="canvas-node__icon-button nodrag" onClick={() => actions.toggleGroup(id)} title={collapsed ? "展开分组" : "折叠分组"} aria-label={collapsed ? "展开分组" : "折叠分组"}>
+          {collapsed ? <ChevronRight /> : <ChevronDown />}
+        </button>
+      </header>
     </section>
   );
 }

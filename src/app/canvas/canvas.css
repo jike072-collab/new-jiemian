@@ -728,6 +728,8 @@
   background: color-mix(in srgb, var(--surface) 24%, transparent);
 }
 .canvas-node-group.is-selected { border-color: var(--primary); background: color-mix(in srgb, var(--primary) 7%, transparent); }
+.canvas-node-group.is-collapsed { overflow: hidden; border-style: solid; background: var(--panel-2); }
+.canvas-node-group.is-collapsed .canvas-node-group__header { height: 42px; border-bottom: 0; }
 .canvas-node-group__header {
   display: flex;
   align-items: center;
