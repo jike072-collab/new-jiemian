@@ -2,6 +2,14 @@
 
 import Link from "next/link";
 import {
+  AlignCenterHorizontal,
+  AlignCenterVertical,
+  AlignEndHorizontal,
+  AlignEndVertical,
+  AlignHorizontalSpaceBetween,
+  AlignStartHorizontal,
+  AlignStartVertical,
+  AlignVerticalSpaceBetween,
   Copy,
   CopyPlus,
   ArrowLeft,
@@ -125,6 +133,7 @@ type CanvasContextMenuState = {
   edgeId?: string;
 };
 type CanvasClipboard = { nodes: CanvasFlowNode[]; edges: Edge[] };
+type CanvasBatchArrangeMode = "left" | "horizontal-center" | "right" | "top" | "vertical-center" | "bottom" | "distribute-horizontal" | "distribute-vertical";
 
 const nodeTypes = { canvas: CanvasNode, group: CanvasGroupNode };
 const edgeTypes = { "canvas-edge": CanvasEdge };
@@ -1208,6 +1217,64 @@ function CanvasWorkspaceInner({ accountName, isTeamOwner, isInternalCanvas }: { 
     markDirty();
   }, [connectionStyle, isValidConnection, markDirty, pushHistorySnapshot]);
 
+  const arrangeSelectedNodes = useCallback((mode: CanvasBatchArrangeMode) => {
+    const selected = nodesRef.current.filter((node) => node.selected && !node.hidden);
+    const distributing = mode === "distribute-horizontal" || mode === "distribute-vertical";
+    if (selected.length < (distributing ? 3 : 2)) {
+      setNotice(distributing ? "均匀分布至少需要三个节点。" : "对齐至少需要两个节点。");
+      return;
+    }
+    if (selected.some((node) => node.data.locked)) {
+      setNotice("请先解锁选中的节点再排列。");
+      return;
+    }
+    if (new Set(selected.map((node) => node.parentId || "root")).size > 1) {
+      setNotice("请选择同一分组层级中的节点进行排列。");
+      return;
+    }
+
+    const dimensions = new Map(selected.map((node) => [node.id, {
+      width: node.measured?.width || node.width || 340,
+      height: node.measured?.height || node.height || (node.data.kind === "generator" ? 560 : 280),
+    }]));
+    const minX = Math.min(...selected.map((node) => node.position.x));
+    const minY = Math.min(...selected.map((node) => node.position.y));
+    const maxX = Math.max(...selected.map((node) => node.position.x + dimensions.get(node.id)!.width));
+    const maxY = Math.max(...selected.map((node) => node.position.y + dimensions.get(node.id)!.height));
+    const positions = new Map<string, { x: number; y: number }>();
+
+    if (mode === "distribute-horizontal") {
+      const sorted = [...selected].sort((left, right) => left.position.x - right.position.x);
+      const totalWidth = sorted.reduce((total, node) => total + dimensions.get(node.id)!.width, 0);
+      const gap = Math.max(24, (maxX - minX - totalWidth) / (sorted.length - 1));
+      let x = minX;
+      sorted.forEach((node) => {
+        positions.set(node.id, { x, y: node.position.y });
+        x += dimensions.get(node.id)!.width + gap;
+      });
+    } else if (mode === "distribute-vertical") {
+      const sorted = [...selected].sort((left, right) => left.position.y - right.position.y);
+      const totalHeight = sorted.reduce((total, node) => total + dimensions.get(node.id)!.height, 0);
+      const gap = Math.max(24, (maxY - minY - totalHeight) / (sorted.length - 1));
+      let y = minY;
+      sorted.forEach((node) => {
+        positions.set(node.id, { x: node.position.x, y });
+        y += dimensions.get(node.id)!.height + gap;
+      });
+    } else {
+      selected.forEach((node) => {
+        const size = dimensions.get(node.id)!;
+        const x = mode === "left" ? minX : mode === "horizontal-center" ? (minX + maxX - size.width) / 2 : mode === "right" ? maxX - size.width : node.position.x;
+        const y = mode === "top" ? minY : mode === "vertical-center" ? (minY + maxY - size.height) / 2 : mode === "bottom" ? maxY - size.height : node.position.y;
+        positions.set(node.id, { x, y });
+      });
+    }
+
+    pushHistorySnapshot();
+    setNodes((current) => current.map((node) => positions.has(node.id) ? { ...node, position: positions.get(node.id)! } : node));
+    markDirty();
+  }, [markDirty, pushHistorySnapshot]);
+
   const groupSelectedNodes = useCallback((nodeIds?: string[]) => {
     const requestedIds = nodeIds?.length ? new Set(nodeIds) : null;
     const selected = nodesRef.current.filter((node) => (requestedIds ? requestedIds.has(node.id) : node.selected) && !node.parentId && node.data.kind !== "group");
@@ -1804,6 +1871,7 @@ function CanvasWorkspaceInner({ accountName, isTeamOwner, isInternalCanvas }: { 
               count={selectedNodes.length}
               style={selectionToolbarStyle}
               onConnect={connectSelectedNodes}
+              onArrange={arrangeSelectedNodes}
               onGroup={groupSelectedNodes}
               onDuplicate={duplicateSelectedNodes}
               onDelete={removeSelectedNodes}
@@ -2194,10 +2262,11 @@ function CanvasSelectionToolbar({
   );
 }
 
-function CanvasBatchToolbar({ count, style, onConnect, onGroup, onDuplicate, onDelete }: {
+function CanvasBatchToolbar({ count, style, onConnect, onArrange, onGroup, onDuplicate, onDelete }: {
   count: number;
   style?: CSSProperties;
   onConnect: () => void;
+  onArrange: (mode: CanvasBatchArrangeMode) => void;
   onGroup: () => void;
   onDuplicate: () => void;
   onDelete: () => void;
@@ -2206,11 +2275,31 @@ function CanvasBatchToolbar({ count, style, onConnect, onGroup, onDuplicate, onD
     <div className="canvas-selection-toolbar canvas-selection-toolbar--batch" style={style} role="toolbar" aria-label="批量节点工具">
       <strong>{count} 个节点</strong>
       <button type="button" onClick={onConnect} title="按位置连接" aria-label="按位置连接"><Link2 /><span>连接</span></button>
+      <details className="canvas-batch-menu">
+        <summary role="button" aria-haspopup="menu" title="批量排列" aria-label="批量排列"><AlignCenterVertical /><span>排列</span></summary>
+        <div className="canvas-batch-menu__popover" role="menu" aria-label="批量排列选项">
+          <span className="canvas-batch-menu__label">对齐</span>
+          <button type="button" role="menuitem" onClick={(event) => chooseBatchArrange(event, onArrange, "left")}><AlignStartVertical />左对齐</button>
+          <button type="button" role="menuitem" onClick={(event) => chooseBatchArrange(event, onArrange, "horizontal-center")}><AlignCenterVertical />水平居中</button>
+          <button type="button" role="menuitem" onClick={(event) => chooseBatchArrange(event, onArrange, "right")}><AlignEndVertical />右对齐</button>
+          <button type="button" role="menuitem" onClick={(event) => chooseBatchArrange(event, onArrange, "top")}><AlignStartHorizontal />顶部对齐</button>
+          <button type="button" role="menuitem" onClick={(event) => chooseBatchArrange(event, onArrange, "vertical-center")}><AlignCenterHorizontal />垂直居中</button>
+          <button type="button" role="menuitem" onClick={(event) => chooseBatchArrange(event, onArrange, "bottom")}><AlignEndHorizontal />底部对齐</button>
+          <span className="canvas-batch-menu__label">分布</span>
+          <button type="button" role="menuitem" onClick={(event) => chooseBatchArrange(event, onArrange, "distribute-horizontal")}><AlignHorizontalSpaceBetween />水平分布</button>
+          <button type="button" role="menuitem" onClick={(event) => chooseBatchArrange(event, onArrange, "distribute-vertical")}><AlignVerticalSpaceBetween />垂直分布</button>
+        </div>
+      </details>
       <button type="button" onClick={onGroup} title="建立节点分组" aria-label="建立节点分组"><Layers3 /><span>分组</span></button>
       <button type="button" onClick={onDuplicate} title="批量复制" aria-label="批量复制"><CopyPlus /><span>复制</span></button>
       <button type="button" onClick={onDelete} title="批量删除" aria-label="批量删除"><Trash2 /><span>删除</span></button>
     </div>
   );
+}
+
+function chooseBatchArrange(event: ReactMouseEvent<HTMLButtonElement>, onArrange: (mode: CanvasBatchArrangeMode) => void, mode: CanvasBatchArrangeMode) {
+  onArrange(mode);
+  event.currentTarget.closest("details")?.removeAttribute("open");
 }
 
 function CanvasContextMenu({

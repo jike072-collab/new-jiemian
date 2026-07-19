@@ -419,6 +419,7 @@
 }
 
 .canvas-selection-toolbar button,
+.canvas-selection-toolbar summary,
 .canvas-bottom-dock button {
   display: inline-flex;
   align-items: center;
@@ -437,6 +438,8 @@
 
 .canvas-selection-toolbar button:hover,
 .canvas-selection-toolbar button:focus-visible,
+.canvas-selection-toolbar summary:hover,
+.canvas-selection-toolbar summary:focus-visible,
 .canvas-bottom-dock button:hover,
 .canvas-bottom-dock button:focus-visible,
 .canvas-bottom-dock button.is-active {
@@ -448,6 +451,27 @@
 .canvas-selection-toolbar button:disabled { cursor: default; opacity: 0.35; }
 .canvas-selection-toolbar svg,
 .canvas-bottom-dock svg { width: 16px; height: 16px; }
+.canvas-batch-menu { position: relative; }
+.canvas-batch-menu > summary { list-style: none; }
+.canvas-batch-menu > summary::-webkit-details-marker { display: none; }
+.canvas-batch-menu__popover {
+  position: absolute;
+  z-index: 12;
+  top: calc(100% + 9px);
+  left: 50%;
+  display: grid;
+  width: 232px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 3px;
+  transform: translateX(-50%);
+  border: 1px solid var(--border-strong);
+  border-radius: 7px;
+  background: color-mix(in srgb, var(--panel) 98%, transparent);
+  box-shadow: 0 16px 42px rgba(0, 0, 0, 0.36);
+  padding: 6px;
+}
+.canvas-selection-toolbar .canvas-batch-menu__popover button { justify-content: flex-start; min-width: 0; height: 32px; padding: 0 8px; font-size: 10px; }
+.canvas-batch-menu__label { grid-column: 1 / -1; color: var(--muted); padding: 5px 7px 2px; font-size: 9px; }
 .canvas-selection-toolbar__divider,
 .canvas-bottom-dock__divider { width: 1px; height: 22px; margin: 0 6px; background: rgba(255, 255, 255, 0.16); }
 .canvas-edge-toolbar {
