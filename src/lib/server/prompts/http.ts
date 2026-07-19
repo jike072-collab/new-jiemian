@@ -5,6 +5,7 @@ import {
   authRequestContext,
   authResultResponse,
   csrfFailure,
+  isInternalCanvasHostname,
   requireAuthSession,
   requireCsrf,
   readJsonBody,
@@ -60,9 +61,11 @@ export async function optimizePromptResponse(request: NextRequest) {
 
   const body = await readJsonBody(request);
   const idempotencyKey = String(body.idempotencyKey || body.taskId || context.requestId || `prompt-${randomUUID()}`).trim();
+  const billingMode = isInternalCanvasHostname(request.headers.get("host")) ? "internal_free" as const : "standard" as const;
+  const estimatedQuotaUnits = billingMode === "internal_free" ? 0 : PROMPT_OPTIMIZE_QUOTA_UNITS;
   const membership = getMembershipService();
-  const membershipStatus = await membership.getStatus(session.user.local_user_id);
-  const hasPromptEntitlement = membershipStatus.entitlements.prompt_optimize.remaining > 0;
+  const membershipStatus = billingMode === "standard" ? await membership.getStatus(session.user.local_user_id) : null;
+  const hasPromptEntitlement = (membershipStatus?.entitlements.prompt_optimize.remaining || 0) > 0;
   const taskBilling = getTaskBillingService();
   const requestFingerprint = `prompt_optimize:${idempotencyKey}`;
   let promptEntitlementConsumed = 0;
@@ -84,16 +87,17 @@ export async function optimizePromptResponse(request: NextRequest) {
       localUserId: session.user.local_user_id,
       taskId: idempotencyKey,
       operation: "prompt_optimize",
-      estimatedQuotaUnits: PROMPT_OPTIMIZE_QUOTA_UNITS,
+      estimatedQuotaUnits,
       idempotencyKey,
       requestFingerprint,
+      billingMode,
     });
     if (!precheck.ok) return failureResponse(precheck);
     taskBillingEntitlementConsumed = precheck.record.membership_entitlement_units || 0;
     const claimed = await taskBilling.claimProviderDispatch({
       localUserId: session.user.local_user_id,
       taskId: idempotencyKey,
-      estimatedQuotaUnits: PROMPT_OPTIMIZE_QUOTA_UNITS,
+      estimatedQuotaUnits,
       idempotencyKey,
       requestFingerprint,
     });
@@ -150,7 +154,7 @@ export async function optimizePromptResponse(request: NextRequest) {
     const settled = await taskBilling.settleSuccess({
       localUserId: session.user.local_user_id,
       taskId: idempotencyKey,
-      actualQuotaUnits: PROMPT_OPTIMIZE_QUOTA_UNITS,
+      actualQuotaUnits: estimatedQuotaUnits,
     });
     if (!settled.ok) return failureResponse(settled);
   }
