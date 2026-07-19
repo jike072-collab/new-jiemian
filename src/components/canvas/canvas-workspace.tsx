@@ -16,6 +16,7 @@ import {
   LoaderCircle,
   Link2,
   Maximize2,
+  MousePointer2,
   PanelLeftClose,
   PanelLeftOpen,
   Palette,
@@ -56,6 +57,7 @@ import {
   MiniMap,
   ReactFlow,
   ReactFlowProvider,
+  SelectionMode,
   useReactFlow,
   type Connection,
   type Edge,
@@ -1417,9 +1419,13 @@ function CanvasWorkspaceInner({ accountName, isTeamOwner, isInternalCanvas }: { 
               maxZoom={2.5}
               panOnScroll
               panOnDrag={panMode}
+              panActivationKeyCode="Space"
               snapToGrid={snapEnabled}
               snapGrid={[24, 24]}
               selectionOnDrag={!panMode}
+              selectionKeyCode={null}
+              selectionMode={SelectionMode.Partial}
+              multiSelectionKeyCode={["Control", "Meta", "Shift"]}
               proOptions={{ hideAttribution: true }}
             >
               <Background variant={BackgroundVariant.Dots} gap={24} size={1.2} />
@@ -1429,7 +1435,8 @@ function CanvasWorkspaceInner({ accountName, isTeamOwner, isInternalCanvas }: { 
           </CanvasNodeActionsContext.Provider>
           <CanvasBottomDock
             panMode={panMode}
-            onTogglePan={() => setPanMode((value) => !value)}
+            onSelectMode={() => setPanMode(false)}
+            onPanMode={() => setPanMode(true)}
             onAddPrompt={addPromptNode}
             onAddImage={() => addGeneratorNode("image")}
             onAddVideo={() => addGeneratorNode("video")}
@@ -1725,7 +1732,8 @@ function CanvasSettingsPanel({
 
 function CanvasBottomDock({
   panMode,
-  onTogglePan,
+  onSelectMode,
+  onPanMode,
   onAddPrompt,
   onAddImage,
   onAddVideo,
@@ -1743,7 +1751,8 @@ function CanvasBottomDock({
   onHelp,
 }: {
   panMode: boolean;
-  onTogglePan: () => void;
+  onSelectMode: () => void;
+  onPanMode: () => void;
   onAddPrompt: () => void;
   onAddImage: () => void;
   onAddVideo: () => void;
@@ -1762,7 +1771,8 @@ function CanvasBottomDock({
 }) {
   return (
     <nav className="canvas-bottom-dock" aria-label="画布工具">
-      <button type="button" className={cn(panMode && "is-active")} onClick={onTogglePan} title="移动画布" aria-label="移动画布"><Hand /></button>
+      <button type="button" className={cn(!panMode && "is-active")} onClick={onSelectMode} title="框选节点" aria-label="框选节点"><MousePointer2 /></button>
+      <button type="button" className={cn(panMode && "is-active")} onClick={onPanMode} title="移动画布" aria-label="移动画布"><Hand /></button>
       <button type="button" onClick={onAddPrompt} title="添加提示词" aria-label="添加提示词"><Type /></button>
       <button type="button" onClick={onAddImage} title="添加生图节点" aria-label="添加生图节点"><ImageIcon /></button>
       <button type="button" onClick={onAddVideo} title="添加生视频节点" aria-label="添加生视频节点"><Film /></button>

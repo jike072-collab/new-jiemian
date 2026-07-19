@@ -74,6 +74,11 @@ assert.match(canvasNode, /canvas-node__preview-strip/);
 assert.match(canvasCss, /canvas-node-info/);
 assert.match(canvasCss, /canvas-node__preview-strip/);
 assert.match(workspace, /selectedNodes/);
+assert.match(workspace, /selectionOnDrag=\{!panMode\}/);
+assert.match(workspace, /selectionMode=\{SelectionMode\.Partial\}/);
+assert.match(workspace, /multiSelectionKeyCode=\{\["Control", "Meta", "Shift"\]\}/);
+assert.match(workspace, /aria-label="框选节点"/);
+assert.match(workspace, /aria-label="移动画布"/);
 assert.match(workspace, /duplicateSelectedNodes/);
 assert.match(workspace, /connectSelectedNodes/);
 assert.match(workspace, /cleanCanvas/);
@@ -90,6 +95,7 @@ assert.match(libraryRoute, /requireCsrf/);
 assert.match(canvasCss, /\.canvas-node__body--generator[^}]+overflow: visible/s);
 assert.match(canvasCss, /\.react-flow__node-canvas:has\(\.canvas-node--generator\)/);
 assert.match(canvasCss, /canvas-image-editor/);
+assert.match(canvasCss, /react-flow__selection/);
 assert.match(canvasCss, /data-canvas-theme="light"/);
 
 console.log(JSON.stringify({

@@ -340,6 +340,12 @@
   background: #0b0b0e;
 }
 
+.canvas-stage .react-flow__selection,
+.canvas-stage .react-flow__nodesselection-rect {
+  border: 1px solid color-mix(in srgb, var(--primary) 85%, white 8%);
+  background: color-mix(in srgb, var(--primary) 12%, transparent);
+}
+
 .canvas-selection-toolbar,
 .canvas-bottom-dock {
   position: absolute;
