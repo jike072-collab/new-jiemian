@@ -1975,6 +1975,7 @@ function CanvasWorkspaceInner({ accountName, isTeamOwner, isInternalCanvas }: { 
       />
 
       <div className="canvas-workspace">
+        {libraryOpen ? <button type="button" className="canvas-library-scrim" aria-label="关闭素材库" title="关闭素材库" onClick={() => setLibraryOpen(false)} /> : null}
         <LibraryPanel
           open={libraryOpen}
           items={filteredLibrary}

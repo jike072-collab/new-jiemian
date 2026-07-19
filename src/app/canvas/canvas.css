@@ -214,6 +214,7 @@
   min-height: 0;
   overflow: hidden;
 }
+.canvas-library-scrim { display: none; }
 
 .canvas-team-panel {
   position: fixed;
@@ -1390,10 +1391,13 @@
   .canvas-image-editor footer { align-items: stretch; flex-direction: column; }
   .canvas-image-editor footer button { width: 100%; }
   .canvas-sync-state { display: none; }
-  .canvas-selection-toolbar { top: 8px !important; left: 8px !important; right: 8px; transform: none !important; justify-content: center; padding: 5px; }
+  .canvas-selection-toolbar { top: 8px !important; left: 8px !important; right: 8px; transform: none !important; justify-content: flex-start; overflow-x: auto; padding: 5px; scrollbar-width: none; -webkit-overflow-scrolling: touch; }
+  .canvas-selection-toolbar::-webkit-scrollbar,
+  .canvas-bottom-dock::-webkit-scrollbar,
+  .canvas-toolbar__tools::-webkit-scrollbar { display: none; }
   .canvas-selection-toolbar button { min-width: 30px; padding: 0 4px; }
   .canvas-selection-toolbar button span { display: none; }
-  .canvas-bottom-dock { right: 8px; left: 8px; transform: none; justify-content: flex-start; overflow-x: auto; }
+  .canvas-bottom-dock { right: 8px; bottom: max(8px, env(safe-area-inset-bottom)); left: 8px; transform: none; justify-content: flex-start; overflow-x: auto; overscroll-behavior-x: contain; scrollbar-width: none; -webkit-overflow-scrolling: touch; }
   .canvas-node-info { top: 56px; right: 8px; left: 8px; width: auto; max-height: calc(100% - 132px); }
   .aohuang-canvas-page { grid-template-rows: 104px minmax(0, 1fr); }
   .canvas-toolbar {
@@ -1412,7 +1416,10 @@
   .canvas-toolbar__tools {
     grid-column: 2;
     grid-row: 1;
+    overflow-x: auto;
     padding-right: 0;
+    scrollbar-width: none;
+    -webkit-overflow-scrolling: touch;
   }
   .canvas-toolbar__account {
     position: static;
@@ -1434,6 +1441,8 @@
     transition: transform var(--motion-layout) var(--ease-enter);
   }
 
+  .canvas-library-scrim { position: absolute; z-index: 11; inset: 0; display: block; border: 0; background: rgba(0, 0, 0, 0.42); padding: 0; }
+
   .canvas-library.is-open {
     width: min(86vw, 320px);
     min-width: min(86vw, 320px);
@@ -1441,6 +1450,17 @@
   }
 
   .canvas-stage .react-flow__minimap { display: none; }
+}
+
+@media (pointer: coarse) {
+  .canvas-bottom-dock button,
+  .canvas-selection-toolbar button,
+  .canvas-selection-toolbar summary { min-width: 42px; height: 42px; flex: 0 0 42px; }
+  .canvas-library-item__actions button { width: 40px; height: 40px; }
+  .canvas-library-item__main { min-height: 60px; }
+  .canvas-stage .react-flow__handle { width: 18px; height: 18px; }
+  .canvas-node__header,
+  .canvas-node-group__header { touch-action: none; }
 }
 
 @media (max-width: 520px) {
