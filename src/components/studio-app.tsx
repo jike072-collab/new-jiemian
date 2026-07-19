@@ -2430,6 +2430,8 @@ export function StudioApp() {
           hasImage: videoWorkspaceHasFiles,
           aspectRatio: videoWorkspace.ratio,
           duration: videoWorkspace.duration,
+          model: selectedVideoProvider?.model,
+          referenceMediaTypes: [...new Set(videoWorkspace.files.map((file) => file.mediaType))],
           preferences,
         }),
       });
@@ -2456,8 +2458,10 @@ export function StudioApp() {
   }, [
     refreshQuotaSnapshot,
     sessionUser?.local_user_id,
+    selectedVideoProvider?.model,
     updateVideoWorkspace,
     videoWorkspace.duration,
+    videoWorkspace.files,
     videoWorkspace.prompt,
     videoWorkspace.promptOptimizing,
     videoWorkspace.ratio,

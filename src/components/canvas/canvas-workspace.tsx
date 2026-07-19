@@ -31,6 +31,7 @@ import {
   Lock,
   Maximize2,
   MousePointer2,
+  Music,
   PanelLeftClose,
   PanelLeftOpen,
   Palette,
@@ -112,6 +113,7 @@ import type {
   CanvasNodeData,
   CanvasProject,
   CanvasProjectDocument,
+  CanvasSequenceState,
   CanvasStoredEdge,
   CanvasStoredNode,
 } from "@/lib/canvas/types";
@@ -139,6 +141,12 @@ type CanvasContextMenuState = {
 };
 type CanvasClipboard = { nodes: CanvasFlowNode[]; edges: Edge[] };
 type CanvasBatchArrangeMode = "left" | "horizontal-center" | "right" | "top" | "vertical-center" | "bottom" | "distribute-horizontal" | "distribute-vertical";
+type CanvasMediaReference = {
+  id: string;
+  type: CanvasMediaType;
+  title: string;
+  output?: { url: string; mimeType?: string };
+};
 
 const nodeTypes = { canvas: CanvasNode, group: CanvasGroupNode };
 const edgeTypes = { "canvas-edge": CanvasEdge };
@@ -148,7 +156,7 @@ const libraryDragType = "application/x-aohuang-library-item";
 
 function canvasEdgeLabel(source: CanvasFlowNode | CanvasStoredNode | undefined) {
   if (source?.data.kind === "prompt") return "提示词";
-  if (source?.data.kind === "media") return source.data.mediaType === "video" ? "参考视频" : "参考图";
+  if (source?.data.kind === "media") return source.data.mediaType === "video" ? "参考视频" : source.data.mediaType === "audio" ? "参考音频" : "参考图";
   if (source?.data.kind === "generator") return "生成结果";
   return "输入";
 }
@@ -289,6 +297,7 @@ function CanvasWorkspaceInner({ accountName, isTeamOwner, isInternalCanvas }: { 
   const viewportRef = useRef(viewport);
   const stageRef = useRef<HTMLElement | null>(null);
   const importInputRef = useRef<HTMLInputElement | null>(null);
+  const audioInputRef = useRef<HTMLInputElement | null>(null);
   const clipboardRef = useRef<CanvasClipboard | null>(null);
   const activeProjectRef = useRef<CanvasProject | null>(null);
   const loadedRef = useRef(false);
@@ -813,6 +822,31 @@ function CanvasWorkspaceInner({ accountName, isTeamOwner, isInternalCanvas }: { 
     markDirty();
   }, [addNodeAtCenter, flow, markDirty, pushHistorySnapshot]);
 
+  const addAudioReference = useCallback(async (file: File) => {
+    if (!isInternalCanvas) {
+      setNotice("音频参考素材只在内部画布可用。");
+      return;
+    }
+    setNotice("正在上传音频参考素材…");
+    try {
+      const form = new FormData();
+      form.append("file", file);
+      const result = await fetchJsonWithCsrf<{ url: string; title?: string; mimeType?: string }>("/api/canvas/audio", { method: "POST", body: form });
+      addNodeAtCenter({
+        kind: "media",
+        title: result.title || file.name || "音频参考",
+        mediaType: "audio",
+        mediaUrl: result.url,
+        createdAt: new Date().toISOString(),
+        status: "done",
+        notes: "Seedance 参考音频。请连接到视频生成节点，并在提示词中使用 @AudioN 指定音频职责。",
+      }, { width: 320, height: 180 });
+      setNotice("已添加音频参考节点。");
+    } catch (error) {
+      setNotice(apiMessage(error, "音频上传失败。"));
+    }
+  }, [addNodeAtCenter, isInternalCanvas]);
+
   const addLibraryNodes = useCallback((items: LibraryItem[]) => {
     const existingIds = new Set(nodesRef.current.flatMap((node) => node.data.kind === "media" && node.data.libraryItemId ? [node.data.libraryItemId] : []));
     const seen = new Set<string>();
@@ -907,6 +941,12 @@ function CanvasWorkspaceInner({ accountName, isTeamOwner, isInternalCanvas }: { 
         status: libraryStatus(item),
         progress: job?.progress || 0,
         error: item.error || undefined,
+        ...(item.type === "video" ? {
+          sequenceState: {
+            ...(generator.data.sequenceState || {}),
+            accepted: item.status === "done" || job?.status === "done",
+          },
+        } : {}),
       },
     };
     setNodes((current) => [
@@ -941,9 +981,21 @@ function CanvasWorkspaceInner({ accountName, isTeamOwner, isInternalCanvas }: { 
     }
 
     const mediaItems = inputs
-      .filter((node) => node.data.kind === "media" && node.data.libraryItemId)
-      .map((node) => libraryRef.current.find((item) => item.id === node.data.libraryItemId))
-      .filter((item): item is LibraryItem => Boolean(item));
+      .filter((node) => node.data.kind === "media" && (node.data.libraryItemId || node.data.mediaUrl))
+      .flatMap<CanvasMediaReference>((node) => {
+        if (node.data.kind !== "media") return [];
+        const libraryItem = node.data.libraryItemId
+          ? libraryRef.current.find((item) => item.id === node.data.libraryItemId)
+          : undefined;
+        if (libraryItem) return [libraryItem as CanvasMediaReference];
+        if (!node.data.mediaUrl || !node.data.mediaType) return [];
+        return [{
+          id: `canvas-${node.id}`,
+          type: node.data.mediaType,
+          title: node.data.title,
+          output: { url: node.data.mediaUrl, mimeType: node.data.mediaType === "audio" ? "audio/mpeg" : node.data.mediaType === "video" ? "video/mp4" : "image/png" },
+        }];
+      });
     const providerList = generator.data.generationKind === "image" ? providersRef.current.image : providersRef.current.video;
     const provider = providerList.find((item) => item.id === generator.data.providerId) || providerList[0];
     if (!provider) {
@@ -980,17 +1032,18 @@ function CanvasWorkspaceInner({ accountName, isTeamOwner, isInternalCanvas }: { 
       const target = nodeMap.get(edge.target);
       const source = nodeMap.get(edge.source);
       if (target?.data.kind !== "generator" || !source) return;
-      const summary = summaries[target.id] || { prompts: 0, images: 0, videos: 0 };
+      const summary = summaries[target.id] || { prompts: 0, images: 0, videos: 0, audios: 0 };
       if (source.data.kind === "prompt" && String(source.data.prompt || "").trim()) summary.prompts += 1;
       if (source.data.kind === "media" && source.data.mediaType === "image") summary.images += 1;
       if (source.data.kind === "media" && source.data.mediaType === "video") summary.videos += 1;
+      if (source.data.kind === "media" && source.data.mediaType === "audio") summary.audios += 1;
       summaries[target.id] = summary;
     });
     return summaries;
   }, [edges, nodes]);
 
   const inputPreviews = useMemo(() => {
-    const previews: Record<string, Array<{ url: string; mediaType: "image" | "video"; title: string }>> = {};
+    const previews: Record<string, Array<{ url: string; mediaType: CanvasMediaType; title: string }>> = {};
     const nodeMap = new Map(nodes.map((node) => [node.id, node]));
     edges.forEach((edge) => {
       const target = nodeMap.get(edge.target);
@@ -1000,7 +1053,7 @@ function CanvasWorkspaceInner({ accountName, isTeamOwner, isInternalCanvas }: { 
       if (current.length >= 4) return;
       current.push({
         url: source.data.mediaUrl,
-        mediaType: source.data.mediaType === "video" ? "video" : "image",
+        mediaType: source.data.mediaType || "image",
         title: source.data.title,
       });
       previews[target.id] = current;
@@ -1015,14 +1068,14 @@ function CanvasWorkspaceInner({ accountName, isTeamOwner, isInternalCanvas }: { 
       const generatorId = edges.find((edge) => edge.source === promptNode.id && nodeMap.get(edge.target)?.data.kind === "generator")?.target;
       if (!generatorId) return;
       const mediaIds = new Set(edges.filter((edge) => edge.target === generatorId && nodeMap.get(edge.source)?.data.kind === "media").map((edge) => edge.source));
-      const counts: Record<CanvasMediaType, number> = { image: 0, video: 0 };
+      const counts: Record<CanvasMediaType, number> = { image: 0, video: 0, audio: 0 };
       const options: CanvasPromptReference[] = [];
       nodes.forEach((node) => {
         if (!mediaIds.has(node.id) || node.data.kind !== "media" || !node.data.mediaUrl) return;
-        const mediaType = node.data.mediaType === "video" ? "video" : "image";
+        const mediaType = node.data.mediaType || "image";
         counts[mediaType] += 1;
         options.push({
-          label: `${mediaType === "video" ? "Video" : "Image"}${counts[mediaType]}`,
+          label: `${mediaType === "video" ? "Video" : mediaType === "audio" ? "Audio" : "Image"}${counts[mediaType]}`,
           mediaType,
           title: node.data.title,
           url: node.data.mediaUrl,
@@ -1516,7 +1569,7 @@ function CanvasWorkspaceInner({ accountName, isTeamOwner, isInternalCanvas }: { 
     textarea?.focus();
   }, [selectedNode]);
   const saveSelectedMaterial = useCallback(() => {
-    setNotice(selectedNode?.data.kind === "media" ? "素材已保存在作品库，可从左侧素材库再次使用。" : "只有图片或视频节点可以保存素材。");
+    setNotice(selectedNode?.data.kind === "media" && selectedNode.data.mediaType !== "audio" ? "素材已保存在作品库，可从左侧素材库再次使用。" : selectedNode?.data.kind === "media" ? "音频参考已保留在当前画布中。" : "只有媒体节点可以保存素材。");
   }, [selectedNode]);
   const editSelected = useCallback(() => {
     if (!selectedNode) return;
@@ -1540,7 +1593,7 @@ function CanvasWorkspaceInner({ accountName, isTeamOwner, isInternalCanvas }: { 
       void executeGenerator(selectedNode.id);
       return;
     }
-    createGeneratorFromSelected(selectedNode, selectedNode.data.kind === "media" && selectedNode.data.mediaType === "video" ? "video" : "image");
+    createGeneratorFromSelected(selectedNode, selectedNode.data.kind === "media" && selectedNode.data.mediaType === "image" ? "image" : "video");
   }, [createGeneratorFromSelected, executeGenerator, selectedNode]);
 
   const organizeCanvas = useCallback((layout: "flow" | "grid" = "flow") => {
@@ -1567,6 +1620,88 @@ function CanvasWorkspaceInner({ accountName, isTeamOwner, isInternalCanvas }: { 
     markDirty();
     window.requestAnimationFrame(() => { void flowRef.current.fitView({ duration: 260, padding: 0.16 }); });
   }, [markDirty, pushHistorySnapshot]);
+
+  const addStoryboardNodes = useCallback((action: Extract<CanvasAssistantAction, { type: "add_storyboard" }>) => {
+    if (!action.shots.length) return;
+    const provider = providersRef.current.video[0] as WorkspacePublicProvider | undefined;
+    if (!provider) {
+      setNotice("当前没有可用的视频模型，分镜节点未创建。");
+      return;
+    }
+    pushHistorySnapshot();
+    const center = flowRef.current.screenToFlowPosition({ x: window.innerWidth / 2, y: window.innerHeight / 2 });
+    const projectId = activeProjectRef.current?.id;
+    const nextNodes: CanvasFlowNode[] = [];
+    const nextEdges: Edge[] = [];
+    action.shots.forEach((shot, index) => {
+      const column = index % 2;
+      const row = Math.floor(index / 2);
+      const x = center.x - 420 + column * 820;
+      const y = center.y - 260 + row * 520;
+      const promptId = canvasId("node");
+      const generatorId = canvasId("node");
+      const sequenceState: CanvasSequenceState = {
+        ...(shot.sequenceState || {}),
+        ...(projectId ? { projectId } : {}),
+        shotId: shot.shotId,
+      };
+      nextNodes.push({
+        id: promptId,
+        type: "canvas",
+        dragHandle: ".canvas-node__header",
+        position: { x, y },
+        width: 360,
+        height: 280,
+        data: {
+          kind: "prompt",
+          title: `${shot.shotId} · ${shot.title}`,
+          prompt: shot.prompt,
+          createdAt: new Date().toISOString(),
+          notes: shot.timeRange ? `时间轴：${shot.timeRange}` : undefined,
+          referenceBindings: shot.referenceBindings,
+          sequenceState,
+        },
+      });
+      nextNodes.push({
+        id: generatorId,
+        type: "canvas",
+        dragHandle: ".canvas-node__header",
+        position: { x: x + 430, y: y - 10 },
+        width: 360,
+        height: 410,
+        data: {
+          kind: "generator",
+          title: `${shot.shotId} · 视频生成`,
+          generationKind: "video",
+          providerId: provider.id,
+          model: provider.model,
+          createdAt: new Date().toISOString(),
+          sourceNodeIds: [promptId],
+          ratio: provider.videoOptions?.ratios?.[0] || "16:9",
+          quality: "1k",
+          duration: provider.videoOptions?.durations?.[0] || 5,
+          resolution: provider.videoOptions?.resolutions?.[0] || provider.videoOptions?.resolution || "720p",
+          status: "idle",
+          progress: 0,
+          sequenceState,
+        },
+      });
+      nextEdges.push(decorateCanvasEdge({
+        id: canvasId("edge"),
+        source: promptId,
+        sourceHandle: "output",
+        target: generatorId,
+        targetHandle: "input",
+      }, [...nodesRef.current, ...nextNodes], connectionStyle));
+    });
+    const presented = applyCanvasNodePresentation([...nodesRef.current, ...nextNodes], [...edgesRef.current, ...nextEdges]);
+    nodesRef.current = presented.nodes;
+    edgesRef.current = presented.edges;
+    setNodes(presented.nodes);
+    setEdges(presented.edges);
+    markDirty();
+    setNotice(`已创建 ${action.shots.length} 个分镜提示词和视频生成节点，请逐个确认后生成。`);
+  }, [connectionStyle, markDirty, pushHistorySnapshot]);
 
   const applyAssistantActions = useCallback((input: CanvasAssistantAction[]) => {
     const actions = normalizeCanvasAssistantResponse({ reply: "已应用", actions: input }).actions;
@@ -1605,10 +1740,18 @@ function CanvasWorkspaceInner({ accountName, isTeamOwner, isInternalCanvas }: { 
         groupSelectedNodes(action.nodeIds);
       } else if (action.type === "ungroup") {
         ungroupSelectedNodes([action.groupId]);
+      } else if (action.type === "annotate_references") {
+        const node = nodesRef.current.find((item) => item.id === action.promptNodeId && item.data.kind === "prompt");
+        if (node) updateNodeData(node.id, { referenceBindings: action.bindings });
+      } else if (action.type === "annotate_sequence") {
+        const node = nodesRef.current.find((item) => item.id === action.nodeId);
+        if (node) updateNodeData(node.id, { sequenceState: action.sequenceState });
+      } else if (action.type === "add_storyboard") {
+        addStoryboardNodes(action);
       }
     }
     setNotice(actions.length ? `已应用 ${actions.length} 项助手操作。` : "助手没有请求可应用的画布操作。");
-  }, [addGeneratorNode, addPromptNode, connectionStyle, groupSelectedNodes, markDirty, organizeCanvas, pushHistorySnapshot, ungroupSelectedNodes, updateNodeData]);
+  }, [addGeneratorNode, addPromptNode, addStoryboardNodes, connectionStyle, groupSelectedNodes, markDirty, organizeCanvas, pushHistorySnapshot, ungroupSelectedNodes, updateNodeData]);
 
   const submitEditedImage = useCallback(async (file: File, prompt: string) => {
     const source = nodesRef.current.find((node) => node.id === editingNodeId && node.data.kind === "media");
@@ -2012,6 +2155,7 @@ function CanvasWorkspaceInner({ accountName, isTeamOwner, isInternalCanvas }: { 
         onAddPrompt={addPromptNode}
         onAddImage={() => addGeneratorNode("image")}
         onAddVideo={() => addGeneratorNode("video")}
+        onAddAudio={isInternalCanvas ? () => audioInputRef.current?.click() : undefined}
         onUndo={undoCanvas}
         onRedo={redoCanvas}
         onImport={triggerImport}
@@ -2046,6 +2190,17 @@ function CanvasWorkspaceInner({ accountName, isTeamOwner, isInternalCanvas }: { 
           void file.text().then((text) => importCanvasFromText(text)).catch((error) => {
             setNotice(apiMessage(error, "Canvas import failed."));
           });
+        }}
+      />
+      <input
+        ref={audioInputRef}
+        type="file"
+        accept="audio/mpeg,audio/mp4,audio/x-m4a,audio/wav,audio/x-wav,.mp3,.m4a,.wav"
+        className="canvas-import-input"
+        onChange={(event) => {
+          const file = event.target.files?.[0];
+          event.target.value = "";
+          if (file) void addAudioReference(file);
         }}
       />
 
@@ -2173,6 +2328,7 @@ function CanvasWorkspaceInner({ accountName, isTeamOwner, isInternalCanvas }: { 
               onAddPrompt={() => { addPromptNode(undefined, contextMenu.flowPosition); setContextMenu(null); }}
               onAddImage={() => { addGeneratorNode("image", contextMenu.flowPosition); setContextMenu(null); }}
               onAddVideo={() => { addGeneratorNode("video", contextMenu.flowPosition); setContextMenu(null); }}
+              onAddAudio={isInternalCanvas ? () => { audioInputRef.current?.click(); setContextMenu(null); } : undefined}
               onCopy={copySelectedNodes}
               onPaste={() => pasteCopiedNodes(contextMenu.flowPosition)}
               onSelectAll={selectAllVisibleNodes}
@@ -2189,6 +2345,7 @@ function CanvasWorkspaceInner({ accountName, isTeamOwner, isInternalCanvas }: { 
             onAddPrompt={addPromptNode}
             onAddImage={() => addGeneratorNode("image")}
             onAddVideo={() => addGeneratorNode("video")}
+            onAddAudio={isInternalCanvas ? () => audioInputRef.current?.click() : undefined}
             onOpenLibrary={() => setLibraryOpen(true)}
             onUndo={undoCanvas}
             onRedo={redoCanvas}
@@ -2271,6 +2428,9 @@ function CanvasWorkspaceInner({ accountName, isTeamOwner, isInternalCanvas }: { 
                 title: node.data.title,
                 prompt: node.data.kind === "prompt" ? node.data.prompt : undefined,
                 selected: Boolean(node.selected),
+                mediaType: node.data.kind === "media" ? node.data.mediaType : undefined,
+                referenceBindings: node.data.referenceBindings,
+                sequenceState: node.data.sequenceState,
               }))}
               onApply={applyAssistantActions}
               onClose={() => setAssistantOpen(false)}
@@ -2337,6 +2497,7 @@ function CanvasToolbar({
   onAddPrompt,
   onAddImage,
   onAddVideo,
+  onAddAudio,
   onUndo,
   onRedo,
   onImport,
@@ -2370,6 +2531,7 @@ function CanvasToolbar({
   onAddPrompt: () => void;
   onAddImage: () => void;
   onAddVideo: () => void;
+  onAddAudio?: () => void;
   onUndo: () => void;
   onRedo: () => void;
   onImport: () => void;
@@ -2416,6 +2578,7 @@ function CanvasToolbar({
         <button type="button" className="canvas-tool-button" aria-label="添加提示词节点" title="添加提示词节点" onClick={onAddPrompt}><Type /><span>提示词</span></button>
         <button type="button" className="canvas-tool-button" aria-label="添加图片生成节点" title="添加图片生成节点" onClick={onAddImage}><Sparkles /><span>生图</span></button>
         <button type="button" className="canvas-tool-button" aria-label="添加视频生成节点" title="添加视频生成节点" onClick={onAddVideo}><Film /><span>生视频</span></button>
+        {onAddAudio ? <button type="button" className="canvas-tool-button" aria-label="添加音频参考" title="添加音频参考" onClick={onAddAudio}><Music /><span>音频</span></button> : null}
         <button type="button" className="canvas-icon-button" aria-label="撤销" title="撤销" disabled={!canUndo} onClick={onUndo}><Undo2 /></button>
         <button type="button" className="canvas-icon-button" aria-label="重做" title="重做" disabled={!canRedo} onClick={onRedo}><Redo2 /></button>
         <button type="button" className="canvas-icon-button" aria-label="导入画布" title="导入画布" onClick={onImport}><Upload /></button>
@@ -2473,7 +2636,7 @@ function CanvasSelectionToolbar({
       {node.data.kind !== "group" ? <button type="button" onClick={onSaveMaterial} title="保存到素材库" aria-label="保存到素材库"><FolderOpen /><span>存素材</span></button> : null}
       {node.data.kind !== "group" ? <button type="button" onClick={onEdit} title="编辑节点" aria-label="编辑节点"><Sparkles /><span>编辑</span></button> : null}
       {node.data.kind !== "group" ? <button type="button" onClick={onEditText} title="编辑文字" aria-label="编辑文字" disabled={node.data.kind !== "prompt"}><Type /><span>编辑文字</span></button> : null}
-      {node.data.kind !== "group" ? <button type="button" onClick={onGenerate} title="生成图片或视频" aria-label="生成图片或视频"><ImageIcon /><span>{node.data.kind === "media" && node.data.mediaType === "video" ? "生视频" : "生图"}</span></button> : null}
+      {node.data.kind !== "group" ? <button type="button" onClick={onGenerate} title="生成图片或视频" aria-label="生成图片或视频"><ImageIcon /><span>{node.data.kind === "media" && node.data.mediaType !== "image" ? "生视频" : "生图"}</span></button> : null}
       <span className="canvas-selection-toolbar__divider" aria-hidden="true" />
       <button type="button" onClick={onZoomOut} title="缩小画布" aria-label="缩小画布"><ZoomOut /></button>
       <button type="button" onClick={onZoomIn} title="放大画布" aria-label="放大画布"><ZoomIn /></button>
@@ -2528,6 +2691,7 @@ function CanvasContextMenu({
   onAddPrompt,
   onAddImage,
   onAddVideo,
+  onAddAudio,
   onCopy,
   onPaste,
   onSelectAll,
@@ -2542,6 +2706,7 @@ function CanvasContextMenu({
   onAddPrompt: () => void;
   onAddImage: () => void;
   onAddVideo: () => void;
+  onAddAudio?: () => void;
   onCopy: () => void;
   onPaste: () => void;
   onSelectAll: () => void;
@@ -2557,6 +2722,7 @@ function CanvasContextMenu({
           <button type="button" role="menuitem" onClick={onAddPrompt}><Type /><span>添加提示词</span></button>
           <button type="button" role="menuitem" onClick={onAddImage}><ImageIcon /><span>添加生图节点</span></button>
           <button type="button" role="menuitem" onClick={onAddVideo}><Film /><span>添加视频节点</span></button>
+          {onAddAudio ? <button type="button" role="menuitem" onClick={onAddAudio}><Music /><span>添加音频参考</span></button> : null}
           <button type="button" role="menuitem" onClick={onPaste} disabled={!canPaste}><CopyPlus /><span>粘贴节点</span><kbd>Ctrl V</kbd></button>
           <button type="button" role="menuitem" onClick={onSelectAll}><MousePointer2 /><span>全选节点</span><kbd>Ctrl A</kbd></button>
           <button type="button" role="menuitem" onClick={onFit}><Maximize2 /><span>查看全部</span></button>
@@ -2618,6 +2784,7 @@ function CanvasBottomDock({
   onAddPrompt,
   onAddImage,
   onAddVideo,
+  onAddAudio,
   onOpenLibrary,
   onUndo,
   onRedo,
@@ -2637,6 +2804,7 @@ function CanvasBottomDock({
   onAddPrompt: () => void;
   onAddImage: () => void;
   onAddVideo: () => void;
+  onAddAudio?: () => void;
   onOpenLibrary: () => void;
   onUndo: () => void;
   onRedo: () => void;
@@ -2658,6 +2826,7 @@ function CanvasBottomDock({
       <button type="button" onClick={onAddPrompt} title="添加提示词" aria-label="添加提示词"><Type /></button>
       <button type="button" onClick={onAddImage} title="添加生图节点" aria-label="添加生图节点"><ImageIcon /></button>
       <button type="button" onClick={onAddVideo} title="添加生视频节点" aria-label="添加生视频节点"><Film /></button>
+      {onAddAudio ? <button type="button" onClick={onAddAudio} title="添加音频参考" aria-label="添加音频参考"><Music /></button> : null}
       <button type="button" onClick={onOpenLibrary} title="打开素材库" aria-label="打开素材库"><Upload /></button>
       <button type="button" onClick={onUndo} title="撤销" aria-label="撤销"><Undo2 /></button>
       <button type="button" onClick={onRedo} title="重做" aria-label="重做"><Redo2 /></button>
@@ -2713,11 +2882,11 @@ function CanvasLayersPanel({
         {orderedNodes.length ? orderedNodes.map((node) => {
           const inheritedHidden = Boolean(node.parentId && nodeById.get(node.parentId)?.hidden);
           const visible = !node.hidden;
-          const kindLabel = node.data.kind === "prompt" ? "提示词" : node.data.kind === "media" ? (node.data.mediaType === "video" ? "视频" : "图片") : node.data.kind === "generator" ? (node.data.generationKind === "video" ? "视频生成" : "图片生成") : "分组";
+          const kindLabel = node.data.kind === "prompt" ? "提示词" : node.data.kind === "media" ? (node.data.mediaType === "video" ? "视频" : node.data.mediaType === "audio" ? "音频" : "图片") : node.data.kind === "generator" ? (node.data.generationKind === "video" ? "视频生成" : "图片生成") : "分组";
           return (
             <div key={node.id} className={cn("canvas-layers__row", node.parentId && "is-child", node.selected && "is-selected", !visible && "is-hidden")}>
               <button type="button" className="canvas-layers__name" disabled={!visible} aria-label={`定位到${node.data.title}`} title={visible ? `定位到${node.data.title}` : "节点已隐藏，请先恢复显示"} onClick={() => onSelect(node.id)}>
-                {node.data.kind === "group" ? <Layers3 /> : node.data.kind === "prompt" ? <Type /> : node.data.kind === "media" ? (node.data.mediaType === "video" ? <Film /> : <ImageIcon />) : <Sparkles />}
+                {node.data.kind === "group" ? <Layers3 /> : node.data.kind === "prompt" ? <Type /> : node.data.kind === "media" ? (node.data.mediaType === "video" ? <Film /> : node.data.mediaType === "audio" ? <Music /> : <ImageIcon />) : <Sparkles />}
                 <span><strong>{node.data.title}</strong><small>{kindLabel}</small></span>
               </button>
               <div className="canvas-layers__actions">
@@ -3147,7 +3316,7 @@ async function submitImageGeneration(
   data: CanvasNodeData,
   provider: FrontendProvider,
   prompt: string,
-  references: LibraryItem[],
+  references: CanvasMediaReference[],
   addResultNode: (generatorId: string, item: LibraryItem, job?: JobRecord | null, resultIndex?: number, resultTotal?: number) => void,
   updateNodeData: (id: string, patch: Partial<CanvasNodeData>, persist?: boolean) => void,
   internalCanvas: boolean,
@@ -3208,24 +3377,27 @@ async function submitVideoGeneration(
   data: CanvasNodeData,
   provider: WorkspacePublicProvider,
   prompt: string,
-  references: LibraryItem[],
+  references: CanvasMediaReference[],
   addResultNode: (generatorId: string, item: LibraryItem, job?: JobRecord | null, resultIndex?: number, resultTotal?: number) => void,
   updateNodeData: (id: string, patch: Partial<CanvasNodeData>, persist?: boolean) => void,
 ) {
   const images = references.filter((item) => item.type === "image");
   const videos = references.filter((item) => item.type === "video");
+  const audios = references.filter((item) => item.type === "audio");
   const options = provider.videoOptions;
   if (images.length > (options?.maxReferenceImages ?? 1)) throw new Error(`当前模型最多支持 ${options?.maxReferenceImages ?? 1} 张参考图。`);
   if (videos.length > (options?.maxReferenceVideos ?? 0)) throw new Error("当前模型不支持这么多参考视频。");
+  if (audios.length > (options?.maxReferenceAudios ?? 0)) throw new Error("当前模型不支持这么多参考音频。");
   if (options?.requiredReferenceMedia?.includes("image") && !images.length) throw new Error("当前模型需要参考图。");
   if (options?.requiredReferenceMedia?.includes("video") && !videos.length) throw new Error("当前模型需要参考视频。");
-  if (options?.requiredReferenceMedia?.includes("audio")) throw new Error("当前画布暂不支持必填音频素材，请在主工作台使用该模型。");
+  if (options?.requiredReferenceMedia?.includes("audio") && !audios.length) throw new Error("当前模型需要参考音频。");
   if (options?.maxPromptCharacters && prompt.length > options.maxPromptCharacters) {
     throw new Error(`当前模型提示词最多 ${options.maxPromptCharacters} 个字符。`);
   }
 
   const imageFiles = await Promise.all(images.map(libraryItemFile));
   const videoFiles = await Promise.all(videos.map(libraryItemFile));
+  const audioFiles = await Promise.all(audios.map(libraryItemFile));
 
   const taskId = canvasId("canvas-video");
   const mode = references.length ? "image-to-video" as const : "text-to-video" as const;
@@ -3276,6 +3448,7 @@ async function submitVideoGeneration(
   form.set("estimatedQuotaUnits", String(estimatedQuotaUnits));
   imageFiles.forEach((file) => form.append("referenceImages", file));
   videoFiles.forEach((file) => form.append("referenceVideos", file));
+  audioFiles.forEach((file) => form.append("referenceAudios", file));
   const response = await fetchJsonWithCsrf<{ item: LibraryItem; job: JobRecord | null }>("/api/generate/video", { method: "POST", body: form });
   addResultNode(generatorId, response.item, response.job);
   updateNodeData(generatorId, {
@@ -3283,24 +3456,28 @@ async function submitVideoGeneration(
     progress: response.job?.progress || 0,
     jobId: response.job?.id,
     error: response.job?.error || response.item.error || undefined,
+    sequenceState: {
+      ...(data.sequenceState || {}),
+      accepted: response.job?.status === "done" || response.item.status === "done",
+    },
   });
 }
 
-async function libraryItemFile(item: LibraryItem) {
+async function libraryItemFile(item: CanvasMediaReference) {
   const url = item.output?.url;
   if (!url) throw new Error(`素材“${item.title}”暂时没有可用文件。`);
   const response = await fetch(url, { credentials: "same-origin", cache: "no-store" });
   if (!response.ok) throw new Error(`无法读取素材“${item.title}”。`);
   const blob = await response.blob();
-  const extension = item.type === "video" ? "mp4" : blob.type.includes("jpeg") ? "jpg" : "png";
-  return new File([blob], `${item.id}.${extension}`, { type: blob.type || item.output?.mimeType || (item.type === "video" ? "video/mp4" : "image/png") });
+  const extension = item.type === "video" ? "mp4" : item.type === "audio" ? "mp3" : blob.type.includes("jpeg") ? "jpg" : "png";
+  return new File([blob], `${item.id}.${extension}`, { type: blob.type || item.output?.mimeType || (item.type === "video" ? "video/mp4" : item.type === "audio" ? "audio/mpeg" : "image/png") });
 }
 
 function serializeDocument(nodes: CanvasFlowNode[], edges: Edge[], viewport: Viewport): CanvasProjectDocument {
   return {
     nodes: nodes.map((node) => {
       const data = { ...node.data };
-      delete data.mediaUrl;
+      if (data.mediaType !== "audio") delete data.mediaUrl;
       return {
         id: node.id,
         type: node.data.kind === "group" ? "group" : "canvas",

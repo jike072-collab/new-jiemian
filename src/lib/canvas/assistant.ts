@@ -1,3 +1,5 @@
+import type { CanvasMediaType, CanvasReferenceBinding, CanvasSequenceState } from "./types";
+
 export type CanvasAssistantAction =
   | { type: "add_prompt"; title?: string; prompt: string }
   | { type: "add_generator"; generationKind: "image" | "video" }
@@ -6,7 +8,21 @@ export type CanvasAssistantAction =
   | { type: "select_nodes"; nodeIds: string[] }
   | { type: "connect_nodes"; sourceNodeIds: string[]; targetNodeId: string }
   | { type: "group_nodes"; nodeIds: string[] }
-  | { type: "ungroup"; groupId: string };
+  | { type: "ungroup"; groupId: string }
+  | { type: "annotate_references"; promptNodeId: string; bindings: CanvasReferenceBinding[] }
+  | { type: "annotate_sequence"; nodeId: string; sequenceState: CanvasSequenceState }
+  | {
+    type: "add_storyboard";
+    title?: string;
+    shots: Array<{
+      shotId: string;
+      title: string;
+      prompt: string;
+      timeRange?: string;
+      referenceBindings?: CanvasReferenceBinding[];
+      sequenceState?: CanvasSequenceState;
+    }>;
+  };
 
 export type CanvasAssistantResponse = {
   reply: string;
@@ -16,7 +32,7 @@ export type CanvasAssistantResponse = {
 export function localCanvasAssistantFallback(input: {
   message: string;
   canvasTitle?: string;
-  nodes?: Array<{ kind: "prompt" | "media" | "generator" | "group"; title: string; prompt?: string; selected?: boolean }>;
+  nodes?: Array<{ kind: "prompt" | "media" | "generator" | "group"; title: string; prompt?: string; selected?: boolean; mediaType?: CanvasMediaType; sequenceState?: CanvasSequenceState }>;
 }): CanvasAssistantResponse | null {
   const message = boundedText(input.message, 1_200);
   const nodes = Array.isArray(input.nodes) ? input.nodes.slice(0, 120) : [];
@@ -38,6 +54,35 @@ export function localCanvasAssistantFallback(input: {
   }
   const selectedPrompt = nodes.find((node) => node.kind === "prompt" && node.selected)?.prompt?.trim();
   const sourcePrompt = selectedPrompt || nodes.find((node) => node.kind === "prompt")?.prompt?.trim();
+  if (/(续写|延长|继续上一段|下一段)/.test(message)) {
+    const acceptedVideo = nodes.find((node) => node.kind === "media" && node.mediaType === "video" && node.sequenceState?.accepted);
+    if (!acceptedVideo) {
+      return { reply: "续写前需要画布中存在一个已成功的视频节点，并记录它的实际结束状态；当前没有满足条件的素材。", actions: [] };
+    }
+    return {
+      reply: "我会基于已成功视频的实际结束状态创建下一段提示词，请先确认提示词后再生成。",
+      actions: [{
+        type: "add_prompt",
+        title: "Seedance 续写提示词",
+        prompt: `${sourcePrompt || "沿用已成功视频"}，从已成功视频的实际结束状态继续，保持人物身份、服装、场景和运动方向连续，只推进一个新的主要动作，不重复已经完成的动作。`,
+      }],
+    };
+  }
+  if (/(分镜|镜头脚本|多集|故事拆解)/.test(message)) {
+    const subject = sourcePrompt || boundedText(input.canvasTitle, 120) || "当前故事主题";
+    return {
+      reply: "上游助手暂时不可用，我已生成 3 个可继续编辑的基础分镜节点；请确认每个镜头后再逐个生成。",
+      actions: [{
+        type: "add_storyboard",
+        title: "Seedance 分镜项目",
+        shots: [
+          { shotId: "SH01", title: "建立主体和场景", timeRange: "0-3s", prompt: `${subject}，明确主体、场景和起始状态，使用一个稳定的建立镜头。`, sequenceState: { shotId: "SH01", completedBeats: [] } },
+          { shotId: "SH02", title: "推进主要动作", timeRange: "3-10s", prompt: `${subject}，从上一镜头实际结束状态继续，只完成一个主要动作，使用一个服务于动作的运镜。`, sequenceState: { shotId: "SH02", completedBeats: [] } },
+          { shotId: "SH03", title: "收束到结束状态", timeRange: "10-15s", prompt: `${subject}，保持角色和场景连续，完成动作后的收束画面，不重复前面已完成的动作。`, sequenceState: { shotId: "SH03", completedBeats: [] } },
+        ],
+      }],
+    };
+  }
   if (/(优化|改写|润色)/.test(message) && sourcePrompt) {
     const optimizedPrompt = `${sourcePrompt.replace(/[。！？!?.]+$/u, "")}，保持主体、数量、颜色和结构不变，补充清晰的画面层次、自然光线与可执行的细节。`;
     return {
@@ -47,12 +92,16 @@ export function localCanvasAssistantFallback(input: {
   }
   if (/(提示词|prompt)/i.test(message) && /(写|新增|生成|补充|创建)/.test(message)) {
     const subject = sourcePrompt || boundedText(input.canvasTitle, 120) || "当前画布主题";
+    const isVideoPrompt = /seedance|视频|分镜|首帧|尾帧|续写|延长|@Video\d+\b|@Audio\d+\b/iu.test(`${message}\n${subject}`);
+    const prompt = isVideoPrompt
+      ? `${subject.replace(/[。！？!?.]+$/u, "")}，主体和场景保持一致，描述一个主要动作的起始状态、连续过程和结束状态，使用一个服务于动作的主要运镜，明确真实光源与必要声音；已有 @ImageN、@VideoN、@AudioN 标签必须原样保留，并为每个引用说明只参考什么以及不要转移什么。`
+      : `${subject}，主体清晰完整，构图有层次，画面重点突出，材质与颜色自然，光线统一，背景干净，不添加未要求的文字、Logo 或额外对象。`;
     return {
       reply: "上游助手暂时不可用，我已根据当前画布内容生成一条可继续编辑的提示词。",
       actions: [{
         type: "add_prompt",
-        title: "画布助手提示词",
-        prompt: `${subject}，主体清晰完整，构图有层次，画面重点突出，材质与颜色自然，光线统一，背景干净，不添加未要求的文字、Logo 或额外对象。`,
+        title: isVideoPrompt ? "Seedance 视频提示词" : "画布助手提示词",
+        prompt,
       }],
     };
   }
@@ -107,6 +156,23 @@ export function normalizeCanvasAssistantResponse(value: unknown): CanvasAssistan
     if (type === "ungroup") {
       const groupId = boundedText(action.groupId, 100);
       if (groupId) actions.push({ type, groupId });
+      continue;
+    }
+    if (type === "annotate_references") {
+      const promptNodeId = boundedText(action.promptNodeId, 100);
+      const bindings = normalizeReferenceBindings(action.bindings);
+      if (promptNodeId && bindings.length) actions.push({ type, promptNodeId, bindings });
+      continue;
+    }
+    if (type === "annotate_sequence") {
+      const nodeId = boundedText(action.nodeId, 100);
+      const sequenceState = normalizeSequenceState(action.sequenceState);
+      if (nodeId && sequenceState) actions.push({ type, nodeId, sequenceState });
+      continue;
+    }
+    if (type === "add_storyboard") {
+      const shots = normalizeStoryboardShots(action.shots);
+      if (shots.length) actions.push({ type, title: boundedText(action.title, 120) || undefined, shots });
     }
   }
 
@@ -116,4 +182,72 @@ export function normalizeCanvasAssistantResponse(value: unknown): CanvasAssistan
 function normalizeIds(value: unknown, limit: number) {
   if (!Array.isArray(value)) return [];
   return [...new Set(value.slice(0, limit).map((item) => boundedText(item, 100)).filter(Boolean))];
+}
+
+const referenceRoles = new Set<CanvasReferenceBinding["role"]>([
+  "identity", "first-frame", "last-frame", "product", "environment",
+  "motion", "camera", "timing", "audio", "style",
+]);
+
+function normalizeReferenceBindings(value: unknown): CanvasReferenceBinding[] {
+  if (!Array.isArray(value)) return [];
+  return value.slice(0, 12).flatMap((candidate) => {
+    if (!candidate || typeof candidate !== "object" || Array.isArray(candidate)) return [];
+    const item = candidate as Record<string, unknown>;
+    const label = boundedText(item.label, 24);
+    const role = boundedText(item.role, 24) as CanvasReferenceBinding["role"];
+    if (!/^@(Image|Video|Audio)\d+$/i.test(label) || !referenceRoles.has(role)) return [];
+    const transfer = boundedText(item.transfer, 240);
+    const ignore = boundedText(item.ignore, 240);
+    return [{ label, role, ...(transfer ? { transfer } : {}), ...(ignore ? { ignore } : {}) }];
+  });
+}
+
+function normalizeSequenceState(value: unknown): CanvasSequenceState | null {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+  const item = value as Record<string, unknown>;
+  const projectId = boundedText(item.projectId, 120);
+  const shotId = boundedText(item.shotId, 80);
+  const sourceMediaNodeId = boundedText(item.sourceMediaNodeId, 100);
+  const acceptedEndState = boundedText(item.acceptedEndState, 1_000);
+  const continuityLocks = normalizeStringList(item.continuityLocks, 8, 160);
+  const completedBeats = normalizeStringList(item.completedBeats, 12, 160);
+  if (!projectId && !shotId && !sourceMediaNodeId && !acceptedEndState && !continuityLocks.length && !completedBeats.length && typeof item.accepted !== "boolean") return null;
+  return {
+    ...(projectId ? { projectId } : {}),
+    ...(shotId ? { shotId } : {}),
+    ...(sourceMediaNodeId ? { sourceMediaNodeId } : {}),
+    ...(acceptedEndState ? { acceptedEndState } : {}),
+    ...(continuityLocks.length ? { continuityLocks } : {}),
+    ...(completedBeats.length ? { completedBeats } : {}),
+    ...(typeof item.accepted === "boolean" ? { accepted: item.accepted } : {}),
+  };
+}
+
+function normalizeStringList(value: unknown, limit: number, maxLength: number) {
+  if (!Array.isArray(value)) return [];
+  return [...new Set(value.slice(0, limit).map((item) => boundedText(item, maxLength)).filter(Boolean))];
+}
+
+function normalizeStoryboardShots(value: unknown) {
+  if (!Array.isArray(value)) return [];
+  return value.slice(0, 8).flatMap((candidate, index) => {
+    if (!candidate || typeof candidate !== "object" || Array.isArray(candidate)) return [];
+    const item = candidate as Record<string, unknown>;
+    const shotId = boundedText(item.shotId, 40) || `SH${String(index + 1).padStart(2, "0")}`;
+    const title = boundedText(item.title, 100) || `分镜 ${index + 1}`;
+    const prompt = boundedText(item.prompt, 4_000);
+    if (!prompt) return [];
+    const timeRange = boundedText(item.timeRange, 40);
+    const referenceBindings = normalizeReferenceBindings(item.referenceBindings);
+    const sequenceState = normalizeSequenceState(item.sequenceState);
+    return [{
+      shotId,
+      title,
+      prompt,
+      ...(timeRange ? { timeRange } : {}),
+      ...(referenceBindings.length ? { referenceBindings } : {}),
+      ...(sequenceState ? { sequenceState } : {}),
+    }];
+  });
 }

@@ -5,6 +5,8 @@ import { useMemo, useState, type FormEvent } from "react";
 
 import { fetchJsonWithCsrf } from "@/lib/client/api";
 import { normalizeCanvasAssistantResponse, type CanvasAssistantAction, type CanvasAssistantResponse } from "@/lib/canvas/assistant";
+import type { CanvasMediaType, CanvasReferenceBinding, CanvasSequenceState } from "@/lib/canvas/types";
+import { seedanceTemplates } from "@/lib/seedance/templates";
 
 export type CanvasAssistantNodeContext = {
   id: string;
@@ -12,6 +14,9 @@ export type CanvasAssistantNodeContext = {
   title: string;
   prompt?: string;
   selected?: boolean;
+  mediaType?: CanvasMediaType;
+  referenceBindings?: CanvasReferenceBinding[];
+  sequenceState?: CanvasSequenceState;
 };
 
 type Message = { role: "user" | "assistant"; content: string };
@@ -83,7 +88,23 @@ export function CanvasAssistantPanel({
         <button type="button" onClick={() => setQuickPrompt("根据当前画布主题，新增一个可直接用于生图的详细提示词。")}>写提示词</button>
         <button type="button" disabled={!selectedPrompt} onClick={() => setQuickPrompt("优化当前选中的提示词，保留原意并让它更适合生成。")}>优化选中</button>
         <button type="button" onClick={() => setQuickPrompt("按从左到右的创作流程整理当前画布节点。")}>整理画布</button>
+        <button type="button" onClick={() => setQuickPrompt("把当前故事拆成 3-5 个 Seedance 分镜节点，分别生成提示词和视频生成节点。")}>生成分镜</button>
       </div>
+      <label className="canvas-assistant__template">
+        <span>Seedance 模板</span>
+        <select
+          aria-label="选择 Seedance 模板"
+          defaultValue=""
+          onChange={(event) => {
+            const template = seedanceTemplates.find((item) => item.id === event.target.value);
+            if (template) setQuickPrompt(template.prompt);
+            event.currentTarget.value = "";
+          }}
+        >
+          <option value="">选择模板</option>
+          {seedanceTemplates.map((template) => <option key={template.id} value={template.id}>{template.name}</option>)}
+        </select>
+      </label>
       <div className="canvas-assistant__messages" aria-live="polite">
         {messages.map((message, index) => (
           <div key={`${message.role}-${index}`} className={`canvas-assistant__message is-${message.role}`}>

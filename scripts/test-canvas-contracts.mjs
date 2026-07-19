@@ -16,6 +16,7 @@ const canvasCss = read("src/app/canvas/canvas.css");
 const assistantPanel = read("src/components/canvas/canvas-assistant-panel.tsx");
 const imageEditor = read("src/components/canvas/canvas-image-editor.tsx");
 const libraryRoute = read("src/app/api/library/route.ts");
+const audioRoute = read("src/app/api/canvas/audio/route.ts");
 const workspaceAccess = read("src/lib/server/canvas-workspace-access.ts");
 const repository = read("src/lib/server/canvas-projects.ts");
 const collaboration = read("src/lib/server/canvas-collaboration.ts");
@@ -96,7 +97,10 @@ assert.match(canvasNode, /canvas-prompt-reference-menu/);
 assert.match(canvasNode, /ArrowDown/);
 assert.match(canvasNode, /insertReference/);
 assert.match(canvasNode, /canvas-node__preview-strip/);
+assert.match(canvasNode, /CanvasMediaType/);
+assert.match(canvasNode, /Music/);
 assert.match(canvasCss, /canvas-node-info/);
+assert.match(canvasCss, /canvas-node__reference-bindings/);
 assert.match(canvasCss, /canvas-node-info__metadata/);
 assert.match(canvasCss, /canvas-node__preview-strip/);
 assert.match(canvasCss, /canvas-prompt-reference-menu/);
@@ -177,6 +181,10 @@ assert.match(imageEditor, /futureRef/);
 assert.match(imageEditor, /updateMaskPreview/);
 assert.match(imageEditor, /fitViewport/);
 assert.match(workspace, /addLibraryNodes/);
+assert.match(workspace, /addStoryboardNodes/);
+assert.match(workspace, /annotate_references/);
+assert.match(workspace, /referenceAudios/);
+assert.match(workspace, /onAddAudio/);
 assert.match(workspace, /replaceSelectedMaterial/);
 assert.match(workspace, /跳过.*重复项/);
 assert.match(canvasCss, /canvas-library__batch/);
@@ -191,6 +199,10 @@ assert.match(imageEditor, /aria-label="蒙版画笔大小"/);
 assert.match(canvasCss, /:focus-visible/);
 assert.match(libraryRoute, /export async function PATCH/);
 assert.match(libraryRoute, /requireCsrf/);
+assert.match(audioRoute, /isInternalCanvasHostname/);
+assert.match(audioRoute, /requireCsrf/);
+assert.match(audioRoute, /uploadedMediaFromForm/);
+assert.match(audioRoute, /storeProviderReference/);
 assert.match(canvasCss, /\.canvas-node__body--generator[^}]+overflow: visible/s);
 assert.match(canvasCss, /\.react-flow__node-canvas:has\(\.canvas-node--generator\)/);
 assert.match(canvasCss, /canvas-image-editor/);
@@ -199,7 +211,7 @@ assert.match(canvasCss, /data-canvas-theme="light"/);
 
 console.log(JSON.stringify({
   ok: true,
-  authenticatedRoutes: 3,
+  authenticatedRoutes: 4,
   reusedGenerationEndpoints: 6,
   generationSubmitted: false,
   databaseWritten: false,

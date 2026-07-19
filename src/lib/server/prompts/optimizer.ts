@@ -4,12 +4,14 @@ import { newApiLogger } from "../integrations/new-api/logger";
 import { redactJson, redactSecret } from "../integrations/new-api/redaction";
 import { providerById } from "../providers";
 import { type ProviderConfig } from "../types";
+import { isSeedance20VideoModel } from "../../seedance-model-display";
 import {
   normalizePromptPreferences,
   promptPreferenceLines,
   type PromptPreferences,
   type PromptPreferenceTool,
 } from "../../prompt-preferences";
+import { seedancePromptGuidance } from "../../seedance/prompt-guidance";
 
 export type PromptOptimizeTool = PromptPreferenceTool;
 
@@ -22,6 +24,8 @@ export type PromptOptimizeInput = {
   quality?: string;
   duration?: number;
   targetPlatform?: string;
+  model?: string;
+  referenceMediaTypes?: Array<"image" | "video" | "audio">;
   preferences?: PromptPreferences;
 };
 
@@ -165,6 +169,8 @@ function validateInput(input: Partial<PromptOptimizeInput>, maxInputChars: numbe
     quality: boundedOptional(input.quality, 40),
     duration: boundedOptionalNumber(input.duration, 1, 120),
     targetPlatform: boundedOptional(input.targetPlatform, 80),
+    model: boundedOptional(input.model, 160),
+    referenceMediaTypes: normalizeReferenceMediaTypes(input.referenceMediaTypes),
     preferences: normalizePromptPreferences(input.preferences),
   };
 }
@@ -180,6 +186,12 @@ function boundedOptional(value: unknown, max: number) {
   const normalized = text(value);
   if (!normalized) return undefined;
   return normalized.slice(0, max);
+}
+
+function normalizeReferenceMediaTypes(value: unknown) {
+  if (!Array.isArray(value)) return undefined;
+  const allowed = new Set(["image", "video", "audio"] as const);
+  return [...new Set(value.filter((item): item is "image" | "video" | "audio" => allowed.has(item)))];
 }
 
 function invalidRequest(message: string): PromptOptimizeFailure {
@@ -257,6 +269,7 @@ function looksRelatedToInput(output: string, input: PromptOptimizeInput) {
 function composeStrictChineseUserPrompt(input: PromptOptimizeInput) {
   const scenarioGuidance = promptScenarioGuidance(input);
   const preferences = promptPreferenceLines(input.tool, input.preferences || {});
+  const seedanceGuidance = usesSeedancePromptGuidance(input) ? seedancePromptGuidance(input) : [];
   const scenario = input.tool === "image-editor"
     ? "任务类型：图片编辑。基于参考图进行修改，按需要明确保留项、修改项与禁止改动项。"
     : input.tool === "video-generator"
@@ -282,6 +295,7 @@ function composeStrictChineseUserPrompt(input: PromptOptimizeInput) {
     scenario,
     referenceInstruction,
     scenarioGuidance,
+    seedanceGuidance.length ? `Seedance 专用规则：\n${seedanceGuidance.join("\n")}` : "",
     preferences.length ? `用户创作偏好：\n${preferences.join("\n")}` : "用户创作偏好：自动判断，不限定平台或商业场景。",
     input.targetPlatform ? `兼容旧版平台偏好：${input.targetPlatform}` : "",
     technicalConstraints.length
@@ -403,6 +417,7 @@ function promptScenarioGuidance(input: PromptOptimizeInput) {
 function localChineseOptimizedPrompt(input: PromptOptimizeInput) {
   const scenarioGuidance = promptScenarioGuidance(input);
   const preferences = promptPreferenceLines(input.tool, input.preferences || {});
+  const seedanceGuidance = usesSeedancePromptGuidance(input) ? seedancePromptGuidance(input) : [];
   const scene = input.tool === "image-editor"
     ? "基于参考图进行图片编辑，保留原有主体事实，只修改用户明确指定的部分"
     : input.tool === "video-generator"
@@ -417,6 +432,7 @@ function localChineseOptimizedPrompt(input: PromptOptimizeInput) {
     input.prompt,
     scene,
     referenceInstruction,
+    ...seedanceGuidance,
     ...preferences,
     input.targetPlatform ? `适用平台：${input.targetPlatform}` : "",
     scenarioGuidance,
@@ -424,6 +440,12 @@ function localChineseOptimizedPrompt(input: PromptOptimizeInput) {
     "使用简体中文表达，不额外添加用户未要求的文字、品牌、人物或装饰",
   ].filter(Boolean);
   return cleanOptimizedPrompt(parts.join("，"));
+}
+
+function usesSeedancePromptGuidance(input: PromptOptimizeInput) {
+  if (input.tool !== "video-generator") return false;
+  return isSeedance20VideoModel(input.model)
+    || /seedance|@(?:Image|Video|Audio)\d+\b/i.test(input.prompt);
 }
 
 function requestIdFor(input: PromptModelCall) {

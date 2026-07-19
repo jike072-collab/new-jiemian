@@ -31,6 +31,29 @@ const normalized = normalizeCanvasDocument({
 assert.equal(normalized.nodes[0].data.libraryItemId, "library-item-1");
 assert.equal(normalized.nodes[0].data.mediaUrl, undefined);
 
+const audioReference = normalizeCanvasDocument({
+  nodes: [{
+    id: "node-audio-1",
+    type: "canvas",
+    position: { x: 0, y: 0 },
+    data: {
+      kind: "media",
+      title: "节奏参考",
+      mediaType: "audio",
+      mediaUrl: "/api/provider-reference/audio.mp3",
+      status: "done",
+      referenceBindings: [{ label: "@Audio1", role: "timing", transfer: "节拍", ignore: "原视频画面" }],
+      sequenceState: { accepted: true, acceptedEndState: "音乐在强拍处收束" },
+    },
+  }],
+  edges: [],
+  viewport: { x: 0, y: 0, zoom: 1 },
+});
+assert.equal(audioReference.nodes[0].data.mediaType, "audio");
+assert.equal(audioReference.nodes[0].data.mediaUrl, "/api/provider-reference/audio.mp3");
+assert.equal(audioReference.nodes[0].data.referenceBindings[0].role, "timing");
+assert.equal(audioReference.nodes[0].data.sequenceState.accepted, true);
+
 const imageGenerator = normalizeCanvasDocument({
   nodes: [{
     id: "node-generator-1",

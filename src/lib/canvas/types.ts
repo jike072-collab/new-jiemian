@@ -1,7 +1,25 @@
 export type CanvasNodeKind = "prompt" | "media" | "generator" | "group";
-export type CanvasMediaType = "image" | "video";
+export type CanvasMediaType = "image" | "video" | "audio";
 export type CanvasGenerationKind = "image" | "video";
 export type CanvasGeneratorStatus = "idle" | "queued" | "generating" | "done" | "failed";
+export type CanvasReferenceRole = "identity" | "first-frame" | "last-frame" | "product" | "environment" | "motion" | "camera" | "timing" | "audio" | "style";
+
+export type CanvasReferenceBinding = {
+  label: string;
+  role: CanvasReferenceRole;
+  transfer?: string;
+  ignore?: string;
+};
+
+export type CanvasSequenceState = {
+  projectId?: string;
+  shotId?: string;
+  accepted?: boolean;
+  sourceMediaNodeId?: string;
+  acceptedEndState?: string;
+  continuityLocks?: string[];
+  completedBeats?: string[];
+};
 
 export type CanvasNodeData = Record<string, unknown> & {
   kind: CanvasNodeKind;
@@ -33,6 +51,8 @@ export type CanvasNodeData = Record<string, unknown> & {
   locked?: boolean;
   zIndex?: number;
   notes?: string;
+  referenceBindings?: CanvasReferenceBinding[];
+  sequenceState?: CanvasSequenceState;
 };
 
 export type CanvasStoredNode = {

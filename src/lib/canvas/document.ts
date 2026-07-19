@@ -5,6 +5,9 @@ import type {
   CanvasNodeData,
   CanvasNodeKind,
   CanvasProjectDocument,
+  CanvasReferenceBinding,
+  CanvasReferenceRole,
+  CanvasSequenceState,
   CanvasStoredEdge,
   CanvasStoredNode,
 } from "./types";
@@ -14,7 +17,8 @@ const maxNodes = 500;
 const maxEdges = 1_000;
 
 const nodeKinds = new Set<CanvasNodeKind>(["prompt", "media", "generator", "group"]);
-const mediaTypes = new Set<CanvasMediaType>(["image", "video"]);
+const mediaTypes = new Set<CanvasMediaType>(["image", "video", "audio"]);
+const referenceRoles = new Set<CanvasReferenceRole>(["identity", "first-frame", "last-frame", "product", "environment", "motion", "camera", "timing", "audio", "style"]);
 const generationKinds = new Set<CanvasGenerationKind>(["image", "video"]);
 const generatorStatuses = new Set<CanvasGeneratorStatus>(["idle", "queued", "generating", "done", "failed"]);
 
@@ -96,6 +100,10 @@ function normalizeNode(value: unknown): CanvasStoredNode {
   if (prompt !== undefined) data.prompt = prompt;
   const notes = optionalString(value.data.notes, 2_000);
   if (notes !== undefined) data.notes = notes;
+  const referenceBindings = normalizeReferenceBindings(value.data.referenceBindings);
+  if (referenceBindings.length) data.referenceBindings = referenceBindings;
+  const sequenceState = normalizeSequenceState(value.data.sequenceState);
+  if (sequenceState) data.sequenceState = sequenceState;
   const createdAt = optionalString(value.data.createdAt, 64);
   const model = optionalString(value.data.model, 240);
   if (createdAt) data.createdAt = createdAt;
@@ -111,7 +119,13 @@ function normalizeNode(value: unknown): CanvasStoredNode {
     const mediaType = boundedString(value.data.mediaType, 16) as CanvasMediaType;
     if (!mediaTypes.has(mediaType)) throw new CanvasDocumentError("媒体节点类型无效。");
     data.mediaType = mediaType;
-    data.libraryItemId = identifier(value.data.libraryItemId, "作品 ID", 160);
+    if (mediaType === "audio") {
+      const mediaUrl = optionalString(value.data.mediaUrl, 2_000);
+      if (mediaUrl && /^(https?:\/\/|\/)/i.test(mediaUrl)) data.mediaUrl = mediaUrl;
+    }
+    const libraryItemId = optionalIdentifier(value.data.libraryItemId, 160);
+    if (mediaType !== "audio" && !libraryItemId) throw new CanvasDocumentError("作品 ID无效。");
+    if (libraryItemId) data.libraryItemId = libraryItemId;
     data.status = normalizeStatus(value.data.status, "done");
   }
 
@@ -193,6 +207,46 @@ function normalizeViewport(value: unknown) {
 function normalizeStatus(value: unknown, fallback: CanvasGeneratorStatus) {
   const status = boundedString(value, 20) as CanvasGeneratorStatus;
   return generatorStatuses.has(status) ? status : fallback;
+}
+
+function normalizeReferenceBindings(value: unknown): CanvasReferenceBinding[] {
+  if (!Array.isArray(value)) return [];
+  return value.slice(0, 12).flatMap((candidate) => {
+    if (!isRecord(candidate)) return [];
+    const label = boundedString(candidate.label, 24).trim();
+    const role = boundedString(candidate.role, 24) as CanvasReferenceRole;
+    if (!/^@(Image|Video|Audio)\d+$/i.test(label) || !referenceRoles.has(role)) return [];
+    const transfer = optionalString(candidate.transfer, 240);
+    const ignore = optionalString(candidate.ignore, 240);
+    return [{ label, role, ...(transfer ? { transfer } : {}), ...(ignore ? { ignore } : {}) }];
+  });
+}
+
+function normalizeSequenceState(value: unknown): CanvasSequenceState | undefined {
+  if (!isRecord(value)) return undefined;
+  const projectId = optionalIdentifier(value.projectId, 120);
+  const shotId = optionalIdentifier(value.shotId, 80);
+  const sourceMediaNodeId = optionalIdentifier(value.sourceMediaNodeId, 160);
+  const acceptedEndState = optionalString(value.acceptedEndState, 1_000);
+  const continuityLocks = normalizeShortList(value.continuityLocks, 8, 160);
+  const completedBeats = normalizeShortList(value.completedBeats, 12, 160);
+  if (!projectId && !shotId && !sourceMediaNodeId && !acceptedEndState && !continuityLocks.length && !completedBeats.length && value.accepted === undefined) {
+    return undefined;
+  }
+  return {
+    ...(projectId ? { projectId } : {}),
+    ...(shotId ? { shotId } : {}),
+    ...(sourceMediaNodeId ? { sourceMediaNodeId } : {}),
+    ...(acceptedEndState ? { acceptedEndState } : {}),
+    ...(continuityLocks.length ? { continuityLocks } : {}),
+    ...(completedBeats.length ? { completedBeats } : {}),
+    ...(typeof value.accepted === "boolean" ? { accepted: value.accepted } : {}),
+  };
+}
+
+function normalizeShortList(value: unknown, limit: number, maxLength: number) {
+  if (!Array.isArray(value)) return [];
+  return [...new Set(value.slice(0, limit).map((item) => boundedString(item, maxLength).trim()).filter(Boolean))];
 }
 
 function defaultNodeTitle(kind: CanvasNodeKind, generationKind: unknown) {

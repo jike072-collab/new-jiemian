@@ -12,6 +12,7 @@ import {
   Image as ImageIcon,
   Layers3,
   LoaderCircle,
+  Music,
   Play,
   Sparkles,
   Trash2,
@@ -28,6 +29,7 @@ import {
 
 import type { EnabledProviders, WorkspacePublicProvider } from "@/components/studio/types";
 import type { CanvasMediaType, CanvasNodeData } from "@/lib/canvas/types";
+import { seedanceReferenceIssues } from "@/lib/seedance/prompt-guidance";
 import { cn } from "@/lib/utils";
 
 export type CanvasFlowNode = Node<CanvasNodeData, "canvas" | "group">;
@@ -36,6 +38,7 @@ export type GeneratorInputSummary = {
   prompts: number;
   images: number;
   videos: number;
+  audios: number;
 };
 
 export type CanvasPromptReference = {
@@ -65,7 +68,7 @@ const imageQualities = ["1k", "2k", "4k"];
 export function CanvasNode({ id, data, selected }: NodeProps<CanvasFlowNode>) {
   const actions = useCanvasNodeActions();
   const minWidth = data.kind === "media" ? 260 : 300;
-  const minHeight = data.kind === "prompt" ? 210 : data.kind === "generator" ? 380 : 220;
+  const minHeight = data.kind === "prompt" ? 210 : data.kind === "generator" ? 380 : data.mediaType === "audio" ? 180 : 220;
 
   return (
     <article data-canvas-node-id={id} className={cn("canvas-node", `canvas-node--${data.kind}`, selected && "is-selected")}>
@@ -115,7 +118,7 @@ function NodeHeader({ data, onRemove }: { data: CanvasNodeData; onRemove: () => 
   const Icon = data.kind === "prompt"
     ? Type
     : data.kind === "media"
-      ? data.mediaType === "video" ? Film : ImageIcon
+      ? data.mediaType === "video" ? Film : data.mediaType === "audio" ? Music : ImageIcon
       : data.generationKind === "video" ? Film : Sparkles;
   return (
     <header className="canvas-node__header">
@@ -132,6 +135,7 @@ function PromptNode({ id, data }: { id: string; data: CanvasNodeData }) {
   const actions = useCanvasNodeActions();
   const references = actions.promptReferences[id] || [];
   const value = data.prompt || "";
+  const referenceIssues = seedanceReferenceIssues(value, references.map((reference) => reference.label));
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
   const promptWrapRef = useRef<HTMLDivElement | null>(null);
   const promptCursorRef = useRef(value.length);
@@ -247,7 +251,7 @@ function PromptNode({ id, data }: { id: string; data: CanvasNodeData }) {
                 onClick={() => insertReference(reference.label)}
               >
                 <span className="canvas-prompt-reference-option__preview" aria-hidden="true">
-                  {reference.mediaType === "video" ? <Film /> : <ImageIcon />}
+                  {reference.mediaType === "video" ? <Film /> : reference.mediaType === "audio" ? <Music /> : <ImageIcon />}
                 </span>
                 <span className="canvas-prompt-reference-option__copy">
                   <strong>{reference.label}</strong>
@@ -267,8 +271,30 @@ function PromptNode({ id, data }: { id: string; data: CanvasNodeData }) {
           ) : null}
         </div>
       </div>
+      {data.referenceBindings?.length ? (
+        <div className="canvas-node__reference-bindings" aria-label="引用职责">
+          {data.referenceBindings.map((binding) => <span key={`${binding.label}-${binding.role}`} title={`${binding.transfer || binding.role}${binding.ignore ? `；不转移：${binding.ignore}` : ""}`}>{binding.label} · {referenceRoleLabel(binding.role)}</span>)}
+        </div>
+      ) : null}
+      {referenceIssues.missing.length ? <div className="canvas-node__reference-warning">未连接：{referenceIssues.missing.join("、")}</div> : null}
+      {value && /@(Image|Video|Audio)\d+\b/i.test(value) && referenceIssues.unused.length ? <div className="canvas-node__reference-warning is-muted">未指定职责：{referenceIssues.unused.join("、")}</div> : null}
     </div>
   );
+}
+
+function referenceRoleLabel(role: NonNullable<CanvasNodeData["referenceBindings"]>[number]["role"]) {
+  return {
+    identity: "身份",
+    "first-frame": "首帧",
+    "last-frame": "尾帧",
+    product: "产品",
+    environment: "环境",
+    motion: "动作",
+    camera: "运镜",
+    timing: "节奏",
+    audio: "音频",
+    style: "风格",
+  }[role];
 }
 
 function MediaNode({ data }: { data: CanvasNodeData }) {
@@ -281,6 +307,9 @@ function MediaNode({ data }: { data: CanvasNodeData }) {
       ) : null}
       {data.mediaUrl && data.mediaType === "video" ? (
         <video src={data.mediaUrl} controls preload="metadata" className="nodrag nowheel" />
+      ) : null}
+      {data.mediaUrl && data.mediaType === "audio" ? (
+        <audio src={data.mediaUrl} controls preload="metadata" className="nodrag nowheel" />
       ) : null}
       {!data.mediaUrl ? (
         <div className="canvas-node__media-placeholder">
@@ -311,7 +340,7 @@ function GeneratorNode({ id, data }: { id: string; data: CanvasNodeData }) {
   const maxImageCount = actions.internalCanvas ? 8 : 4;
   const imageCount = Math.min(Math.max(Math.round(Number(data.count) || 1), 1), maxImageCount);
   const busy = data.status === "queued" || data.status === "generating";
-  const summary = actions.inputSummary[id] || { prompts: 0, images: 0, videos: 0 };
+  const summary = actions.inputSummary[id] || { prompts: 0, images: 0, videos: 0, audios: 0 };
   const previews = actions.inputPreviews[id] || [];
   const [previewOpen, setPreviewOpen] = useState(false);
 
@@ -392,6 +421,7 @@ function GeneratorNode({ id, data }: { id: string; data: CanvasNodeData }) {
         <span>{summary.prompts} 个提示词</span>
         <span>{summary.images} 张图片</span>
         {isVideo ? <span>{summary.videos} 个视频</span> : null}
+        {isVideo && summary.audios ? <span>{summary.audios} 个音频</span> : null}
       </div>
       {previews.length ? (
         <div className="canvas-node__preview">
@@ -405,6 +435,8 @@ function GeneratorNode({ id, data }: { id: string; data: CanvasNodeData }) {
                 <figure key={`${item.url}-${index}`} className="canvas-node__preview-item">
                   {item.mediaType === "video" ? (
                     <video src={item.url} muted playsInline preload="metadata" />
+                  ) : item.mediaType === "audio" ? (
+                    <Music aria-hidden="true" />
                   ) : (
                     // eslint-disable-next-line @next/next/no-img-element -- generated media URLs are authenticated runtime assets.
                     <img src={item.url} alt={item.title} draggable={false} />

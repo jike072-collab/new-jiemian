@@ -146,6 +146,57 @@ test("builds distinct instructions for image generation, image editing, and vide
   assert.notEqual(seen[1].userPrompt, seen[2].userPrompt);
 });
 
+test("routes Seedance guidance by model without changing other video providers", async () => {
+  const seen: PromptModelCall[] = [];
+  const service = serviceWith(async (input) => {
+    seen.push(input);
+    return seen.length === 1
+      ? "参考 @Image1 锁定人物身份，@Video1 只参考连续动作和运镜，@Audio1 只控制节奏，不改变场景。"
+      : "一只小猫从窗边跳到沙发上，镜头稳定跟随动作，结束时小猫坐下。";
+  });
+
+  await service.optimize(baseInput({
+    tool: "video-generator",
+    model: "mg-seedance2.0 -720p fast",
+    prompt: "参考 @Image1 的人物，按素材动作和 @Audio1 的节奏",
+    hasImage: true,
+    duration: 15,
+    referenceMediaTypes: ["image", "video", "audio"],
+  }), { localUserId: "user-1" });
+  await service.optimize(baseInput({
+    tool: "video-generator",
+    model: "veo-3.1-pro",
+    prompt: "一只小猫从窗边跳到沙发上",
+  }), { localUserId: "user-1" });
+
+  assert.equal(seen.length, 2);
+  assert.match(seen[0].userPrompt, /Seedance 专用规则/);
+  assert.match(seen[0].userPrompt, /Seedance 任务模式：参考生视频/);
+  assert.match(seen[0].userPrompt, /精确保留用户写出的 @ImageN、@VideoN、@AudioN 标签/);
+  assert.match(seen[0].userPrompt, /动作或运镜参考不得覆盖图片引用锁定的人物、产品和场景/);
+  assert.match(seen[0].userPrompt, /界面时长为 15 秒/);
+  assert.doesNotMatch(seen[1].userPrompt, /Seedance 专用规则/);
+});
+
+test("grounds Seedance continuation in the accepted clip end state", async () => {
+  const seen: PromptModelCall[] = [];
+  const service = serviceWith(async (input) => {
+    seen.push(input);
+    return "将 @Video1 继续向前延展，人物从视频实际结束姿势继续向门口行走，不重复已经完成的起身动作。";
+  });
+
+  await service.optimize(baseInput({
+    tool: "video-generator",
+    model: "mg-seedance2.0 -720p pro",
+    prompt: "将 @Video1 延长，人物继续走向门口",
+  }), { localUserId: "user-1" });
+
+  assert.equal(seen.length, 1);
+  assert.match(seen[0].userPrompt, /Seedance 任务模式：视频续写或延长/);
+  assert.match(seen[0].userPrompt, /已成功视频的实际结束画面/);
+  assert.match(seen[0].userPrompt, /不重复已经完成的情节/);
+});
+
 test("optimizes common ecommerce image prompt scenarios", async () => {
   const seen: PromptModelCall[] = [];
   const service = serviceWith(async (input) => {
