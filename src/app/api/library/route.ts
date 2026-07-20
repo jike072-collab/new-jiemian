@@ -4,7 +4,7 @@ import { authResultResponse, csrfFailure, isInternalCanvasHostname, requireAuthS
 import { removeLibraryItemsFromCanvasProjects } from "@/lib/server/canvas-projects";
 import { diagnosticErrorResponse, GenerationDiagnosticError } from "@/lib/server/error-diagnostics";
 import { getInternalCanvasWorkspaceMemberIds } from "@/lib/server/internal-canvas-access";
-import { deleteLibraryItemForOwner, deleteLibraryItemsForOwner, LibraryOperationError, readLibraryMetadataForOwner, readLibraryMetadataForOwners, updateLibraryItemForOwner } from "@/lib/server/library";
+import { deleteLibraryItemForOwner, deleteLibraryItemsForOwner, findMissingStoredLibraryItemsForOwners, LibraryOperationError, readLibraryMetadataForOwner, readLibraryMetadataForOwners, updateLibraryItemForOwner } from "@/lib/server/library";
 
 export const runtime = "nodejs";
 
@@ -13,11 +13,23 @@ export async function GET(request: NextRequest) {
   if (!session.ok) return authResultResponse(request, session);
   const shared = isInternalCanvasHostname(request.headers.get("host")) && request.nextUrl.searchParams.get("scope") === "shared";
   const workspace = shared ? await getInternalCanvasWorkspaceMemberIds(session.user.local_user_id) : null;
+  const ownerIds = workspace?.memberIds || [session.user.local_user_id];
+  const missingItems = await findMissingStoredLibraryItemsForOwners(ownerIds);
+  if (missingItems.length) {
+    await removeLibraryItemsFromCanvasProjects(missingItems.map((item) => item.id));
+    await Promise.all(missingItems.map(async (item) => {
+      try {
+        await deleteLibraryItemForOwner(item.id, item.ownerLocalUserId);
+      } catch (error) {
+        if (!(error instanceof LibraryOperationError) || error.status !== 404) throw error;
+      }
+    }));
+  }
   void import("@/lib/server/provider-call")
     .then(({ refreshPendingVideoJobsForOwner }) => refreshPendingVideoJobsForOwner(session.user.local_user_id))
     .catch(() => undefined);
   const items = shared
-    ? (await readLibraryMetadataForOwners(workspace!.memberIds)).map((item) => item.output ? {
+    ? (await readLibraryMetadataForOwners(ownerIds)).map((item) => item.output ? {
       ...item,
       output: { ...item.output, url: `/api/library/${encodeURIComponent(item.id)}/media?scope=shared` },
     } : item)

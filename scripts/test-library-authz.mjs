@@ -30,15 +30,20 @@ assert(authService.includes("status: 401"), "auth service must use 401 for missi
 
 assert(libraryRoute.includes("readLibraryMetadataForOwner(session.user.local_user_id)"), "/api/library GET must list metadata only for the current owner");
 assert(libraryRoute.includes("deleteLibraryItemForOwner(body.id!, session.user.local_user_id)"), "/api/library DELETE must delete only the current owner");
+assert(libraryRoute.includes("findMissingStoredLibraryItemsForOwners(ownerIds)"), "/api/library GET must identify confirmed missing local files");
+assert(libraryRoute.includes("removeLibraryItemsFromCanvasProjects(missingItems.map((item) => item.id))"), "missing library files must be removed from canvas projects before metadata deletion");
 assert(!libraryRoute.includes("readLibrary()"), "/api/library route must not read the full library");
 assert(!libraryRoute.includes("deleteLibraryItem(body.id)"), "/api/library route must not use ownerless delete");
 
 assert(filesRoute.includes("resolveStoredFileForOwner(name, session.user.local_user_id)"), "/api/files route must resolve files through owner-aware helper");
+assert(filesRoute.includes("resolveStoredFileForOwners(name"), "/api/files route must support authorized shared workspace files");
+assert(filesRoute.includes("getInternalCanvasWorkspaceMemberIds(session.user.local_user_id)"), "shared file access must be limited to workspace members");
 assert(!filesRoute.includes("readStoredFile(name)"), "/api/files route must not read files without owner");
 assert(!filesRoute.includes("resolveUploadPath"), "/api/files route must not resolve upload paths directly");
 assert(!filesRoute.includes("join("), "/api/files route must not raw-join file paths");
 assert(filesRoute.includes("private, max-age="), "/api/files route may cache assets only as private responses");
 assert(libraryMediaRoute.includes("resolveLibraryMediaForOwner(id, session.user.local_user_id)"), "library media route must resolve only owner media");
+assert(libraryMediaRoute.includes('destination.searchParams.set("scope", "shared")'), "shared media redirects must preserve shared authorization scope");
 assert(libraryMediaRoute.includes('Vary: "Cookie"'), "library media redirect must remain private to the session");
 
 assert(types.includes("ownerLocalUserId?: string | null"), "LibraryItem must include ownerLocalUserId");
@@ -49,17 +54,20 @@ assert(library.includes("readStoredFileForOwner(storedName: string, ownerLocalUs
 assert(library.includes("candidate.output?.storedName === storedName"), "file authz must bind storedName to the current owner item");
 assert(library.includes("if (!safeName || safeName !== storedName) return null"), "invalid storedName must be rejected before reading disk");
 assert(library.includes("resolveStoredFileForOwner(storedName: string, ownerLocalUserId: string)"), "library must expose owner-aware file resolution");
+assert(library.includes("resolveStoredFileForOwners(storedName: string, ownerLocalUserIds: readonly string[])"), "library must expose workspace-member file resolution");
 assert(library.includes("resolveLibraryMediaForOwner(id: string, ownerLocalUserId: string)"), "library must expose owner-aware media caching");
+assert(library.includes('code === "ENOENT" ? "missing" : "unavailable"'), "automatic cleanup must distinguish missing files from permission or transient failures");
 assertSequence("media owner check before remote caching", library, [
-  "export async function resolveLibraryMediaForOwner",
+  "export async function resolveLibraryMediaForOwners",
   "candidate.id === id",
-  "isOwnedBy(candidate, ownerLocalUserId)",
+  "owners.has(candidate.ownerLocalUserId)",
   "if (!item?.output",
   "storeRemoteUrl(sourceUrl",
 ]);
 assertSequence("file owner check before disk resolution", library, [
-  "export async function resolveStoredFileForOwner",
+  "export async function resolveStoredFileForOwners",
   "if (!safeName || safeName !== storedName) return null",
+  "const owners = new Set",
   "const item = (await readLibraryMetadata()).find",
   "if (!item) return null",
   "const path = resolveUploadPath(safeName)",

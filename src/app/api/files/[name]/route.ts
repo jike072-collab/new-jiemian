@@ -4,8 +4,9 @@ import { Readable } from "node:stream";
 
 import { type NextRequest, NextResponse } from "next/server";
 
-import { authResultResponse, requireAuthSession } from "@/lib/server/auth";
-import { resolveStoredFileForOwner } from "@/lib/server/library";
+import { authResultResponse, isInternalCanvasHostname, requireAuthSession } from "@/lib/server/auth";
+import { getInternalCanvasWorkspaceMemberIds } from "@/lib/server/internal-canvas-access";
+import { resolveStoredFileForOwner, resolveStoredFileForOwners } from "@/lib/server/library";
 
 export const runtime = "nodejs";
 
@@ -111,7 +112,10 @@ export async function GET(
   if (!session.ok) return authResultResponse(request, session);
 
   const { name } = await context.params;
-  const storedFile = await resolveStoredFileForOwner(name, session.user.local_user_id);
+  const shared = isInternalCanvasHostname(request.headers.get("host")) && request.nextUrl.searchParams.get("scope") === "shared";
+  const storedFile = shared
+    ? await resolveStoredFileForOwners(name, (await getInternalCanvasWorkspaceMemberIds(session.user.local_user_id)).memberIds)
+    : await resolveStoredFileForOwner(name, session.user.local_user_id);
   if (!storedFile) return NextResponse.json({ error: "File not found." }, { status: 404 });
   const mimeType = mimeFromName(name);
   const cacheControl = mediaCacheControl(604800);

@@ -16,7 +16,9 @@ export async function GET(request: NextRequest, context: { params: Promise<{ id:
     const output = shared
       ? await resolveLibraryMediaForOwners(id, (await getInternalCanvasWorkspaceMemberIds(session.user.local_user_id)).memberIds)
       : await resolveLibraryMediaForOwner(id, session.user.local_user_id);
-    return NextResponse.redirect(new URL(output.url, request.nextUrl.origin), {
+    const destination = new URL(output.url, request.nextUrl.origin);
+    if (shared && destination.pathname.startsWith("/api/files/")) destination.searchParams.set("scope", "shared");
+    return NextResponse.redirect(destination, {
       status: 307,
       headers: { "Cache-Control": "private, max-age=300", Vary: "Cookie" },
     });

@@ -65,15 +65,19 @@ async function serializeWrite<T>(queue: "library" | "jobs", action: () => Promis
   }
 }
 
-async function storedFileExists(storedName: string) {
+async function storedFileState(storedName: string): Promise<"available" | "missing" | "unavailable"> {
   const safeName = safeStoredName(storedName);
-  if (!safeName || safeName !== storedName) return false;
+  if (!safeName || safeName !== storedName) return "missing";
   try {
     await access(resolveUploadPath(safeName));
-    return true;
-  } catch {
-    return false;
+    return "available";
+  } catch (error) {
+    return (error as NodeJS.ErrnoException).code === "ENOENT" ? "missing" : "unavailable";
   }
+}
+
+async function storedFileExists(storedName: string) {
+  return await storedFileState(storedName) === "available";
 }
 
 async function readLibraryFile() {
@@ -190,6 +194,24 @@ export async function readLibraryMetadataForOwners(ownerLocalUserIds: readonly s
     && !item.expired
     && item.status !== "failed"
   ));
+}
+
+export async function findMissingStoredLibraryItemsForOwners(ownerLocalUserIds: readonly string[]) {
+  const owners = new Set(ownerLocalUserIds.map((id) => id.trim()).filter(Boolean));
+  if (!owners.size) return [];
+  const candidates = (await readLibraryMetadata()).filter((item) => (
+    item.ownerLocalUserId && owners.has(item.ownerLocalUserId)
+    && !item.expired
+    && item.status === "done"
+    && Boolean(item.output?.storedName)
+  ));
+  const checked = await Promise.all(candidates.map(async (item) => ({
+    item,
+    state: await storedFileState(item.output!.storedName!),
+  })));
+  return checked.flatMap(({ item, state }) => state === "missing" && item.ownerLocalUserId
+    ? [{ id: item.id, ownerLocalUserId: item.ownerLocalUserId }]
+    : []);
 }
 
 const libraryMediaCacheJobs = new Map<string, Promise<NonNullable<LibraryItem["output"]>>>();
@@ -745,10 +767,15 @@ export async function readStoredFileForOwner(storedName: string, ownerLocalUserI
 }
 
 export async function resolveStoredFileForOwner(storedName: string, ownerLocalUserId: string) {
+  return resolveStoredFileForOwners(storedName, [ownerLocalUserId]);
+}
+
+export async function resolveStoredFileForOwners(storedName: string, ownerLocalUserIds: readonly string[]) {
   const safeName = safeStoredName(storedName);
   if (!safeName || safeName !== storedName) return null;
+  const owners = new Set(ownerLocalUserIds.map((owner) => owner.trim()).filter(Boolean));
   const item = (await readLibraryMetadata()).find((candidate) => (
-    isOwnedBy(candidate, ownerLocalUserId)
+    candidate.ownerLocalUserId && owners.has(candidate.ownerLocalUserId)
     && candidate.output?.storedName === storedName
   ));
   if (!item) return null;
