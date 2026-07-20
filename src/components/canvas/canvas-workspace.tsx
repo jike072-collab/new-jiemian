@@ -605,7 +605,7 @@ function CanvasWorkspaceInner({
       try {
         const [projectData, providerData, libraryData] = await Promise.all([
           fetchJson<{ projects: CanvasProject[] }>(canvasProjectsUrl()),
-          fetchJson<{ providers: EnabledProviders }>("/api/providers/enabled"),
+          fetchJson<{ providers: EnabledProviders }>(`/api/providers/enabled?refresh=${Date.now()}`),
           fetchJson<{ items: LibraryItem[] }>("/api/library"),
         ]);
         if (cancelled) return;

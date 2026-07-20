@@ -1248,7 +1248,7 @@ export function StudioApp() {
     setProvidersLoading(true);
     setProvidersError("");
     try {
-      const data = await jsonFetch<{ providers: EnabledProviders }>("/api/providers/enabled");
+      const data = await jsonFetch<{ providers: EnabledProviders }>(`/api/providers/enabled?refresh=${Date.now()}`);
       setProviders(data.providers);
     } catch (error) {
       const text = error instanceof Error ? error.message : "模型加载失败。";
@@ -1265,7 +1265,7 @@ export function StudioApp() {
     void (async () => {
       try {
         setProvidersLoading(true);
-        const providersData = await jsonFetch<{ providers: EnabledProviders }>("/api/providers/enabled");
+        const providersData = await jsonFetch<{ providers: EnabledProviders }>(`/api/providers/enabled?refresh=${Date.now()}`);
         if (cancelled) return;
         setProviders(providersData.providers);
         setProvidersError("");
