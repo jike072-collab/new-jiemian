@@ -39,7 +39,15 @@ const seedanceVideoModels = [
   "Doubao-Seedance-2-0-260128-grid",
 ];
 
-const clmmSeedanceVideoModels = Object.keys(clmmSeedanceVideoDisplayNames);
+const clmmSeedanceVideoModels = [
+  "bb-seedance2.0 1080p-pro-gz-15s",
+  "bb-seedance2.0 720p-fast-gz-15s",
+  "bb-seedance2.0 720p-pro-gz-15s",
+  "mg-seedance2.0 -720p fast",
+  "mg-seedance2.0 -720p mini",
+  "mg-seedance2.0 -720p pro",
+  "oe-seedance-2.0-pro-720p-14s-gz",
+];
 const clmmFlexibleVideoDurations = Array.from({ length: 11 }, (_, index) => index + 5);
 
 const clmmSeedanceVideoOptionsByModel: Record<string, NonNullable<ProviderConfig["videoOptions"]>> = {

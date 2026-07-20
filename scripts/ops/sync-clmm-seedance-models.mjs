@@ -4,7 +4,7 @@ import { dirname, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 
 export const CLMM_PROVIDER_ID = "video-seedance-new";
-export const PROTECTED_MODELS = ["seedance2.0 720p-933-pro-gz-15s"];
+export const PROTECTED_MODELS = [];
 
 function normalizeModel(value) {
   try {

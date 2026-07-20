@@ -25,7 +25,7 @@ test("extracts common upstream model response shapes", () => {
   assert.deepEqual(extractModelNames({ models: ["a", { name: "b" }] }), ["a", "b"]);
 });
 
-test("adds new models, removes retired models, and retains protected 933", () => {
+test("adds new models and removes retired models, including the old 933 entry", () => {
   const selection = selectClmmModels([
     "bb-seedance2.0 720p-fast-gz-15s",
     "oe-seedance-2.0-pro-720p-14s",
@@ -34,15 +34,14 @@ test("adds new models, removes retired models, and retains protected 933", () =>
   assert.deepEqual(selection.models, [
     "bb-seedance2.0 720p-fast-gz-15s",
     "oe-seedance-2.0-pro-720p-14s",
-    "seedance2.0 720p-933-pro-gz-15s",
   ]);
   assert.deepEqual(selection.added, ["bb-seedance2.0 720p-fast-gz-15s", "oe-seedance-2.0-pro-720p-14s"]);
-  assert.deepEqual(selection.removed, ["old-seedance2.0 720p-pro"]);
+  assert.deepEqual(selection.removed, ["old-seedance2.0 720p-pro", "seedance2.0 720p-933-pro-gz-15s"]);
 });
 
 test("does not add target models whose pricing tier cannot be identified", () => {
   const selection = selectClmmModels(["seedance2.0 720p-experimental"]);
-  assert.deepEqual(selection.models, ["seedance2.0 720p-933-pro-gz-15s"]);
+  assert.deepEqual(selection.models, []);
   assert.deepEqual(selection.unpricedModels, ["seedance2.0 720p-experimental"]);
 });
 
@@ -69,7 +68,6 @@ test("updates only the CLMM provider document and keeps its key unchanged", asyn
     assert.deepEqual(saved[1].enabledModels, result.selection.models);
     assert.equal(saved[1].modelDisplayNames["bb-seedance2.0 720p-fast-gz-15s"], "Fast 15 秒 不卡真人");
     assert.equal(saved[1].modelDisplayNames["oe-seedance-2.0-pro-720p-14s-gz"], "Pro 14 秒 不卡真人");
-    assert.equal(saved[1].modelDisplayNames["seedance2.0 720p-933-pro-gz-15s"], "满血 933 不卡真人");
   } finally {
     await rm(root, { recursive: true, force: true });
   }

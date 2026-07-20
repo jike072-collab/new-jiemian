@@ -7,9 +7,13 @@ export const seedanceVideoDisplayNames: Record<string, string> = {
 };
 
 export const clmmSeedanceVideoDisplayNames: Record<string, string> = {
+  "bb-seedance2.0 1080p-pro-gz-15s": "Pro 1080P 15 秒 不卡真人",
+  "bb-seedance2.0 720p-fast-gz-15s": "Fast 15 秒 不卡真人",
+  "bb-seedance2.0 720p-pro-gz-15s": "Pro 15 秒 不卡真人",
   "mg-seedance2.0 -720p fast": "Fast",
   "mg-seedance2.0 -720p mini": "Mini",
   "mg-seedance2.0 -720p pro": "Pro",
+  "oe-seedance-2.0-pro-720p-14s-gz": "Pro 14 秒 不卡真人",
   "seedance2.0 720p-933-pro-gz-15s": "满血 933 不卡真人",
   "seedance2.0 720p-fast-gz-15s": "Fast 15 秒 不卡真人",
   "seedance2.0 720p-pro-gz-15s": "Pro 15 秒 不卡真人",
