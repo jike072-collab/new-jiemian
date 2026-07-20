@@ -1469,19 +1469,16 @@
 
 .canvas-node__handle:hover::after,
 .canvas-node__handle.connectingfrom::after,
-.canvas-node__handle.connectionindicator::after,
 .canvas-node__handle.valid::after {
   box-shadow: 0 0 0 5px color-mix(in srgb, var(--canvas-handle-color) 24%, transparent), 0 0 14px color-mix(in srgb, var(--canvas-handle-color) 50%, transparent);
 }
 
 .canvas-node__handle.react-flow__handle-left:hover::after,
 .canvas-node__handle.react-flow__handle-left.connectingfrom::after,
-.canvas-node__handle.react-flow__handle-left.connectionindicator::after,
 .canvas-node__handle.react-flow__handle-left.valid::after { transform: translate(0, -50%) scale(1.18); }
 
 .canvas-node__handle.react-flow__handle-right:hover::after,
 .canvas-node__handle.react-flow__handle-right.connectingfrom::after,
-.canvas-node__handle.react-flow__handle-right.connectionindicator::after,
 .canvas-node__handle.react-flow__handle-right.valid::after { transform: translate(-100%, -50%) scale(1.18); }
 
 .canvas-node--generator .canvas-node__handle { --canvas-handle-color: var(--primary); }
