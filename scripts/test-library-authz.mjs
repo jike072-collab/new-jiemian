@@ -44,6 +44,8 @@ assert(!filesRoute.includes("join("), "/api/files route must not raw-join file p
 assert(filesRoute.includes("private, max-age="), "/api/files route may cache assets only as private responses");
 assert(libraryMediaRoute.includes("resolveLibraryMediaForOwner(id, session.user.local_user_id)"), "library media route must resolve only owner media");
 assert(libraryMediaRoute.includes('destination.searchParams.set("scope", "shared")'), "shared media redirects must preserve shared authorization scope");
+assert(libraryMediaRoute.includes('const location = output.url.startsWith("/")'), "local media redirects must remain relative behind the reverse proxy");
+assert(libraryMediaRoute.includes("Location: location"), "library media route must emit the safe redirect location");
 assert(libraryMediaRoute.includes('Vary: "Cookie"'), "library media redirect must remain private to the session");
 
 assert(types.includes("ownerLocalUserId?: string | null"), "LibraryItem must include ownerLocalUserId");

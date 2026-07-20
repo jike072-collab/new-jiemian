@@ -18,9 +18,12 @@ export async function GET(request: NextRequest, context: { params: Promise<{ id:
       : await resolveLibraryMediaForOwner(id, session.user.local_user_id);
     const destination = new URL(output.url, request.nextUrl.origin);
     if (shared && destination.pathname.startsWith("/api/files/")) destination.searchParams.set("scope", "shared");
-    return NextResponse.redirect(destination, {
+    const view = request.nextUrl.searchParams.get("view");
+    if (view === "thumb") destination.searchParams.set("view", view);
+    const location = output.url.startsWith("/") ? `${destination.pathname}${destination.search}` : destination.toString();
+    return new NextResponse(null, {
       status: 307,
-      headers: { "Cache-Control": "private, max-age=300", Vary: "Cookie" },
+      headers: { Location: location, "Cache-Control": "private, max-age=300", Vary: "Cookie" },
     });
   } catch (error) {
     const status = error instanceof LibraryOperationError ? error.status : 502;

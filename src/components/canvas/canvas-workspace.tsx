@@ -237,6 +237,12 @@ function canvasLibraryMediaUrl(id: string) {
   return `/api/library/${encodeURIComponent(id)}/media?scope=${canvasScope()}`;
 }
 
+function canvasLibraryThumbnailUrl(item: LibraryItem) {
+  const url = item.output?.url || "";
+  if (!url.startsWith("/api/")) return url;
+  return `${url}${url.includes("?") ? "&" : "?"}view=thumb&v=${encodeURIComponent(item.updatedAt)}`;
+}
+
 function canvasProjectEventsUrl(id: string, clientId: string) {
   const query = new URLSearchParams({ scope: canvasScope(), client: clientId });
   return `/api/canvas/projects/${encodeURIComponent(id)}/events?${query}`;
@@ -4001,7 +4007,7 @@ function LibraryPanel({ open, items, filter, search, onClose, onFilter, onSearch
               <span className="canvas-library-item__preview">
                 {item.output?.url && item.type === "image" ? (
                   // eslint-disable-next-line @next/next/no-img-element -- authenticated runtime media is not a static Next image.
-                  <img src={item.output.url.startsWith("/api/files/") ? `${item.output.url}?view=thumb` : item.output.url} alt="" draggable={false} loading="lazy" decoding="async" />
+                  <img src={canvasLibraryThumbnailUrl(item)} alt="" draggable={false} loading="lazy" decoding="async" />
                 ) : item.type === "video" ? <Film /> : <ImageIcon />}
               </span>
               <span className="canvas-library-item__copy">
