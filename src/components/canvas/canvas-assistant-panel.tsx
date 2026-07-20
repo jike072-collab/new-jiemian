@@ -81,7 +81,7 @@ export function CanvasAssistantPanel({
   return (
     <aside className="canvas-assistant" aria-label="画布智能助手">
       <header className="canvas-assistant__header">
-        <div><Bot /><span><strong>智能助手</strong><small>GPT-5.5 · 仅限当前画布</small></span></div>
+        <div><Bot /><span><strong>智能助手</strong><small>GPT-5.6 Luna · 仅限当前画布</small></span></div>
         <button type="button" className="canvas-icon-button" onClick={onClose} aria-label="关闭智能助手" title="关闭智能助手"><X /></button>
       </header>
       <div className="canvas-assistant__quick" aria-label="快捷请求">

@@ -26,6 +26,10 @@ for (const key of [
 ]) {
   process.env[key] = "";
 }
+process.env.PROMPT_OPTIMIZER_API_URL = "https://fallback.example/v1/chat/completions";
+process.env.PROMPT_OPTIMIZER_MODEL = "fallback-model";
+process.env.PROMPT_OPTIMIZER_DISPLAY_NAME = "Fallback assistant";
+process.env.PROMPT_OPTIMIZER_API_KEY = "fallback-provider-key";
 process.env.DATA_DIR = dataDir;
 process.env.UPLOADS_DIR = uploadsDir;
 
@@ -144,6 +148,31 @@ async function assertBlankDisplayNameFallsBackToModel() {
   const enabled = await providersModule.readFrontendProviders("image");
   assert.equal(enabled[0]?.model, "fallback-image-model");
   assert.equal(enabled[0]?.displayName, "fallback-image-model");
+}
+
+async function assertStoredPromptProviderOverridesEnvironmentFallback() {
+  await writeProviders([
+    ...providersModule.defaultProviders().filter((provider) => provider.id !== "prompt-optimizer"),
+    {
+      id: "prompt-optimizer",
+      kind: "prompt",
+      title: "Saved assistant",
+      role: "Saved prompt optimizer",
+      apiUrl: "https://saved.example/v1/chat/completions",
+      model: "saved-model",
+      displayName: "GPT-5.6 Luna",
+      endpointType: "chat-completions",
+      enabled: true,
+      apiKey: "saved-provider-key",
+    },
+  ]);
+
+  const provider = (await providersModule.readProviders()).find((item) => item.id === "prompt-optimizer");
+  assert.equal(provider?.apiUrl, "https://saved.example/v1/chat/completions");
+  assert.equal(provider?.model, "saved-model");
+  assert.equal(provider?.displayName, "GPT-5.6 Luna");
+  assert.equal(provider?.apiKey, "saved-provider-key");
+  assert.equal(provider?.enabled, true);
 }
 
 async function assertRetiredNianhuaImageProviderIsHidden() {
@@ -372,6 +401,7 @@ test("provider display-name persistence and legacy upscale compatibility", async
   await assertProviderDisplayNamesRoundTrip();
   await assertMissingDisplayNameFallsBackToModel();
   await assertBlankDisplayNameFallsBackToModel();
+  await assertStoredPromptProviderOverridesEnvironmentFallback();
   await assertRetiredNianhuaImageProviderIsHidden();
   await assertStoredVideoProviderExpansion();
   await assertLegacyLocalUpscaleMapsAtReadBoundary();
