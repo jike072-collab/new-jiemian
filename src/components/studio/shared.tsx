@@ -393,7 +393,7 @@ export function ProviderSelect({
   const options = providers.map((provider) => ({
     value: provider.id,
     label: providerModelName(provider.model, provider.displayName),
-    description: providerUseCase(provider.model, provider.displayName),
+    description: providerUseCase(provider.model, provider.displayName, provider.videoOptions),
   }));
   const familyDefinitions = [
     { value: "veo", label: "Veo", matches: (provider: FrontendProvider) => provider.model.startsWith("veo-") },
@@ -466,7 +466,7 @@ function providerModelName(model: string, displayName: string) {
   return displayName || model;
 }
 
-function providerUseCase(model: string, displayName: string) {
+function providerUseCase(model: string, displayName: string, videoOptions?: FrontendProvider["videoOptions"]) {
   const normalized = model.trim().toLowerCase();
   const normalizedDisplayName = displayName.trim().toLowerCase();
   if (normalized === "image" || normalized === "banana-img2" || normalizedDisplayName === "image") {
@@ -490,6 +490,21 @@ function providerUseCase(model: string, displayName: string) {
   if (normalized === "seedance2.0 720p-933-pro-gz-15s") return "支持 9 图 · 3 视频 · 3 音频 · 15 秒 · 不卡真人 · 720P";
   if (normalized === "seedance2.0 720p-fast-gz-15s") return "支持 4 图 · 1 视频 · 1 音频 · 15 秒 · 不卡真人 · 720P";
   if (normalized === "seedance2.0 720p-pro-gz-15s") return "支持 4 图 · 3 视频 · 1 音频 · 15 秒 · 不卡真人 · 720P";
+  if (/seedance[-_ ]*2(?:\.0)?.*720\s*p/.test(normalized) && videoOptions) {
+    const durations = videoOptions.durations || [];
+    const durationLabel = durations.length === 1
+      ? `${durations[0]} 秒`
+      : durations.length > 1
+        ? `${durations[0]}-${durations[durations.length - 1]} 秒`
+        : "可选时长";
+    const media = [
+      videoOptions.maxReferenceImages ? `${videoOptions.maxReferenceImages} 图` : "",
+      videoOptions.maxReferenceVideos ? `${videoOptions.maxReferenceVideos} 视频` : "",
+      videoOptions.maxReferenceAudios ? `${videoOptions.maxReferenceAudios} 音频` : "",
+    ].filter(Boolean).join(" · ");
+    const ratios = videoOptions.ratios?.join(" / ") || "16:9 / 9:16";
+    return `支持 ${media} · ${durationLabel} · ${ratios} · ${videoOptions.resolution || "720P"}`;
+  }
   return undefined;
 }
 

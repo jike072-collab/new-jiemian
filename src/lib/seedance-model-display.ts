@@ -26,10 +26,12 @@ export function clmmSeedanceVideoDisplayName(model: string) {
   const normalized = model.trim().toLowerCase();
   const known = clmmSeedanceVideoDisplayNames[model] || clmmSeedanceVideoDisplayNames[normalized];
   if (known) return known;
-  if (normalized.includes("933")) return "Full 933 720P";
+  const seconds = normalized.match(/(?:^|[-_ ])(\d+)s(?:$|[-_ ])/i)?.[1];
+  const fixedLabel = seconds && normalized.includes("gz") ? `${seconds} 秒 不卡真人` : "";
+  if (normalized.includes("933")) return "满血 933 不卡真人";
   if (normalized.includes("mini")) return "Mini";
-  if (normalized.includes("fast")) return /(?:^|[-_ ])\d+s(?:$|[-_ ])/i.test(normalized) ? "Fast 15s" : "Fast";
-  if (normalized.includes("pro")) return /(?:^|[-_ ])\d+s(?:$|[-_ ])/i.test(normalized) ? "Pro 15s" : "Pro";
+  if (normalized.includes("fast")) return fixedLabel ? `Fast ${fixedLabel}` : "Fast";
+  if (normalized.includes("pro")) return fixedLabel ? `Pro ${fixedLabel}` : "Pro";
   return "Seedance 2.0 720P";
 }
 

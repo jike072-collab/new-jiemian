@@ -1,0 +1,11 @@
+[Unit]
+Description=Daily Aohuang AI CLMM Seedance model catalog sync
+
+[Timer]
+OnCalendar=*-*-* 03:15:00 Asia/Shanghai
+Persistent=true
+RandomizedDelaySec=5m
+Unit=aohuang-clmm-model-sync.service
+
+[Install]
+WantedBy=timers.target

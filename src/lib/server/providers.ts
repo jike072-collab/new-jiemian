@@ -146,12 +146,13 @@ export function clmmSeedanceVideoOptionsForModel(model: string): ProviderConfig[
   const normalized = model.trim().toLowerCase();
   const known = clmmSeedanceVideoOptionsByModel[normalized];
   if (known || !isDynamicClmmSeedance20Model(model)) return known;
-  const fixedDuration = /(?:^|[-_ ])\d+s(?:$|[-_ ])/i.test(normalized);
+  const fixedSeconds = Number(normalized.match(/(?:^|[-_ ])(\d+)s(?:$|[-_ ])/i)?.[1] || 0);
+  const fixedDuration = fixedSeconds > 0;
   const is933 = normalized.includes("933");
   const isFast = normalized.includes("fast");
   const isMini = normalized.includes("mini");
   return {
-    durations: fixedDuration ? [15] : clmmFlexibleVideoDurations,
+    durations: fixedDuration ? [fixedSeconds] : clmmFlexibleVideoDurations,
     ratios: ["16:9", "9:16"],
     resolution: "720p",
     maxReferenceImages: is933 ? 9 : 4,

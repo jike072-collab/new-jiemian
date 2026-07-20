@@ -1,0 +1,14 @@
+[Unit]
+Description=Aohuang AI CLMM Seedance model catalog sync
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=oneshot
+User=aohuang-ai
+Group=aohuang-ai
+WorkingDirectory=/opt/aohuang-ai/current
+Environment=NODE_ENV=production
+Environment=DATA_DIR=/var/lib/aohuang-ai/data
+ExecStart=/usr/bin/node /opt/aohuang-ai/current/scripts/ops/sync-clmm-seedance-models.mjs --apply
+UMask=0077

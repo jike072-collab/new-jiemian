@@ -58,12 +58,18 @@ test("updates only the CLMM provider document and keeps its key unchanged", asyn
       models: ["old-seedance2.0 720p-fast"],
       enabledModels: ["old-seedance2.0 720p-fast"],
     }];
-    const result = syncProviderDocument(document, ["bb-seedance2.0 720p-fast-gz-15s"]);
+    const result = syncProviderDocument(document, [
+      "bb-seedance2.0 720p-fast-gz-15s",
+      "oe-seedance-2.0-pro-720p-14s-gz",
+    ]);
     await writeFile(providerPath, JSON.stringify(result.document));
     const saved = JSON.parse(await readFile(providerPath, "utf8"));
     assert.equal(saved[0].apiKey, "other-secret");
     assert.equal(saved[1].apiKey, "secret-that-must-not-print");
     assert.deepEqual(saved[1].enabledModels, result.selection.models);
+    assert.equal(saved[1].modelDisplayNames["bb-seedance2.0 720p-fast-gz-15s"], "Fast 15 秒 不卡真人");
+    assert.equal(saved[1].modelDisplayNames["oe-seedance-2.0-pro-720p-14s-gz"], "Pro 14 秒 不卡真人");
+    assert.equal(saved[1].modelDisplayNames["seedance2.0 720p-933-pro-gz-15s"], "满血 933 不卡真人");
   } finally {
     await rm(root, { recursive: true, force: true });
   }

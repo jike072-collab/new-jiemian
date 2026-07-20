@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
+import { chmod, chown, mkdir, readFile, rename, stat, writeFile } from "node:fs/promises";
 import { dirname, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 
@@ -77,10 +77,12 @@ export function modelsEndpointFor(apiUrl) {
 
 function displayName(model) {
   const normalized = model.toLowerCase();
-  if (normalized.includes("933")) return "Full 933 720P";
+  const seconds = normalized.match(/(?:^|[-_ ])(\d+)s(?:$|[-_ ])/i)?.[1];
+  const fixedLabel = seconds && normalized.includes("gz") ? `${seconds} 秒 不卡真人` : "";
+  if (normalized.includes("933")) return "满血 933 不卡真人";
   if (normalized.includes("mini")) return "Mini";
-  if (normalized.includes("fast")) return /\d+s/.test(normalized) ? "Fast 15s" : "Fast";
-  if (normalized.includes("pro")) return /\d+s/.test(normalized) ? "Pro 15s" : "Pro";
+  if (normalized.includes("fast")) return fixedLabel ? `Fast ${fixedLabel}` : "Fast";
+  if (normalized.includes("pro")) return fixedLabel ? `Pro ${fixedLabel}` : "Pro";
   return "Seedance 2.0 720P";
 }
 
@@ -112,8 +114,13 @@ async function readJson(filePath) {
 
 async function writeJsonAtomic(filePath, value) {
   await mkdir(dirname(filePath), { recursive: true });
+  const metadata = await stat(filePath);
   const temporary = `${filePath}.${process.pid}.${Date.now()}.tmp`;
-  await writeFile(temporary, `${JSON.stringify(value, null, 2)}\n`, { encoding: "utf8", mode: 0o600 });
+  await writeFile(temporary, `${JSON.stringify(value, null, 2)}\n`, { encoding: "utf8", mode: metadata.mode & 0o777 });
+  await chmod(temporary, metadata.mode & 0o777);
+  if (typeof process.getuid === "function" && process.getuid() === 0) {
+    await chown(temporary, metadata.uid, metadata.gid);
+  }
   await rename(temporary, filePath);
 }
 
