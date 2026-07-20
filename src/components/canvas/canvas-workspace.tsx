@@ -380,7 +380,6 @@ function CanvasWorkspaceInner({
   const [connectionStyle, setConnectionStyle] = useState<ConnectionStyle>(() => storedCanvasSettings(presentation).connectionStyle);
   const [snapEnabled, setSnapEnabled] = useState(() => storedCanvasSettings(presentation).snapEnabled);
   const [syncState, setSyncState] = useState<"live" | "syncing" | "paused">("live");
-  const [compactViewport, setCompactViewport] = useState(false);
   const [hoveredNodeId, setHoveredNodeId] = useState("");
   const [collaborationClientId] = useState(() => canvasId("client"));
   const [presenceMembers, setPresenceMembers] = useState<CanvasPresenceMember[]>([]);
@@ -471,7 +470,6 @@ function CanvasWorkspaceInner({
   useEffect(() => {
     const mobileViewport = window.matchMedia("(max-width: 820px)");
     const closeLibraryOnMobile = (matches: boolean) => {
-      setCompactViewport(matches);
       if (matches) setLibraryOpen(false);
     };
     closeLibraryOnMobile(mobileViewport.matches);
@@ -2945,12 +2943,12 @@ function CanvasWorkspaceInner({
               maxZoom={2.5}
               onlyRenderVisibleElements
               panOnScroll
-              panOnDrag={presentation === "vozeb" && !compactViewport ? [1] : true}
+              panOnDrag
               panActivationKeyCode="Space"
               snapToGrid={snapEnabled}
               snapGrid={[24, 24]}
-              selectionOnDrag={presentation === "vozeb" && !compactViewport}
-              selectionKeyCode={presentation === "vozeb" ? null : "Shift"}
+              selectionOnDrag={false}
+              selectionKeyCode={presentation === "vozeb" ? "Control" : "Shift"}
               selectionMode={SelectionMode.Partial}
               multiSelectionKeyCode={["Control", "Meta", "Shift"]}
               elementsSelectable={!touchMultiSelect}

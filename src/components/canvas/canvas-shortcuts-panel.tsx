@@ -6,8 +6,9 @@ const shortcutGroups = [
   {
     title: "画布与选择",
     items: [
-      { label: "框选多个节点", keys: ["拖动空白处"] },
-      { label: "移动画布", keys: ["Space", "+", "拖动"] },
+      { label: "框选多个节点", keys: ["Ctrl", "+", "左键拖动空白处"] },
+      { label: "移动画布", keys: ["鼠标左键", "+", "拖动空白处"] },
+      { label: "从节点上移动画布", keys: ["Space", "+", "拖动"] },
       { label: "移动画布", keys: ["中键拖动 / 滚轮"] },
       { label: "追加或取消选中", keys: ["Ctrl / ⌘ / Shift", "+", "点击节点"] },
       { label: "选择全部节点", keys: ["Ctrl / ⌘", "+", "A"] },
@@ -74,7 +75,7 @@ export function CanvasSelectionHint({ onOpen, onDismiss }: { onOpen: () => void;
   return (
     <div className="canvas-selection-hint" role="status">
       <MousePointer2 />
-      <button type="button" onClick={onOpen}><strong>拖动空白处框选</strong></button>
+      <button type="button" onClick={onOpen}><strong>Ctrl + 左键拖动空白处框选</strong></button>
       <button type="button" className="canvas-selection-hint__close" onClick={onDismiss} aria-label="关闭框选提示" title="关闭框选提示"><X /></button>
     </div>
   );

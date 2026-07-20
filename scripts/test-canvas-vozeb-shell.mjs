@@ -29,9 +29,9 @@ assert.match(primaryRoute, /\.\.\/canvas-v2\/canvas-v2\.css/, "the primary canva
 assert.match(workspace, /canvasProjectsUrl\(/, "v2 must keep server-backed canvas projects");
 assert.match(workspace, /new EventSource\(canvasProjectEventsUrl/, "v2 must keep realtime shared-canvas updates");
 assert.match(workspace, /CanvasAssistantPanel/, "v2 must keep the restricted Aohuang assistant panel");
-assert.match(workspace, /presentation === "vozeb" && !compactViewport \? \[1\] : true/, "desktop v2 must reserve left-drag for box selection");
-assert.match(workspace, /selectionOnDrag=\{presentation === "vozeb" && !compactViewport\}/, "desktop v2 must support direct box selection");
-assert.match(workspace, /selectionKeyCode=\{presentation === "vozeb" \? null : "Shift"\}/, "desktop v2 box selection must not require a modifier");
+assert.match(workspace, /\s+panOnDrag\s+/, "desktop v2 must pan with a plain left-button drag");
+assert.match(workspace, /selectionOnDrag=\{false\}/, "desktop v2 must not box-select on a plain left-button drag");
+assert.match(workspace, /selectionKeyCode=\{presentation === "vozeb" \? "Control" : "Shift"\}/, "desktop v2 box selection must require Control");
 
 assert.match(assistant, /seedanceCanvasAssistantRules/, "assistant must retain Seedance-specific planning rules");
 assert.match(assistant, /seedancePromptGuidance/, "assistant must retain Seedance prompt guidance");
