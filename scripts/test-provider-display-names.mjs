@@ -160,6 +160,8 @@ async function assertStoredPromptProviderOverridesEnvironmentFallback() {
       role: "Saved prompt optimizer",
       apiUrl: "https://saved.example/v1/chat/completions",
       model: "saved-model",
+      models: ["old-model-1", "old-model-2"],
+      enabledModels: ["old-model-1", "old-model-2"],
       displayName: "GPT-5.6 Luna",
       endpointType: "chat-completions",
       enabled: true,
@@ -173,6 +175,9 @@ async function assertStoredPromptProviderOverridesEnvironmentFallback() {
   assert.equal(provider?.displayName, "GPT-5.6 Luna");
   assert.equal(provider?.apiKey, "saved-provider-key");
   assert.equal(provider?.enabled, true);
+  assert.deepEqual(provider?.models, undefined);
+  assert.deepEqual(provider?.enabledModels, undefined);
+  assert.equal((await providersModule.providerById("prompt-optimizer"))?.model, "saved-model");
 }
 
 async function assertRetiredNianhuaImageProviderIsHidden() {
