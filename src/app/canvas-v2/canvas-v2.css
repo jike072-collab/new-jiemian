@@ -73,6 +73,7 @@
 .canvas-v2-menu svg { width: 17px; height: 17px; }
 
 .canvas-v2-organize-button { align-items: center; gap: 6px; padding: 0 10px; font-size: 11px; }
+.canvas-v2-organize-button { white-space: nowrap; }
 
 .canvas-v2-command-button { display: flex; min-width: 126px; align-items: center; gap: 7px; padding: 0 8px; }
 .canvas-v2-command-button svg { width: 15px; flex: 0 0 15px; }
@@ -80,7 +81,7 @@
 .canvas-v2-command-button kbd { border: 1px solid var(--border-subtle); border-radius: 4px; background: var(--surface); color: var(--muted); padding: 2px 4px; font: inherit; font-size: 8px; white-space: nowrap; }
 
 .canvas-v2-title {
-  width: min(300px, 34vw);
+  width: min(240px, 26vw);
   min-width: 108px;
   overflow: hidden;
   border: 0;
