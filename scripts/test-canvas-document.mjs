@@ -6,6 +6,7 @@ const {
   emptyCanvasDocument,
   normalizeCanvasDocument,
   normalizeCanvasTitle,
+  removeLibraryItemsFromCanvasDocument,
 } = await import(new URL("../src/lib/canvas/document.ts", import.meta.url));
 
 assert.deepEqual(normalizeCanvasDocument(emptyCanvasDocument()), emptyCanvasDocument());
@@ -30,6 +31,24 @@ const normalized = normalizeCanvasDocument({
 });
 assert.equal(normalized.nodes[0].data.libraryItemId, "library-item-1");
 assert.equal(normalized.nodes[0].data.mediaUrl, undefined);
+
+const removedMedia = removeLibraryItemsFromCanvasDocument({
+  nodes: [
+    { id: "prompt-1", type: "canvas", position: { x: 0, y: 0 }, data: { kind: "prompt", title: "prompt" } },
+    { id: "media-1", type: "canvas", position: { x: 200, y: 0 }, data: { kind: "media", title: "image", mediaType: "image", libraryItemId: "library-item-1", status: "done" } },
+    { id: "generator-1", type: "canvas", position: { x: 400, y: 0 }, data: { kind: "generator", title: "video", generationKind: "video", sourceNodeIds: ["media-1"], outputNodeId: "media-1" } },
+  ],
+  edges: [
+    { id: "edge-1", source: "prompt-1", target: "media-1" },
+    { id: "edge-2", source: "media-1", target: "generator-1" },
+  ],
+  viewport: { x: 0, y: 0, zoom: 1 },
+}, ["library-item-1"]);
+assert.deepEqual(removedMedia.removedNodeIds, ["media-1"]);
+assert.equal(removedMedia.document.nodes.length, 2);
+assert.deepEqual(removedMedia.document.edges, []);
+assert.deepEqual(removedMedia.document.nodes.find((node) => node.id === "generator-1")?.data.sourceNodeIds, []);
+assert.equal(removedMedia.document.nodes.find((node) => node.id === "generator-1")?.data.outputNodeId, undefined);
 
 const audioReference = normalizeCanvasDocument({
   nodes: [{

@@ -2,7 +2,7 @@ import "server-only";
 
 import { randomUUID } from "node:crypto";
 
-import { normalizeCanvasDocument, normalizeCanvasTitle } from "@/lib/canvas/document";
+import { normalizeCanvasDocument, normalizeCanvasTitle, removeLibraryItemsFromCanvasDocument } from "@/lib/canvas/document";
 import { mergeCanvasWorkspace } from "@/lib/canvas/merge";
 import type { CanvasProject, CanvasProjectDocument } from "@/lib/canvas/types";
 import { applicationQuery, withApplicationTransaction } from "@/lib/server/database";
@@ -139,6 +139,50 @@ export async function deleteCanvasProject(id: string, userId: string, sourceIdVa
     throw new CanvasProjectError("CANVAS_PROJECT_NOT_FOUND", "未找到画布。", 404);
   }
   return deletedId;
+}
+
+export async function removeLibraryItemsFromCanvasProjects(libraryItemIds: string[]) {
+  const ids = Array.from(new Set(libraryItemIds.map((id) => id.trim()).filter(Boolean)));
+  if (!ids.length) return { projectsUpdated: 0, nodesRemoved: 0 };
+
+  return withApplicationTransaction(async (client) => {
+    const candidates = await client.query<{ id: string; document: unknown; version: number }>(
+      `select id, document, version
+         from canvas_projects
+        where exists (
+          select 1
+            from jsonb_array_elements(document->'nodes') as node
+           where node->'data'->>'libraryItemId' = any($1::text[])
+        )
+        for update`,
+      [ids],
+    );
+    let projectsUpdated = 0;
+    let nodesRemoved = 0;
+    for (const candidate of candidates.rows) {
+      const result = removeLibraryItemsFromCanvasDocument(candidate.document, ids);
+      if (!result.removedNodeIds.length) continue;
+      const updated = await client.query<{ version: number }>(
+        `update canvas_projects
+            set document = $2::jsonb,
+                version = version + 1,
+                updated_at = $3
+          where id = $1 and version = $4
+          returning version`,
+        [candidate.id, JSON.stringify(result.document), new Date().toISOString(), candidate.version],
+      );
+      const version = updated.rows[0]?.version;
+      if (!version) continue;
+      await client.query("select pg_notify('canvas_project_events', $1)", [JSON.stringify({
+        type: "project",
+        projectId: candidate.id,
+        version: Number(version),
+      })]);
+      projectsUpdated += 1;
+      nodesRemoved += result.removedNodeIds.length;
+    }
+    return { projectsUpdated, nodesRemoved };
+  });
 }
 
 async function writeCanvasProject(input: {

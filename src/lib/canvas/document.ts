@@ -81,6 +81,33 @@ export function normalizeCanvasDocument(value: unknown): CanvasProjectDocument {
   };
 }
 
+export function removeLibraryItemsFromCanvasDocument(value: unknown, libraryItemIds: Iterable<string>) {
+  const document = normalizeCanvasDocument(value);
+  const deletedLibraryItemIds = new Set(Array.from(libraryItemIds, (id) => String(id || "").trim()).filter(Boolean));
+  const removedNodeIds = new Set(
+    document.nodes
+      .filter((node) => node.data.kind === "media" && node.data.libraryItemId && deletedLibraryItemIds.has(node.data.libraryItemId))
+      .map((node) => node.id),
+  );
+  if (!removedNodeIds.size) return { document, removedNodeIds: [] as string[] };
+
+  const nodes = document.nodes
+    .filter((node) => !removedNodeIds.has(node.id))
+    .map((node) => {
+      const sourceNodeIds = node.data.sourceNodeIds?.filter((sourceNodeId) => !removedNodeIds.has(sourceNodeId));
+      const nextData = { ...node.data };
+      if (sourceNodeIds) nextData.sourceNodeIds = sourceNodeIds;
+      if (nextData.outputNodeId && removedNodeIds.has(nextData.outputNodeId)) delete nextData.outputNodeId;
+      return { ...node, data: nextData };
+    });
+  const remainingNodeIds = new Set(nodes.map((node) => node.id));
+  const edges = document.edges.filter((edge) => remainingNodeIds.has(edge.source) && remainingNodeIds.has(edge.target));
+  return {
+    document: { ...document, nodes, edges },
+    removedNodeIds: Array.from(removedNodeIds),
+  };
+}
+
 function normalizeNode(value: unknown): CanvasStoredNode {
   if (!isRecord(value) || !isRecord(value.position) || !isRecord(value.data)) {
     throw new CanvasDocumentError("画布节点格式无效。");

@@ -1,6 +1,7 @@
 import { type NextRequest, NextResponse } from "next/server";
 
 import { authResultResponse, csrfFailure, requireAuthSession, requireCsrf } from "@/lib/server/auth";
+import { removeLibraryItemsFromCanvasProjects } from "@/lib/server/canvas-projects";
 import { diagnosticErrorResponse, GenerationDiagnosticError } from "@/lib/server/error-diagnostics";
 import { deleteLibraryItemForOwner, deleteLibraryItemsForOwner, LibraryOperationError, readLibraryMetadataForOwner, updateLibraryItemForOwner } from "@/lib/server/library";
 
@@ -31,9 +32,13 @@ export async function DELETE(request: NextRequest) {
       });
     }
     if (ids.length) {
-      return NextResponse.json(await deleteLibraryItemsForOwner(ids, session.user.local_user_id));
+      const deleted = await deleteLibraryItemsForOwner(ids, session.user.local_user_id);
+      await removeLibraryItemsFromCanvasProjects(deleted.deletedIds);
+      return NextResponse.json(deleted);
     }
-    return NextResponse.json(await deleteLibraryItemForOwner(body.id!, session.user.local_user_id));
+    const deleted = await deleteLibraryItemForOwner(body.id!, session.user.local_user_id);
+    await removeLibraryItemsFromCanvasProjects([body.id!]);
+    return NextResponse.json(deleted);
   } catch (error) {
     if (error instanceof LibraryOperationError) {
       return diagnosticErrorResponse(error, {
