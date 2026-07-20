@@ -37,6 +37,7 @@
     "test:staging-smoke": "node scripts/test-staging-smoke.mjs",
     "test:stage2-ui-acceptance": "node scripts/test-stage2-ui-acceptance.mjs",
     "test:stage3-studio-regression": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON scripts/test-stage3-studio-regression.mjs",
+    "test:studio-particle-loop": "node scripts/test-studio-particle-loop.mjs",
     "test:stage4-provider-health": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON scripts/test-stage4-provider-health.mjs",
     "test:provider-health": "node scripts/test-stage8a-provider-health.mjs",
     "test:billing-sandbox": "node scripts/test-billing-sandbox.mjs",

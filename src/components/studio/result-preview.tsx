@@ -1201,7 +1201,7 @@ function ProcessingPreview({
   return (
     <PreviewState eyebrow="处理中" title={label} description={detail} role="status" live>
       <div className="studio-processing-state studio-generation-pending">
-        <DotRippleLoader fill expanded />
+        <DotRippleLoader fill expanded staticField />
         <div className="studio-processing-state__copy">
           <p>{label}</p>
           <small>已等待 {elapsedText} · 进度 {progressValue}%</small>
@@ -1287,7 +1287,7 @@ function JobStatusPreview({
   return (
     <PreviewState eyebrow="结果" title={title} description={detail} badge={badge} role="status" live>
       <div className="studio-job-status-card studio-generation-pending" aria-live="polite">
-        <DotRippleLoader fill expanded />
+        <DotRippleLoader fill expanded staticField />
         <div className="studio-job-status-card__copy">
           <strong>{title}</strong>
           <p>{detail}</p>
@@ -1802,7 +1802,7 @@ function ImageResultGrid({
       ))}
       {Array.from({ length: pendingCount }).map((_, index) => (
         <article key={`pending-${index}`} className="studio-image-result-card studio-image-result-card--pending studio-generation-pending" aria-live="polite">
-          <DotRippleLoader fill staticField={pendingCount > 1} expanded={pendingCount === 1} />
+          <DotRippleLoader fill staticField expanded={pendingCount === 1} />
           <p>{loading ? "图片生成中" : "图片未生成"}</p>
           <small>完成后会自动补到这里。</small>
         </article>

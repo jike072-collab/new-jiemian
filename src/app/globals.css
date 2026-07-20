@@ -4942,18 +4942,11 @@
     pointer-events: none;
   }
 
-  .studio-dot-ripple-loader.is-static-field span {
-    animation: none;
-    opacity: var(--dot-field-opacity);
-    transform: scale(0.82);
-    will-change: auto;
-  }
-
   .studio-dot-ripple-loader.is-vector-field {
     contain: layout paint;
     padding: 3% 2%;
     transform-origin: center;
-    animation: studio-dot-field-orbit 12.8s cubic-bezier(0.42, 0, 0.18, 1) infinite;
+    animation: studio-dot-field-orbit 12.8s linear infinite;
   }
 
   .studio-dot-ripple-loader.is-vector-field.is-expanded-field {
@@ -4970,6 +4963,13 @@
     transform: translate3d(0, 0, 0) scale(0.72);
     animation: studio-dot-field-drift var(--dot-field-duration) cubic-bezier(0.38, 0.02, 0.2, 1) infinite;
     animation-delay: var(--dot-field-delay);
+  }
+
+  .studio-dot-ripple-loader.is-vector-field.is-static-field span {
+    animation: none;
+    opacity: var(--dot-field-opacity);
+    transform: scale(0.82);
+    will-change: auto;
   }
 
   @keyframes studio-dot-ripple {
