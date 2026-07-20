@@ -146,14 +146,17 @@ function normalizeNode(value: unknown): CanvasStoredNode {
     const mediaType = boundedString(value.data.mediaType, 16) as CanvasMediaType;
     if (!mediaTypes.has(mediaType)) throw new CanvasDocumentError("媒体节点类型无效。");
     data.mediaType = mediaType;
+    const status = normalizeStatus(value.data.status, "done");
     if (mediaType === "audio") {
       const mediaUrl = optionalString(value.data.mediaUrl, 2_000);
       if (mediaUrl && /^(https?:\/\/|\/)/i.test(mediaUrl)) data.mediaUrl = mediaUrl;
     }
     const libraryItemId = optionalIdentifier(value.data.libraryItemId, 160);
-    if (mediaType !== "audio" && !libraryItemId) throw new CanvasDocumentError("作品 ID无效。");
+    const pendingGeneratorResult = Boolean(data.sourceNodeIds?.length)
+      && (status === "queued" || status === "generating" || status === "failed");
+    if (mediaType !== "audio" && !libraryItemId && !pendingGeneratorResult) throw new CanvasDocumentError("作品 ID无效。");
     if (libraryItemId) data.libraryItemId = libraryItemId;
-    data.status = normalizeStatus(value.data.status, "done");
+    data.status = status;
   }
 
   if (kind === "generator") {

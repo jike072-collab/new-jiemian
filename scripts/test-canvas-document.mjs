@@ -8,6 +8,7 @@ const {
   normalizeCanvasTitle,
   removeLibraryItemsFromCanvasDocument,
 } = await import(new URL("../src/lib/canvas/document.ts", import.meta.url));
+const { duplicateCanvasNodeData } = await import(new URL("../src/lib/canvas/duplicate.ts", import.meta.url));
 
 assert.deepEqual(normalizeCanvasDocument(emptyCanvasDocument()), emptyCanvasDocument());
 assert.equal(normalizeCanvasTitle("  公司广告画布  "), "公司广告画布");
@@ -31,6 +32,57 @@ const normalized = normalizeCanvasDocument({
 });
 assert.equal(normalized.nodes[0].data.libraryItemId, "library-item-1");
 assert.equal(normalized.nodes[0].data.mediaUrl, undefined);
+
+const pendingResult = normalizeCanvasDocument({
+  nodes: [{
+    id: "pending-image-1",
+    type: "canvas",
+    position: { x: 0, y: 0 },
+    data: {
+      kind: "media",
+      title: "Pending image",
+      mediaType: "image",
+      sourceNodeIds: ["generator-1"],
+      status: "generating",
+    },
+  }],
+  edges: [],
+  viewport: { x: 0, y: 0, zoom: 1 },
+});
+assert.equal(pendingResult.nodes[0].data.libraryItemId, undefined);
+assert.equal(pendingResult.nodes[0].data.status, "generating");
+assert.throws(
+  () => normalizeCanvasDocument({
+    nodes: [{ id: "invalid-image", type: "canvas", position: { x: 0, y: 0 }, data: { kind: "media", title: "Invalid image", mediaType: "image", status: "done" } }],
+    edges: [],
+    viewport: { x: 0, y: 0, zoom: 1 },
+  }),
+  CanvasDocumentError,
+);
+
+const duplicatedGenerator = duplicateCanvasNodeData({
+  kind: "generator",
+  title: "Video generator",
+  generationKind: "video",
+  providerId: "video-provider",
+  ratio: "16:9",
+  duration: 14,
+  status: "generating",
+  progress: 38,
+  jobId: "old-job",
+  outputNodeId: "old-output",
+  error: "old-error",
+  sourceNodeIds: ["prompt-old"],
+}, new Map([["prompt-old", "prompt-copy"]]), "2026-07-20T00:00:00.000Z");
+assert.equal(duplicatedGenerator.title, "Video generator 副本");
+assert.equal(duplicatedGenerator.status, "idle");
+assert.equal(duplicatedGenerator.progress, 0);
+assert.equal(duplicatedGenerator.jobId, undefined);
+assert.equal(duplicatedGenerator.outputNodeId, undefined);
+assert.equal(duplicatedGenerator.error, undefined);
+assert.deepEqual(duplicatedGenerator.sourceNodeIds, ["prompt-copy"]);
+assert.equal(duplicatedGenerator.providerId, "video-provider");
+assert.equal(duplicatedGenerator.duration, 14);
 
 const removedMedia = removeLibraryItemsFromCanvasDocument({
   nodes: [
@@ -167,7 +219,7 @@ assert.throws(
 
 console.log(JSON.stringify({
   ok: true,
-  checks: 17,
+  checks: 22,
   generationSubmitted: false,
   databaseWritten: false,
 }));

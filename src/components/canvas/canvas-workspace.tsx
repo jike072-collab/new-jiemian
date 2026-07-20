@@ -133,6 +133,7 @@ import type {
   CanvasStoredNode,
 } from "@/lib/canvas/types";
 import { normalizeCanvasDocument } from "@/lib/canvas/document";
+import { duplicateCanvasNodeData } from "@/lib/canvas/duplicate";
 import {
   canvasImageResultGrid,
   INTERNAL_CANVAS_IMAGE_REQUEST_CONCURRENCY,
@@ -1760,7 +1761,7 @@ function CanvasWorkspaceInner({
         selected: !parentId,
         ...(parentId ? { parentId, extent: "parent" as const, expandParent: true } : {}),
         position: parentId ? node.position : { x: target.x + node.position.x - minX, y: target.y + node.position.y - minY },
-        data: { ...node.data, title: `${node.data.title} 副本`, createdAt: new Date().toISOString() },
+        data: duplicateCanvasNodeData(node.data, idMap),
       };
     });
     const copiedEdges = copied.edges.map((edge) => ({
@@ -1815,7 +1816,7 @@ function CanvasWorkspaceInner({
         selected: !parentId,
         ...(parentId ? { parentId, extent: "parent" as const, expandParent: true } : {}),
         position: parentId ? node.position : { x: node.position.x + 48, y: node.position.y + 48 },
-        data: { ...node.data, title: `${node.data.title} 副本`, createdAt: new Date().toISOString() },
+        data: duplicateCanvasNodeData(node.data, idMap),
       };
     });
     const copiedEdges = edgesRef.current.flatMap((edge) => {
