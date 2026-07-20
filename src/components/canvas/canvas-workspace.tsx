@@ -2938,7 +2938,8 @@ function CanvasWorkspaceInner({
                 style: { strokeWidth: 1.5 },
               }}
               connectionLineComponent={connectionLineComponents[connectionStyle]}
-              connectionDragThreshold={10}
+              connectionRadius={36}
+              connectionDragThreshold={4}
               defaultViewport={viewport}
               minZoom={0.08}
               maxZoom={2.5}
