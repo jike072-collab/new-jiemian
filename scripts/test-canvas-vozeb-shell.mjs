@@ -38,6 +38,8 @@ assert.match(assistant, /seedancePromptGuidance/, "assistant must retain Seedanc
 assert.match(promptGuidance, /reference|Image|Video|Audio/i, "Seedance reference validation must remain available");
 
 assert.match(shell, /对应源码/, "the network UI must expose the corresponding-source entry");
+assert.match(shell, /canvas-v2-title[\s\S]*canvas-v2-scope-switch/, "personal/team scope must be visible beside the canvas title");
+assert.doesNotMatch(shell, /canvas-v2-segments/, "personal/team scope must not remain inside the menu");
 assert.match(shell, /aria-label=\{libraryOpen \? "关闭素材库" : "打开素材库"\}/, "the topbar must open the library in one click");
 assert.match(shell, /aria-label="一键整理画布"/, "the topbar must expose one-click canvas organization");
 assert.match(workspace, /onOrganize=\{\(\) => organizeCanvas\("flow"\)\}/, "one-click organization must use the existing flow layout");

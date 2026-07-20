@@ -122,13 +122,6 @@ export function CanvasVozebTopbar({
               <span className={cn("canvas-v2-save-chip", `is-${saveState}`)}>{saveLabel(saveState)}</span>
             </div>
 
-            {scope ? (
-              <div className="canvas-v2-segments" role="tablist" aria-label="画布空间">
-                <button type="button" role="tab" aria-selected={scope === "personal"} className={scope === "personal" ? "is-active" : undefined} onClick={() => closeAndRun(() => onScopeChange("personal"))}>个人</button>
-                <button type="button" role="tab" aria-selected={scope === "shared"} className={scope === "shared" ? "is-active" : undefined} onClick={() => closeAndRun(() => onScopeChange("shared"))}>团队</button>
-              </div>
-            ) : null}
-
             <label className="canvas-v2-menu__field">
               <span>当前画布</span>
               <select value={activeProjectId} onChange={(event) => closeAndRun(() => onProjectChange(event.target.value))}>
@@ -171,6 +164,12 @@ export function CanvasVozebTopbar({
           aria-label="画布名称"
           onChange={(event) => onTitleChange(event.target.value)}
         />
+        {scope ? (
+          <div className="canvas-v2-scope-switch" role="tablist" aria-label="画布空间">
+            <button type="button" role="tab" aria-selected={scope === "personal"} className={scope === "personal" ? "is-active" : undefined} onClick={() => onScopeChange("personal")}>个人</button>
+            <button type="button" role="tab" aria-selected={scope === "shared"} className={scope === "shared" ? "is-active" : undefined} onClick={() => onScopeChange("shared")}>团队</button>
+          </div>
+        ) : null}
         <button
           type="button"
           className={cn("canvas-v2-command-button", commandOpen && "is-active")}
