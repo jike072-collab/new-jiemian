@@ -41,6 +41,24 @@ assert.ok(chainLayout.get("image-result").x < chainLayout.get("video-generator")
 assert.ok(chainLayout.get("video-generator").x < chainLayout.get("video-result").x);
 assert.ok(chainLayout.get("image-generator").x - chainLayout.get("prompt").x <= 460, "flow columns should stay compact");
 
+const branchNodes = [
+  node("main-prompt", "prompt", 0),
+  node("image-generator", "generator", 300),
+  node("image-result", "media", 600, ["image-generator"]),
+  node("late-prompt", "prompt", 900),
+  node("video-generator", "generator", 1200),
+  node("video-result", "media", 1500, ["video-generator"]),
+];
+const branchLayout = new Map(layoutCanvasFlowNodes(branchNodes, [
+  { source: "main-prompt", target: "image-generator" },
+  { source: "image-generator", target: "image-result" },
+  { source: "image-result", target: "video-generator" },
+  { source: "late-prompt", target: "video-generator" },
+  { source: "video-generator", target: "video-result" },
+]).map((item) => [item.id, item.position]));
+assert.ok(branchLayout.get("late-prompt").x > branchLayout.get("main-prompt").x, "a late side input should move beside its target");
+assert.ok(branchLayout.get("video-generator").x - branchLayout.get("late-prompt").x <= 460, "a direct side link should span one compact column");
+
 const crossingNodes = [node("source-a", "prompt", 0), node("source-b", "prompt", 400), node("target-a", "generator", 0), node("target-b", "generator", 400)];
 const crossingLayout = new Map(layoutCanvasFlowNodes(crossingNodes, [
   { source: "source-a", target: "target-b" },

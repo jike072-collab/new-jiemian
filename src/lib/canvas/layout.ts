@@ -73,6 +73,18 @@ export function layoutCanvasFlowNodes<T extends CanvasLayoutNode>(nodes: T[], ed
     }
   });
 
+  // Pull side branches toward their first downstream node so direct links do not span empty columns.
+  [...roots]
+    .filter((node) => processed.has(node.id))
+    .sort((left, right) => (depth.get(right.id) || 0) - (depth.get(left.id) || 0))
+    .forEach((node) => {
+      const targetIds = outgoing.get(node.id) || [];
+      if (!targetIds.length || targetIds.some((id) => !processed.has(id))) return;
+      const currentDepth = depth.get(node.id) || 0;
+      const compactedDepth = Math.min(...targetIds.map((id) => depth.get(id) || 0)) - 1;
+      if (compactedDepth > currentDepth) depth.set(node.id, compactedDepth);
+    });
+
   const maxDepth = Math.max(0, ...depth.values());
   const layers = Array.from({ length: maxDepth + 1 }, () => [] as T[]);
   roots.forEach((node) => layers[depth.get(node.id) || 0].push(node as T));
