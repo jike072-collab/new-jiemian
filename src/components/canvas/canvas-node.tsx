@@ -404,6 +404,7 @@ function GeneratorNode({ id, data }: { id: string; data: CanvasNodeData }) {
         <select
           className="nodrag nowheel"
           value={selectedProvider?.id || ""}
+          title={selectedProvider ? providerParameterSummary(selectedProvider) : undefined}
           disabled={busy || !providers.length}
           onChange={(event) => {
             const provider = providers.find((item) => item.id === event.target.value);
@@ -421,10 +422,11 @@ function GeneratorNode({ id, data }: { id: string; data: CanvasNodeData }) {
         >
           {isVideo ? providerGroups.map((group) => (
             <optgroup key={group.label} label={group.label}>
-              {group.providers.map((provider) => <option key={provider.id} value={provider.id}>{provider.displayName}</option>)}
+              {group.providers.map((provider) => <option key={provider.id} value={provider.id}>{providerOptionLabel(provider)}</option>)}
             </optgroup>
           )) : providers.map((provider) => <option key={provider.id} value={provider.id}>{provider.displayName}</option>)}
         </select>
+        {isVideo && selectedProvider ? <small className="canvas-node__model-summary">{providerParameterSummary(selectedProvider)}</small> : null}
       </label>
 
       <div className={cn("canvas-node__field-grid", !isVideo && "is-image")}>
@@ -528,6 +530,28 @@ function groupVideoProviders(providers: WorkspacePublicProvider[]) {
   });
   const other = providers.filter((provider) => !grouped.has(provider.id));
   return other.length ? [...groups, { label: "其他视频", providers: other }] : groups;
+}
+
+function providerOptionLabel(provider: WorkspacePublicProvider) {
+  return `${provider.displayName} · ${providerParameterSummary(provider)}`;
+}
+
+function providerParameterSummary(provider: WorkspacePublicProvider) {
+  const options = provider.videoOptions;
+  if (!options) return provider.model;
+  const durations = options.durations || [];
+  const durationLabel = durations.length === 1
+    ? `${durations[0]}秒`
+    : durations.length > 1
+      ? `${durations[0]}-${durations[durations.length - 1]}秒`
+      : "时长可选";
+  const ratios = options.ratios?.join("/") || options.resolution || "720P";
+  const media = [
+    options.maxReferenceImages ? `${options.maxReferenceImages}图` : "",
+    options.maxReferenceVideos ? `${options.maxReferenceVideos}视频` : "",
+    options.maxReferenceAudios ? `${options.maxReferenceAudios}音频` : "",
+  ].filter(Boolean).join(" · ");
+  return `${durationLabel} · ${ratios} · ${media || "无参考素材"}`;
 }
 
 function StatusLine({ status, progress, error }: Pick<CanvasNodeData, "status" | "progress" | "error">) {

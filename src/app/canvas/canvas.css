@@ -1349,6 +1349,17 @@
   font-size: 12px;
 }
 
+.canvas-node__model-summary {
+  display: block;
+  min-width: 0;
+  overflow: hidden;
+  color: var(--muted);
+  font-size: 10px;
+  line-height: 1.35;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .canvas-node__field select:disabled { opacity: 0.55; }
 
 .canvas-node__field-grid {
