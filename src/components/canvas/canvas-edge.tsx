@@ -26,7 +26,10 @@ export function CanvasEdge(props: EdgeProps<CanvasFlowEdge>) {
       : getBezierPath({ ...props, curvature: 0.5 });
 
   const active = props.selected || props.data?.active;
-  return <BaseEdge id={props.id} path={path} markerEnd={props.markerEnd} style={active ? { ...props.style, stroke: "var(--canvas-active-stroke)", filter: "drop-shadow(0 0 5px color-mix(in srgb, var(--canvas-active-stroke) 35%, transparent))" } : props.style} interactionWidth={24} />;
+  const style = active
+    ? { ...props.style, opacity: 1, stroke: "var(--canvas-active-stroke)", filter: "drop-shadow(0 0 5px color-mix(in srgb, var(--canvas-active-stroke) 35%, transparent))", transition: "opacity 140ms ease, stroke 140ms ease" }
+    : { ...props.style, opacity: 0.38, transition: "opacity 140ms ease, stroke 140ms ease" };
+  return <BaseEdge id={props.id} path={path} markerEnd={props.markerEnd} style={style} interactionWidth={24} />;
 }
 
 function CanvasConnectionLine({ fromX, fromY, fromPosition, toX, toY, toPosition, connectionStatus, routing }: ConnectionLineComponentProps & { routing: CanvasEdgeData["routing"] }) {

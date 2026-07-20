@@ -139,6 +139,7 @@ import {
   planCanvasImageRequests,
 } from "@/lib/canvas/image-batch";
 import { mergeCanvasWorkspace } from "@/lib/canvas/merge";
+import { layoutCanvasFlowNodes } from "@/lib/canvas/layout";
 import {
   canvasPresenceMembersForNode,
   type CanvasPresenceMember,
@@ -2017,26 +2018,7 @@ function CanvasWorkspaceInner({
           position: { x: ((rootIndex.get(node.id) || 0) % columns) * 420, y: Math.floor((rootIndex.get(node.id) || 0) / columns) * 390 },
         }));
       }
-      const nodeMap = new Map(current.map((node) => [node.id, node]));
-      const roots = current.filter((node) => !node.parentId);
-      const layerFor = (node: CanvasFlowNode) => {
-        if (node.data.kind === "generator") return 1;
-        if (node.data.kind !== "media") return 0;
-        const generatedResult = Boolean(node.data.sourceNodeIds?.length)
-          || edgesRef.current.some((edge) => edge.target === node.id && nodeMap.get(edge.source)?.data.kind === "generator");
-        return generatedResult ? 2 : 0;
-      };
-      const layerNodes = [0, 1, 2].map((layer) => roots.filter((node) => layerFor(node) === layer));
-      const layerColumns = layerNodes.map((items) => Math.max(1, Math.ceil(Math.sqrt(items.length))));
-      const layerOffsets = layerColumns.map((_, layer) => layerColumns.slice(0, layer).reduce((sum, columns) => sum + columns * 420 + 180, 0));
-      const placement = new Map(layerNodes.flatMap((items, layer) => items.map((node, index) => [node.id, {
-        x: layerOffsets[layer] + (index % layerColumns[layer]) * 420,
-        y: Math.floor(index / layerColumns[layer]) * 390,
-      }] as const)));
-      return current.map((node) => {
-        if (node.parentId) return node;
-        return { ...node, position: placement.get(node.id) || node.position };
-      });
+      return layoutCanvasFlowNodes(current, edgesRef.current);
     });
     markDirty();
     window.requestAnimationFrame(() => { void flowRef.current.fitView({ duration: 260, padding: 0.16 }); });

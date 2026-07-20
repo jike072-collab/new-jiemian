@@ -7,6 +7,7 @@ import { fileURLToPath } from "node:url";
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const read = (file) => readFile(path.join(root, file), "utf8");
 const { filterCanvasCommands } = await import(new URL("../src/lib/canvas/commands.ts", import.meta.url));
+const { layoutCanvasFlowNodes } = await import(new URL("../src/lib/canvas/layout.ts", import.meta.url));
 
 const commands = [
   { id: "image", label: "添加图片生成", description: "创建生成节点", group: "创建", keywords: ["生图", "image"] },
@@ -18,6 +19,33 @@ assert.deepEqual(filterCanvasCommands(commands, "产品 banana").map((item) => i
 assert.deepEqual(filterCanvasCommands(commands, "VIDEO").map((item) => item.id), ["video"]);
 assert.equal(filterCanvasCommands(commands, "不存在").length, 0);
 assert.equal(filterCanvasCommands(commands, "", 2).length, 2);
+
+const node = (id, kind, y, sourceNodeIds) => ({ id, position: { x: 0, y }, width: 320, height: 240, data: { kind, sourceNodeIds } });
+const chainNodes = [
+  node("prompt", "prompt", 0),
+  node("image-generator", "generator", 300),
+  node("image-result", "media", 600, ["image-generator"]),
+  node("video-generator", "generator", 900),
+  node("video-result", "media", 1200, ["video-generator"]),
+];
+const chainEdges = [
+  { source: "prompt", target: "image-generator" },
+  { source: "image-generator", target: "image-result" },
+  { source: "image-result", target: "video-generator" },
+  { source: "video-generator", target: "video-result" },
+];
+const chainLayout = new Map(layoutCanvasFlowNodes(chainNodes, chainEdges).map((item) => [item.id, item.position]));
+assert.ok(chainLayout.get("prompt").x < chainLayout.get("image-generator").x);
+assert.ok(chainLayout.get("image-generator").x < chainLayout.get("image-result").x);
+assert.ok(chainLayout.get("image-result").x < chainLayout.get("video-generator").x);
+assert.ok(chainLayout.get("video-generator").x < chainLayout.get("video-result").x);
+
+const crossingNodes = [node("source-a", "prompt", 0), node("source-b", "prompt", 400), node("target-a", "generator", 0), node("target-b", "generator", 400)];
+const crossingLayout = new Map(layoutCanvasFlowNodes(crossingNodes, [
+  { source: "source-a", target: "target-b" },
+  { source: "source-b", target: "target-a" },
+]).map((item) => [item.id, item.position]));
+assert.ok(crossingLayout.get("target-b").y < crossingLayout.get("target-a").y, "dependency ordering should remove the avoidable crossing");
 
 const [workspace, palette, shell, shortcuts, uploadRoute] = await Promise.all([
   read("src/components/canvas/canvas-workspace.tsx"),
