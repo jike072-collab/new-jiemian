@@ -60,7 +60,7 @@ assert.equal(isCanvasPresenceExpired(member.updatedAt, new Date("2026-07-19T12:0
 assert.match(route, /requireCsrf/);
 assert.match(route, /requireAuthSession/);
 assert.match(route, /isInternalCanvasHostname/);
-assert.match(route, /resolveCanvasWorkspaceOwner/);
+assert.match(route, /resolveCanvasWorkspace/);
 assert.match(route, /scope.*personal/);
 assert.match(route, /validNodeIds/);
 assert.match(route, /broadcastCanvasProjectEvent/);
