@@ -117,6 +117,7 @@
     "test:canvas-presence": "node scripts/test-canvas-presence.mjs",
     "test:canvas-vozeb-shell": "node scripts/test-canvas-vozeb-shell.mjs",
     "test:canvas-commands": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON scripts/test-canvas-commands.mjs",
+    "test:clmm-model-sync": "node scripts/test-clmm-model-sync.mjs",
     "database:boundary": "node scripts/database/test-server-boundary.mjs",
     "db:health": "node scripts/database/migrate.mjs health",
     "test:prompt-optimizer": "node scripts/test-prompt-optimizer.mjs",

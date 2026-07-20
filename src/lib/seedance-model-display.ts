@@ -15,13 +15,31 @@ export const clmmSeedanceVideoDisplayNames: Record<string, string> = {
   "seedance2.0 720p-pro-gz-15s": "Pro 15 秒 不卡真人",
 };
 
+export function isDynamicClmmSeedance20Model(model: string | null | undefined) {
+  const normalized = String(model || "").trim().toLowerCase();
+  return /seedance[-_ ]*2(?:\.0)?/.test(normalized)
+    && /720\s*p/.test(normalized)
+    && !/480\s*p|1080\s*p|dark|black|暗黑/.test(normalized);
+}
+
+export function clmmSeedanceVideoDisplayName(model: string) {
+  const normalized = model.trim().toLowerCase();
+  const known = clmmSeedanceVideoDisplayNames[model] || clmmSeedanceVideoDisplayNames[normalized];
+  if (known) return known;
+  if (normalized.includes("933")) return "Full 933 720P";
+  if (normalized.includes("mini")) return "Mini";
+  if (normalized.includes("fast")) return /(?:^|[-_ ])\d+s(?:$|[-_ ])/i.test(normalized) ? "Fast 15s" : "Fast";
+  if (normalized.includes("pro")) return /(?:^|[-_ ])\d+s(?:$|[-_ ])/i.test(normalized) ? "Pro 15s" : "Pro";
+  return "Seedance 2.0 720P";
+}
+
 const seedanceVideoModelIds = new Set(
   [...Object.keys(seedanceVideoDisplayNames), ...Object.keys(clmmSeedanceVideoDisplayNames)]
     .map((model) => model.toLowerCase()),
 );
 
 export function isSeedance20VideoModel(model: string | null | undefined) {
-  return Boolean(model && seedanceVideoModelIds.has(model.trim().toLowerCase()));
+  return Boolean(model && (seedanceVideoModelIds.has(model.trim().toLowerCase()) || isDynamicClmmSeedance20Model(model)));
 }
 
 const seedanceLibraryShortNames: Record<string, string> = {
@@ -39,7 +57,9 @@ const clmmSeedanceLibraryShortNames = Object.fromEntries(
 export function seedanceLibraryModelName(model: string) {
   const normalized = model.trim().toLowerCase();
   const clmmDisplayName = clmmSeedanceLibraryShortNames[normalized];
-  if (clmmDisplayName) return `Seedance 2.0 新 · ${clmmDisplayName}`;
+  if (clmmDisplayName || isDynamicClmmSeedance20Model(model)) {
+    return `Seedance 2.0 新 · ${clmmDisplayName || clmmSeedanceVideoDisplayName(model)}`;
+  }
   const displayName = seedanceLibraryShortNames[normalized];
   return displayName ? `Seedance 2.0 · ${displayName}` : undefined;
 }

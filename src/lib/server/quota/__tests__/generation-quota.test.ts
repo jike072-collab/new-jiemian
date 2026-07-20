@@ -53,9 +53,11 @@ test("CLMM Seedance pricing follows the new model tiers", () => {
   assert.equal(estimateVideoGenerationQuota({ ...baseInput, model: "seedance2.0 720p-fast-gz-15s", resolution: "720p", durationSeconds: 15 }), 1200);
   assert.equal(estimateVideoGenerationQuota({ ...baseInput, model: "seedance2.0 720p-pro-gz-15s", resolution: "720p", durationSeconds: 15 }), 1400);
   assert.equal(estimateVideoGenerationQuota({ ...baseInput, model: "seedance2.0 720p-933-pro-gz-15s", resolution: "720p", durationSeconds: 15 }), 1500);
+  assert.equal(estimateVideoGenerationQuota({ ...baseInput, model: "oe-seedance-2.0-pro-720p-14s", resolution: "720p", durationSeconds: 15 }), 1400);
   assert.equal(estimateVideoGenerationEntitlementUnits({ resolution: "720p", model: "mg-seedance2.0 -720p fast", durationSeconds: 10 }), 1);
   assert.equal(estimateVideoGenerationEntitlementUnits({ resolution: "720p", model: "mg-seedance2.0 -720p fast", durationSeconds: 15 }), 2);
   assert.equal(estimateVideoGenerationEntitlementUnits({ resolution: "720p", model: "seedance2.0 720p-933-pro-gz-15s", durationSeconds: 15 }), 3);
+  assert.equal(estimateVideoGenerationEntitlementUnits({ resolution: "720p", model: "oe-seedance-2.0-pro-720p-14s", durationSeconds: 15 }), 2);
 });
 
 test("Seedance premium models consume multiple membership video entitlements", () => {

@@ -9,7 +9,12 @@ import {
   type PublicProvider,
 } from "./types";
 import { dataRoot, readJsonFile, writeJsonFile } from "./paths";
-import { clmmSeedanceVideoDisplayNames, seedanceVideoDisplayNames } from "../seedance-model-display";
+import {
+  clmmSeedanceVideoDisplayName,
+  clmmSeedanceVideoDisplayNames,
+  isDynamicClmmSeedance20Model,
+  seedanceVideoDisplayNames,
+} from "../seedance-model-display";
 
 const providersPath = join(dataRoot, "providers.json");
 const virtualModelSeparator = "::model::";
@@ -138,7 +143,24 @@ export function seedanceVideoRequestSecondsForModel(_model: string, duration: nu
 }
 
 export function clmmSeedanceVideoOptionsForModel(model: string): ProviderConfig["videoOptions"] {
-  return clmmSeedanceVideoOptionsByModel[model.trim().toLowerCase()];
+  const normalized = model.trim().toLowerCase();
+  const known = clmmSeedanceVideoOptionsByModel[normalized];
+  if (known || !isDynamicClmmSeedance20Model(model)) return known;
+  const fixedDuration = /(?:^|[-_ ])\d+s(?:$|[-_ ])/i.test(normalized);
+  const is933 = normalized.includes("933");
+  const isFast = normalized.includes("fast");
+  const isMini = normalized.includes("mini");
+  return {
+    durations: fixedDuration ? [15] : clmmFlexibleVideoDurations,
+    ratios: ["16:9", "9:16"],
+    resolution: "720p",
+    maxReferenceImages: is933 ? 9 : 4,
+    maxReferenceVideos: isFast && fixedDuration ? 1 : 3,
+    maxReferenceAudios: is933 || !isMini ? 3 : 1,
+    maxReferenceDurationSeconds: 15,
+    supportsVideoReference: true,
+    supportsAudioReference: true,
+  };
 }
 
 export function clmmSeedanceVideoRequestSecondsForModel(model: string, duration: number) {
@@ -547,7 +569,10 @@ function parseVirtualProviderId(id: string) {
 
 function publicDisplayName(provider: ProviderConfig, model: string, hasMultipleModels: boolean) {
   if (provider.endpointType === "grok-videos" && model.trim().toLowerCase() === "grok-video-1.5") return "grok";
-  const modelDisplayName = normalizeModelDisplayNames(provider.modelDisplayNames)?.[model];
+  const modelDisplayName = normalizeModelDisplayNames(provider.modelDisplayNames)?.[model]
+    || (provider.id.startsWith("video-seedance-new") && isDynamicClmmSeedance20Model(model)
+      ? clmmSeedanceVideoDisplayName(model)
+      : undefined);
   if (modelDisplayName) return modelDisplayName;
   if (!hasMultipleModels) return provider.displayName || model;
   return `${provider.title} · ${model}`;
@@ -593,17 +618,28 @@ function mergeStoredProvider(fallback: ProviderConfig, stored: ProviderConfig | 
     };
   }
   if (fallback.id === "video-main" || fallback.id === "video-seedance-new") {
-    const selectedModel = fallback.models?.includes(legacyStored.model) ? legacyStored.model : fallback.model;
+    const isDynamicClmm = fallback.id === "video-seedance-new";
+    const storedModels = normalizeModels(legacyStored.models);
+    const storedDisplayNames = normalizeModelDisplayNames(legacyStored.modelDisplayNames);
+    const models = isDynamicClmm && storedModels.length ? storedModels : fallback.models;
+    const modelDisplayNames = isDynamicClmm
+      ? { ...(fallback.modelDisplayNames || {}), ...(storedDisplayNames || {}) }
+      : fallback.modelDisplayNames;
+    const storedEnabledModels = normalizeModels(legacyStored.enabledModels);
+    const enabledModels = isDynamicClmm && storedEnabledModels.length
+      ? storedEnabledModels
+      : fallback.enabledModels;
+    const selectedModel = models?.includes(legacyStored.model) ? legacyStored.model : models?.[0] || fallback.model;
     return {
       ...fallback,
       ...legacyStored,
       model: selectedModel,
-      models: fallback.models,
-      modelDisplayNames: fallback.modelDisplayNames,
-      enabledModels: fallback.enabledModels,
+      models,
+      modelDisplayNames,
+      enabledModels,
       title: legacyStored.title || fallback.title,
       role: fallback.role,
-      displayName: fallback.modelDisplayNames?.[selectedModel] || selectedModel,
+      displayName: modelDisplayNames?.[selectedModel] || (isDynamicClmm ? clmmSeedanceVideoDisplayName(selectedModel) : selectedModel),
     };
   }
   if (fallback.id === "prompt-optimizer") {

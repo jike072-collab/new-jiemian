@@ -65,6 +65,10 @@ export function estimateVideoGenerationEntitlementUnits(input: { resolution: str
   if (normalizedModel.startsWith("mg-seedance2.0 -720p ") || normalizedModel.endsWith("-gz-15s")) {
     return duration > 10 ? 2 : 1;
   }
+  if (/seedance[-_ ]*2(?:\.0)?.*720\s*p/.test(normalizedModel)) {
+    if (normalizedModel.includes("933")) return 3;
+    return /\d+s/.test(normalizedModel) || duration > 10 ? 2 : 1;
+  }
   if (normalizedModel === "b-quannengship2.0") return 2;
   if (normalizedModel === "quanneng2.0") return duration >= 15 ? 2 : 1;
   if (normalizedModel === "sdquan-2-miao" || normalizedModel === "doubao-seedance-2-0-260128-grid") {
@@ -222,5 +226,12 @@ function seedanceVideoQuota(model: string | null | undefined, duration: number) 
   if (normalizedModel === "sdquan-2-miao") return duration * 100;
   if (normalizedModel === "doubao-seedance-2.0-fast-260128-grid") return 1200;
   if (normalizedModel === "doubao-seedance-2-0-260128-grid") return 1400;
+  if (/seedance[-_ ]*2(?:\.0)?.*720\s*p/.test(normalizedModel)) {
+    const fixed = /(?:^|[-_ ])\d+s(?:$|[-_ ])/i.test(normalizedModel);
+    if (normalizedModel.includes("933")) return 1500;
+    if (normalizedModel.includes("mini")) return duration * 60;
+    if (normalizedModel.includes("fast")) return fixed ? 1200 : duration * 80;
+    if (normalizedModel.includes("pro")) return fixed ? 1400 : duration * 100;
+  }
   return null;
 }
