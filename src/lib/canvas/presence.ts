@@ -14,6 +14,32 @@ export type CanvasPresenceMember = {
   updatedAt: string;
 };
 
+const presenceActivityPriority: Record<CanvasPresenceActivity, number> = {
+  viewing: 0,
+  selected: 1,
+  editing: 2,
+  generating: 3,
+};
+
+export function dedupeCanvasPresenceMembers(members: CanvasPresenceMember[], ownClientId?: string) {
+  const grouped = new Map<string, CanvasPresenceMember[]>();
+  for (const member of members) {
+    const key = member.userId || member.clientId;
+    const group = grouped.get(key) || [];
+    group.push(member);
+    grouped.set(key, group);
+  }
+  return [...grouped.values()]
+    .map((group) => [...group].sort((left, right) => {
+      if (ownClientId && left.clientId === ownClientId) return -1;
+      if (ownClientId && right.clientId === ownClientId) return 1;
+      const activityDifference = presenceActivityPriority[right.activity] - presenceActivityPriority[left.activity];
+      if (activityDifference) return activityDifference;
+      return right.updatedAt.localeCompare(left.updatedAt);
+    })[0])
+    .sort((left, right) => left.displayName.localeCompare(right.displayName, "zh-CN"));
+}
+
 export function canvasPresenceActivity(input: {
   selectedNodeIds?: string[];
   editingNodeId?: string;

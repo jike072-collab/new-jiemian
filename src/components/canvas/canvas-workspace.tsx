@@ -143,6 +143,7 @@ import { mergeCanvasWorkspace } from "@/lib/canvas/merge";
 import { layoutCanvasFlowNodes } from "@/lib/canvas/layout";
 import {
   canvasPresenceMembersForNode,
+  dedupeCanvasPresenceMembers,
   type CanvasPresenceMember,
 } from "@/lib/canvas/presence";
 import { normalizeCanvasAssistantResponse, type CanvasAssistantAction } from "@/lib/canvas/assistant";
@@ -1440,10 +1441,14 @@ function CanvasWorkspaceInner({
     return references;
   }, [edges, nodes]);
 
+  const uniquePresenceMembers = useMemo(
+    () => dedupeCanvasPresenceMembers(presenceMembers, collaborationClientId),
+    [collaborationClientId, presenceMembers],
+  );
   const presenceByNode = useMemo(() => Object.fromEntries(nodes.map((node) => [
     node.id,
-    canvasPresenceMembersForNode(presenceMembers, node.id, collaborationClientId),
-  ])), [collaborationClientId, nodes, presenceMembers]);
+    canvasPresenceMembersForNode(uniquePresenceMembers, node.id, collaborationClientId),
+  ])), [collaborationClientId, nodes, uniquePresenceMembers]);
 
   const optimizePromptNode = useCallback(async (id: string, prompt: string) => {
     const source = prompt.trim();
@@ -2669,7 +2674,7 @@ function CanvasWorkspaceInner({
           shortcutsOpen={shortcutsOpen}
           commandOpen={commandOpen}
           isTeamOwner={isTeamOwner}
-          presenceMembers={canvasScope() === "shared" ? presenceMembers : []}
+          presenceMembers={canvasScope() === "shared" ? uniquePresenceMembers : []}
           presenceClientId={collaborationClientId}
           onTitleChange={(value) => { pushHistorySnapshot(); setTitle(value); markDirty(); }}
           onProjectChange={(id) => { void switchProject(id); }}

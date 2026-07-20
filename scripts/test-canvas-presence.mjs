@@ -20,6 +20,7 @@ const {
   canvasPresenceActivity,
   canvasPresenceMembersForNode,
   canvasPresenceNodeActivity,
+  dedupeCanvasPresenceMembers,
   isCanvasPresenceExpired,
 } = await import(new URL("../src/lib/canvas/presence.ts", import.meta.url));
 
@@ -45,6 +46,14 @@ assert.equal(canvasPresenceNodeActivity(member, "node-b"), "editing");
 assert.equal(canvasPresenceNodeActivity(member, "node-a"), "selected");
 assert.equal(canvasPresenceMembersForNode([member], "node-a", "client-2").length, 0);
 assert.equal(canvasPresenceMembersForNode([member], "node-a", "client-1").length, 1);
+assert.equal(dedupeCanvasPresenceMembers([
+  member,
+  { ...member, clientId: "client-3", activity: "viewing", updatedAt: "2026-07-19T12:00:34.000Z" },
+]).length, 1);
+assert.equal(dedupeCanvasPresenceMembers([
+  member,
+  { ...member, clientId: "client-3", activity: "viewing", updatedAt: "2026-07-19T12:00:34.000Z" },
+], "client-3")[0].clientId, "client-3");
 assert.equal(isCanvasPresenceExpired(member.updatedAt, new Date("2026-07-19T12:00:34.999Z")), false);
 assert.equal(isCanvasPresenceExpired(member.updatedAt, new Date("2026-07-19T12:00:35.001Z")), true);
 
@@ -67,6 +76,7 @@ assert.match(workspace, /method: "DELETE"/);
 assert.match(workspace, /onFocusCapture/);
 assert.match(workspace, /setPresenceGeneratingNodeIds/);
 assert.match(workspace, /presenceMembers=\{canvasScope\(\) === "shared"/);
+assert.match(workspace, /dedupeCanvasPresenceMembers/);
 assert.match(shell, /团队在线/);
 assert.match(shell, /正在生成/);
 assert.match(node, /CanvasPresenceBadges/);
