@@ -17,8 +17,8 @@ export type CanvasLayoutEdge = {
 
 const defaultNodeWidth = 360;
 const defaultNodeHeight = 300;
-const horizontalGap = 180;
-const verticalGap = 96;
+const horizontalGap = 96;
+const verticalGap = 48;
 
 export function layoutCanvasFlowNodes<T extends CanvasLayoutNode>(nodes: T[], edges: CanvasLayoutEdge[]): T[] {
   const roots = nodes.filter((node) => !node.parentId);

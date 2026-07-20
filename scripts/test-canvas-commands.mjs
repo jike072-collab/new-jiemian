@@ -39,6 +39,7 @@ assert.ok(chainLayout.get("prompt").x < chainLayout.get("image-generator").x);
 assert.ok(chainLayout.get("image-generator").x < chainLayout.get("image-result").x);
 assert.ok(chainLayout.get("image-result").x < chainLayout.get("video-generator").x);
 assert.ok(chainLayout.get("video-generator").x < chainLayout.get("video-result").x);
+assert.ok(chainLayout.get("image-generator").x - chainLayout.get("prompt").x <= 460, "flow columns should stay compact");
 
 const crossingNodes = [node("source-a", "prompt", 0), node("source-b", "prompt", 400), node("target-a", "generator", 0), node("target-b", "generator", 400)];
 const crossingLayout = new Map(layoutCanvasFlowNodes(crossingNodes, [
