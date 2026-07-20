@@ -59,7 +59,8 @@ for (const endpoint of [
 }
 
 assert.doesNotMatch(workspace, /apiKey|api_key|authorization\s*:/i);
-assert.match(repository, /where id = \$1 and user_id = \$2 and version = \$6/);
+assert.match(repository, /where id = \$1 and user_id = \$2 and workspace_scope = \$3 and version = \$7/);
+assert.match(repository, /workspace_scope/);
 assert.match(migration, /user_id uuid not null references app_users\(local_user_id\) on delete cascade/);
 assert.match(migration, /document jsonb not null/);
 assert.match(migration, /canvas_projects_user_updated_idx/);
@@ -212,7 +213,7 @@ assert.match(workspace, /createPendingImageResultNodes/);
 assert.match(workspace, /updatePendingImageResults/);
 assert.match(workspace, /图片生成中/);
 assert.ok(workspace.indexOf("createPendingImageResultNodes(generatorId") < workspace.indexOf("await submitImageGeneration(generatorId"), "pending image nodes must appear before image submission");
-assert.match(workspace, /\/api\/library\/\$\{encodeURIComponent\(editingNode\.data\.libraryItemId\)\}\/media/);
+assert.match(workspace, /canvasLibraryMediaUrl\(editingNode\.data\.libraryItemId\)/);
 assert.match(canvasNode, /loading="lazy" decoding="async"/);
 assert.match(workspace, /const pageSize = 20/);
 assert.match(workspace, /canvas-library__pagination/);

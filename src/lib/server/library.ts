@@ -180,8 +180,13 @@ export async function readLibraryForOwner(ownerLocalUserId: string) {
 }
 
 export async function readLibraryMetadataForOwner(ownerLocalUserId: string) {
+  return readLibraryMetadataForOwners([ownerLocalUserId]);
+}
+
+export async function readLibraryMetadataForOwners(ownerLocalUserIds: readonly string[]) {
+  const owners = new Set(ownerLocalUserIds.map((id) => id.trim()).filter(Boolean));
   return (await readLibraryMetadata()).filter((item) => (
-    isOwnedBy(item, ownerLocalUserId)
+    item.ownerLocalUserId && owners.has(item.ownerLocalUserId)
     && !item.expired
     && item.status !== "failed"
   ));
@@ -190,13 +195,18 @@ export async function readLibraryMetadataForOwner(ownerLocalUserId: string) {
 const libraryMediaCacheJobs = new Map<string, Promise<NonNullable<LibraryItem["output"]>>>();
 
 export async function resolveLibraryMediaForOwner(id: string, ownerLocalUserId: string) {
+  return resolveLibraryMediaForOwners(id, [ownerLocalUserId]);
+}
+
+export async function resolveLibraryMediaForOwners(id: string, ownerLocalUserIds: readonly string[]) {
+  const owners = new Set(ownerLocalUserIds.map((owner) => owner.trim()).filter(Boolean));
   const item = (await readLibraryMetadata()).find((candidate) => (
     candidate.id === id
-    && isOwnedBy(candidate, ownerLocalUserId)
+    && candidate.ownerLocalUserId && owners.has(candidate.ownerLocalUserId)
     && !candidate.expired
     && candidate.status === "done"
   ));
-  if (!item?.output || item.type !== "image") throw new LibraryOperationError(404, "Library media not found.");
+  if (!item?.output || !["image", "video"].includes(item.type)) throw new LibraryOperationError(404, "Library media not found.");
 
   if (item.output.storedName) {
     if (!await storedFileExists(item.output.storedName)) throw new LibraryOperationError(404, "Library media file not found.");
@@ -205,7 +215,7 @@ export async function resolveLibraryMediaForOwner(id: string, ownerLocalUserId: 
 
   const sourceUrl = item.output.url;
   if (!/^https?:\/\//i.test(sourceUrl)) throw new LibraryOperationError(404, "Library media file not found.");
-  const cacheKey = `${ownerLocalUserId}:${id}`;
+  const cacheKey = `${[...owners].sort().join(",")}:${id}`;
   const pending = libraryMediaCacheJobs.get(cacheKey);
   if (pending) return pending;
 

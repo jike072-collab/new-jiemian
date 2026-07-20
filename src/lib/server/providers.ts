@@ -424,7 +424,7 @@ export function defaultProviders(): ProviderConfig[] {
       title: "文生识别优化",
       role: "用于图片和视频文生识别优化",
       apiUrl: env("PROMPT_OPTIMIZER_API_URL", "https://api.qianyi.win/v1/chat/completions"),
-      model: env("PROMPT_OPTIMIZER_MODEL", "gpt-5.5"),
+      model: env("PROMPT_OPTIMIZER_MODEL", "gpt-5.6-luna"),
       displayName: env("PROMPT_OPTIMIZER_DISPLAY_NAME", "GPT-5.5"),
       apiKey: env("PROMPT_OPTIMIZER_API_KEY"),
       enabled: hasKey(env("PROMPT_OPTIMIZER_API_KEY")),

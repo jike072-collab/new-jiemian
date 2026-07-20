@@ -98,6 +98,19 @@ export async function getInternalCanvasWorkspaceOwner(localUserId: string) {
   return ownerId;
 }
 
+export async function getInternalCanvasWorkspaceMemberIds(localUserId: string) {
+  const ownerId = await getInternalCanvasWorkspaceOwner(localUserId);
+  const result = await applicationQuery<{ local_user_id: string }>(`
+    select local_user_id
+    from internal_canvas_access
+    where enabled = true
+  `);
+  return {
+    ownerId,
+    memberIds: [...new Set(result.rows.map((row) => row.local_user_id).concat(ownerId))],
+  };
+}
+
 export async function listInternalCanvasAccessCandidates(ownerId: string, query = "") {
   await requireInternalCanvasOwner(ownerId);
   const normalizedQuery = normalizeIdentifier(query);

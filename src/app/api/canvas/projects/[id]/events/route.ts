@@ -4,7 +4,7 @@ import { authResultResponse, requireAuthSession } from "@/lib/server/auth";
 import { subscribeCanvasProjectEvents, type CanvasNotification } from "@/lib/server/canvas-collaboration";
 import { listCanvasPresence } from "@/lib/server/canvas-presence";
 import { CanvasProjectError, getCanvasProject } from "@/lib/server/canvas-projects";
-import { resolveCanvasWorkspaceOwner } from "@/lib/server/canvas-workspace-access";
+import { resolveCanvasWorkspace } from "@/lib/server/canvas-workspace-access";
 import { diagnosticErrorResponse } from "@/lib/server/error-diagnostics";
 import { InternalCanvasAccessError } from "@/lib/server/internal-canvas-access";
 
@@ -33,8 +33,8 @@ async function openCanvasEvents(request: NextRequest, context: RouteContext) {
   const session = await requireAuthSession(request);
   if (!session.ok) return authResultResponse(request, session);
   const { id } = await context.params;
-  const ownerId = await resolveCanvasWorkspaceOwner(request, session.user.local_user_id);
-  const initialProject = await getCanvasProject(id, ownerId);
+  const workspace = await resolveCanvasWorkspace(request, session.user.local_user_id);
+  const initialProject = await getCanvasProject(id, workspace.ownerId, workspace.scope);
   if (!initialProject) throw new CanvasProjectError("CANVAS_PROJECT_NOT_FOUND", "未找到画布。", 404);
   const sourceId = normalizeSourceId(request.nextUrl.searchParams.get("client"));
   const encoder = new TextEncoder();
@@ -67,8 +67,8 @@ async function openCanvasEvents(request: NextRequest, context: RouteContext) {
           send("deleted", { id });
           return;
         }
-        void getCanvasProject(id, ownerId)
-          .then((project) => { if (project) send("project", { project }); })
+        void getCanvasProject(id, workspace.ownerId, workspace.scope)
+          .then((latest) => { if (latest) send("project", { project: latest }); })
           .catch(close);
       };
 
@@ -84,7 +84,7 @@ async function openCanvasEvents(request: NextRequest, context: RouteContext) {
           return;
         }
         unsubscribe = nextUnsubscribe;
-        const latestProject = await getCanvasProject(id, ownerId);
+        const latestProject = await getCanvasProject(id, workspace.ownerId, workspace.scope);
         if (closed) return;
         if (latestProject) send("project", { project: latestProject });
         else send("deleted", { id: initialProject.id });

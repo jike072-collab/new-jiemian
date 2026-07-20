@@ -228,6 +228,14 @@ function canvasProjectsUrl(id?: string) {
   return `${base}?scope=${canvasScope()}`;
 }
 
+function canvasLibraryUrl() {
+  return `/api/library?scope=${canvasScope()}`;
+}
+
+function canvasLibraryMediaUrl(id: string) {
+  return `/api/library/${encodeURIComponent(id)}/media?scope=${canvasScope()}`;
+}
+
 function canvasProjectEventsUrl(id: string, clientId: string) {
   const query = new URLSearchParams({ scope: canvasScope(), client: clientId });
   return `/api/canvas/projects/${encodeURIComponent(id)}/events?${query}`;
@@ -512,7 +520,17 @@ function CanvasWorkspaceInner({
       const dragHandle = canvasNodeDragHandle(node.data.kind);
       if (node.data.kind !== "media" || !node.data.libraryItemId) return { ...node, type: node.data.kind === "group" ? "group" as const : "canvas" as const, dragHandle };
       const item = itemMap.get(node.data.libraryItemId);
-      if (!item) return { ...node, type: "canvas" as const, dragHandle, data: { ...node.data, mediaUrl: undefined } };
+      if (!item) {
+        return {
+          ...node,
+          type: "canvas" as const,
+          dragHandle,
+          data: {
+            ...node.data,
+            mediaUrl: node.data.mediaUrl || canvasLibraryMediaUrl(node.data.libraryItemId),
+          },
+        };
+      }
       return {
         ...node,
         type: "canvas" as const,
@@ -591,7 +609,7 @@ function CanvasWorkspaceInner({
   }, [activateProject, applyWorkspaceDocument, scheduleSave, snapshotWorkspace]);
 
   const refreshLibrary = useCallback(async () => {
-    const data = await fetchJson<{ items: LibraryItem[] }>("/api/library");
+    const data = await fetchJson<{ items: LibraryItem[] }>(canvasLibraryUrl());
     libraryRef.current = data.items;
     setLibrary(data.items);
     setNodes((current) => hydrateMediaNodes(current, data.items));
@@ -606,7 +624,7 @@ function CanvasWorkspaceInner({
         const [projectData, providerData, libraryData] = await Promise.all([
           fetchJson<{ projects: CanvasProject[] }>(canvasProjectsUrl()),
           fetchJson<{ providers: EnabledProviders }>(`/api/providers/enabled?refresh=${Date.now()}`),
-          fetchJson<{ items: LibraryItem[] }>("/api/library"),
+          fetchJson<{ items: LibraryItem[] }>(canvasLibraryUrl()),
         ]);
         if (cancelled) return;
         let nextProjects = projectData.projects;
@@ -3085,7 +3103,7 @@ function CanvasWorkspaceInner({
       {editingNode?.data.mediaUrl ? (
         <CanvasImageEditor
           key={editingNode.id}
-          imageUrl={editingNode.data.libraryItemId ? `/api/library/${encodeURIComponent(editingNode.data.libraryItemId)}/media` : editingNode.data.mediaUrl}
+          imageUrl={editingNode.data.libraryItemId ? canvasLibraryMediaUrl(editingNode.data.libraryItemId) : editingNode.data.mediaUrl}
           title={editingNode.data.title}
           onSubmit={submitEditedImage}
           onClose={() => setEditingNodeId("")}

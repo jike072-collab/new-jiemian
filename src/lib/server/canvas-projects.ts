@@ -16,6 +16,12 @@ type CanvasProjectRow = {
   updated_at: string | Date;
 };
 
+export type CanvasProjectScope = "personal" | "shared";
+
+function normalizeScope(scope: CanvasProjectScope | undefined): CanvasProjectScope {
+  return scope === "shared" ? "shared" : "personal";
+}
+
 export class CanvasProjectError extends Error {
   constructor(
     readonly code: "CANVAS_PROJECT_LIMIT" | "CANVAS_PROJECT_NOT_FOUND" | "CANVAS_PROJECT_CONFLICT",
@@ -27,35 +33,39 @@ export class CanvasProjectError extends Error {
   }
 }
 
-export async function listCanvasProjects(userId: string) {
+export async function listCanvasProjects(userId: string, scope?: CanvasProjectScope) {
+  const workspaceScope = normalizeScope(scope);
   const result = await applicationQuery<CanvasProjectRow>(
     `select id, title, document, version, created_at, updated_at
        from canvas_projects
-      where user_id = $1
+      where user_id = $1 and workspace_scope = $2
       order by updated_at desc`,
-    [userId],
+    [userId, workspaceScope],
   );
   return result.rows.map(mapCanvasProject);
 }
 
-export async function getCanvasProject(id: string, userId: string) {
+export async function getCanvasProject(id: string, userId: string, scope?: CanvasProjectScope) {
+  const workspaceScope = normalizeScope(scope);
   const result = await applicationQuery<CanvasProjectRow>(
     `select id, title, document, version, created_at, updated_at
        from canvas_projects
-      where id = $1 and user_id = $2`,
-    [id, userId],
+      where id = $1 and user_id = $2 and workspace_scope = $3`,
+    [id, userId, workspaceScope],
   );
   return result.rows[0] ? mapCanvasProject(result.rows[0]) : null;
 }
 
 export async function createCanvasProject(input: {
   userId: string;
+  scope?: CanvasProjectScope;
   title: unknown;
   document: unknown;
 }) {
+  const workspaceScope = normalizeScope(input.scope);
   const count = await applicationQuery<{ count: string }>(
-    "select count(*)::text as count from canvas_projects where user_id = $1",
-    [input.userId],
+    "select count(*)::text as count from canvas_projects where user_id = $1 and workspace_scope = $2",
+    [input.userId, workspaceScope],
   );
   if (Number(count.rows[0]?.count || 0) >= 100) {
     throw new CanvasProjectError("CANVAS_PROJECT_LIMIT", "每个账号最多可以创建 100 个画布。", 409);
@@ -65,10 +75,10 @@ export async function createCanvasProject(input: {
   const title = normalizeCanvasTitle(input.title);
   const document = normalizeCanvasDocument(input.document);
   const result = await applicationQuery<CanvasProjectRow>(
-    `insert into canvas_projects(id, user_id, title, document, version, created_at, updated_at)
-     values ($1, $2, $3, $4::jsonb, 1, $5, $5)
+    `insert into canvas_projects(id, user_id, workspace_scope, title, document, version, created_at, updated_at)
+     values ($1, $2, $3, $4, $5::jsonb, 1, $6, $6)
      returning id, title, document, version, created_at, updated_at`,
-    [id, input.userId, title, JSON.stringify(document), now],
+    [id, input.userId, workspaceScope, title, JSON.stringify(document), now],
   );
   return mapCanvasProject(result.rows[0]);
 }
@@ -76,6 +86,7 @@ export async function createCanvasProject(input: {
 export async function updateCanvasProject(input: {
   id: string;
   userId: string;
+  scope?: CanvasProjectScope;
   title: unknown;
   document: unknown;
   version: unknown;
@@ -83,6 +94,7 @@ export async function updateCanvasProject(input: {
   baseDocument?: unknown;
   sourceId?: unknown;
 }) {
+  const workspaceScope = normalizeScope(input.scope);
   const version = Number(input.version);
   if (!Number.isInteger(version) || version < 1) {
     throw new CanvasProjectError("CANVAS_PROJECT_CONFLICT", "画布版本无效，请刷新后重试。", 409);
@@ -90,10 +102,10 @@ export async function updateCanvasProject(input: {
   const title = normalizeCanvasTitle(input.title);
   const document = normalizeCanvasDocument(input.document);
   const sourceId = normalizeSourceId(input.sourceId);
-  const direct = await writeCanvasProject({ ...input, title, document, expectedVersion: version, sourceId });
+  const direct = await writeCanvasProject({ ...input, scope: workspaceScope, title, document, expectedVersion: version, sourceId });
   if (direct) return { project: direct, merged: false, conflictCount: 0 };
 
-  let existing = await getCanvasProject(input.id, input.userId);
+  let existing = await getCanvasProject(input.id, input.userId, workspaceScope);
   if (!existing) {
     throw new CanvasProjectError("CANVAS_PROJECT_NOT_FOUND", "未找到画布。", 404);
   }
@@ -111,25 +123,27 @@ export async function updateCanvasProject(input: {
     const mergedDocument = normalizeCanvasDocument(merged.document);
     const updated = await writeCanvasProject({
       ...input,
+      scope: workspaceScope,
       title: mergedTitle,
       document: mergedDocument,
       expectedVersion: existing.version,
       sourceId,
     });
     if (updated) return { project: updated, merged: true, conflictCount: merged.conflictCount };
-    const latest = await getCanvasProject(input.id, input.userId);
+    const latest = await getCanvasProject(input.id, input.userId, workspaceScope);
     if (!latest) throw new CanvasProjectError("CANVAS_PROJECT_NOT_FOUND", "未找到画布。", 404);
     existing = latest;
   }
   throw new CanvasProjectError("CANVAS_PROJECT_CONFLICT", "画布更新过于频繁，请稍后重试。", 409);
 }
 
-export async function deleteCanvasProject(id: string, userId: string, sourceIdValue?: unknown) {
+export async function deleteCanvasProject(id: string, userId: string, scope?: CanvasProjectScope, sourceIdValue?: unknown) {
+  const workspaceScope = normalizeScope(scope);
   const sourceId = normalizeSourceId(sourceIdValue);
   const deletedId = await withApplicationTransaction(async (client) => {
     const result = await client.query<{ id: string }>(
-      "delete from canvas_projects where id = $1 and user_id = $2 returning id",
-      [id, userId],
+      "delete from canvas_projects where id = $1 and user_id = $2 and workspace_scope = $3 returning id",
+      [id, userId, workspaceScope],
     );
     if (!result.rows[0]) return "";
     await client.query("select pg_notify('canvas_project_events', $1)", [JSON.stringify({ type: "deleted", projectId: id, sourceId })]);
@@ -188,21 +202,23 @@ export async function removeLibraryItemsFromCanvasProjects(libraryItemIds: strin
 async function writeCanvasProject(input: {
   id: string;
   userId: string;
+  scope?: CanvasProjectScope;
   title: string;
   document: CanvasProjectDocument;
   expectedVersion: number;
   sourceId: string;
 }) {
+  const workspaceScope = normalizeScope(input.scope);
   const row = await withApplicationTransaction(async (client) => {
     const result = await client.query<CanvasProjectRow>(
       `update canvas_projects
-          set title = $3,
-              document = $4::jsonb,
+          set title = $4,
+              document = $5::jsonb,
               version = version + 1,
-              updated_at = $5
-        where id = $1 and user_id = $2 and version = $6
+              updated_at = $6
+        where id = $1 and user_id = $2 and workspace_scope = $3 and version = $7
         returning id, title, document, version, created_at, updated_at`,
-      [input.id, input.userId, input.title, JSON.stringify(input.document), new Date().toISOString(), input.expectedVersion],
+      [input.id, input.userId, workspaceScope, input.title, JSON.stringify(input.document), new Date().toISOString(), input.expectedVersion],
     );
     if (!result.rows[0]) return null;
     await client.query("select pg_notify('canvas_project_events', $1)", [JSON.stringify({

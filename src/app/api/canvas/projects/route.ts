@@ -3,7 +3,7 @@ import { type NextRequest, NextResponse } from "next/server";
 import { CanvasDocumentError, emptyCanvasDocument } from "@/lib/canvas/document";
 import { authResultResponse, csrfFailure, requireAuthSession, requireCsrf } from "@/lib/server/auth";
 import { CanvasProjectError, createCanvasProject, listCanvasProjects } from "@/lib/server/canvas-projects";
-import { resolveCanvasWorkspaceOwner } from "@/lib/server/canvas-workspace-access";
+import { resolveCanvasWorkspace } from "@/lib/server/canvas-workspace-access";
 import { diagnosticErrorResponse } from "@/lib/server/error-diagnostics";
 import { InternalCanvasAccessError } from "@/lib/server/internal-canvas-access";
 
@@ -13,8 +13,8 @@ export async function GET(request: NextRequest) {
   try {
     const session = await requireAuthSession(request);
     if (!session.ok) return authResultResponse(request, session);
-    const ownerId = await resolveCanvasWorkspaceOwner(request, session.user.local_user_id);
-    return NextResponse.json({ projects: await listCanvasProjects(ownerId) });
+    const workspace = await resolveCanvasWorkspace(request, session.user.local_user_id);
+    return NextResponse.json({ projects: await listCanvasProjects(workspace.ownerId, workspace.scope) });
   } catch (error) {
     return canvasProjectErrorResponse(request, error, "读取画布失败。");
   }
@@ -26,9 +26,10 @@ export async function POST(request: NextRequest) {
     const session = await requireAuthSession(request);
     if (!session.ok) return authResultResponse(request, session);
     const body = await readCanvasBody(request);
-    const ownerId = await resolveCanvasWorkspaceOwner(request, session.user.local_user_id);
+    const workspace = await resolveCanvasWorkspace(request, session.user.local_user_id);
     const project = await createCanvasProject({
-      userId: ownerId,
+      userId: workspace.ownerId,
+      scope: workspace.scope,
       title: body.title || "未命名画布",
       document: body.document || emptyCanvasDocument(),
     });

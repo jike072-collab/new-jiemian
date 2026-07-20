@@ -1,19 +1,27 @@
 import { type NextRequest, NextResponse } from "next/server";
 
-import { authResultResponse, csrfFailure, requireAuthSession, requireCsrf } from "@/lib/server/auth";
+import { authResultResponse, csrfFailure, isInternalCanvasHostname, requireAuthSession, requireCsrf } from "@/lib/server/auth";
 import { removeLibraryItemsFromCanvasProjects } from "@/lib/server/canvas-projects";
 import { diagnosticErrorResponse, GenerationDiagnosticError } from "@/lib/server/error-diagnostics";
-import { deleteLibraryItemForOwner, deleteLibraryItemsForOwner, LibraryOperationError, readLibraryMetadataForOwner, updateLibraryItemForOwner } from "@/lib/server/library";
+import { getInternalCanvasWorkspaceMemberIds } from "@/lib/server/internal-canvas-access";
+import { deleteLibraryItemForOwner, deleteLibraryItemsForOwner, LibraryOperationError, readLibraryMetadataForOwner, readLibraryMetadataForOwners, updateLibraryItemForOwner } from "@/lib/server/library";
 
 export const runtime = "nodejs";
 
 export async function GET(request: NextRequest) {
   const session = await requireAuthSession(request);
   if (!session.ok) return authResultResponse(request, session);
+  const shared = isInternalCanvasHostname(request.headers.get("host")) && request.nextUrl.searchParams.get("scope") === "shared";
+  const workspace = shared ? await getInternalCanvasWorkspaceMemberIds(session.user.local_user_id) : null;
   void import("@/lib/server/provider-call")
     .then(({ refreshPendingVideoJobsForOwner }) => refreshPendingVideoJobsForOwner(session.user.local_user_id))
     .catch(() => undefined);
-  const items = await readLibraryMetadataForOwner(session.user.local_user_id);
+  const items = shared
+    ? (await readLibraryMetadataForOwners(workspace!.memberIds)).map((item) => item.output ? {
+      ...item,
+      output: { ...item.output, url: `/api/library/${encodeURIComponent(item.id)}/media?scope=shared` },
+    } : item)
+    : await readLibraryMetadataForOwner(session.user.local_user_id);
   return NextResponse.json({ items, total: items.length });
 }
 

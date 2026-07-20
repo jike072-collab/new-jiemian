@@ -4,7 +4,7 @@ import { authResultResponse, csrfFailure, isInternalCanvasHostname, requireAuthS
 import { broadcastCanvasProjectEvent } from "@/lib/server/canvas-collaboration";
 import { listCanvasPresence, removeCanvasPresence, upsertCanvasPresence } from "@/lib/server/canvas-presence";
 import { CanvasProjectError, getCanvasProject } from "@/lib/server/canvas-projects";
-import { resolveCanvasWorkspaceOwner } from "@/lib/server/canvas-workspace-access";
+import { resolveCanvasWorkspace } from "@/lib/server/canvas-workspace-access";
 import { diagnosticErrorResponse } from "@/lib/server/error-diagnostics";
 import { InternalCanvasAccessError } from "@/lib/server/internal-canvas-access";
 
@@ -75,8 +75,8 @@ async function requirePresenceProject(request: NextRequest, context: RouteContex
     throw new CanvasPresenceError("CANVAS_PRESENCE_SHARED_ONLY", "在线协作状态仅用于内部团队画布。", 403);
   }
   const { id } = await context.params;
-  const ownerId = await resolveCanvasWorkspaceOwner(request, session.user.local_user_id);
-  const project = await getCanvasProject(id, ownerId);
+  const workspace = await resolveCanvasWorkspace(request, session.user.local_user_id);
+  const project = await getCanvasProject(id, workspace.ownerId, workspace.scope);
   if (!project) throw new CanvasProjectError("CANVAS_PROJECT_NOT_FOUND", "未找到画布。", 404);
   return {
     project,

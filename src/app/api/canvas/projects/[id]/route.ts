@@ -3,7 +3,7 @@ import { type NextRequest, NextResponse } from "next/server";
 import { CanvasDocumentError } from "@/lib/canvas/document";
 import { authResultResponse, csrfFailure, requireAuthSession, requireCsrf } from "@/lib/server/auth";
 import { CanvasProjectError, deleteCanvasProject, getCanvasProject, updateCanvasProject } from "@/lib/server/canvas-projects";
-import { resolveCanvasWorkspaceOwner } from "@/lib/server/canvas-workspace-access";
+import { resolveCanvasWorkspace } from "@/lib/server/canvas-workspace-access";
 import { diagnosticErrorResponse } from "@/lib/server/error-diagnostics";
 import { InternalCanvasAccessError } from "@/lib/server/internal-canvas-access";
 
@@ -16,8 +16,8 @@ export async function GET(request: NextRequest, context: RouteContext) {
     const session = await requireAuthSession(request);
     if (!session.ok) return authResultResponse(request, session);
     const { id } = await context.params;
-    const ownerId = await resolveCanvasWorkspaceOwner(request, session.user.local_user_id);
-    const project = await getCanvasProject(id, ownerId);
+    const workspace = await resolveCanvasWorkspace(request, session.user.local_user_id);
+    const project = await getCanvasProject(id, workspace.ownerId, workspace.scope);
     if (!project) throw new CanvasProjectError("CANVAS_PROJECT_NOT_FOUND", "未找到画布。", 404);
     return NextResponse.json({ project });
   } catch (error) {
@@ -32,10 +32,11 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
     if (!session.ok) return authResultResponse(request, session);
     const { id } = await context.params;
     const body = await readCanvasBody(request);
-    const ownerId = await resolveCanvasWorkspaceOwner(request, session.user.local_user_id);
+    const workspace = await resolveCanvasWorkspace(request, session.user.local_user_id);
     const result = await updateCanvasProject({
       id,
-      userId: ownerId,
+      userId: workspace.ownerId,
+      scope: workspace.scope,
       title: body.title,
       document: body.document,
       version: body.version,
@@ -55,10 +56,10 @@ export async function DELETE(request: NextRequest, context: RouteContext) {
     const session = await requireAuthSession(request);
     if (!session.ok) return authResultResponse(request, session);
     const { id } = await context.params;
-    const ownerId = await resolveCanvasWorkspaceOwner(request, session.user.local_user_id);
+    const workspace = await resolveCanvasWorkspace(request, session.user.local_user_id);
     return NextResponse.json({
       ok: true,
-      id: await deleteCanvasProject(id, ownerId, request.nextUrl.searchParams.get("client")),
+      id: await deleteCanvasProject(id, workspace.ownerId, workspace.scope, request.nextUrl.searchParams.get("client")),
     });
   } catch (error) {
     return canvasProjectErrorResponse(request, error, "删除画布失败。");
