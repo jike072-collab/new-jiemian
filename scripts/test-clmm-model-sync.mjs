@@ -12,10 +12,10 @@ import {
   syncProviderDocument,
 } from "./ops/sync-clmm-seedance-models.mjs";
 
-test("filters only Seedance 2.0 720p models", () => {
+test("filters only Seedance 2.0 720p or 1080p models", () => {
   assert.equal(isTargetClmmSeedanceModel("bb-seedance2.0 720p-fast-gz-15s"), true);
+  assert.equal(isTargetClmmSeedanceModel("bb-seedance2.0 1080p-pro-gz-15s"), true);
   assert.equal(isTargetClmmSeedanceModel("mg-seedance2.0 -480p fast"), false);
-  assert.equal(isTargetClmmSeedanceModel("bb-seedance2.0 1080p-pro-gz-15s"), false);
   assert.equal(isTargetClmmSeedanceModel("seedance2.0 720p-dark"), false);
   assert.equal(isTargetClmmSeedanceModel("mg-seedance 720-gz-fast-15s"), false);
 });

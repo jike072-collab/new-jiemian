@@ -18,8 +18,8 @@ export const clmmSeedanceVideoDisplayNames: Record<string, string> = {
 export function isDynamicClmmSeedance20Model(model: string | null | undefined) {
   const normalized = String(model || "").trim().toLowerCase();
   return /seedance[-_ ]*2(?:\.0)?/.test(normalized)
-    && /720\s*p/.test(normalized)
-    && !/480\s*p|1080\s*p|dark|black|暗黑/.test(normalized);
+    && /(?:720|1080)\s*p/.test(normalized)
+    && !/480\s*p|dark|black|暗黑/.test(normalized);
 }
 
 export function clmmSeedanceVideoDisplayName(model: string) {
@@ -29,6 +29,7 @@ export function clmmSeedanceVideoDisplayName(model: string) {
   const seconds = normalized.match(/(?:^|[-_ ])(\d+)s(?:$|[-_ ])/i)?.[1];
   const fixedLabel = seconds && normalized.includes("gz") ? `${seconds} 秒 不卡真人` : "";
   if (normalized.includes("933")) return "满血 933 不卡真人";
+  if (normalized.includes("1080")) return fixedLabel ? `Pro 1080P ${fixedLabel}` : "Pro 1080P";
   if (normalized.includes("mini")) return "Mini";
   if (normalized.includes("fast")) return fixedLabel ? `Fast ${fixedLabel}` : "Fast";
   if (normalized.includes("pro")) return fixedLabel ? `Pro ${fixedLabel}` : "Pro";

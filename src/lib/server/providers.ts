@@ -149,13 +149,15 @@ export function clmmSeedanceVideoOptionsForModel(model: string): ProviderConfig[
   const fixedSeconds = Number(normalized.match(/(?:^|[-_ ])(\d+)s(?:$|[-_ ])/i)?.[1] || 0);
   const fixedDuration = fixedSeconds > 0;
   const is933 = normalized.includes("933");
+  const is1080 = normalized.includes("1080");
+  const isBb = normalized.startsWith("bb-");
   const isFast = normalized.includes("fast");
   const isMini = normalized.includes("mini");
   return {
     durations: fixedDuration ? [fixedSeconds] : clmmFlexibleVideoDurations,
-    ratios: ["16:9", "9:16"],
-    resolution: "720p",
-    maxReferenceImages: is933 ? 9 : 4,
+    ratios: isBb ? ["9:16"] : ["16:9", "9:16"],
+    resolution: is1080 ? "1080p" : "720p",
+    maxReferenceImages: is933 || (is1080 && isBb) ? 9 : 4,
     maxReferenceVideos: isFast && fixedDuration ? 1 : 3,
     maxReferenceAudios: is933 || !isMini ? 3 : 1,
     maxReferenceDurationSeconds: 15,

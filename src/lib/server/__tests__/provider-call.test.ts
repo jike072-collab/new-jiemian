@@ -143,6 +143,11 @@ test("CLMM Seedance defaults expose exactly the six 720P models", () => {
   assert.equal(clmmSeedanceVideoMySecondsForModel(dynamicModel), 14);
   assert.equal(isSeedance20VideoModel(dynamicModel), true);
   assert.equal(seedanceLibraryModelName(dynamicModel), "Seedance 2.0 新 · Pro 14 秒 不卡真人");
+  const highResolutionModel = "bb-seedance2.0 1080p-pro-gz-15s";
+  assert.deepEqual(clmmSeedanceVideoOptionsForModel(highResolutionModel)?.durations, [15]);
+  assert.deepEqual(clmmSeedanceVideoOptionsForModel(highResolutionModel)?.ratios, ["9:16"]);
+  assert.equal(clmmSeedanceVideoOptionsForModel(highResolutionModel)?.resolution, "1080p");
+  assert.equal(clmmSeedanceVideoOptionsForModel(highResolutionModel)?.maxReferenceImages, 9);
   assert.equal(isSeedance20VideoModel(models[0]), true);
   assert.equal(seedanceLibraryModelName(models[3]), "Seedance 2.0 新 · 满血 933 不卡真人");
 });

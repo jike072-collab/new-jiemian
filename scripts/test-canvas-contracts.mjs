@@ -205,6 +205,7 @@ assert.match(canvasNode, /<optgroup/);
 assert.match(canvasNode, /providerOptionLabel/);
 assert.match(canvasNode, /providerParameterSummary/);
 assert.match(canvasCss, /canvas-node__model-summary/);
+assert.doesNotMatch(workspace, /<CanvasSelectionToolbar/);
 assert.match(canvasNode, /Seedance 2\.0 新/);
 assert.match(canvasNode, /previewMedia\(id\)/);
 assert.match(workspace, /createPendingImageResultNodes/);

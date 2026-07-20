@@ -1981,6 +1981,8 @@ function CanvasWorkspaceInner({
     const textarea = document.querySelector<HTMLTextAreaElement>(`[data-canvas-node-id="${selectedNode.id}"] textarea`);
     textarea?.focus();
   }, [selectedNode]);
+  // Kept for the context-menu edit path; the selected-node floating toolbar is intentionally removed.
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const editSelected = useCallback(() => {
     if (!selectedNode) return;
     if (selectedNode.data.kind === "prompt") {
@@ -2855,19 +2857,6 @@ function CanvasWorkspaceInner({
               onDuplicate={duplicateSelectedNodes}
               onDelete={removeSelectedNodes}
             />
-          ) : selectedNode ? (
-            <CanvasSelectionToolbar
-              node={selectedNode}
-              style={selectionToolbarStyle}
-              onInfo={() => { setInfoOpen(true); setLayersOpen(false); setAssistantOpen(false); setShortcutsOpen(false); setSettingsOpen(false); }}
-              onUngroup={ungroupSelectedNodes}
-              onToggleGroup={() => toggleGroupCollapsed(selectedNode.id)}
-              onDelete={() => removeNode(selectedNode.id)}
-              onEdit={editSelected}
-              onGenerate={generateSelected}
-              onZoomOut={() => { void flow.zoomOut(); }}
-              onZoomIn={() => { void flow.zoomIn(); }}
-            />
           ) : null}
           <CanvasNodeActionsContext.Provider value={nodeActions}>
             <ReactFlow<CanvasFlowNode, Edge>
@@ -3250,6 +3239,7 @@ function CanvasToolbar({
   );
 }
 
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
 function CanvasSelectionToolbar({
   node,
   style,

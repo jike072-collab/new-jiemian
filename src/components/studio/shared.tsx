@@ -490,7 +490,7 @@ function providerUseCase(model: string, displayName: string, videoOptions?: Fron
   if (normalized === "seedance2.0 720p-933-pro-gz-15s") return "支持 9 图 · 3 视频 · 3 音频 · 15 秒 · 不卡真人 · 720P";
   if (normalized === "seedance2.0 720p-fast-gz-15s") return "支持 4 图 · 1 视频 · 1 音频 · 15 秒 · 不卡真人 · 720P";
   if (normalized === "seedance2.0 720p-pro-gz-15s") return "支持 4 图 · 3 视频 · 1 音频 · 15 秒 · 不卡真人 · 720P";
-  if (/seedance[-_ ]*2(?:\.0)?.*720\s*p/.test(normalized) && videoOptions) {
+  if (/seedance[-_ ]*2(?:\.0)?.*(?:720|1080)\s*p/.test(normalized) && videoOptions) {
     const durations = videoOptions.durations || [];
     const durationLabel = durations.length === 1
       ? `${durations[0]} 秒`
