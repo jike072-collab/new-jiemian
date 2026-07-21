@@ -1,0 +1,11 @@
+[Unit]
+Description=Run Aohuang AI TikTok publisher every 20 seconds
+
+[Timer]
+OnBootSec=30s
+OnUnitInactiveSec=20s
+AccuracySec=1s
+Unit=aohuang-tiktok-publisher.service
+
+[Install]
+WantedBy=timers.target

@@ -1135,6 +1135,9 @@
 .canvas-node__image-preview { display: block; width: 100%; height: 100%; min-height: 0; overflow: hidden; border: 0; background: transparent; cursor: zoom-in; padding: 0; }
 .canvas-node__image-preview img { display: block; }
 .canvas-node__body--media audio { width: 100%; margin: auto 0; }
+.canvas-node__tiktok { position: absolute; z-index: 4; top: 8px; right: 8px; display: inline-flex; height: 30px; align-items: center; gap: 5px; border: 1px solid color-mix(in srgb, var(--primary) 45%, transparent); border-radius: 6px; background: color-mix(in srgb, var(--panel) 90%, transparent); color: var(--foreground); box-shadow: 0 6px 20px rgba(0, 0, 0, 0.28); cursor: pointer; padding: 0 8px; font-size: 10px; backdrop-filter: blur(10px); }
+.canvas-node__tiktok:hover { background: var(--primary); color: #fff; }
+.canvas-node__tiktok svg { width: 13px; height: 13px; }
 
 .canvas-node__media-placeholder {
   position: relative;
@@ -1623,6 +1626,107 @@
 .canvas-media-viewer__stage { display: grid; min-width: 0; min-height: 0; place-items: center; overflow: auto; padding: 18px; }
 .canvas-media-viewer__stage img { display: block; height: auto; object-fit: contain; box-shadow: 0 12px 48px rgba(0, 0, 0, 0.42); }
 
+.canvas-tiktok-scrim { position: fixed; z-index: 64; inset: 0; display: grid; place-items: center; overflow-y: auto; background: rgba(0, 0, 0, 0.72); padding: 20px; }
+.canvas-tiktok-panel { display: grid; width: min(620px, 100%); max-height: calc(100dvh - 40px); overflow-y: auto; border: 1px solid var(--border-strong); border-radius: 8px; background: var(--panel); color: var(--foreground); box-shadow: 0 26px 90px rgba(0, 0, 0, 0.58); }
+.canvas-tiktok-panel__header,
+.canvas-tiktok-panel__header > div,
+.canvas-tiktok-account,
+.canvas-tiktok-account > span,
+.canvas-tiktok-panel__manual > div,
+.canvas-tiktok-panel__loading,
+.canvas-tiktok-form__privacy,
+.canvas-tiktok-form__toggles,
+.canvas-tiktok-form__schedule > div,
+.canvas-tiktok-form__submit,
+.canvas-tiktok-jobs__heading,
+.canvas-tiktok-job { display: flex; align-items: center; gap: 8px; }
+.canvas-tiktok-panel__header { min-width: 0; justify-content: space-between; border-bottom: 1px solid var(--border-subtle); padding: 11px 12px 11px 14px; }
+.canvas-tiktok-panel__header > div { min-width: 0; }
+.canvas-tiktok-panel__header > div > svg { flex: 0 0 auto; width: 18px; color: var(--primary); }
+.canvas-tiktok-panel__header span,
+.canvas-tiktok-account > span,
+.canvas-tiktok-job > span { display: grid; min-width: 0; flex: 1; gap: 2px; }
+.canvas-tiktok-panel__header strong,
+.canvas-tiktok-panel__header small,
+.canvas-tiktok-account strong,
+.canvas-tiktok-account small,
+.canvas-tiktok-job strong,
+.canvas-tiktok-job small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.canvas-tiktok-panel__header strong { font-size: 13px; }
+.canvas-tiktok-panel__header small,
+.canvas-tiktok-account small,
+.canvas-tiktok-job small { color: var(--muted); font-size: 10px; }
+.canvas-tiktok-panel__header > button,
+.canvas-tiktok-account > button,
+.canvas-tiktok-jobs__heading button,
+.canvas-tiktok-job > a { display: grid; width: 32px; height: 32px; flex: 0 0 32px; place-items: center; border: 0; border-radius: 6px; background: transparent; color: var(--muted-strong); cursor: pointer; text-decoration: none; }
+.canvas-tiktok-panel__header > button:hover,
+.canvas-tiktok-account > button:hover,
+.canvas-tiktok-jobs__heading button:hover,
+.canvas-tiktok-job > a:hover { background: var(--surface-hover); color: var(--foreground); }
+.canvas-tiktok-panel__header button svg,
+.canvas-tiktok-account button svg,
+.canvas-tiktok-jobs__heading button svg,
+.canvas-tiktok-job > a svg { width: 15px; }
+.canvas-tiktok-panel__loading { min-height: 150px; justify-content: center; color: var(--muted-strong); font-size: 12px; }
+.canvas-tiktok-panel__manual,
+.canvas-tiktok-panel__connect { display: grid; justify-items: start; gap: 9px; padding: 18px; }
+.canvas-tiktok-panel__manual p,
+.canvas-tiktok-panel__connect span { margin: 0; color: var(--muted); font-size: 11px; line-height: 1.5; }
+.canvas-tiktok-panel__connect > svg { width: 28px; color: var(--primary); }
+.canvas-tiktok-accounts { display: grid; width: 100%; gap: 7px; }
+.canvas-tiktok-accounts > button { display: flex; width: 100%; min-height: 48px; align-items: center; gap: 9px; text-align: left; }
+.canvas-tiktok-accounts > button > svg { flex: 0 0 16px; color: var(--primary); }
+.canvas-tiktok-accounts > button > span { display: grid; min-width: 0; gap: 2px; }
+.canvas-tiktok-accounts > button strong,
+.canvas-tiktok-accounts > button small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.canvas-tiktok-accounts > button small { color: var(--muted); font-size: 9px; }
+.canvas-tiktok-panel__manual button,
+.canvas-tiktok-panel__connect button { display: inline-flex; min-height: 34px; align-items: center; gap: 6px; border: 1px solid var(--border-subtle); border-radius: 6px; background: var(--surface); color: var(--foreground); cursor: pointer; padding: 0 10px; font-size: 11px; }
+.canvas-tiktok-panel__manual button svg,
+.canvas-tiktok-panel__connect button svg { width: 14px; }
+.canvas-tiktok-panel__connect button.is-secondary { background: transparent; color: var(--muted-strong); }
+.canvas-tiktok-account { margin: 12px 14px 0; border: 1px solid var(--border-subtle); border-radius: 6px; background: var(--surface); padding: 9px 9px 9px 11px; }
+.canvas-tiktok-account > svg { width: 19px; color: var(--primary); }
+.canvas-tiktok-account strong { font-size: 12px; }
+.canvas-tiktok-form { display: grid; gap: 13px; padding: 14px; }
+.canvas-tiktok-form label,
+.canvas-tiktok-form fieldset { min-width: 0; }
+.canvas-tiktok-form__caption { position: relative; display: grid; gap: 6px; }
+.canvas-tiktok-form__caption > span,
+.canvas-tiktok-form legend { color: var(--muted-strong); font-size: 11px; }
+.canvas-tiktok-form__caption textarea { width: 100%; min-height: 92px; resize: vertical; box-sizing: border-box; border: 1px solid var(--border-subtle); border-radius: 6px; background: var(--surface); color: var(--foreground); outline: none; padding: 9px 9px 22px; font: inherit; font-size: 12px; }
+.canvas-tiktok-form__caption textarea:focus { border-color: color-mix(in srgb, var(--primary) 58%, transparent); }
+.canvas-tiktok-form__caption small { position: absolute; right: 8px; bottom: 6px; color: var(--muted); font-size: 9px; }
+.canvas-tiktok-form fieldset { display: grid; gap: 7px; margin: 0; border: 0; padding: 0; }
+.canvas-tiktok-form__privacy { flex-wrap: wrap; gap: 6px; }
+.canvas-tiktok-form__privacy label { display: inline-flex; height: 31px; align-items: center; border: 1px solid var(--border-subtle); border-radius: 6px; background: var(--surface); color: var(--muted-strong); cursor: pointer; padding: 0 9px; font-size: 10px; }
+.canvas-tiktok-form__privacy label.is-active { border-color: color-mix(in srgb, var(--primary) 60%, transparent); background: color-mix(in srgb, var(--primary) 12%, var(--surface)); color: var(--foreground); }
+.canvas-tiktok-form__privacy input { position: absolute; opacity: 0; pointer-events: none; }
+.canvas-tiktok-form__toggles { flex-wrap: wrap; gap: 7px 14px; }
+.canvas-tiktok-form__toggles label { display: inline-flex; align-items: center; gap: 6px; color: var(--muted-strong); font-size: 10px; }
+.canvas-tiktok-form__toggles input { width: 15px; height: 15px; accent-color: var(--primary); }
+.canvas-tiktok-form__schedule { display: grid; gap: 8px; }
+.canvas-tiktok-form__schedule > div { width: fit-content; overflow: hidden; border: 1px solid var(--border-subtle); border-radius: 6px; background: var(--surface); }
+.canvas-tiktok-form__schedule button { display: inline-flex; height: 32px; align-items: center; gap: 5px; border: 0; background: transparent; color: var(--muted); cursor: pointer; padding: 0 9px; font-size: 10px; }
+.canvas-tiktok-form__schedule button.is-active { background: var(--surface-hover); color: var(--foreground); }
+.canvas-tiktok-form__schedule button svg { width: 13px; }
+.canvas-tiktok-form__schedule > input { width: min(280px, 100%); height: 34px; border: 1px solid var(--border-subtle); border-radius: 6px; background: var(--surface); color: var(--foreground); padding: 0 8px; color-scheme: inherit; }
+.canvas-tiktok-form__submit { min-height: 38px; justify-content: center; border: 0; border-radius: 6px; background: var(--primary); color: #fff; cursor: pointer; padding: 0 12px; font-size: 11px; font-weight: 700; }
+.canvas-tiktok-form__submit:hover:not(:disabled) { background: var(--primary-hover); }
+.canvas-tiktok-form__submit:disabled { cursor: default; opacity: 0.45; }
+.canvas-tiktok-form__submit svg { width: 15px; }
+.canvas-tiktok-jobs { display: grid; gap: 6px; border-top: 1px solid var(--border-subtle); padding: 12px 14px 14px; }
+.canvas-tiktok-jobs__heading { justify-content: space-between; }
+.canvas-tiktok-jobs__heading strong { font-size: 11px; }
+.canvas-tiktok-job { min-width: 0; border: 1px solid var(--border-subtle); border-radius: 6px; background: var(--surface); padding: 8px; }
+.canvas-tiktok-job > svg { width: 15px; flex: 0 0 15px; color: #22d3ee; }
+.canvas-tiktok-job.is-published > svg { color: #34d399; }
+.canvas-tiktok-job.is-failed > svg { color: #fb7185; }
+.canvas-tiktok-job strong { font-size: 10px; }
+.canvas-tiktok-job > button { height: 28px; border: 1px solid var(--border-subtle); border-radius: 5px; background: transparent; color: var(--muted-strong); cursor: pointer; padding: 0 7px; font-size: 9px; }
+.canvas-tiktok-panel__message { margin: 0 14px 14px; border: 1px solid color-mix(in srgb, var(--primary) 30%, transparent); border-radius: 6px; background: color-mix(in srgb, var(--primary) 8%, transparent); color: var(--muted-strong); padding: 8px 10px; font-size: 10px; line-height: 1.5; }
+
 .canvas-image-editor {
   display: grid;
   width: min(1100px, 100%);
@@ -1693,6 +1797,8 @@
   .canvas-settings { top: 50%; transform: translateY(-50%); }
   .canvas-image-editor { max-height: calc(100dvh - 16px); }
   .canvas-editor-backdrop { padding: 8px; }
+  .canvas-tiktok-scrim { align-items: end; padding: 8px; }
+  .canvas-tiktok-panel { width: 100%; max-height: calc(100dvh - 16px); }
   .canvas-image-editor__tools { flex-wrap: nowrap; overflow-x: auto; }
   .canvas-image-editor__tools label { margin-left: 0; }
   .canvas-image-editor footer { align-items: stretch; flex-direction: column; }

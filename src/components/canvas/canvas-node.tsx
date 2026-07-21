@@ -14,6 +14,7 @@ import {
   LoaderCircle,
   Music,
   Play,
+  Send,
   Sparkles,
   Trash2,
   Type,
@@ -64,6 +65,7 @@ type CanvasNodeActions = {
   updateNodeData: (id: string, patch: Partial<CanvasNodeData>) => void;
   removeNode: (id: string) => void;
   previewMedia: (id: string) => void;
+  openTikTokPublisher: (id: string) => void;
   optimizePrompt: (id: string, prompt: string) => Promise<void>;
   runGenerator: (id: string) => void;
   toggleGroup: (id: string) => void;
@@ -358,7 +360,12 @@ function MediaNode({ id, data }: { id: string; data: CanvasNodeData }) {
         </button>
       ) : null}
       {data.mediaUrl && data.mediaType === "video" ? (
-        <video src={data.mediaUrl} controls preload="metadata" className="nodrag nowheel" />
+        <>
+          <video src={data.mediaUrl} controls preload="metadata" className="nodrag nowheel" />
+          {data.libraryItemId && data.status === "done" ? (
+            <button type="button" className="canvas-node__tiktok nodrag" onClick={() => actions.openTikTokPublisher(id)}><Send /><span>发布到 TikTok</span></button>
+          ) : null}
+        </>
       ) : null}
       {data.mediaUrl && data.mediaType === "audio" ? (
         <audio src={data.mediaUrl} controls preload="metadata" className="nodrag nowheel" />

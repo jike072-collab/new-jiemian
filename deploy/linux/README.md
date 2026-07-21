@@ -99,6 +99,23 @@ The application unit:
 
 Do not place real secrets in unit files. Do not create a 3107 server unit.
 
+## TikTok publishing
+
+Canvas TikTok publishing uses Zernio and a local PostgreSQL schedule queue. Keep
+`ZERNIO_API_KEY` and `TIKTOK_WORKER_SECRET` only in
+`/etc/aohuang-ai/production.env`. Set
+`ZERNIO_TIKTOK_REDIRECT_URI=https://aohuang888.cn/api/tiktok/oauth/callback`
+and set `ZERNIO_PROFILE_IDS` to the comma-separated Profile IDs that contain the
+internal TikTok accounts. Site members claim one already-connected account from
+the canvas publisher; the database prevents the same TikTok account from being
+claimed by two site users. Unbinding in the canvas removes only the local
+mapping and does not disconnect the account in Zernio.
+
+Install `deploy/systemd/aohuang-tiktok-publisher.service` and
+`deploy/systemd/aohuang-tiktok-publisher.timer`, then enable the timer. It calls
+the authenticated internal queue endpoint every 20 seconds. Apply database
+migration `020_tiktok_publishing.sql` before enabling the timer.
+
 The cleanup timer runs once per hour. It does not delete every file hourly. It
 calls the existing retention script, which deletes only completed local media
 that is older than the configured retention window, normally 24 hours.

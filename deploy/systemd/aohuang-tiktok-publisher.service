@@ -1,0 +1,12 @@
+[Unit]
+Description=Aohuang AI TikTok scheduled publisher
+Wants=network-online.target
+After=network-online.target aohuang-ai.service
+
+[Service]
+Type=oneshot
+User=aohuang-ai
+Group=aohuang-ai
+EnvironmentFile=/etc/aohuang-ai/production.env
+ExecStart=/bin/sh -c 'test -n "$TIKTOK_WORKER_SECRET" && /usr/bin/curl --fail --silent --show-error --max-time 180 -X POST -H "Authorization: Bearer $TIKTOK_WORKER_SECRET" http://127.0.0.1:3106/api/internal/tiktok/publish-due >/dev/null'
+UMask=0077

@@ -496,6 +496,31 @@ function checkProductionBasics(issues: RuntimeEnvironmentIssue[], env: RuntimeEn
   checkRemoteMediaAllowedHosts(issues, env);
 }
 
+function checkZernioTikTok(issues: RuntimeEnvironmentIssue[], env: RuntimeEnv) {
+  const names = ["ZERNIO_API_KEY", "ZERNIO_TIKTOK_REDIRECT_URI", "TIKTOK_WORKER_SECRET", "ZERNIO_PROFILE_IDS"];
+  if (!names.some((name) => hasValue(env, name))) {
+    checkUrlIfConfigured(issues, env, "ZERNIO_API_BASE_URL");
+    return;
+  }
+  for (const name of names) {
+    if (!hasValue(env, name)) issue(issues, name, "is required when Zernio TikTok publishing is configured.");
+  }
+  checkUrlIfConfigured(issues, env, "ZERNIO_API_BASE_URL");
+  checkUrlIfConfigured(issues, env, "ZERNIO_TIKTOK_REDIRECT_URI");
+  const redirect = value(env, "ZERNIO_TIKTOK_REDIRECT_URI");
+  if (redirect) {
+    try {
+      if (new URL(redirect).protocol !== "https:") issue(issues, "ZERNIO_TIKTOK_REDIRECT_URI", "must use HTTPS in production.");
+    } catch {
+      // The URL validator above reports malformed values.
+    }
+  }
+  const profileIds = value(env, "ZERNIO_PROFILE_IDS").split(",").map((id) => id.trim()).filter(Boolean);
+  if (profileIds.some((id) => !/^[A-Za-z0-9_-]{4,255}$/.test(id))) {
+    issue(issues, "ZERNIO_PROFILE_IDS", "must be a comma-separated list of Zernio Profile IDs.");
+  }
+}
+
 function checkProductionOnlyEnv(issues: RuntimeEnvironmentIssue[], env: RuntimeEnv) {
   if (hasValue(env, "PAYMENT_SANDBOX_ENABLED")) {
     issue(issues, "PAYMENT_SANDBOX_ENABLED", "must not be configured for production 3106.");
@@ -528,6 +553,7 @@ export function validateProductionRuntimeEnv(
   checkPersistenceModes(issues, env);
   checkDatabaseFeatureFlags(issues, env);
   checkProviders(issues, env);
+  checkZernioTikTok(issues, env);
   return { ok: issues.length === 0, target: "production", issues };
 }
 

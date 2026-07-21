@@ -117,6 +117,7 @@
     "test:canvas-image-batching": "node scripts/test-canvas-image-batching.mjs",
     "test:canvas-presence": "node scripts/test-canvas-presence.mjs",
     "test:canvas-vozeb-shell": "node scripts/test-canvas-vozeb-shell.mjs",
+    "test:tiktok-publishing": "node scripts/test-tiktok-publishing-contracts.mjs",
     "test:canvas-commands": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON scripts/test-canvas-commands.mjs",
     "test:clmm-model-sync": "node scripts/test-clmm-model-sync.mjs",
     "database:boundary": "node scripts/database/test-server-boundary.mjs",

@@ -47,6 +47,7 @@ import {
   RefreshCw,
   Save,
   Search,
+  Send,
   Settings2,
   Sparkles,
   Star,
@@ -105,6 +106,7 @@ import {
 } from "@/components/canvas/canvas-edge";
 import { CanvasImageEditor } from "@/components/canvas/canvas-image-editor";
 import { CanvasMediaViewer } from "@/components/canvas/canvas-media-viewer";
+import { CanvasTikTokPublisher } from "@/components/canvas/canvas-tiktok-publisher";
 import { CanvasVozebTopbar } from "@/components/canvas/canvas-vozeb-shell";
 import {
   CanvasGroupNode,
@@ -371,6 +373,7 @@ function CanvasWorkspaceInner({
   const [selectionHintOpen, setSelectionHintOpen] = useState(() => presentation === "classic" && shouldShowShortcutHint());
   const [editingNodeId, setEditingNodeId] = useState("");
   const [previewingNodeId, setPreviewingNodeId] = useState("");
+  const [tiktokLibraryItemId, setTikTokLibraryItemId] = useState("");
   const [teamOpen, setTeamOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [layersOpen, setLayersOpen] = useState(false);
@@ -1501,6 +1504,14 @@ function CanvasWorkspaceInner({
     updateNodeData: (id: string, patch: Partial<CanvasNodeData>) => updateNodeData(id, patch),
     removeNode,
     previewMedia: setPreviewingNodeId,
+    openTikTokPublisher: (id: string) => {
+      const node = nodesRef.current.find((item) => item.id === id);
+      if (node?.data.kind === "media" && node.data.mediaType === "video" && node.data.libraryItemId) {
+        setTikTokLibraryItemId(node.data.libraryItemId);
+      } else {
+        setNotice("该视频尚未进入作品库，暂时不能发布到 TikTok。");
+      }
+    },
     optimizePrompt: optimizePromptNode,
     runGenerator: (id: string) => { void executeGenerator(id); },
     toggleGroup: toggleGroupCollapsed,
@@ -1700,6 +1711,7 @@ function CanvasWorkspaceInner({
     || (contextSourceNode.data.kind === "media" && contextSourceNode.data.mediaType === "image");
   const editingNode = nodes.find((node) => node.id === editingNodeId && node.data.kind === "media" && node.data.mediaType === "image") || null;
   const previewingNode = nodes.find((node) => node.id === previewingNodeId && node.data.kind === "media" && node.data.mediaType === "image" && node.data.mediaUrl) || null;
+  const tiktokLibraryItem = library.find((item) => item.id === tiktokLibraryItemId && item.type === "video" && item.status === "done") || null;
   const selectionToolbarStyle = useMemo<CSSProperties | undefined>(() => {
     if (!selectedNodes.length) return undefined;
     const minX = Math.min(...selectedNodes.map((node) => node.position.x));
@@ -2837,6 +2849,7 @@ function CanvasWorkspaceInner({
           onFavorite={(item) => { void toggleLibraryFavorite(item); }}
           onCopyLink={(item) => { void copyLibraryItemLink(item); }}
           onDownload={downloadLibraryItem}
+          onPublish={(item) => setTikTokLibraryItemId(item.id)}
           onDelete={(item) => { void deleteLibraryItem(item); }}
         />
         <section
@@ -3123,6 +3136,15 @@ function CanvasWorkspaceInner({
 
       {previewingNode?.data.mediaUrl ? (
         <CanvasMediaViewer imageUrl={previewingNode.data.mediaUrl} title={previewingNode.data.title} onClose={() => setPreviewingNodeId("")} />
+      ) : null}
+
+      {tiktokLibraryItem ? (
+        <CanvasTikTokPublisher
+          item={tiktokLibraryItem}
+          scope={canvasScope()}
+          onDownload={() => downloadLibraryItem(tiktokLibraryItem)}
+          onClose={() => setTikTokLibraryItemId("")}
+        />
       ) : null}
 
       {notice ? (
@@ -3939,7 +3961,7 @@ function TeamPanel({ onClose, allowCreateMembers }: { onClose: () => void; allow
   );
 }
 
-function LibraryPanel({ open, items, filter, search, onClose, onFilter, onSearch, onUpload, onAdd, onAddMany, canReplace, onReplace, onRename, onFavorite, onCopyLink, onDownload, onDelete }: {
+function LibraryPanel({ open, items, filter, search, onClose, onFilter, onSearch, onUpload, onAdd, onAddMany, canReplace, onReplace, onRename, onFavorite, onCopyLink, onDownload, onPublish, onDelete }: {
   open: boolean;
   items: LibraryItem[];
   filter: LibraryFilter;
@@ -3956,6 +3978,7 @@ function LibraryPanel({ open, items, filter, search, onClose, onFilter, onSearch
   onFavorite: (item: LibraryItem) => void;
   onCopyLink: (item: LibraryItem) => void;
   onDownload: (item: LibraryItem) => void;
+  onPublish: (item: LibraryItem) => void;
   onDelete: (item: LibraryItem) => void;
 }) {
   const [selectedIds, setSelectedIds] = useState<Set<string>>(() => new Set());
@@ -4027,6 +4050,7 @@ function LibraryPanel({ open, items, filter, search, onClose, onFilter, onSearch
                 <button type="button" onClick={() => onRename(item)}><Type /><span>重命名</span></button>
                 <button type="button" disabled={!item.output?.url} onClick={() => onCopyLink(item)}><Copy /><span>复制链接</span></button>
                 <button type="button" disabled={!item.output?.url} onClick={() => onDownload(item)}><Download /><span>下载</span></button>
+                {item.type === "video" && item.status === "done" ? <button type="button" onClick={() => onPublish(item)}><Send /><span>发布到 TikTok</span></button> : null}
                 <button type="button" className="is-danger" onClick={() => onDelete(item)}><Trash2 /><span>删除</span></button>
               </div>
             </details>
