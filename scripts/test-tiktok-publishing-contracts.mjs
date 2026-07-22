@@ -49,6 +49,7 @@ assert.match(publishRoute, /getInternalCanvasWorkspaceMemberIds/);
 assert.match(repository, /where id = \$1 and user_id = \$2/);
 assert.match(repository, /where zernio_account_id = \$1/);
 assert.match(repository, /on conflict \(user_id, idempotency_key\)/);
+assert.equal((repository.match(/greatest\(\$13::timestamptz, now\(\)\)/g) || []).length, 2, "immediate TikTok jobs must not predate their database creation time");
 assert.match(migration, /unique index.*tiktok_connections_zernio_account_unique_idx/is);
 assert.match(callbackRoute, /safeTikTokSecretEqual\(state, cookieState\)/);
 assert.match(workerRoute, /safeTikTokSecretEqual\(authorization, expected\)/);

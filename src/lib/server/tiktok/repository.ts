@@ -192,7 +192,7 @@ export async function createTikTokPublishJob(input: {
       ) values (
         $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,true,
         case when $13::timestamptz > now() + interval '15 seconds' then 'scheduled' else 'queued' end,
-        $13,$13,0,now(),now()
+        greatest($13::timestamptz, now()),greatest($13::timestamptz, now()),0,now(),now()
       ) on conflict (user_id, idempotency_key) do nothing returning *
     `, [
       randomUUID(), input.userId, input.sourceOwnerId, input.libraryItemId, input.idempotencyKey, input.caption, input.privacyLevel,
