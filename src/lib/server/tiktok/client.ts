@@ -192,12 +192,15 @@ export async function presignZernioVideoUpload(input: { apiKey: string; baseUrl:
   return { uploadUrl: payload.uploadUrl, publicUrl: payload.publicUrl };
 }
 
-export async function uploadZernioVideo(input: { uploadUrl: string; filePath: string; mimeType: string; fetchImpl?: FetchLike }) {
+export async function uploadZernioVideo(input: { uploadUrl: string; filePath: string; fileSize: number; mimeType: string; fetchImpl?: FetchLike }) {
   let response: Response;
   try {
     response = await (input.fetchImpl || fetch)(input.uploadUrl, {
       method: "PUT",
-      headers: { "Content-Type": input.mimeType || "video/mp4" },
+      headers: {
+        "Content-Type": input.mimeType || "video/mp4",
+        "Content-Length": String(input.fileSize),
+      },
       body: createReadStream(input.filePath),
       duplex: "half",
       signal: AbortSignal.timeout(180_000),

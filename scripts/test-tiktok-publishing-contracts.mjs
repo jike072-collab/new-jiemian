@@ -30,6 +30,8 @@ assert.match(client, /express_consent_given: true/);
 assert.match(client, /publishNow: true/);
 assert.match(client, /presignZernioVideoUpload/);
 assert.match(client, /createReadStream\(input\.filePath\)/);
+assert.match(client, /"Content-Length": String\(input\.fileSize\)/);
+assert.match(service, /uploadZernioVideo\(\{[^}]*fileSize: video\.size/s);
 assert.doesNotMatch(client, /console\.(log|error).*apiKey/i);
 
 assert.match(service, /state\.userId !== input\.userId/);

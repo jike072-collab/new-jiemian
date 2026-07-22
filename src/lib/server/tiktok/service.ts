@@ -389,7 +389,7 @@ async function processClaimedJob(job: TikTokPublishJob, workerId: string) {
     mimeType: video.mimeType,
   });
   await updateClaimedTikTokPublishJob(job.id, workerId, { status: "uploading", errorCode: "", errorMessage: "" });
-  await uploadZernioVideo({ uploadUrl: upload.uploadUrl, filePath: video.path, mimeType: video.mimeType });
+  await uploadZernioVideo({ uploadUrl: upload.uploadUrl, filePath: video.path, fileSize: video.size, mimeType: video.mimeType });
   await updateClaimedTikTokPublishJob(job.id, workerId, { uploadedBytes: video.size });
   const post = await createZernioTikTokPost({
     apiKey: config.apiKey,
