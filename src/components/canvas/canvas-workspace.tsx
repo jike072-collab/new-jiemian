@@ -136,7 +136,7 @@ import type {
   CanvasStoredEdge,
   CanvasStoredNode,
 } from "@/lib/canvas/types";
-import { normalizeCanvasDocument } from "@/lib/canvas/document";
+import { normalizeCanvasDocument, removeUnavailableLibraryItemsFromCanvasDocument } from "@/lib/canvas/document";
 import { duplicateCanvasNodeData } from "@/lib/canvas/duplicate";
 import {
   canvasImageResultGrid,
@@ -398,6 +398,7 @@ function CanvasWorkspaceInner({
   const edgesRef = useRef(edges);
   const projectsRef = useRef(projects);
   const libraryRef = useRef(library);
+  const libraryRefreshPromiseRef = useRef<Promise<LibraryItem[]> | null>(null);
   const providersRef = useRef(providers);
   const titleRef = useRef(title);
   const viewportRef = useRef(viewport);
@@ -620,13 +621,36 @@ function CanvasWorkspaceInner({
     setNotice("已同步团队成员的最新画布。");
   }, [activateProject, applyWorkspaceDocument, scheduleSave, snapshotWorkspace]);
 
-  const refreshLibrary = useCallback(async () => {
-    const data = await fetchJson<{ items: LibraryItem[] }>(canvasLibraryUrl());
-    libraryRef.current = data.items;
-    setLibrary(data.items);
-    setNodes((current) => hydrateMediaNodes(current, data.items));
-    return data.items;
-  }, [hydrateMediaNodes]);
+  const reconcileCanvasLibrary = useCallback((items: LibraryItem[], persist = true) => {
+    if (!activeProjectRef.current) return 0;
+    const result = removeUnavailableLibraryItemsFromCanvasDocument(
+      serializeDocument(nodesRef.current, edgesRef.current, viewportRef.current),
+      items.map((item) => item.id),
+    );
+    if (!result.removedNodeIds.length) {
+      setNodes((current) => hydrateMediaNodes(current, items));
+      return 0;
+    }
+    applyWorkspaceDocument(result.document, items);
+    setNotice(`已自动清理 ${result.removedNodeIds.length} 个过期或已删除的素材节点。`);
+    if (persist) markDirty();
+    return result.removedNodeIds.length;
+  }, [applyWorkspaceDocument, hydrateMediaNodes, markDirty]);
+
+  const refreshLibrary = useCallback(() => {
+    if (libraryRefreshPromiseRef.current) return libraryRefreshPromiseRef.current;
+    const refresh = (async () => {
+      const data = await fetchJson<{ items: LibraryItem[] }>(canvasLibraryUrl());
+      libraryRef.current = data.items;
+      setLibrary(data.items);
+      reconcileCanvasLibrary(data.items);
+      return data.items;
+    })().finally(() => {
+      libraryRefreshPromiseRef.current = null;
+    });
+    libraryRefreshPromiseRef.current = refresh;
+    return refresh;
+  }, [reconcileCanvasLibrary]);
 
   useEffect(() => {
     let cancelled = false;
@@ -655,6 +679,8 @@ function CanvasWorkspaceInner({
         setProviders(providerData.providers);
         setLibrary(libraryData.items);
         activateProject(nextProjects[0], libraryData.items);
+        const removedCount = reconcileCanvasLibrary(libraryData.items, false);
+        if (removedCount) window.requestAnimationFrame(() => markDirty());
       } catch (error) {
         if (!cancelled) setNotice(apiMessage(error, "画布加载失败。"));
       } finally {
@@ -663,7 +689,21 @@ function CanvasWorkspaceInner({
     }
     void loadWorkspace();
     return () => { cancelled = true; };
-  }, [activateProject]);
+  }, [activateProject, markDirty, reconcileCanvasLibrary]);
+
+  useEffect(() => {
+    const refreshWhenVisible = () => {
+      if (document.visibilityState === "visible") void refreshLibrary().catch(() => undefined);
+    };
+    const timer = window.setInterval(refreshWhenVisible, 60_000);
+    window.addEventListener("focus", refreshWhenVisible);
+    document.addEventListener("visibilitychange", refreshWhenVisible);
+    return () => {
+      window.clearInterval(timer);
+      window.removeEventListener("focus", refreshWhenVisible);
+      document.removeEventListener("visibilitychange", refreshWhenVisible);
+    };
+  }, [refreshLibrary]);
 
   const saveNow = useCallback(async (force = false) => {
     const pendingSave = savePromiseRef.current;

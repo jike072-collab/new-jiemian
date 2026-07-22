@@ -7,6 +7,7 @@ const {
   normalizeCanvasDocument,
   normalizeCanvasTitle,
   removeLibraryItemsFromCanvasDocument,
+  removeUnavailableLibraryItemsFromCanvasDocument,
 } = await import(new URL("../src/lib/canvas/document.ts", import.meta.url));
 const { duplicateCanvasNodeData } = await import(new URL("../src/lib/canvas/duplicate.ts", import.meta.url));
 
@@ -101,6 +102,25 @@ assert.equal(removedMedia.document.nodes.length, 2);
 assert.deepEqual(removedMedia.document.edges, []);
 assert.deepEqual(removedMedia.document.nodes.find((node) => node.id === "generator-1")?.data.sourceNodeIds, []);
 assert.equal(removedMedia.document.nodes.find((node) => node.id === "generator-1")?.data.outputNodeId, undefined);
+
+const reconciledMedia = removeUnavailableLibraryItemsFromCanvasDocument({
+  nodes: [
+    { id: "media-keep", type: "canvas", position: { x: 0, y: 0 }, data: { kind: "media", title: "keep", mediaType: "image", libraryItemId: "library-keep", status: "done" } },
+    { id: "media-expired", type: "canvas", position: { x: 200, y: 0 }, data: { kind: "media", title: "expired", mediaType: "video", libraryItemId: "library-expired", status: "done" } },
+    { id: "media-pending", type: "canvas", position: { x: 200, y: 200 }, data: { kind: "media", title: "pending", mediaType: "video", libraryItemId: "library-pending", status: "generating" } },
+    { id: "generator-after-expired", type: "canvas", position: { x: 400, y: 0 }, data: { kind: "generator", title: "next", generationKind: "video", sourceNodeIds: ["media-expired"], outputNodeId: "media-expired" } },
+  ],
+  edges: [
+    { id: "edge-expired", source: "media-expired", target: "generator-after-expired" },
+    { id: "edge-keep", source: "media-keep", target: "generator-after-expired" },
+  ],
+  viewport: { x: 0, y: 0, zoom: 1 },
+}, ["library-keep"]);
+assert.deepEqual(reconciledMedia.removedNodeIds, ["media-expired"]);
+assert.deepEqual(reconciledMedia.document.nodes.map((node) => node.id), ["media-keep", "media-pending", "generator-after-expired"]);
+assert.deepEqual(reconciledMedia.document.edges.map((edge) => edge.id), ["edge-keep"]);
+assert.deepEqual(reconciledMedia.document.nodes.find((node) => node.id === "generator-after-expired")?.data.sourceNodeIds, []);
+assert.equal(reconciledMedia.document.nodes.find((node) => node.id === "generator-after-expired")?.data.outputNodeId, undefined);
 
 const audioReference = normalizeCanvasDocument({
   nodes: [{

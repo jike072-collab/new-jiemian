@@ -195,6 +195,10 @@ assert.match(workspace, /mergeCanvasWorkspace\(submitted, snapshotWorkspace\(\),
 assert.doesNotMatch(workspace, /BroadcastChannel\("aohuang-internal-canvas"\)/);
 assert.doesNotMatch(workspace, /}, 2_500\)/);
 assert.match(workspace, /scope=\$\{canvasScope\(\)\}/);
+assert.match(workspace, /removeUnavailableLibraryItemsFromCanvasDocument/);
+assert.match(workspace, /已自动清理.*过期或已删除的素材节点/);
+assert.match(workspace, /setInterval\(refreshWhenVisible, 60_000\)/);
+assert.match(workspace, /visibilitychange/);
 assert.match(workspaceAccess, /scope.*personal/);
 assert.match(assistantPanel, /\/api\/canvas\/assistant/);
 assert.match(imageEditor, /destination-out/);

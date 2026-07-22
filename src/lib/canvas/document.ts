@@ -108,6 +108,21 @@ export function removeLibraryItemsFromCanvasDocument(value: unknown, libraryItem
   };
 }
 
+export function removeUnavailableLibraryItemsFromCanvasDocument(value: unknown, availableLibraryItemIds: Iterable<string>) {
+  const document = normalizeCanvasDocument(value);
+  const availableIds = new Set(Array.from(availableLibraryItemIds, (id) => String(id || "").trim()).filter(Boolean));
+  const unavailableIds = document.nodes.flatMap((node) => (
+    node.data.kind === "media"
+    && node.data.libraryItemId
+    && node.data.status !== "queued"
+    && node.data.status !== "generating"
+    && !availableIds.has(node.data.libraryItemId)
+      ? [node.data.libraryItemId]
+      : []
+  ));
+  return removeLibraryItemsFromCanvasDocument(document, unavailableIds);
+}
+
 function normalizeNode(value: unknown): CanvasStoredNode {
   if (!isRecord(value) || !isRecord(value.position) || !isRecord(value.data)) {
     throw new CanvasDocumentError("画布节点格式无效。");
