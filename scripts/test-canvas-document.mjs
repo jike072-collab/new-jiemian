@@ -39,9 +39,9 @@ assert.equal(normalized.nodes[0].data.mediaUrl, undefined);
 assert.equal(normalized.nodes[0].data.intrinsicWidth, 1080);
 assert.equal(normalized.nodes[0].data.intrinsicHeight, 1920);
 
-assert.deepEqual(canvasMediaNodeSize(1920, 1080), { width: 420, height: 306, frameWidth: 420, frameHeight: 236 });
-assert.deepEqual(canvasMediaNodeSize(1080, 1920), { width: 260, height: 532, frameWidth: 260, frameHeight: 462 });
-assert.deepEqual(canvasMediaNodeSize(1024, 1024), { width: 360, height: 430, frameWidth: 360, frameHeight: 360 });
+assert.deepEqual(canvasMediaNodeSize(1920, 1080), { width: 420, height: 310, frameWidth: 418, frameHeight: 235 });
+assert.deepEqual(canvasMediaNodeSize(1080, 1920), { width: 260, height: 534, frameWidth: 258, frameHeight: 459 });
+assert.deepEqual(canvasMediaNodeSize(1024, 1024), { width: 360, height: 433, frameWidth: 358, frameHeight: 358 });
 assert.equal(normalizeMediaDimensions(0, 1080), null);
 assert.equal(normalizeMediaDimensions(Number.NaN, 1080), null);
 

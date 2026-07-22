@@ -894,7 +894,12 @@ function CanvasWorkspaceInner({
     if (!dimensions || !size) return;
     const mediaNode = nodesRef.current.find((node) => node.id === id && node.data.kind === "media" && node.data.mediaType !== "audio");
     if (!mediaNode) return;
-    if (mediaNode.data.intrinsicWidth === dimensions.width && mediaNode.data.intrinsicHeight === dimensions.height) return;
+    if (
+      mediaNode.data.intrinsicWidth === dimensions.width
+      && mediaNode.data.intrinsicHeight === dimensions.height
+      && mediaNode.width === size.width
+      && mediaNode.height === size.height
+    ) return;
     setNodes((current) => current.map((node) => node.id === id ? {
       ...node,
       width: size.width,

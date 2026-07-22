@@ -1,4 +1,5 @@
-const MEDIA_NODE_CHROME_HEIGHT = 70;
+const MEDIA_NODE_CHROME_HEIGHT = 75;
+const MEDIA_NODE_HORIZONTAL_BORDER = 2;
 
 export type CanvasMediaNodeSize = {
   width: number;
@@ -21,28 +22,34 @@ export function canvasMediaNodeSize(widthValue: unknown, heightValue: unknown): 
   const dimensions = normalizeMediaDimensions(widthValue, heightValue);
   if (!dimensions) return null;
   const ratio = dimensions.width / dimensions.height;
+  let nodeWidth: number;
   let frameWidth: number;
   let frameHeight: number;
 
   if (ratio > 1.05) {
-    frameWidth = 420;
+    nodeWidth = 420;
+    frameWidth = nodeWidth - MEDIA_NODE_HORIZONTAL_BORDER;
     frameHeight = frameWidth / ratio;
   } else if (ratio < 0.95) {
-    frameWidth = 260;
+    nodeWidth = 260;
+    frameWidth = nodeWidth - MEDIA_NODE_HORIZONTAL_BORDER;
     frameHeight = frameWidth / ratio;
     if (frameHeight > 620) {
       frameHeight = 620;
       frameWidth = frameHeight * ratio;
+      nodeWidth = frameWidth + MEDIA_NODE_HORIZONTAL_BORDER;
     }
   } else {
-    frameWidth = 360;
+    nodeWidth = 360;
+    frameWidth = nodeWidth - MEDIA_NODE_HORIZONTAL_BORDER;
     frameHeight = frameWidth / ratio;
   }
 
+  nodeWidth = Math.round(nodeWidth);
   frameWidth = Math.round(frameWidth);
   frameHeight = Math.round(frameHeight);
   return {
-    width: frameWidth,
+    width: nodeWidth,
     height: frameHeight + MEDIA_NODE_CHROME_HEIGHT,
     frameWidth,
     frameHeight,
