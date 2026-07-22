@@ -46,6 +46,7 @@ import {
   Redo2,
   RefreshCw,
   Save,
+  Scissors,
   Search,
   Send,
   Settings2,
@@ -107,6 +108,7 @@ import {
 import { CanvasImageEditor } from "@/components/canvas/canvas-image-editor";
 import { CanvasMediaViewer } from "@/components/canvas/canvas-media-viewer";
 import { CanvasTikTokPublisher } from "@/components/canvas/canvas-tiktok-publisher";
+import { CanvasVideoTrimmer } from "@/components/canvas/canvas-video-trimmer";
 import { CanvasVozebTopbar } from "@/components/canvas/canvas-vozeb-shell";
 import {
   CanvasGroupNode,
@@ -373,6 +375,7 @@ function CanvasWorkspaceInner({
   const [selectionHintOpen, setSelectionHintOpen] = useState(() => presentation === "classic" && shouldShowShortcutHint());
   const [editingNodeId, setEditingNodeId] = useState("");
   const [previewingNodeId, setPreviewingNodeId] = useState("");
+  const [trimmingLibraryItemId, setTrimmingLibraryItemId] = useState("");
   const [tiktokLibraryItemId, setTikTokLibraryItemId] = useState("");
   const [teamOpen, setTeamOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
@@ -1156,6 +1159,17 @@ function CanvasWorkspaceInner({
     setNotice(`已添加 ${additions.length} 个素材${skipped ? `，跳过 ${skipped} 个重复项` : ""}。`);
   }, [flow, markDirty, pushHistorySnapshot]);
 
+  const completeVideoTrim = useCallback((item: LibraryItem) => {
+    const sourceNode = nodesRef.current.find((node) => node.data.kind === "media" && node.data.libraryItemId === trimmingLibraryItemId);
+    setLibrary((current) => [item, ...current.filter((candidate) => candidate.id !== item.id)]);
+    addLibraryNode(item, sourceNode ? {
+      x: sourceNode.position.x + (sourceNode.width || 320) + 48,
+      y: sourceNode.position.y,
+    } : undefined);
+    setTrimmingLibraryItemId("");
+    setNotice("视频片段已保存到作品库并添加到画布。");
+  }, [addLibraryNode, trimmingLibraryItemId]);
+
   const replaceSelectedMaterial = useCallback((item: LibraryItem) => {
     const selected = nodesRef.current.find((node) => node.selected && node.data.kind === "media");
     if (!selected) {
@@ -1504,6 +1518,14 @@ function CanvasWorkspaceInner({
     updateNodeData: (id: string, patch: Partial<CanvasNodeData>) => updateNodeData(id, patch),
     removeNode,
     previewMedia: setPreviewingNodeId,
+    trimVideo: (id: string) => {
+      const node = nodesRef.current.find((item) => item.id === id);
+      if (node?.data.kind === "media" && node.data.mediaType === "video" && node.data.libraryItemId) {
+        setTrimmingLibraryItemId(node.data.libraryItemId);
+      } else {
+        setNotice("该视频尚未进入作品库，暂时不能裁剪。");
+      }
+    },
     openTikTokPublisher: (id: string) => {
       const node = nodesRef.current.find((item) => item.id === id);
       if (node?.data.kind === "media" && node.data.mediaType === "video" && node.data.libraryItemId) {
@@ -1711,6 +1733,7 @@ function CanvasWorkspaceInner({
     || (contextSourceNode.data.kind === "media" && contextSourceNode.data.mediaType === "image");
   const editingNode = nodes.find((node) => node.id === editingNodeId && node.data.kind === "media" && node.data.mediaType === "image") || null;
   const previewingNode = nodes.find((node) => node.id === previewingNodeId && node.data.kind === "media" && node.data.mediaType === "image" && node.data.mediaUrl) || null;
+  const trimmingLibraryItem = library.find((item) => item.id === trimmingLibraryItemId && item.type === "video" && item.status === "done") || null;
   const tiktokLibraryItem = library.find((item) => item.id === tiktokLibraryItemId && item.type === "video" && item.status === "done") || null;
   const selectionToolbarStyle = useMemo<CSSProperties | undefined>(() => {
     if (!selectedNodes.length) return undefined;
@@ -2849,6 +2872,7 @@ function CanvasWorkspaceInner({
           onFavorite={(item) => { void toggleLibraryFavorite(item); }}
           onCopyLink={(item) => { void copyLibraryItemLink(item); }}
           onDownload={downloadLibraryItem}
+          onTrim={(item) => setTrimmingLibraryItemId(item.id)}
           onPublish={(item) => setTikTokLibraryItemId(item.id)}
           onDelete={(item) => { void deleteLibraryItem(item); }}
         />
@@ -3080,6 +3104,7 @@ function CanvasWorkspaceInner({
               onDownload={() => downloadCanvasMedia(selectedNode)}
               onCopyLink={() => copyCanvasMediaLink(selectedNode)}
               onOpenSource={() => openCanvasMedia(selectedNode)}
+              onTrim={() => selectedNode.data.kind === "media" && selectedNode.data.mediaType === "video" && selectedNode.data.libraryItemId && setTrimmingLibraryItemId(selectedNode.data.libraryItemId)}
               onCreateImage={() => createGeneratorFromSelected(selectedNode, "image")}
               onCreateVideo={() => createGeneratorFromSelected(selectedNode, "video")}
               onGenerate={generateSelected}
@@ -3136,6 +3161,16 @@ function CanvasWorkspaceInner({
 
       {previewingNode?.data.mediaUrl ? (
         <CanvasMediaViewer imageUrl={previewingNode.data.mediaUrl} title={previewingNode.data.title} onClose={() => setPreviewingNodeId("")} />
+      ) : null}
+
+      {trimmingLibraryItem ? (
+        <CanvasVideoTrimmer
+          item={trimmingLibraryItem}
+          videoUrl={canvasLibraryMediaUrl(trimmingLibraryItem.id)}
+          scope={canvasScope()}
+          onComplete={completeVideoTrim}
+          onClose={() => setTrimmingLibraryItemId("")}
+        />
       ) : null}
 
       {tiktokLibraryItem ? (
@@ -3654,6 +3689,7 @@ function CanvasNodeInfoPanel({
   onDownload,
   onCopyLink,
   onOpenSource,
+  onTrim,
   onCreateImage,
   onCreateVideo,
   onGenerate,
@@ -3670,6 +3706,7 @@ function CanvasNodeInfoPanel({
   onDownload: () => void;
   onCopyLink: () => void;
   onOpenSource: () => void;
+  onTrim: () => void;
   onCreateImage: () => void;
   onCreateVideo: () => void;
   onGenerate: () => void;
@@ -3763,6 +3800,7 @@ function CanvasNodeInfoPanel({
               <button type="button" disabled={!data.mediaUrl} onClick={onOpenSource}><Link2 />打开原图</button>
               <button type="button" disabled={!data.mediaUrl} onClick={onCopyLink}><Copy />复制链接</button>
               <button type="button" disabled={!data.mediaUrl} onClick={onDownload}><Download />下载</button>
+              {data.mediaType === "video" && data.libraryItemId ? <button type="button" onClick={onTrim}><Scissors />裁剪视频</button> : null}
               <button type="button" onClick={onCreateImage}><Sparkles />图生图</button>
               <button type="button" onClick={onCreateVideo}><Film />生视频</button>
             </>
@@ -3961,7 +3999,7 @@ function TeamPanel({ onClose, allowCreateMembers }: { onClose: () => void; allow
   );
 }
 
-function LibraryPanel({ open, items, filter, search, onClose, onFilter, onSearch, onUpload, onAdd, onAddMany, canReplace, onReplace, onRename, onFavorite, onCopyLink, onDownload, onPublish, onDelete }: {
+function LibraryPanel({ open, items, filter, search, onClose, onFilter, onSearch, onUpload, onAdd, onAddMany, canReplace, onReplace, onRename, onFavorite, onCopyLink, onDownload, onTrim, onPublish, onDelete }: {
   open: boolean;
   items: LibraryItem[];
   filter: LibraryFilter;
@@ -3978,6 +4016,7 @@ function LibraryPanel({ open, items, filter, search, onClose, onFilter, onSearch
   onFavorite: (item: LibraryItem) => void;
   onCopyLink: (item: LibraryItem) => void;
   onDownload: (item: LibraryItem) => void;
+  onTrim: (item: LibraryItem) => void;
   onPublish: (item: LibraryItem) => void;
   onDelete: (item: LibraryItem) => void;
 }) {
@@ -4050,6 +4089,7 @@ function LibraryPanel({ open, items, filter, search, onClose, onFilter, onSearch
                 <button type="button" onClick={() => onRename(item)}><Type /><span>重命名</span></button>
                 <button type="button" disabled={!item.output?.url} onClick={() => onCopyLink(item)}><Copy /><span>复制链接</span></button>
                 <button type="button" disabled={!item.output?.url} onClick={() => onDownload(item)}><Download /><span>下载</span></button>
+                {item.type === "video" && item.status === "done" ? <button type="button" onClick={() => onTrim(item)}><Scissors /><span>裁剪</span></button> : null}
                 {item.type === "video" && item.status === "done" ? <button type="button" onClick={() => onPublish(item)}><Send /><span>发布到 TikTok</span></button> : null}
                 <button type="button" className="is-danger" onClick={() => onDelete(item)}><Trash2 /><span>删除</span></button>
               </div>
