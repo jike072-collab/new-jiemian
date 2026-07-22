@@ -60,6 +60,7 @@ try {
   }
   assertSanitizedOutput(dryRun.stdout + dryRun.stderr);
   assert.equal(existsSync(join(uploadsDir, "expired-video.mp4")), true, "dry-run must not delete expired media");
+  assert.equal(dryRunOutput.items.some((item) => item.id === "canvas-upload"), false, "canvas uploads must not become retention candidates");
 
   await assertWindow("pending persisted then crash before rename", "after-pending", {
     env: { AOHUANG_TEST_FAIL_MEDIA_EXPIRATION_AFTER_PENDING: "after-pending" },
@@ -168,6 +169,7 @@ try {
   }
   assertStillAvailable(afterApply, "fresh-image", "fresh-image.png");
   assertStillAvailable(afterApply, "generating-video", "generating-video.mp4");
+  assertStillAvailable(afterApply, "canvas-upload", "canvas-upload.png");
   assert.equal(afterApply.find((item) => item.id === "external-url")?.output?.url, "https://cdn.example.invalid/result.png");
   assert.equal(afterApply.find((item) => item.id === "path-escape")?.expired, undefined);
   if (symlinkCreated) assert.equal(afterApply.find((item) => item.id === "symlink-escape")?.expired, undefined);
@@ -191,6 +193,7 @@ try {
     expiredMediaDeleted: true,
     missingFileConverged: true,
     unexpiredPreserved: true,
+    canvasUploadPreserved: true,
     generatingPreserved: true,
     externalUrlPreserved: true,
     pathEscapeRefused: true,
@@ -220,6 +223,7 @@ async function resetFixture() {
   for (const name of [
     "expired-video.mp4",
     "fresh-image.png",
+    "canvas-upload.png",
     "generating-video.mp4",
     "after-pending.mp4",
     "after-rename.mp4",
@@ -239,6 +243,13 @@ async function resetFixture() {
   writeFileSync(join(dataDir, "library.json"), JSON.stringify([
     libraryItem("expired-video", { type: "video", completedAt: hoursAgo(24.1), output: output("expired-video.mp4", "video/mp4", 13) }),
     libraryItem("fresh-image", { type: "image", completedAt: hoursAgo(23.9), output: output("fresh-image.png", "image/png", 11) }),
+    libraryItem("canvas-upload", {
+      type: "image",
+      mode: "canvas-upload",
+      providerId: "canvas-upload",
+      completedAt: hoursAgo(72),
+      output: output("canvas-upload.png", "image/png", 17),
+    }),
     libraryItem("generating-video", {
       type: "video",
       status: "generating",
@@ -311,6 +322,7 @@ function isolateCandidate(id) {
   const keepIds = new Set([
     id,
     "fresh-image",
+    "canvas-upload",
     "generating-video",
     "external-url",
     "path-escape",

@@ -34,7 +34,14 @@ export function mediaExpiresAt(item: Pick<LibraryItem, "completedAt" | "createdA
   return new Date(completedAt.getTime() + hours * 60 * 60 * 1000).toISOString();
 }
 
+export function isMediaRetentionExempt(item: Pick<LibraryItem, "mode" | "providerId" | "params">) {
+  return item.mode === "canvas-upload"
+    || item.providerId === "canvas-upload"
+    || item.params.source === "canvas-upload";
+}
+
 export function attachMediaRetentionMetadata(item: LibraryItem, hours = resolveMediaRetentionHours()): LibraryItem {
+  if (isMediaRetentionExempt(item)) return item;
   if (item.expired) return item.expiredAt ? { ...item, expiresAt: item.expiredAt } : item;
   if (item.status !== "done" || !item.output?.storedName) return item;
   const expiresAt = mediaExpiresAt(item, hours);

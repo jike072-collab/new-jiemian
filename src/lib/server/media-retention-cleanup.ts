@@ -1,7 +1,7 @@
 import { mkdir, lstat, realpath, rename, stat, unlink } from "node:fs/promises";
 import { basename, dirname, relative, resolve, sep } from "node:path";
 
-import { mediaCompletedAt, mediaExpiresAt, resolveMediaRetentionHours } from "../media-retention";
+import { isMediaRetentionExempt, mediaCompletedAt, mediaExpiresAt, resolveMediaRetentionHours } from "../media-retention";
 import { ensureRuntimeDirs, resolveUploadPath, safeStoredName, uploadsRoot } from "./paths";
 import {
   expireLibraryItemMedia,
@@ -352,6 +352,7 @@ function isExpiredLocalMediaCandidate(
   retentionHours: number,
 ) {
   if (item.expired && !item.expirationQuarantineName) return false;
+  if (isMediaRetentionExempt(item)) return false;
   if (item.status !== "done") return false;
   if (processingItemIds.has(item.id)) return false;
   if (!item.output?.storedName && !item.expirationPendingStoredName) return false;
