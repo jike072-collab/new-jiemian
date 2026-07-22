@@ -1,6 +1,7 @@
 import { type NextRequest, NextResponse } from "next/server";
 
 import { estimateImageGenerationEntitlementUnits } from "@/lib/generation-quota";
+import { normalizeCanvasLibraryScope } from "@/lib/canvas/library-scope";
 import {
   ecommerceTenPageBatchStyleCount,
   ecommerceTenPageCount,
@@ -28,6 +29,7 @@ export async function POST(request: NextRequest) {
     if (!session.ok) return authResultResponse(request, session);
     const billingMode = isInternalCanvasHostname(request.headers.get("host")) ? "internal_free" as const : "standard" as const;
     const form = await request.formData();
+    const canvasScope = billingMode === "internal_free" ? normalizeCanvasLibraryScope(form.get("canvasScope")) : "personal" as const;
     const preset = String(form.get("preset") || "").trim();
     const whiteBackgroundFourView = isWhiteBackgroundFourViewPreset(preset);
     const ecommerceTenPage = isEcommerceTenPagePreset(preset);
@@ -139,6 +141,8 @@ export async function POST(request: NextRequest) {
         billingIdempotencyKey: String(form.get("idempotencyKey") || form.get("billingIdempotencyKey") || ""),
         billingEstimatedQuotaUnits,
         billingMode,
+        canvasScope,
+        canvasRequestedAt: String(form.get("canvasRequestedAt") || ""),
       });
     };
     let items;

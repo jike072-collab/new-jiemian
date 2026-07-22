@@ -14,8 +14,8 @@ export async function GET(request: NextRequest, context: { params: Promise<{ id:
     const { id } = await context.params;
     const shared = isInternalCanvasHostname(request.headers.get("host")) && request.nextUrl.searchParams.get("scope") === "shared";
     const output = shared
-      ? await resolveLibraryMediaForOwners(id, (await getInternalCanvasWorkspaceMemberIds(session.user.local_user_id)).memberIds)
-      : await resolveLibraryMediaForOwner(id, session.user.local_user_id);
+      ? await resolveLibraryMediaForOwners(id, (await getInternalCanvasWorkspaceMemberIds(session.user.local_user_id)).memberIds, "shared")
+      : await resolveLibraryMediaForOwner(id, session.user.local_user_id, "personal");
     const destination = new URL(output.url, request.nextUrl.origin);
     if (shared && destination.pathname.startsWith("/api/files/")) destination.searchParams.set("scope", "shared");
     const view = request.nextUrl.searchParams.get("view");

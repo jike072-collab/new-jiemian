@@ -32,7 +32,7 @@ export async function POST(request: NextRequest) {
     const ownerIds = scope === "shared"
       ? (await getInternalCanvasWorkspaceMemberIds(session.user.local_user_id)).memberIds
       : [session.user.local_user_id];
-    const visualEvidence = await buildCanvasAssistantVisualEvidence(body.nodes, ownerIds, typeof body.message === "string" ? body.message : "");
+    const visualEvidence = await buildCanvasAssistantVisualEvidence(body.nodes, ownerIds, typeof body.message === "string" ? body.message : "", scope);
     const result = await getCanvasAssistantService().answer(body, context.requestId, visualEvidence);
     return NextResponse.json(result);
   } catch (error) {

@@ -122,15 +122,15 @@ export function CanvasVozebTopbar({
               <span className={cn("canvas-v2-save-chip", `is-${saveState}`)}>{saveLabel(saveState)}</span>
             </div>
 
-            <label className="canvas-v2-menu__field">
+            {scope !== "shared" ? <label className="canvas-v2-menu__field">
               <span>当前画布</span>
               <select value={activeProjectId} onChange={(event) => closeAndRun(() => onProjectChange(event.target.value))}>
                 {projects.map((project) => <option key={project.id} value={project.id}>{project.title}</option>)}
               </select>
-            </label>
+            </label> : null}
 
             <div className="canvas-v2-menu__commands">
-              <button type="button" onClick={() => closeAndRun(onCreateProject)}><Plus />新建画布</button>
+              {scope !== "shared" ? <button type="button" onClick={() => closeAndRun(onCreateProject)}><Plus />新建画布</button> : null}
               <button type="button" onClick={() => closeAndRun(onSave)}><Save />立即保存</button>
               <button type="button" onClick={() => closeAndRun(onImport)}><Upload />导入 JSON</button>
               <button type="button" onClick={() => closeAndRun(onExport)}><Download />导出 JSON</button>
@@ -138,7 +138,7 @@ export function CanvasVozebTopbar({
               <button type="button" className={layersOpen ? "is-active" : undefined} onClick={() => closeAndRun(onToggleLayers)}><Layers3 />图层</button>
               <button type="button" className={settingsOpen ? "is-active" : undefined} onClick={() => closeAndRun(onSettings)}><Settings2 />画布设置</button>
               {isTeamOwner ? <button type="button" className={teamOpen ? "is-active" : undefined} onClick={() => closeAndRun(onToggleTeam)}><UsersRound />团队与用量</button> : null}
-              <button type="button" className="is-danger" onClick={() => closeAndRun(onDeleteProject)}><Trash2 />删除当前画布</button>
+              {scope !== "shared" ? <button type="button" className="is-danger" onClick={() => closeAndRun(onDeleteProject)}><Trash2 />删除当前画布</button> : null}
             </div>
 
             <div className="canvas-v2-menu__footer">

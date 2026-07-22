@@ -230,6 +230,28 @@ function canvasScope() {
   return new URLSearchParams(window.location.search).get("scope") === "personal" ? "personal" as const : "shared" as const;
 }
 
+function sharedViewportStorageKey(accountName: string, projectId: string) {
+  return `aohuang-canvas-shared-viewport:${accountName}:${projectId}`;
+}
+
+function readSharedViewport(accountName: string, projectId: string) {
+  try {
+    const value = JSON.parse(window.localStorage.getItem(sharedViewportStorageKey(accountName, projectId)) || "null") as Partial<Viewport> | null;
+    if (!value || !Number.isFinite(value.x) || !Number.isFinite(value.y) || !Number.isFinite(value.zoom)) return null;
+    return { x: Number(value.x), y: Number(value.y), zoom: Number(value.zoom) };
+  } catch {
+    return null;
+  }
+}
+
+function writeSharedViewport(accountName: string, projectId: string, viewport: Viewport) {
+  try {
+    window.localStorage.setItem(sharedViewportStorageKey(accountName, projectId), JSON.stringify(viewport));
+  } catch {
+    // Local viewport persistence is optional when browser storage is unavailable.
+  }
+}
+
 function canvasProjectsUrl(id?: string) {
   const base = id ? `/api/canvas/projects/${encodeURIComponent(id)}` : "/api/canvas/projects";
   return `${base}?scope=${canvasScope()}`;
@@ -491,10 +513,13 @@ function CanvasWorkspaceInner({
     setHistoryState({ undo: historyPastRef.current.length, redo: historyFutureRef.current.length });
   }, []);
 
-  const snapshotWorkspace = useCallback((): CanvasWorkspaceSnapshot => ({
-    title: titleRef.current,
-    document: serializeDocument(nodesRef.current, edgesRef.current, viewportRef.current),
-  }), []);
+  const snapshotWorkspace = useCallback((): CanvasWorkspaceSnapshot => {
+    const document = serializeDocument(nodesRef.current, edgesRef.current, viewportRef.current);
+    if (canvasScope() === "shared" && activeProjectRef.current) {
+      document.viewport = activeProjectRef.current.document.viewport;
+    }
+    return { title: titleRef.current, document };
+  }, []);
 
   const pushHistorySnapshot = useCallback((snapshot = snapshotWorkspace()) => {
     const signature = JSON.stringify(snapshot);
@@ -556,12 +581,13 @@ function CanvasWorkspaceInner({
           mediaUrl: item.output?.url,
           status: libraryStatus(item),
           error: item.error || undefined,
+          ...canvasMediaNodeMetadata(item),
         },
       };
     }) as CanvasFlowNode[];
   }, []);
 
-  const applyWorkspaceDocument = useCallback((document: CanvasProjectDocument, items = libraryRef.current) => {
+  const applyWorkspaceDocument = useCallback((document: CanvasProjectDocument, items = libraryRef.current, projectId?: string) => {
     const hydratedNodes = hydrateMediaNodes(document.nodes, items);
     const hydrated = applyCanvasNodePresentation(
       hydratedNodes,
@@ -569,12 +595,15 @@ function CanvasWorkspaceInner({
     );
     nodesRef.current = hydrated.nodes;
     edgesRef.current = hydrated.edges;
-    viewportRef.current = document.viewport;
+    const nextViewport = canvasScope() === "shared"
+      ? (projectId ? readSharedViewport(accountName, projectId) || document.viewport : viewportRef.current)
+      : document.viewport;
+    viewportRef.current = nextViewport;
     setNodes(hydrated.nodes);
     setEdges(hydrated.edges);
-    setViewportState(document.viewport);
-    void flowRef.current.setViewport(document.viewport, { duration: 0 });
-  }, [connectionStyle, hydrateMediaNodes]);
+    setViewportState(nextViewport);
+    void flowRef.current.setViewport(nextViewport, { duration: 0 });
+  }, [accountName, connectionStyle, hydrateMediaNodes]);
 
   const activateProject = useCallback((project: CanvasProject, items = libraryRef.current) => {
     loadedRef.current = false;
@@ -582,7 +611,7 @@ function CanvasWorkspaceInner({
     setActiveProjectId(project.id);
     titleRef.current = project.title;
     setTitle(project.title);
-    applyWorkspaceDocument(project.document, items);
+    applyWorkspaceDocument(project.document, items, project.id);
     revisionRef.current = 0;
     savedRevisionRef.current = 0;
     setSaveState("saved");
@@ -1103,6 +1132,7 @@ function CanvasWorkspaceInner({
       status: libraryStatus(item),
       progress: 0,
       error: item.error || undefined,
+      ...canvasMediaNodeMetadata(item),
     };
     if (!position) {
       addNodeAtCenter(data, { width: 320, height: item.type === "image" ? 300 : 340 });
@@ -1166,6 +1196,7 @@ function CanvasWorkspaceInner({
         try {
           const form = new FormData();
           form.append("file", files[index]);
+          form.append("canvasScope", canvasScope());
           const response = await fetchJsonWithCsrf<{ item: LibraryItem }>("/api/canvas/media", { method: "POST", body: form });
           results[index] = response.item;
         } catch (error) {
@@ -1264,6 +1295,7 @@ function CanvasWorkspaceInner({
         status: libraryStatus(item),
         progress: 0,
         error: item.error || undefined,
+        ...canvasMediaNodeMetadata(item),
         intrinsicWidth: undefined,
         intrinsicHeight: undefined,
       },
@@ -1295,6 +1327,8 @@ function CanvasWorkspaceInner({
             status: libraryStatus(item),
             progress: job?.progress || (item.status === "done" ? 100 : 0),
             error: item.error || undefined,
+            ...canvasMediaNodeMetadata(item),
+            generationStartedAt: node.data.generationStartedAt || canvasMediaNodeMetadata(item).generationStartedAt,
             intrinsicWidth: undefined,
             intrinsicHeight: undefined,
           },
@@ -1328,6 +1362,7 @@ function CanvasWorkspaceInner({
         status: libraryStatus(item),
         progress: job?.progress || 0,
         error: item.error || undefined,
+        ...canvasMediaNodeMetadata(item),
         ...(item.type === "video" ? {
           sequenceState: {
             ...(generator.data.sequenceState || {}),
@@ -1374,6 +1409,8 @@ function CanvasWorkspaceInner({
           title: resultTotal > 1 ? `图片生成中 ${resultIndex + 1}/${resultTotal}` : "图片生成中",
           mediaType: "image",
           createdAt,
+          generationStartedAt: createdAt,
+          mediaOrigin: "generated",
           sourceNodeIds: [generatorId],
           status: "queued",
           progress: 5,
@@ -1462,7 +1499,7 @@ function CanvasWorkspaceInner({
         await submitImageGeneration(generatorId, { ...generator.data, imageMode }, provider, prompt, mediaItems, addResultNode, updateNodeData, isInternalCanvas, pendingImageResultIds);
         updatePendingImageResults(pendingImageResultIds, { status: "failed", progress: 0, error: "生成接口未返回对应图片。" });
       } else {
-        await submitVideoGeneration(generatorId, generator.data, provider as WorkspacePublicProvider, prompt, mediaItems, addResultNode, updateNodeData);
+        await submitVideoGeneration(generatorId, generator.data, provider as WorkspacePublicProvider, prompt, mediaItems, addResultNode, updateNodeData, isInternalCanvas);
       }
       await refreshLibrary().catch(() => undefined);
     } catch (error) {
@@ -1736,6 +1773,10 @@ function CanvasWorkspaceInner({
   }, [canConnect, markDirty, pushHistorySnapshot]);
 
   const createProject = useCallback(async (skipCurrentSave = false) => {
+    if (canvasScope() === "shared") {
+      setNotice("团队画布固定为一个，不能新建。");
+      return;
+    }
     if (!skipCurrentSave && !(await saveNow(true))) return;
     try {
       const data = await fetchJsonWithCsrf<{ project: CanvasProject }>(canvasProjectsUrl(), {
@@ -1756,6 +1797,10 @@ function CanvasWorkspaceInner({
   }, [activateProject, activeProjectId, saveNow]);
 
   const deleteProject = useCallback(async () => {
+    if (canvasScope() === "shared") {
+      setNotice("团队画布固定保留，不能删除。");
+      return;
+    }
     const project = activeProjectRef.current;
     if (!project || !window.confirm(`确定删除“${project.title}”？`)) return;
     const pendingSave = savePromiseRef.current;
@@ -3080,8 +3125,13 @@ function CanvasWorkspaceInner({
               onEdgeContextMenu={(event, edge) => openContextMenu(event, "edge", edge.id)}
               onMoveStart={() => setContextMenu(null)}
               onMoveEnd={(_, nextViewport) => {
-                pushHistorySnapshot();
+                viewportRef.current = nextViewport;
                 setViewportState(nextViewport);
+                if (canvasScope() === "shared") {
+                  if (activeProjectRef.current) writeSharedViewport(accountName, activeProjectRef.current.id, nextViewport);
+                  return;
+                }
+                pushHistorySnapshot();
                 markDirty();
               }}
               onDragOver={(event) => {
@@ -3403,12 +3453,12 @@ function CanvasToolbar({
             <button type="button" role="tab" aria-selected={scope === "shared"} className={scope === "shared" ? "is-active" : undefined} onClick={() => onScopeChange("shared")}>团队</button>
           </div>
         ) : null}
-        <select value={activeProjectId} aria-label="选择画布" onChange={(event) => onProjectChange(event.target.value)}>
+        {scope !== "shared" ? <select value={activeProjectId} aria-label="选择画布" onChange={(event) => onProjectChange(event.target.value)}>
           {projects.map((project) => <option key={project.id} value={project.id}>{project.title}</option>)}
-        </select>
+        </select> : null}
         <input value={title} maxLength={120} aria-label="画布名称" onChange={(event) => onTitleChange(event.target.value)} />
-        <button type="button" className="canvas-icon-button" aria-label="新建画布" title="新建画布" onClick={onCreateProject}><Plus /></button>
-        <button type="button" className="canvas-icon-button" aria-label="删除画布" title="删除画布" onClick={onDeleteProject}><Trash2 /></button>
+        {scope !== "shared" ? <button type="button" className="canvas-icon-button" aria-label="新建画布" title="新建画布" onClick={onCreateProject}><Plus /></button> : null}
+        {scope !== "shared" ? <button type="button" className="canvas-icon-button" aria-label="删除画布" title="删除画布" onClick={onDeleteProject}><Trash2 /></button> : null}
       </div>
       <div className="canvas-toolbar__tools" aria-label="画布工具">
         <button
@@ -4257,6 +4307,7 @@ async function submitImageGeneration(
   let completedCount = 0;
 
   const runRequest = async (requestIndex: number) => {
+    const canvasRequestedAt = new Date().toISOString();
     const requestCount = requests[requestIndex];
     const taskId = canvasId("canvas-image");
     const estimatedQuotaUnits = estimateImageGenerationTotalQuota({ quality, count: requestCount, model: provider.model });
@@ -4294,6 +4345,8 @@ async function submitImageGeneration(
     form.set("taskId", taskId);
     form.set("idempotencyKey", taskId);
     form.set("estimatedQuotaUnits", String(estimatedQuotaUnits));
+    if (internalCanvas) form.set("canvasScope", canvasScope());
+    form.set("canvasRequestedAt", canvasRequestedAt);
     files.forEach((file) => form.append("files", file));
     const response = await fetchJsonWithCsrf<{ item: LibraryItem | null; items?: LibraryItem[] }>("/api/generate/image", { method: "POST", body: form });
     const items = response.items?.length ? response.items : response.item ? [response.item] : [];
@@ -4331,6 +4384,7 @@ async function submitVideoGeneration(
   references: CanvasMediaReference[],
   addResultNode: (generatorId: string, item: LibraryItem, job?: JobRecord | null, resultIndex?: number, resultTotal?: number) => void,
   updateNodeData: (id: string, patch: Partial<CanvasNodeData>, persist?: boolean) => void,
+  internalCanvas: boolean,
 ) {
   const images = references.filter((item) => item.type === "image");
   const videos = references.filter((item) => item.type === "video");
@@ -4351,6 +4405,7 @@ async function submitVideoGeneration(
   const audioFiles = await Promise.all(audios.map(libraryItemFile));
 
   const taskId = canvasId("canvas-video");
+  const canvasRequestedAt = new Date().toISOString();
   const mode = references.length ? "image-to-video" as const : "text-to-video" as const;
   const ratio = options?.ratios?.includes(data.ratio || "") ? data.ratio! : options?.ratios?.[0] || data.ratio || "16:9";
   const duration = options?.durations?.includes(data.duration || 0) ? data.duration! : options?.durations?.[0] || data.duration || 5;
@@ -4397,6 +4452,8 @@ async function submitVideoGeneration(
   form.set("taskId", taskId);
   form.set("idempotencyKey", taskId);
   form.set("estimatedQuotaUnits", String(estimatedQuotaUnits));
+  if (internalCanvas) form.set("canvasScope", canvasScope());
+  form.set("canvasRequestedAt", canvasRequestedAt);
   imageFiles.forEach((file) => form.append("referenceImages", file));
   videoFiles.forEach((file) => form.append("referenceVideos", file));
   audioFiles.forEach((file) => form.append("referenceAudios", file));
@@ -4494,6 +4551,16 @@ function libraryStatus(item: LibraryItem): CanvasNodeData["status"] {
   if (item.status === "failed") return "failed";
   if (item.status === "queued") return "queued";
   return "generating";
+}
+
+function canvasMediaNodeMetadata(item: LibraryItem): Partial<CanvasNodeData> {
+  const requestedAt = typeof item.params.canvasRequestedAt === "string" ? item.params.canvasRequestedAt : undefined;
+  return {
+    completedAt: item.completedAt,
+    generationStartedAt: requestedAt,
+    fileSize: item.output?.size,
+    mediaOrigin: item.mode === "canvas-upload" ? "upload" : "generated",
+  };
 }
 
 function canvasId(prefix: string) {

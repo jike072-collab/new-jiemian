@@ -457,6 +457,12 @@ async function prepareRedbirdReferenceUrls(files: UploadedMedia[]) {
 
 const getTokenVeoQueryWarmupMs = 30 * 60 * 1000;
 
+function validIsoTimestamp(value: string | null | undefined) {
+  if (!value?.trim()) return false;
+  const timestamp = Date.parse(value);
+  return Number.isFinite(timestamp) && Math.abs(Date.now() - timestamp) <= 24 * 60 * 60 * 1000;
+}
+
 function shouldKeepGetTokenVeoJobPending(status: number, createdAt: string, now = Date.now()) {
   if (status !== 400) return false;
   const createdAtMs = Date.parse(createdAt);
@@ -1854,6 +1860,8 @@ export async function generateImage(input: {
   billingIdempotencyKey?: string | null;
   billingEstimatedQuotaUnits?: number | null;
   billingMode?: "standard" | "internal_free";
+  canvasScope?: "personal" | "shared";
+  canvasRequestedAt?: string | null;
 }) {
   const provider = await providerById(input.providerId);
   const billingMode = input.billingMode === "internal_free" ? "internal_free" : "standard";
@@ -1952,6 +1960,8 @@ export async function generateImage(input: {
         billingOperation: imageOperation,
         billingEstimatedQuotaUnits: providerQuotaUnits,
         billingRequestFingerprint: billingFingerprint,
+        canvasScope: input.canvasScope === "shared" ? "shared" : "personal",
+        ...(validIsoTimestamp(input.canvasRequestedAt) ? { canvasRequestedAt: input.canvasRequestedAt! } : {}),
         ...(providerOutputCount !== outputCount ? { partialBatch: true, requestedBatchTotal: outputCount } : {}),
       },
       });
@@ -2052,6 +2062,8 @@ export async function submitVideo(input: {
   billingIdempotencyKey?: string | null;
   billingEstimatedQuotaUnits?: number | null;
   billingMode?: "standard" | "internal_free";
+  canvasScope?: "personal" | "shared";
+  canvasRequestedAt?: string | null;
 }) {
   const provider = await providerById(input.providerId);
   const referenceImageCount = mediaFiles(input, "image").length;
@@ -2219,6 +2231,8 @@ export async function submitVideo(input: {
           ...(input.billingIdempotencyKey ? { billingIdempotencyKey: input.billingIdempotencyKey } : {}),
           billingEstimatedQuotaUnits: estimatedQuotaUnits,
           billingRequestFingerprint: billingFingerprint,
+          canvasScope: input.canvasScope === "shared" ? "shared" : "personal",
+          ...(validIsoTimestamp(input.canvasRequestedAt) ? { canvasRequestedAt: input.canvasRequestedAt! } : {}),
         },
       });
       await acceptGenerationBilling({
@@ -2258,6 +2272,8 @@ export async function submitVideo(input: {
         referenceVideos: referenceVideoCount,
         referenceAudios: referenceAudioCount,
         ...(input.billingTaskId ? { billingTaskId: input.billingTaskId } : {}),
+        canvasScope: input.canvasScope === "shared" ? "shared" : "personal",
+        ...(validIsoTimestamp(input.canvasRequestedAt) ? { canvasRequestedAt: input.canvasRequestedAt! } : {}),
       },
     });
     const jobId = output.jobId || randomUUID();

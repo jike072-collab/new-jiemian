@@ -1421,11 +1421,14 @@
 .canvas-node__status.is-generating,
 .canvas-node__status.is-queued { color: #22d3ee; }
 
-.canvas-node__body--media > .canvas-node__status {
-  padding: 7px 10px;
+.canvas-node__media-footer {
   border-top: 1px solid var(--border-subtle);
   background: var(--panel);
 }
+.canvas-node__media-footer > .canvas-node__status { padding: 7px 10px 3px; }
+.canvas-node__media-metadata { display: flex; min-height: 27px; align-items: center; gap: 10px; overflow: hidden; padding: 5px 10px 7px; color: var(--muted); font-size: 9px; }
+.canvas-node__media-metadata span { display: inline-flex; min-width: 0; align-items: center; gap: 4px; white-space: nowrap; }
+.canvas-node__media-metadata svg { width: 11px; height: 11px; flex: 0 0 auto; }
 
 .canvas-node__generate {
   display: flex;

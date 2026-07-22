@@ -27,12 +27,14 @@ export async function POST(request: NextRequest) {
     if (!session.ok) return authResultResponse(request, session);
     const body = await readJsonBody(request);
     const shared = isInternalCanvasHostname(request.headers.get("host")) && request.nextUrl.searchParams.get("scope") === "shared";
+    const scope = shared ? "shared" as const : "personal" as const;
     const ownerIds = shared
       ? (await getInternalCanvasWorkspaceMemberIds(session.user.local_user_id)).memberIds
       : [session.user.local_user_id];
     const job = await scheduleTikTokPublish({
       userId: session.user.local_user_id,
       ownerIds,
+      scope,
       libraryItemId: String(body.libraryItemId || ""),
       idempotencyKey: String(body.idempotencyKey || ""),
       caption: String(body.caption || ""),

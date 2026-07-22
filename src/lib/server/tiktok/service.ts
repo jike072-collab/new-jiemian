@@ -6,6 +6,7 @@ import { stat } from "node:fs/promises";
 import { readLibraryMetadataForOwners, resolveLibraryMediaForOwner } from "@/lib/server/library";
 import { resolveUploadPath, safeStoredName } from "@/lib/server/paths";
 import type { LibraryItem } from "@/lib/server/types";
+import { isCanvasLibraryItemInScope, type CanvasLibraryScope } from "@/lib/canvas/library-scope";
 import {
   createZernioProfile,
   createZernioTikTokPost,
@@ -229,8 +230,10 @@ export async function getTikTokCreatorInfo(userId: string) {
   return { ...creator, creatorUsername: connection.creatorUsername || creator.creatorUsername };
 }
 
-async function findPublishableVideo(libraryItemId: string, ownerIds: readonly string[]) {
-  const item = (await readLibraryMetadataForOwners(ownerIds)).find((candidate) => candidate.id === libraryItemId);
+async function findPublishableVideo(libraryItemId: string, ownerIds: readonly string[], scope?: CanvasLibraryScope) {
+  const item = (await readLibraryMetadataForOwners(ownerIds)).find((candidate) => (
+    candidate.id === libraryItemId && (!scope || isCanvasLibraryItemInScope(candidate, scope))
+  ));
   if (!item || item.type !== "video" || item.status !== "done" || !item.ownerLocalUserId) {
     throw new TikTokPublishingError("TIKTOK_VIDEO_NOT_FOUND", "视频不存在、尚未完成或无权发布。", 404);
   }
@@ -249,6 +252,7 @@ function scheduleTime(value: unknown, now: Date) {
 export async function scheduleTikTokPublish(input: {
   userId: string;
   ownerIds: readonly string[];
+  scope: CanvasLibraryScope;
   libraryItemId: string;
   idempotencyKey: string;
   caption: string;
@@ -271,7 +275,7 @@ export async function scheduleTikTokPublish(input: {
   }
   const scheduledAt = scheduleTime(input.scheduledAt, now);
   const [{ item, sourceOwnerId }, creator] = await Promise.all([
-    findPublishableVideo(input.libraryItemId, input.ownerIds),
+    findPublishableVideo(input.libraryItemId, input.ownerIds, input.scope),
     getTikTokCreatorInfo(input.userId),
   ]);
   const privacyLevel = input.privacyLevel as TikTokPrivacyLevel;

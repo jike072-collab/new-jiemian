@@ -35,6 +35,7 @@ export async function POST(request: NextRequest) {
     const draft = await generateMalaysiaTikTokCopy({
       libraryItemId: String(body.libraryItemId || ""),
       ownerIds,
+      scope,
       angle: body.angle,
       requestId: context.requestId,
     });

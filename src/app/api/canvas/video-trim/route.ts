@@ -1,6 +1,7 @@
 import { type NextRequest, NextResponse } from "next/server";
 
 import { authResultResponse, csrfFailure, isInternalCanvasHostname, requireAuthSession, requireCsrf } from "@/lib/server/auth";
+import { isCanvasLibraryItemInScope } from "@/lib/canvas/library-scope";
 import { getInternalCanvasAccess, getInternalCanvasWorkspaceMemberIds } from "@/lib/server/internal-canvas-access";
 import {
   addLibraryItem,
@@ -42,10 +43,10 @@ export async function POST(request: NextRequest) {
     const ownerIds = scope === "shared"
       ? (await getInternalCanvasWorkspaceMemberIds(session.user.local_user_id)).memberIds
       : [session.user.local_user_id];
-    const source = (await readLibraryMetadataForOwners(ownerIds)).find((item) => item.id === libraryItemId && item.type === "video");
+    const source = (await readLibraryMetadataForOwners(ownerIds)).find((item) => item.id === libraryItemId && item.type === "video" && isCanvasLibraryItemInScope(item, scope));
     if (!source) throw new LibraryOperationError(404, "Video not found.");
 
-    const media = await resolveLibraryMediaForOwners(libraryItemId, ownerIds);
+    const media = await resolveLibraryMediaForOwners(libraryItemId, ownerIds, scope);
     if (!media.storedName) throw new LibraryOperationError(404, "Video file not found.");
     await ensureRuntimeDirs();
     const temporaryOutputPath = resolveUploadPath(safeStoredName(`video-trim-temp-${crypto.randomUUID()}.mp4`));
@@ -71,6 +72,7 @@ export async function POST(request: NextRequest) {
         startSeconds: Number(trimmed.startSeconds.toFixed(3)),
         endSeconds: Number(trimmed.endSeconds.toFixed(3)),
         durationSeconds: Number(trimmed.durationSeconds.toFixed(3)),
+        canvasScope: scope,
       },
     });
     const responseItem = scope === "shared" && item.output ? {

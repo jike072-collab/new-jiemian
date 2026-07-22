@@ -114,8 +114,8 @@ export async function GET(
   const { name } = await context.params;
   const shared = isInternalCanvasHostname(request.headers.get("host")) && request.nextUrl.searchParams.get("scope") === "shared";
   const storedFile = shared
-    ? await resolveStoredFileForOwners(name, (await getInternalCanvasWorkspaceMemberIds(session.user.local_user_id)).memberIds)
-    : await resolveStoredFileForOwner(name, session.user.local_user_id);
+    ? await resolveStoredFileForOwners(name, (await getInternalCanvasWorkspaceMemberIds(session.user.local_user_id)).memberIds, "shared")
+    : await resolveStoredFileForOwner(name, session.user.local_user_id, "personal");
   if (!storedFile) return NextResponse.json({ error: "File not found." }, { status: 404 });
   const mimeType = mimeFromName(name);
   const cacheControl = mediaCacheControl(604800);

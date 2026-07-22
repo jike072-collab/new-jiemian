@@ -8,6 +8,8 @@ import { canvasAssistantVideoTimestamps } from "@/lib/canvas/assistant";
 import { resolveCanvasAssistantMediaFocus, type CanvasAssistantFocusNode } from "@/lib/canvas/assistant-focus";
 import { resolveLibraryMediaForOwners } from "@/lib/server/library";
 import { resolveUploadPath } from "@/lib/server/paths";
+import { filterCanvasLibraryItems, type CanvasLibraryScope } from "@/lib/canvas/library-scope";
+import { readLibraryMetadataForOwners } from "@/lib/server/library";
 import { probeVideoDuration } from "@/lib/server/video-trim";
 
 const maxEvidenceItems = 8;
@@ -171,12 +173,13 @@ function captureVideoFrame(inputPath: string, timestamp: number) {
   });
 }
 
-export async function buildCanvasAssistantVisualEvidence(nodes: unknown, ownerIds: readonly string[], message = "") {
+export async function buildCanvasAssistantVisualEvidence(nodes: unknown, ownerIds: readonly string[], message = "", scope: CanvasLibraryScope = "personal") {
   if (!/(图片|图像|照片|视频|素材|画面|提示词|分镜|镜头|替换|换成|换掉|换物|编辑|修改|产品|动作|@(?:Image|Video)\d+)/iu.test(message)) {
     return { images: [] as CanvasAssistantVisualEvidence[], summary: "本次请求不需要读取视觉素材。", ambiguous: false };
   }
   const selection = selectMediaCandidates(nodes, message);
   const candidates = selection.candidates.slice(0, 4);
+  const allowedItemIds = new Set(filterCanvasLibraryItems(await readLibraryMetadataForOwners(ownerIds), scope).map((item) => item.id));
   const images: CanvasAssistantVisualEvidence[] = [];
   const summaries: string[] = [];
 
@@ -190,8 +193,9 @@ export async function buildCanvasAssistantVisualEvidence(nodes: unknown, ownerId
 
   for (const candidate of candidates) {
     if (images.length >= maxEvidenceItems) break;
+    if (!allowedItemIds.has(candidate.libraryItemId)) continue;
     try {
-      const media = await resolveLibraryMediaForOwners(candidate.libraryItemId, ownerIds);
+      const media = await resolveLibraryMediaForOwners(candidate.libraryItemId, ownerIds, scope);
       if (!media.storedName) continue;
       const inputPath = resolveUploadPath(media.storedName);
       const label = candidateLabel(candidate, selection.generatorId);

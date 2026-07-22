@@ -1,6 +1,7 @@
 import "server-only";
 
 import { buildCanvasAssistantVisualEvidence } from "@/lib/server/canvas-assistant-media";
+import { isCanvasLibraryItemInScope, type CanvasLibraryScope } from "@/lib/canvas/library-scope";
 import { NewApiError } from "@/lib/server/integrations/new-api";
 import { readLibraryMetadataForOwners } from "@/lib/server/library";
 import { createNewApiPromptModelCaller, type PromptModelCaller } from "@/lib/server/prompts";
@@ -29,11 +30,12 @@ function delay(milliseconds: number) {
 export async function generateMalaysiaTikTokCopy(input: {
   libraryItemId: string;
   ownerIds: readonly string[];
+  scope: CanvasLibraryScope;
   angle?: unknown;
   requestId?: string;
   caller?: PromptModelCaller;
 }) {
-  const item = (await readLibraryMetadataForOwners(input.ownerIds)).find((candidate) => candidate.id === input.libraryItemId);
+  const item = (await readLibraryMetadataForOwners(input.ownerIds)).find((candidate) => candidate.id === input.libraryItemId && isCanvasLibraryItemInScope(candidate, input.scope));
   if (!item || item.type !== "video" || item.status !== "done") {
     throw new TikTokPublishingError("TIKTOK_VIDEO_NOT_FOUND", "视频不存在、尚未完成或无权生成文案。", 404);
   }
@@ -46,7 +48,7 @@ export async function generateMalaysiaTikTokCopy(input: {
     mediaType: "video",
     libraryItemId: item.id,
     referenceLabels: [{ generatorId: "tiktok-copy", label: "@Video1" }],
-  }], input.ownerIds, "分析选中的视频画面，为马来西亚鞋类 TikTok 生成发布标题、正文和相关话题。");
+  }], input.ownerIds, "分析选中的视频画面，为马来西亚鞋类 TikTok 生成发布标题、正文和相关话题。", input.scope);
   if (!visualEvidence.images.length) {
     throw new TikTokPublishingError("TIKTOK_COPY_VIDEO_UNREADABLE", "暂时无法读取视频画面，请稍后重试。", 409);
   }

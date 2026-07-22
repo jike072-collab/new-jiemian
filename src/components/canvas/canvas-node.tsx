@@ -4,12 +4,14 @@ import {
   AlertCircle,
   AtSign,
   Check,
+  Clock,
   ChevronDown,
   ChevronRight,
   Eye,
   EyeOff,
   Film,
   Image as ImageIcon,
+  HardDrive,
   Layers3,
   LoaderCircle,
   Music,
@@ -18,6 +20,7 @@ import {
   Send,
   Sparkles,
   Trash2,
+  Timer,
   Type,
   WandSparkles,
 } from "lucide-react";
@@ -32,6 +35,7 @@ import {
 
 import type { EnabledProviders, WorkspacePublicProvider } from "@/components/studio/types";
 import { canvasImageCountLimit } from "@/lib/canvas/image-batch";
+import { canvasMediaMetadata } from "@/lib/canvas/media-metadata";
 import {
   canvasPresenceNodeActivity,
   type CanvasPresenceMember,
@@ -397,7 +401,22 @@ function MediaNode({ id, data }: { id: string; data: CanvasNodeData }) {
           {pending && typeof data.progress === "number" ? <small>{Math.round(data.progress)}%</small> : null}
         </div>
       ) : null}
-      <StatusLine status={data.status} progress={data.progress} error={data.error} />
+      <div className="canvas-node__media-footer">
+        {data.mediaOrigin === "upload" && data.status === "done" ? null : <StatusLine status={data.status} progress={data.progress} error={data.error} />}
+        <MediaMetadata data={data} />
+      </div>
+    </div>
+  );
+}
+
+function MediaMetadata({ data }: { data: CanvasNodeData }) {
+  const metadata = canvasMediaMetadata(data);
+  if (!metadata.created && !metadata.size && !metadata.wait) return null;
+  return (
+    <div className="canvas-node__media-metadata" aria-label="媒体信息">
+      {metadata.created ? <span title={`生成时间 ${metadata.created}`}><Clock />{metadata.created}</span> : null}
+      {metadata.size ? <span title={`文件大小 ${metadata.size}`}><HardDrive />{metadata.size}</span> : null}
+      {metadata.wait ? <span title={`等待时间 ${metadata.wait}`}><Timer />等待 {metadata.wait}</span> : null}
     </div>
   );
 }

@@ -147,8 +147,12 @@ function normalizeNode(value: unknown): CanvasStoredNode {
   const sequenceState = normalizeSequenceState(value.data.sequenceState);
   if (sequenceState) data.sequenceState = sequenceState;
   const createdAt = optionalString(value.data.createdAt, 64);
+  const completedAt = optionalString(value.data.completedAt, 64);
+  const generationStartedAt = optionalString(value.data.generationStartedAt, 64);
   const model = optionalString(value.data.model, 240);
   if (createdAt) data.createdAt = createdAt;
+  if (completedAt) data.completedAt = completedAt;
+  if (generationStartedAt) data.generationStartedAt = generationStartedAt;
   if (model) data.model = model;
   if (Array.isArray(value.data.sourceNodeIds)) {
     data.sourceNodeIds = value.data.sourceNodeIds
@@ -177,6 +181,10 @@ function normalizeNode(value: unknown): CanvasStoredNode {
       data.intrinsicWidth = Math.round(intrinsicWidth);
       data.intrinsicHeight = Math.round(intrinsicHeight);
     }
+    const fileSize = boundedNumber(value.data.fileSize, 1, Number.MAX_SAFE_INTEGER, 0);
+    if (fileSize) data.fileSize = Math.round(fileSize);
+    const mediaOrigin = optionalString(value.data.mediaOrigin, 16);
+    if (mediaOrigin === "upload" || mediaOrigin === "generated") data.mediaOrigin = mediaOrigin;
     data.status = status;
   }
 

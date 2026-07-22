@@ -25,6 +25,10 @@ export type CanvasNodeData = Record<string, unknown> & {
   kind: CanvasNodeKind;
   title: string;
   createdAt?: string;
+  completedAt?: string;
+  generationStartedAt?: string;
+  fileSize?: number;
+  mediaOrigin?: "upload" | "generated";
   model?: string;
   sourceNodeIds?: string[];
   prompt?: string;

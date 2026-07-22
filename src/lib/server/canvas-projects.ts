@@ -37,9 +37,10 @@ export async function listCanvasProjects(userId: string, scope?: CanvasProjectSc
   const workspaceScope = normalizeScope(scope);
   const result = await applicationQuery<CanvasProjectRow>(
     `select id, title, document, version, created_at, updated_at
-       from canvas_projects
+      from canvas_projects
       where user_id = $1 and workspace_scope = $2
-      order by updated_at desc`,
+      order by updated_at desc
+      ${workspaceScope === "shared" ? "limit 1" : ""}`,
     [userId, workspaceScope],
   );
   return result.rows.map(mapCanvasProject);
@@ -67,7 +68,11 @@ export async function createCanvasProject(input: {
     "select count(*)::text as count from canvas_projects where user_id = $1 and workspace_scope = $2",
     [input.userId, workspaceScope],
   );
-  if (Number(count.rows[0]?.count || 0) >= 100) {
+  const projectCount = Number(count.rows[0]?.count || 0);
+  if (workspaceScope === "shared" && projectCount >= 1) {
+    throw new CanvasProjectError("CANVAS_PROJECT_LIMIT", "团队画布固定为一个，不能新建更多画布。", 409);
+  }
+  if (projectCount >= 100) {
     throw new CanvasProjectError("CANVAS_PROJECT_LIMIT", "每个账号最多可以创建 100 个画布。", 409);
   }
   const id = randomUUID();
@@ -100,12 +105,17 @@ export async function updateCanvasProject(input: {
     throw new CanvasProjectError("CANVAS_PROJECT_CONFLICT", "画布版本无效，请刷新后重试。", 409);
   }
   const title = normalizeCanvasTitle(input.title);
-  const document = normalizeCanvasDocument(input.document);
+  let document = normalizeCanvasDocument(input.document);
+  const sharedProject = workspaceScope === "shared" ? await getCanvasProject(input.id, input.userId, workspaceScope) : null;
+  if (workspaceScope === "shared") {
+    if (!sharedProject) throw new CanvasProjectError("CANVAS_PROJECT_NOT_FOUND", "未找到团队画布。", 404);
+    document = { ...document, viewport: sharedProject.document.viewport };
+  }
   const sourceId = normalizeSourceId(input.sourceId);
   const direct = await writeCanvasProject({ ...input, scope: workspaceScope, title, document, expectedVersion: version, sourceId });
   if (direct) return { project: direct, merged: false, conflictCount: 0 };
 
-  let existing = await getCanvasProject(input.id, input.userId, workspaceScope);
+  let existing = sharedProject || await getCanvasProject(input.id, input.userId, workspaceScope);
   if (!existing) {
     throw new CanvasProjectError("CANVAS_PROJECT_NOT_FOUND", "未找到画布。", 404);
   }
@@ -139,6 +149,9 @@ export async function updateCanvasProject(input: {
 
 export async function deleteCanvasProject(id: string, userId: string, scope?: CanvasProjectScope, sourceIdValue?: unknown) {
   const workspaceScope = normalizeScope(scope);
+  if (workspaceScope === "shared") {
+    throw new CanvasProjectError("CANVAS_PROJECT_CONFLICT", "团队画布固定保留，不能删除。", 409);
+  }
   const sourceId = normalizeSourceId(sourceIdValue);
   const deletedId = await withApplicationTransaction(async (client) => {
     const result = await client.query<{ id: string }>(

@@ -3,6 +3,7 @@ import { extname } from "node:path";
 import { type NextRequest, NextResponse } from "next/server";
 
 import { authResultResponse, csrfFailure, isInternalCanvasHostname, requireAuthSession, requireCsrf } from "@/lib/server/auth";
+import { normalizeCanvasLibraryScope } from "@/lib/canvas/library-scope";
 import { getInternalCanvasAccess } from "@/lib/server/internal-canvas-access";
 import { addLibraryItem, storeBytes } from "@/lib/server/library";
 import { uploadedMediaFromForm } from "@/lib/server/provider-call";
@@ -33,6 +34,7 @@ export async function POST(request: NextRequest) {
 
   try {
     const form = await request.formData();
+    const canvasScope = normalizeCanvasLibraryScope(form.get("canvasScope"));
     const input = form.get("file");
     if (!(input instanceof File) || input.size <= 0) {
       return NextResponse.json({ ok: false, message: "请选择图片或视频文件。" }, { status: 400 });
@@ -53,7 +55,7 @@ export async function POST(request: NextRequest) {
       model: "local-upload",
       status: "done",
       output,
-      params: { source: "canvas-upload" },
+      params: { source: "canvas-upload", canvasScope },
     });
     return NextResponse.json({ ok: true, item });
   } catch (error) {

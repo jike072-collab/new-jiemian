@@ -1,6 +1,7 @@
 import { type NextRequest, NextResponse } from "next/server";
 
 import { authResultResponse, csrfFailure, isInternalCanvasHostname, requireAuthSession, requireCsrf } from "@/lib/server/auth";
+import { filterCanvasLibraryItems } from "@/lib/canvas/library-scope";
 import { removeLibraryItemsFromCanvasProjects } from "@/lib/server/canvas-projects";
 import { diagnosticErrorResponse, GenerationDiagnosticError } from "@/lib/server/error-diagnostics";
 import { getInternalCanvasWorkspaceMemberIds } from "@/lib/server/internal-canvas-access";
@@ -29,11 +30,11 @@ export async function GET(request: NextRequest) {
     .then(({ refreshPendingVideoJobsForOwner }) => refreshPendingVideoJobsForOwner(session.user.local_user_id))
     .catch(() => undefined);
   const items = shared
-    ? (await readLibraryMetadataForOwners(ownerIds)).map((item) => item.output ? {
+    ? filterCanvasLibraryItems(await readLibraryMetadataForOwners(ownerIds), "shared").map((item) => item.output ? {
       ...item,
       output: { ...item.output, url: `/api/library/${encodeURIComponent(item.id)}/media?scope=shared` },
     } : item)
-    : await readLibraryMetadataForOwner(session.user.local_user_id);
+    : filterCanvasLibraryItems(await readLibraryMetadataForOwner(session.user.local_user_id), "personal");
   return NextResponse.json({ items, total: items.length });
 }
 

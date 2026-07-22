@@ -12,6 +12,7 @@ import {
   writeJsonFile,
 } from "./paths";
 import { type JobRecord, type LibraryItem } from "./types";
+import { isCanvasLibraryItemInScope, type CanvasLibraryScope } from "../canvas/library-scope";
 import { createStage9cbLibraryDatabaseAdapter } from "./database/library-jobs-adapter";
 import { scheduleLibraryShadowWrite } from "./database/library-shadow-write";
 import {
@@ -216,15 +217,16 @@ export async function findMissingStoredLibraryItemsForOwners(ownerLocalUserIds: 
 
 const libraryMediaCacheJobs = new Map<string, Promise<NonNullable<LibraryItem["output"]>>>();
 
-export async function resolveLibraryMediaForOwner(id: string, ownerLocalUserId: string) {
-  return resolveLibraryMediaForOwners(id, [ownerLocalUserId]);
+export async function resolveLibraryMediaForOwner(id: string, ownerLocalUserId: string, scope?: CanvasLibraryScope) {
+  return resolveLibraryMediaForOwners(id, [ownerLocalUserId], scope);
 }
 
-export async function resolveLibraryMediaForOwners(id: string, ownerLocalUserIds: readonly string[]) {
+export async function resolveLibraryMediaForOwners(id: string, ownerLocalUserIds: readonly string[], scope?: CanvasLibraryScope) {
   const owners = new Set(ownerLocalUserIds.map((owner) => owner.trim()).filter(Boolean));
   const item = (await readLibraryMetadata()).find((candidate) => (
     candidate.id === id
     && candidate.ownerLocalUserId && owners.has(candidate.ownerLocalUserId)
+    && (!scope || isCanvasLibraryItemInScope(candidate, scope))
     && !candidate.expired
     && candidate.status === "done"
   ));
@@ -766,17 +768,18 @@ export async function readStoredFileForOwner(storedName: string, ownerLocalUserI
   return readStoredFile(storedName);
 }
 
-export async function resolveStoredFileForOwner(storedName: string, ownerLocalUserId: string) {
-  return resolveStoredFileForOwners(storedName, [ownerLocalUserId]);
+export async function resolveStoredFileForOwner(storedName: string, ownerLocalUserId: string, scope?: CanvasLibraryScope) {
+  return resolveStoredFileForOwners(storedName, [ownerLocalUserId], scope);
 }
 
-export async function resolveStoredFileForOwners(storedName: string, ownerLocalUserIds: readonly string[]) {
+export async function resolveStoredFileForOwners(storedName: string, ownerLocalUserIds: readonly string[], scope?: CanvasLibraryScope) {
   const safeName = safeStoredName(storedName);
   if (!safeName || safeName !== storedName) return null;
   const owners = new Set(ownerLocalUserIds.map((owner) => owner.trim()).filter(Boolean));
   const item = (await readLibraryMetadata()).find((candidate) => (
     candidate.ownerLocalUserId && owners.has(candidate.ownerLocalUserId)
     && candidate.output?.storedName === storedName
+    && (!scope || isCanvasLibraryItemInScope(candidate, scope))
   ));
   if (!item) return null;
 
