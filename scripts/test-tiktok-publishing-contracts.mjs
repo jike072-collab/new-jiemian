@@ -12,6 +12,9 @@ const publishRoute = read("src/app/api/tiktok/publish/route.ts");
 const callbackRoute = read("src/app/api/tiktok/oauth/callback/route.ts");
 const workerRoute = read("src/app/api/internal/tiktok/publish-due/route.ts");
 const publisher = read("src/components/canvas/canvas-tiktok-publisher.tsx");
+const copyRules = read("src/lib/tiktok-copy.ts");
+const copyService = read("src/lib/server/tiktok/copy.ts");
+const copyRoute = read("src/app/api/tiktok/copy/route.ts");
 const workspace = read("src/components/canvas/canvas-workspace.tsx");
 const node = read("src/components/canvas/canvas-node.tsx");
 const canvasCss = read("src/app/canvas/canvas.css");
@@ -54,8 +57,51 @@ assert.match(workspace, /CanvasTikTokPublisher/);
 assert.match(node, /发布到 TikTok/);
 assert.match(publisher, /immediateLimitReached/);
 assert.match(publisher, /availableAccounts/);
+assert.match(publisher, /\/api\/tiktok\/copy/);
+assert.match(publisher, /正在分析视频并生成马来西亚文案/);
+assert.match(publisher, /malaysiaTikTokCopyAngles\.map/);
+assert.match(publisher, /composeTikTokCaption/);
+assert.doesNotMatch(publisher, /item\.prompt \|\| item\.title/);
 assert.match(publisher, /mode === "scheduled" \? "加入定时发布"/);
+assert.match(copyService, /buildCanvasAssistantVisualEvidence/);
+assert.match(copyService, /不得使用素材的生成提示词代替发布文案/);
+assert.match(copyService, /不要为了蹭热度加入无关总榜话题/);
+assert.doesNotMatch(copyService, /item\.prompt/);
+assert.match(copyRoute, /isInternalCanvasHostname/);
+assert.match(copyRoute, /requireCsrf/);
+assert.match(copyRoute, /requireAuthSession/);
+assert.match(copyRoute, /getInternalCanvasWorkspaceMemberIds/);
+assert.match(copyRoute, /InMemoryRateLimiter/);
+assert.match(copyRules, /TikTokShopMalaysia/);
 assert.match(canvasCss, /canvas-tiktok-panel/);
-assert.match(canvasCss, /canvas-node__tiktok/);
+assert.match(canvasCss, /canvas-tiktok-copy__angles/);
+
+const {
+  composeTikTokCaption,
+  normalizeTikTokCopyDraft,
+  normalizeTikTokHashtags,
+  parseTikTokCopyResponse,
+} = await import("../src/lib/tiktok-copy.ts");
+
+const parsedCopy = parseTikTokCopyResponse(`\`\`\`json
+{"title":"Warna yang terus mencuri perhatian #fyp","caption":"Satu langkah, terus nampak lain. #kasut","hashtags":["#KasutMalaysia","KasutMalaysia","#OOTDMalaysia"],"angle":"transformation"}
+\`\`\``);
+assert.equal(parsedCopy.angle, "transformation");
+assert.equal(parsedCopy.title, "Warna yang terus mencuri perhatian");
+assert.doesNotMatch(parsedCopy.caption, /#/);
+assert.equal(new Set(parsedCopy.hashtags.map((value) => value.toLowerCase())).size, parsedCopy.hashtags.length);
+assert.ok(parsedCopy.hashtags.length >= 4 && parsedCopy.hashtags.length <= 7);
+
+const explicitAngle = normalizeTikTokCopyDraft({
+  title: "Lihat lebih dekat",
+  caption: "Perincian warna yang jelas dalam setiap langkah.",
+  hashtags: ["#DetailKasut"],
+  angle: "auto",
+}, "detail");
+assert.equal(explicitAngle.angle, "detail");
+const composed = composeTikTokCaption({ ...explicitAngle, hashtags: ["#DetailKasut"] });
+assert.match(composed, /^Lihat lebih dekat\n\n/);
+assert.match(composed, /\n\n#DetailKasut$/);
+assert.equal(normalizeTikTokHashtags(["#KasutMalaysia", "KasutMalaysia"], "auto", false).length, 1);
 
 console.log("TikTok publishing contracts passed without creating a post");

@@ -1631,7 +1631,7 @@
 .canvas-media-viewer__stage img { display: block; height: auto; object-fit: contain; box-shadow: 0 12px 48px rgba(0, 0, 0, 0.42); }
 
 .canvas-tiktok-scrim { position: fixed; z-index: 64; inset: 0; display: grid; place-items: center; overflow-y: auto; background: rgba(0, 0, 0, 0.72); padding: 20px; }
-.canvas-tiktok-panel { display: grid; width: min(620px, 100%); max-height: calc(100dvh - 40px); overflow-y: auto; border: 1px solid var(--border-strong); border-radius: 8px; background: var(--panel); color: var(--foreground); box-shadow: 0 26px 90px rgba(0, 0, 0, 0.58); }
+.canvas-tiktok-panel { display: grid; width: min(680px, 100%); max-height: calc(100dvh - 40px); overflow-y: auto; border: 1px solid var(--border-strong); border-radius: 8px; background: var(--panel); color: var(--foreground); box-shadow: 0 26px 90px rgba(0, 0, 0, 0.58); }
 .canvas-tiktok-panel__header,
 .canvas-tiktok-panel__header > div,
 .canvas-tiktok-account,
@@ -1696,12 +1696,36 @@
 .canvas-tiktok-form { display: grid; gap: 13px; padding: 14px; }
 .canvas-tiktok-form label,
 .canvas-tiktok-form fieldset { min-width: 0; }
-.canvas-tiktok-form__caption { position: relative; display: grid; gap: 6px; }
-.canvas-tiktok-form__caption > span,
+.canvas-tiktok-copy { display: grid; gap: 9px; }
+.canvas-tiktok-copy__heading,
+.canvas-tiktok-copy__heading > span,
+.canvas-tiktok-copy__loading { display: flex; align-items: center; }
+.canvas-tiktok-copy__heading { min-width: 0; justify-content: space-between; gap: 10px; }
+.canvas-tiktok-copy__heading > span { gap: 6px; font-size: 11px; }
+.canvas-tiktok-copy__heading > span svg { width: 14px; color: var(--primary); }
+.canvas-tiktok-copy__heading > button { display: inline-flex; height: 29px; flex: 0 0 auto; align-items: center; gap: 5px; border: 1px solid var(--border-subtle); border-radius: 5px; background: transparent; color: var(--muted-strong); cursor: pointer; padding: 0 8px; font-size: 9px; }
+.canvas-tiktok-copy__heading > button:hover:not(:disabled) { border-color: color-mix(in srgb, var(--primary) 48%, var(--border-subtle)); color: var(--foreground); }
+.canvas-tiktok-copy__heading > button:disabled { cursor: default; opacity: 0.55; }
+.canvas-tiktok-copy__heading > button svg { width: 12px; }
+.canvas-tiktok-copy__angles { display: flex; flex-wrap: wrap; gap: 5px; }
+.canvas-tiktok-copy__angles button { min-height: 29px; border: 1px solid var(--border-subtle); border-radius: 5px; background: var(--surface); color: var(--muted-strong); cursor: pointer; padding: 0 9px; font-size: 9px; }
+.canvas-tiktok-copy__angles button.is-active { border-color: color-mix(in srgb, var(--primary) 62%, transparent); background: color-mix(in srgb, var(--primary) 12%, var(--surface)); color: var(--foreground); }
+.canvas-tiktok-copy__angles button:disabled { cursor: default; opacity: 0.55; }
+.canvas-tiktok-copy__loading { min-height: 40px; justify-content: center; gap: 7px; border: 1px dashed var(--border-subtle); border-radius: 6px; color: var(--muted-strong); font-size: 10px; }
+.canvas-tiktok-copy__loading svg { width: 14px; color: var(--primary); }
+.canvas-tiktok-copy__error { border-left: 2px solid #fb7185; color: #fb7185; padding: 3px 8px; font-size: 10px; line-height: 1.5; }
+.canvas-tiktok-form__field { position: relative; display: grid; gap: 6px; }
+.canvas-tiktok-form__field > span { color: var(--muted-strong); font-size: 11px; }
+.canvas-tiktok-form__field input,
+.canvas-tiktok-form__field textarea { width: 100%; box-sizing: border-box; border: 1px solid var(--border-subtle); border-radius: 6px; background: var(--surface); color: var(--foreground); outline: none; padding: 9px 9px 22px; font: inherit; font-size: 12px; }
+.canvas-tiktok-form__field input { height: 40px; padding-bottom: 9px; }
+.canvas-tiktok-form__field textarea { min-height: 88px; resize: vertical; }
+.canvas-tiktok-form__field input:focus,
+.canvas-tiktok-form__field textarea:focus { border-color: color-mix(in srgb, var(--primary) 58%, transparent); }
+.canvas-tiktok-form__field input:disabled,
+.canvas-tiktok-form__field textarea:disabled { opacity: 0.55; }
+.canvas-tiktok-form__field small { position: absolute; right: 8px; bottom: 6px; color: var(--muted); font-size: 9px; }
 .canvas-tiktok-form legend { color: var(--muted-strong); font-size: 11px; }
-.canvas-tiktok-form__caption textarea { width: 100%; min-height: 92px; resize: vertical; box-sizing: border-box; border: 1px solid var(--border-subtle); border-radius: 6px; background: var(--surface); color: var(--foreground); outline: none; padding: 9px 9px 22px; font: inherit; font-size: 12px; }
-.canvas-tiktok-form__caption textarea:focus { border-color: color-mix(in srgb, var(--primary) 58%, transparent); }
-.canvas-tiktok-form__caption small { position: absolute; right: 8px; bottom: 6px; color: var(--muted); font-size: 9px; }
 .canvas-tiktok-form fieldset { display: grid; gap: 7px; margin: 0; border: 0; padding: 0; }
 .canvas-tiktok-form__privacy { flex-wrap: wrap; gap: 6px; }
 .canvas-tiktok-form__privacy label { display: inline-flex; height: 31px; align-items: center; border: 1px solid var(--border-subtle); border-radius: 6px; background: var(--surface); color: var(--muted-strong); cursor: pointer; padding: 0 9px; font-size: 10px; }

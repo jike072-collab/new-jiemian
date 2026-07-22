@@ -1,15 +1,17 @@
 "use client";
 
-import { CalendarClock, Check, Clock3, Download, ExternalLink, LoaderCircle, LogOut, RefreshCw, Send, X } from "lucide-react";
-import { useCallback, useEffect, useMemo, useState, type FormEvent } from "react";
+import { CalendarClock, Check, Clock3, Download, ExternalLink, LoaderCircle, LogOut, RefreshCw, Send, Sparkles, X } from "lucide-react";
+import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from "react";
 
 import { ApiError, fetchJson, fetchJsonWithCsrf } from "@/lib/client/api";
 import type { LibraryItem } from "@/lib/server/types";
 import type { TikTokAvailableAccount, TikTokConnectionSummary, TikTokCreatorInfo, TikTokPrivacyLevel, TikTokPublicPublishJob } from "@/lib/server/tiktok/types";
+import { composeTikTokCaption, malaysiaTikTokCopyAngles, type MalaysiaTikTokCopyAngle, type TikTokCopyDraft } from "@/lib/tiktok-copy";
 import { cn } from "@/lib/utils";
 
 type ConnectionResponse = { configured: boolean; missingConfiguration: string[]; connection: TikTokConnectionSummary | null; availableAccounts: TikTokAvailableAccount[] };
 type JobsResponse = { jobs: TikTokPublicPublishJob[]; manualUploadUrl: string };
+type CopyResponse = { ok: true; draft: TikTokCopyDraft };
 const activeStatuses = new Set(["scheduled", "queued", "uploading", "processing"]);
 
 export function CanvasTikTokPublisher({ item, scope, onDownload, onClose }: {
@@ -33,7 +35,14 @@ export function CanvasTikTokPublisher({ item, scope, onDownload, onClose }: {
   const [brandOrganic, setBrandOrganic] = useState(false);
   const [mode, setMode] = useState<"now" | "scheduled">("now");
   const [scheduledAt, setScheduledAt] = useState("");
-  const [caption, setCaption] = useState(() => (item.prompt || item.title).slice(0, 2200));
+  const [copyAngle, setCopyAngle] = useState<MalaysiaTikTokCopyAngle>("auto");
+  const [copyLoading, setCopyLoading] = useState(true);
+  const [copyError, setCopyError] = useState("");
+  const [title, setTitle] = useState("");
+  const [caption, setCaption] = useState("");
+  const [hashtags, setHashtags] = useState("");
+  const copyRequestId = useRef(0);
+  const copyRequestedFor = useRef("");
 
   const loadJobs = useCallback(async () => {
     const response = await fetchJson<JobsResponse>("/api/tiktok/publish");
@@ -69,6 +78,37 @@ export function CanvasTikTokPublisher({ item, scope, onDownload, onClose }: {
     const timer = window.setTimeout(() => { void load(); }, 0);
     return () => window.clearTimeout(timer);
   }, [load]);
+
+  const generateCopy = useCallback(async (angle: MalaysiaTikTokCopyAngle) => {
+    const requestId = copyRequestId.current + 1;
+    copyRequestId.current = requestId;
+    setCopyLoading(true);
+    setCopyError("");
+    try {
+      const response = await fetchJsonWithCsrf<CopyResponse>("/api/tiktok/copy", {
+        method: "POST",
+        body: JSON.stringify({ libraryItemId: item.id, scope, angle }),
+      });
+      if (copyRequestId.current !== requestId) return;
+      setTitle(response.draft.title);
+      setCaption(response.draft.caption);
+      setHashtags(response.draft.hashtags.join(" "));
+      setCopyAngle(response.draft.angle);
+    } catch (error) {
+      if (copyRequestId.current === requestId) setCopyError(apiMessage(error, "视频文案生成失败，请重新生成。"));
+    } finally {
+      if (copyRequestId.current === requestId) setCopyLoading(false);
+    }
+  }, [item.id, scope]);
+
+  useEffect(() => {
+    const key = `${scope}:${item.id}`;
+    if (copyRequestedFor.current === key) return;
+    copyRequestedFor.current = key;
+    const timer = window.setTimeout(() => { void generateCopy("auto"); }, 0);
+    return () => window.clearTimeout(timer);
+  }, [generateCopy, item.id, scope]);
+
   useEffect(() => {
     if (!jobs.some((job) => activeStatuses.has(job.status))) return;
     const timer = window.setInterval(() => { void loadJobs().catch(() => undefined); }, 5_000);
@@ -77,6 +117,11 @@ export function CanvasTikTokPublisher({ item, scope, onDownload, onClose }: {
 
   const itemJobs = useMemo(() => jobs.filter((job) => job.libraryItemId === item.id).slice(0, 6), [item.id, jobs]);
   const immediateLimitReached = mode === "now" && creator?.canPostMore === false;
+  const publishCaption = useMemo(() => composeTikTokCaption({
+    title,
+    caption,
+    hashtags: hashtags.split(/[\s,，]+/u).filter(Boolean),
+  }), [caption, hashtags, title]);
 
   const connect = async () => {
     setBusy(true);
@@ -131,6 +176,10 @@ export function CanvasTikTokPublisher({ item, scope, onDownload, onClose }: {
       setMessage("请选择发布范围。");
       return;
     }
+    if (!title.trim() || !caption.trim()) {
+      setMessage("请先生成或填写标题和正文。");
+      return;
+    }
     let publishAt: string | undefined;
     if (mode === "scheduled") {
       const timestamp = Date.parse(scheduledAt);
@@ -148,7 +197,7 @@ export function CanvasTikTokPublisher({ item, scope, onDownload, onClose }: {
         body: JSON.stringify({
           libraryItemId: item.id,
           idempotencyKey: crypto.randomUUID(),
-          caption,
+          caption: publishCaption,
           privacyLevel,
           disableComment: !allowComment,
           disableDuet: !allowDuet,
@@ -231,11 +280,54 @@ export function CanvasTikTokPublisher({ item, scope, onDownload, onClose }: {
 
             {creator ? (
               <form className="canvas-tiktok-form" onSubmit={submit}>
-                <label className="canvas-tiktok-form__caption">
-                  <span>文案</span>
-                  <textarea value={caption} maxLength={2200} onChange={(event) => setCaption(event.target.value)} />
-                  <small>{caption.length}/2200</small>
-                </label>
+                <section className="canvas-tiktok-copy" aria-label="TikTok 文案">
+                  <div className="canvas-tiktok-copy__heading">
+                    <span><Sparkles /><strong>马来西亚鞋类文案</strong></span>
+                    <button type="button" disabled={copyLoading} onClick={() => { void generateCopy(copyAngle); }}>
+                      {copyLoading ? <LoaderCircle className="is-spinning" /> : <RefreshCw />}重新生成
+                    </button>
+                  </div>
+                  <div className="canvas-tiktok-copy__angles" role="tablist" aria-label="文案方向">
+                    {malaysiaTikTokCopyAngles.map((option) => (
+                      <button
+                        key={option.id}
+                        type="button"
+                        role="tab"
+                        aria-selected={copyAngle === option.id}
+                        className={copyAngle === option.id ? "is-active" : undefined}
+                        disabled={copyLoading}
+                        onClick={() => {
+                          setCopyAngle(option.id);
+                          void generateCopy(option.id);
+                        }}
+                      >
+                        {option.label}
+                      </button>
+                    ))}
+                  </div>
+                  {copyLoading ? (
+                    <div className="canvas-tiktok-copy__loading" role="status">
+                      <LoaderCircle className="is-spinning" />
+                      <span>正在分析视频并生成马来西亚文案</span>
+                    </div>
+                  ) : null}
+                  {copyError ? <div className="canvas-tiktok-copy__error" role="alert">{copyError}</div> : null}
+                  <label className="canvas-tiktok-form__field">
+                    <span>标题</span>
+                    <input value={title} maxLength={80} disabled={copyLoading} onChange={(event) => setTitle(event.target.value)} />
+                    <small>{title.length}/80</small>
+                  </label>
+                  <label className="canvas-tiktok-form__field">
+                    <span>正文</span>
+                    <textarea value={caption} maxLength={1200} disabled={copyLoading} onChange={(event) => setCaption(event.target.value)} />
+                    <small>{caption.length}/1200</small>
+                  </label>
+                  <label className="canvas-tiktok-form__field">
+                    <span>话题</span>
+                    <input value={hashtags} maxLength={500} disabled={copyLoading} onChange={(event) => setHashtags(event.target.value)} />
+                    <small>{publishCaption.length}/2200</small>
+                  </label>
+                </section>
                 <fieldset>
                   <legend>发布范围</legend>
                   <div className="canvas-tiktok-form__privacy">
@@ -262,7 +354,7 @@ export function CanvasTikTokPublisher({ item, scope, onDownload, onClose }: {
                   </div>
                   {mode === "scheduled" ? <input type="datetime-local" required value={scheduledAt} onChange={(event) => setScheduledAt(event.target.value)} /> : null}
                 </div>
-                <button type="submit" className="canvas-tiktok-form__submit" disabled={busy || !privacyLevel || immediateLimitReached}>
+                <button type="submit" className="canvas-tiktok-form__submit" disabled={busy || copyLoading || !title.trim() || !caption.trim() || !privacyLevel || immediateLimitReached}>
                   {busy ? <LoaderCircle className="is-spinning" /> : mode === "scheduled" ? <CalendarClock /> : <Send />}
                   {busy ? "提交中" : immediateLimitReached ? "已达到当前 API 发布额度" : mode === "scheduled" ? "加入定时发布" : "发布到 TikTok"}
                 </button>
