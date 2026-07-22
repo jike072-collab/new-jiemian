@@ -30,6 +30,8 @@ export type CanvasNodeData = Record<string, unknown> & {
   prompt?: string;
   mediaType?: CanvasMediaType;
   libraryItemId?: string;
+  intrinsicWidth?: number;
+  intrinsicHeight?: number;
   generationKind?: CanvasGenerationKind;
   providerId?: string;
   imageMode?: "text-to-image" | "image-to-image";

@@ -66,6 +66,7 @@ type CanvasNodeActions = {
   updateNodeData: (id: string, patch: Partial<CanvasNodeData>) => void;
   removeNode: (id: string) => void;
   previewMedia: (id: string) => void;
+  registerMediaDimensions: (id: string, width: number, height: number) => void;
   trimVideo: (id: string) => void;
   openTikTokPublisher: (id: string) => void;
   optimizePrompt: (id: string, prompt: string) => Promise<void>;
@@ -97,6 +98,7 @@ export function CanvasNode({ id, data, selected }: NodeProps<CanvasFlowNode>) {
         minHeight={minHeight}
         maxWidth={760}
         maxHeight={720}
+        keepAspectRatio={data.kind === "media" && data.mediaType !== "audio"}
       />
       {data.kind !== "prompt" ? <Handle type="target" position={Position.Left} id="input" className="canvas-node__handle" /> : null}
       <NodeHeader data={data} onRemove={() => actions.removeNode(id)} />
@@ -358,12 +360,25 @@ function MediaNode({ id, data }: { id: string; data: CanvasNodeData }) {
       {data.mediaUrl && data.mediaType === "image" ? (
         <button type="button" className="canvas-node__image-preview nodrag" onClick={(event) => { event.stopPropagation(); actions.previewMedia(id); }} aria-label={`放大查看${data.title}`} title="放大查看">
           {/* eslint-disable-next-line @next/next/no-img-element -- generated media URLs are authenticated runtime assets. */}
-          <img src={data.mediaUrl} alt={data.title} draggable={false} loading="lazy" decoding="async" />
+          <img
+            src={data.mediaUrl}
+            alt={data.title}
+            draggable={false}
+            loading="lazy"
+            decoding="async"
+            onLoad={(event) => actions.registerMediaDimensions(id, event.currentTarget.naturalWidth, event.currentTarget.naturalHeight)}
+          />
         </button>
       ) : null}
       {data.mediaUrl && data.mediaType === "video" ? (
         <>
-          <video src={data.mediaUrl} controls preload="metadata" className="nodrag nowheel" />
+          <video
+            src={data.mediaUrl}
+            controls
+            preload="metadata"
+            className="nodrag nowheel"
+            onLoadedMetadata={(event) => actions.registerMediaDimensions(id, event.currentTarget.videoWidth, event.currentTarget.videoHeight)}
+          />
           {data.libraryItemId && data.status === "done" && actions.internalCanvas ? (
             <div className="canvas-node__video-actions nodrag">
               <button type="button" onClick={() => actions.trimVideo(id)}><Scissors /><span>裁剪</span></button>

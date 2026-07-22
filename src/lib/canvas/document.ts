@@ -171,6 +171,12 @@ function normalizeNode(value: unknown): CanvasStoredNode {
       && (status === "queued" || status === "generating" || status === "failed");
     if (mediaType !== "audio" && !libraryItemId && !pendingGeneratorResult) throw new CanvasDocumentError("作品 ID无效。");
     if (libraryItemId) data.libraryItemId = libraryItemId;
+    const intrinsicWidth = boundedNumber(value.data.intrinsicWidth, 1, 32_768, 0);
+    const intrinsicHeight = boundedNumber(value.data.intrinsicHeight, 1, 32_768, 0);
+    if (intrinsicWidth && intrinsicHeight) {
+      data.intrinsicWidth = Math.round(intrinsicWidth);
+      data.intrinsicHeight = Math.round(intrinsicHeight);
+    }
     data.status = status;
   }
 

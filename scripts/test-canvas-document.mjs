@@ -10,6 +10,7 @@ const {
   removeUnavailableLibraryItemsFromCanvasDocument,
 } = await import(new URL("../src/lib/canvas/document.ts", import.meta.url));
 const { duplicateCanvasNodeData } = await import(new URL("../src/lib/canvas/duplicate.ts", import.meta.url));
+const { canvasMediaNodeSize, normalizeMediaDimensions } = await import(new URL("../src/lib/canvas/media-sizing.ts", import.meta.url));
 
 assert.deepEqual(normalizeCanvasDocument(emptyCanvasDocument()), emptyCanvasDocument());
 assert.equal(normalizeCanvasTitle("  公司广告画布  "), "公司广告画布");
@@ -25,6 +26,8 @@ const normalized = normalizeCanvasDocument({
       mediaType: "image",
       libraryItemId: "library-item-1",
       mediaUrl: "data:image/png;base64,should-not-persist",
+      intrinsicWidth: 1080,
+      intrinsicHeight: 1920,
       status: "done",
     },
   }],
@@ -33,6 +36,14 @@ const normalized = normalizeCanvasDocument({
 });
 assert.equal(normalized.nodes[0].data.libraryItemId, "library-item-1");
 assert.equal(normalized.nodes[0].data.mediaUrl, undefined);
+assert.equal(normalized.nodes[0].data.intrinsicWidth, 1080);
+assert.equal(normalized.nodes[0].data.intrinsicHeight, 1920);
+
+assert.deepEqual(canvasMediaNodeSize(1920, 1080), { width: 420, height: 306, frameWidth: 420, frameHeight: 236 });
+assert.deepEqual(canvasMediaNodeSize(1080, 1920), { width: 260, height: 532, frameWidth: 260, frameHeight: 462 });
+assert.deepEqual(canvasMediaNodeSize(1024, 1024), { width: 360, height: 430, frameWidth: 360, frameHeight: 360 });
+assert.equal(normalizeMediaDimensions(0, 1080), null);
+assert.equal(normalizeMediaDimensions(Number.NaN, 1080), null);
 
 const pendingResult = normalizeCanvasDocument({
   nodes: [{
@@ -239,7 +250,7 @@ assert.throws(
 
 console.log(JSON.stringify({
   ok: true,
-  checks: 22,
+  checks: 29,
   generationSubmitted: false,
   databaseWritten: false,
 }));

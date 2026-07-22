@@ -138,6 +138,7 @@ import type {
 } from "@/lib/canvas/types";
 import { normalizeCanvasDocument, removeUnavailableLibraryItemsFromCanvasDocument } from "@/lib/canvas/document";
 import { duplicateCanvasNodeData } from "@/lib/canvas/duplicate";
+import { canvasMediaNodeSize, normalizeMediaDimensions } from "@/lib/canvas/media-sizing";
 import {
   canvasImageResultGrid,
   INTERNAL_CANVAS_IMAGE_REQUEST_CONCURRENCY,
@@ -887,6 +888,27 @@ function CanvasWorkspaceInner({
     if (persist) markDirty();
   }, [markDirty, pushHistorySnapshot]);
 
+  const registerMediaDimensions = useCallback((id: string, width: number, height: number) => {
+    const dimensions = normalizeMediaDimensions(width, height);
+    const size = canvasMediaNodeSize(width, height);
+    if (!dimensions || !size) return;
+    const mediaNode = nodesRef.current.find((node) => node.id === id && node.data.kind === "media" && node.data.mediaType !== "audio");
+    if (!mediaNode) return;
+    if (mediaNode.data.intrinsicWidth === dimensions.width && mediaNode.data.intrinsicHeight === dimensions.height) return;
+    setNodes((current) => current.map((node) => node.id === id ? {
+      ...node,
+      width: size.width,
+      height: size.height,
+      style: { ...node.style, width: size.width, height: size.height },
+      data: {
+        ...node.data,
+        intrinsicWidth: dimensions.width,
+        intrinsicHeight: dimensions.height,
+      },
+    } : node));
+    markDirty();
+  }, [markDirty]);
+
   const removeNode = useCallback((id: string) => {
     const ids = new Set([id]);
     nodesRef.current.forEach((node) => { if (node.parentId === id) ids.add(node.id); });
@@ -1223,6 +1245,9 @@ function CanvasWorkspaceInner({
     pushHistorySnapshot();
     setNodes((current) => current.map((node) => node.id === selected.id ? {
       ...node,
+      width: 320,
+      height: item.type === "image" ? 300 : 340,
+      style: { ...node.style, width: 320, height: item.type === "image" ? 300 : 340 },
       data: {
         ...node.data,
         title: item.title || (item.type === "image" ? "图片素材" : "视频素材"),
@@ -1234,6 +1259,8 @@ function CanvasWorkspaceInner({
         status: libraryStatus(item),
         progress: 0,
         error: item.error || undefined,
+        intrinsicWidth: undefined,
+        intrinsicHeight: undefined,
       },
     } : node));
     markDirty();
@@ -1249,7 +1276,9 @@ function CanvasWorkspaceInner({
         if (node.id !== existingNodeId) return node;
         return {
           ...node,
+          width: 340,
           height: item.type === "image" ? 320 : 360,
+          style: { ...node.style, width: 340, height: item.type === "image" ? 320 : 360 },
           data: {
             ...node.data,
             title: item.title || (item.type === "image" ? "图片结果" : "视频结果"),
@@ -1261,6 +1290,8 @@ function CanvasWorkspaceInner({
             status: libraryStatus(item),
             progress: job?.progress || (item.status === "done" ? 100 : 0),
             error: item.error || undefined,
+            intrinsicWidth: undefined,
+            intrinsicHeight: undefined,
           },
         };
       }));
@@ -1556,6 +1587,7 @@ function CanvasWorkspaceInner({
     promptReferences,
     presenceByNode,
     updateNodeData: (id: string, patch: Partial<CanvasNodeData>) => updateNodeData(id, patch),
+    registerMediaDimensions,
     removeNode,
     previewMedia: setPreviewingNodeId,
     trimVideo: (id: string) => {
@@ -1577,7 +1609,7 @@ function CanvasWorkspaceInner({
     optimizePrompt: optimizePromptNode,
     runGenerator: (id: string) => { void executeGenerator(id); },
     toggleGroup: toggleGroupCollapsed,
-  }), [executeGenerator, inputPreviews, inputSummary, isInternalCanvas, optimizePromptNode, presenceByNode, promptReferences, providers, removeNode, toggleGroupCollapsed, updateNodeData]);
+  }), [executeGenerator, inputPreviews, inputSummary, isInternalCanvas, optimizePromptNode, presenceByNode, promptReferences, providers, registerMediaDimensions, removeNode, toggleGroupCollapsed, updateNodeData]);
 
   const onNodesChange = useCallback((changes: NodeChange<CanvasFlowNode>[]) => {
     if (changes.some((change) => change.type !== "select" && !(change.type === "position" && change.dragging))) {
