@@ -1250,11 +1250,17 @@
 .canvas-assistant__actions { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 9px 12px; border-top: 1px solid var(--border-subtle); color: var(--muted-strong); font-size: 11px; }
 .canvas-assistant__actions svg { width: 14px; color: var(--primary); }
 .canvas-assistant__actions button { display: inline-flex; align-items: center; gap: 5px; border-color: color-mix(in srgb, var(--primary) 55%, transparent); color: var(--foreground); }
-.canvas-assistant__composer { display: grid; grid-template-columns: minmax(0, 1fr) 36px; gap: 7px; padding: 10px 12px 6px; border-top: 1px solid var(--border-subtle); }
+.canvas-assistant__composer { position: relative; display: grid; grid-template-columns: minmax(0, 1fr) 36px; gap: 7px; padding: 10px 12px 6px; border-top: 1px solid var(--border-subtle); }
 .canvas-assistant__composer textarea { min-height: 66px; resize: none; border: 1px solid var(--border-subtle); border-radius: 6px; background: var(--surface); color: var(--foreground); outline: none; padding: 8px; font: inherit; font-size: 12px; }
 .canvas-assistant__composer button { display: grid; width: 36px; height: 36px; place-items: center; align-self: end; border: 0; border-radius: 6px; background: var(--primary); color: white; cursor: pointer; }
 .canvas-assistant__composer button:disabled { cursor: not-allowed; opacity: 0.45; }
 .canvas-assistant__composer svg { width: 16px; }
+.canvas-assistant__mentions { position: absolute; z-index: 3; right: 55px; bottom: calc(100% - 3px); left: 12px; display: grid; max-height: 220px; overflow-y: auto; border: 1px solid var(--border-strong); border-radius: 6px; background: var(--panel); box-shadow: 0 12px 30px rgba(0, 0, 0, 0.32); padding: 4px; }
+.canvas-assistant__composer .canvas-assistant__mentions button { display: grid; width: 100%; height: auto; min-height: 42px; grid-template-columns: minmax(72px, auto) minmax(0, 1fr); align-items: center; gap: 8px; border: 0; border-radius: 4px; background: transparent; color: var(--foreground); padding: 6px 8px; text-align: left; }
+.canvas-assistant__composer .canvas-assistant__mentions button:hover,
+.canvas-assistant__composer .canvas-assistant__mentions button.is-active { background: var(--surface-hover); }
+.canvas-assistant__mentions strong { overflow: hidden; color: var(--primary); font-size: 11px; text-overflow: ellipsis; white-space: nowrap; }
+.canvas-assistant__mentions small { overflow: hidden; color: var(--muted); font-size: 10px; text-overflow: ellipsis; white-space: nowrap; }
 .canvas-assistant__scope { padding: 0 12px 10px; }
 
 .canvas-shortcuts {

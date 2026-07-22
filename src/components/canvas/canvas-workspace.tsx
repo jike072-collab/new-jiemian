@@ -1310,7 +1310,6 @@ function CanvasWorkspaceInner({
     if (!generator) return;
     if (existingNodeId) {
       setNodes((current) => current.map((node) => {
-        if (node.id === generatorId) return { ...node, data: { ...node.data, jobId: job?.id || node.data.jobId } };
         if (node.id !== existingNodeId) return node;
         return {
           ...node,
@@ -1327,6 +1326,7 @@ function CanvasWorkspaceInner({
             mediaUrl: item.output?.url,
             status: libraryStatus(item),
             progress: job?.progress || (item.status === "done" ? 100 : 0),
+            jobId: job?.id || node.data.jobId,
             error: item.error || undefined,
             ...canvasMediaNodeMetadata(item),
             generationStartedAt: node.data.generationStartedAt || canvasMediaNodeMetadata(item).generationStartedAt,
@@ -1362,6 +1362,7 @@ function CanvasWorkspaceInner({
         mediaUrl: item.output?.url,
         status: libraryStatus(item),
         progress: job?.progress || 0,
+        jobId: job?.id,
         error: item.error || undefined,
         ...canvasMediaNodeMetadata(item),
         ...(item.type === "video" ? {
@@ -1374,7 +1375,7 @@ function CanvasWorkspaceInner({
     };
     setNodes((current) => [
       ...current.map((node) => node.id === generatorId
-        ? { ...node, data: { ...node.data, ...(resultIndex === 0 ? { outputNodeId: id } : {}), jobId: job?.id || node.data.jobId } }
+        ? { ...node, data: { ...node.data, ...(resultIndex === 0 ? { outputNodeId: id } : {}) } }
         : node),
       resultNode,
     ]);
@@ -1824,7 +1825,7 @@ function CanvasWorkspaceInner({
   }, [activateProject, collaborationClientId, createProject]);
 
   const activeJobsKey = useMemo(() => nodes
-    .filter((node) => node.data.kind === "generator" && node.data.jobId && (node.data.status === "queued" || node.data.status === "generating"))
+    .filter((node) => node.data.jobId && (node.data.status === "queued" || node.data.status === "generating"))
     .map((node) => `${node.id}:${node.data.jobId}`)
     .sort()
     .join("|"), [nodes]);
@@ -1834,7 +1835,7 @@ function CanvasWorkspaceInner({
     let cancelled = false;
     let timer: number | null = null;
     const poll = async () => {
-      const activeJobs = nodesRef.current.filter((node) => node.data.kind === "generator" && node.data.jobId && (node.data.status === "queued" || node.data.status === "generating"));
+      const activeJobs = nodesRef.current.filter((node) => node.data.jobId && (node.data.status === "queued" || node.data.status === "generating"));
       let refreshNeeded = false;
       await Promise.all(activeJobs.map(async (node) => {
         try {
@@ -1846,13 +1847,6 @@ function CanvasWorkspaceInner({
             progress: data.job.progress || 0,
             error: data.job.error || undefined,
           }, terminal);
-          if (node.data.outputNodeId) {
-            updateNodeData(node.data.outputNodeId, {
-              status: data.job.status === "done" ? "done" : data.job.status === "failed" ? "failed" : data.job.status === "queued" ? "queued" : "generating",
-              progress: data.job.progress || 0,
-              error: data.job.error || undefined,
-            }, terminal);
-          }
           refreshNeeded ||= data.job.status === "done";
         } catch {
           // Transient polling failures are retried without changing the paid task state.
@@ -4466,10 +4460,10 @@ async function submitVideoGeneration(
   const response = await fetchJsonWithCsrf<{ item: LibraryItem; job: JobRecord | null }>("/api/generate/video", { method: "POST", body: form });
   addResultNode(generatorId, response.item, response.job);
   updateNodeData(generatorId, {
-    status: response.job?.status === "done" || response.item.status === "done" ? "done" : response.job?.status === "failed" || response.item.status === "failed" ? "failed" : response.job?.status === "queued" ? "queued" : "generating",
-    progress: response.job?.progress || 0,
-    jobId: response.job?.id,
-    error: response.job?.error || response.item.error || undefined,
+    status: "idle",
+    progress: 0,
+    jobId: undefined,
+    error: undefined,
     sequenceState: {
       ...(data.sequenceState || {}),
       accepted: response.job?.status === "done" || response.item.status === "done",

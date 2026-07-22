@@ -56,6 +56,8 @@ const pendingResult = normalizeCanvasDocument({
       mediaType: "image",
       sourceNodeIds: ["generator-1"],
       status: "generating",
+      progress: 42,
+      jobId: "job-pending-image-1",
     },
   }],
   edges: [],
@@ -63,6 +65,22 @@ const pendingResult = normalizeCanvasDocument({
 });
 assert.equal(pendingResult.nodes[0].data.libraryItemId, undefined);
 assert.equal(pendingResult.nodes[0].data.status, "generating");
+assert.equal(pendingResult.nodes[0].data.progress, 42);
+assert.equal(pendingResult.nodes[0].data.jobId, "job-pending-image-1");
+
+const migratedVideoJob = normalizeCanvasDocument({
+  nodes: [
+    { id: "generator-video-legacy", type: "canvas", position: { x: 0, y: 0 }, data: { kind: "generator", title: "Video", generationKind: "video", status: "queued", progress: 18, jobId: "job-video-legacy", outputNodeId: "result-video-legacy" } },
+    { id: "result-video-legacy", type: "canvas", position: { x: 400, y: 0 }, data: { kind: "media", title: "Result", mediaType: "video", libraryItemId: "library-video-legacy", sourceNodeIds: ["generator-video-legacy"], status: "queued" } },
+  ],
+  edges: [{ id: "edge-video-legacy", source: "generator-video-legacy", target: "result-video-legacy" }],
+  viewport: { x: 0, y: 0, zoom: 1 },
+});
+assert.equal(migratedVideoJob.nodes[0].data.status, "idle");
+assert.equal(migratedVideoJob.nodes[0].data.jobId, undefined);
+assert.equal(migratedVideoJob.nodes[1].data.status, "queued");
+assert.equal(migratedVideoJob.nodes[1].data.progress, 18);
+assert.equal(migratedVideoJob.nodes[1].data.jobId, "job-video-legacy");
 assert.throws(
   () => normalizeCanvasDocument({
     nodes: [{ id: "invalid-image", type: "canvas", position: { x: 0, y: 0 }, data: { kind: "media", title: "Invalid image", mediaType: "image", status: "done" } }],

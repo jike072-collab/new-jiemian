@@ -64,6 +64,20 @@ export function normalizeCanvasDocument(value: unknown): CanvasProjectDocument {
   if (nodeIds.size !== nodes.length) throw new CanvasDocumentError("画布节点 ID 重复。");
   const nodesById = new Map(nodes.map((node) => [node.id, node]));
   for (const node of nodes) {
+    if (node.data.kind !== "generator" || !node.data.jobId || !node.data.outputNodeId) continue;
+    if (node.data.status !== "queued" && node.data.status !== "generating") continue;
+    const resultNode = nodesById.get(node.data.outputNodeId);
+    if (resultNode?.data.kind !== "media") continue;
+    resultNode.data.jobId ||= node.data.jobId;
+    resultNode.data.status = node.data.status;
+    resultNode.data.progress = node.data.progress;
+    if (node.data.error) resultNode.data.error = node.data.error;
+    node.data.status = "idle";
+    node.data.progress = 0;
+    delete node.data.jobId;
+    delete node.data.error;
+  }
+  for (const node of nodes) {
     if (!node.parentId) continue;
     const parent = nodesById.get(node.parentId);
     if (!parent || parent.data.kind !== "group" || node.data.kind === "group") {
@@ -186,6 +200,11 @@ function normalizeNode(value: unknown): CanvasStoredNode {
     const mediaOrigin = optionalString(value.data.mediaOrigin, 16);
     if (mediaOrigin === "upload" || mediaOrigin === "generated") data.mediaOrigin = mediaOrigin;
     data.status = status;
+    data.progress = boundedNumber(value.data.progress, 0, 100, 0);
+    const jobId = optionalIdentifier(value.data.jobId, 160);
+    const error = optionalString(value.data.error, 2_000);
+    if (jobId) data.jobId = jobId;
+    if (error) data.error = error;
   }
 
   if (kind === "generator") {

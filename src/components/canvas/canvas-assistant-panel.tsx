@@ -1,7 +1,7 @@
 "use client";
 
 import { Bot, Check, LoaderCircle, Send, Sparkles, WandSparkles, X } from "lucide-react";
-import { useMemo, useState, type FormEvent } from "react";
+import { useMemo, useRef, useState, type FormEvent, type KeyboardEvent } from "react";
 
 import { fetchJsonWithCsrf } from "@/lib/client/api";
 import { normalizeCanvasAssistantResponse, type CanvasAssistantAction, type CanvasAssistantResponse } from "@/lib/canvas/assistant";
@@ -28,6 +28,7 @@ export type CanvasAssistantNodeContext = {
 };
 
 type Message = { role: "user" | "assistant"; content: string };
+type MentionQuery = { start: number; end: number; query: string };
 
 export function CanvasAssistantPanel({
   canvasTitle,
@@ -50,19 +51,87 @@ export function CanvasAssistantPanel({
   const [input, setInput] = useState("");
   const [busy, setBusy] = useState(false);
   const [pendingActions, setPendingActions] = useState<CanvasAssistantAction[]>([]);
+  const [mentionQuery, setMentionQuery] = useState<MentionQuery | null>(null);
+  const [mentionIndex, setMentionIndex] = useState(0);
+  const [mentionedNodeIds, setMentionedNodeIds] = useState<string[]>([]);
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
   const contextNodes = useMemo(() => nodes.slice(0, 120), [nodes]);
   const selectedNodes = useMemo(() => nodes.filter((node) => node.selected), [nodes]);
+  const mentionedNodes = useMemo(() => nodes.filter((node) => mentionedNodeIds.includes(node.id)), [mentionedNodeIds, nodes]);
+  const mentionCandidates = useMemo(() => {
+    if (!mentionQuery) return [];
+    const query = mentionQuery.query.trim().toLowerCase();
+    return contextNodes
+      .filter((node) => node.kind !== "group")
+      .filter((node) => {
+        if (!query) return true;
+        return `${assistantMentionToken(node)} ${node.title} ${assistantNodeKindLabel(node)}`.toLowerCase().includes(query);
+      })
+      .slice(0, 8);
+  }, [contextNodes, mentionQuery]);
   const generatorCount = useMemo(() => nodes.filter((node) => node.kind === "generator").length, [nodes]);
-  const contextLabel = selectedNodes.length
+  const contextLabel = mentionedNodes.length
+    ? `已引用 ${mentionedNodes.length} 个：${mentionedNodes.slice(0, 2).map((node) => node.title).join("、")}${mentionedNodes.length > 2 ? "…" : ""}`
+    : selectedNodes.length
     ? `已选 ${selectedNodes.length} 个：${selectedNodes.slice(0, 2).map((node) => node.title).join("、")}${selectedNodes.length > 2 ? "…" : ""}`
     : generatorCount === 1 ? "自动使用唯一生成链路" : `全画布 ${generatorCount} 条生成链路`;
+
+  function updateInput(value: string, cursor: number) {
+    setInput(value);
+    setMentionedNodeIds((current) => current.filter((id) => {
+      const node = nodes.find((candidate) => candidate.id === id);
+      return Boolean(node && value.includes(assistantMentionToken(node)));
+    }));
+    const match = value.slice(0, cursor).match(/(?:^|\s)(@[^\s@]*)$/u);
+    if (!match) {
+      setMentionQuery(null);
+      return;
+    }
+    setMentionQuery({ start: cursor - match[1].length, end: cursor, query: match[1].slice(1) });
+    setMentionIndex(0);
+  }
+
+  function selectMention(node: CanvasAssistantNodeContext) {
+    if (!mentionQuery) return;
+    const token = assistantMentionToken(node);
+    const next = `${input.slice(0, mentionQuery.start)}${token} ${input.slice(mentionQuery.end)}`;
+    const cursor = mentionQuery.start + token.length + 1;
+    setInput(next);
+    setMentionedNodeIds((current) => current.includes(node.id) ? current : [...current, node.id]);
+    setMentionQuery(null);
+    requestAnimationFrame(() => {
+      textareaRef.current?.focus();
+      textareaRef.current?.setSelectionRange(cursor, cursor);
+    });
+  }
+
+  function handleComposerKeyDown(event: KeyboardEvent<HTMLTextAreaElement>) {
+    if (!mentionQuery || !mentionCandidates.length) return;
+    if (event.key === "ArrowDown" || event.key === "ArrowUp") {
+      event.preventDefault();
+      setMentionIndex((current) => (current + (event.key === "ArrowDown" ? 1 : -1) + mentionCandidates.length) % mentionCandidates.length);
+      return;
+    }
+    if (event.key === "Enter" || event.key === "Tab") {
+      event.preventDefault();
+      selectMention(mentionCandidates[mentionIndex] || mentionCandidates[0]);
+      return;
+    }
+    if (event.key === "Escape") {
+      event.preventDefault();
+      setMentionQuery(null);
+    }
+  }
 
   async function submitMessage(value: string) {
     const message = value.trim();
     if (!message || busy) return;
     const nextMessages = [...messages, { role: "user" as const, content: message }];
+    const mentioned = new Set(mentionedNodeIds);
     setMessages(nextMessages);
     setInput("");
+    setMentionQuery(null);
+    setMentionedNodeIds([]);
     setBusy(true);
     setPendingActions([]);
     try {
@@ -72,7 +141,10 @@ export function CanvasAssistantPanel({
           message,
           canvasTitle,
           scope,
-          nodes: contextNodes,
+          nodes: contextNodes.map((node) => ({
+            ...node,
+            selected: mentioned.size ? mentioned.has(node.id) : node.selected,
+          })),
           history: nextMessages.slice(-8),
         }),
       });
@@ -106,7 +178,7 @@ export function CanvasAssistantPanel({
         <button type="button" disabled={busy} onClick={() => { void submitMessage("按从左到右的创作流程整理当前画布节点。"); }}>整理画布</button>
         <button type="button" disabled={busy} onClick={() => { void submitMessage("把当前故事拆成 3-5 个 Seedance 分镜节点，分别生成提示词和视频生成节点。"); }}>生成分镜</button>
       </div>
-      <div className="canvas-assistant__context" title={selectedNodes.map((node) => node.title).join("、") || contextLabel}>
+      <div className="canvas-assistant__context" title={(mentionedNodes.length ? mentionedNodes : selectedNodes).map((node) => node.title).join("、") || contextLabel}>
         <span>分析范围</span><strong>{contextLabel}</strong>
       </div>
       <label className="canvas-assistant__template">
@@ -145,10 +217,49 @@ export function CanvasAssistantPanel({
         </div>
       ) : null}
       <form className="canvas-assistant__composer" onSubmit={submit}>
-        <textarea value={input} maxLength={1_200} onChange={(event) => setInput(event.target.value)} placeholder="只询问或操作当前画布" aria-label="给画布助手发送消息" />
+        {mentionQuery && mentionCandidates.length ? (
+          <div className="canvas-assistant__mentions" role="listbox" aria-label="引用画布节点">
+            {mentionCandidates.map((node, index) => (
+              <button
+                key={node.id}
+                type="button"
+                role="option"
+                aria-selected={index === mentionIndex}
+                className={index === mentionIndex ? "is-active" : undefined}
+                onMouseDown={(event) => event.preventDefault()}
+                onClick={() => selectMention(node)}
+              >
+                <strong>{assistantMentionToken(node)}</strong>
+                <small>{assistantNodeKindLabel(node)} · {node.title}</small>
+              </button>
+            ))}
+          </div>
+        ) : null}
+        <textarea
+          ref={textareaRef}
+          value={input}
+          maxLength={1_200}
+          onChange={(event) => updateInput(event.target.value, event.target.selectionStart)}
+          onKeyDown={handleComposerKeyDown}
+          placeholder="输入 @ 引用画布节点"
+          aria-label="给画布助手发送消息"
+          aria-autocomplete="list"
+        />
         <button type="submit" disabled={busy || !input.trim()} aria-label="发送" title="发送"><Send /></button>
       </form>
       <small className="canvas-assistant__scope">不会访问账号、服务器、网页，也不会自动提交生成任务</small>
     </aside>
   );
+}
+
+function assistantMentionToken(node: CanvasAssistantNodeContext) {
+  return node.referenceLabels?.[0]?.label || `@${node.title.replace(/\s+/gu, " ").trim()}`;
+}
+
+function assistantNodeKindLabel(node: CanvasAssistantNodeContext) {
+  if (node.kind === "prompt") return "提示词";
+  if (node.kind === "generator") return node.generationKind === "video" ? "视频生成" : "图片生成";
+  if (node.mediaType === "video") return "视频";
+  if (node.mediaType === "audio") return "音频";
+  return "图片";
 }
