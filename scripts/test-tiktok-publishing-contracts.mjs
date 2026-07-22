@@ -13,6 +13,7 @@ const callbackRoute = read("src/app/api/tiktok/oauth/callback/route.ts");
 const workerRoute = read("src/app/api/internal/tiktok/publish-due/route.ts");
 const publisher = read("src/components/canvas/canvas-tiktok-publisher.tsx");
 const copyRules = read("src/lib/tiktok-copy.ts");
+const shoeCopyLibrary = read("src/lib/malaysia-shoe-copy-library.ts");
 const copyService = read("src/lib/server/tiktok/copy.ts");
 const copyRoute = read("src/app/api/tiktok/copy/route.ts");
 const workspace = read("src/components/canvas/canvas-workspace.tsx");
@@ -66,13 +67,19 @@ assert.match(publisher, /mode === "scheduled" \? "加入定时发布"/);
 assert.match(copyService, /buildCanvasAssistantVisualEvidence/);
 assert.match(copyService, /不得使用素材的生成提示词代替发布文案/);
 assert.match(copyService, /不要为了蹭热度加入无关总榜话题/);
+assert.match(copyService, /马来鞋类文案库/);
+assert.match(copyService, /caption 只写 1-2 句/);
+assert.match(copyService, /只有视频画面或可信上下文明确支持时/);
 assert.doesNotMatch(copyService, /item\.prompt/);
 assert.match(copyRoute, /isInternalCanvasHostname/);
 assert.match(copyRoute, /requireCsrf/);
 assert.match(copyRoute, /requireAuthSession/);
 assert.match(copyRoute, /getInternalCanvasWorkspaceMemberIds/);
 assert.match(copyRoute, /InMemoryRateLimiter/);
-assert.match(copyRules, /TikTokShopMalaysia/);
+assert.doesNotMatch(copyRules, /TikTokShopMalaysia|KasutMalaysia|OOTDMalaysia/);
+assert.match(shoeCopyLibrary, /sports:[\s\S]*women:[\s\S]*men:[\s\S]*kids:[\s\S]*safety:[\s\S]*outdoor:[\s\S]*casual:/);
+assert.match(shoeCopyLibrary, /evidenceOnlyClaims/);
+assert.match(shoeCopyLibrary, /do not add #fyp by default/);
 assert.match(canvasCss, /canvas-tiktok-panel/);
 assert.match(canvasCss, /canvas-tiktok-copy__angles/);
 
@@ -82,11 +89,17 @@ const {
   normalizeTikTokHashtags,
   parseTikTokCopyResponse,
 } = await import("../src/lib/tiktok-copy.ts");
+const {
+  malaysiaShoeCopyCategories,
+  malaysiaShoeCopyHashtagPool,
+  malaysiaShoeCopyPromptLibrary,
+} = await import("../src/lib/malaysia-shoe-copy-library.ts");
 
 const parsedCopy = parseTikTokCopyResponse(`\`\`\`json
-{"title":"Warna yang terus mencuri perhatian #fyp","caption":"Satu langkah, terus nampak lain. #kasut","hashtags":["#KasutMalaysia","KasutMalaysia","#OOTDMalaysia"],"angle":"transformation"}
+{"title":"Warna yang terus mencuri perhatian #fyp","caption":"Satu langkah, terus nampak lain. #kasut","hashtags":["#kasutsukan","kasutsukan","#sportshoes"],"angle":"transformation","category":"sports"}
 \`\`\``);
 assert.equal(parsedCopy.angle, "transformation");
+assert.equal(parsedCopy.category, "sports");
 assert.equal(parsedCopy.title, "Warna yang terus mencuri perhatian");
 assert.doesNotMatch(parsedCopy.caption, /#/);
 assert.equal(new Set(parsedCopy.hashtags.map((value) => value.toLowerCase())).size, parsedCopy.hashtags.length);
@@ -103,5 +116,13 @@ const composed = composeTikTokCaption({ ...explicitAngle, hashtags: ["#DetailKas
 assert.match(composed, /^Lihat lebih dekat\n\n/);
 assert.match(composed, /\n\n#DetailKasut$/);
 assert.equal(normalizeTikTokHashtags(["#KasutMalaysia", "KasutMalaysia"], "auto", false).length, 1);
+assert.deepEqual(normalizeTikTokHashtags(["#rainbowpfp", "#spain", "#final", "#kasutwanita"], "auto", false), ["#kasutwanita"]);
+assert.ok(!normalizeTikTokHashtags([], "auto").some((value) => value.toLowerCase() === "#fyp"));
+assert.ok(normalizeTikTokHashtags([], "auto", true, "kids").includes("#kasutkanakkanak"));
+assert.equal(malaysiaShoeCopyCategories.length, 8);
+assert.ok(malaysiaShoeCopyHashtagPool("safety").includes("kasutsafety"));
+const promptLibrary = malaysiaShoeCopyPromptLibrary();
+for (const category of ["sports", "women", "men", "kids", "safety", "outdoor", "casual"]) assert.match(promptLibrary, new RegExp(`"id":"${category}"`));
+for (const claim of ["price", "discount", "stock or sold-out status", "comfort", "anti-slip, waterproof or protective performance"]) assert.match(promptLibrary, new RegExp(claim));
 
 console.log("TikTok publishing contracts passed without creating a post");

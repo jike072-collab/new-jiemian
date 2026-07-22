@@ -5,6 +5,7 @@ import { isCanvasLibraryItemInScope, type CanvasLibraryScope } from "@/lib/canva
 import { NewApiError } from "@/lib/server/integrations/new-api";
 import { readLibraryMetadataForOwners } from "@/lib/server/library";
 import { createNewApiPromptModelCaller, type PromptModelCaller } from "@/lib/server/prompts";
+import { malaysiaShoeCopyPromptLibrary } from "@/lib/malaysia-shoe-copy-library";
 import {
   malaysiaTikTokCopyAngle,
   malaysiaTikTokCopyAnglePrompt,
@@ -16,11 +17,16 @@ import { TikTokPublishingError } from "./service";
 const systemPrompt = [
   "你是面向马来西亚市场的 TikTok 鞋类短视频文案编辑。",
   "必须先观察按时间顺序提供的视频代表帧，再根据视频真实可见内容写文案；不得使用素材的生成提示词代替发布文案。",
-  "输出自然的马来西亚马来语，不要逐字翻译中文，不要写成长篇商品说明。",
-  "标题要像 TikTok 第一行钩子，正文用 2-4 句突出视频里最吸引人的视觉变化、配色、穿搭或细节。",
+  "先判断最匹配的鞋类 category，再从马来鞋类文案库中选择对应口吻、钩子、CTA 和标签；一次只写一个核心卖点。",
+  "输出自然的马来西亚马来语，可少量自然混用英语和 ni、je、tau、korang 等本地口语；不要逐字翻译中文，不要写成长篇商品说明。",
+  "title 是 TikTok caption 的第一句钩子，写 5-12 个词；caption 只写 1-2 句，避免逐帧复述和重复 title。",
+  "优先写第一眼反应、配色、造型、真实场景或一个清晰互动问题。默认加一个自然 CTA，但不要每次使用同一句。",
   "不得虚构品牌、价格、折扣、库存、材质、舒适度、功能、疗效或视频中无法确认的商品卖点。",
-  "话题只选 4-7 个与鞋类、穿搭、视频内容和马来西亚受众相关的标签；不要为了蹭热度加入无关总榜话题，不要堆砌 #fyp。",
-  "只输出 JSON，不要 Markdown。结构：{\"title\":\"\",\"caption\":\"\",\"hashtags\":[\"#...\"],\"angle\":\"auto|transformation|daily|style|detail\"}",
+  "只有视频画面或可信上下文明确支持时，才能写品牌、价格、折扣、现货/售罄、尺码、材质、舒服、轻、防滑、防水、耐用、安全性能或很多人询问等内容。",
+  "话题只选 4-6 个与具体鞋类、人群、场景和马来西亚受众相关的自然标签；不要默认加 #fyp，不要为了蹭热度加入无关总榜话题，不要堆标签。",
+  `马来鞋类文案库：${malaysiaShoeCopyPromptLibrary()}`,
+  "只学习文案库示例的结构和口吻，不得逐句复制示例或公开样本文案。",
+  "只输出 JSON，不要 Markdown。结构：{\"title\":\"\",\"caption\":\"\",\"hashtags\":[\"#...\"],\"angle\":\"auto|transformation|daily|style|detail\",\"category\":\"auto|sports|women|men|kids|safety|outdoor|casual\"}",
 ].join("\n");
 
 function delay(milliseconds: number) {
@@ -61,6 +67,7 @@ export async function generateMalaysiaTikTokCopy(input: {
       requestedAngle: angle,
       angleInstruction: malaysiaTikTokCopyAnglePrompt(angle),
       availableCopyAngles: malaysiaTikTokCopyAngles,
+      instruction: "先识别鞋类和最强可见卖点，只选择一个文案角度，再按马来鞋类文案库输出短钩子、1-2 句正文和 4-6 个标签。",
       visualEvidence: visualEvidence.summary,
     }),
     images: visualEvidence.images,

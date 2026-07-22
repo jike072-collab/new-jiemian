@@ -1,3 +1,9 @@
+import {
+  malaysiaShoeCopyCategory,
+  malaysiaShoeCopyHashtagPool,
+  type MalaysiaShoeCopyCategory,
+} from "./malaysia-shoe-copy-library.ts";
+
 export const malaysiaTikTokCopyAngles = [
   { id: "auto", label: "AI 精选", prompt: "根据视频最有吸引力的可见内容选择一个清晰角度。" },
   { id: "transformation", label: "前后反差", prompt: "突出鞋子出现前后的视觉变化和第一眼反差，不虚构效果。" },
@@ -13,23 +19,20 @@ export type TikTokCopyDraft = {
   caption: string;
   hashtags: string[];
   angle: MalaysiaTikTokCopyAngle;
+  category: MalaysiaShoeCopyCategory;
 };
 
-const commonHashtags = [
-  "KasutMalaysia",
-  "KasutSukan",
-  "OOTDMalaysia",
-  "GayaHarian",
-  "TikTokShopMalaysia",
-];
+const commonHashtags = ["kasut", "kasutviral", "shoes", "kasutviralmy"];
 
 const angleHashtags: Record<MalaysiaTikTokCopyAngle, string[]> = {
-  auto: ["KasutMalaysia", "OOTDMalaysia"],
-  transformation: ["TransformasiGaya", "SebelumSelepas"],
-  daily: ["GayaHarian", "OOTDMalaysia"],
-  style: ["StreetStyleMY", "GayaMalaysia"],
-  detail: ["DetailKasut", "KasutSukan"],
+  auto: [],
+  transformation: ["kasutviral"],
+  daily: ["kasutharian", "gayakasual"],
+  style: ["sneakers", "streetwear"],
+  detail: ["kasut", "shoes"],
 };
+
+const unrelatedTrendHashtags = new Set(["rainbowpfp", "spain", "final"]);
 
 function text(value: unknown, maxLength: number) {
   return typeof value === "string" ? value.trim().slice(0, maxLength) : "";
@@ -43,7 +46,12 @@ export function malaysiaTikTokCopyAnglePrompt(angle: MalaysiaTikTokCopyAngle) {
   return malaysiaTikTokCopyAngles.find((item) => item.id === angle)?.prompt || malaysiaTikTokCopyAngles[0].prompt;
 }
 
-export function normalizeTikTokHashtags(value: unknown, angle: MalaysiaTikTokCopyAngle = "auto", supplement = true) {
+export function normalizeTikTokHashtags(
+  value: unknown,
+  angle: MalaysiaTikTokCopyAngle = "auto",
+  supplement = true,
+  category: MalaysiaShoeCopyCategory = "auto",
+) {
   const source = Array.isArray(value)
     ? value
     : typeof value === "string"
@@ -56,17 +64,17 @@ export function normalizeTikTokHashtags(value: unknown, angle: MalaysiaTikTokCop
       .replace(/^#+/u, "")
       .replace(/[^\p{L}\p{N}_]/gu, "");
     const key = normalized.toLocaleLowerCase("ms-MY");
-    if (!normalized || seen.has(key)) return;
+    if (!normalized || seen.has(key) || unrelatedTrendHashtags.has(key)) return;
     seen.add(key);
     hashtags.push(`#${normalized}`);
   };
   source.forEach(add);
   if (supplement) {
-    [...angleHashtags[angle], ...commonHashtags].forEach((candidate) => {
-      if (hashtags.length < 5) add(candidate);
+    [...malaysiaShoeCopyHashtagPool(category), ...angleHashtags[angle], ...commonHashtags].forEach((candidate) => {
+      if (hashtags.length < 4) add(candidate);
     });
   }
-  return hashtags.slice(0, 7);
+  return hashtags.slice(0, 6);
 }
 
 function withoutHashtags(value: unknown, maxLength: number) {
@@ -80,11 +88,13 @@ function withoutHashtags(value: unknown, maxLength: number) {
 export function normalizeTikTokCopyDraft(value: unknown, requestedAngle: MalaysiaTikTokCopyAngle = "auto"): TikTokCopyDraft {
   const record = value && typeof value === "object" && !Array.isArray(value) ? value as Record<string, unknown> : {};
   const angle = requestedAngle === "auto" ? malaysiaTikTokCopyAngle(record.angle) : requestedAngle;
+  const category = malaysiaShoeCopyCategory(record.category);
   return {
     title: withoutHashtags(record.title, 80),
     caption: withoutHashtags(record.caption, 1_200),
-    hashtags: normalizeTikTokHashtags(record.hashtags, angle),
+    hashtags: normalizeTikTokHashtags(record.hashtags, angle, true, category),
     angle,
+    category,
   };
 }
 
