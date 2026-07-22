@@ -1,16 +1,38 @@
 #!/usr/bin/env node
 import assert from "node:assert/strict";
-import { mkdtemp, readFile, writeFile, rm } from "node:fs/promises";
+import { mkdtemp, readFile, writeFile, rm, symlink } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { fileURLToPath } from "node:url";
 import { test } from "node:test";
 import {
   extractModelNames,
+  isMainModule,
   isTargetClmmSeedanceModel,
   runSync,
   selectClmmModels,
   syncProviderDocument,
 } from "./ops/sync-clmm-seedance-models.mjs";
+
+test("recognizes execution through the current release symlink", async (context) => {
+  const root = await mkdtemp(join(tmpdir(), "clmm-model-sync-entry-"));
+  try {
+    const scriptUrl = new URL("./ops/sync-clmm-seedance-models.mjs", import.meta.url);
+    const linkedScript = join(root, "sync-clmm-seedance-models.mjs");
+    try {
+      await symlink(fileURLToPath(scriptUrl), linkedScript, "file");
+    } catch (error) {
+      if (error?.code === "EPERM") {
+        context.skip("file symlinks are unavailable in this environment");
+        return;
+      }
+      throw error;
+    }
+    assert.equal(isMainModule(scriptUrl.href, linkedScript), true);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
 
 test("filters only Seedance 2.0 720p or 1080p models", () => {
   assert.equal(isTargetClmmSeedanceModel("bb-seedance2.0 720p-fast-gz-15s"), true);

@@ -1,7 +1,8 @@
 #!/usr/bin/env node
+import { realpathSync } from "node:fs";
 import { chmod, chown, mkdir, readFile, rename, stat, writeFile } from "node:fs/promises";
 import { dirname, resolve } from "node:path";
-import { pathToFileURL } from "node:url";
+import { fileURLToPath } from "node:url";
 
 export const CLMM_PROVIDER_ID = "video-seedance-new";
 export const PROTECTED_MODELS = [];
@@ -135,6 +136,15 @@ function parseArgs(argv) {
   };
 }
 
+export function isMainModule(moduleUrl, argvPath) {
+  if (!argvPath) return false;
+  try {
+    return realpathSync(argvPath) === realpathSync(fileURLToPath(moduleUrl));
+  } catch {
+    return false;
+  }
+}
+
 export async function runSync(options = {}) {
   const dataDir = resolve(options.dataDir || process.env.DATA_DIR || "data");
   const providerPath = options.providerPath || resolve(dataDir, "providers.json");
@@ -169,7 +179,7 @@ export async function runSync(options = {}) {
   };
 }
 
-if (import.meta.url === pathToFileURL(process.argv[1] || "").href) {
+if (isMainModule(import.meta.url, process.argv[1])) {
   const options = parseArgs(process.argv.slice(2));
   try {
     const report = await runSync(options);
