@@ -107,7 +107,7 @@ import {
 } from "@/components/canvas/canvas-edge";
 import { CanvasImageEditor } from "@/components/canvas/canvas-image-editor";
 import { CanvasMediaViewer } from "@/components/canvas/canvas-media-viewer";
-import { CanvasTikTokPublisher } from "@/components/canvas/canvas-tiktok-publisher";
+import { CanvasTikTokPublisher, type CanvasTikTokCopyState } from "@/components/canvas/canvas-tiktok-publisher";
 import { CanvasVideoTrimmer } from "@/components/canvas/canvas-video-trimmer";
 import { CanvasVozebTopbar } from "@/components/canvas/canvas-vozeb-shell";
 import {
@@ -400,6 +400,7 @@ function CanvasWorkspaceInner({
   const [previewingNodeId, setPreviewingNodeId] = useState("");
   const [trimmingLibraryItemId, setTrimmingLibraryItemId] = useState("");
   const [tiktokLibraryItemId, setTikTokLibraryItemId] = useState("");
+  const [tiktokCopyDrafts, setTikTokCopyDrafts] = useState<Record<string, CanvasTikTokCopyState>>({});
   const [teamOpen, setTeamOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [layersOpen, setLayersOpen] = useState(false);
@@ -1892,6 +1893,9 @@ function CanvasWorkspaceInner({
   const previewingNode = nodes.find((node) => node.id === previewingNodeId && node.data.kind === "media" && node.data.mediaType === "image" && node.data.mediaUrl) || null;
   const trimmingLibraryItem = library.find((item) => item.id === trimmingLibraryItemId && item.type === "video" && item.status === "done") || null;
   const tiktokLibraryItem = library.find((item) => item.id === tiktokLibraryItemId && item.type === "video" && item.status === "done") || null;
+  const rememberTikTokCopy = useCallback((key: string, copy: CanvasTikTokCopyState) => {
+    setTikTokCopyDrafts((current) => ({ ...current, [key]: copy }));
+  }, []);
   const selectionToolbarStyle = useMemo<CSSProperties | undefined>(() => {
     if (!selectedNodes.length) return undefined;
     const minX = Math.min(...selectedNodes.map((node) => node.position.x));
@@ -3349,6 +3353,8 @@ function CanvasWorkspaceInner({
         <CanvasTikTokPublisher
           item={tiktokLibraryItem}
           scope={canvasScope()}
+          initialCopy={tiktokCopyDrafts[`${canvasScope()}:${tiktokLibraryItem.id}`]}
+          onCopyChange={rememberTikTokCopy}
           onDownload={() => downloadLibraryItem(tiktokLibraryItem)}
           onClose={() => setTikTokLibraryItemId("")}
         />

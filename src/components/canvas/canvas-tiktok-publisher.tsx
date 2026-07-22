@@ -12,11 +12,14 @@ import { cn } from "@/lib/utils";
 type ConnectionResponse = { configured: boolean; missingConfiguration: string[]; connection: TikTokConnectionSummary | null; availableAccounts: TikTokAvailableAccount[] };
 type JobsResponse = { jobs: TikTokPublicPublishJob[]; manualUploadUrl: string };
 type CopyResponse = { ok: true; draft: TikTokCopyDraft };
+export type CanvasTikTokCopyState = Pick<TikTokCopyDraft, "title" | "caption" | "angle"> & { hashtags: string };
 const activeStatuses = new Set(["scheduled", "queued", "uploading", "processing"]);
 
-export function CanvasTikTokPublisher({ item, scope, onDownload, onClose }: {
+export function CanvasTikTokPublisher({ item, scope, initialCopy, onCopyChange, onDownload, onClose }: {
   item: LibraryItem;
   scope: "personal" | "shared";
+  initialCopy?: CanvasTikTokCopyState;
+  onCopyChange: (key: string, copy: CanvasTikTokCopyState) => void;
   onDownload: () => void;
   onClose: () => void;
 }) {
@@ -35,12 +38,13 @@ export function CanvasTikTokPublisher({ item, scope, onDownload, onClose }: {
   const [brandOrganic, setBrandOrganic] = useState(false);
   const [mode, setMode] = useState<"now" | "scheduled">("now");
   const [scheduledAt, setScheduledAt] = useState("");
-  const [copyAngle, setCopyAngle] = useState<MalaysiaTikTokCopyAngle>("auto");
-  const [copyLoading, setCopyLoading] = useState(true);
+  const [copyAngle, setCopyAngle] = useState<MalaysiaTikTokCopyAngle>(initialCopy?.angle || "auto");
+  const [copyLoading, setCopyLoading] = useState(!initialCopy);
+  const [copyReady, setCopyReady] = useState(Boolean(initialCopy));
   const [copyError, setCopyError] = useState("");
-  const [title, setTitle] = useState("");
-  const [caption, setCaption] = useState("");
-  const [hashtags, setHashtags] = useState("");
+  const [title, setTitle] = useState(initialCopy?.title || "");
+  const [caption, setCaption] = useState(initialCopy?.caption || "");
+  const [hashtags, setHashtags] = useState(initialCopy?.hashtags || "");
   const copyRequestId = useRef(0);
   const copyRequestedFor = useRef("");
 
@@ -94,6 +98,7 @@ export function CanvasTikTokPublisher({ item, scope, onDownload, onClose }: {
       setCaption(response.draft.caption);
       setHashtags(response.draft.hashtags.join(" "));
       setCopyAngle(response.draft.angle);
+      setCopyReady(true);
     } catch (error) {
       if (copyRequestId.current === requestId) setCopyError(apiMessage(error, "视频文案生成失败，请重新生成。"));
     } finally {
@@ -102,12 +107,18 @@ export function CanvasTikTokPublisher({ item, scope, onDownload, onClose }: {
   }, [item.id, scope]);
 
   useEffect(() => {
+    if (initialCopy) return;
     const key = `${scope}:${item.id}`;
     if (copyRequestedFor.current === key) return;
     copyRequestedFor.current = key;
     const timer = window.setTimeout(() => { void generateCopy("auto"); }, 0);
     return () => window.clearTimeout(timer);
-  }, [generateCopy, item.id, scope]);
+  }, [generateCopy, initialCopy, item.id, scope]);
+
+  useEffect(() => {
+    if (!copyReady) return;
+    onCopyChange(`${scope}:${item.id}`, { title, caption, hashtags, angle: copyAngle });
+  }, [caption, copyAngle, copyReady, hashtags, item.id, onCopyChange, scope, title]);
 
   useEffect(() => {
     if (!jobs.some((job) => activeStatuses.has(job.status))) return;
@@ -298,7 +309,6 @@ export function CanvasTikTokPublisher({ item, scope, onDownload, onClose }: {
                         disabled={copyLoading}
                         onClick={() => {
                           setCopyAngle(option.id);
-                          void generateCopy(option.id);
                         }}
                       >
                         {option.label}
