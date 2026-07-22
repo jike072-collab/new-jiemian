@@ -29,10 +29,23 @@ export type CanvasAssistantResponse = {
   actions: CanvasAssistantAction[];
 };
 
+export function canvasAssistantVideoTimestamps(durationSeconds: number) {
+  if (!Number.isFinite(durationSeconds) || durationSeconds <= 0) return [];
+  return [0.08, 0.29, 0.5, 0.71, 0.92].map((ratio) => Number(Math.min(durationSeconds - 0.05, Math.max(0, durationSeconds * ratio)).toFixed(3)));
+}
+
 export function localCanvasAssistantFallback(input: {
   message: string;
   canvasTitle?: string;
-  nodes?: Array<{ kind: "prompt" | "media" | "generator" | "group"; title: string; prompt?: string; selected?: boolean; mediaType?: CanvasMediaType; sequenceState?: CanvasSequenceState }>;
+  nodes?: Array<{
+    kind: "prompt" | "media" | "generator" | "group";
+    title: string;
+    prompt?: string;
+    selected?: boolean;
+    mediaType?: CanvasMediaType;
+    referenceLabels?: Array<{ generatorId: string; label: string }>;
+    sequenceState?: CanvasSequenceState;
+  }>;
 }): CanvasAssistantResponse | null {
   const message = boundedText(input.message, 1_200);
   const nodes = Array.isArray(input.nodes) ? input.nodes.slice(0, 120) : [];
@@ -81,6 +94,22 @@ export function localCanvasAssistantFallback(input: {
           { shotId: "SH03", title: "收束到结束状态", timeRange: "10-15s", prompt: `${subject}，保持角色和场景连续，完成动作后的收束画面，不重复前面已完成的动作。`, sequenceState: { shotId: "SH03", completedBeats: [] } },
         ],
       }],
+    };
+  }
+  if (/(视频换物|局部替换|替换|换成|换掉)/.test(message) && nodes.some((node) => node.kind === "media" && node.mediaType === "video") && nodes.some((node) => node.kind === "media" && node.mediaType === "image")) {
+    const videoNode = nodes.find((node) => node.kind === "media" && node.mediaType === "video");
+    const imageNode = nodes.find((node) => node.kind === "media" && node.mediaType === "image");
+    const videoLabel = videoNode?.referenceLabels?.[0]?.label || "@Video1";
+    const imageLabel = imageNode?.referenceLabels?.[0]?.label || "@Image1";
+    const prompt = [
+      `执行视频局部换物编辑：以 ${videoLabel} 作为唯一基础视频，完整保留原视频的主体身份、身体结构、动作轨迹、速度节奏、镜头位置、构图、场景、光线、色调、时长和声音`,
+      `仅将原视频中用户指定的目标对象替换为 ${imageLabel} 中的目标物体；以 ${imageLabel} 只锁定该物体的真实外观、轮廓、结构比例、颜色、材质、纹理和关键细节，不转移参考图的白底、排版、视角或其他对象`,
+      "替换结果必须逐帧跟随原对象的位置、尺寸、朝向、透视、形变和运动轨迹；在快速运动、遮挡、出入画、旋转、接触、离地和运动模糊期间保持同一物体结构稳定，并匹配原场景的受光、接触阴影和反射",
+      "除指定对象外不修改任何像素语义；禁止残留原对象、叠加新旧对象、复制目标、增加无关物体、改变人物肢体或服装、改变动作和镜头、重绘背景、切镜、变焦、加字、加 Logo、闪烁、漂移、穿模或纹理跳变",
+    ].join("。") + "。";
+    return {
+      reply: `上游助手暂时不可用，我已按通用视频换物规范生成可直接编辑的专业提示词，并使用 ${videoLabel} 与 ${imageLabel} 标明素材职责。`,
+      actions: [{ type: "add_prompt", title: "专业视频换物提示词", prompt }],
     };
   }
   if (/(优化|改写|润色)/.test(message) && sourcePrompt) {

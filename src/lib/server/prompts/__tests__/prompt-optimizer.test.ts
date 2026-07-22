@@ -443,6 +443,41 @@ test("provider caller uses prompt-optimizer provider configuration", async () =>
   assert.equal(output, "来自专用 provider 的中文提示词");
 });
 
+test("provider caller sends labeled visual evidence as multimodal content", async () => {
+  handlers.set("POST /provider/vision", async (request, response) => {
+    const chunks: Buffer[] = [];
+    for await (const chunk of request) chunks.push(Buffer.from(chunk));
+    const body = JSON.parse(Buffer.concat(chunks).toString("utf8"));
+    assert.deepEqual(body.messages[1].content, [
+      { type: "text", text: "analyze canvas" },
+      { type: "text", text: "@Image1：目标产品参考" },
+      { type: "image_url", image_url: { url: "data:image/jpeg;base64,AA==" } },
+    ]);
+    json(response, 200, { choices: [{ message: { content: "已分析视觉素材" } }] });
+  });
+  const caller = createProviderPromptModelCaller(async () => ({
+    id: "prompt-optimizer",
+    kind: "prompt",
+    title: "Prompt optimizer",
+    role: "Prompt optimizer",
+    apiUrl: `${baseUrl}/provider/vision`,
+    model: "gpt-5.6-luna",
+    displayName: "GPT-5.6 Luna",
+    apiKey: "provider-secret",
+    enabled: true,
+    endpointType: "chat-completions",
+    custom: false,
+  }));
+  const output = await caller({
+    systemPrompt: "system",
+    userPrompt: "analyze canvas",
+    images: [{ label: "@Image1", description: "目标产品参考", dataUrl: "data:image/jpeg;base64,AA==" }],
+    requestId: "req-provider-vision",
+    timeoutMs: 500,
+  });
+  assert.equal(output, "已分析视觉素材");
+});
+
 test("New API caller uses chat completions without exposing admin credentials", async () => {
   handlers.set("POST /v1/chat/completions", async (request, response) => {
     assert.equal(request.headers.authorization, "Bearer admin-secret");

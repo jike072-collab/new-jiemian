@@ -8,13 +8,18 @@ const read = (path) => readFileSync(join(root, path), "utf8");
 const route = read("src/app/api/canvas/assistant/route.ts");
 const service = read("src/lib/server/canvas-assistant.ts");
 const assistantTypes = read("src/lib/canvas/assistant.ts");
+const assistantMedia = read("src/lib/server/canvas-assistant-media.ts");
+const optimizer = read("src/lib/server/prompts/optimizer.ts");
 const workspace = read("src/components/canvas/canvas-workspace.tsx");
-const { localCanvasAssistantFallback, normalizeCanvasAssistantResponse } = await import(new URL("../src/lib/canvas/assistant.ts", import.meta.url));
+const { canvasAssistantVideoTimestamps, localCanvasAssistantFallback, normalizeCanvasAssistantResponse } = await import(new URL("../src/lib/canvas/assistant.ts", import.meta.url));
+const { resolveCanvasAssistantMediaFocus } = await import(new URL("../src/lib/canvas/assistant-focus.ts", import.meta.url));
 const { inferSeedancePromptMode, seedancePromptGuidance, seedanceReferenceIssues } = await import(new URL("../src/lib/seedance/prompt-guidance.ts", import.meta.url));
 
 assert.match(route, /isInternalCanvasHostname/);
 assert.match(route, /getInternalCanvasAccess/);
 assert.match(route, /requireCsrf/);
+assert.match(route, /getInternalCanvasWorkspaceMemberIds/);
+assert.match(route, /buildCanvasAssistantVisualEvidence/);
 assert.match(service, /禁止自动提交任何生成任务/);
 assert.match(service, /replace_selected_prompt/);
 assert.match(service, /add_generator/);
@@ -30,7 +35,15 @@ assert.match(service, /upstreamBody/);
 assert.match(service, /localCanvasAssistantFallback/);
 assert.match(service, /seedanceCanvasAssistantRules/);
 assert.match(service, /seedanceTaskGuidance/);
+assert.match(service, /visualEvidence/);
+assert.match(service, /准确 @ImageN、@VideoN、@AudioN 标签/);
 assert.match(service, /@Video\\d\+/);
+assert.match(assistantMedia, /resolveLibraryMediaForOwners/);
+assert.match(assistantMedia, /spawn\("ffmpeg"/);
+assert.match(assistantMedia, /maxEvidenceItems = 8/);
+assert.match(assistantMedia, /canvasAssistantVideoTimestamps/);
+assert.match(optimizer, /promptUserContent/);
+assert.match(optimizer, /image_url/);
 assert.match(assistantTypes, /sourceActions.*slice\(0, 8\)/);
 assert.doesNotMatch(service, /apiKey|Authorization|child_process|exec\(/);
 assert.match(workspace, /CanvasAssistantPanel/);
@@ -39,6 +52,9 @@ const assistantPanel = read("src/components/canvas/canvas-assistant-panel.tsx");
 assert.match(assistantPanel, /submitMessage/);
 assert.match(assistantPanel, /已应用.*项操作/);
 assert.match(workspace, /applyAssistantActions/);
+assert.match(workspace, /assistantNodeContexts/);
+assert.match(workspace, /referenceLabels/);
+assert.match(workspace, /libraryItemId/);
 assert.match(workspace, /action\.type === "add_generator"/);
 assert.match(workspace, /action\.type === "select_nodes"/);
 assert.match(workspace, /action\.type === "connect_nodes"/);
@@ -122,9 +138,46 @@ assert.equal(localVideoPrompt.actions[0].title, "Seedance 视频提示词");
 assert.match(localVideoPrompt.actions[0].prompt, /一个主要动作/);
 assert.match(localVideoPrompt.actions[0].prompt, /已有 @ImageN、@VideoN、@AudioN 标签必须原样保留/);
 
+const localReplacementPrompt = localCanvasAssistantFallback({
+  message: "把视频里的鞋替换成参考图中的鞋",
+  nodes: [
+    { kind: "media", title: "动作视频", mediaType: "video", referenceLabels: [{ generatorId: "generator-1", label: "@Video2" }] },
+    { kind: "media", title: "目标鞋", mediaType: "image", referenceLabels: [{ generatorId: "generator-1", label: "@Image3" }] },
+  ],
+});
+assert.equal(localReplacementPrompt.actions[0].type, "add_prompt");
+assert.match(localReplacementPrompt.actions[0].prompt, /@Video2/);
+assert.match(localReplacementPrompt.actions[0].prompt, /@Image3/);
+assert.match(localReplacementPrompt.actions[0].prompt, /运动模糊/);
+assert.match(localReplacementPrompt.actions[0].prompt, /禁止残留原对象/);
+
+const sampleTimestamps = canvasAssistantVideoTimestamps(15.734);
+assert.equal(sampleTimestamps.length, 5);
+assert.ok(sampleTimestamps.every((value, index) => value > 0 && value < 15.734 && (index === 0 || value > sampleTimestamps[index - 1])));
+assert.deepEqual(canvasAssistantVideoTimestamps(0), []);
+
+const focusNodes = [
+  { id: "generator-a", kind: "generator" },
+  { id: "generator-b", kind: "generator" },
+  { id: "prompt-a", kind: "prompt", connectedNodeIds: ["generator-a"] },
+  { id: "video-a", kind: "media", mediaType: "video", connectedNodeIds: ["generator-a"], referenceLabels: [{ generatorId: "generator-a", label: "@Video1" }] },
+  { id: "image-a", kind: "media", mediaType: "image", connectedNodeIds: ["generator-a"], referenceLabels: [{ generatorId: "generator-a", label: "@Image1" }] },
+  { id: "video-b", kind: "media", mediaType: "video", connectedNodeIds: ["generator-b"], referenceLabels: [{ generatorId: "generator-b", label: "@Video1" }] },
+  { id: "image-b", kind: "media", mediaType: "image", connectedNodeIds: ["generator-b"], referenceLabels: [{ generatorId: "generator-b", label: "@Image1" }] },
+];
+assert.deepEqual(resolveCanvasAssistantMediaFocus(focusNodes, "帮我写换物提示词"), {
+  nodeIds: [], generatorId: "", ambiguous: true, reason: "存在多个生成链路且未选中或点名素材",
+});
+assert.deepEqual(resolveCanvasAssistantMediaFocus(focusNodes.map((node) => node.id === "generator-b" ? { ...node, selected: true } : node), "帮我写换物提示词").nodeIds, ["video-b", "image-b"]);
+assert.deepEqual(resolveCanvasAssistantMediaFocus(focusNodes.map((node) => node.id === "prompt-a" ? { ...node, selected: true } : node), "优化选中提示词").nodeIds, ["video-a", "image-a"]);
+assert.equal(resolveCanvasAssistantMediaFocus(focusNodes, "使用 @Video1 和 @Image1").ambiguous, true);
+assert.deepEqual(resolveCanvasAssistantMediaFocus(focusNodes.map((node) => node.id === "image-a" ? { ...node, selected: true } : node), "分析选中素材").nodeIds, ["video-a", "image-a"]);
+assert.deepEqual(resolveCanvasAssistantMediaFocus(focusNodes.filter((node) => !["generator-b", "video-b", "image-b"].includes(node.id)), "分析当前链路").nodeIds, ["video-a", "image-a"]);
+
 assert.equal(inferSeedancePromptMode({ prompt: "参考 @Image1 的人物和 @Video1 的运镜" }), "reference-to-video");
 assert.equal(inferSeedancePromptMode({ prompt: "参考上传素材的动作", hasImage: true, referenceMediaTypes: ["video"] }), "reference-to-video");
 assert.equal(inferSeedancePromptMode({ prompt: "将 @Video1 延长为下一段" }), "extend");
+assert.equal(inferSeedancePromptMode({ prompt: "把视频里面的鞋替换成参考图中的鞋" }), "edit");
 assert.equal(inferSeedancePromptMode({ prompt: "把故事拆成五个分镜" }), "storyboard");
 const referenceGuidance = seedancePromptGuidance({
   prompt: "参考 @Image1 的人物、@Video1 的动作和 @Audio1 的节奏",

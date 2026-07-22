@@ -59,6 +59,7 @@ export type PromptOptimizeResult = PromptOptimizeSuccess | PromptOptimizeFailure
 export type PromptModelCall = {
   systemPrompt: string;
   userPrompt: string;
+  images?: Array<{ label: string; description: string; dataUrl: string }>;
   requestId?: string;
   timeoutMs: number;
 };
@@ -465,6 +466,17 @@ function providerRetryable(status: number) {
   return RETRYABLE_PROVIDER_STATUSES.has(status);
 }
 
+function promptUserContent(input: PromptModelCall) {
+  if (!input.images?.length) return input.userPrompt;
+  return [
+    { type: "text", text: input.userPrompt },
+    ...input.images.slice(0, 8).flatMap((image) => [
+      { type: "text", text: `${image.label}：${image.description}` },
+      { type: "image_url", image_url: { url: image.dataUrl } },
+    ]),
+  ];
+}
+
 function providerConfigError(input: PromptModelCall, message: string, code: "NEW_API_CONFIG_MISSING" | "NEW_API_CONFIG_INVALID" | "NEW_API_DISABLED" = "NEW_API_CONFIG_MISSING") {
   return new NewApiError({
     code,
@@ -571,7 +583,7 @@ async function callPromptProvider(provider: ProviderConfig, input: PromptModelCa
         max_tokens: promptOptimizerMaxTokens(),
         messages: [
           { role: "system", content: input.systemPrompt },
-          { role: "user", content: input.userPrompt },
+          { role: "user", content: promptUserContent(input) },
         ],
       }),
       signal: AbortSignal.timeout(input.timeoutMs),
@@ -644,7 +656,7 @@ function createNewApiAdminPromptModelCaller(client: NewApiHttpClient): PromptMod
         max_tokens: promptOptimizerMaxTokens(),
         messages: [
           { role: "system", content: input.systemPrompt },
-          { role: "user", content: input.userPrompt },
+          { role: "user", content: promptUserContent(input) },
         ],
       },
     });

@@ -1,8 +1,9 @@
 import { type NextRequest, NextResponse } from "next/server";
 
 import { authRequestContext, authResultResponse, csrfFailure, isInternalCanvasHostname, requireAuthSession, requireCsrf } from "@/lib/server/auth";
-import { CanvasAssistantError, getCanvasAssistantService } from "@/lib/server/canvas-assistant";
-import { getInternalCanvasAccess } from "@/lib/server/internal-canvas-access";
+import { CanvasAssistantError, getCanvasAssistantService, type CanvasAssistantInput } from "@/lib/server/canvas-assistant";
+import { buildCanvasAssistantVisualEvidence } from "@/lib/server/canvas-assistant-media";
+import { getInternalCanvasAccess, getInternalCanvasWorkspaceMemberIds } from "@/lib/server/internal-canvas-access";
 import { InMemoryRateLimiter } from "@/lib/server/auth/rate-limit";
 
 export const runtime = "nodejs";
@@ -26,8 +27,13 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ ok: false, code: "rate_limited", message: "请求太频繁，请稍后再试。", retryAfterSeconds: rate.retryAfterSeconds }, { status: 429 });
   }
   try {
-    const body = await request.json();
-    const result = await getCanvasAssistantService().answer(body, context.requestId);
+    const body = await request.json() as Partial<CanvasAssistantInput> & { scope?: unknown };
+    const scope = body.scope === "personal" ? "personal" : "shared";
+    const ownerIds = scope === "shared"
+      ? (await getInternalCanvasWorkspaceMemberIds(session.user.local_user_id)).memberIds
+      : [session.user.local_user_id];
+    const visualEvidence = await buildCanvasAssistantVisualEvidence(body.nodes, ownerIds, typeof body.message === "string" ? body.message : "");
+    const result = await getCanvasAssistantService().answer(body, context.requestId, visualEvidence);
     return NextResponse.json(result);
   } catch (error) {
     if (error instanceof CanvasAssistantError) {

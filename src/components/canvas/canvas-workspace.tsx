@@ -96,7 +96,7 @@ import {
 } from "@xyflow/react";
 
 import { BrandLogo } from "@/components/brand-logo";
-import { CanvasAssistantPanel } from "@/components/canvas/canvas-assistant-panel";
+import { CanvasAssistantPanel, type CanvasAssistantNodeContext } from "@/components/canvas/canvas-assistant-panel";
 import { CanvasCommandPalette, type CanvasCommand } from "@/components/canvas/canvas-command-palette";
 import { CanvasSelectionHint, CanvasShortcutsPanel } from "@/components/canvas/canvas-shortcuts-panel";
 import {
@@ -1532,6 +1532,41 @@ function CanvasWorkspaceInner({
       references[promptNode.id] = options;
     });
     return references;
+  }, [edges, nodes]);
+
+  const assistantNodeContexts = useMemo<CanvasAssistantNodeContext[]>(() => {
+    const nodeMap = new Map(nodes.map((node) => [node.id, node]));
+    const labelsByMediaNode = new Map<string, Array<{ generatorId: string; label: string }>>();
+    nodes.filter((node) => node.data.kind === "generator").forEach((generator) => {
+      const mediaIds = new Set(edges.filter((edge) => edge.target === generator.id && nodeMap.get(edge.source)?.data.kind === "media").map((edge) => edge.source));
+      const counts: Record<CanvasMediaType, number> = { image: 0, video: 0, audio: 0 };
+      nodes.forEach((node) => {
+        if (!mediaIds.has(node.id) || node.data.kind !== "media") return;
+        const mediaType = node.data.mediaType || "image";
+        counts[mediaType] += 1;
+        const label = `@${mediaType === "video" ? "Video" : mediaType === "audio" ? "Audio" : "Image"}${counts[mediaType]}`;
+        labelsByMediaNode.set(node.id, [...(labelsByMediaNode.get(node.id) || []), { generatorId: generator.id, label }]);
+      });
+    });
+
+    return nodes.map((node) => ({
+      id: node.id,
+      kind: node.data.kind,
+      title: node.data.title,
+      prompt: node.data.kind === "prompt" ? node.data.prompt : undefined,
+      selected: Boolean(node.selected),
+      mediaType: node.data.kind === "media" ? node.data.mediaType : undefined,
+      libraryItemId: node.data.kind === "media" ? node.data.libraryItemId : undefined,
+      connectedNodeIds: [...new Set(edges.flatMap((edge) => edge.source === node.id ? [edge.target] : edge.target === node.id ? [edge.source] : []))],
+      referenceLabels: labelsByMediaNode.get(node.id),
+      generationKind: node.data.kind === "generator" ? node.data.generationKind : undefined,
+      providerId: node.data.kind === "generator" ? node.data.providerId : undefined,
+      ratio: node.data.kind === "generator" ? node.data.ratio : undefined,
+      duration: node.data.kind === "generator" ? node.data.duration : undefined,
+      resolution: node.data.kind === "generator" ? node.data.resolution : undefined,
+      referenceBindings: node.data.referenceBindings,
+      sequenceState: node.data.sequenceState,
+    }));
   }, [edges, nodes]);
 
   const uniquePresenceMembers = useMemo(
@@ -3191,16 +3226,8 @@ function CanvasWorkspaceInner({
           {assistantOpen && isInternalCanvas ? (
             <CanvasAssistantPanel
               canvasTitle={title}
-              nodes={nodes.map((node) => ({
-                id: node.id,
-                kind: node.data.kind,
-                title: node.data.title,
-                prompt: node.data.kind === "prompt" ? node.data.prompt : undefined,
-                selected: Boolean(node.selected),
-                mediaType: node.data.kind === "media" ? node.data.mediaType : undefined,
-                referenceBindings: node.data.referenceBindings,
-                sequenceState: node.data.sequenceState,
-              }))}
+              scope={canvasScope()}
+              nodes={assistantNodeContexts}
               onApply={applyAssistantActions}
               onClose={() => setAssistantOpen(false)}
             />

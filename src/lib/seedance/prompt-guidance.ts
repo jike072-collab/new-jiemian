@@ -29,7 +29,7 @@ export function inferSeedancePromptMode(input: SeedancePromptContext): SeedanceP
   if (/分镜|镜头脚本|多集|连续项目|故事拆解|剧本转视频/u.test(prompt)) return "storyboard";
   if (/延长|续写|续拍|继续上一段|接着上一段|下一段视频|下一集/u.test(prompt)) return "extend";
   if (/首帧|尾帧|首尾帧|第一帧|最后一帧|first\s*frame|last\s*frame/iu.test(prompt)) return "first-last-frame";
-  if (/编辑视频|修改视频|替换视频中|删除视频中|改变视频中|重剪|局部修改/u.test(prompt)) return "edit";
+  if (/编辑视频|修改视频|视频换物|局部替换|重剪|局部修改|(?:替换|换成|换掉|删除|移除).{0,16}(?:视频中|画面中|原视频|鞋|服装|产品|物体)|视频.{0,16}(?:替换|换成|换掉|删除|移除)/u.test(prompt)) return "edit";
   if (/@Video\d+\b/i.test(prompt) || input.referenceMediaTypes?.includes("video")) return "reference-to-video";
   if (/@Image\d+\b/i.test(prompt) || input.referenceMediaTypes?.includes("image") || input.hasImage) return "image-to-video";
   return "text-to-video";
@@ -62,7 +62,10 @@ export function seedancePromptGuidance(input: SeedancePromptContext) {
   } else if (mode === "first-last-frame") {
     guidance.push("明确哪张图是首帧、哪张图是尾帧，描述中间连续变化和运动方向，避免无依据的切镜、跳变或新增主体。");
   } else if (mode === "edit") {
-    guidance.push("先写要修改的对象、区域和动作，再写必须保留的身份、结构、场景、镜头和声音；不要把编辑任务改写成从零生成。");
+    guidance.push(
+      "先写基础视频引用、目标对象、目标图片引用和替换范围，再写必须保留的人物、动作、场景、镜头、光线和声音；不要把编辑任务改写成从零生成。",
+      "替换对象要随原对象逐帧匹配位置、尺寸、透视、形变、遮挡、运动模糊、接触阴影和离地状态；禁止残留原对象、叠加两个对象、复制目标或改变未指定区域。",
+    );
   } else if (mode === "extend") {
     guidance.push("续写必须从已成功视频的实际结束画面、人物状态、运动方向和声音状态开始，不重复已经完成的情节，也不提前泄露后续保留情节。");
   } else if (mode === "storyboard") {
@@ -94,5 +97,6 @@ export const seedanceCanvasAssistantRules = [
   "引用标签只使用当前系统支持的 @ImageN、@VideoN、@AudioN，必须原样保留，不翻译、不重编号、不编造引用。",
   "每个引用素材只指定一个主要职责，并说明需要转移和不要转移的内容；动作或运镜参考不得覆盖人物身份、产品结构或场景约束。",
   "普通单段视频优先一个主要主体、一个主要动作和一个主要运镜；长故事、多镜头或多集任务才拆成多个提示词节点。",
+  "视频换物和局部替换必须使用准确的视频与图片引用标签，逐帧锁定替换对象的透视、遮挡、运动模糊和接触关系，同时保护所有未指定内容。",
   "续写或延长必须基于画布中已成功视频的实际结束状态；缺少成功视频或结束状态时先要求用户补充，actions 必须为空。",
 ];
