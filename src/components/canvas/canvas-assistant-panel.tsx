@@ -1,7 +1,7 @@
 "use client";
 
 import { Bot, Check, LoaderCircle, Send, Sparkles, WandSparkles, X } from "lucide-react";
-import { useMemo, useRef, useState, type FormEvent, type KeyboardEvent } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent, type KeyboardEvent } from "react";
 
 import { fetchJsonWithCsrf } from "@/lib/client/api";
 import { normalizeCanvasAssistantResponse, type CanvasAssistantAction, type CanvasAssistantResponse } from "@/lib/canvas/assistant";
@@ -34,12 +34,16 @@ export function CanvasAssistantPanel({
   canvasTitle,
   scope,
   nodes,
+  mentionSelection,
+  onMentionModeChange,
   onApply,
   onClose,
 }: {
   canvasTitle: string;
   scope: "personal" | "shared";
   nodes: CanvasAssistantNodeContext[];
+  mentionSelection: { nodeId: string; revision: number } | null;
+  onMentionModeChange: (active: boolean) => void;
   onApply: (actions: CanvasAssistantAction[]) => void;
   onClose: () => void;
 }) {
@@ -55,6 +59,7 @@ export function CanvasAssistantPanel({
   const [mentionIndex, setMentionIndex] = useState(0);
   const [mentionedNodeIds, setMentionedNodeIds] = useState<string[]>([]);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const handledMentionRevisionRef = useRef(0);
   const contextNodes = useMemo(() => nodes.slice(0, 120), [nodes]);
   const selectedNodes = useMemo(() => nodes.filter((node) => node.selected), [nodes]);
   const mentionedNodes = useMemo(() => nodes.filter((node) => mentionedNodeIds.includes(node.id)), [mentionedNodeIds, nodes]);
@@ -91,7 +96,7 @@ export function CanvasAssistantPanel({
     setMentionIndex(0);
   }
 
-  function selectMention(node: CanvasAssistantNodeContext) {
+  const selectMention = useCallback((node: CanvasAssistantNodeContext) => {
     if (!mentionQuery) return;
     const token = assistantMentionToken(node);
     const next = `${input.slice(0, mentionQuery.start)}${token} ${input.slice(mentionQuery.end)}`;
@@ -103,7 +108,21 @@ export function CanvasAssistantPanel({
       textareaRef.current?.focus();
       textareaRef.current?.setSelectionRange(cursor, cursor);
     });
-  }
+  }, [input, mentionQuery]);
+
+  useEffect(() => {
+    onMentionModeChange(Boolean(mentionQuery));
+  }, [mentionQuery, onMentionModeChange]);
+
+  useEffect(() => () => onMentionModeChange(false), [onMentionModeChange]);
+
+  useEffect(() => {
+    if (!mentionQuery || !mentionSelection || mentionSelection.revision <= handledMentionRevisionRef.current) return;
+    const node = contextNodes.find((candidate) => candidate.id === mentionSelection.nodeId);
+    if (!node || node.kind === "group") return;
+    handledMentionRevisionRef.current = mentionSelection.revision;
+    selectMention(node);
+  }, [contextNodes, mentionQuery, mentionSelection, selectMention]);
 
   function handleComposerKeyDown(event: KeyboardEvent<HTMLTextAreaElement>) {
     if (!mentionQuery || !mentionCandidates.length) return;

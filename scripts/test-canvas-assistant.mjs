@@ -11,6 +11,7 @@ const assistantTypes = read("src/lib/canvas/assistant.ts");
 const assistantMedia = read("src/lib/server/canvas-assistant-media.ts");
 const optimizer = read("src/lib/server/prompts/optimizer.ts");
 const workspace = read("src/components/canvas/canvas-workspace.tsx");
+const canvasCss = read("src/app/canvas/canvas.css");
 const { canvasAssistantVideoTimestamps, localCanvasAssistantFallback, normalizeCanvasAssistantResponse } = await import(new URL("../src/lib/canvas/assistant.ts", import.meta.url));
 const { resolveCanvasAssistantMediaFocus } = await import(new URL("../src/lib/canvas/assistant-focus.ts", import.meta.url));
 const { inferSeedancePromptMode, seedancePromptGuidance, seedanceReferenceIssues } = await import(new URL("../src/lib/seedance/prompt-guidance.ts", import.meta.url));
@@ -58,6 +59,10 @@ assert.match(workspace, /flowRef\.current\.setCenter/);
 const assistantPanel = read("src/components/canvas/canvas-assistant-panel.tsx");
 assert.match(assistantPanel, /submitMessage/);
 assert.match(assistantPanel, /已应用.*项操作/);
+assert.match(assistantPanel, /mentionSelection/);
+assert.match(assistantPanel, /onMentionModeChange\(Boolean\(mentionQuery\)\)/);
+assert.match(assistantPanel, /contextNodes\.find\(\(candidate\) => candidate\.id === mentionSelection\.nodeId\)/);
+assert.match(assistantPanel, /mentionSelection\.revision <= handledMentionRevisionRef\.current/);
 assert.match(workspace, /applyAssistantActions/);
 assert.match(workspace, /assistantNodeContexts/);
 assert.match(workspace, /referenceLabels/);
@@ -68,6 +73,12 @@ assert.match(workspace, /action\.type === "select_nodes"/);
 assert.match(workspace, /action\.type === "connect_nodes"/);
 assert.match(workspace, /action\.type === "group_nodes"/);
 assert.match(workspace, /action\.type === "ungroup"/);
+assert.match(workspace, /assistantMentionMode/);
+assert.match(workspace, /onClickCapture=\{\(event\) => \{/);
+assert.match(workspace, /setAssistantMentionSelection/);
+assert.match(workspace, /node\.data\.kind === "group"/);
+assert.match(canvasCss, /is-assistant-mentioning \.canvas-node:hover/);
+assert.match(canvasCss, /grid-template-columns: minmax\(0, 96px\) minmax\(0, 1fr\)/);
 
 assert.deepEqual(normalizeCanvasAssistantResponse({
   reply: "ok",

@@ -392,6 +392,8 @@ function CanvasWorkspaceInner({
   const [notice, setNotice] = useState("");
   const [infoOpen, setInfoOpen] = useState(false);
   const [assistantOpen, setAssistantOpen] = useState(false);
+  const [assistantMentionMode, setAssistantMentionMode] = useState(false);
+  const [assistantMentionSelection, setAssistantMentionSelection] = useState<{ nodeId: string; revision: number } | null>(null);
   const [shortcutsOpen, setShortcutsOpen] = useState(false);
   const [commandOpen, setCommandOpen] = useState(false);
   const [commandInsertPosition, setCommandInsertPosition] = useState<{ x: number; y: number } | undefined>();
@@ -467,6 +469,11 @@ function CanvasWorkspaceInner({
     setLayersOpen(false);
     setSettingsOpen(false);
     setShortcutsOpen(true);
+  }, []);
+
+  const handleAssistantMentionModeChange = useCallback((active: boolean) => {
+    setAssistantMentionMode(active);
+    if (!active) setAssistantMentionSelection(null);
   }, []);
 
   const dismissSelectionHint = useCallback(() => {
@@ -3051,8 +3058,18 @@ function CanvasWorkspaceInner({
         />
         <section
           ref={stageRef}
-          className="canvas-stage"
+          className={cn("canvas-stage", assistantMentionMode && "is-assistant-mentioning")}
           aria-label="无限画布"
+          onClickCapture={(event) => {
+            if (!assistantOpen || !assistantMentionMode) return;
+            const target = event.target instanceof Element ? event.target : null;
+            const nodeId = target?.closest<HTMLElement>("[data-canvas-node-id]")?.dataset.canvasNodeId;
+            const node = nodeId ? nodesRef.current.find((candidate) => candidate.id === nodeId) : null;
+            if (!node || node.data.kind === "group") return;
+            event.preventDefault();
+            event.stopPropagation();
+            setAssistantMentionSelection((current) => ({ nodeId: node.id, revision: (current?.revision || 0) + 1 }));
+          }}
           onDoubleClickCapture={(event) => {
             const target = event.target instanceof Element ? event.target : null;
             if (!target || target.closest(".react-flow__node, .react-flow__edge, .react-flow__panel, .canvas-bottom-dock, aside, button, input, textarea, select, [role='dialog']")) return;
@@ -3294,8 +3311,14 @@ function CanvasWorkspaceInner({
               canvasTitle={title}
               scope={canvasScope()}
               nodes={assistantNodeContexts}
+              mentionSelection={assistantMentionSelection}
+              onMentionModeChange={handleAssistantMentionModeChange}
               onApply={applyAssistantActions}
-              onClose={() => setAssistantOpen(false)}
+              onClose={() => {
+                setAssistantOpen(false);
+                setAssistantMentionMode(false);
+                setAssistantMentionSelection(null);
+              }}
             />
           ) : null}
           {shortcutsOpen ? <CanvasShortcutsPanel onClose={() => setShortcutsOpen(false)} /> : null}
