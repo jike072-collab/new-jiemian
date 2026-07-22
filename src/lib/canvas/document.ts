@@ -130,6 +130,7 @@ export function removeUnavailableLibraryItemsFromCanvasDocument(value: unknown, 
     && node.data.libraryItemId
     && node.data.status !== "queued"
     && node.data.status !== "generating"
+    && node.data.status !== "failed"
     && !availableIds.has(node.data.libraryItemId)
       ? [node.data.libraryItemId]
       : []

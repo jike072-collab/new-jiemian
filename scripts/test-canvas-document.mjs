@@ -137,6 +137,7 @@ const reconciledMedia = removeUnavailableLibraryItemsFromCanvasDocument({
     { id: "media-keep", type: "canvas", position: { x: 0, y: 0 }, data: { kind: "media", title: "keep", mediaType: "image", libraryItemId: "library-keep", status: "done" } },
     { id: "media-expired", type: "canvas", position: { x: 200, y: 0 }, data: { kind: "media", title: "expired", mediaType: "video", libraryItemId: "library-expired", status: "done" } },
     { id: "media-pending", type: "canvas", position: { x: 200, y: 200 }, data: { kind: "media", title: "pending", mediaType: "video", libraryItemId: "library-pending", status: "generating" } },
+    { id: "media-failed", type: "canvas", position: { x: 200, y: 400 }, data: { kind: "media", title: "failed", mediaType: "video", libraryItemId: "library-failed", status: "failed", error: "视频生成任务失败。" } },
     { id: "generator-after-expired", type: "canvas", position: { x: 400, y: 0 }, data: { kind: "generator", title: "next", generationKind: "video", sourceNodeIds: ["media-expired"], outputNodeId: "media-expired" } },
   ],
   edges: [
@@ -146,7 +147,8 @@ const reconciledMedia = removeUnavailableLibraryItemsFromCanvasDocument({
   viewport: { x: 0, y: 0, zoom: 1 },
 }, ["library-keep"]);
 assert.deepEqual(reconciledMedia.removedNodeIds, ["media-expired"]);
-assert.deepEqual(reconciledMedia.document.nodes.map((node) => node.id), ["media-keep", "media-pending", "generator-after-expired"]);
+assert.deepEqual(reconciledMedia.document.nodes.map((node) => node.id), ["media-keep", "media-pending", "media-failed", "generator-after-expired"]);
+assert.equal(reconciledMedia.document.nodes.find((node) => node.id === "media-failed")?.data.error, "视频生成任务失败。");
 assert.deepEqual(reconciledMedia.document.edges.map((edge) => edge.id), ["edge-keep"]);
 assert.deepEqual(reconciledMedia.document.nodes.find((node) => node.id === "generator-after-expired")?.data.sourceNodeIds, []);
 assert.equal(reconciledMedia.document.nodes.find((node) => node.id === "generator-after-expired")?.data.outputNodeId, undefined);
