@@ -42,6 +42,7 @@ export function seedancePromptGuidance(input: SeedancePromptContext) {
   const guidance = [
     `Seedance 任务模式：${modeLabels[mode]}。`,
     "用一个明确创作意图统领主体动作、主要运镜、光线和声音；优先具体可见的动作，删除空泛的电影感、专业感和氛围感堆砌。",
+    "Seedance 可以理解紧凑的明确指令：只写影响结果的关键信息，同一约束只写一次，保护项合并表达。",
     "普通单段视频保持简单：一个主要主体、一个主要动作、一个主要运镜；只有故事或多镜头需求才拆分时间段。",
   ];
 
@@ -99,6 +100,7 @@ export function seedanceReferenceIssues(prompt: string, availableLabels: string[
 
 export const seedanceCanvasAssistantRules = [
   "处理 Seedance 视频提示词时，先判断是文生视频、图生视频、参考生视频、首尾帧、编辑、续写还是分镜任务。",
+  "Seedance 提示词保持紧凑，只写影响结果的关键目标、素材职责、时序和禁止项；同一约束不得换用近义句重复。",
   "引用标签只使用当前系统支持的 @ImageN、@VideoN、@AudioN，必须原样保留，不翻译、不重编号、不编造引用。",
   "每个引用素材只指定一个主要职责，并说明需要转移和不要转移的内容；动作或运镜参考不得覆盖人物身份、产品结构或场景约束。",
   "普通单段视频优先一个主要主体、一个主要动作和一个主要运镜；长故事、多镜头或多集任务才拆成多个提示词节点。",

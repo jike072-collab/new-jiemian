@@ -170,6 +170,8 @@ assert.match(localReplacementPrompt.actions[0].prompt, /运动模糊/);
 assert.match(localReplacementPrompt.actions[0].prompt, /禁止残留原对象/);
 assert.match(localReplacementPrompt.actions[0].prompt, /光脚的一侧必须保持光脚/);
 assert.match(localReplacementPrompt.actions[0].prompt, /原视频中该侧鞋首次出现时才同步出现替换鞋/);
+assert.ok(localReplacementPrompt.actions[0].prompt.length <= 500);
+assert.equal((localReplacementPrompt.actions[0].prompt.match(/动作/g) || []).length, 1);
 
 const sampleTimestamps = canvasAssistantVideoTimestamps(15.734);
 assert.equal(sampleTimestamps.length, 5);
@@ -217,6 +219,7 @@ const replacementGuidance = seedancePromptGuidance({
 }).join("\n");
 assert.match(replacementGuidance, /原对象不存在时保持不存在/);
 assert.match(replacementGuidance, /只作为不可误改的保护项/);
+assert.match(replacementGuidance, /同一约束只写一次/);
 const actionFocusedReplacementGuidance = seedancePromptGuidance({
   prompt: "把视频里的鞋替换成 @Image1 的鞋，并参考 @Video1 的模特动作和镜头",
 }).join("\n");
