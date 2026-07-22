@@ -38,6 +38,7 @@ export function inferSeedancePromptMode(input: SeedancePromptContext): SeedanceP
 export function seedancePromptGuidance(input: SeedancePromptContext) {
   const mode = inferSeedancePromptMode(input);
   const prompt = input.prompt;
+  const explicitlyReferencesContext = /(?:参考|保持|复刻|模仿|沿用|锁定).{0,12}(?:动作|环境|场景|运镜|镜头)|(?:动作|环境|场景|运镜|镜头).{0,12}(?:参考|保持|复刻|模仿|沿用|锁定)/u.test(prompt);
   const guidance = [
     `Seedance 任务模式：${modeLabels[mode]}。`,
     "用一个明确创作意图统领主体动作、主要运镜、光线和声音；优先具体可见的动作，删除空泛的电影感、专业感和氛围感堆砌。",
@@ -63,8 +64,12 @@ export function seedancePromptGuidance(input: SeedancePromptContext) {
     guidance.push("明确哪张图是首帧、哪张图是尾帧，描述中间连续变化和运动方向，避免无依据的切镜、跳变或新增主体。");
   } else if (mode === "edit") {
     guidance.push(
-      "先写基础视频引用、目标对象、目标图片引用和替换范围，再写必须保留的人物、动作、场景、镜头、光线和声音；不要把编辑任务改写成从零生成。",
+      "用户指定的编辑对象和修改目标是最高优先级；先写基础视频引用、目标对象、目标图片引用和替换范围，不要把编辑任务改写成从零生成。",
+      "先按时间顺序识别原对象的存在、缺失、首次出现和消失；只在原对象存在时替换，原对象不存在时保持不存在，替换对象必须与原对象同时出现和消失。",
       "替换对象要随原对象逐帧匹配位置、尺寸、透视、形变、遮挡、运动模糊、接触阴影和离地状态；禁止残留原对象、叠加两个对象、复制目标或改变未指定区域。",
+      explicitlyReferencesContext
+        ? "用户已明确要求参考动作、环境、场景或镜头，应围绕被点名的内容进行必要分析，同时不得覆盖主要编辑目标。"
+        : "用户未明确要求参考动作、环境、场景或镜头时，这些内容只作为不可误改的保护项，不展开描述，不让它们抢占编辑目标。",
     );
   } else if (mode === "extend") {
     guidance.push("续写必须从已成功视频的实际结束画面、人物状态、运动方向和声音状态开始，不重复已经完成的情节，也不提前泄露后续保留情节。");

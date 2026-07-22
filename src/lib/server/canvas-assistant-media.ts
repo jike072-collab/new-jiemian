@@ -206,14 +206,15 @@ export async function buildCanvasAssistantVisualEvidence(nodes: unknown, ownerId
       }
 
       const duration = await probeVideoDuration(inputPath);
-      const timestamps = canvasAssistantVideoTimestamps(duration);
+      const timestamps = canvasAssistantVideoTimestamps(duration, message);
+      const samplingDescription = timestamps.length > 5 ? "已按用户的时点问题加密采样视频前段" : "已均匀采样视频时间轴";
       const frames = await Promise.all(timestamps.map(async (timestamp, index) => ({
         label,
-        description: `视频“${candidate.title}”代表帧 ${index + 1}/${timestamps.length}，时间约 ${timestamp.toFixed(1)} 秒。按顺序理解原视频主体、动作、镜头、遮挡和场景，不要把单帧误当成独立图片任务。`,
+        description: `视频“${candidate.title}”代表帧 ${index + 1}/${timestamps.length}，时间约 ${timestamp.toFixed(1)} 秒。按顺序优先识别用户指定对象的存在、缺失、出现、消失和遮挡状态；动作、镜头和场景只按用户要求分析，不要把单帧误当成独立图片任务。`,
         dataUrl: await jpegDataUrl(await captureVideoFrame(inputPath, timestamp)),
       })));
       images.push(...frames.slice(0, maxEvidenceItems - images.length));
-      summaries.push(`${label}=视频“${candidate.title}”（${duration.toFixed(1)}秒，已提供${frames.length}个时序代表帧）`);
+      summaries.push(`${label}=视频“${candidate.title}”（${duration.toFixed(1)}秒，${samplingDescription}，已提供${frames.length}个时序代表帧）`);
     } catch {
       const label = candidateLabel(candidate, selection.generatorId);
       summaries.push(`${label}=素材“${candidate.title}”（视觉读取失败，只能使用节点元数据）`);

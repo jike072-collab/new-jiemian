@@ -40,10 +40,15 @@ assert.match(service, /准确 @ImageN、@VideoN、@AudioN 标签/);
 assert.match(service, /attachUnambiguousPromptTargets/);
 assert.match(service, /targetGeneratorId/);
 assert.match(service, /@Video\\d\+/);
+assert.match(service, /用户明确说出的目标和关注点具有最高优先级/);
+assert.match(service, /原对象不存在时目标物也必须不存在/);
+assert.match(service, /光脚一侧保持光脚/);
 assert.match(assistantMedia, /resolveLibraryMediaForOwners/);
 assert.match(assistantMedia, /spawn\("ffmpeg"/);
 assert.match(assistantMedia, /maxEvidenceItems = 8/);
 assert.match(assistantMedia, /canvasAssistantVideoTimestamps/);
+assert.match(assistantMedia, /canvasAssistantVideoTimestamps\(duration, message\)/);
+assert.match(assistantMedia, /加密采样视频前段/);
 assert.match(optimizer, /promptUserContent/);
 assert.match(optimizer, /image_url/);
 assert.match(assistantTypes, /sourceActions.*slice\(0, 8\)/);
@@ -163,10 +168,17 @@ assert.match(localReplacementPrompt.actions[0].prompt, /@Video2/);
 assert.match(localReplacementPrompt.actions[0].prompt, /@Image3/);
 assert.match(localReplacementPrompt.actions[0].prompt, /运动模糊/);
 assert.match(localReplacementPrompt.actions[0].prompt, /禁止残留原对象/);
+assert.match(localReplacementPrompt.actions[0].prompt, /光脚的一侧必须保持光脚/);
+assert.match(localReplacementPrompt.actions[0].prompt, /原视频中该侧鞋首次出现时才同步出现替换鞋/);
 
 const sampleTimestamps = canvasAssistantVideoTimestamps(15.734);
 assert.equal(sampleTimestamps.length, 5);
 assert.ok(sampleTimestamps.every((value, index) => value > 0 && value < 15.734 && (index === 0 || value > sampleTimestamps[index - 1])));
+const earlyTimelineTimestamps = canvasAssistantVideoTimestamps(15.734, "分析开头前几秒一只脚光脚，鞋什么时候出现");
+assert.equal(earlyTimelineTimestamps.length, 7);
+assert.ok(earlyTimelineTimestamps.slice(0, 6).every((value) => value <= 15.734 * 0.321));
+assert.ok(earlyTimelineTimestamps.some((value) => value >= 3 && value <= 3.7));
+assert.ok(earlyTimelineTimestamps.at(-1) > 15.734 * 0.8);
 assert.deepEqual(canvasAssistantVideoTimestamps(0), []);
 
 const focusNodes = [
@@ -200,6 +212,16 @@ assert.match(referenceGuidance, /不翻译、不重编号、不新增不存在�
 assert.match(referenceGuidance, /音频引用只控制用户指定的音乐、音色、节奏或音效/);
 assert.match(referenceGuidance, /动作或运镜参考不得覆盖图片引用锁定的人物、产品和场景/);
 assert.match(referenceGuidance, /界面时长为 15 秒/);
+const replacementGuidance = seedancePromptGuidance({
+  prompt: "把视频里的鞋替换成 @Image1 的鞋，基础视频是 @Video1",
+}).join("\n");
+assert.match(replacementGuidance, /原对象不存在时保持不存在/);
+assert.match(replacementGuidance, /只作为不可误改的保护项/);
+const actionFocusedReplacementGuidance = seedancePromptGuidance({
+  prompt: "把视频里的鞋替换成 @Image1 的鞋，并参考 @Video1 的模特动作和镜头",
+}).join("\n");
+assert.match(actionFocusedReplacementGuidance, /用户已明确要求参考动作、环境、场景或镜头/);
+assert.doesNotMatch(actionFocusedReplacementGuidance, /只作为不可误改的保护项/);
 assert.deepEqual(seedanceReferenceIssues("@Image1 参考人物，@Video2 参考动作", ["Image1", "Video1"]), {
   missing: ["@Video2"],
   unused: ["@Video1"],

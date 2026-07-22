@@ -29,9 +29,13 @@ export type CanvasAssistantResponse = {
   actions: CanvasAssistantAction[];
 };
 
-export function canvasAssistantVideoTimestamps(durationSeconds: number) {
+export function canvasAssistantVideoTimestamps(durationSeconds: number, message = "") {
   if (!Number.isFinite(durationSeconds) || durationSeconds <= 0) return [];
-  return [0.08, 0.29, 0.5, 0.71, 0.92].map((ratio) => Number(Math.min(durationSeconds - 0.05, Math.max(0, durationSeconds * ratio)).toFixed(3)));
+  const needsEarlyTimeline = /(前面|开头|开始|起初|前几秒|第.{0,3}秒|几秒|时间点|什么时候|何时|出现|消失|光脚|赤脚|穿鞋|没穿|未穿)/u.test(message);
+  const ratios = needsEarlyTimeline
+    ? [0.03, 0.09, 0.16, 0.2, 0.23, 0.32, 0.82]
+    : [0.08, 0.29, 0.5, 0.71, 0.92];
+  return [...new Set(ratios.map((ratio) => Number(Math.min(durationSeconds - 0.05, Math.max(0, durationSeconds * ratio)).toFixed(3))))];
 }
 
 export function localCanvasAssistantFallback(input: {
@@ -101,10 +105,15 @@ export function localCanvasAssistantFallback(input: {
     const imageNode = nodes.find((node) => node.kind === "media" && node.mediaType === "image");
     const videoLabel = videoNode?.referenceLabels?.[0]?.label || "@Video1";
     const imageLabel = imageNode?.referenceLabels?.[0]?.label || "@Image1";
+    const targetTimeline = /(鞋|光脚|赤脚|穿鞋)/u.test(message)
+      ? "逐脚识别原视频中鞋的存在状态：已经穿鞋的一侧从首次可见帧起替换；光脚的一侧必须保持光脚，直到原视频中该侧鞋首次出现时才同步出现替换鞋，禁止提前补鞋或延后出现"
+      : "先逐段识别目标对象在原视频中的存在、缺失、首次出现、消失和被遮挡状态；仅在原对象实际存在的帧中执行替换，原对象不存在时目标物也必须不存在，并严格同步原对象的出现和消失时间点";
     const prompt = [
-      `执行视频局部换物编辑：以 ${videoLabel} 作为唯一基础视频，完整保留原视频的主体身份、身体结构、动作轨迹、速度节奏、镜头位置、构图、场景、光线、色调、时长和声音`,
+      `执行视频局部换物编辑：以 ${videoLabel} 作为唯一基础视频，用户指定的替换目标是最高优先级；先分析目标对象本身的时间轴，不扩写无关动作或环境`,
       `仅将原视频中用户指定的目标对象替换为 ${imageLabel} 中的目标物体；以 ${imageLabel} 只锁定该物体的真实外观、轮廓、结构比例、颜色、材质、纹理和关键细节，不转移参考图的白底、排版、视角或其他对象`,
+      targetTimeline,
       "替换结果必须逐帧跟随原对象的位置、尺寸、朝向、透视、形变和运动轨迹；在快速运动、遮挡、出入画、旋转、接触、离地和运动模糊期间保持同一物体结构稳定，并匹配原场景的受光、接触阴影和反射",
+      "动作、镜头、构图、场景、光线、色调、时长和声音仅作为防止误改的保护项；除非用户明确要求参考这些内容，否则不展开描述、不改变它们",
       "除指定对象外不修改任何像素语义；禁止残留原对象、叠加新旧对象、复制目标、增加无关物体、改变人物肢体或服装、改变动作和镜头、重绘背景、切镜、变焦、加字、加 Logo、闪烁、漂移、穿模或纹理跳变",
     ].join("。") + "。";
     return {
