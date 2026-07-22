@@ -803,6 +803,18 @@ function normalizeStatus(value: string) {
   return "queued";
 }
 
+function videoJobFailureMessage(payload: unknown) {
+  const reason = nestedString(payload, ["error", "error_message", "message", "detail", "fail_reason", "failed_reason", "reason"]);
+  if (/moderation|content[_\s-]*policy|safety/i.test(reason)) return "视频内容未通过上游审核。";
+  if (/timeout|timed[_\s-]*out/i.test(reason)) return "视频生成任务超时。";
+  return "视频生成任务失败。";
+}
+
+function canAccessVideoJob(jobOwner: string | null, localUserId: string | null, allowedOwnerIds: readonly string[] = []) {
+  if (!localUserId || !jobOwner) return true;
+  return jobOwner === localUserId || allowedOwnerIds.includes(jobOwner);
+}
+
 function deriveStatusUrl(apiUrl: string, jobId: string) {
   if (!jobId) return "";
   try {
@@ -2368,12 +2380,12 @@ async function reconcileFinalizedVideoJob(job: JobRecord, localUserId?: string |
   }
 }
 
-export async function refreshVideoJob(jobId: string, localUserId?: string | null) {
+export async function refreshVideoJob(jobId: string, localUserId?: string | null, allowedOwnerIds: readonly string[] = []) {
   const { readJobs } = await import("./library");
   const job = (await readJobs()).find((item: JobRecord) => item.id === jobId);
   if (!job) throw new Error("任务不存在。");
   const jobOwner = job.ownerLocalUserId || job.billing_local_user_id || null;
-  if (localUserId && jobOwner && jobOwner !== localUserId) {
+  if (!canAccessVideoJob(jobOwner, localUserId || null, allowedOwnerIds)) {
     throw new Error("任务不存在。");
   }
   if (job.status === "done" || job.status === "failed") {
@@ -2405,6 +2417,11 @@ export async function refreshVideoJob(jobId: string, localUserId?: string | null
       status: "failed",
       error: "视频生成任务未找到。",
     });
+    const updated = await updateJob(job.id, {
+      status: "failed",
+      error: "视频生成任务未找到。",
+      billing_state: job.billing_task_id ? job.billing_state || "prechecked" : job.billing_state,
+    }) || job;
     await settleGeneratedTaskBilling({
       localUserId: job.billing_local_user_id || job.ownerLocalUserId || localUserId || null,
       taskId: job.billing_task_id,
@@ -2414,10 +2431,7 @@ export async function refreshVideoJob(jobId: string, localUserId?: string | null
       upstreamModel: provider.model,
       newApiTaskId: job.id,
     });
-    return updateJob(job.id, {
-      status: "failed",
-      billing_state: job.billing_task_id ? job.billing_state || "prechecked" : job.billing_state,
-    }) || job;
+    return updated;
   }
   if (getTokenVeo && shouldKeepGetTokenVeoJobPending(response.status, job.createdAt)) {
     await response.body?.cancel();
@@ -2439,10 +2453,17 @@ export async function refreshVideoJob(jobId: string, localUserId?: string | null
   }
 
   if (status === "failed") {
+    const failureMessage = videoJobFailureMessage(payload);
     await updateLibraryItem(job.libraryItemId, {
       status: "failed",
-      error: "视频生成任务失败。",
+      error: failureMessage,
     });
+    const updated = await updateJob(job.id, {
+      status,
+      progress: output.progress,
+      error: failureMessage,
+      billing_state: job.billing_task_id ? job.billing_state || "prechecked" : job.billing_state,
+    }) || job;
     await settleGeneratedTaskBilling({
       localUserId: job.billing_local_user_id || job.ownerLocalUserId || localUserId || null,
       taskId: job.billing_task_id,
@@ -2453,11 +2474,7 @@ export async function refreshVideoJob(jobId: string, localUserId?: string | null
       upstreamModel: provider.model,
       newApiTaskId: output.jobId || job.id,
     });
-    return updateJob(job.id, {
-      status,
-      progress: output.progress,
-      billing_state: job.billing_task_id ? job.billing_state || "prechecked" : job.billing_state,
-    });
+    return updated;
   }
 
   if (output.url) {
@@ -2637,6 +2654,8 @@ export const providerCallInternalsForTests = {
   isImg2ImageProvider,
   isLocalOpenAiCompatibleEndpoint,
   parseProviderOutput,
+  videoJobFailureMessage,
+  canAccessVideoJob,
   parseImageProviderOutputs,
   planProviderOutputStorage,
   readProviderJson,

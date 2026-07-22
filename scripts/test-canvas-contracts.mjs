@@ -19,6 +19,7 @@ const videoTrimmer = read("src/components/canvas/canvas-video-trimmer.tsx");
 const mediaViewer = read("src/components/canvas/canvas-media-viewer.tsx");
 const shortcutsPanel = read("src/components/canvas/canvas-shortcuts-panel.tsx");
 const libraryRoute = read("src/app/api/library/route.ts");
+const jobsRoute = read("src/app/api/jobs/[id]/route.ts");
 const libraryMediaRoute = read("src/app/api/library/[id]/media/route.ts");
 const filesRoute = read("src/app/api/files/[name]/route.ts");
 const audioRoute = read("src/app/api/canvas/audio/route.ts");
@@ -39,6 +40,11 @@ assert.match(collaborationRoute, /requireAuthSession/);
 assert.match(collaborationRoute, /text\/event-stream/);
 assert.match(collaborationRoute, /subscribeCanvasProjectEvents/);
 assert.match(collaborationRoute, /X-Accel-Buffering/);
+assert.match(jobsRoute, /isInternalCanvasHostname/);
+assert.match(jobsRoute, /getInternalCanvasWorkspaceMemberIds/);
+assert.match(jobsRoute, /refreshVideoJob\(id, session\.user\.local_user_id, allowedOwnerIds\)/);
+assert.match(libraryRoute, /ownerIds\.map\(\(ownerId\) => refreshPendingVideoJobsForOwner\(ownerId\)\)/);
+assert.match(workspace, /canvasJobUrl\(node\.data\.jobId!\)/);
 assert.ok(
   collaborationRoute.indexOf("subscribeCanvasProjectEvents(id") < collaborationRoute.indexOf("const latestProject = await getCanvasProject"),
   "collaboration stream must subscribe before re-reading the latest project",

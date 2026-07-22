@@ -1,7 +1,8 @@
 import { type NextRequest, NextResponse } from "next/server";
 
-import { authResultResponse, requireAuthSession } from "@/lib/server/auth";
+import { authResultResponse, isInternalCanvasHostname, requireAuthSession } from "@/lib/server/auth";
 import { diagnosticErrorResponse } from "@/lib/server/error-diagnostics";
+import { getInternalCanvasWorkspaceMemberIds } from "@/lib/server/internal-canvas-access";
 import { refreshVideoJob } from "@/lib/server/provider-call";
 
 export const runtime = "nodejs";
@@ -14,7 +15,11 @@ export async function GET(
     const session = await requireAuthSession(request);
     if (!session.ok) return authResultResponse(request, session);
     const { id } = await context.params;
-    const job = await refreshVideoJob(id, session.user.local_user_id);
+    const shared = isInternalCanvasHostname(request.headers.get("host")) && request.nextUrl.searchParams.get("scope") === "shared";
+    const allowedOwnerIds = shared
+      ? (await getInternalCanvasWorkspaceMemberIds(session.user.local_user_id)).memberIds
+      : undefined;
+    const job = await refreshVideoJob(id, session.user.local_user_id, allowedOwnerIds);
     return NextResponse.json({
       job: job ? { ...job, sourceUrl: undefined } : job,
     });

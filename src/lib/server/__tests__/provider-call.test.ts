@@ -30,6 +30,17 @@ const provider = {
   endpointType: "images-generations",
 } as const;
 
+test("shared canvas members can refresh another member's video job", () => {
+  assert.equal(providerCallInternalsForTests.canAccessVideoJob("member-b", "member-a"), false);
+  assert.equal(providerCallInternalsForTests.canAccessVideoJob("member-b", "member-a", ["member-a", "member-b"]), true);
+  assert.equal(providerCallInternalsForTests.canAccessVideoJob("member-a", "member-a"), true);
+});
+
+test("video job failures expose safe upstream reasons", () => {
+  assert.equal(providerCallInternalsForTests.videoJobFailureMessage({ status: "failed", error: "MODERATION_ERROR" }), "视频内容未通过上游审核。");
+  assert.equal(providerCallInternalsForTests.videoJobFailureMessage({ status: "failed", error: "provider secret details" }), "视频生成任务失败。");
+});
+
 test("provider references preserve image MIME types for upstream asset validation", () => {
   assert.equal(providerReferenceMimeType("provider-reference-123.png.tmp"), "image/png");
   assert.equal(providerReferenceMimeType("provider-reference-123.jpg.tmp"), "image/jpeg");

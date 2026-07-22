@@ -261,6 +261,10 @@ function canvasLibraryUrl() {
   return `/api/library?scope=${canvasScope()}`;
 }
 
+function canvasJobUrl(id: string) {
+  return `/api/jobs/${encodeURIComponent(id)}?scope=${canvasScope()}`;
+}
+
 function canvasLibraryMediaUrl(id: string) {
   return `/api/library/${encodeURIComponent(id)}/media?scope=${canvasScope()}`;
 }
@@ -1846,7 +1850,7 @@ function CanvasWorkspaceInner({
       let refreshNeeded = false;
       await Promise.all(activeJobs.map(async (node) => {
         try {
-          const data = await fetchJson<{ job: JobRecord | null }>(`/api/jobs/${encodeURIComponent(node.data.jobId!)}`);
+          const data = await fetchJson<{ job: JobRecord | null }>(canvasJobUrl(node.data.jobId!));
           if (cancelled || !data.job) return;
           const terminal = data.job.status === "done" || data.job.status === "failed";
           updateNodeData(node.id, {

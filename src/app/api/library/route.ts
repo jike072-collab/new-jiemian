@@ -27,7 +27,7 @@ export async function GET(request: NextRequest) {
     }));
   }
   void import("@/lib/server/provider-call")
-    .then(({ refreshPendingVideoJobsForOwner }) => refreshPendingVideoJobsForOwner(session.user.local_user_id))
+    .then(({ refreshPendingVideoJobsForOwner }) => Promise.all(ownerIds.map((ownerId) => refreshPendingVideoJobsForOwner(ownerId))))
     .catch(() => undefined);
   const items = shared
     ? filterCanvasLibraryItems(await readLibraryMetadataForOwners(ownerIds), "shared").map((item) => item.output ? {
