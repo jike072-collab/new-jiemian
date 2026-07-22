@@ -1262,12 +1262,12 @@
 .canvas-assistant__composer button { display: grid; width: 36px; height: 36px; place-items: center; align-self: end; border: 0; border-radius: 6px; background: var(--primary); color: white; cursor: pointer; }
 .canvas-assistant__composer button:disabled { cursor: not-allowed; opacity: 0.45; }
 .canvas-assistant__composer svg { width: 16px; }
-.canvas-assistant__mentions { position: absolute; z-index: 3; right: 55px; bottom: calc(100% - 3px); left: 12px; display: grid; max-height: 220px; overflow-x: hidden; overflow-y: auto; border: 1px solid var(--border-strong); border-radius: 6px; background: var(--panel); box-shadow: 0 12px 30px rgba(0, 0, 0, 0.32); padding: 4px; }
-.canvas-assistant__composer .canvas-assistant__mentions button { display: grid; width: 100%; min-width: 0; height: auto; min-height: 42px; grid-template-columns: minmax(0, 96px) minmax(0, 1fr); align-items: center; gap: 8px; border: 0; border-radius: 4px; background: transparent; color: var(--foreground); padding: 6px 8px; text-align: left; }
+.canvas-assistant__mentions { position: absolute; z-index: 3; right: 55px; bottom: calc(100% - 3px); left: 12px; contain: paint; display: grid; max-height: 220px; overflow-x: hidden; overflow-y: auto; border: 1px solid var(--border-strong); border-radius: 6px; background: var(--panel); box-shadow: 0 12px 30px rgba(0, 0, 0, 0.32); padding: 4px; }
+.canvas-assistant__composer .canvas-assistant__mentions button { display: grid; width: 100%; min-width: 0; height: auto; min-height: 42px; grid-template-columns: minmax(0, 96px) minmax(0, 1fr); align-items: center; gap: 8px; overflow: hidden; border: 0; border-radius: 4px; background: transparent; color: var(--foreground); padding: 6px 8px; text-align: left; }
 .canvas-assistant__composer .canvas-assistant__mentions button:hover,
 .canvas-assistant__composer .canvas-assistant__mentions button.is-active { background: var(--surface-hover); }
-.canvas-assistant__mentions strong { display: block; min-width: 0; overflow: hidden; color: var(--primary); font-size: 11px; text-overflow: ellipsis; white-space: nowrap; }
-.canvas-assistant__mentions small { display: block; min-width: 0; overflow: hidden; color: var(--muted); font-size: 10px; text-overflow: ellipsis; white-space: nowrap; }
+.canvas-assistant__mentions strong { display: block; width: 100%; min-width: 0; max-width: 96px; overflow: hidden; color: var(--primary); font-size: 11px; text-overflow: ellipsis; white-space: nowrap; }
+.canvas-assistant__mentions small { display: block; width: 100%; min-width: 0; max-width: 100%; overflow: hidden; color: var(--muted); font-size: 10px; text-overflow: ellipsis; white-space: nowrap; }
 .canvas-assistant__scope { padding: 0 12px 10px; }
 
 .canvas-shortcuts {
