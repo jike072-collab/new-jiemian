@@ -183,7 +183,10 @@ function PromptNode({ id, data }: { id: string; data: CanvasNodeData }) {
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
   const promptWrapRef = useRef<HTMLDivElement | null>(null);
   const promptCursorRef = useRef(value.length);
+  const promptSelectionRef = useRef({ start: value.length, end: value.length });
   const pendingPromptSelectionRef = useRef<{ start: number; end: number } | null>(null);
+  const promptUndoRef = useRef<Array<{ value: string; start: number; end: number }>>([]);
+  const promptRedoRef = useRef<Array<{ value: string; start: number; end: number }>>([]);
   const [mentionContext, setMentionContext] = useState<{ start: number; end: number; query: string } | null>(null);
   const [activeMentionIndex, setActiveMentionIndex] = useState(0);
   const [optimizing, setOptimizing] = useState(false);
@@ -204,13 +207,40 @@ function PromptNode({ id, data }: { id: string; data: CanvasNodeData }) {
   useLayoutEffect(() => {
     const selection = pendingPromptSelectionRef.current;
     const textarea = textareaRef.current;
-    if (!selection || !textarea || document.activeElement !== textarea) return;
+    if (!selection || !textarea) return;
     pendingPromptSelectionRef.current = null;
+    if (document.activeElement !== textarea) return;
     textarea.setSelectionRange(
       Math.min(selection.start, value.length),
       Math.min(selection.end, value.length),
     );
   }, [value]);
+
+  const pushPromptUndo = () => {
+    const selection = promptSelectionRef.current;
+    promptUndoRef.current.push({ value, start: selection.start, end: selection.end });
+    if (promptUndoRef.current.length > 100) promptUndoRef.current.shift();
+    promptRedoRef.current = [];
+  };
+
+  const restorePromptEdit = (direction: "undo" | "redo") => {
+    const source = direction === "undo" ? promptUndoRef.current : promptRedoRef.current;
+    const target = direction === "undo" ? promptRedoRef.current : promptUndoRef.current;
+    const snapshot = source.pop();
+    if (!snapshot) return;
+    const textarea = textareaRef.current;
+    target.push({
+      value,
+      start: textarea?.selectionStart ?? promptSelectionRef.current.start,
+      end: textarea?.selectionEnd ?? promptSelectionRef.current.end,
+    });
+    const selection = { start: snapshot.start, end: snapshot.end };
+    promptSelectionRef.current = selection;
+    promptCursorRef.current = selection.start;
+    pendingPromptSelectionRef.current = selection;
+    setMentionContext(null);
+    actions.updateNodeData(id, { prompt: snapshot.value });
+  };
 
   const updateMentionContext = (nextValue: string, cursor: number) => {
     const prefix = nextValue.slice(0, cursor);
@@ -239,6 +269,7 @@ function PromptNode({ id, data }: { id: string; data: CanvasNodeData }) {
     const trailingSpace = suffix && /^\s/.test(suffix) ? "" : " ";
     const nextValue = `${value.slice(0, mentionContext.start)}${token}${trailingSpace}${suffix}`;
     const cursor = mentionContext.start + token.length + trailingSpace.length;
+    pushPromptUndo();
     actions.updateNodeData(id, { prompt: nextValue });
     setMentionContext(null);
     focusPromptAt(cursor);
@@ -251,6 +282,7 @@ function PromptNode({ id, data }: { id: string; data: CanvasNodeData }) {
     const insertion = `${needsLeadingSpace ? " " : ""}@`;
     const nextValue = `${value.slice(0, cursor)}${insertion}${value.slice(cursor)}`;
     const start = cursor + (needsLeadingSpace ? 1 : 0);
+    pushPromptUndo();
     actions.updateNodeData(id, { prompt: nextValue });
     setMentionContext({ start, end: start + 1, query: "" });
     setActiveMentionIndex(0);
@@ -271,15 +303,34 @@ function PromptNode({ id, data }: { id: string; data: CanvasNodeData }) {
             const nextValue = event.target.value;
             const start = event.target.selectionStart ?? nextValue.length;
             const end = event.target.selectionEnd ?? start;
+            pushPromptUndo();
             promptCursorRef.current = start;
+            promptSelectionRef.current = { start, end };
             pendingPromptSelectionRef.current = { start, end };
             actions.updateNodeData(id, { prompt: nextValue });
             updateMentionContext(nextValue, start);
           }}
           onSelect={(event) => {
-            promptCursorRef.current = event.currentTarget.selectionStart ?? event.currentTarget.value.length;
+            const start = event.currentTarget.selectionStart ?? event.currentTarget.value.length;
+            const end = event.currentTarget.selectionEnd ?? start;
+            promptCursorRef.current = start;
+            promptSelectionRef.current = { start, end };
           }}
           onKeyDown={(event) => {
+            const command = event.ctrlKey || event.metaKey;
+            const key = event.key.toLowerCase();
+            if (command && key === "z") {
+              event.preventDefault();
+              event.stopPropagation();
+              restorePromptEdit(event.shiftKey ? "redo" : "undo");
+              return;
+            }
+            if (command && key === "y") {
+              event.preventDefault();
+              event.stopPropagation();
+              restorePromptEdit("redo");
+              return;
+            }
             if (!mentionOpen) return;
             if (event.key === "ArrowDown" || event.key === "ArrowUp") {
               event.preventDefault();

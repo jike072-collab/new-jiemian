@@ -122,6 +122,8 @@ assert.match(canvasNode, /ArrowDown/);
 assert.match(canvasNode, /insertReference/);
 assert.match(canvasNode, /pendingPromptSelectionRef/);
 assert.match(canvasNode, /useLayoutEffect/);
+assert.match(canvasNode, /promptUndoRef/);
+assert.match(canvasNode, /restorePromptEdit\(event\.shiftKey \? "redo" : "undo"\)/);
 assert.match(canvasNode, /canvas-node__preview-strip/);
 assert.match(canvasNode, /CanvasMediaType/);
 assert.match(canvasNode, /Music/);
