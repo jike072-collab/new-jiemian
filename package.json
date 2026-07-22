@@ -2,6 +2,9 @@
   "name": "new-jiemian",
   "version": "0.1.0",
   "private": true,
+  "imports": {
+    "#malaysia-shoe-copy-library": "./src/lib/malaysia-shoe-copy-library.ts"
+  },
   "description": "Aohuang AI local image and video generation studio",
   "author": "Aohuang AI",
   "license": "MIT",

@@ -2,7 +2,7 @@ import {
   malaysiaShoeCopyCategory,
   malaysiaShoeCopyHashtagPool,
   type MalaysiaShoeCopyCategory,
-} from "./malaysia-shoe-copy-library.ts";
+} from "#malaysia-shoe-copy-library";
 
 export const malaysiaTikTokCopyAngles = [
   { id: "auto", label: "AI 精选", prompt: "根据视频最有吸引力的可见内容选择一个清晰角度。" },
