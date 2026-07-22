@@ -393,7 +393,10 @@ export function ProviderSelect({
   const options = providers.map((provider) => ({
     value: provider.id,
     label: providerModelName(provider.model, provider.displayName),
-    description: providerUseCase(provider.model, provider.displayName, provider.videoOptions),
+    description: [
+      providerUseCase(provider.model, provider.displayName, provider.videoOptions),
+      providerUpstreamPriceLabel(provider.upstreamPrice),
+    ].filter(Boolean).join(" · "),
   }));
   const familyDefinitions = [
     { value: "veo", label: "Veo", matches: (provider: FrontendProvider) => provider.model.startsWith("veo-") },
@@ -457,6 +460,11 @@ export function ProviderSelect({
   );
 }
 
+function providerUpstreamPriceLabel(price: FrontendProvider["upstreamPrice"]) {
+  if (!price || !Number.isFinite(price.amount) || price.amount <= 0) return undefined;
+  return `¥${price.amount}/${price.unit === "second" ? "秒" : "请求"}`;
+}
+
 function providerModelName(model: string, displayName: string) {
   const normalized = model.trim().toLowerCase();
   if (normalized === "image" || normalized === "banana-img2") return "Image";
@@ -484,7 +492,7 @@ function providerUseCase(model: string, displayName: string, videoOptions?: Fron
   if (normalized === "sdquan-2-miao") return "支持 9 图 · 3 音频 · 4-15 秒 · 720P";
   if (normalized === "doubao-seedance-2.0-fast-260128-grid") return "支持 9 图 · 3 视频 · 3 音频 · 15 秒 · 不卡真人 · 720P";
   if (normalized === "doubao-seedance-2-0-260128-grid") return "支持 9 图 · 3 视频 · 3 音频 · 15 秒 · 不卡真人 · 720P";
-  if (normalized === "mg-seedance2.0 -720p fast") return "支持 4 图 · 3 视频 · 3 音频 · 5-15 秒 · 不卡真人 · 720P";
+  if (normalized === "mg-seedance2.0 -720p fast") return "支持 4 图 · 3 视频 · 1 音频 · 5-15 秒 · 不卡真人 · 720P";
   if (normalized === "mg-seedance2.0 -720p mini") return "支持 4 图 · 3 视频 · 1 音频 · 5-15 秒 · 不卡真人 · 720P";
   if (normalized === "mg-seedance2.0 -720p pro") return "支持 4 图 · 3 视频 · 1 音频 · 5-15 秒 · 不卡真人 · 720P";
   if (normalized === "seedance2.0 720p-933-pro-gz-15s") return "支持 9 图 · 3 视频 · 3 音频 · 15 秒 · 不卡真人 · 720P";

@@ -50,6 +50,9 @@ test("CLMM Seedance pricing follows the new model tiers", () => {
   assert.equal(estimateVideoGenerationQuota({ ...baseInput, model: "mg-seedance2.0 -720p mini", resolution: "720p", durationSeconds: 5 }), 300);
   assert.equal(estimateVideoGenerationQuota({ ...baseInput, model: "mg-seedance2.0 -720p fast", resolution: "720p", durationSeconds: 10 }), 800);
   assert.equal(estimateVideoGenerationQuota({ ...baseInput, model: "mg-seedance2.0 -720p pro", resolution: "720p", durationSeconds: 15 }), 1500);
+  assert.equal(estimateVideoGenerationQuota({ ...baseInput, model: "mg-seedance2.0 -1080p", resolution: "1080p", durationSeconds: 10 }), 1000);
+  assert.equal(estimateVideoGenerationQuota({ ...baseInput, model: "mg-seedance2.0 -720p-gz-15s", resolution: "720p", durationSeconds: 15 }), 800);
+  assert.equal(estimateVideoGenerationQuota({ ...baseInput, model: "mg-seedance2.0 720p-pro-gz-15s", resolution: "720p", durationSeconds: 15 }), 1400);
   assert.equal(estimateVideoGenerationQuota({ ...baseInput, model: "seedance2.0 720p-fast-gz-15s", resolution: "720p", durationSeconds: 15 }), 1200);
   assert.equal(estimateVideoGenerationQuota({ ...baseInput, model: "seedance2.0 720p-pro-gz-15s", resolution: "720p", durationSeconds: 15 }), 1400);
   assert.equal(estimateVideoGenerationQuota({ ...baseInput, model: "seedance2.0 720p-933-pro-gz-15s", resolution: "720p", durationSeconds: 15 }), 1500);
@@ -85,6 +88,8 @@ test("only unpriced legacy Seedance models remain blocked", () => {
   assert.equal(isVideoGenerationPricingPending("sdquan-2-miao"), false);
   assert.equal(isVideoGenerationPricingPending("Doubao-Seedance-2-0-260128-grid"), false);
   assert.equal(isVideoGenerationPricingPending("mg-seedance2.0 -720p fast"), false);
+  assert.equal(isVideoGenerationPricingPending("mg-seedance2.0 -1080p"), false);
+  assert.equal(isVideoGenerationPricingPending("mg-seedance2.0 -720p-gz-15s"), false);
   assert.equal(isVideoGenerationPricingPending("seedance2.0 720p-933-pro-gz-15s"), false);
   assert.equal(isVideoGenerationPricingPending("veo-3.1-pro"), false);
   assert.equal(isVideoGenerationPricingPending("grok-video-1.5"), false);

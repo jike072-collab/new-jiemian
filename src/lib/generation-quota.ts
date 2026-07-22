@@ -62,9 +62,6 @@ export function estimateVideoGenerationEntitlementUnits(input: { resolution: str
   const normalizedModel = String(input.model || "").trim().toLowerCase();
   const duration = Math.max(1, Math.floor(input.durationSeconds || 15));
   if (normalizedModel === "seedance2.0 720p-933-pro-gz-15s") return 3;
-  if (normalizedModel.startsWith("mg-seedance2.0 -720p ") || normalizedModel.endsWith("-gz-15s")) {
-    return duration > 10 ? 2 : 1;
-  }
   if (/seedance[-_ ]*2(?:\.0)?.*(?:720|1080)\s*p/.test(normalizedModel)) {
     if (normalizedModel.includes("933") || normalizedModel.includes("1080")) return 3;
     return /\d+s/.test(normalizedModel) || duration > 10 ? 2 : 1;
@@ -216,6 +213,8 @@ function seedanceVideoQuota(model: string | null | undefined, duration: number) 
   if (normalizedModel === "mg-seedance2.0 -720p mini") return duration * 60;
   if (normalizedModel === "mg-seedance2.0 -720p fast") return duration * 80;
   if (normalizedModel === "mg-seedance2.0 -720p pro") return duration * 100;
+  if (normalizedModel === "mg-seedance2.0 -1080p") return duration * 100;
+  if (normalizedModel === "mg-seedance2.0 -720p-gz-15s") return 800;
   if (normalizedModel === "seedance2.0 720p-fast-gz-15s") return 1200;
   if (normalizedModel === "seedance2.0 720p-pro-gz-15s") return 1400;
   if (normalizedModel === "seedance2.0 720p-933-pro-gz-15s") return 1500;
@@ -228,7 +227,8 @@ function seedanceVideoQuota(model: string | null | undefined, duration: number) 
   if (normalizedModel === "doubao-seedance-2-0-260128-grid") return 1400;
   if (/seedance[-_ ]*2(?:\.0)?.*(?:720|1080)\s*p/.test(normalizedModel)) {
     const fixed = /(?:^|[-_ ])\d+s(?:$|[-_ ])/i.test(normalizedModel);
-    if (normalizedModel.includes("933") || normalizedModel.includes("1080")) return 1500;
+    if (normalizedModel.includes("933")) return 1500;
+    if (normalizedModel.includes("1080")) return fixed ? 1500 : duration * 100;
     if (normalizedModel.includes("mini")) return duration * 60;
     if (normalizedModel.includes("fast")) return fixed ? 1200 : duration * 80;
     if (normalizedModel.includes("pro")) return fixed ? 1400 : duration * 100;

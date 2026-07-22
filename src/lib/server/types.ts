@@ -11,6 +11,12 @@ export type EndpointType =
   | "volcengine-imagex-upscale"
   | "volcengine-vod-upscale";
 
+export type ProviderUpstreamPrice = {
+  amount: number;
+  currency: "CNY";
+  unit: "second" | "request";
+};
+
 export type ProviderConfig = {
   id: string;
   kind: ProviderKind;
@@ -20,8 +26,10 @@ export type ProviderConfig = {
   model: string;
   models?: string[];
   modelDisplayNames?: Record<string, string>;
+  modelUpstreamPrices?: Record<string, ProviderUpstreamPrice>;
   enabledModels?: string[];
   displayName?: string;
+  upstreamPrice?: ProviderUpstreamPrice;
   videoOptions?: {
     durations?: number[];
     ratios?: string[];
@@ -53,6 +61,7 @@ export type FrontendProvider = {
   id: string;
   model: string;
   displayName: string;
+  upstreamPrice?: ProviderUpstreamPrice;
   capabilities: string[];
   enabled: boolean;
   endpointType: EndpointType;
@@ -60,7 +69,7 @@ export type FrontendProvider = {
 };
 
 export type ProviderUpdate = Partial<
-  Pick<ProviderConfig, "apiUrl" | "model" | "models" | "modelDisplayNames" | "enabledModels" | "displayName" | "videoOptions" | "enabled" | "endpointType">
+  Pick<ProviderConfig, "apiUrl" | "model" | "models" | "modelDisplayNames" | "modelUpstreamPrices" | "enabledModels" | "displayName" | "videoOptions" | "enabled" | "endpointType">
 > & {
   id: string;
   kind?: ProviderKind;

@@ -402,6 +402,44 @@ async function assertUnknownEndpointTypesAreRejectedSafely() {
   );
 }
 
+async function assertDynamicClmmMetadataAndPricesReachFrontend() {
+  const models = [
+    "bb-seedance2.0 720p-fast-gz-15s",
+    "mg-seedance2.0 -1080p",
+    "mg-seedance2.0 -720p fast",
+    "mg-seedance2.0 -720p-gz-15s",
+  ];
+  await providersModule.updateProviders([{
+    id: "video-seedance-new",
+    model: models[0],
+    models,
+    enabledModels: models,
+    modelUpstreamPrices: {
+      [models[0]]: { amount: 3.78, currency: "CNY", unit: "request" },
+      [models[1]]: { amount: 0.368, currency: "CNY", unit: "second" },
+      [models[2]]: { amount: 0.268, currency: "CNY", unit: "second" },
+      [models[3]]: { amount: 2.48, currency: "CNY", unit: "request" },
+    },
+    enabled: true,
+    apiKey: "clmm-test-key",
+  }]);
+
+  const frontend = (await providersModule.readFrontendProviders("video"))
+    .filter((provider) => provider.id.startsWith("video-seedance-new::model::"));
+  assert.equal(frontend.length, 4);
+  const byModel = new Map(frontend.map((provider) => [provider.model, provider]));
+  assert.deepEqual(byModel.get(models[0])?.videoOptions, {
+    durations: [15], ratios: ["9:16"], resolution: "720p",
+    maxReferenceImages: 9, maxReferenceVideos: 3, maxReferenceAudios: 3,
+    maxReferenceDurationSeconds: 15, supportsVideoReference: true, supportsAudioReference: true,
+  });
+  assert.deepEqual(byModel.get(models[1])?.upstreamPrice, { amount: 0.368, currency: "CNY", unit: "second" });
+  assert.equal(byModel.get(models[1])?.videoOptions?.maxReferenceImages, 9);
+  assert.equal(byModel.get(models[2])?.videoOptions?.maxReferenceAudios, 1);
+  assert.equal(byModel.get(models[3])?.videoOptions?.maxReferenceImages, 9);
+  assert.deepEqual(byModel.get(models[3])?.upstreamPrice, { amount: 2.48, currency: "CNY", unit: "request" });
+}
+
 test("provider display-name persistence and legacy upscale compatibility", async () => {
   await assertProviderDisplayNamesRoundTrip();
   await assertMissingDisplayNameFallsBackToModel();
@@ -412,6 +450,7 @@ test("provider display-name persistence and legacy upscale compatibility", async
   await assertLegacyLocalUpscaleMapsAtReadBoundary();
   await assertSavingProvidersWritesOnlyCurrentUpscaleTypes();
   await assertLegacyPlaceholderMapsByKindAndIsNotPersisted();
+  await assertDynamicClmmMetadataAndPricesReachFrontend();
   await assertUnknownEndpointTypesAreRejectedSafely();
 });
 

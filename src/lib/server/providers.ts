@@ -5,6 +5,7 @@ import {
   type FrontendProvider,
   type ProviderConfig,
   type ProviderKind,
+  type ProviderUpstreamPrice,
   type ProviderUpdate,
   type PublicProvider,
 } from "./types";
@@ -43,15 +44,17 @@ const clmmSeedanceVideoModels = [
   "bb-seedance2.0 1080p-pro-gz-15s",
   "bb-seedance2.0 720p-fast-gz-15s",
   "bb-seedance2.0 720p-pro-gz-15s",
+  "mg-seedance2.0 -1080p",
   "mg-seedance2.0 -720p fast",
   "mg-seedance2.0 -720p mini",
   "mg-seedance2.0 -720p pro",
-  "oe-seedance-2.0-pro-720p-14s-gz",
+  "mg-seedance2.0 -720p-gz-15s",
+  "mg-seedance2.0 720p-pro-gz-15s",
 ];
 const clmmFlexibleVideoDurations = Array.from({ length: 11 }, (_, index) => index + 5);
 
 const clmmSeedanceVideoOptionsByModel: Record<string, NonNullable<ProviderConfig["videoOptions"]>> = {
-  "mg-seedance2.0 -720p fast": { durations: clmmFlexibleVideoDurations, ratios: ["16:9", "9:16"], resolution: "720p", maxReferenceImages: 4, maxReferenceVideos: 3, maxReferenceAudios: 3, maxReferenceDurationSeconds: 15, supportsVideoReference: true, supportsAudioReference: true },
+  "mg-seedance2.0 -720p fast": { durations: clmmFlexibleVideoDurations, ratios: ["16:9", "9:16"], resolution: "720p", maxReferenceImages: 4, maxReferenceVideos: 3, maxReferenceAudios: 1, maxReferenceDurationSeconds: 15, supportsVideoReference: true, supportsAudioReference: true },
   "mg-seedance2.0 -720p mini": { durations: clmmFlexibleVideoDurations, ratios: ["16:9", "9:16"], resolution: "720p", maxReferenceImages: 4, maxReferenceVideos: 3, maxReferenceAudios: 1, maxReferenceDurationSeconds: 15, supportsVideoReference: true, supportsAudioReference: true },
   "mg-seedance2.0 -720p pro": { durations: clmmFlexibleVideoDurations, ratios: ["16:9", "9:16"], resolution: "720p", maxReferenceImages: 4, maxReferenceVideos: 3, maxReferenceAudios: 1, maxReferenceDurationSeconds: 15, supportsVideoReference: true, supportsAudioReference: true },
   "seedance2.0 720p-933-pro-gz-15s": { durations: [15], ratios: ["16:9", "9:16"], resolution: "720p", maxReferenceImages: 9, maxReferenceVideos: 3, maxReferenceAudios: 3, maxReferenceDurationSeconds: 15, supportsVideoReference: true, supportsAudioReference: true },
@@ -146,6 +149,20 @@ export function seedanceVideoOptionsForModel(model: string): ProviderConfig["vid
   return seedanceVideoOptionsByModel[model.trim().toLowerCase()];
 }
 
+function normalizeModelUpstreamPrices(value: unknown): Record<string, ProviderUpstreamPrice> | undefined {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return undefined;
+  const entries = Object.entries(value as Record<string, unknown>).flatMap(([model, raw]) => {
+    if (!raw || typeof raw !== "object" || Array.isArray(raw)) return [];
+    const input = raw as Record<string, unknown>;
+    const normalizedModel = String(model || "").trim();
+    const amount = Number(input.amount);
+    const unit = input.unit === "second" || input.unit === "request" ? input.unit : null;
+    if (!normalizedModel || !Number.isFinite(amount) || amount <= 0 || !unit) return [];
+    return [[normalizedModel, { amount, currency: "CNY", unit }] as const];
+  });
+  return entries.length ? Object.fromEntries(entries) : undefined;
+}
+
 export function seedanceVideoRequestSecondsForModel(_model: string, duration: number) {
   return duration;
 }
@@ -156,18 +173,15 @@ export function clmmSeedanceVideoOptionsForModel(model: string): ProviderConfig[
   if (known || !isDynamicClmmSeedance20Model(model)) return known;
   const fixedSeconds = Number(normalized.match(/(?:^|[-_ ])(\d+)s(?:$|[-_ ])/i)?.[1] || 0);
   const fixedDuration = fixedSeconds > 0;
-  const is933 = normalized.includes("933");
   const is1080 = normalized.includes("1080");
   const isBb = normalized.startsWith("bb-");
-  const isFast = normalized.includes("fast");
-  const isMini = normalized.includes("mini");
   return {
     durations: fixedDuration ? [fixedSeconds] : clmmFlexibleVideoDurations,
     ratios: isBb ? ["9:16"] : ["16:9", "9:16"],
     resolution: is1080 ? "1080p" : "720p",
-    maxReferenceImages: is933 || (is1080 && isBb) ? 9 : 4,
-    maxReferenceVideos: isFast && fixedDuration ? 1 : 3,
-    maxReferenceAudios: is933 || !isMini ? 3 : 1,
+    maxReferenceImages: fixedDuration || is1080 ? 9 : 4,
+    maxReferenceVideos: 3,
+    maxReferenceAudios: fixedDuration || is1080 ? 3 : 1,
     maxReferenceDurationSeconds: 15,
     supportsVideoReference: true,
     supportsAudioReference: true,
@@ -498,7 +512,9 @@ function normalizeProvider(provider: ProviderConfig): ProviderConfig {
       ? enabledModels.filter((model) => !models.length || models.includes(model))
       : undefined,
     modelDisplayNames: normalizeModelDisplayNames(legacyNormalized.modelDisplayNames),
+    modelUpstreamPrices: normalizeModelUpstreamPrices(legacyNormalized.modelUpstreamPrices),
     displayName: String(legacyNormalized.displayName || legacyNormalized.model || "").trim() || undefined,
+    upstreamPrice: normalizeModelUpstreamPrices({ current: legacyNormalized.upstreamPrice })?.current,
     videoOptions: normalizeVideoOptions(legacyNormalized.videoOptions),
     apiKey: String(legacyNormalized.apiKey || "").trim(),
     fallbackApiKey: fallbackApiKeyForProvider(legacyNormalized),
@@ -536,8 +552,10 @@ export function sanitizeProvider(provider: ProviderConfig): PublicProvider {
     model: normalized.model,
     models: normalized.models,
     modelDisplayNames: normalized.modelDisplayNames,
+    modelUpstreamPrices: normalized.modelUpstreamPrices,
     enabledModels: normalized.enabledModels,
     displayName: normalized.displayName || normalized.model,
+    upstreamPrice: normalized.upstreamPrice,
     videoOptions: providerVideoOptions(normalized),
     enabled: normalized.enabled,
     endpointType: normalized.endpointType,
@@ -610,6 +628,7 @@ function expandProviderModels(provider: ProviderConfig) {
     id: virtualProviderId(normalized.id, model),
     model,
     displayName: publicDisplayName(normalized, model, activeModels.length > 1),
+    upstreamPrice: normalizeModelUpstreamPrices(normalized.modelUpstreamPrices)?.[model],
     videoOptions: providerVideoOptions({ ...normalized, model }),
   }));
 }
@@ -632,6 +651,7 @@ function mergeStoredProvider(fallback: ProviderConfig, stored: ProviderConfig | 
     const isDynamicClmm = fallback.id === "video-seedance-new";
     const storedModels = normalizeModels(legacyStored.models);
     const storedDisplayNames = normalizeModelDisplayNames(legacyStored.modelDisplayNames);
+    const storedUpstreamPrices = normalizeModelUpstreamPrices(legacyStored.modelUpstreamPrices);
     const models = isDynamicClmm && storedModels.length ? storedModels : fallback.models;
     const modelDisplayNames = isDynamicClmm
       ? { ...(fallback.modelDisplayNames || {}), ...(storedDisplayNames || {}) }
@@ -647,6 +667,9 @@ function mergeStoredProvider(fallback: ProviderConfig, stored: ProviderConfig | 
       model: selectedModel,
       models,
       modelDisplayNames,
+      modelUpstreamPrices: isDynamicClmm && storedUpstreamPrices
+        ? storedUpstreamPrices
+        : fallback.modelUpstreamPrices,
       enabledModels,
       title: legacyStored.title || fallback.title,
       role: fallback.role,
@@ -722,6 +745,7 @@ export async function readFrontendProviders(kind?: ProviderKind): Promise<Fronte
       id: provider.id,
       model: provider.model,
       displayName: provider.displayName || provider.model,
+      upstreamPrice: provider.upstreamPrice,
       capabilities: capabilitiesFor(provider),
       enabled: provider.enabled,
       endpointType: provider.endpointType,
@@ -759,6 +783,7 @@ export async function providerById(id: string) {
     id,
     model: virtual.model,
     displayName: publicDisplayName(provider, virtual.model, visibleModels.length > 1),
+    upstreamPrice: normalizeModelUpstreamPrices(provider.modelUpstreamPrices)?.[virtual.model],
     videoOptions: providerVideoOptions({ ...provider, model: virtual.model }),
   });
 }
@@ -822,6 +847,7 @@ export async function updateProviders(updates: ProviderUpdate[]) {
       model: "",
       models: [],
       modelDisplayNames: {},
+      modelUpstreamPrices: {},
       enabledModels: [],
       displayName: "",
       videoOptions: undefined,
@@ -842,6 +868,9 @@ export async function updateProviders(updates: ProviderUpdate[]) {
       modelDisplayNames: update.modelDisplayNames === undefined
         ? baseProvider.modelDisplayNames
         : normalizeModelDisplayNames(update.modelDisplayNames),
+      modelUpstreamPrices: update.modelUpstreamPrices === undefined
+        ? baseProvider.modelUpstreamPrices
+        : normalizeModelUpstreamPrices(update.modelUpstreamPrices),
       enabledModels: update.enabledModels === undefined
         ? baseProvider.enabledModels
         : normalizeModels(update.enabledModels),

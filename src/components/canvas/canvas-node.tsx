@@ -540,7 +540,11 @@ function groupVideoProviders(providers: WorkspacePublicProvider[]) {
 }
 
 function providerOptionLabel(provider: WorkspacePublicProvider) {
-  return `${provider.displayName} · ${providerParameterSummary(provider)}`;
+  const price = provider.upstreamPrice;
+  const priceLabel = price && Number.isFinite(price.amount) && price.amount > 0
+    ? ` · ¥${price.amount}/${price.unit === "second" ? "秒" : "请求"}`
+    : "";
+  return `${provider.displayName} · ${providerParameterSummary(provider)}${priceLabel}`;
 }
 
 function providerParameterSummary(provider: WorkspacePublicProvider) {

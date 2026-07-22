@@ -24,6 +24,10 @@ function modelTier(model) {
   return null;
 }
 
+function fixedDurationSeconds(model) {
+  return Number(model.toLowerCase().match(/(?:^|[-_ ])(\d+)s(?:$|[-_ ])/i)?.[1] || 0);
+}
+
 export function isTargetClmmSeedanceModel(value) {
   const model = normalizeModel(value);
   const normalized = model.toLowerCase();
@@ -47,11 +51,32 @@ export function extractModelNames(payload) {
   }).filter(Boolean)));
 }
 
-export function selectClmmModels(upstreamModels, currentModels = []) {
+export function extractPricingEntries(payload) {
+  const candidates = Array.isArray(payload?.data) ? payload.data : [];
+  return candidates.flatMap((item) => {
+    if (!item || typeof item !== "object") return [];
+    const model = normalizeModel(item.model_name || item.model || item.id);
+    const amount = Number(item.model_price);
+    const endpointTypes = Array.isArray(item.supported_endpoint_types) ? item.supported_endpoint_types : [];
+    if (!model || !Number.isFinite(amount) || amount <= 0 || !endpointTypes.includes("openai-video")) return [];
+    const description = String(item.description || "");
+    const unit = fixedDurationSeconds(model) > 0 || description.includes("固定价格")
+      ? "request"
+      : description.includes("按秒计费") ? "second" : null;
+    if (!unit) return [];
+    return [{ model, amount, currency: "CNY", unit }];
+  });
+}
+
+export function selectClmmModels(upstreamModels, currentModels = [], pricingEntries) {
   const candidates = Array.from(new Set(upstreamModels.map(normalizeModel).filter(Boolean)));
   const targetModels = candidates.filter(isTargetClmmSeedanceModel);
-  const unpricedModels = targetModels.filter((model) => !modelTier(model));
-  const pricedModels = targetModels.filter((model) => modelTier(model));
+  const upstreamPrices = Array.isArray(pricingEntries)
+    ? new Set(pricingEntries.map((entry) => normalizeModel(entry.model).toLowerCase()))
+    : null;
+  const hasPrice = (model) => upstreamPrices ? upstreamPrices.has(model.toLowerCase()) : Boolean(modelTier(model));
+  const unpricedModels = targetModels.filter((model) => !hasPrice(model));
+  const pricedModels = targetModels.filter(hasPrice);
   const protectedModels = PROTECTED_MODELS.filter((model) => !pricedModels.some((candidate) => candidate.toLowerCase() === model.toLowerCase()));
   const models = Array.from(new Set([...pricedModels, ...protectedModels]));
   const current = currentModels.map(normalizeModel).filter(Boolean);
@@ -76,26 +101,38 @@ export function modelsEndpointFor(apiUrl) {
   return parsed.toString();
 }
 
+export function pricingEndpointFor(apiUrl) {
+  const parsed = new URL(apiUrl);
+  parsed.pathname = "/api/pricing";
+  parsed.search = "";
+  return parsed.toString();
+}
+
 function displayName(model) {
   const normalized = model.toLowerCase();
   const seconds = normalized.match(/(?:^|[-_ ])(\d+)s(?:$|[-_ ])/i)?.[1];
-  const fixedLabel = seconds && normalized.includes("gz") ? `${seconds} 秒 不卡真人` : "";
-  if (normalized.includes("933")) return "满血 933 不卡真人";
-  if (normalized.includes("1080")) return fixedLabel ? `Pro 1080P ${fixedLabel}` : "Pro 1080P";
+  const fixedLabel = seconds && normalized.includes("gz") ? `${seconds} 秒` : "";
+  if (normalized.includes("933")) return "满血 933";
+  if (normalized.includes("1080")) return fixedLabel ? `Pro 1080P ${fixedLabel}` : "1080P";
   if (normalized.includes("mini")) return "Mini";
   if (normalized.includes("fast")) return fixedLabel ? `Fast ${fixedLabel}` : "Fast";
   if (normalized.includes("pro")) return fixedLabel ? `Pro ${fixedLabel}` : "Pro";
-  return "Seedance 2.0 720P";
+  return fixedLabel ? `720P ${fixedLabel}` : "Seedance 2.0 720P";
 }
 
-export function syncProviderDocument(document, upstreamModels) {
+export function syncProviderDocument(document, upstreamModels, pricingEntries) {
   if (!Array.isArray(document)) throw new Error("providers.json must contain an array");
   const index = document.findIndex((provider) => provider?.id === CLMM_PROVIDER_ID);
   if (index < 0) throw new Error(`Provider ${CLMM_PROVIDER_ID} was not found`);
   const provider = document[index];
-  const selection = selectClmmModels(upstreamModels, provider.models || []);
+  const selection = selectClmmModels(upstreamModels, provider.models || [], pricingEntries);
   if (!selection.models.length) throw new Error("No priced Seedance 2.0 720p models were returned");
   const modelDisplayNames = Object.fromEntries(selection.models.map((model) => [model, displayName(model)]));
+  const pricesByModel = new Map((pricingEntries || []).map((entry) => [normalizeModel(entry.model).toLowerCase(), entry]));
+  const modelUpstreamPrices = Object.fromEntries(selection.models.flatMap((model) => {
+    const price = pricesByModel.get(model.toLowerCase());
+    return price ? [[model, { amount: price.amount, currency: "CNY", unit: price.unit }]] : [];
+  }));
   const selectedModel = selection.models.includes(provider.model) ? provider.model : selection.models[0];
   const nextProvider = {
     ...provider,
@@ -103,6 +140,7 @@ export function syncProviderDocument(document, upstreamModels) {
     models: selection.models,
     enabledModels: selection.models,
     modelDisplayNames,
+    modelUpstreamPrices,
     displayName: modelDisplayNames[selectedModel],
   };
   const next = document.slice();
@@ -152,28 +190,34 @@ export async function runSync(options = {}) {
   const provider = document.find((item) => item?.id === CLMM_PROVIDER_ID);
   if (!provider) throw new Error(`Provider ${CLMM_PROVIDER_ID} was not found`);
   const endpoint = modelsEndpointFor(provider.apiUrl);
+  const pricingEndpoint = pricingEndpointFor(provider.apiUrl);
   if (!provider.apiKey || provider.apiKey === "replace_me") throw new Error("CLMM provider key is not configured");
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), options.timeoutMs || 20_000);
   let response;
+  let pricingResponse;
   try {
-    response = await (options.fetchImpl || fetch)(endpoint, {
+    [response, pricingResponse] = await Promise.all([endpoint, pricingEndpoint].map((url) => (options.fetchImpl || fetch)(url, {
       headers: { Accept: "application/json", Authorization: `Bearer ${provider.apiKey}` },
       signal: controller.signal,
-    });
+    })));
   } finally {
     clearTimeout(timer);
   }
   if (!response.ok) throw new Error(`Upstream models request failed with HTTP ${response.status}`);
+  if (!pricingResponse.ok) throw new Error(`Upstream pricing request failed with HTTP ${pricingResponse.status}`);
   const upstreamModels = extractModelNames(await response.json());
+  const pricingEntries = extractPricingEntries(await pricingResponse.json());
   if (!upstreamModels.length) throw new Error("Upstream models response was empty or unsupported");
-  const result = syncProviderDocument(document, upstreamModels);
+  if (!pricingEntries.length) throw new Error("Upstream pricing response was empty or unsupported");
+  const result = syncProviderDocument(document, upstreamModels, pricingEntries);
   const changed = JSON.stringify(result.document) !== JSON.stringify(document);
   if (options.apply && changed) await writeJsonAtomic(providerPath, result.document);
   return {
     changed,
     applied: Boolean(options.apply && changed),
     endpoint,
+    pricingEndpoint,
     providerPath,
     ...result.selection,
   };
