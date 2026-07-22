@@ -24,7 +24,7 @@ import {
   Type,
   WandSparkles,
 } from "lucide-react";
-import { createContext, useContext, useEffect, useRef, useState, type CSSProperties } from "react";
+import { createContext, useContext, useEffect, useLayoutEffect, useRef, useState, type CSSProperties } from "react";
 import {
   Handle,
   NodeResizer,
@@ -183,6 +183,7 @@ function PromptNode({ id, data }: { id: string; data: CanvasNodeData }) {
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
   const promptWrapRef = useRef<HTMLDivElement | null>(null);
   const promptCursorRef = useRef(value.length);
+  const pendingPromptSelectionRef = useRef<{ start: number; end: number } | null>(null);
   const [mentionContext, setMentionContext] = useState<{ start: number; end: number; query: string } | null>(null);
   const [activeMentionIndex, setActiveMentionIndex] = useState(0);
   const [optimizing, setOptimizing] = useState(false);
@@ -199,6 +200,17 @@ function PromptNode({ id, data }: { id: string; data: CanvasNodeData }) {
     document.addEventListener("pointerdown", closeOnOutsidePointer);
     return () => document.removeEventListener("pointerdown", closeOnOutsidePointer);
   }, [mentionOpen]);
+
+  useLayoutEffect(() => {
+    const selection = pendingPromptSelectionRef.current;
+    const textarea = textareaRef.current;
+    if (!selection || !textarea || document.activeElement !== textarea) return;
+    pendingPromptSelectionRef.current = null;
+    textarea.setSelectionRange(
+      Math.min(selection.start, value.length),
+      Math.min(selection.end, value.length),
+    );
+  }, [value]);
 
   const updateMentionContext = (nextValue: string, cursor: number) => {
     const prefix = nextValue.slice(0, cursor);
@@ -257,8 +269,12 @@ function PromptNode({ id, data }: { id: string; data: CanvasNodeData }) {
           placeholder="输入画面或镜头描述"
           onChange={(event) => {
             const nextValue = event.target.value;
+            const start = event.target.selectionStart ?? nextValue.length;
+            const end = event.target.selectionEnd ?? start;
+            promptCursorRef.current = start;
+            pendingPromptSelectionRef.current = { start, end };
             actions.updateNodeData(id, { prompt: nextValue });
-            updateMentionContext(nextValue, event.target.selectionStart ?? nextValue.length);
+            updateMentionContext(nextValue, start);
           }}
           onSelect={(event) => {
             promptCursorRef.current = event.currentTarget.selectionStart ?? event.currentTarget.value.length;
@@ -555,7 +571,7 @@ function GeneratorNode({ id, data }: { id: string; data: CanvasNodeData }) {
         onClick={() => actions.runGenerator(id)}
       >
         {busy ? <LoaderCircle className="is-spinning" /> : <Play />}
-        <span>{busy ? "生成中" : "开始生成"}</span>
+        <span>{busy ? "提交中" : "开始生成"}</span>
       </button>
     </div>
   );

@@ -1446,6 +1446,52 @@ function CanvasWorkspaceInner({
     return pendingIds;
   }, [connectionStyle, markDirty, pushHistorySnapshot]);
 
+  const createPendingVideoResultNode = useCallback((generatorId: string) => {
+    const generator = nodesRef.current.find((node) => node.id === generatorId);
+    if (!generator) return "";
+    pushHistorySnapshot();
+    const createdAt = new Date().toISOString();
+    const resultIds = new Set(edgesRef.current.filter((edge) => edge.source === generatorId).map((edge) => edge.target));
+    const existingResults = nodesRef.current.filter((node) => resultIds.has(node.id) && node.data.kind === "media");
+    const resultX = generator.position.x + (generator.width || 340) + 130;
+    const resultY = existingResults.length
+      ? Math.max(...existingResults.map((node) => node.position.y + (node.height || 360))) + 40
+      : generator.position.y;
+    const id = canvasId("node");
+    const pendingNode: CanvasFlowNode = {
+      id,
+      type: "canvas",
+      dragHandle: ".canvas-node__header",
+      position: { x: resultX, y: resultY },
+      width: 340,
+      height: 360,
+      data: {
+        kind: "media",
+        title: "视频生成中",
+        mediaType: "video",
+        createdAt,
+        generationStartedAt: createdAt,
+        mediaOrigin: "generated",
+        sourceNodeIds: [generatorId],
+        status: "queued",
+        progress: 5,
+      },
+    };
+    setNodes((current) => [
+      ...current.map((node) => node.id === generatorId ? { ...node, data: { ...node.data, outputNodeId: id } } : node),
+      pendingNode,
+    ]);
+    setEdges((current) => [...current, decorateCanvasEdge({
+      id: canvasId("edge"),
+      source: generatorId,
+      sourceHandle: "output",
+      target: id,
+      targetHandle: "input",
+    }, [...nodesRef.current, pendingNode], connectionStyle)]);
+    markDirty();
+    return id;
+  }, [connectionStyle, markDirty, pushHistorySnapshot]);
+
   const updatePendingImageResults = useCallback((ids: string[], patch: Partial<CanvasNodeData>) => {
     if (!ids.length) return;
     const targets = new Set(ids);
@@ -1502,6 +1548,7 @@ function CanvasWorkspaceInner({
     updateNodeData(generatorId, { status: "queued", progress: 0, error: undefined, providerId: provider.id });
     setNotice("");
     let pendingImageResultIds: string[] = [];
+    let pendingVideoResultId = "";
     try {
       if (generator.data.generationKind === "image") {
         if (mediaItems.some((item) => item.type !== "image")) throw new Error("图片生成节点只能连接图片素材。");
@@ -1512,16 +1559,18 @@ function CanvasWorkspaceInner({
         await submitImageGeneration(generatorId, { ...generator.data, imageMode }, provider, prompt, mediaItems, addResultNode, updateNodeData, isInternalCanvas, pendingImageResultIds);
         updatePendingImageResults(pendingImageResultIds, { status: "failed", progress: 0, error: "生成接口未返回对应图片。" });
       } else {
-        await submitVideoGeneration(generatorId, generator.data, provider as WorkspacePublicProvider, prompt, mediaItems, addResultNode, updateNodeData, isInternalCanvas);
+        pendingVideoResultId = createPendingVideoResultNode(generatorId);
+        await submitVideoGeneration(generatorId, generator.data, provider as WorkspacePublicProvider, prompt, mediaItems, addResultNode, updateNodeData, isInternalCanvas, pendingVideoResultId);
       }
       await refreshLibrary().catch(() => undefined);
     } catch (error) {
       const message = apiMessage(error, "生成失败。");
       updateNodeData(generatorId, { status: "failed", error: message });
       updatePendingImageResults(pendingImageResultIds, { status: "failed", progress: 0, error: message });
+      if (pendingVideoResultId) updateNodeData(pendingVideoResultId, { status: "failed", progress: 0, error: message });
       setNotice(message);
     }
-  }, [addResultNode, createPendingImageResultNodes, isInternalCanvas, refreshLibrary, updateNodeData, updatePendingImageResults]);
+  }, [addResultNode, createPendingImageResultNodes, createPendingVideoResultNode, isInternalCanvas, refreshLibrary, updateNodeData, updatePendingImageResults]);
 
   const inputSummary = useMemo(() => {
     const summaries: Record<string, GeneratorInputSummary> = {};
@@ -2783,10 +2832,10 @@ function CanvasWorkspaceInner({
       } else if (command && event.key.toLowerCase() === "s") {
         event.preventDefault();
         void saveNow(true);
-      } else if (command && event.key.toLowerCase() === "z" && !event.shiftKey) {
+      } else if (command && event.key.toLowerCase() === "z" && !event.shiftKey && !typing) {
         event.preventDefault();
         undoCanvas();
-      } else if ((command && event.key.toLowerCase() === "y") || (command && event.shiftKey && event.key.toLowerCase() === "z")) {
+      } else if (!typing && ((command && event.key.toLowerCase() === "y") || (command && event.shiftKey && event.key.toLowerCase() === "z"))) {
         event.preventDefault();
         redoCanvas();
       } else if (command && event.shiftKey && event.key.toLowerCase() === "e") {
@@ -4409,9 +4458,10 @@ async function submitVideoGeneration(
   provider: WorkspacePublicProvider,
   prompt: string,
   references: CanvasMediaReference[],
-  addResultNode: (generatorId: string, item: LibraryItem, job?: JobRecord | null, resultIndex?: number, resultTotal?: number) => void,
+  addResultNode: (generatorId: string, item: LibraryItem, job?: JobRecord | null, resultIndex?: number, resultTotal?: number, existingNodeId?: string) => void,
   updateNodeData: (id: string, patch: Partial<CanvasNodeData>, persist?: boolean) => void,
   internalCanvas: boolean,
+  pendingResultNodeId: string,
 ) {
   const images = references.filter((item) => item.type === "image");
   const videos = references.filter((item) => item.type === "video");
@@ -4485,7 +4535,7 @@ async function submitVideoGeneration(
   videoFiles.forEach((file) => form.append("referenceVideos", file));
   audioFiles.forEach((file) => form.append("referenceAudios", file));
   const response = await fetchJsonWithCsrf<{ item: LibraryItem; job: JobRecord | null }>("/api/generate/video", { method: "POST", body: form });
-  addResultNode(generatorId, response.item, response.job);
+  addResultNode(generatorId, response.item, response.job, 0, 1, pendingResultNodeId);
   updateNodeData(generatorId, {
     status: "idle",
     progress: 0,

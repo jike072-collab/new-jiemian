@@ -53,7 +53,7 @@ assert.doesNotMatch(workspace, /编辑文字/, "the selected prompt toolbar must
 assert.match(canvasNode, /aria-label="优化提示词"/, "prompt nodes must expose prompt optimization directly");
 assert.equal((canvasNode.match(/<StatusLine/g) || []).length, 1, "generation status must render only on result media nodes");
 assert.match(workspace, /kind: "media"[\s\S]*jobId: job\?\.id/, "video jobs must be tracked by their result nodes");
-assert.match(workspace, /addResultNode\(generatorId, response\.item, response\.job\);[\s\S]*status: "idle"/, "video generators must become reusable after task acceptance");
+assert.match(workspace, /addResultNode\(generatorId, response\.item, response\.job, 0, 1, pendingResultNodeId\);[\s\S]*status: "idle"/, "video generators must replace their pending result and become reusable after task acceptance");
 assert.match(promptHttp, /isInternalCanvasHostname.*\? "internal_free"/, "CN prompt optimization must remain free");
 assert.match(notices, /csyqlz\/vozeb/, "third-party notice must identify the VOZEB source");
 assert.match(notices, /a2c52c7aacf68d825563b7455efa9c34f3db0123/, "third-party notice must pin the imported source commit");
