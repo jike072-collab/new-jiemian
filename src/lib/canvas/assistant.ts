@@ -1,7 +1,7 @@
 import type { CanvasMediaType, CanvasReferenceBinding, CanvasSequenceState } from "./types";
 
 export type CanvasAssistantAction =
-  | { type: "add_prompt"; title?: string; prompt: string }
+  | { type: "add_prompt"; title?: string; prompt: string; targetGeneratorId?: string }
   | { type: "add_generator"; generationKind: "image" | "video" }
   | { type: "replace_selected_prompt"; prompt: string }
   | { type: "organize"; layout: "flow" | "grid" }
@@ -155,7 +155,15 @@ export function normalizeCanvasAssistantResponse(value: unknown): CanvasAssistan
     const type = boundedText(action.type, 40);
     if (type === "add_prompt") {
       const prompt = boundedText(action.prompt, 4_000);
-      if (prompt) actions.push({ type, prompt, title: boundedText(action.title, 80) || undefined });
+      if (prompt) {
+        const targetGeneratorId = boundedText(action.targetGeneratorId, 100);
+        actions.push({
+          type,
+          prompt,
+          title: boundedText(action.title, 80) || undefined,
+          ...(targetGeneratorId ? { targetGeneratorId } : {}),
+        });
+      }
       continue;
     }
     if (type === "replace_selected_prompt") {

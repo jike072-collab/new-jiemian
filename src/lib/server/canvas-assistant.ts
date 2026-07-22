@@ -50,7 +50,7 @@ const systemPrompt = [
   ...seedanceCanvasAssistantRules,
   "仅输出 JSON，不要 Markdown。结构为：{\"reply\":\"简体中文回复\",\"actions\":[...]}",
   "actions 只允许：",
-  "{\"type\":\"add_prompt\",\"title\":\"可选标题\",\"prompt\":\"提示词\"}",
+  "{\"type\":\"add_prompt\",\"title\":\"可选标题\",\"prompt\":\"提示词\",\"targetGeneratorId\":\"可选的目标生成节点ID\"}",
   "{\"type\":\"add_generator\",\"generationKind\":\"image或video\"}",
   "{\"type\":\"replace_selected_prompt\",\"prompt\":\"新提示词\"}",
   "{\"type\":\"organize\",\"layout\":\"flow或grid\"}",
@@ -62,6 +62,7 @@ const systemPrompt = [
   "{\"type\":\"annotate_sequence\",\"nodeId\":\"节点ID\",\"sequenceState\":{\"accepted\":true,\"acceptedEndState\":\"实际结尾状态\",\"continuityLocks\":[\"保持人物服装\"]}}",
   "{\"type\":\"add_storyboard\",\"title\":\"可选项目名\",\"shots\":[{\"shotId\":\"SH01\",\"title\":\"镜头标题\",\"timeRange\":\"0-3s\",\"prompt\":\"镜头提示词\",\"referenceBindings\":[],\"sequenceState\":{}}]}",
   "这些动作只能改变画布结构。禁止输出删除、运行生成、上传、下载、账号、权限或任何外部操作。",
+  "创建给现有生成链路使用的提示词时，必须在 add_prompt 中填写该链路的 targetGeneratorId；只有目标不明确时才省略。",
   "用户没有明确要求改动画布时 actions 必须为空；但写提示词、换物方案、优化提示词和生成分镜本身视为明确请求，可返回对应的提示词或分镜动作。最多返回 8 个动作。",
 ].join("\n");
 
@@ -173,6 +174,21 @@ function parseModelResponse(value: string): CanvasAssistantResponse {
   }
 }
 
+function attachUnambiguousPromptTargets(response: CanvasAssistantResponse, nodes: CanvasAssistantNode[] = []) {
+  const selectedGeneratorIds = nodes.filter((node) => node.kind === "generator" && node.selected).map((node) => node.id);
+  const generatorIds = nodes.filter((node) => node.kind === "generator").map((node) => node.id);
+  const targetGeneratorId = selectedGeneratorIds.length === 1
+    ? selectedGeneratorIds[0]
+    : generatorIds.length === 1 ? generatorIds[0] : "";
+  if (!targetGeneratorId) return response;
+  return {
+    ...response,
+    actions: response.actions.map((action) => action.type === "add_prompt" && !action.targetGeneratorId
+      ? { ...action, targetGeneratorId }
+      : action),
+  };
+}
+
 export class CanvasAssistantError extends Error {
   constructor(readonly code: "CANVAS_ASSISTANT_INVALID" | "CANVAS_ASSISTANT_FAILED", message: string, readonly status: number) {
     super(message);
@@ -218,7 +234,7 @@ export function createCanvasAssistantService(caller: PromptModelCaller = createN
           await delay(canvasAssistantRetryDelayMs);
           output = await caller(callInput);
         }
-        return parseModelResponse(output);
+        return attachUnambiguousPromptTargets(parseModelResponse(output), normalized.nodes);
       } catch (error) {
         newApiLogger.warn({
           event: "canvas_assistant_failed",
@@ -234,7 +250,7 @@ export function createCanvasAssistantService(caller: PromptModelCaller = createN
           },
         });
         const fallback = localCanvasAssistantFallback(normalized);
-        if (fallback) return fallback;
+        if (fallback) return attachUnambiguousPromptTargets(fallback, normalized.nodes);
         throw new CanvasAssistantError("CANVAS_ASSISTANT_FAILED", "助手暂时不可用，请稍后重试。", 502);
       }
     },

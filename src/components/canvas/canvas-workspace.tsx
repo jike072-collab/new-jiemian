@@ -2287,7 +2287,25 @@ function CanvasWorkspaceInner({
     const actions = normalizeCanvasAssistantResponse({ reply: "已应用", actions: input }).actions;
     for (const action of actions) {
       if (action.type === "add_prompt") {
-        addPromptNode({ title: action.title, prompt: action.prompt });
+        const target = action.targetGeneratorId
+          ? nodesRef.current.find((node) => node.id === action.targetGeneratorId && node.data.kind === "generator")
+          : undefined;
+        const promptNode = addPromptNode(
+          { title: action.title, prompt: action.prompt },
+          target ? { x: target.position.x - 400, y: target.position.y } : undefined,
+        );
+        if (target) {
+          const edge = decorateCanvasEdge({
+            id: canvasId("edge"),
+            source: promptNode.id,
+            sourceHandle: "output",
+            target: target.id,
+            targetHandle: "input",
+          }, nodesRef.current, connectionStyle);
+          edgesRef.current = [...edgesRef.current, edge];
+          setEdges(edgesRef.current);
+          markDirty();
+        }
       } else if (action.type === "add_generator") {
         addGeneratorNode(action.generationKind);
       } else if (action.type === "replace_selected_prompt") {

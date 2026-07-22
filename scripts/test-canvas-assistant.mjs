@@ -37,6 +37,8 @@ assert.match(service, /seedanceCanvasAssistantRules/);
 assert.match(service, /seedanceTaskGuidance/);
 assert.match(service, /visualEvidence/);
 assert.match(service, /准确 @ImageN、@VideoN、@AudioN 标签/);
+assert.match(service, /attachUnambiguousPromptTargets/);
+assert.match(service, /targetGeneratorId/);
 assert.match(service, /@Video\\d\+/);
 assert.match(assistantMedia, /resolveLibraryMediaForOwners/);
 assert.match(assistantMedia, /spawn\("ffmpeg"/);
@@ -55,6 +57,7 @@ assert.match(workspace, /applyAssistantActions/);
 assert.match(workspace, /assistantNodeContexts/);
 assert.match(workspace, /referenceLabels/);
 assert.match(workspace, /libraryItemId/);
+assert.match(workspace, /action\.targetGeneratorId/);
 assert.match(workspace, /action\.type === "add_generator"/);
 assert.match(workspace, /action\.type === "select_nodes"/);
 assert.match(workspace, /action\.type === "connect_nodes"/);
@@ -84,6 +87,16 @@ assert.deepEqual(normalizeCanvasAssistantResponse({
     { type: "ungroup", groupId: "group-1" },
     { type: "organize", layout: "flow" },
   ],
+});
+
+assert.deepEqual(normalizeCanvasAssistantResponse({
+  reply: "连接提示词",
+  actions: [{ type: "add_prompt", title: "换物提示词", prompt: "使用 @Video1 与 @Image1", targetGeneratorId: "generator-1" }],
+}).actions[0], {
+  type: "add_prompt",
+  title: "换物提示词",
+  prompt: "使用 @Video1 与 @Image1",
+  targetGeneratorId: "generator-1",
 });
 
 assert.deepEqual(localCanvasAssistantFallback({
