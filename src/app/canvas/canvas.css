@@ -1080,7 +1080,7 @@
   overflow: visible;
 }
 
-.canvas-node__prompt-editor { position: relative; min-height: 0; height: 100%; }
+.canvas-node__prompt-editor { position: relative; display: grid; min-height: 0; height: 100%; grid-template-rows: minmax(0, 1fr) 26px; }
 
 .canvas-node__textarea {
   box-sizing: border-box;
@@ -1092,7 +1092,7 @@
   background: transparent;
   color: var(--foreground);
   outline: 0;
-  padding-bottom: 30px;
+  padding: 0 2px 6px 0;
   font-size: 13px;
   line-height: 1.65;
 }
@@ -1100,7 +1100,7 @@
 .aohuang-canvas-page .canvas-node__textarea:focus-visible { outline: none; }
 
 .canvas-node__textarea::placeholder { color: var(--muted); }
-.canvas-node__prompt-footer { position: absolute; right: 0; bottom: 0; left: 0; display: flex; align-items: center; gap: 6px; min-height: 24px; padding: 2px 0 0 2px; pointer-events: none; }
+.canvas-node__prompt-footer { position: relative; display: flex; min-width: 0; align-items: center; gap: 6px; min-height: 24px; padding: 2px 0 0 2px; background: var(--panel-2); pointer-events: none; }
 .canvas-node__mention-hint { min-width: 0; overflow: hidden; color: var(--muted); font-size: 10px; text-overflow: ellipsis; white-space: nowrap; }
 .canvas-node__counter {
   margin-left: auto;
