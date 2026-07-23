@@ -14,6 +14,20 @@ type JobsResponse = { jobs: TikTokPublicPublishJob[]; manualUploadUrl: string };
 type CopyResponse = { ok: true; draft: TikTokCopyDraft };
 export type CanvasTikTokCopyState = Pick<TikTokCopyDraft, "title" | "caption" | "angle"> & { hashtags: string };
 const activeStatuses = new Set(["scheduled", "queued", "uploading", "processing"]);
+const transientReadStatuses = new Set([502, 503, 504]);
+const transientReadRetryDelays = [600, 1_800];
+
+async function readTikTokJson<T>(url: string) {
+  for (let attempt = 0; ; attempt += 1) {
+    try {
+      return await fetchJson<T>(url);
+    } catch (error) {
+      const delay = transientReadRetryDelays[attempt];
+      if (delay === undefined || !(error instanceof ApiError) || !transientReadStatuses.has(error.status)) throw error;
+      await new Promise((resolve) => window.setTimeout(resolve, delay));
+    }
+  }
+}
 
 export function CanvasTikTokPublisher({ item, scope, initialCopy, onCopyChange, onDownload, onClose }: {
   item: LibraryItem;
@@ -30,6 +44,9 @@ export function CanvasTikTokPublisher({ item, scope, initialCopy, onCopyChange, 
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState("");
+  const [connectionError, setConnectionError] = useState("");
+  const [creatorError, setCreatorError] = useState("");
+  const [jobsError, setJobsError] = useState("");
   const [privacyLevel, setPrivacyLevel] = useState<TikTokPrivacyLevel | "">("");
   const [allowComment, setAllowComment] = useState(true);
   const [allowDuet, setAllowDuet] = useState(true);
@@ -50,30 +67,46 @@ export function CanvasTikTokPublisher({ item, scope, initialCopy, onCopyChange, 
   const copyRequestedFor = useRef("");
 
   const loadJobs = useCallback(async () => {
-    const response = await fetchJson<JobsResponse>("/api/tiktok/publish");
-    setJobs(response.jobs);
-    setManualUploadUrl(response.manualUploadUrl);
-    return response.jobs;
+    try {
+      const response = await readTikTokJson<JobsResponse>("/api/tiktok/publish");
+      setJobs(response.jobs);
+      setManualUploadUrl(response.manualUploadUrl);
+      setJobsError("");
+      return response.jobs;
+    } catch (error) {
+      setJobsError(apiMessage(error, "发布记录读取失败。"));
+      throw error;
+    }
   }, []);
 
   const load = useCallback(async () => {
     setLoading(true);
     setMessage("");
+    setConnectionError("");
+    setCreatorError("");
+    void loadJobs().catch(() => undefined);
     try {
-      const [connectionResponse] = await Promise.all([fetchJson<ConnectionResponse>("/api/tiktok/connection"), loadJobs()]);
+      const connectionResponse = await readTikTokJson<ConnectionResponse>("/api/tiktok/connection");
       setConnection(connectionResponse);
       if (connectionResponse.configured && connectionResponse.connection) {
-        const response = await fetchJson<{ creator: TikTokCreatorInfo }>("/api/tiktok/creator");
-        setCreator(response.creator);
-        setPrivacyLevel((current) => current || response.creator.privacyLevelOptions[0] || "");
-        setAllowComment(!response.creator.commentDisabled);
-        setAllowDuet(!response.creator.duetDisabled);
-        setAllowStitch(!response.creator.stitchDisabled);
+        try {
+          const response = await readTikTokJson<{ creator: TikTokCreatorInfo }>("/api/tiktok/creator");
+          setCreator(response.creator);
+          setPrivacyLevel((current) => current || response.creator.privacyLevelOptions[0] || "");
+          setAllowComment(!response.creator.commentDisabled);
+          setAllowDuet(!response.creator.duetDisabled);
+          setAllowStitch(!response.creator.stitchDisabled);
+        } catch (error) {
+          setCreator(null);
+          setCreatorError(apiMessage(error, "TikTok 发布权限读取失败。"));
+        }
       } else {
         setCreator(null);
       }
     } catch (error) {
-      setMessage(apiMessage(error, "TikTok 状态读取失败。"));
+      setConnection(null);
+      setCreator(null);
+      setConnectionError(apiMessage(error, "TikTok 状态读取失败。"));
     } finally {
       setLoading(false);
     }
@@ -256,6 +289,13 @@ export function CanvasTikTokPublisher({ item, scope, initialCopy, onCopyChange, 
 
         {loading ? <div className="canvas-tiktok-panel__loading"><LoaderCircle className="is-spinning" /><span>正在读取 TikTok 状态</span></div> : null}
 
+        {!loading && !connection && connectionError ? (
+          <div className="canvas-tiktok-panel__error" role="alert">
+            <span>{connectionError}</span>
+            <button type="button" onClick={() => { void load(); }}><RefreshCw />重新读取</button>
+          </div>
+        ) : null}
+
         {!loading && connection && !connection.configured ? (
           <div className="canvas-tiktok-panel__manual">
             <strong>Zernio 发布待配置</strong>
@@ -398,13 +438,19 @@ export function CanvasTikTokPublisher({ item, scope, initialCopy, onCopyChange, 
                   {busy ? "提交中" : immediateLimitReached ? "已达到当前 API 发布额度" : deliveryMode === "creator_inbox" ? "发送到 TikTok 草稿箱" : mode === "scheduled" ? "加入定时发布" : "发布到 TikTok"}
                 </button>
               </form>
+            ) : creatorError ? (
+              <div className="canvas-tiktok-panel__error" role="alert">
+                <span>{creatorError}</span>
+                <button type="button" onClick={() => { void load(); }}><RefreshCw />重新读取发布权限</button>
+              </div>
             ) : <div className="canvas-tiktok-panel__loading"><LoaderCircle className="is-spinning" /><span>正在读取发布权限</span></div>}
           </>
         ) : null}
 
-        {itemJobs.length ? (
+        {itemJobs.length || jobsError ? (
           <div className="canvas-tiktok-jobs">
             <div className="canvas-tiktok-jobs__heading"><strong>发布记录</strong><button type="button" onClick={() => { void loadJobs(); }} aria-label="刷新发布记录" title="刷新"><RefreshCw /></button></div>
+            {jobsError ? <div className="canvas-tiktok-jobs__error">{jobsError}</div> : null}
             {itemJobs.map((job) => (
               <div key={job.id} className={cn("canvas-tiktok-job", `is-${job.status}`)}>
                 {job.status === "published" ? <Check /> : activeStatuses.has(job.status) ? <LoaderCircle className="is-spinning" /> : <Clock3 />}

@@ -1725,6 +1725,9 @@
 .canvas-tiktok-panel__loading { min-height: 150px; justify-content: center; color: var(--muted-strong); font-size: 12px; }
 .canvas-tiktok-panel__manual,
 .canvas-tiktok-panel__connect { display: grid; justify-items: start; gap: 9px; padding: 18px; }
+.canvas-tiktok-panel__error { display: grid; justify-items: start; gap: 9px; margin: 14px; border: 1px solid color-mix(in srgb, #fb7185 45%, var(--border-subtle)); border-radius: 6px; background: color-mix(in srgb, #fb7185 7%, var(--surface)); color: var(--muted-strong); padding: 12px; font-size: 10px; line-height: 1.5; }
+.canvas-tiktok-panel__error button { display: inline-flex; min-height: 32px; align-items: center; gap: 6px; border: 1px solid var(--border-subtle); border-radius: 6px; background: var(--surface); color: var(--foreground); cursor: pointer; padding: 0 9px; font-size: 10px; }
+.canvas-tiktok-panel__error button svg { width: 13px; }
 .canvas-tiktok-panel__manual p,
 .canvas-tiktok-panel__connect span { margin: 0; color: var(--muted); font-size: 11px; line-height: 1.5; }
 .canvas-tiktok-panel__connect > svg { width: 28px; color: var(--primary); }
@@ -1808,6 +1811,7 @@
 .canvas-tiktok-jobs { display: grid; gap: 6px; border-top: 1px solid var(--border-subtle); padding: 12px 14px 14px; }
 .canvas-tiktok-jobs__heading { justify-content: space-between; }
 .canvas-tiktok-jobs__heading strong { font-size: 11px; }
+.canvas-tiktok-jobs__error { border-left: 2px solid #fb7185; color: var(--muted-strong); padding: 3px 8px; font-size: 10px; line-height: 1.5; }
 .canvas-tiktok-job { min-width: 0; border: 1px solid var(--border-subtle); border-radius: 6px; background: var(--surface); padding: 8px; }
 .canvas-tiktok-job > svg { width: 15px; flex: 0 0 15px; color: #22d3ee; }
 .canvas-tiktok-job.is-published > svg { color: #34d399; }
