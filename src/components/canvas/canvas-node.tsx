@@ -34,6 +34,7 @@ import {
 } from "@xyflow/react";
 
 import type { EnabledProviders, WorkspacePublicProvider } from "@/components/studio/types";
+import { CanvasVideoPreview } from "@/components/canvas/canvas-video-preview";
 import { canvasImageCountLimit } from "@/lib/canvas/image-batch";
 import { canvasMediaMetadata } from "@/lib/canvas/media-metadata";
 import {
@@ -443,10 +444,9 @@ function MediaNode({ id, data }: { id: string; data: CanvasNodeData }) {
       ) : null}
       {data.mediaUrl && data.mediaType === "video" ? (
         <>
-          <video
+          <CanvasVideoPreview
             src={data.mediaUrl}
             controls
-            preload="metadata"
             className="nodrag nowheel"
             onLoadedMetadata={(event) => actions.registerMediaDimensions(id, event.currentTarget.videoWidth, event.currentTarget.videoHeight)}
           />
@@ -600,7 +600,7 @@ function GeneratorNode({ id, data }: { id: string; data: CanvasNodeData }) {
               {previews.map((item, index) => (
                 <figure key={`${item.url}-${index}`} className="canvas-node__preview-item">
                   {item.mediaType === "video" ? (
-                    <video src={item.url} muted playsInline preload="metadata" />
+                    <CanvasVideoPreview src={item.url} muted playsInline decorative />
                   ) : item.mediaType === "audio" ? (
                     <Music aria-hidden="true" />
                   ) : (

@@ -109,6 +109,7 @@ import { CanvasImageEditor } from "@/components/canvas/canvas-image-editor";
 import { CanvasMediaViewer } from "@/components/canvas/canvas-media-viewer";
 import { CanvasTikTokPublisher, type CanvasTikTokCopyState } from "@/components/canvas/canvas-tiktok-publisher";
 import { CanvasVideoTrimmer } from "@/components/canvas/canvas-video-trimmer";
+import { CanvasVideoPreview } from "@/components/canvas/canvas-video-preview";
 import { CanvasVozebTopbar } from "@/components/canvas/canvas-vozeb-shell";
 import {
   CanvasGroupNode,
@@ -1209,8 +1210,55 @@ function CanvasWorkspaceInner({
       setNotice("文件夹中没有支持的图片或视频。");
       return;
     }
+    pushHistorySnapshot();
+    const columns = files.length > 12 ? 5 : 3;
+    const stageBounds = stageRef.current?.getBoundingClientRect();
+    const anchor = position || flow.screenToFlowPosition({
+      x: stageBounds ? stageBounds.left + stageBounds.width / 2 : window.innerWidth / 2,
+      y: stageBounds ? stageBounds.top + stageBounds.height / 2 : window.innerHeight / 2,
+    });
+    const rows = Math.ceil(files.length / columns);
+    const basePosition = position ? anchor : {
+      x: anchor.x - (Math.min(columns, files.length) * 350 - 30) / 2,
+      y: anchor.y - (rows * 370 - 30) / 2,
+    };
+    const placeholders = files.map((file, index): CanvasFlowNode => {
+      const mediaType = file.type.startsWith("video/") ? "video" as const : "image" as const;
+      return {
+        id: canvasId("upload"),
+        type: "canvas",
+        dragHandle: canvasNodeDragHandle("media"),
+        position: {
+          x: basePosition.x + (index % columns) * 350,
+          y: basePosition.y + Math.floor(index / columns) * 370,
+        },
+        width: 320,
+        height: mediaType === "image" ? 300 : 340,
+        selected: true,
+        data: {
+          kind: "media",
+          title: file.name || (mediaType === "image" ? "图片素材" : "视频素材"),
+          mediaType,
+          mediaUrl: URL.createObjectURL(file),
+          mediaOrigin: "upload",
+          createdAt: new Date().toISOString(),
+          fileSize: file.size,
+          status: "generating",
+          progress: 5,
+        },
+      };
+    });
+    const nextNodes = [...nodesRef.current.map((node) => ({ ...node, selected: false })), ...placeholders];
+    nodesRef.current = nextNodes;
+    setNodes(nextNodes);
+    setEdges((current) => current.map((edge) => ({ ...edge, selected: false })));
     setNotice(`正在上传 ${files.length} 个素材…`);
-    const results: Array<LibraryItem | undefined> = new Array(files.length);
+    if (!position) {
+      window.requestAnimationFrame(() => {
+        void flowRef.current.fitView({ nodes: placeholders, padding: 0.2, duration: 220, maxZoom: 1 });
+      });
+    }
+    let uploadedCount = 0;
     const errors: unknown[] = [];
     let nextIndex = 0;
     const worker = async () => {
@@ -1222,28 +1270,56 @@ function CanvasWorkspaceInner({
           form.append("file", files[index]);
           form.append("canvasScope", canvasScope());
           const response = await fetchJsonWithCsrf<{ item: LibraryItem }>("/api/canvas/media", { method: "POST", body: form });
-          results[index] = response.item;
+          const item = response.item;
+          const placeholder = placeholders[index];
+          const objectUrl = placeholder.data.mediaUrl;
+          uploadedCount += 1;
+          setLibrary((current) => [item, ...current.filter((candidate) => candidate.id !== item.id)]);
+          setNodes((current) => {
+            const next = current.map((node) => node.id === placeholder.id ? {
+              ...node,
+              data: {
+                ...node.data,
+                title: item.title || node.data.title,
+                mediaType: item.type,
+                libraryItemId: item.id,
+                model: item.model,
+                createdAt: item.createdAt,
+                mediaUrl: item.output?.url,
+                status: libraryStatus(item),
+                progress: 0,
+                error: item.error || undefined,
+                ...canvasMediaNodeMetadata(item),
+              },
+            } : node);
+            nodesRef.current = next;
+            return next;
+          });
+          markDirty();
+          setNotice(`已上传 ${uploadedCount}/${files.length} 个素材`);
+          if (typeof objectUrl === "string" && objectUrl.startsWith("blob:")) {
+            window.requestAnimationFrame(() => window.requestAnimationFrame(() => URL.revokeObjectURL(objectUrl)));
+          }
         } catch (error) {
           errors.push(error);
+          const placeholder = placeholders[index];
+          const objectUrl = placeholder.data.mediaUrl;
+          setNodes((current) => {
+            const next = current.filter((node) => node.id !== placeholder.id);
+            nodesRef.current = next;
+            return next;
+          });
+          if (typeof objectUrl === "string" && objectUrl.startsWith("blob:")) URL.revokeObjectURL(objectUrl);
         }
       }
     };
     await Promise.all(Array.from({ length: Math.min(3, files.length) }, () => worker()));
-    const uploaded = results.filter((item): item is LibraryItem => Boolean(item));
-    if (uploaded.length) {
-      setLibrary((current) => [...uploaded, ...current]);
-      const columns = uploaded.length > 12 ? 5 : 3;
-      uploaded.forEach((item, index) => addLibraryNode(item, position ? {
-        x: position.x + (index % columns) * 350,
-        y: position.y + Math.floor(index / columns) * 370,
-      } : undefined));
-    }
     if (errors.length) {
-      setNotice(`${uploaded.length ? `已添加 ${uploaded.length} 个素材；` : ""}${errors.length} 个上传失败：${apiMessage(errors[0], "素材上传失败。")}${reachedLimit ? `；单次最多导入 ${MAX_CANVAS_FOLDER_FILES} 个素材` : ""}`);
+      setNotice(`${uploadedCount ? `已添加 ${uploadedCount} 个素材；` : ""}${errors.length} 个上传失败：${apiMessage(errors[0], "素材上传失败。")}${reachedLimit ? `；单次最多导入 ${MAX_CANVAS_FOLDER_FILES} 个素材` : ""}`);
     } else {
-      setNotice(`已添加 ${uploaded.length} 个素材到画布和作品库${reachedLimit ? `；单次最多导入 ${MAX_CANVAS_FOLDER_FILES} 个素材` : ""}。`);
+      setNotice(`已添加 ${uploadedCount} 个素材到画布和作品库${reachedLimit ? `；单次最多导入 ${MAX_CANVAS_FOLDER_FILES} 个素材` : ""}。`);
     }
-  }, [addLibraryNode, isInternalCanvas]);
+  }, [flow, isInternalCanvas, markDirty, pushHistorySnapshot]);
 
   const addLibraryNodes = useCallback((items: LibraryItem[]) => {
     const existingIds = new Set(nodesRef.current.flatMap((node) => node.data.kind === "media" && node.data.libraryItemId ? [node.data.libraryItemId] : []));
@@ -3249,7 +3325,6 @@ function CanvasWorkspaceInner({
               defaultViewport={viewport}
               minZoom={0.08}
               maxZoom={2.5}
-              onlyRenderVisibleElements
               panOnScroll
               panOnDrag
               panActivationKeyCode="Space"
@@ -4340,6 +4415,8 @@ function LibraryPanel({ open, items, filter, search, onClose, onFilter, onSearch
                 {item.output?.url && item.type === "image" ? (
                   // eslint-disable-next-line @next/next/no-img-element -- authenticated runtime media is not a static Next image.
                   <img src={canvasLibraryThumbnailUrl(item)} alt="" draggable={false} loading="lazy" decoding="async" />
+                ) : item.output?.url && item.type === "video" ? (
+                  <CanvasVideoPreview src={item.output.url} muted playsInline decorative />
                 ) : item.type === "video" ? <Film /> : <ImageIcon />}
               </span>
               <span className="canvas-library-item__copy">
@@ -4577,8 +4654,15 @@ async function libraryItemFile(item: CanvasMediaReference) {
 }
 
 function serializeDocument(nodes: CanvasFlowNode[], edges: Edge[], viewport: Viewport): CanvasProjectDocument {
+  const persistedNodes = nodes.filter((node) => !(
+    node.data.kind === "media"
+    && node.data.mediaOrigin === "upload"
+    && !node.data.libraryItemId
+    && (node.data.status === "queued" || node.data.status === "generating")
+  ));
+  const persistedNodeIds = new Set(persistedNodes.map((node) => node.id));
   return {
-    nodes: nodes.map((node) => {
+    nodes: persistedNodes.map((node) => {
       const data = { ...node.data };
       if (data.mediaType !== "audio") delete data.mediaUrl;
       return {
@@ -4591,7 +4675,7 @@ function serializeDocument(nodes: CanvasFlowNode[], edges: Edge[], viewport: Vie
         data,
       };
     }),
-    edges: edges.map((edge) => ({
+    edges: edges.filter((edge) => persistedNodeIds.has(edge.source) && persistedNodeIds.has(edge.target)).map((edge) => ({
       id: edge.id,
       source: edge.source,
       target: edge.target,
