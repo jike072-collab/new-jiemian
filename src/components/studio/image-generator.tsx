@@ -356,20 +356,6 @@ function EcommerceTenPageInput({
           event.currentTarget.value = "";
         }}
       />
-      <div className="studio-ecommerce-logo-upload">
-        {logo ? (
-          <div className="studio-ecommerce-logo-preview">
-            <img src={logo.previewUrl} alt="品牌 Logo" />
-            <button type="button" aria-label="删除品牌 Logo" onClick={() => onRemove(0)}>×</button>
-          </div>
-        ) : (
-          <button type="button" className="studio-ecommerce-logo-dropzone" onClick={() => logoInputRef.current?.click()}>
-            <ImagePlus className="size-5" aria-hidden="true" />
-            <strong>Logo 上传</strong>
-            <span>每张图固定放在左上角</span>
-          </button>
-        )}
-      </div>
       <input
         ref={boardInputRef}
         type="file"
@@ -383,12 +369,24 @@ function EcommerceTenPageInput({
           event.currentTarget.value = "";
         }}
       />
-      <div className="studio-ecommerce-board-upload">
+      <div className="studio-ecommerce-board-upload studio-ecommerce-assets-upload">
         <div className="studio-ecommerce-upload-heading">
-          <strong>配色四视图白底图</strong>
-          <span>每张图对应一个颜色</span>
+          <strong>Logo 与配色四视图</strong>
+          <span>第 1 张固定为 Logo</span>
         </div>
         <div className="studio-ecommerce-board-grid">
+          {logo ? (
+            <div className="studio-ecommerce-board-preview is-logo">
+              <img src={logo.previewUrl} alt="品牌 Logo" />
+              <span>Logo</span>
+              <button type="button" aria-label="删除品牌 Logo" onClick={() => onRemove(0)}>×</button>
+            </div>
+          ) : (
+            <button type="button" className="studio-ecommerce-upload-button studio-ecommerce-upload-button--logo" onClick={() => logoInputRef.current?.click()}>
+              <ImagePlus className="size-5" aria-hidden="true" />
+              <span>Logo 上传</span>
+            </button>
+          )}
           {boards.map((board, index) => (
             <div key={`${board.file.name}-${index}`} className="studio-ecommerce-board-preview">
               <img src={board.previewUrl} alt={`配色 ${index + 1} 四视图`} />

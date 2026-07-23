@@ -118,15 +118,22 @@ test("image features default to image generation and special uploads clear in on
 
   await featureButton.click();
   await page.getByRole("menuitem").filter({ hasText: "电商套图 1-10 张" }).click();
+  const ecommerceAssets = page.locator(".studio-ecommerce-assets-upload");
+  await expect(ecommerceAssets).toHaveCount(1);
+  await expect(page.locator(".studio-ecommerce-logo-upload")).toHaveCount(0);
+  await expect(ecommerceAssets.locator(".studio-ecommerce-board-grid").getByRole("button").first()).toContainText("Logo 上传");
+  await expect(ecommerceAssets.getByRole("button", { name: "添加配色" })).toBeDisabled();
   const logoChooserPromise = page.waitForEvent("filechooser");
   await page.getByRole("button", { name: /Logo 上传/ }).click();
   const logoChooser = await logoChooserPromise;
   await logoChooser.setFiles({ name: "logo.png", mimeType: "image/png", buffer: pixel });
+  await expect(ecommerceAssets.locator(".studio-ecommerce-board-preview.is-logo")).toHaveCount(1);
+  await expect(ecommerceAssets.getByRole("button", { name: "添加配色" })).toBeEnabled();
   await page.getByLabel("上传配色四视图白底图").setInputFiles({ name: "board.png", mimeType: "image/png", buffer: pixel });
-  await expect(page.locator(".studio-ecommerce-logo-preview")).toHaveCount(1);
-  await expect(page.locator(".studio-ecommerce-board-preview")).toHaveCount(1);
+  await expect(page.locator(".studio-ecommerce-board-preview.is-logo")).toHaveCount(1);
+  await expect(page.locator(".studio-ecommerce-board-preview:not(.is-logo)")).toHaveCount(1);
   await page.getByRole("button", { name: "一键清除素材", exact: true }).click();
-  await expect(page.locator(".studio-ecommerce-logo-preview")).toHaveCount(0);
+  await expect(page.locator(".studio-ecommerce-board-preview.is-logo")).toHaveCount(0);
   await expect(page.locator(".studio-ecommerce-board-preview")).toHaveCount(0);
   await featureButton.click();
   await page.getByRole("menuitem").filter({ hasText: "图片生成" }).click();

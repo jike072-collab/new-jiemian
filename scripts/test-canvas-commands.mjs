@@ -69,6 +69,14 @@ const crossingLayout = new Map(layoutCanvasFlowNodes(crossingNodes, [
 ]).map((item) => [item.id, item.position]));
 assert.ok(crossingLayout.get("target-b").y < crossingLayout.get("target-a").y, "dependency ordering should remove the avoidable crossing");
 
+const disconnectedNodes = Array.from({ length: 15 }, (_, index) => node(`loose-${index + 1}`, index % 3 === 0 ? "prompt" : "media", index * 420));
+const disconnectedLayout = layoutCanvasFlowNodes(disconnectedNodes, []);
+const disconnectedWidth = Math.max(...disconnectedLayout.map((item) => item.position.x + item.width)) - Math.min(...disconnectedLayout.map((item) => item.position.x));
+const disconnectedHeight = Math.max(...disconnectedLayout.map((item) => item.position.y + item.height)) - Math.min(...disconnectedLayout.map((item) => item.position.y));
+assert.ok(disconnectedWidth > 1_200, "disconnected nodes should wrap into several columns");
+assert.ok(disconnectedHeight < 1_500, "disconnected nodes should not form one extremely tall column");
+assert.ok(disconnectedWidth / disconnectedHeight > 1.2, "disconnected layout should fit a landscape canvas");
+
 const [workspace, palette, shell, shortcuts, uploadRoute] = await Promise.all([
   read("src/components/canvas/canvas-workspace.tsx"),
   read("src/components/canvas/canvas-command-palette.tsx"),

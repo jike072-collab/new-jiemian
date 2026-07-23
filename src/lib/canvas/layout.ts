@@ -19,26 +19,102 @@ const defaultNodeWidth = 360;
 const defaultNodeHeight = 300;
 const horizontalGap = 96;
 const verticalGap = 48;
+const componentGap = 96;
 
 export function layoutCanvasFlowNodes<T extends CanvasLayoutNode>(nodes: T[], edges: CanvasLayoutEdge[]): T[] {
   const roots = nodes.filter((node) => !node.parentId);
   if (!roots.length) return nodes;
 
   const rootMap = new Map(roots.map((node) => [node.id, node]));
-  const incoming = new Map(roots.map((node) => [node.id, [] as string[]]));
-  const outgoing = new Map(roots.map((node) => [node.id, [] as string[]]));
+  const relations: CanvasLayoutEdge[] = [];
   const edgeKeys = new Set<string>();
   const addRelation = (source: string, target: string) => {
     if (source === target || !rootMap.has(source) || !rootMap.has(target)) return;
     const key = `${source}\u0000${target}`;
     if (edgeKeys.has(key)) return;
     edgeKeys.add(key);
-    outgoing.get(source)?.push(target);
-    incoming.get(target)?.push(source);
+    relations.push({ source, target });
   };
-
   edges.forEach((edge) => addRelation(edge.source, edge.target));
   roots.forEach((node) => node.data.sourceNodeIds?.forEach((sourceId) => addRelation(sourceId, node.id)));
+
+  const neighbors = new Map(roots.map((node) => [node.id, [] as string[]]));
+  relations.forEach(({ source, target }) => {
+    neighbors.get(source)?.push(target);
+    neighbors.get(target)?.push(source);
+  });
+  const originalOrder = new Map([...roots]
+    .sort((left, right) => left.position.y - right.position.y || left.position.x - right.position.x || left.id.localeCompare(right.id))
+    .map((node, index) => [node.id, index]));
+  const unvisited = new Set(roots.map((node) => node.id));
+  const components: T[][] = [];
+  while (unvisited.size) {
+    const firstId = unvisited.values().next().value as string;
+    const queue = [firstId];
+    const component: T[] = [];
+    unvisited.delete(firstId);
+    while (queue.length) {
+      const nodeId = queue.shift();
+      if (!nodeId) continue;
+      const node = rootMap.get(nodeId) as T | undefined;
+      if (node) component.push(node);
+      for (const neighborId of neighbors.get(nodeId) || []) {
+        if (!unvisited.delete(neighborId)) continue;
+        queue.push(neighborId);
+      }
+    }
+    component.sort((left, right) => (originalOrder.get(left.id) || 0) - (originalOrder.get(right.id) || 0));
+    components.push(component);
+  }
+
+  const componentLayouts = components.map((component) => {
+    const ids = new Set(component.map((node) => node.id));
+    const laidOut = layoutFlowComponent(component, relations.filter((edge) => ids.has(edge.source) && ids.has(edge.target)));
+    const minX = Math.min(...laidOut.map((node) => node.position.x));
+    const minY = Math.min(...laidOut.map((node) => node.position.y));
+    const width = Math.max(...laidOut.map((node) => node.position.x + nodeWidth(node))) - minX;
+    const height = Math.max(...laidOut.map((node) => node.position.y + nodeHeight(node))) - minY;
+    return { nodes: laidOut, minX, minY, width, height };
+  });
+  const totalArea = componentLayouts.reduce((sum, component) => (
+    sum + (component.width + componentGap) * (component.height + componentGap)
+  ), 0);
+  const targetRowWidth = Math.max(
+    1_200,
+    ...componentLayouts.map((component) => component.width),
+    Math.sqrt(totalArea * (16 / 9)),
+  );
+  const positions = new Map<string, { x: number; y: number }>();
+  let nextX = 0;
+  let nextY = 0;
+  let rowHeight = 0;
+  componentLayouts.forEach((component) => {
+    if (nextX > 0 && nextX + component.width > targetRowWidth) {
+      nextX = 0;
+      nextY += rowHeight + componentGap;
+      rowHeight = 0;
+    }
+    component.nodes.forEach((node) => {
+      positions.set(node.id, {
+        x: nextX + node.position.x - component.minX,
+        y: nextY + node.position.y - component.minY,
+      });
+    });
+    nextX += component.width + componentGap;
+    rowHeight = Math.max(rowHeight, component.height);
+  });
+
+  return nodes.map((node) => node.parentId ? node : ({ ...node, position: positions.get(node.id) || node.position }));
+}
+
+function layoutFlowComponent<T extends CanvasLayoutNode>(roots: T[], relations: CanvasLayoutEdge[]): T[] {
+  const rootMap = new Map(roots.map((node) => [node.id, node]));
+  const incoming = new Map(roots.map((node) => [node.id, [] as string[]]));
+  const outgoing = new Map(roots.map((node) => [node.id, [] as string[]]));
+  relations.forEach(({ source, target }) => {
+    outgoing.get(source)?.push(target);
+    incoming.get(target)?.push(source);
+  });
 
   const originalOrder = new Map([...roots]
     .sort((left, right) => left.position.y - right.position.y || left.position.x - right.position.x || left.id.localeCompare(right.id))
@@ -117,7 +193,7 @@ export function layoutCanvasFlowNodes<T extends CanvasLayoutNode>(nodes: T[], ed
     });
   });
 
-  return nodes.map((node) => node.parentId ? node : ({ ...node, position: positions.get(node.id) || node.position }));
+  return roots.map((node) => ({ ...node, position: positions.get(node.id) || node.position }));
 }
 
 function semanticFallbackDepth(node: CanvasLayoutNode) {

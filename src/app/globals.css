@@ -2372,7 +2372,6 @@
     line-height: 1.5;
   }
 
-  .studio-ecommerce-logo-upload,
   .studio-ecommerce-board-upload {
     display: grid;
     gap: 9px;
@@ -2382,46 +2381,12 @@
     padding: 11px;
   }
 
-  .studio-ecommerce-logo-upload {
-    min-height: 102px;
-    overflow: hidden;
-    border-style: dashed;
-    border-color: color-mix(in srgb, var(--primary) 52%, var(--border-subtle));
-    padding: 0;
-  }
-
-  .studio-ecommerce-logo-dropzone {
-    display: grid;
-    width: 100%;
-    min-height: 102px;
-    place-items: center;
-    align-content: center;
-    gap: 5px;
-    border: 0;
-    background: transparent;
-    color: var(--foreground);
-    cursor: pointer;
-    font-size: 12px;
-    text-align: center;
-  }
-
-  .studio-ecommerce-logo-dropzone span {
-    color: var(--muted);
-    font-size: 11px;
-  }
-
-  .studio-ecommerce-logo-upload:hover,
-  .studio-ecommerce-logo-upload:focus-within {
-    border-color: var(--primary);
-  }
-
-  .studio-ecommerce-logo-dropzone:focus-visible {
-    color: var(--primary);
-    outline: none;
-  }
-
   .studio-ecommerce-board-upload {
     margin-top: 10px;
+  }
+
+  .studio-ecommerce-assets-upload {
+    margin-top: 0;
   }
 
   .studio-ecommerce-upload-heading {
@@ -2440,24 +2405,6 @@
     font-size: 11px;
   }
 
-  .studio-ecommerce-logo-preview {
-    position: relative;
-    display: grid;
-    min-height: 100px;
-    place-items: center;
-    overflow: hidden;
-    border: 0;
-    border-radius: 0;
-    background: var(--background);
-  }
-
-  .studio-ecommerce-logo-preview img {
-    width: 100%;
-    height: 100px;
-    object-fit: contain;
-  }
-
-  .studio-ecommerce-logo-preview button,
   .studio-ecommerce-board-preview button {
     position: absolute;
     top: 6px;
@@ -2517,6 +2464,11 @@
     width: 100%;
     aspect-ratio: 1;
     object-fit: cover;
+  }
+
+  .studio-ecommerce-board-preview.is-logo img {
+    object-fit: contain;
+    padding: 8px;
   }
 
   .studio-ecommerce-board-preview > span {
