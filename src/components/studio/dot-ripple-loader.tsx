@@ -56,6 +56,20 @@ export function DotRippleLoader({
   imageSource?: string;
   className?: string;
 }) {
+  const classes = cn(
+    "studio-dot-ripple-loader",
+    fill && "is-fill",
+    fill && !imageSource && "is-vector-field",
+    fill && staticField && "is-static-field",
+    fill && expanded && "is-expanded-field",
+    imageSource && "has-image-fragments",
+    className,
+  );
+
+  if (fill && staticField && !imageSource) {
+    return <div className={classes} aria-hidden="true" />;
+  }
+
   let dots = compactDotRippleDots;
   let size = 8;
   if (fill) {
@@ -64,7 +78,7 @@ export function DotRippleLoader({
   }
   return (
     <div
-      className={cn("studio-dot-ripple-loader", fill && "is-fill", fill && !imageSource && "is-vector-field", fill && staticField && "is-static-field", fill && expanded && "is-expanded-field", imageSource && "has-image-fragments", className)}
+      className={classes}
       style={imageSource ? {
         "--dot-image-source": `url(${JSON.stringify(imageSource)})`,
         "--dot-image-size": `${size * 100}% ${size * 100}%`,

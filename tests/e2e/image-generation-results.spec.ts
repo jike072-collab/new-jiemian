@@ -17,6 +17,7 @@ const provider = {
   enabled: true,
   endpointType: "gettoken-banana",
 };
+const enabledProvidersPath = "/api/providers/enabled";
 
 function accountSummary() {
   return {
@@ -71,7 +72,7 @@ test.beforeEach(async ({ page }) => {
   await page.route("**/api/auth/session", (route) => route.fulfill({ json: { ok: true, user } }));
   await page.route("**/api/account/summary", (route) => route.fulfill({ json: accountSummary() }));
   await page.route("**/api/auth/csrf", (route) => route.fulfill({ json: { ok: true, csrfToken: "e2e-csrf" } }));
-  await page.route("**/api/providers/enabled", (route) => route.fulfill({
+  await page.route(`**${enabledProvidersPath}**`, (route) => route.fulfill({
     json: { providers: { image: [provider], video: [] } },
   }));
   await page.route("**/api/library", (route) => route.fulfill({ json: { items: [] } }));
@@ -126,7 +127,7 @@ test("single pending image fills the available preview height", async ({ page },
   await expect(pendingCard).toHaveCount(1);
   await expect(pendingCard).toBeVisible();
   const pendingLoader = pendingCard.locator(".studio-dot-ripple-loader.is-expanded-field.is-static-field");
-  await expect(pendingLoader.locator("span")).toHaveCount(676);
+  await expect(pendingLoader.locator("span")).toHaveCount(0);
   const layout = await pendingCard.evaluate((card) => {
     const grid = card.closest<HTMLElement>(".studio-image-results");
     const cardRect = card.getBoundingClientRect();
@@ -142,18 +143,28 @@ test("single pending image fills the available preview height", async ({ page },
   expect(layout.overflow).toBeLessThanOrEqual(1);
   const initialMotion = await pendingLoader.evaluate((loader) => ({
     field: getComputedStyle(loader).transform,
-    dot: getComputedStyle(loader.querySelector("span")!).transform,
-    dotAnimation: getComputedStyle(loader.querySelector("span")!).animationName,
+    fieldAnimation: getComputedStyle(loader).animationName,
+    mask: getComputedStyle(loader).maskImage,
+    glow: getComputedStyle(loader, "::before").transform,
+    glowAnimation: getComputedStyle(loader, "::before").animationName,
+    glowWillChange: getComputedStyle(loader, "::before").willChange,
   }));
   await page.waitForTimeout(320);
   const movedMotion = await pendingLoader.evaluate((loader) => ({
     field: getComputedStyle(loader).transform,
-    dot: getComputedStyle(loader.querySelector("span")!).transform,
-    dotAnimation: getComputedStyle(loader.querySelector("span")!).animationName,
+    fieldAnimation: getComputedStyle(loader).animationName,
+    mask: getComputedStyle(loader).maskImage,
+    glow: getComputedStyle(loader, "::before").transform,
+    glowAnimation: getComputedStyle(loader, "::before").animationName,
+    glowWillChange: getComputedStyle(loader, "::before").willChange,
   }));
-  expect(movedMotion.field).not.toBe(initialMotion.field);
-  expect(movedMotion.dot).toBe(initialMotion.dot);
-  expect(movedMotion.dotAnimation).toBe("none");
+  expect(movedMotion.field).toBe(initialMotion.field);
+  expect(movedMotion.fieldAnimation).toBe("none");
+  expect(movedMotion.mask).toContain("radial-gradient");
+  expect(movedMotion.mask).toBe(initialMotion.mask);
+  expect(movedMotion.glow).not.toBe(initialMotion.glow);
+  expect(movedMotion.glowAnimation).toContain("studio-dot-field-glow-loop");
+  expect(movedMotion.glowWillChange).toContain("transform");
   await page.screenshot({
     path: testInfo.outputPath(`image-waiting-single-${testInfo.project.name}.png`),
     fullPage: true,
@@ -207,7 +218,7 @@ test("image results reveal independently with unified waiting visuals", async ({
   expect(precheckPayloads.every((payload) => payload.membershipEntitlementAmount === 2)).toBe(true);
   await expect(page.locator(".studio-image-result-card--pending")).toHaveCount(4);
   await expect(page.locator(".studio-dot-ripple-loader")).toHaveCount(4);
-  await expect(page.locator(".studio-image-result-card--pending .studio-dot-ripple-loader span")).toHaveCount(1296);
+  await expect(page.locator(".studio-image-result-card--pending .studio-dot-ripple-loader span")).toHaveCount(0);
   await expect(page.locator(".image-generation-progress")).toHaveCount(1);
   await page.locator(".image-generation-progress__head button").click();
   await expect(page.locator(".image-generation-progress")).toHaveCount(0);
@@ -220,36 +231,29 @@ test("image results reveal independently with unified waiting visuals", async ({
       width: dotsRect ? dotsRect.width / cardRect.width : 0,
       height: dotsRect ? dotsRect.height / cardRect.height : 0,
       animationName: dots ? getComputedStyle(dots).animationName : "",
+      maskImage: dots ? getComputedStyle(dots).maskImage : "",
+      glowAnimation: dots ? getComputedStyle(dots, "::before").animationName : "",
       vectorField: dots?.classList.contains("is-vector-field") || false,
       particleCount: dots?.querySelectorAll("span").length || 0,
-      particleSizes: Array.from(dots?.querySelectorAll<HTMLElement>("span") || []).map((dot) => getComputedStyle(dot).width),
-      particleAnimation: dots ? getComputedStyle(dots.querySelector("span")!).animationName : "",
     };
   }));
   for (const coverage of waitingCoverage) {
     expect(coverage.width).toBeGreaterThanOrEqual(0.85);
     expect(coverage.height).toBeGreaterThanOrEqual(0.85);
-    expect(coverage.animationName).toContain("studio-dot-field-orbit");
+    expect(coverage.animationName).toBe("none");
+    expect(coverage.maskImage).toContain("radial-gradient");
+    expect(coverage.glowAnimation).toContain("studio-dot-field-glow-loop");
     expect(coverage.vectorField).toBe(true);
-    expect(coverage.particleCount).toBe(324);
-    expect(new Set(coverage.particleSizes).size).toBeGreaterThan(4);
-    expect(coverage.particleAnimation).toBe("none");
+    expect(coverage.particleCount).toBe(0);
   }
-  const initialTransforms = await page.locator(".studio-image-result-card--pending .studio-dot-ripple-loader span").evaluateAll((dots) => (
-    dots.map((dot) => getComputedStyle(dot).transform)
-  ));
-  const initialFieldTransforms = await page.locator(".studio-image-result-card--pending .studio-dot-ripple-loader").evaluateAll((fields) => (
-    fields.map((field) => getComputedStyle(field).transform)
+  const initialGlowTransforms = await page.locator(".studio-image-result-card--pending .studio-dot-ripple-loader").evaluateAll((fields) => (
+    fields.map((field) => getComputedStyle(field, "::before").transform)
   ));
   await page.waitForTimeout(240);
-  const movedTransforms = await page.locator(".studio-image-result-card--pending .studio-dot-ripple-loader span").evaluateAll((dots) => (
-    dots.map((dot) => getComputedStyle(dot).transform)
+  const movedGlowTransforms = await page.locator(".studio-image-result-card--pending .studio-dot-ripple-loader").evaluateAll((fields) => (
+    fields.map((field) => getComputedStyle(field, "::before").transform)
   ));
-  const movedFieldTransforms = await page.locator(".studio-image-result-card--pending .studio-dot-ripple-loader").evaluateAll((fields) => (
-    fields.map((field) => getComputedStyle(field).transform)
-  ));
-  expect(movedTransforms).toEqual(initialTransforms);
-  expect(movedFieldTransforms.some((transform, index) => transform !== initialFieldTransforms[index])).toBe(true);
+  expect(movedGlowTransforms.some((transform, index) => transform !== initialGlowTransforms[index])).toBe(true);
   await page.screenshot({
     path: testInfo.outputPath(`image-waiting-${testInfo.project.name}.png`),
     fullPage: true,

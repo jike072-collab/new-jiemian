@@ -4946,6 +4946,9 @@
     contain: layout paint;
     padding: 3% 2%;
     transform-origin: center;
+  }
+
+  .studio-dot-ripple-loader.is-vector-field:not(.is-static-field) {
     animation: studio-dot-field-orbit 12.8s linear infinite;
   }
 
@@ -4970,6 +4973,51 @@
     opacity: var(--dot-field-opacity);
     transform: scale(0.82);
     will-change: auto;
+  }
+
+  .studio-dot-ripple-loader.is-vector-field.is-static-field {
+    --dot-field-columns: 20;
+    --dot-field-rows: 20;
+    --dot-field-radius: 1.15px;
+    display: block;
+    overflow: hidden;
+    padding: 0;
+    background: color-mix(in srgb, var(--foreground) 10%, transparent);
+    -webkit-mask-image: radial-gradient(circle, #000 0 var(--dot-field-radius), transparent calc(var(--dot-field-radius) + 0.7px));
+    -webkit-mask-position: center;
+    -webkit-mask-size: calc(100% / var(--dot-field-columns)) calc(100% / var(--dot-field-rows));
+    -webkit-mask-repeat: repeat;
+    mask-image: radial-gradient(circle, #000 0 var(--dot-field-radius), transparent calc(var(--dot-field-radius) + 0.7px));
+    mask-position: center;
+    mask-size: calc(100% / var(--dot-field-columns)) calc(100% / var(--dot-field-rows));
+    mask-repeat: repeat;
+    animation: none;
+  }
+
+  .studio-dot-ripple-loader.is-vector-field.is-static-field.is-expanded-field {
+    --dot-field-columns: 26;
+    --dot-field-rows: 26;
+    --dot-field-radius: 1.3px;
+  }
+
+  .studio-dot-ripple-loader.is-vector-field.is-static-field::before {
+    position: absolute;
+    top: 16%;
+    left: 16%;
+    width: 68%;
+    aspect-ratio: 1;
+    border-radius: 50%;
+    background: radial-gradient(
+      circle,
+      color-mix(in srgb, var(--foreground) 86%, transparent) 0%,
+      color-mix(in srgb, var(--foreground) 48%, transparent) 24%,
+      color-mix(in srgb, var(--foreground) 16%, transparent) 48%,
+      transparent 70%
+    );
+    content: "";
+    transform: translate3d(-24%, -18%, 0) scale(0.9);
+    animation: studio-dot-field-glow-loop 7.2s linear infinite;
+    will-change: transform;
   }
 
   @keyframes studio-dot-ripple {
@@ -5031,6 +5079,25 @@
     }
   }
 
+  @keyframes studio-dot-field-glow-loop {
+    0%,
+    100% {
+      transform: translate3d(-24%, -18%, 0) scale(0.9);
+    }
+
+    25% {
+      transform: translate3d(34%, -24%, 0) scale(1.02);
+    }
+
+    50% {
+      transform: translate3d(28%, 32%, 0) scale(0.94);
+    }
+
+    75% {
+      transform: translate3d(-30%, 26%, 0) scale(1.06);
+    }
+  }
+
   @media (prefers-reduced-motion: reduce) {
     .studio-dot-ripple-loader span {
       animation: none;
@@ -5040,6 +5107,11 @@
 
     .studio-dot-ripple-loader.is-fill {
       animation: none;
+    }
+
+    .studio-dot-ripple-loader.is-vector-field.is-static-field::before {
+      animation: none;
+      transform: none;
     }
   }
 
