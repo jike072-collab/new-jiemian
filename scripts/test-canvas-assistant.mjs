@@ -15,6 +15,7 @@ const canvasCss = read("src/app/canvas/canvas.css");
 const { canvasAssistantVideoTimestamps, localCanvasAssistantFallback, normalizeCanvasAssistantResponse } = await import(new URL("../src/lib/canvas/assistant.ts", import.meta.url));
 const { resolveCanvasAssistantMediaFocus } = await import(new URL("../src/lib/canvas/assistant-focus.ts", import.meta.url));
 const { inferSeedancePromptMode, seedancePromptGuidance, seedanceReferenceIssues } = await import(new URL("../src/lib/seedance/prompt-guidance.ts", import.meta.url));
+const { isTikTokShopVideoRequest, tiktokShopVideoGuidance, tiktokShopVideoTiming } = await import(new URL("../src/lib/tiktok-shop-video-guidance.ts", import.meta.url));
 
 assert.match(route, /isInternalCanvasHostname/);
 assert.match(route, /getInternalCanvasAccess/);
@@ -36,6 +37,7 @@ assert.match(service, /upstreamBody/);
 assert.match(service, /localCanvasAssistantFallback/);
 assert.match(service, /seedanceCanvasAssistantRules/);
 assert.match(service, /seedanceTaskGuidance/);
+assert.match(service, /tiktokShopTaskGuidance/);
 assert.match(service, /visualEvidence/);
 assert.match(service, /准确 @ImageN、@VideoN、@AudioN 标签/);
 assert.match(service, /attachUnambiguousPromptTargets/);
@@ -63,6 +65,7 @@ assert.match(assistantPanel, /mentionSelection/);
 assert.match(assistantPanel, /onMentionModeChange\(Boolean\(mentionQuery\)\)/);
 assert.match(assistantPanel, /contextNodes\.find\(\(candidate\) => candidate\.id === mentionSelection\.nodeId\)/);
 assert.match(assistantPanel, /mentionSelection\.revision <= handledMentionRevisionRef\.current/);
+assert.match(assistantPanel, /带货短视频/);
 assert.match(workspace, /applyAssistantActions/);
 assert.match(workspace, /assistantNodeContexts/);
 assert.match(workspace, /referenceLabels/);
@@ -79,6 +82,7 @@ assert.match(workspace, /setAssistantMentionSelection/);
 assert.match(workspace, /node\.data\.kind === "group"/);
 assert.match(canvasCss, /is-assistant-mentioning \.canvas-node:hover/);
 assert.match(canvasCss, /grid-template-columns: minmax\(0, 96px\) minmax\(0, 1fr\)/);
+assert.match(canvasCss, /\.canvas-assistant__quick\s*\{[^}]*flex-wrap: wrap/s);
 
 assert.deepEqual(normalizeCanvasAssistantResponse({
   reply: "ok",
@@ -166,6 +170,22 @@ const localVideoPrompt = localCanvasAssistantFallback({
 assert.equal(localVideoPrompt.actions[0].title, "Seedance 视频提示词");
 assert.match(localVideoPrompt.actions[0].prompt, /一个主要动作/);
 assert.match(localVideoPrompt.actions[0].prompt, /已有 @ImageN、@VideoN、@AudioN 标签必须原样保留/);
+
+const localTikTokPrompt = localCanvasAssistantFallback({
+  message: "根据当前商品素材写一个马来西亚 TikTok Shop 带货短视频提示词",
+  nodes: [{ kind: "prompt", title: "商品", prompt: "红色运动鞋在脚上自然展示" }],
+});
+assert.equal(localTikTokPrompt.actions[0].title, "TikTok Shop 带货视频提示词");
+assert.match(localTikTokPrompt.actions[0].prompt, /0-2 秒/);
+assert.match(localTikTokPrompt.actions[0].prompt, /13-15 秒/);
+assert.match(localTikTokPrompt.actions[0].prompt, /一个最强且可见的商品价值/);
+
+assert.equal(isTikTokShopVideoRequest({ prompt: "普通电影感短片" }), false);
+assert.equal(isTikTokShopVideoRequest({ prompt: "制作 TikTok Shop 鞋类带货视频" }), true);
+assert.equal(tiktokShopVideoGuidance({ prompt: "普通电影感短片", duration: 15 }).length, 0);
+assert.deepEqual(tiktokShopVideoTiming(5).map((line) => line.match(/^\d+-\d+/)?.[0]), ["0-1", "1-4", "4-5"]);
+assert.deepEqual(tiktokShopVideoTiming(15).map((line) => line.match(/^\d+-\d+/)?.[0]), ["0-2", "2-9", "9-13", "13-15"]);
+assert.deepEqual(tiktokShopVideoTiming(25).map((line) => line.match(/^\d+-\d+/)?.[0]), ["0-3", "3-13", "13-20", "20-25"]);
 
 const localReplacementPrompt = localCanvasAssistantFallback({
   message: "把视频里的鞋替换成参考图中的鞋",

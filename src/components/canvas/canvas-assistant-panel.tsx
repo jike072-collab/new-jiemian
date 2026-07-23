@@ -193,6 +193,7 @@ export function CanvasAssistantPanel({
       </header>
       <div className="canvas-assistant__quick" aria-label="快捷请求">
         <button type="button" disabled={busy} onClick={() => { void submitMessage("分析当前画布已经连接的素材和生成参数，新增一条专业、完整、可直接生成的提示词；使用准确引用标签，写清必须保留、需要改变和禁止变化的内容。"); }}>专业提示词</button>
+        <button type="button" disabled={busy} onClick={() => { void submitMessage("根据当前选中或已连接的素材，写一条用于马来西亚 TikTok Shop 的带货短视频提示词。按当前视频时长安排开场钩子、一个核心价值、可信证据和结尾行动，不虚构素材中没有的卖点；只创建提示词，不要开始生成。"); }}>带货短视频</button>
         <button type="button" disabled={busy || !selectedPrompt} onClick={() => { void submitMessage("优化当前选中的提示词，保留原意并让它更适合生成。"); }}>优化选中</button>
         <button type="button" disabled={busy} onClick={() => { void submitMessage("按从左到右的创作流程整理当前画布节点。"); }}>整理画布</button>
         <button type="button" disabled={busy} onClick={() => { void submitMessage("把当前故事拆成 3-5 个 Seedance 分镜节点，分别生成提示词和视频生成节点。"); }}>生成分镜</button>

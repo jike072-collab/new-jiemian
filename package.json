@@ -3,7 +3,8 @@
   "version": "0.1.0",
   "private": true,
   "imports": {
-    "#malaysia-shoe-copy-library": "./src/lib/malaysia-shoe-copy-library.ts"
+    "#malaysia-shoe-copy-library": "./src/lib/malaysia-shoe-copy-library.ts",
+    "#tiktok-shop-video-guidance": "./src/lib/tiktok-shop-video-guidance.ts"
   },
   "description": "Aohuang AI local image and video generation studio",
   "author": "Aohuang AI",

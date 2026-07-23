@@ -85,6 +85,8 @@ assert.match(publisher, /disabled=\{deliveryMode === "creator_inbox"\}/);
 assert.match(publisher, /job\.deliveryMode === "creator_inbox"/);
 assert.match(copyService, /buildCanvasAssistantVisualEvidence/);
 assert.match(copyService, /不得使用素材的生成提示词代替发布文案/);
+assert.match(copyService, /注意、兴趣与欲望、信任、行动/);
+assert.match(copyService, /功能演示、真实场景、可比较的前后变化、商品细节/);
 assert.match(copyService, /不要为了蹭热度加入无关总榜话题/);
 assert.match(copyService, /马来鞋类文案库/);
 assert.match(copyService, /caption 只写 1-2 句/);
@@ -109,6 +111,7 @@ const {
   normalizeTikTokHashtags,
   parseTikTokCopyResponse,
 } = await import("../src/lib/tiktok-copy.ts");
+const { tiktokShopVideoTiming } = await import("../src/lib/tiktok-shop-video-guidance.ts");
 const {
   malaysiaShoeCopyCategories,
   malaysiaShoeCopyHashtagPool,
@@ -140,6 +143,8 @@ assert.deepEqual(normalizeTikTokHashtags(["#rainbowpfp", "#spain", "#final", "#k
 assert.ok(!normalizeTikTokHashtags([], "auto").some((value) => value.toLowerCase() === "#fyp"));
 assert.ok(normalizeTikTokHashtags([], "auto", true, "kids").includes("#kasutkanakkanak"));
 assert.equal(malaysiaShoeCopyCategories.length, 8);
+assert.deepEqual(tiktokShopVideoTiming(10).map((line) => line.match(/^\d+-\d+/)?.[0]), ["0-2", "2-6", "6-9", "9-10"]);
+assert.deepEqual(tiktokShopVideoTiming(25).map((line) => line.match(/^\d+-\d+/)?.[0]), ["0-3", "3-13", "13-20", "20-25"]);
 assert.ok(malaysiaShoeCopyHashtagPool("safety").includes("kasutsafety"));
 const promptLibrary = malaysiaShoeCopyPromptLibrary();
 for (const category of ["sports", "women", "men", "kids", "safety", "outdoor", "casual"]) assert.match(promptLibrary, new RegExp(`"id":"${category}"`));

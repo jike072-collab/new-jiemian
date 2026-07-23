@@ -12,6 +12,7 @@ import {
   type PromptPreferenceTool,
 } from "../../prompt-preferences";
 import { seedancePromptGuidance } from "../../seedance/prompt-guidance";
+import { tiktokShopVideoGuidance } from "#tiktok-shop-video-guidance";
 
 export type PromptOptimizeTool = PromptPreferenceTool;
 
@@ -271,6 +272,14 @@ function composeStrictChineseUserPrompt(input: PromptOptimizeInput) {
   const scenarioGuidance = promptScenarioGuidance(input);
   const preferences = promptPreferenceLines(input.tool, input.preferences || {});
   const seedanceGuidance = usesSeedancePromptGuidance(input) ? seedancePromptGuidance(input) : [];
+  const tiktokGuidance = input.tool === "video-generator"
+    ? tiktokShopVideoGuidance({
+      prompt: input.prompt,
+      duration: input.duration,
+      targetPlatform: input.targetPlatform,
+      videoType: input.preferences?.videoType,
+    })
+    : [];
   const scenario = input.tool === "image-editor"
     ? "任务类型：图片编辑。基于参考图进行修改，按需要明确保留项、修改项与禁止改动项。"
     : input.tool === "video-generator"
@@ -297,6 +306,7 @@ function composeStrictChineseUserPrompt(input: PromptOptimizeInput) {
     referenceInstruction,
     scenarioGuidance,
     seedanceGuidance.length ? `Seedance 专用规则：\n${seedanceGuidance.join("\n")}` : "",
+    tiktokGuidance.length ? `TikTok Shop 视频结构：\n${tiktokGuidance.join("\n")}` : "",
     preferences.length ? `用户创作偏好：\n${preferences.join("\n")}` : "用户创作偏好：自动判断，不限定平台或商业场景。",
     input.targetPlatform ? `兼容旧版平台偏好：${input.targetPlatform}` : "",
     technicalConstraints.length
@@ -419,6 +429,14 @@ function localChineseOptimizedPrompt(input: PromptOptimizeInput) {
   const scenarioGuidance = promptScenarioGuidance(input);
   const preferences = promptPreferenceLines(input.tool, input.preferences || {});
   const seedanceGuidance = usesSeedancePromptGuidance(input) ? seedancePromptGuidance(input) : [];
+  const tiktokGuidance = input.tool === "video-generator"
+    ? tiktokShopVideoGuidance({
+      prompt: input.prompt,
+      duration: input.duration,
+      targetPlatform: input.targetPlatform,
+      videoType: input.preferences?.videoType,
+    })
+    : [];
   const scene = input.tool === "image-editor"
     ? "基于参考图进行图片编辑，保留原有主体事实，只修改用户明确指定的部分"
     : input.tool === "video-generator"
@@ -434,6 +452,7 @@ function localChineseOptimizedPrompt(input: PromptOptimizeInput) {
     scene,
     referenceInstruction,
     ...seedanceGuidance,
+    ...tiktokGuidance,
     ...preferences,
     input.targetPlatform ? `适用平台：${input.targetPlatform}` : "",
     scenarioGuidance,

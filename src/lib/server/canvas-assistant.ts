@@ -7,6 +7,7 @@ import { createNewApiPromptModelCaller, type PromptModelCaller } from "@/lib/ser
 import type { CanvasAssistantVisualEvidence } from "@/lib/server/canvas-assistant-media";
 import type { CanvasMediaType, CanvasReferenceBinding, CanvasSequenceState } from "@/lib/canvas/types";
 import { seedanceCanvasAssistantRules, seedancePromptGuidance } from "@/lib/seedance/prompt-guidance";
+import { tiktokShopVideoGuidance } from "#tiktok-shop-video-guidance";
 
 type CanvasAssistantNode = {
   id: string;
@@ -46,6 +47,7 @@ const systemPrompt = [
   "用户要求写提示词、换物、替换、局部修改或优化时，优先给出一条可直接用于当前生成节点的完整提示词，不要只讲方法。提示词应使用当前画布给出的准确 @ImageN、@VideoN、@AudioN 标签。",
   "只要用户的主要意图是得到新提示词或完成视频换物方案，就同时返回一个 add_prompt 动作供用户确认应用；动作只创建提示词节点，绝不自动生成。",
   "专业提示词必须具体、可见、可执行，只保留任务目标、素材职责、关键时序、必要连续性和禁止变化；Seedance 能理解的明确约束只写一次，不用近义句反复强调，也不堆砌电影感、高级感、专业感等空词。",
+  "用户明确要制作 TikTok Shop 或电商带货短视频时，按注意、兴趣与欲望、信任、行动组织内容；根据生成节点时长压缩结构，只保留一个核心卖点，不虚构功效、价格、折扣、销量或用户证言。",
   "处理通用视频换物时：把 @VideoN 定义为基础视频，把 @ImageN 定义为目标物体外观参考。先按时间顺序识别用户指定对象在每个主体或身体部位上的存在、缺失、首次出现、消失和遮挡状态；只在原对象实际存在的帧中替换，原对象不存在时目标物也必须不存在，目标物的出现和消失必须与原对象同一时点，禁止提前生成、延后出现或跨主体复制。",
   "视频换物必须在所有帧、遮挡、运动模糊、透视变化、接触和离地状态下保持目标物体结构一致。人物、动作、镜头、构图、场景、光线、阴影、声音和时长默认只锁定为不可误改的背景条件，不要抢占提示词重点；禁止新增对象、复制目标、改变身体结构或把任务改写成从零生成。",
   "例如换鞋时，如果开头一只脚光脚、另一只脚穿鞋：已穿鞋的一侧从首次可见帧起替换；光脚一侧保持光脚，直到基础视频中该侧鞋原本首次出现时才同步出现替换鞋。不得把两只脚从第一帧都补成穿鞋。",
@@ -213,9 +215,12 @@ export function createCanvasAssistantService(caller: PromptModelCaller = createN
           normalized.message,
           ...(normalized.nodes || []).flatMap((node) => node.prompt ? [node.prompt] : []),
         ].join("\n");
+        const videoDuration = normalized.nodes?.find((node) => node.kind === "generator" && node.generationKind === "video" && node.selected)?.duration
+          || normalized.nodes?.find((node) => node.kind === "generator" && node.generationKind === "video")?.duration;
         const seedanceTaskGuidance = /seedance|视频|分镜|镜头脚本|首帧|尾帧|续写|延长|@Video\d+\b|@Audio\d+\b/iu.test(seedanceContext)
-          ? seedancePromptGuidance({ prompt: seedanceContext })
+          ? seedancePromptGuidance({ prompt: seedanceContext, duration: videoDuration })
           : [];
+        const tiktokShopTaskGuidance = tiktokShopVideoGuidance({ prompt: seedanceContext, duration: videoDuration });
         const callInput = {
           systemPrompt,
           userPrompt: JSON.stringify({
@@ -223,6 +228,7 @@ export function createCanvasAssistantService(caller: PromptModelCaller = createN
             canvas: { title: normalized.canvasTitle, nodes: normalized.nodes },
             recentConversation: normalized.history,
             seedanceTaskGuidance,
+            tiktokShopTaskGuidance,
             visualEvidence: visualEvidence?.summary || "未提供可读取的视觉证据，不得声称看过素材画面。",
             visualEvidenceAmbiguous: Boolean(visualEvidence?.ambiguous),
           }),

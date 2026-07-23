@@ -1225,8 +1225,8 @@
 
 .canvas-assistant__quick {
   display: flex;
+  flex-wrap: wrap;
   gap: 6px;
-  overflow-x: auto;
   padding: 9px 12px;
   border-bottom: 1px solid var(--border-subtle);
 }

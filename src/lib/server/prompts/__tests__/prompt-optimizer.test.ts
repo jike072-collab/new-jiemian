@@ -178,6 +178,32 @@ test("routes Seedance guidance by model without changing other video providers",
   assert.doesNotMatch(seen[1].userPrompt, /Seedance 专用规则/);
 });
 
+test("applies TikTok Shop conversion timing only to explicit commerce video requests", async () => {
+  const seen: PromptModelCall[] = [];
+  const service = serviceWith(async (input) => {
+    seen.push(input);
+    return seen.length === 1
+      ? "红色运动鞋在脚上自然展示，开场立即呈现上脚反差，随后展示配色和鞋面细节，结尾停在完整上脚效果。"
+      : "红色运动鞋缓慢旋转一周，镜头稳定展示鞋面、鞋底和整体轮廓。";
+  });
+
+  await service.optimize(baseInput({
+    tool: "video-generator",
+    prompt: "制作马来西亚 TikTok Shop 鞋类带货短视频",
+    duration: 15,
+  }), { localUserId: "user-1" });
+  await service.optimize(baseInput({
+    tool: "video-generator",
+    prompt: "红色运动鞋缓慢旋转展示",
+    duration: 15,
+  }), { localUserId: "user-1" });
+
+  assert.match(seen[0].userPrompt, /TikTok Shop 视频结构/);
+  assert.match(seen[0].userPrompt, /0-2 秒/);
+  assert.match(seen[0].userPrompt, /13-15 秒/);
+  assert.doesNotMatch(seen[1].userPrompt, /TikTok Shop 视频结构/);
+});
+
 test("grounds Seedance continuation in the accepted clip end state", async () => {
   const seen: PromptModelCall[] = [];
   const service = serviceWith(async (input) => {

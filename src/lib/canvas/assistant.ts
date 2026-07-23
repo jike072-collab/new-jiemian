@@ -1,4 +1,5 @@
 import type { CanvasMediaType, CanvasReferenceBinding, CanvasSequenceState } from "./types";
+import { isTikTokShopVideoRequest, tiktokShopVideoGuidance } from "#tiktok-shop-video-guidance";
 
 export type CanvasAssistantAction =
   | { type: "add_prompt"; title?: string; prompt: string; targetGeneratorId?: string }
@@ -129,14 +130,17 @@ export function localCanvasAssistantFallback(input: {
   if (/(提示词|prompt)/i.test(message) && /(写|新增|生成|补充|创建)/.test(message)) {
     const subject = sourcePrompt || boundedText(input.canvasTitle, 120) || "当前画布主题";
     const isVideoPrompt = /seedance|视频|分镜|首帧|尾帧|续写|延长|@Video\d+\b|@Audio\d+\b/iu.test(`${message}\n${subject}`);
+    const isTikTokShopPrompt = isVideoPrompt && isTikTokShopVideoRequest({ prompt: `${message}\n${subject}` });
     const prompt = isVideoPrompt
-      ? `${subject.replace(/[。！？!?.]+$/u, "")}，主体和场景保持一致，描述一个主要动作的起始状态、连续过程和结束状态，使用一个服务于动作的主要运镜，明确真实光源与必要声音；已有 @ImageN、@VideoN、@AudioN 标签必须原样保留，并为每个引用说明只参考什么以及不要转移什么。`
+      ? isTikTokShopPrompt
+        ? `${subject.replace(/[。！？!?.]+$/u, "")}。${tiktokShopVideoGuidance({ prompt: message, duration: 15 }).join("；")}主体、商品外观和场景保持连续，只使用服务于核心卖点的动作与运镜；已有 @ImageN、@VideoN、@AudioN 标签必须原样保留，并说明每个引用只参考什么以及不要转移什么。`
+        : `${subject.replace(/[。！？!?.]+$/u, "")}，主体和场景保持一致，描述一个主要动作的起始状态、连续过程和结束状态，使用一个服务于动作的主要运镜，明确真实光源与必要声音；已有 @ImageN、@VideoN、@AudioN 标签必须原样保留，并为每个引用说明只参考什么以及不要转移什么。`
       : `${subject}，主体清晰完整，构图有层次，画面重点突出，材质与颜色自然，光线统一，背景干净，不添加未要求的文字、Logo 或额外对象。`;
     return {
       reply: "上游助手暂时不可用，我已根据当前画布内容生成一条可继续编辑的提示词。",
       actions: [{
         type: "add_prompt",
-        title: isVideoPrompt ? "Seedance 视频提示词" : "画布助手提示词",
+        title: isTikTokShopPrompt ? "TikTok Shop 带货视频提示词" : isVideoPrompt ? "Seedance 视频提示词" : "画布助手提示词",
         prompt,
       }],
     };

@@ -5,11 +5,11 @@ import {
 } from "#malaysia-shoe-copy-library";
 
 export const malaysiaTikTokCopyAngles = [
-  { id: "auto", label: "AI 精选", prompt: "根据视频最有吸引力的可见内容选择一个清晰角度。" },
-  { id: "transformation", label: "前后反差", prompt: "突出鞋子出现前后的视觉变化和第一眼反差，不虚构效果。" },
-  { id: "daily", label: "日常穿搭", prompt: "突出适合马来西亚日常出街和穿搭的视觉感受。" },
-  { id: "style", label: "潮流种草", prompt: "用自然、有记忆点的马来语表达颜色搭配和造型吸引力。" },
-  { id: "detail", label: "商品细节", prompt: "聚焦视频中真实可见的鞋面、鞋底、配色和细节。" },
+  { id: "auto", label: "转化精选", prompt: "根据视频最强的可见钩子、核心价值和可信证据选择一个清晰角度。" },
+  { id: "transformation", label: "效果对比", prompt: "突出鞋子出现前后的视觉变化和第一眼反差，不虚构效果。" },
+  { id: "daily", label: "场景展示", prompt: "突出视频中真实可见的日常使用或穿搭场景，以及它带来的一个明确价值。" },
+  { id: "style", label: "视觉钩子", prompt: "用自然、有记忆点的马来语表达视频中最抓眼的配色、造型或反差。" },
+  { id: "detail", label: "可信细节", prompt: "聚焦视频中真实可见的鞋面、鞋底、配色、结构或连续使用细节，用事实建立信任。" },
 ] as const;
 
 export type MalaysiaTikTokCopyAngle = (typeof malaysiaTikTokCopyAngles)[number]["id"];
