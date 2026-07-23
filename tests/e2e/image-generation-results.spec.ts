@@ -78,6 +78,94 @@ test.beforeEach(async ({ page }) => {
   await page.route("**/api/library", (route) => route.fulfill({ json: { items: [] } }));
 });
 
+test("image features default to image generation and special uploads clear in one action", async ({ page }, testInfo) => {
+  test.skip(testInfo.project.name !== "chromium", "Desktop Chromium covers the header feature menu.");
+  await page.goto("/", { waitUntil: "domcontentloaded" });
+  await expect(page.getByTestId("prompt-input")).toBeVisible({ timeout: 30_000 });
+
+  const featureButton = page.getByRole("button", { name: "功能", exact: true });
+  await featureButton.click();
+  const menu = page.getByRole("menu", { name: "图片固定功能" });
+  await expect(menu.getByRole("menuitem")).toHaveCount(3);
+  await expect(menu.getByRole("menuitem").filter({ hasText: "图片生成" })).toHaveClass(/is-active/);
+  await page.screenshot({ path: testInfo.outputPath("image-feature-menu-desktop.png"), fullPage: true });
+
+  await menu.getByRole("menuitem").filter({ hasText: "四视图白底图" }).click();
+  const fourViewInput = page.locator("#four-view-reference-input");
+  await expect(fourViewInput).toHaveAttribute("multiple", "");
+  const pixel = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=", "base64");
+  const startedAt = Date.now();
+  await fourViewInput.setInputFiles(Array.from({ length: 4 }, (_, index) => ({
+    name: `view-${index + 1}.png`,
+    mimeType: "image/png",
+    buffer: pixel,
+  })));
+  await expect(page.locator(".studio-four-view-upload-slot.is-filled")).toHaveCount(4);
+  expect(Date.now() - startedAt).toBeLessThan(1_000);
+  await page.screenshot({ path: testInfo.outputPath("image-four-view-upload-desktop.png"), fullPage: true });
+  await page.getByRole("button", { name: "一键清除素材", exact: true }).click();
+  await expect(page.locator(".studio-four-view-upload-slot.is-filled")).toHaveCount(0);
+
+  await featureButton.click();
+  await page.getByRole("menuitem").filter({ hasText: "电商套图 1-10 张" }).click();
+  await page.getByLabel("上传品牌 Logo").setInputFiles({ name: "logo.png", mimeType: "image/png", buffer: pixel });
+  await page.getByLabel("上传配色四视图白底图").setInputFiles({ name: "board.png", mimeType: "image/png", buffer: pixel });
+  await expect(page.locator(".studio-ecommerce-logo-preview")).toHaveCount(1);
+  await expect(page.locator(".studio-ecommerce-board-preview")).toHaveCount(1);
+  await page.getByRole("button", { name: "一键清除素材", exact: true }).click();
+  await expect(page.locator(".studio-ecommerce-logo-preview")).toHaveCount(0);
+  await expect(page.locator(".studio-ecommerce-board-preview")).toHaveCount(0);
+  await featureButton.click();
+  await page.getByRole("menuitem").filter({ hasText: "图片生成" }).click();
+  await expect(page.getByTestId("prompt-input")).toBeVisible();
+});
+
+test("mobile image feature switch exposes all three modes", async ({ page }, testInfo) => {
+  test.skip(testInfo.project.name !== "mobile-chrome", "Mobile Chrome covers the compact feature switch.");
+  await page.goto("/", { waitUntil: "domcontentloaded" });
+  const featureTabs = page.locator(".studio-image-feature-mobile-tabs");
+  await expect(featureTabs).toBeVisible({ timeout: 30_000 });
+  await expect(featureTabs.getByRole("button")).toHaveCount(3);
+  await expect(featureTabs.getByRole("button", { name: "图片生成", exact: true })).toHaveAttribute("aria-pressed", "true");
+  await page.screenshot({ path: testInfo.outputPath("image-feature-tabs-mobile.png"), fullPage: true });
+  await featureTabs.getByRole("button", { name: "四视图", exact: true }).click();
+  await expect(page.locator("#four-view-reference-input")).toBeAttached();
+  await featureTabs.getByRole("button", { name: "图片生成", exact: true }).click();
+  await expect(page.getByTestId("prompt-input")).toBeVisible();
+});
+
+test("generated image opens immediately and reuses its cached download source", async ({ page }, testInfo) => {
+  test.skip(testInfo.project.name !== "chromium", "Desktop Chromium covers cached result actions.");
+  let imageFetchCount = 0;
+  await page.route("**/api/quota/precheck", (route) => route.fulfill({ json: { ok: true } }));
+  await page.route("**/api/generate/image", (route) => route.fulfill({
+    json: { item: imageItem(1), items: [imageItem(1)] },
+  }));
+  await page.route("**/e2e/generated-image-1.svg", async (route) => {
+    imageFetchCount += 1;
+    await route.fulfill({
+      contentType: "image/svg+xml",
+      body: '<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="800"><rect width="1200" height="800" fill="#ff2b88"/></svg>',
+    });
+  });
+
+  await page.goto("/", { waitUntil: "domcontentloaded" });
+  await page.getByTestId("prompt-input").fill("产品摄影，干净背景");
+  await page.getByTestId("primary-submit").click();
+  const resultCard = page.locator(".studio-image-result-card").first();
+  const cachedDownload = resultCard.locator("[data-download-cache-ready='true']");
+  await expect(cachedDownload).toHaveCount(1);
+  await expect(cachedDownload).toHaveAttribute("href", /^blob:/);
+  await resultCard.getByRole("button", { name: "放大查看图片 1" }).click();
+  const lightbox = page.getByRole("dialog", { name: "图片大图预览" });
+  await expect(lightbox).toBeVisible();
+  await expect(lightbox.locator("img")).toHaveAttribute("src", /^blob:/);
+  expect(imageFetchCount).toBe(1);
+  await page.screenshot({ path: testInfo.outputPath("image-result-lightbox-desktop.png"), fullPage: true });
+  await page.keyboard.press("Escape");
+  await expect(lightbox).toHaveCount(0);
+});
+
 test("workspace function panels become ready within one second", async ({ page }, testInfo) => {
   test.skip(testInfo.project.name !== "chromium", "Desktop Chromium covers code-split panel readiness.");
   await page.goto("/", { waitUntil: "domcontentloaded" });
@@ -322,6 +410,15 @@ test("image results reveal independently with unified waiting visuals", async ({
   await expect(firstFrame).toHaveAttribute("data-image-reveal-state", "ready");
   await expect(firstImage).toHaveCSS("opacity", "1");
   await expect(firstRevealOverlay).toHaveCount(0);
+  const firstResultCard = page.locator(".studio-image-result-card").first();
+  await expect(firstResultCard.locator("[data-download-cache-ready='true']")).toHaveCount(1);
+  await firstResultCard.getByRole("button", { name: "放大查看图片 1" }).click();
+  const lightbox = page.getByRole("dialog", { name: "图片大图预览" });
+  await expect(lightbox).toBeVisible();
+  await expect(lightbox.locator("img")).toHaveAttribute("src", /^blob:/);
+  await expect(lightbox.locator("[data-download-cache-ready='true']")).toHaveCount(1);
+  await lightbox.getByRole("button", { name: "关闭大图预览" }).click();
+  await expect(lightbox).toHaveCount(0);
   const revealBounds = await firstFrame.evaluate((frame) => {
     const width = Number(frame.getAttribute("data-image-reveal-width"));
     const height = Number(frame.getAttribute("data-image-reveal-height"));

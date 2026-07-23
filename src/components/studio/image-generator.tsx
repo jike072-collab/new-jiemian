@@ -3,7 +3,7 @@
 /* eslint-disable @next/next/no-img-element */
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { ImagePlus, RotateCcw } from "lucide-react";
+import { ImagePlus, Trash2 } from "lucide-react";
 
 import { featuredImageGenerationPromptTemplates } from "@/lib/template-catalog";
 import type { FrontendProvider } from "@/lib/server/types";
@@ -53,6 +53,8 @@ export function ImageGenerator({
   onFilesChange,
   onFileRemove,
   onFilesClear,
+  standardImageMode,
+  onStandardImageModeChange,
   whiteBackgroundFourViewMode,
   onWhiteBackgroundFourViewModeChange,
   ecommerceTenPageMode,
@@ -86,6 +88,8 @@ export function ImageGenerator({
   onFilesChange: (files: File[]) => void;
   onFileRemove: (index: number) => void;
   onFilesClear: () => void;
+  standardImageMode: boolean;
+  onStandardImageModeChange: () => void;
   whiteBackgroundFourViewMode: boolean;
   onWhiteBackgroundFourViewModeChange: () => void;
   ecommerceTenPageMode: boolean;
@@ -98,6 +102,12 @@ export function ImageGenerator({
   const ecommerceCount = Math.min(Math.max(Math.round(Number(state.count) || 1), 1), 10);
   const submitLabel = ecommerceTenPageMode ? `生成电商套图 ${ecommerceCount} 张` : whiteBackgroundFourViewMode ? "生成四视图白底图" : meta.submitLabel;
   const loadingLabel = ecommerceTenPageMode ? "正在生成电商套图" : whiteBackgroundFourViewMode ? "正在生成四视图" : meta.loadingLabel;
+  const onSubmitRef = useRef(onSubmit);
+  const handleMobileSubmit = useCallback(() => onSubmitRef.current(), []);
+
+  useEffect(() => {
+    onSubmitRef.current = onSubmit;
+  }, [onSubmit]);
 
   useEffect(() => {
     registerMobileAction({
@@ -105,29 +115,18 @@ export function ImageGenerator({
       costLabel: costLabel || formatQuotaSymbolLabel(estimatedQuotaUnits),
       loading,
       disabled: !canSubmit,
-      onClick: onSubmit,
+      onClick: handleMobileSubmit,
     });
     return () => registerMobileAction(null);
-  }, [canSubmit, costLabel, estimatedQuotaUnits, loading, loadingLabel, onSubmit, registerMobileAction, submitLabel]);
+  }, [canSubmit, costLabel, estimatedQuotaUnits, handleMobileSubmit, loading, loadingLabel, registerMobileAction, submitLabel]);
 
   return (
     <FormPanel>
-      <button
-        type="button"
-        className="studio-four-view-mobile-toggle"
-        aria-pressed={whiteBackgroundFourViewMode}
-        onClick={onWhiteBackgroundFourViewModeChange}
-      >
-        四视图白底图
-      </button>
-      <button
-        type="button"
-        className="studio-four-view-mobile-toggle"
-        aria-pressed={ecommerceTenPageMode}
-        onClick={onEcommerceTenPageModeChange}
-      >
-        电商套图 1-10 张
-      </button>
+      <div className="studio-image-feature-mobile-tabs" aria-label="图片功能切换">
+        <button type="button" className="studio-four-view-mobile-toggle" aria-pressed={standardImageMode} onClick={onStandardImageModeChange}>图片生成</button>
+        <button type="button" className="studio-four-view-mobile-toggle" aria-pressed={whiteBackgroundFourViewMode} onClick={onWhiteBackgroundFourViewModeChange}>四视图</button>
+        <button type="button" className="studio-four-view-mobile-toggle" aria-pressed={ecommerceTenPageMode} onClick={onEcommerceTenPageModeChange}>电商套图</button>
+      </div>
       <ProviderSelect
         providers={providers}
         value={selectedProvider?.id || state.providerId}
@@ -268,29 +267,31 @@ function WhiteBackgroundFourViewInput({
   onChange: (files: File[]) => void;
   onClear: () => void;
 }) {
-  const inputRef = useRef<HTMLInputElement | null>(null);
   const views = ["侧视图 1", "侧视图 2", "顶部", "鞋底"];
   const nextIndex = files.length;
 
-  const applyFile = (file: File | undefined) => {
-    if (!file || nextIndex >= views.length) return;
-    onChange([...files.map((item) => item.file), file]);
+  const applyFiles = (selectedFiles: FileList | File[]) => {
+    if (nextIndex >= views.length) return;
+    const selected = Array.from(selectedFiles).slice(0, views.length - nextIndex);
+    if (!selected.length) return;
+    onChange([...files.map((item) => item.file), ...selected]);
   };
 
   return (
     <FieldFrame
       label="鞋子四视图"
       required
-      action={files.length ? <button type="button" className="studio-prompt-action" onClick={onClear}><RotateCcw className="size-3.5" aria-hidden="true" />重新上传</button> : undefined}
+      action={files.length ? <button type="button" className="studio-prompt-action" onClick={onClear}><Trash2 className="size-3.5" aria-hidden="true" />一键清除素材</button> : undefined}
     >
       <input
-        ref={inputRef}
+        id="four-view-reference-input"
         type="file"
         accept="image/png,image/jpeg,image/webp"
+        multiple
         className="studio-file-input"
         aria-label={nextIndex < views.length ? `上传${views[nextIndex]}视图` : "四视图已上传"}
         onChange={(event) => {
-          applyFile(event.target.files?.[0]);
+          applyFiles(event.target.files || []);
           event.currentTarget.value = "";
         }}
       />
@@ -302,17 +303,17 @@ function WhiteBackgroundFourViewInput({
             <div key={view} className={cn("studio-four-view-upload-slot", file && "is-filled", canUpload && "is-next")}>
               {file ? <img src={file.previewUrl} alt={`${view}视图`} /> : null}
               {!file && canUpload ? (
-                <button type="button" onClick={() => inputRef.current?.click()}>
+                <label htmlFor="four-view-reference-input">
                   <ImagePlus className="size-5" aria-hidden="true" />
-                  <span>上传{view}</span>
-                </button>
+                  <span>{files.length ? `继续上传${view}` : "选择 1-4 张图片"}</span>
+                </label>
               ) : null}
               <span>{`第 ${index + 1} 张 · ${view}`}</span>
             </div>
           );
         })}
       </div>
-      <p className="studio-four-view-upload-note">前两张请分别上传外侧和内侧，顺序不限；第 3 张上传顶部，第 4 张上传鞋底。重新上传会清空当前四张图片。</p>
+      <p className="studio-four-view-upload-note">可一次选择 4 张：前两张分别为外侧和内侧，顺序不限；第 3 张为顶部，第 4 张为鞋底。</p>
       {error ? <p className="studio-error-text" role="alert">{error}</p> : null}
     </FieldFrame>
   );
@@ -340,7 +341,7 @@ function EcommerceTenPageInput({
     <FieldFrame
       label="电商套图素材"
       required
-      action={files.length ? <button type="button" className="studio-prompt-action" onClick={onClear}><RotateCcw className="size-3.5" aria-hidden="true" />重新上传</button> : undefined}
+      action={files.length ? <button type="button" className="studio-prompt-action" onClick={onClear}><Trash2 className="size-3.5" aria-hidden="true" />一键清除素材</button> : undefined}
     >
       <input
         ref={logoInputRef}

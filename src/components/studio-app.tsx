@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import { createPortal } from "react-dom";
-import { ArrowLeft, CalendarCheck, Check, CheckCircle2, Crown, CreditCard, Grid2X2, History, LogOut, Sparkles, WalletCards, X } from "lucide-react";
+import { ArrowLeft, CalendarCheck, Check, CheckCircle2, Crown, CreditCard, Grid2X2, History, Image as ImageIcon, LogOut, Sparkles, WalletCards, X } from "lucide-react";
 import { useRouter, useSearchParams } from "next/navigation";
 import dynamic from "next/dynamic";
 
@@ -1771,19 +1771,7 @@ export function StudioApp() {
 
   const selectImagePreset = useCallback((nextPreset: string | null) => {
     if (nextPreset === imagePreset) {
-      const restore = imagePresetRestoreRef.current;
-      setImagePreset(null);
       setImagePresetMenuOpen(false);
-      setImageWorkspace((prev) => ({
-        ...prev,
-        ...(restore || {}),
-        promptOptimizing: false,
-        promptOptimizeError: "",
-        promptOptimizeUndo: "",
-        submitError: "",
-        submitDiagnostic: null,
-      }));
-      imagePresetRestoreRef.current = null;
       return;
     }
 
@@ -1802,13 +1790,14 @@ export function StudioApp() {
     setImagePresetMenuOpen(false);
     const isWhitePreset = nextPreset === whiteBackgroundFourViewPresetId;
     const isEcommercePreset = nextPreset === ecommerceTenPagePresetId;
+    const restore = nextPreset ? null : imagePresetRestoreRef.current;
     setImageWorkspace((prev) => ({
       ...prev,
-      ratio: isWhitePreset ? whiteBackgroundFourViewRatio : isEcommercePreset ? ecommerceTenPageDefaultRatio : prev.ratio,
-      quality: isWhitePreset ? whiteBackgroundFourViewQuality : isEcommercePreset ? ecommerceTenPageDefaultQuality : prev.quality,
-      count: isWhitePreset ? whiteBackgroundFourViewCount : isEcommercePreset ? ecommerceTenPageCount : prev.count,
-      templateId: "",
-      prompt: isWhitePreset ? whiteBackgroundFourViewPrompt : isEcommercePreset ? ecommerceTenPagePrompt(1, ecommerceTenPageDefaultRatio) : prev.prompt,
+      ratio: isWhitePreset ? whiteBackgroundFourViewRatio : isEcommercePreset ? ecommerceTenPageDefaultRatio : restore?.ratio ?? prev.ratio,
+      quality: isWhitePreset ? whiteBackgroundFourViewQuality : isEcommercePreset ? ecommerceTenPageDefaultQuality : restore?.quality ?? prev.quality,
+      count: isWhitePreset ? whiteBackgroundFourViewCount : isEcommercePreset ? ecommerceTenPageCount : restore?.count ?? prev.count,
+      templateId: nextPreset ? "" : restore?.templateId ?? prev.templateId,
+      prompt: isWhitePreset ? whiteBackgroundFourViewPrompt : isEcommercePreset ? ecommerceTenPagePrompt(1, ecommerceTenPageDefaultRatio) : restore?.prompt ?? prev.prompt,
       promptOptimizing: false,
       promptOptimizeError: "",
       promptOptimizeUndo: "",
@@ -1817,15 +1806,20 @@ export function StudioApp() {
       submitError: "",
       submitDiagnostic: null,
     }));
+    if (!nextPreset) imagePresetRestoreRef.current = null;
   }, [imagePreset, imageWorkspace.count, imageWorkspace.prompt, imageWorkspace.quality, imageWorkspace.ratio, imageWorkspace.templateId]);
 
+  const selectStandardImageMode = useCallback(() => {
+    selectImagePreset(null);
+  }, [selectImagePreset]);
+
   const toggleWhiteBackgroundFourViewMode = useCallback(() => {
-    selectImagePreset(whiteBackgroundFourViewMode ? null : whiteBackgroundFourViewPresetId);
-  }, [selectImagePreset, whiteBackgroundFourViewMode]);
+    selectImagePreset(whiteBackgroundFourViewPresetId);
+  }, [selectImagePreset]);
 
   const toggleEcommerceTenPageMode = useCallback(() => {
-    selectImagePreset(ecommerceTenPageMode ? null : ecommerceTenPagePresetId);
-  }, [ecommerceTenPageMode, selectImagePreset]);
+    selectImagePreset(ecommerceTenPagePresetId);
+  }, [selectImagePreset]);
 
   const updateImageInFlightState = useCallback((nextCount: number, scope: ImageWorkspaceScope = activeImageWorkspaceScope) => {
     const countRef = scope === "image-editor" ? imageEditorInFlightCountRef : imageInFlightCountRef;
@@ -3357,7 +3351,7 @@ export function StudioApp() {
     <div className="studio-tool-header-preset-menu">
       <button
         type="button"
-        className={cn("studio-tool-header-action", (whiteBackgroundFourViewMode || ecommerceTenPageMode) && "is-active")}
+        className="studio-tool-header-action is-active"
         aria-expanded={imagePresetMenuOpen}
         onClick={() => setImagePresetMenuOpen((open) => !open)}
       >
@@ -3373,6 +3367,10 @@ export function StudioApp() {
           <button type="button" className={cn(ecommerceTenPageMode && "is-active")} onClick={toggleEcommerceTenPageMode} role="menuitem">
             <Sparkles className="size-4" aria-hidden="true" />
             <span><strong>电商套图 1-10 张</strong><small>Logo + 多配色四视图</small></span>
+          </button>
+          <button type="button" className={cn(!imagePreset && "is-active")} onClick={selectStandardImageMode} role="menuitem">
+            <ImageIcon className="size-4" aria-hidden="true" />
+            <span><strong>图片生成</strong><small>文生图、参考图生图与批量生成</small></span>
           </button>
         </div>
       ) : null}
@@ -3408,6 +3406,8 @@ export function StudioApp() {
           onFilesChange={replaceImageWorkspaceFiles}
           onFileRemove={removeImageWorkspaceFile}
           onFilesClear={clearImageWorkspaceFiles}
+          standardImageMode={!whiteBackgroundFourViewMode && !ecommerceTenPageMode}
+          onStandardImageModeChange={selectStandardImageMode}
           whiteBackgroundFourViewMode={whiteBackgroundFourViewMode}
           onWhiteBackgroundFourViewModeChange={toggleWhiteBackgroundFourViewMode}
           ecommerceTenPageMode={ecommerceTenPageMode}

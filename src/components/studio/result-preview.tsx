@@ -3,6 +3,7 @@
 /* eslint-disable @next/next/no-img-element */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { AlertTriangle, Check, Download, ImageUp, Loader2, RefreshCw, UploadCloud, Video, Wand2, X } from "lucide-react";
 
 import { BeforeAfterImageCompare } from "@/components/before-after-image-compare";
@@ -13,6 +14,7 @@ import { MediaCard, libraryModelName, libraryStatusBadgeLabel } from "@/componen
 import { PreviewState } from "@/components/studio/shared";
 import type { BusinessToolId, ImageGenerationProgressState, ImageUpscaleWorkspaceState, OutputItemState, OutputState, StudioErrorDiagnostic, VideoUpscaleWorkspaceState } from "@/components/studio/types";
 import type { LibraryItem } from "@/lib/server/types";
+import { peekSessionMediaObjectUrl, sessionMediaObjectUrl } from "@/lib/client/media-cache";
 import { cn } from "@/lib/utils";
 import { useReducedMotion } from "@/lib/use-reduced-motion";
 import type { WorkspaceImageMode, WorkspaceVideoMode } from "@/lib/workspace-registry";
@@ -1749,6 +1751,7 @@ function ImageResultGrid({
   onEdit: (item: LibraryItem) => void;
   onDismiss: (itemId: string) => void;
 }) {
+  const [previewItem, setPreviewItem] = useState<LibraryItem | null>(null);
   const currentOutputs = activeBatchId
     ? outputs.filter((output) => output.item.params?.imageBatchId === activeBatchId)
     : outputs;
@@ -1760,11 +1763,20 @@ function ImageResultGrid({
     - Number(right.item.params?.imagePageIndex || right.item.params?.imageBatchIndex || 0)
   ));
   return (
-    <div className={cn("studio-image-results", `is-count-${Math.min(Math.max(pendingCount + outputs.length, 1), 4)}`)}>
+    <>
+      <div className={cn("studio-image-results", `is-count-${Math.min(Math.max(pendingCount + outputs.length, 1), 4)}`)}>
       {[...orderedCurrentOutputs, ...historicOutputs].map((output, index) => (
         <article key={output.item.id} className={cn("studio-image-result-card", activeBatchId && output.item.params?.imageBatchId !== activeBatchId && "is-historic")}>
           <div className="studio-image-result-card__media">
             <MediaCard cacheOwnerId={cacheOwnerId} item={output.item} large compact smoothReveal />
+            {output.item.output?.url ? (
+              <button
+                type="button"
+                className="studio-image-result-card__preview"
+                aria-label={`放大查看图片 ${index + 1}`}
+                onClick={() => setPreviewItem(output.item)}
+              />
+            ) : null}
             <div className="studio-image-result-card__overlay" aria-label={`图片 ${index + 1} 参数`}>
               <span className="studio-image-result-card__label">{libraryModelName(output.item) || "Image"} · 图片 {Number(output.item.params?.imagePageIndex || index + 1)}</span>
               {imageResultFacts(output.item).map((fact) => <span key={`${output.item.id}-${fact}`}>{fact}</span>)}
@@ -1792,10 +1804,7 @@ function ImageResultGrid({
               编辑
             </button>
             {output.item.output?.url ? (
-              <a className="studio-secondary-button" href={output.item.output.url} download>
-                <Download className="size-4" aria-hidden="true" />
-                下载
-              </a>
+              <ResultDownloadLink cacheOwnerId={cacheOwnerId} item={output.item} />
             ) : null}
           </div>
         </article>
@@ -1810,7 +1819,88 @@ function ImageResultGrid({
           <DotRippleLoader fill staticField expanded={pendingCount === 1} />
         </article>
       ))}
-    </div>
+      </div>
+      {previewItem ? (
+        <ImageResultLightbox cacheOwnerId={cacheOwnerId} item={previewItem} onClose={() => setPreviewItem(null)} />
+      ) : null}
+    </>
+  );
+}
+
+function useResultMediaSource(cacheOwnerId: string | null | undefined, url: string) {
+  const [cachedSource, setCachedSource] = useState(() => ({
+    source: peekSessionMediaObjectUrl(cacheOwnerId, url) || "",
+    url,
+  }));
+
+  useEffect(() => {
+    let cancelled = false;
+    void sessionMediaObjectUrl(cacheOwnerId, url).then((cachedUrl) => {
+      if (!cancelled && cachedUrl) setCachedSource({ source: cachedUrl, url });
+    }).catch(() => undefined);
+    return () => {
+      cancelled = true;
+    };
+  }, [cacheOwnerId, url]);
+
+  return cachedSource.url === url && cachedSource.source ? cachedSource.source : url;
+}
+
+function ResultDownloadLink({
+  cacheOwnerId,
+  item,
+}: {
+  cacheOwnerId?: string | null;
+  item: LibraryItem;
+}) {
+  const url = item.output?.url || "";
+  const source = useResultMediaSource(cacheOwnerId, url);
+  return (
+    <a
+      className="studio-secondary-button"
+      href={source}
+      download={item.output?.storedName || true}
+      data-download-cache-ready={source.startsWith("blob:") ? "true" : "false"}
+    >
+      <Download className="size-4" aria-hidden="true" />
+      下载
+    </a>
+  );
+}
+
+function ImageResultLightbox({
+  cacheOwnerId,
+  item,
+  onClose,
+}: {
+  cacheOwnerId?: string | null;
+  item: LibraryItem;
+  onClose: () => void;
+}) {
+  const url = item.output?.url || "";
+  const source = useResultMediaSource(cacheOwnerId, url);
+
+  useEffect(() => {
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === "Escape") onClose();
+    };
+    window.addEventListener("keydown", closeOnEscape);
+    return () => window.removeEventListener("keydown", closeOnEscape);
+  }, [onClose]);
+
+  if (typeof document === "undefined") return null;
+  return createPortal(
+    <div className="studio-image-result-lightbox">
+      <button type="button" className="studio-image-result-lightbox__backdrop" aria-label="关闭大图预览" onClick={onClose} />
+      <section className="studio-image-result-lightbox__content" role="dialog" aria-modal="true" aria-label="图片大图预览">
+        <button type="button" className="studio-icon-button studio-image-result-lightbox__close" aria-label="关闭大图预览" onClick={onClose} autoFocus>
+          <X className="size-5" aria-hidden="true" />
+        </button>
+        <img src={source} alt={item.title} />
+        <ResultDownloadLink cacheOwnerId={cacheOwnerId} item={item} />
+      </section>
+    </div>,
+    document.body,
   );
 }
 
