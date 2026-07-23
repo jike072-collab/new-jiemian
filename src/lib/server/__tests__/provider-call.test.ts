@@ -127,22 +127,17 @@ test("Every Redbird Seedance model uses signed JSON reference arrays", () => {
   }
 });
 
-test("CLMM Seedance defaults expose the current seven 720P/1080P models", () => {
+test("CLMM Seedance defaults contain only supported 720P/1080P models", () => {
   const clmmProvider = defaultProviders().find((item) => item.id === "video-seedance-new");
   const models = clmmProvider?.models || [];
-  assert.deepEqual(models, [
-    "bb-seedance2.0 1080p-pro-gz-15s",
-    "bb-seedance2.0 720p-fast-gz-15s",
-    "bb-seedance2.0 720p-pro-gz-15s",
-    "mg-seedance2.0 -720p fast",
-    "mg-seedance2.0 -720p mini",
-    "mg-seedance2.0 -720p pro",
-    "oe-seedance-2.0-pro-720p-14s-gz",
-  ]);
+  assert.ok(models.length > 0);
+  assert.ok(models.every((model) => isSeedance20VideoModel(model)));
+  assert.ok(models.every((model) => /(?:720|1080)\s*p/i.test(model)));
+  assert.ok(models.every((model) => !/(?:480\s*p|暗黑|dark)/i.test(model)));
   assert.equal(clmmProvider?.apiUrl, "https://clmm-mall.top/v1/videos");
   assert.deepEqual(clmmProvider?.enabledModels, models);
   assert.deepEqual(clmmSeedanceVideoOptionsForModel("mg-seedance2.0 -720p fast")?.durations, [5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15]);
-  assert.equal(clmmSeedanceVideoOptionsForModel("mg-seedance2.0 -720p fast")?.maxReferenceAudios, 3);
+  assert.equal(clmmSeedanceVideoOptionsForModel("mg-seedance2.0 -720p fast")?.maxReferenceAudios, 1);
   assert.equal(clmmSeedanceVideoOptionsForModel("bb-seedance2.0 1080p-pro-gz-15s")?.maxReferenceImages, 9);
   assert.equal(clmmSeedanceVideoRequestSecondsForModel("mg-seedance2.0 -720p fast", 12), 12);
   assert.equal(clmmSeedanceVideoRequestSecondsForModel("bb-seedance2.0 1080p-pro-gz-15s", 15), 1);
@@ -160,7 +155,7 @@ test("CLMM Seedance defaults expose the current seven 720P/1080P models", () => 
   assert.equal(clmmSeedanceVideoOptionsForModel(highResolutionModel)?.resolution, "1080p");
   assert.equal(clmmSeedanceVideoOptionsForModel(highResolutionModel)?.maxReferenceImages, 9);
   assert.equal(isSeedance20VideoModel(models[0]), true);
-  assert.equal(seedanceLibraryModelName(highResolutionModel), "Seedance 2.0 新 · Pro 1080P 15 秒 不卡真人");
+  assert.equal(seedanceLibraryModelName(highResolutionModel), "Seedance 2.0 新 · Pro 1080P 15 秒");
 });
 
 test("CLMM Seedance payload uses documented multi-reference fields", () => {

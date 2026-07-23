@@ -694,6 +694,13 @@ function CanvasWorkspaceInner({
     return refresh;
   }, [reconcileCanvasLibrary]);
 
+  const refreshProviders = useCallback(async () => {
+    const data = await fetchJson<{ providers: EnabledProviders }>(`/api/providers/enabled?refresh=${Date.now()}`);
+    providersRef.current = data.providers;
+    setProviders(data.providers);
+    return data.providers;
+  }, []);
+
   useEffect(() => {
     let cancelled = false;
     async function loadWorkspace() {
@@ -735,7 +742,9 @@ function CanvasWorkspaceInner({
 
   useEffect(() => {
     const refreshWhenVisible = () => {
-      if (document.visibilityState === "visible") void refreshLibrary().catch(() => undefined);
+      if (document.visibilityState === "visible") {
+        void Promise.all([refreshLibrary(), refreshProviders()]).catch(() => undefined);
+      }
     };
     const timer = window.setInterval(refreshWhenVisible, 60_000);
     window.addEventListener("focus", refreshWhenVisible);
@@ -745,7 +754,7 @@ function CanvasWorkspaceInner({
       window.removeEventListener("focus", refreshWhenVisible);
       document.removeEventListener("visibilitychange", refreshWhenVisible);
     };
-  }, [refreshLibrary]);
+  }, [refreshLibrary, refreshProviders]);
 
   const saveNow = useCallback(async (force = false) => {
     const pendingSave = savePromiseRef.current;

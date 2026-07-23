@@ -45,6 +45,8 @@ assert.match(jobsRoute, /getInternalCanvasWorkspaceMemberIds/);
 assert.match(jobsRoute, /refreshVideoJob\(id, session\.user\.local_user_id, allowedOwnerIds\)/);
 assert.match(libraryRoute, /ownerIds\.map\(\(ownerId\) => refreshPendingVideoJobsForOwner\(ownerId\)\)/);
 assert.match(workspace, /canvasJobUrl\(node\.data\.jobId!\)/);
+assert.match(workspace, /const refreshProviders = useCallback/);
+assert.match(workspace, /Promise\.all\(\[refreshLibrary\(\), refreshProviders\(\)\]\)/);
 assert.ok(
   collaborationRoute.indexOf("subscribeCanvasProjectEvents(id") < collaborationRoute.indexOf("const latestProject = await getCanvasProject"),
   "collaboration stream must subscribe before re-reading the latest project",

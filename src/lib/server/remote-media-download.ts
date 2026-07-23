@@ -47,6 +47,7 @@ const builtInRemoteMediaHosts = [
   "gettoken-jp.oss-accelerate.aliyuncs.com",
   "workflow888.oss-cn-hongkong.aliyuncs.com",
   "videos.aukyy.com",
+  "lotus-ai-api.top",
   "megavideos.oss-cn-hangzhou.aliyuncs.com",
   "*.vod.cn-north-1.volcvideo.com",
 ];

@@ -409,6 +409,8 @@ test("CLMM Seedance result storage allows the documented result host", async () 
   await withEnv({ NODE_ENV: "production", REMOTE_MEDIA_ALLOWED_HOSTS: undefined }, async () => {
     assert.doesNotThrow(() => remoteMediaDownloadInternalsForTests.assertAllowedRemoteHost("videos.aukyy.com"));
     assert.throws(() => remoteMediaDownloadInternalsForTests.assertAllowedRemoteHost("videos.aukyy.com.evil.test"));
+    assert.doesNotThrow(() => remoteMediaDownloadInternalsForTests.assertAllowedRemoteHost("lotus-ai-api.top"));
+    assert.throws(() => remoteMediaDownloadInternalsForTests.assertAllowedRemoteHost("lotus-ai-api.top.evil.test"));
   });
 });
 
