@@ -148,6 +148,7 @@ import {
 } from "@/lib/canvas/image-batch";
 import { mergeCanvasWorkspace } from "@/lib/canvas/merge";
 import { layoutCanvasFlowNodes } from "@/lib/canvas/layout";
+import { matchPendingGeneratedMedia } from "@/lib/canvas/pending-results";
 import {
   canvasPresenceMembersForNode,
   dedupeCanvasPresenceMembers,
@@ -577,13 +578,15 @@ function CanvasWorkspaceInner({
 
   const hydrateMediaNodes = useCallback((sourceNodes: CanvasStoredNode[] | CanvasFlowNode[], items: LibraryItem[], preserveNonMedia = false) => {
     const itemMap = new Map(items.map((item) => [item.id, item]));
+    const recoveredItemIds = matchPendingGeneratedMedia(sourceNodes, items);
     return sourceNodes.map((node) => {
       const dragHandle = canvasNodeDragHandle(node.data.kind);
-      if (node.data.kind !== "media" || !node.data.libraryItemId) {
+      const libraryItemId = node.data.libraryItemId || recoveredItemIds.get(node.id);
+      if (node.data.kind !== "media" || !libraryItemId) {
         if (preserveNonMedia && "dragHandle" in node) return node as CanvasFlowNode;
         return { ...node, type: node.data.kind === "group" ? "group" as const : "canvas" as const, dragHandle };
       }
-      const item = itemMap.get(node.data.libraryItemId);
+      const item = itemMap.get(libraryItemId);
       if (!item) {
         return {
           ...node,
@@ -591,7 +594,8 @@ function CanvasWorkspaceInner({
           dragHandle,
           data: {
             ...node.data,
-            mediaUrl: node.data.mediaUrl || canvasLibraryMediaUrl(node.data.libraryItemId),
+            libraryItemId,
+            mediaUrl: node.data.mediaUrl || canvasLibraryMediaUrl(libraryItemId),
           },
         };
       }
@@ -601,6 +605,8 @@ function CanvasWorkspaceInner({
         dragHandle,
         data: {
           ...node.data,
+          libraryItemId,
+          generationRequestId: undefined,
           title: item.title || node.data.title,
           mediaType: item.type,
           mediaUrl: item.output?.url,
@@ -727,18 +733,20 @@ function CanvasWorkspaceInner({
 
   const reconcileCanvasLibrary = useCallback((items: LibraryItem[], persist = true) => {
     if (!activeProjectRef.current) return 0;
+    const recoveredCount = matchPendingGeneratedMedia(nodesRef.current, items).size;
     const result = removeUnavailableLibraryItemsFromCanvasDocument(
       serializeDocument(nodesRef.current, edgesRef.current, viewportRef.current),
       items.map((item) => item.id),
     );
     if (!result.removedNodeIds.length) {
       setNodes((current) => hydrateMediaNodes(current, items, true));
-      return 0;
+      if (recoveredCount && persist) markDirty();
+      return recoveredCount;
     }
     applyWorkspaceDocument(result.document, items);
     setNotice(`已自动清理 ${result.removedNodeIds.length} 个过期或已删除的素材节点。`);
     if (persist) markDirty();
-    return result.removedNodeIds.length;
+    return result.removedNodeIds.length + recoveredCount;
   }, [applyWorkspaceDocument, hydrateMediaNodes, markDirty]);
 
   const refreshLibrary = useCallback(() => {
@@ -1495,6 +1503,7 @@ function CanvasWorkspaceInner({
             status: libraryStatus(item),
             progress: job?.progress || (item.status === "done" ? 100 : 0),
             jobId: job?.id || node.data.jobId,
+            generationRequestId: undefined,
             error: item.error || undefined,
             ...canvasMediaNodeMetadata(item),
             generationStartedAt: node.data.generationStartedAt || canvasMediaNodeMetadata(item).generationStartedAt,
@@ -1603,11 +1612,10 @@ function CanvasWorkspaceInner({
     return pendingIds;
   }, [connectionStyle, markDirty, pushHistorySnapshot]);
 
-  const createPendingVideoResultNode = useCallback((generatorId: string) => {
+  const createPendingVideoResultNode = useCallback((generatorId: string, generationRequestId: string, createdAt: string) => {
     const generator = nodesRef.current.find((node) => node.id === generatorId);
     if (!generator) return "";
     pushHistorySnapshot();
-    const createdAt = new Date().toISOString();
     const resultIds = new Set(edgesRef.current.filter((edge) => edge.source === generatorId).map((edge) => edge.target));
     const existingResults = nodesRef.current.filter((node) => resultIds.has(node.id) && node.data.kind === "media");
     const resultX = generator.position.x + (generator.width || 340) + 130;
@@ -1628,6 +1636,7 @@ function CanvasWorkspaceInner({
         mediaType: "video",
         createdAt,
         generationStartedAt: createdAt,
+        generationRequestId,
         mediaOrigin: "generated",
         sourceNodeIds: [generatorId],
         status: "queued",
@@ -1716,8 +1725,10 @@ function CanvasWorkspaceInner({
         await submitImageGeneration(generatorId, { ...generator.data, imageMode }, provider, prompt, mediaItems, addResultNode, updateNodeData, isInternalCanvas, pendingImageResultIds);
         updatePendingImageResults(pendingImageResultIds, { status: "failed", progress: 0, error: "生成接口未返回对应图片。" });
       } else {
-        pendingVideoResultId = createPendingVideoResultNode(generatorId);
-        await submitVideoGeneration(generatorId, generator.data, provider as WorkspacePublicProvider, prompt, mediaItems, addResultNode, updateNodeData, isInternalCanvas, pendingVideoResultId);
+        const taskId = canvasId("canvas-video");
+        const canvasRequestedAt = new Date().toISOString();
+        pendingVideoResultId = createPendingVideoResultNode(generatorId, taskId, canvasRequestedAt);
+        await submitVideoGeneration(generatorId, generator.data, provider as WorkspacePublicProvider, prompt, mediaItems, addResultNode, updateNodeData, isInternalCanvas, pendingVideoResultId, taskId, canvasRequestedAt);
       }
       await refreshLibrary().catch(() => undefined);
     } catch (error) {
@@ -4631,6 +4642,8 @@ async function submitVideoGeneration(
   updateNodeData: (id: string, patch: Partial<CanvasNodeData>, persist?: boolean) => void,
   internalCanvas: boolean,
   pendingResultNodeId: string,
+  taskId: string,
+  canvasRequestedAt: string,
 ) {
   const images = references.filter((item) => item.type === "image");
   const videos = references.filter((item) => item.type === "video");
@@ -4650,8 +4663,6 @@ async function submitVideoGeneration(
   const videoFiles = await Promise.all(videos.map(libraryItemFile));
   const audioFiles = await Promise.all(audios.map(libraryItemFile));
 
-  const taskId = canvasId("canvas-video");
-  const canvasRequestedAt = new Date().toISOString();
   const mode = references.length ? "image-to-video" as const : "text-to-video" as const;
   const ratio = options?.ratios?.includes(data.ratio || "") ? data.ratio! : options?.ratios?.[0] || data.ratio || "16:9";
   const duration = options?.durations?.includes(data.duration || 0) ? data.duration! : options?.durations?.[0] || data.duration || 5;

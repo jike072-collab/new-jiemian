@@ -164,10 +164,12 @@ function normalizeNode(value: unknown): CanvasStoredNode {
   const createdAt = optionalString(value.data.createdAt, 64);
   const completedAt = optionalString(value.data.completedAt, 64);
   const generationStartedAt = optionalString(value.data.generationStartedAt, 64);
+  const generationRequestId = optionalIdentifier(value.data.generationRequestId, 160);
   const model = optionalString(value.data.model, 240);
   if (createdAt) data.createdAt = createdAt;
   if (completedAt) data.completedAt = completedAt;
   if (generationStartedAt) data.generationStartedAt = generationStartedAt;
+  if (generationRequestId) data.generationRequestId = generationRequestId;
   if (model) data.model = model;
   if (Array.isArray(value.data.sourceNodeIds)) {
     data.sourceNodeIds = value.data.sourceNodeIds

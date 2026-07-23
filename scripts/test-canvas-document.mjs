@@ -11,6 +11,7 @@ const {
 } = await import(new URL("../src/lib/canvas/document.ts", import.meta.url));
 const { duplicateCanvasNodeData } = await import(new URL("../src/lib/canvas/duplicate.ts", import.meta.url));
 const { canvasMediaNodeSize, normalizeMediaDimensions } = await import(new URL("../src/lib/canvas/media-sizing.ts", import.meta.url));
+const { matchPendingGeneratedMedia } = await import(new URL("../src/lib/canvas/pending-results.ts", import.meta.url));
 
 assert.deepEqual(normalizeCanvasDocument(emptyCanvasDocument()), emptyCanvasDocument());
 assert.equal(normalizeCanvasTitle("  公司广告画布  "), "公司广告画布");
@@ -58,6 +59,7 @@ const pendingResult = normalizeCanvasDocument({
       status: "generating",
       progress: 42,
       jobId: "job-pending-image-1",
+      generationRequestId: "request-pending-image-1",
     },
   }],
   edges: [],
@@ -67,6 +69,52 @@ assert.equal(pendingResult.nodes[0].data.libraryItemId, undefined);
 assert.equal(pendingResult.nodes[0].data.status, "generating");
 assert.equal(pendingResult.nodes[0].data.progress, 42);
 assert.equal(pendingResult.nodes[0].data.jobId, "job-pending-image-1");
+assert.equal(pendingResult.nodes[0].data.generationRequestId, "request-pending-image-1");
+
+const recoveredPending = matchPendingGeneratedMedia([
+  { id: "generator-recovery", type: "canvas", position: { x: 0, y: 0 }, data: { kind: "generator", title: "Video", generationKind: "video", providerId: "video-provider" } },
+  { id: "pending-recovery", type: "canvas", position: { x: 400, y: 0 }, data: { kind: "media", title: "视频生成中", mediaType: "video", mediaOrigin: "generated", sourceNodeIds: ["generator-recovery"], status: "queued", generationStartedAt: "2026-07-23T10:27:53.596Z" } },
+], [{
+  id: "library-recovery",
+  type: "video",
+  mode: "image-to-video",
+  title: "Recovered",
+  prompt: "prompt",
+  providerId: "video-provider",
+  model: "video-model",
+  status: "failed",
+  createdAt: "2026-07-23T10:28:07.338Z",
+  updatedAt: "2026-07-23T10:35:15.171Z",
+  params: { canvasRequestedAt: "2026-07-23T10:28:00.188Z" },
+}]);
+assert.equal(recoveredPending.get("pending-recovery"), "library-recovery");
+
+const exactPending = matchPendingGeneratedMedia([
+  { id: "generator-exact", type: "canvas", position: { x: 0, y: 0 }, data: { kind: "generator", title: "Video", generationKind: "video", providerId: "video-provider" } },
+  { id: "pending-exact", type: "canvas", position: { x: 400, y: 0 }, data: { kind: "media", title: "视频生成中", mediaType: "video", mediaOrigin: "generated", sourceNodeIds: ["generator-exact"], status: "queued", generationRequestId: "canvas-video-request" } },
+], [{
+  id: "library-exact",
+  type: "video",
+  mode: "image-to-video",
+  title: "Exact",
+  prompt: "prompt",
+  providerId: "video-provider",
+  model: "video-model",
+  status: "done",
+  createdAt: "2026-07-23T12:00:00.000Z",
+  updatedAt: "2026-07-23T12:05:00.000Z",
+  params: { billingTaskId: "canvas-video-request" },
+}]);
+assert.equal(exactPending.get("pending-exact"), "library-exact");
+
+const ambiguousPending = matchPendingGeneratedMedia([
+  { id: "generator-ambiguous", type: "canvas", position: { x: 0, y: 0 }, data: { kind: "generator", title: "Video", generationKind: "video", providerId: "video-provider" } },
+  { id: "pending-ambiguous", type: "canvas", position: { x: 400, y: 0 }, data: { kind: "media", title: "视频生成中", mediaType: "video", mediaOrigin: "generated", sourceNodeIds: ["generator-ambiguous"], status: "queued", generationStartedAt: "2026-07-23T10:27:53.596Z" } },
+], [
+  { id: "candidate-a", type: "video", mode: "image-to-video", title: "A", prompt: "a", providerId: "video-provider", model: "video-model", status: "done", createdAt: "2026-07-23T10:28:01.000Z", updatedAt: "2026-07-23T10:28:01.000Z", params: { canvasRequestedAt: "2026-07-23T10:28:00.000Z" } },
+  { id: "candidate-b", type: "video", mode: "image-to-video", title: "B", prompt: "b", providerId: "video-provider", model: "video-model", status: "done", createdAt: "2026-07-23T10:28:02.000Z", updatedAt: "2026-07-23T10:28:02.000Z", params: { canvasRequestedAt: "2026-07-23T10:28:01.000Z" } },
+]);
+assert.equal(ambiguousPending.has("pending-ambiguous"), false);
 
 const migratedVideoJob = normalizeCanvasDocument({
   nodes: [

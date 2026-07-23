@@ -392,7 +392,9 @@ function resolveClmmSeedanceReferences(provider: ProviderConfig, input: {
     audio: new Map<number, number>(),
   };
   const selectedFiles = (Object.keys(filesByType) as Array<keyof typeof filesByType>).flatMap((mediaType) => {
-    const indexes = [...selectedIndexes[mediaType]].sort((left, right) => left - right);
+    const indexes = selectedIndexes[mediaType].size
+      ? [...selectedIndexes[mediaType]].sort((left, right) => left - right)
+      : filesByType[mediaType].map((_, index) => index);
     indexes.forEach((index, compactIndex) => compactIndexes[mediaType].set(index, compactIndex));
     return indexes.map((index) => filesByType[mediaType][index]);
   });
@@ -2079,8 +2081,6 @@ export async function submitVideo(input: {
 }) {
   const provider = await providerById(input.providerId);
   const referenceImageCount = mediaFiles(input, "image").length;
-  const referenceVideoCount = mediaFiles(input, "video").length;
-  const referenceAudioCount = mediaFiles(input, "audio").length;
   if (isVideoGenerationPricingPending(provider?.model)) {
     throw new GenerationDiagnosticError({
       code: "INPUT_INVALID_PARAMETERS",
@@ -2134,6 +2134,9 @@ export async function submitVideo(input: {
     const providerInput = isClmmSeedanceProvider(readyProvider)
       ? { ...input, ...resolveClmmSeedanceReferences(readyProvider, input) }
       : input;
+    const effectiveReferenceImageCount = mediaFiles(providerInput, "image").length;
+    const effectiveReferenceVideoCount = mediaFiles(providerInput, "video").length;
+    const effectiveReferenceAudioCount = mediaFiles(providerInput, "audio").length;
     validateVideoInput(readyProvider, providerInput);
     await claimGenerationBillingDispatch({
       localUserId: input.billingLocalUserId,
@@ -2236,9 +2239,9 @@ export async function submitVideo(input: {
           ratio: input.ratio,
           duration: input.duration,
           resolution: input.resolution,
-          referenceImages: referenceImageCount,
-          referenceVideos: referenceVideoCount,
-          referenceAudios: referenceAudioCount,
+          referenceImages: effectiveReferenceImageCount,
+          referenceVideos: effectiveReferenceVideoCount,
+          referenceAudios: effectiveReferenceAudioCount,
           ...(input.billingTaskId ? { billingTaskId: input.billingTaskId } : {}),
           ...(input.billingIdempotencyKey ? { billingIdempotencyKey: input.billingIdempotencyKey } : {}),
           billingEstimatedQuotaUnits: estimatedQuotaUnits,
@@ -2280,9 +2283,9 @@ export async function submitVideo(input: {
         ratio: input.ratio,
         duration: input.duration,
         resolution: input.resolution,
-        referenceImages: referenceImageCount,
-        referenceVideos: referenceVideoCount,
-        referenceAudios: referenceAudioCount,
+        referenceImages: effectiveReferenceImageCount,
+        referenceVideos: effectiveReferenceVideoCount,
+        referenceAudios: effectiveReferenceAudioCount,
         ...(input.billingTaskId ? { billingTaskId: input.billingTaskId } : {}),
         canvasScope: input.canvasScope === "shared" ? "shared" : "personal",
         ...(validIsoTimestamp(input.canvasRequestedAt) ? { canvasRequestedAt: input.canvasRequestedAt! } : {}),

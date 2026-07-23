@@ -201,7 +201,24 @@ test("CLMM Seedance resolves @ references to the selected media and compact labe
     files: [image1, image2, video1, audio1],
   });
   assert.equal(resolved.prompt, "使用 @Image1 的人物，参考 @Audio1");
-  assert.deepEqual(resolved.files.map((file) => file.fileName), ["image-2.png", "audio-1.mp3"]);
+  assert.deepEqual(resolved.files.map((file) => file.fileName), ["image-2.png", "video-1.mp4", "audio-1.mp3"]);
+});
+
+test("CLMM Seedance keeps connected video when prompt only selects an image", () => {
+  const selected: ProviderConfig = {
+    ...provider,
+    id: "video-seedance-new::model::mg-seedance2.0%20-720p%20fast",
+    kind: "video",
+    model: "mg-seedance2.0 -720p fast",
+    endpointType: "videos-generations",
+  };
+  const image1 = { bytes: Buffer.from("image-1"), mimeType: "image/png", fileName: "image-1.png", mediaType: "image" as const };
+  const video1 = { bytes: Buffer.from("video-1"), mimeType: "video/mp4", fileName: "video-1.mp4", mediaType: "video" as const };
+  const resolved = providerCallInternalsForTests.resolveClmmSeedanceReferences(selected, {
+    prompt: "只替换鞋子，参考 @Image1，其他不变",
+    files: [image1, video1],
+  });
+  assert.deepEqual(resolved.files.map((file) => file.fileName), ["image-1.png", "video-1.mp4"]);
 });
 
 test("CLMM Seedance keeps all references when the prompt has no @ tokens", () => {

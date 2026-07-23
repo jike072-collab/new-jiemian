@@ -16,6 +16,7 @@ export function duplicateCanvasNodeData(
   });
   if (sourceNodeIds?.length) duplicate.sourceNodeIds = sourceNodeIds;
   else delete duplicate.sourceNodeIds;
+  delete duplicate.generationRequestId;
 
   if (data.kind === "generator") {
     duplicate.status = "idle";
