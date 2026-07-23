@@ -33,7 +33,7 @@ export function clmmSeedanceVideoDisplayName(model: string) {
   const normalized = model.trim().toLowerCase();
   const known = clmmSeedanceVideoDisplayNames[model] || clmmSeedanceVideoDisplayNames[normalized];
   if (known) return known;
-  const channel = normalized.match(/^([a-z0-9]+)[-_ ]+seedance/)?.[1];
+  const channel = normalized.match(/^(.+?)[-_ ]+seedance/)?.[1]?.replaceAll("：", ":");
   const withChannel = (label: string) => channel ? `${channel} · ${label}` : label;
   const seconds = normalized.match(/(?:^|[-_ ])(\d+)s(?:$|[-_ ])/i)?.[1];
   const fixedLabel = seconds && normalized.includes("gz") ? `${seconds} 秒` : "";

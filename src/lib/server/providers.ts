@@ -600,7 +600,9 @@ function publicDisplayName(provider: ProviderConfig, model: string, hasMultipleM
   if (provider.endpointType === "grok-videos" && model.trim().toLowerCase() === "grok-video-1.5") return "grok";
   const storedDisplayName = normalizeModelDisplayNames(provider.modelDisplayNames)?.[model];
   const isClmmSeedance = provider.id.startsWith("video-seedance-new") && isDynamicClmmSeedance20Model(model);
-  const channel = isClmmSeedance ? model.trim().toLowerCase().match(/^([a-z0-9]+)[-_ ]+seedance/)?.[1] : undefined;
+  const channel = isClmmSeedance
+    ? model.trim().toLowerCase().match(/^(.+?)[-_ ]+seedance/)?.[1]?.replaceAll("：", ":")
+    : undefined;
   const modelDisplayName = storedDisplayName
     ? channel && !storedDisplayName.trim().toLowerCase().startsWith(`${channel} ·`)
       ? `${channel} · ${storedDisplayName}`

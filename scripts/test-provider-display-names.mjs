@@ -408,6 +408,7 @@ async function assertDynamicClmmMetadataAndPricesReachFrontend() {
     "mg-seedance2.0 -1080p",
     "mg-seedance2.0 -720p fast",
     "mg-seedance2.0 -720p-gz-15s",
+    "bb16：9-seedance2.0 720p-fast-gz-15s",
   ];
   await providersModule.updateProviders([{
     id: "video-seedance-new",
@@ -419,12 +420,14 @@ async function assertDynamicClmmMetadataAndPricesReachFrontend() {
       [models[1]]: "1080P · 过真人",
       [models[2]]: "Fast · 过真人",
       [models[3]]: "720P 15 秒 · 卡真人",
+      [models[4]]: "Fast 15 秒 · 卡真人",
     },
     modelUpstreamPrices: {
       [models[0]]: { amount: 3.78, currency: "CNY", unit: "request" },
       [models[1]]: { amount: 0.368, currency: "CNY", unit: "second" },
       [models[2]]: { amount: 0.268, currency: "CNY", unit: "second" },
       [models[3]]: { amount: 2.48, currency: "CNY", unit: "request" },
+      [models[4]]: { amount: 3.78, currency: "CNY", unit: "request" },
     },
     enabled: true,
     apiKey: "clmm-test-key",
@@ -432,12 +435,13 @@ async function assertDynamicClmmMetadataAndPricesReachFrontend() {
 
   const frontend = (await providersModule.readFrontendProviders("video"))
     .filter((provider) => provider.id.startsWith("video-seedance-new::model::"));
-  assert.equal(frontend.length, 4);
+  assert.equal(frontend.length, 5);
   const byModel = new Map(frontend.map((provider) => [provider.model, provider]));
   assert.equal(byModel.get(models[0])?.displayName, "bb · Fast 15 秒 · 卡真人");
   assert.equal(byModel.get(models[1])?.displayName, "mg · 1080P · 过真人");
   assert.equal(byModel.get(models[2])?.displayName, "mg · Fast · 过真人");
   assert.equal(byModel.get(models[3])?.displayName, "mg · 720P 15 秒 · 卡真人");
+  assert.equal(byModel.get(models[4])?.displayName, "bb16:9 · Fast 15 秒 · 卡真人");
   assert.deepEqual(byModel.get(models[0])?.videoOptions, {
     durations: [15], ratios: ["9:16"], resolution: "720p",
     maxReferenceImages: 9, maxReferenceVideos: 3, maxReferenceAudios: 3,

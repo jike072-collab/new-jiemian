@@ -118,9 +118,11 @@ test("updates only the CLMM provider document and keeps its key unchanged", asyn
     }];
     const result = syncProviderDocument(document, [
       "bb-seedance2.0 720p-fast-gz-15s",
+      "bb16：9-seedance2.0 720p-fast-gz-15s",
       "oe-seedance-2.0-pro-720p-14s-gz",
     ], [
       { model: "bb-seedance2.0 720p-fast-gz-15s", amount: 3.78, currency: "CNY", unit: "request", humanFace: "restricted" },
+      { model: "bb16：9-seedance2.0 720p-fast-gz-15s", amount: 3.78, currency: "CNY", unit: "request", humanFace: "restricted" },
       { model: "oe-seedance-2.0-pro-720p-14s-gz", amount: 4.68, currency: "CNY", unit: "request", humanFace: "supported" },
     ]);
     await writeFile(providerPath, JSON.stringify(result.document));
@@ -129,6 +131,7 @@ test("updates only the CLMM provider document and keeps its key unchanged", asyn
     assert.equal(saved[1].apiKey, "secret-that-must-not-print");
     assert.deepEqual(saved[1].enabledModels, result.selection.models);
     assert.equal(saved[1].modelDisplayNames["bb-seedance2.0 720p-fast-gz-15s"], "bb · Fast 15 秒 · 卡真人");
+    assert.equal(saved[1].modelDisplayNames["bb16：9-seedance2.0 720p-fast-gz-15s"], "bb16:9 · Fast 15 秒 · 卡真人");
     assert.equal(saved[1].modelDisplayNames["oe-seedance-2.0-pro-720p-14s-gz"], "oe · Pro 14 秒 · 过真人");
     assert.deepEqual(saved[1].modelUpstreamPrices["bb-seedance2.0 720p-fast-gz-15s"], { amount: 3.78, currency: "CNY", unit: "request" });
   } finally {
