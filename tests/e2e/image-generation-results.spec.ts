@@ -87,7 +87,14 @@ test("image features default to image generation and special uploads clear in on
   await featureButton.click();
   const menu = page.getByRole("menu", { name: "图片固定功能" });
   await expect(menu.getByRole("menuitem")).toHaveCount(3);
+  await expect(menu.getByRole("menuitem").first()).toContainText("图片生成");
   await expect(menu.getByRole("menuitem").filter({ hasText: "图片生成" })).toHaveClass(/is-active/);
+  await page.getByTestId("prompt-input").click();
+  await expect(menu).toHaveCount(0);
+  await featureButton.click();
+  await page.keyboard.press("Escape");
+  await expect(menu).toHaveCount(0);
+  await featureButton.click();
   await page.screenshot({ path: testInfo.outputPath("image-feature-menu-desktop.png"), fullPage: true });
 
   await menu.getByRole("menuitem").filter({ hasText: "四视图白底图" }).click();
@@ -95,7 +102,10 @@ test("image features default to image generation and special uploads clear in on
   await expect(fourViewInput).toHaveAttribute("multiple", "");
   const pixel = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=", "base64");
   const startedAt = Date.now();
-  await fourViewInput.setInputFiles(Array.from({ length: 4 }, (_, index) => ({
+  const fourViewChooserPromise = page.waitForEvent("filechooser");
+  await page.locator(".studio-four-view-upload-slot.is-next").click({ position: { x: 6, y: 6 } });
+  const fourViewChooser = await fourViewChooserPromise;
+  await fourViewChooser.setFiles(Array.from({ length: 4 }, (_, index) => ({
     name: `view-${index + 1}.png`,
     mimeType: "image/png",
     buffer: pixel,
@@ -108,7 +118,10 @@ test("image features default to image generation and special uploads clear in on
 
   await featureButton.click();
   await page.getByRole("menuitem").filter({ hasText: "电商套图 1-10 张" }).click();
-  await page.getByLabel("上传品牌 Logo").setInputFiles({ name: "logo.png", mimeType: "image/png", buffer: pixel });
+  const logoChooserPromise = page.waitForEvent("filechooser");
+  await page.getByRole("button", { name: /Logo 上传/ }).click();
+  const logoChooser = await logoChooserPromise;
+  await logoChooser.setFiles({ name: "logo.png", mimeType: "image/png", buffer: pixel });
   await page.getByLabel("上传配色四视图白底图").setInputFiles({ name: "board.png", mimeType: "image/png", buffer: pixel });
   await expect(page.locator(".studio-ecommerce-logo-preview")).toHaveCount(1);
   await expect(page.locator(".studio-ecommerce-board-preview")).toHaveCount(1);
@@ -137,12 +150,17 @@ test("mobile image feature switch exposes all three modes", async ({ page }, tes
 test("generated image opens immediately and reuses its cached download source", async ({ page }, testInfo) => {
   test.skip(testInfo.project.name !== "chromium", "Desktop Chromium covers cached result actions.");
   let imageFetchCount = 0;
+  let releaseImageFetch: () => void = () => {};
+  const imageFetchGate = new Promise<void>((resolve) => {
+    releaseImageFetch = resolve;
+  });
   await page.route("**/api/quota/precheck", (route) => route.fulfill({ json: { ok: true } }));
   await page.route("**/api/generate/image", (route) => route.fulfill({
     json: { item: imageItem(1), items: [imageItem(1)] },
   }));
   await page.route("**/e2e/generated-image-1.svg", async (route) => {
     imageFetchCount += 1;
+    await imageFetchGate;
     await route.fulfill({
       contentType: "image/svg+xml",
       body: '<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="800"><rect width="1200" height="800" fill="#ff2b88"/></svg>',
@@ -153,6 +171,15 @@ test("generated image opens immediately and reuses its cached download source", 
   await page.getByTestId("prompt-input").fill("产品摄影，干净背景");
   await page.getByTestId("primary-submit").click();
   const resultCard = page.locator(".studio-image-result-card").first();
+  await expect.poll(() => imageFetchCount).toBe(1);
+  const downloadLink = resultCard.locator("[data-download-cache-ready]");
+  const downloadPromise = page.waitForEvent("download");
+  await downloadLink.click();
+  await expect(downloadLink).toContainText("正在准备");
+  expect(imageFetchCount).toBe(1);
+  releaseImageFetch();
+  const download = await downloadPromise;
+  expect(download.suggestedFilename()).toBe("e2e-generated-image-1.png");
   const cachedDownload = resultCard.locator("[data-download-cache-ready='true']");
   await expect(cachedDownload).toHaveCount(1);
   await expect(cachedDownload).toHaveAttribute("href", /^blob:/);
@@ -229,34 +256,58 @@ test("single pending image fills the available preview height", async ({ page },
   expect(layout.gridHeight).toBeGreaterThan(0);
   expect(layout.cardHeight / layout.gridHeight).toBeGreaterThanOrEqual(0.98);
   expect(layout.overflow).toBeLessThanOrEqual(1);
-  const initialMotion = await pendingLoader.evaluate((loader) => ({
-    field: getComputedStyle(loader).transform,
-    fieldAnimation: getComputedStyle(loader).animationName,
-    mask: getComputedStyle(loader).maskImage,
-    glow: getComputedStyle(loader, "::before").transform,
-    glowAnimation: getComputedStyle(loader, "::before").animationName,
-    glowWillChange: getComputedStyle(loader, "::before").willChange,
-  }));
+  const initialMotion = await pendingLoader.evaluate((loader) => {
+    const canvas = loader.querySelector("canvas");
+    const context = canvas?.getContext("2d");
+    const pixels = canvas && context ? context.getImageData(0, 0, canvas.width, canvas.height).data : new Uint8ClampedArray();
+    return {
+      canvasCount: loader.querySelectorAll("canvas").length,
+      canvasWidth: canvas?.width || 0,
+      canvasHeight: canvas?.height || 0,
+      checksum: pixels.reduce((sum, value, index) => (sum + value * ((index % 97) + 1)) % 1_000_000_007, 0),
+      fieldAnimation: getComputedStyle(loader).animationName,
+      backgroundImage: getComputedStyle(loader).backgroundImage,
+    };
+  });
   await page.waitForTimeout(320);
-  const movedMotion = await pendingLoader.evaluate((loader) => ({
-    field: getComputedStyle(loader).transform,
-    fieldAnimation: getComputedStyle(loader).animationName,
-    mask: getComputedStyle(loader).maskImage,
-    glow: getComputedStyle(loader, "::before").transform,
-    glowAnimation: getComputedStyle(loader, "::before").animationName,
-    glowWillChange: getComputedStyle(loader, "::before").willChange,
-  }));
-  expect(movedMotion.field).toBe(initialMotion.field);
+  const movedMotion = await pendingLoader.evaluate((loader) => {
+    const canvas = loader.querySelector("canvas");
+    const context = canvas?.getContext("2d");
+    const pixels = canvas && context ? context.getImageData(0, 0, canvas.width, canvas.height).data : new Uint8ClampedArray();
+    return {
+      checksum: pixels.reduce((sum, value, index) => (sum + value * ((index % 97) + 1)) % 1_000_000_007, 0),
+      fieldAnimation: getComputedStyle(loader).animationName,
+      backgroundImage: getComputedStyle(loader).backgroundImage,
+    };
+  });
+  expect(initialMotion.canvasCount).toBe(1);
+  expect(initialMotion.canvasWidth).toBeGreaterThan(0);
+  expect(initialMotion.canvasHeight).toBeGreaterThan(0);
   expect(movedMotion.fieldAnimation).toBe("none");
-  expect(movedMotion.mask).toContain("radial-gradient");
-  expect(movedMotion.mask).toBe(initialMotion.mask);
-  expect(movedMotion.glow).not.toBe(initialMotion.glow);
-  expect(movedMotion.glowAnimation).toContain("studio-dot-field-glow-loop");
-  expect(movedMotion.glowWillChange).toContain("transform");
+  expect(movedMotion.backgroundImage).toContain("radial-gradient");
+  expect(movedMotion.backgroundImage).toBe(initialMotion.backgroundImage);
+  expect(movedMotion.checksum).not.toBe(initialMotion.checksum);
   await page.screenshot({
     path: testInfo.outputPath(`image-waiting-single-${testInfo.project.name}.png`),
     fullPage: true,
   });
+});
+
+test("waiting field stays static when reduced motion is enabled", async ({ page }, testInfo) => {
+  test.skip(testInfo.project.name !== "chromium", "Desktop Chromium covers reduced motion rendering.");
+  await page.emulateMedia({ reducedMotion: "reduce" });
+  await page.route("**/api/quota/precheck", (route) => route.fulfill({ json: { ok: true } }));
+  await page.route("**/api/generate/image", () => new Promise(() => undefined));
+
+  await page.goto("/", { waitUntil: "domcontentloaded" });
+  await page.getByTestId("prompt-input").fill("产品摄影，干净背景");
+  await page.getByTestId("primary-submit").click();
+  const canvas = page.locator(".studio-image-result-card--pending canvas");
+  await expect(canvas).toHaveCount(1);
+  const initialFrame = await canvas.evaluate((element) => (element as HTMLCanvasElement).toDataURL());
+  await page.waitForTimeout(360);
+  const laterFrame = await canvas.evaluate((element) => (element as HTMLCanvasElement).toDataURL());
+  expect(laterFrame).toBe(initialFrame);
 });
 
 test("image results reveal independently with unified waiting visuals", async ({ page }, testInfo) => {
@@ -319,29 +370,35 @@ test("image results reveal independently with unified waiting visuals", async ({
       width: dotsRect ? dotsRect.width / cardRect.width : 0,
       height: dotsRect ? dotsRect.height / cardRect.height : 0,
       animationName: dots ? getComputedStyle(dots).animationName : "",
-      maskImage: dots ? getComputedStyle(dots).maskImage : "",
-      glowAnimation: dots ? getComputedStyle(dots, "::before").animationName : "",
+      backgroundImage: dots ? getComputedStyle(dots).backgroundImage : "",
       vectorField: dots?.classList.contains("is-vector-field") || false,
       particleCount: dots?.querySelectorAll("span").length || 0,
+      canvasCount: dots?.querySelectorAll("canvas").length || 0,
+      canvasWidth: dots?.querySelector("canvas")?.width || 0,
+      canvasHeight: dots?.querySelector("canvas")?.height || 0,
     };
   }));
   for (const coverage of waitingCoverage) {
     expect(coverage.width).toBeGreaterThanOrEqual(0.85);
     expect(coverage.height).toBeGreaterThanOrEqual(0.85);
     expect(coverage.animationName).toBe("none");
-    expect(coverage.maskImage).toContain("radial-gradient");
-    expect(coverage.glowAnimation).toContain("studio-dot-field-glow-loop");
+    expect(coverage.backgroundImage).toContain("radial-gradient");
     expect(coverage.vectorField).toBe(true);
     expect(coverage.particleCount).toBe(0);
+    expect(coverage.canvasCount).toBe(1);
+    expect(coverage.canvasWidth).toBeGreaterThan(0);
+    expect(coverage.canvasHeight).toBeGreaterThan(0);
   }
-  const initialGlowTransforms = await page.locator(".studio-image-result-card--pending .studio-dot-ripple-loader").evaluateAll((fields) => (
-    fields.map((field) => getComputedStyle(field, "::before").transform)
-  ));
-  await page.waitForTimeout(240);
-  const movedGlowTransforms = await page.locator(".studio-image-result-card--pending .studio-dot-ripple-loader").evaluateAll((fields) => (
-    fields.map((field) => getComputedStyle(field, "::before").transform)
-  ));
-  expect(movedGlowTransforms.some((transform, index) => transform !== initialGlowTransforms[index])).toBe(true);
+  const canvasFrames = async () => page.locator(".studio-image-result-card--pending canvas").evaluateAll((elements) => elements.map((element) => {
+    const canvas = element as HTMLCanvasElement;
+    return canvas.toDataURL();
+  }));
+  await page.locator(".studio-image-result-card--pending canvas").first().scrollIntoViewIfNeeded();
+  const initialCanvasFrames = await canvasFrames();
+  await expect.poll(async () => {
+    const movedCanvasFrames = await canvasFrames();
+    return movedCanvasFrames.some((frame, index) => frame !== initialCanvasFrames[index]);
+  }, { timeout: 3_000 }).toBe(true);
   await page.screenshot({
     path: testInfo.outputPath(`image-waiting-${testInfo.project.name}.png`),
     fullPage: true,
@@ -518,7 +575,8 @@ test("image results reveal independently with unified waiting visuals", async ({
   expect(singleResultMetrics).toHaveLength(1);
   expect(singleResultMetrics[0].extraHeight).toBeLessThanOrEqual(testInfo.project.name.startsWith("mobile") ? 270 : 84);
 
-  await page.locator(".studio-image-result-card__actions .studio-secondary-button").first().click();
+  await page.getByRole("button", { name: "重做", exact: true }).click();
+  await expect.poll(() => precheckPayloads.length).toBe(8);
   await expect.poll(() => releases.length).toBe(8);
   await expect(page.locator(".studio-image-result-card--pending")).toHaveCount(4);
   await expect(page.locator(".studio-image-result-card__media")).toHaveCount(0);

@@ -2342,6 +2342,15 @@
     z-index: 1;
   }
 
+  .studio-four-view-upload-slot > label {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    padding: 18px 12px 30px;
+    text-align: center;
+  }
+
   .studio-four-view-upload-slot > span {
     position: absolute;
     right: 7px;
@@ -2352,6 +2361,7 @@
     font-size: 11px;
     line-height: 1;
     padding: 5px 6px;
+    pointer-events: none;
     z-index: 2;
   }
 
@@ -2370,6 +2380,44 @@
     border-radius: var(--radius-control);
     background: color-mix(in srgb, var(--surface) 72%, transparent);
     padding: 11px;
+  }
+
+  .studio-ecommerce-logo-upload {
+    min-height: 102px;
+    overflow: hidden;
+    border-style: dashed;
+    border-color: color-mix(in srgb, var(--primary) 52%, var(--border-subtle));
+    padding: 0;
+  }
+
+  .studio-ecommerce-logo-dropzone {
+    display: grid;
+    width: 100%;
+    min-height: 102px;
+    place-items: center;
+    align-content: center;
+    gap: 5px;
+    border: 0;
+    background: transparent;
+    color: var(--foreground);
+    cursor: pointer;
+    font-size: 12px;
+    text-align: center;
+  }
+
+  .studio-ecommerce-logo-dropzone span {
+    color: var(--muted);
+    font-size: 11px;
+  }
+
+  .studio-ecommerce-logo-upload:hover,
+  .studio-ecommerce-logo-upload:focus-within {
+    border-color: var(--primary);
+  }
+
+  .studio-ecommerce-logo-dropzone:focus-visible {
+    color: var(--primary);
+    outline: none;
   }
 
   .studio-ecommerce-board-upload {
@@ -2395,17 +2443,17 @@
   .studio-ecommerce-logo-preview {
     position: relative;
     display: grid;
-    min-height: 78px;
+    min-height: 100px;
     place-items: center;
     overflow: hidden;
-    border: 1px dashed color-mix(in srgb, var(--primary) 52%, var(--border-subtle));
-    border-radius: var(--radius-control);
+    border: 0;
+    border-radius: 0;
     background: var(--background);
   }
 
   .studio-ecommerce-logo-preview img {
     width: 100%;
-    height: 78px;
+    height: 100px;
     object-fit: contain;
   }
 
@@ -5058,46 +5106,29 @@
   .studio-dot-ripple-loader.is-vector-field.is-static-field {
     --dot-field-columns: 20;
     --dot-field-rows: 20;
-    --dot-field-radius: 1.15px;
+    --dot-field-radius: 0.78px;
     display: block;
     overflow: hidden;
     padding: 0;
-    background: color-mix(in srgb, var(--foreground) 10%, transparent);
-    -webkit-mask-image: radial-gradient(circle, #000 0 var(--dot-field-radius), transparent calc(var(--dot-field-radius) + 0.7px));
-    -webkit-mask-position: center;
-    -webkit-mask-size: calc(100% / var(--dot-field-columns)) calc(100% / var(--dot-field-rows));
-    -webkit-mask-repeat: repeat;
-    mask-image: radial-gradient(circle, #000 0 var(--dot-field-radius), transparent calc(var(--dot-field-radius) + 0.7px));
-    mask-position: center;
-    mask-size: calc(100% / var(--dot-field-columns)) calc(100% / var(--dot-field-rows));
-    mask-repeat: repeat;
+    background-image: radial-gradient(circle, color-mix(in srgb, var(--foreground) 10%, transparent) 0 var(--dot-field-radius), transparent calc(var(--dot-field-radius) + 0.55px));
+    background-position: center;
+    background-size: calc(100% / var(--dot-field-columns)) calc(100% / var(--dot-field-rows));
+    background-repeat: repeat;
+    color: color-mix(in srgb, var(--foreground) 72%, var(--primary) 28%);
     animation: none;
   }
 
   .studio-dot-ripple-loader.is-vector-field.is-static-field.is-expanded-field {
     --dot-field-columns: 26;
     --dot-field-rows: 26;
-    --dot-field-radius: 1.3px;
+    --dot-field-radius: 0.82px;
   }
 
-  .studio-dot-ripple-loader.is-vector-field.is-static-field::before {
+  .studio-dot-ripple-loader__field {
     position: absolute;
-    top: 16%;
-    left: 16%;
-    width: 68%;
-    aspect-ratio: 1;
-    border-radius: 50%;
-    background: radial-gradient(
-      circle,
-      color-mix(in srgb, var(--foreground) 86%, transparent) 0%,
-      color-mix(in srgb, var(--foreground) 48%, transparent) 24%,
-      color-mix(in srgb, var(--foreground) 16%, transparent) 48%,
-      transparent 70%
-    );
-    content: "";
-    transform: translate3d(-24%, -18%, 0) scale(0.9);
-    animation: studio-dot-field-glow-loop 7.2s linear infinite;
-    will-change: transform;
+    inset: 0;
+    display: block;
+    pointer-events: none;
   }
 
   @keyframes studio-dot-ripple {
@@ -5159,25 +5190,6 @@
     }
   }
 
-  @keyframes studio-dot-field-glow-loop {
-    0%,
-    100% {
-      transform: translate3d(-24%, -18%, 0) scale(0.9);
-    }
-
-    25% {
-      transform: translate3d(34%, -24%, 0) scale(1.02);
-    }
-
-    50% {
-      transform: translate3d(28%, 32%, 0) scale(0.94);
-    }
-
-    75% {
-      transform: translate3d(-30%, 26%, 0) scale(1.06);
-    }
-  }
-
   @media (prefers-reduced-motion: reduce) {
     .studio-dot-ripple-loader span {
       animation: none;
@@ -5189,10 +5201,6 @@
       animation: none;
     }
 
-    .studio-dot-ripple-loader.is-vector-field.is-static-field::before {
-      animation: none;
-      transform: none;
-    }
   }
 
   .studio-sticky-action {

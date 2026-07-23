@@ -1787,7 +1787,7 @@ function ImageResultGrid({
             </button>
           </div>
           <div className="studio-image-result-card__actions">
-            <button type="button" className="studio-secondary-button" onClick={() => onRetryItem ? onRetryItem(output.item) : onRetry} disabled={!canRetry || loading}>
+            <button type="button" className="studio-secondary-button" onClick={() => onRetryItem ? onRetryItem(output.item) : onRetry()} disabled={!canRetry || loading}>
               <RefreshCw className="size-4" aria-hidden="true" />
               重做
             </button>
@@ -1855,15 +1855,41 @@ function ResultDownloadLink({
 }) {
   const url = item.output?.url || "";
   const source = useResultMediaSource(cacheOwnerId, url);
+  const [preparing, setPreparing] = useState(false);
+  const cached = source.startsWith("blob:");
+
+  const downloadPreparedSource = (preparedSource: string) => {
+    const link = document.createElement("a");
+    link.href = preparedSource;
+    link.download = item.output?.storedName || "download";
+    link.hidden = true;
+    document.body.append(link);
+    link.click();
+    link.remove();
+  };
+
   return (
     <a
       className="studio-secondary-button"
       href={source}
       download={item.output?.storedName || true}
-      data-download-cache-ready={source.startsWith("blob:") ? "true" : "false"}
+      aria-busy={preparing}
+      data-download-cache-ready={cached ? "true" : "false"}
+      onClick={async (event) => {
+        if (cached) return;
+        event.preventDefault();
+        if (preparing) return;
+        setPreparing(true);
+        try {
+          const preparedSource = await sessionMediaObjectUrl(cacheOwnerId, url);
+          downloadPreparedSource(preparedSource || url);
+        } finally {
+          setPreparing(false);
+        }
+      }}
     >
-      <Download className="size-4" aria-hidden="true" />
-      下载
+      {preparing ? <Loader2 className="size-4 animate-spin" aria-hidden="true" /> : <Download className="size-4" aria-hidden="true" />}
+      {preparing ? "正在准备" : "下载"}
     </a>
   );
 }

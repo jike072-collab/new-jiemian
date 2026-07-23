@@ -345,6 +345,7 @@ function EcommerceTenPageInput({
     >
       <input
         ref={logoInputRef}
+        id="ecommerce-logo-input"
         type="file"
         accept="image/png,image/jpeg,image/webp"
         className="studio-file-input"
@@ -356,19 +357,16 @@ function EcommerceTenPageInput({
         }}
       />
       <div className="studio-ecommerce-logo-upload">
-        <div className="studio-ecommerce-upload-heading">
-          <strong>品牌 Logo</strong>
-          <span>每张图固定放在左上角</span>
-        </div>
         {logo ? (
           <div className="studio-ecommerce-logo-preview">
             <img src={logo.previewUrl} alt="品牌 Logo" />
             <button type="button" aria-label="删除品牌 Logo" onClick={() => onRemove(0)}>×</button>
           </div>
         ) : (
-          <button type="button" className="studio-ecommerce-upload-button" onClick={() => logoInputRef.current?.click()}>
+          <button type="button" className="studio-ecommerce-logo-dropzone" onClick={() => logoInputRef.current?.click()}>
             <ImagePlus className="size-5" aria-hidden="true" />
-            <span>上传 Logo</span>
+            <strong>Logo 上传</strong>
+            <span>每张图固定放在左上角</span>
           </button>
         )}
       </div>

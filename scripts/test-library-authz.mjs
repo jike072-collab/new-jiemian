@@ -35,14 +35,16 @@ assert(libraryRoute.includes("removeLibraryItemsFromCanvasProjects(missingItems.
 assert(!libraryRoute.includes("readLibrary()"), "/api/library route must not read the full library");
 assert(!libraryRoute.includes("deleteLibraryItem(body.id)"), "/api/library route must not use ownerless delete");
 
-assert(filesRoute.includes("resolveStoredFileForOwner(name, session.user.local_user_id)"), "/api/files route must resolve files through owner-aware helper");
+assert(filesRoute.includes("resolveStoredFileForOwner(name, session.user.local_user_id"), "/api/files route must resolve files through owner-aware helper");
 assert(filesRoute.includes("resolveStoredFileForOwners(name"), "/api/files route must support authorized shared workspace files");
 assert(filesRoute.includes("getInternalCanvasWorkspaceMemberIds(session.user.local_user_id)"), "shared file access must be limited to workspace members");
 assert(!filesRoute.includes("readStoredFile(name)"), "/api/files route must not read files without owner");
 assert(!filesRoute.includes("resolveUploadPath"), "/api/files route must not resolve upload paths directly");
 assert(!filesRoute.includes("join("), "/api/files route must not raw-join file paths");
 assert(filesRoute.includes("private, max-age="), "/api/files route may cache assets only as private responses");
-assert(libraryMediaRoute.includes("resolveLibraryMediaForOwner(id, session.user.local_user_id)"), "library media route must resolve only owner media");
+assert(filesRoute.includes("highWaterMark: 1024 * 1024"), "/api/files route should stream large media in 1 MB chunks");
+assert(filesRoute.includes('"X-Accel-Buffering": "no"'), "/api/files route should disable proxy response buffering");
+assert(libraryMediaRoute.includes("resolveLibraryMediaForOwner(id, session.user.local_user_id"), "library media route must resolve only owner media");
 assert(libraryMediaRoute.includes('destination.searchParams.set("scope", "shared")'), "shared media redirects must preserve shared authorization scope");
 assert(libraryMediaRoute.includes('const location = output.url.startsWith("/")'), "local media redirects must remain relative behind the reverse proxy");
 assert(libraryMediaRoute.includes("Location: location"), "library media route must emit the safe redirect location");
@@ -55,9 +57,9 @@ assert(library.includes("deleteLibraryItemForOwner(id: string, ownerLocalUserId:
 assert(library.includes("readStoredFileForOwner(storedName: string, ownerLocalUserId: string)"), "library must expose owner-aware file read");
 assert(library.includes("candidate.output?.storedName === storedName"), "file authz must bind storedName to the current owner item");
 assert(library.includes("if (!safeName || safeName !== storedName) return null"), "invalid storedName must be rejected before reading disk");
-assert(library.includes("resolveStoredFileForOwner(storedName: string, ownerLocalUserId: string)"), "library must expose owner-aware file resolution");
-assert(library.includes("resolveStoredFileForOwners(storedName: string, ownerLocalUserIds: readonly string[])"), "library must expose workspace-member file resolution");
-assert(library.includes("resolveLibraryMediaForOwner(id: string, ownerLocalUserId: string)"), "library must expose owner-aware media caching");
+assert(library.includes("resolveStoredFileForOwner(storedName: string, ownerLocalUserId: string"), "library must expose owner-aware file resolution");
+assert(library.includes("resolveStoredFileForOwners(storedName: string, ownerLocalUserIds: readonly string[]"), "library must expose workspace-member file resolution");
+assert(library.includes("resolveLibraryMediaForOwner(id: string, ownerLocalUserId: string"), "library must expose owner-aware media caching");
 assert(library.includes('code === "ENOENT" ? "missing" : "unavailable"'), "automatic cleanup must distinguish missing files from permission or transient failures");
 assertSequence("media owner check before remote caching", library, [
   "export async function resolveLibraryMediaForOwners",

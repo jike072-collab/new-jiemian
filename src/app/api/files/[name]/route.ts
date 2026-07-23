@@ -179,21 +179,23 @@ export async function GET(
     });
   }
   if (range) {
-    const stream = Readable.toWeb(createReadStream(storedFile.path, { start: range.start, end: range.end }));
+    const stream = Readable.toWeb(createReadStream(storedFile.path, { start: range.start, end: range.end, highWaterMark: 1024 * 1024 }));
     return new NextResponse(stream as ReadableStream, {
       status: 206,
       headers: {
         ...baseHeaders,
         "Content-Length": String(range.end - range.start + 1),
         "Content-Range": `bytes ${range.start}-${range.end}/${storedFile.size}`,
+        "X-Accel-Buffering": "no",
       },
     });
   }
 
-  const stream = Readable.toWeb(createReadStream(storedFile.path));
+  const stream = Readable.toWeb(createReadStream(storedFile.path, { highWaterMark: 1024 * 1024 }));
   return new NextResponse(stream as ReadableStream, {
     headers: {
       ...baseHeaders,
+      "X-Accel-Buffering": "no",
     },
   });
 }

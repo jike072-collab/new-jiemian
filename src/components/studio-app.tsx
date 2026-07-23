@@ -808,6 +808,7 @@ export function StudioApp() {
   const [imageEditorWorkspace, setImageEditorWorkspace] = useState<ImageWorkspaceState>(() => createInitialImageWorkspaceState());
   const [imagePreset, setImagePreset] = useState<string | null>(null);
   const [imagePresetMenuOpen, setImagePresetMenuOpen] = useState(false);
+  const imagePresetMenuRef = useRef<HTMLDivElement | null>(null);
   const [videoWorkspace, setVideoWorkspace] = useState<VideoWorkspaceState>({
     providerId: "",
     referenceMode: "single",
@@ -1820,6 +1821,22 @@ export function StudioApp() {
   const toggleEcommerceTenPageMode = useCallback(() => {
     selectImagePreset(ecommerceTenPagePresetId);
   }, [selectImagePreset]);
+
+  useEffect(() => {
+    if (!imagePresetMenuOpen) return undefined;
+    const closeOnPointerDown = (event: PointerEvent) => {
+      if (!imagePresetMenuRef.current?.contains(event.target as Node)) setImagePresetMenuOpen(false);
+    };
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setImagePresetMenuOpen(false);
+    };
+    document.addEventListener("pointerdown", closeOnPointerDown);
+    window.addEventListener("keydown", closeOnEscape);
+    return () => {
+      document.removeEventListener("pointerdown", closeOnPointerDown);
+      window.removeEventListener("keydown", closeOnEscape);
+    };
+  }, [imagePresetMenuOpen]);
 
   const updateImageInFlightState = useCallback((nextCount: number, scope: ImageWorkspaceScope = activeImageWorkspaceScope) => {
     const countRef = scope === "image-editor" ? imageEditorInFlightCountRef : imageInFlightCountRef;
@@ -3348,7 +3365,7 @@ export function StudioApp() {
   ]);
 
   const imageToolHeaderSlot = activeBusinessTool === "image" && activeImageWorkspaceScope === "image" ? (
-    <div className="studio-tool-header-preset-menu">
+    <div ref={imagePresetMenuRef} className="studio-tool-header-preset-menu">
       <button
         type="button"
         className="studio-tool-header-action is-active"
@@ -3360,6 +3377,10 @@ export function StudioApp() {
       </button>
       {imagePresetMenuOpen ? (
         <div className="studio-tool-header-preset-popover" role="menu" aria-label="图片固定功能">
+          <button type="button" className={cn(!imagePreset && "is-active")} onClick={selectStandardImageMode} role="menuitem">
+            <ImageIcon className="size-4" aria-hidden="true" />
+            <span><strong>图片生成</strong><small>文生图、参考图生图与批量生成</small></span>
+          </button>
           <button type="button" className={cn(whiteBackgroundFourViewMode && "is-active")} onClick={toggleWhiteBackgroundFourViewMode} role="menuitem">
             <Grid2X2 className="size-4" aria-hidden="true" />
             <span><strong>四视图白底图</strong><small>4 张视图生成 1 张白底图</small></span>
@@ -3367,10 +3388,6 @@ export function StudioApp() {
           <button type="button" className={cn(ecommerceTenPageMode && "is-active")} onClick={toggleEcommerceTenPageMode} role="menuitem">
             <Sparkles className="size-4" aria-hidden="true" />
             <span><strong>电商套图 1-10 张</strong><small>Logo + 多配色四视图</small></span>
-          </button>
-          <button type="button" className={cn(!imagePreset && "is-active")} onClick={selectStandardImageMode} role="menuitem">
-            <ImageIcon className="size-4" aria-hidden="true" />
-            <span><strong>图片生成</strong><small>文生图、参考图生图与批量生成</small></span>
           </button>
         </div>
       ) : null}
