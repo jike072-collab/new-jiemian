@@ -138,6 +138,7 @@ import type {
 } from "@/lib/canvas/types";
 import { normalizeCanvasDocument, removeUnavailableLibraryItemsFromCanvasDocument } from "@/lib/canvas/document";
 import { duplicateCanvasNodeData } from "@/lib/canvas/duplicate";
+import { collectCanvasFolderDropFiles, isSupportedCanvasDropFile, MAX_CANVAS_FOLDER_FILES } from "@/lib/canvas/folder-drop";
 import { canvasMediaNodeSize, normalizeMediaDimensions } from "@/lib/canvas/media-sizing";
 import {
   canvasImageResultGrid,
@@ -1196,14 +1197,16 @@ function CanvasWorkspaceInner({
     }
   }, [addNodeAtCenter, isInternalCanvas]);
 
-  const uploadCanvasMediaFiles = useCallback(async (input: File[], position?: { x: number; y: number }) => {
+  const uploadCanvasMediaFiles = useCallback(async (input: File[], position?: { x: number; y: number }, truncated = false) => {
     if (!isInternalCanvas) {
       setNotice("本地素材上传只在内部画布可用。");
       return;
     }
-    const files = input.filter((file) => file.type.startsWith("image/") || file.type.startsWith("video/") || /\.(png|jpe?g|webp|mp4|webm|mov)$/i.test(file.name)).slice(0, 10);
+    const supported = input.filter(isSupportedCanvasDropFile);
+    const files = supported.slice(0, MAX_CANVAS_FOLDER_FILES);
+    const reachedLimit = truncated || supported.length > MAX_CANVAS_FOLDER_FILES;
     if (!files.length) {
-      setNotice("请拖入图片或视频文件。");
+      setNotice("文件夹中没有支持的图片或视频。");
       return;
     }
     setNotice(`正在上传 ${files.length} 个素材…`);
@@ -1229,15 +1232,16 @@ function CanvasWorkspaceInner({
     const uploaded = results.filter((item): item is LibraryItem => Boolean(item));
     if (uploaded.length) {
       setLibrary((current) => [...uploaded, ...current]);
+      const columns = uploaded.length > 12 ? 5 : 3;
       uploaded.forEach((item, index) => addLibraryNode(item, position ? {
-        x: position.x + (index % 3) * 350,
-        y: position.y + Math.floor(index / 3) * 370,
+        x: position.x + (index % columns) * 350,
+        y: position.y + Math.floor(index / columns) * 370,
       } : undefined));
     }
     if (errors.length) {
-      setNotice(`${uploaded.length ? `已添加 ${uploaded.length} 个素材；` : ""}${errors.length} 个上传失败：${apiMessage(errors[0], "素材上传失败。")}`);
+      setNotice(`${uploaded.length ? `已添加 ${uploaded.length} 个素材；` : ""}${errors.length} 个上传失败：${apiMessage(errors[0], "素材上传失败。")}${reachedLimit ? `；单次最多导入 ${MAX_CANVAS_FOLDER_FILES} 个素材` : ""}`);
     } else {
-      setNotice(`已添加 ${uploaded.length} 个素材到画布和作品库。`);
+      setNotice(`已添加 ${uploaded.length} 个素材到画布和作品库${reachedLimit ? `；单次最多导入 ${MAX_CANVAS_FOLDER_FILES} 个素材` : ""}。`);
     }
   }, [addLibraryNode, isInternalCanvas]);
 
@@ -3226,8 +3230,13 @@ function CanvasWorkspaceInner({
                   addLibraryNode(item, position);
                   return;
                 }
-                const files = Array.from(event.dataTransfer.files || []);
-                if (files.length) void uploadCanvasMediaFiles(files, position);
+                const items = Array.from(event.dataTransfer.items || []);
+                const fallbackFiles = Array.from(event.dataTransfer.files || []);
+                if (items.length || fallbackFiles.length) {
+                  void collectCanvasFolderDropFiles(items, fallbackFiles)
+                    .then((result) => uploadCanvasMediaFiles(result.files, position, result.truncated))
+                    .catch((error) => setNotice(apiMessage(error, "读取文件夹失败。")));
+                }
               }}
               defaultEdgeOptions={{
                 type: "canvas-edge",
@@ -3259,7 +3268,7 @@ function CanvasWorkspaceInner({
               <Controls showInteractive={false} />
             </ReactFlow>
           </CanvasNodeActionsContext.Provider>
-          {fileDropActive ? <div className="canvas-file-drop" role="status"><Upload /><strong>松开添加到画布</strong><span>支持图片和视频，上传后自动进入作品库</span></div> : null}
+          {fileDropActive ? <div className="canvas-file-drop" role="status"><Upload /><strong>松开导入文件或文件夹</strong><span>支持图片和视频，上传后自动进入作品库</span></div> : null}
           {contextMenu ? (
             <CanvasContextMenu
               state={contextMenu}

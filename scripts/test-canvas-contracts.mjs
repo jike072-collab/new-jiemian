@@ -47,6 +47,8 @@ assert.match(libraryRoute, /ownerIds\.map\(\(ownerId\) => refreshPendingVideoJob
 assert.match(workspace, /canvasJobUrl\(node\.data\.jobId!\)/);
 assert.match(workspace, /const refreshProviders = useCallback/);
 assert.match(workspace, /Promise\.all\(\[refreshLibrary\(\), refreshProviders\(\)\]\)/);
+assert.match(workspace, /collectCanvasFolderDropFiles\(items, fallbackFiles\)/);
+assert.match(workspace, /松开导入文件或文件夹/);
 assert.ok(
   collaborationRoute.indexOf("subscribeCanvasProjectEvents(id") < collaborationRoute.indexOf("const latestProject = await getCanvasProject"),
   "collaboration stream must subscribe before re-reading the latest project",
