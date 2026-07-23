@@ -1752,10 +1752,21 @@
 .canvas-tiktok-form__toggles { flex-wrap: wrap; gap: 7px 14px; }
 .canvas-tiktok-form__toggles label { display: inline-flex; align-items: center; gap: 6px; color: var(--muted-strong); font-size: 10px; }
 .canvas-tiktok-form__toggles input { width: 15px; height: 15px; accent-color: var(--primary); }
+.canvas-tiktok-form__music { display: grid; gap: 7px; }
+.canvas-tiktok-form__music > div { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 7px; }
+.canvas-tiktok-form__music > div > label { position: relative; display: flex; min-width: 0; min-height: 58px; align-items: center; gap: 8px; border: 1px solid var(--border-subtle); border-radius: 6px; background: var(--surface); color: var(--muted-strong); cursor: pointer; padding: 8px 10px; }
+.canvas-tiktok-form__music > div > label.is-active { border-color: color-mix(in srgb, var(--primary) 60%, transparent); background: color-mix(in srgb, var(--primary) 12%, var(--surface)); color: var(--foreground); }
+.canvas-tiktok-form__music input { position: absolute; opacity: 0; pointer-events: none; }
+.canvas-tiktok-form__music svg { width: 17px; flex: 0 0 17px; color: var(--primary); }
+.canvas-tiktok-form__music span { display: grid; min-width: 0; gap: 3px; }
+.canvas-tiktok-form__music strong { font-size: 10px; }
+.canvas-tiktok-form__music small { color: var(--muted); font-size: 9px; line-height: 1.45; }
+.canvas-tiktok-form__music p { margin: 0; color: var(--muted); font-size: 9px; line-height: 1.5; }
 .canvas-tiktok-form__schedule { display: grid; gap: 8px; }
 .canvas-tiktok-form__schedule > div { width: fit-content; overflow: hidden; border: 1px solid var(--border-subtle); border-radius: 6px; background: var(--surface); }
 .canvas-tiktok-form__schedule button { display: inline-flex; height: 32px; align-items: center; gap: 5px; border: 0; background: transparent; color: var(--muted); cursor: pointer; padding: 0 9px; font-size: 10px; }
 .canvas-tiktok-form__schedule button.is-active { background: var(--surface-hover); color: var(--foreground); }
+.canvas-tiktok-form__schedule button:disabled { cursor: default; opacity: 0.4; }
 .canvas-tiktok-form__schedule button svg { width: 13px; }
 .canvas-tiktok-form__schedule > input { width: min(280px, 100%); height: 34px; border: 1px solid var(--border-subtle); border-radius: 6px; background: var(--surface); color: var(--foreground); padding: 0 8px; color-scheme: inherit; }
 .canvas-tiktok-form__submit { min-height: 38px; justify-content: center; border: 0; border-radius: 6px; background: var(--primary); color: #fff; cursor: pointer; padding: 0 12px; font-size: 11px; font-weight: 700; }
@@ -1889,6 +1900,7 @@
   .canvas-editor-backdrop { padding: 8px; }
   .canvas-tiktok-scrim { align-items: end; padding: 8px; }
   .canvas-tiktok-panel { width: 100%; max-height: calc(100dvh - 16px); }
+  .canvas-tiktok-form__music > div { grid-template-columns: 1fr; }
   .canvas-image-editor__tools { flex-wrap: nowrap; overflow-x: auto; }
   .canvas-image-editor__tools label { margin-left: 0; }
   .canvas-image-editor footer { align-items: stretch; flex-direction: column; }

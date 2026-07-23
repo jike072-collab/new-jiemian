@@ -2,7 +2,7 @@ import "server-only";
 
 import { createReadStream } from "node:fs";
 
-import { tiktokPrivacyLevels, type TikTokCreatorInfo, type TikTokPrivacyLevel } from "./types";
+import { tiktokPrivacyLevels, type TikTokCreatorInfo, type TikTokDeliveryMode, type TikTokPrivacyLevel } from "./types";
 
 type FetchLike = typeof fetch;
 
@@ -227,6 +227,7 @@ export async function createZernioTikTokPost(input: {
   disableStitch: boolean;
   brandContentToggle: boolean;
   brandOrganicToggle: boolean;
+  deliveryMode: TikTokDeliveryMode;
   requestId: string;
   fetchImpl?: FetchLike;
 }) {
@@ -250,6 +251,7 @@ export async function createZernioTikTokPost(input: {
           video_made_with_ai: true,
           content_preview_confirmed: true,
           express_consent_given: true,
+          draft: input.deliveryMode === "creator_inbox",
           commercialContentType: input.brandContentToggle ? "brand_content" : input.brandOrganicToggle ? "brand_organic" : "none",
         },
       },

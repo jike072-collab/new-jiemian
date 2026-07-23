@@ -41,6 +41,7 @@ import {
   type TikTokConnectionRecord,
   type TikTokConnectionSummary,
   type TikTokAvailableAccount,
+  type TikTokDeliveryMode,
   type TikTokPrivacyLevel,
   type TikTokPublicPublishJob,
   type TikTokPublishJob,
@@ -262,6 +263,7 @@ export async function scheduleTikTokPublish(input: {
   disableStitch: boolean;
   brandContentToggle: boolean;
   brandOrganicToggle: boolean;
+  deliveryMode: string;
   scheduledAt?: string;
   now?: Date;
 }) {
@@ -273,6 +275,13 @@ export async function scheduleTikTokPublish(input: {
   if (input.idempotencyKey.trim().length < 8 || input.idempotencyKey.length > 255) {
     throw new TikTokPublishingError("TIKTOK_IDEMPOTENCY_INVALID", "发布请求标识无效。", 400);
   }
+  if (input.deliveryMode !== "direct" && input.deliveryMode !== "creator_inbox") {
+    throw new TikTokPublishingError("TIKTOK_DELIVERY_MODE_INVALID", "请选择有效的 TikTok 发布方式。", 400);
+  }
+  const deliveryMode = input.deliveryMode as TikTokDeliveryMode;
+  if (deliveryMode === "creator_inbox" && input.scheduledAt && Date.parse(input.scheduledAt) > now.getTime() + 15_000) {
+    throw new TikTokPublishingError("TIKTOK_DRAFT_SCHEDULE_UNAVAILABLE", "TikTok 草稿箱模式不能定时，请在 TikTok 内选音乐后发布。", 400);
+  }
   const scheduledAt = scheduleTime(input.scheduledAt, now);
   const [{ item, sourceOwnerId }, creator] = await Promise.all([
     findPublishableVideo(input.libraryItemId, input.ownerIds, input.scope),
@@ -282,7 +291,7 @@ export async function scheduleTikTokPublish(input: {
   if (!creator.privacyLevelOptions.includes(privacyLevel)) {
     throw new TikTokPublishingError("TIKTOK_PRIVACY_UNAVAILABLE", "该 TikTok 账号当前不允许这个发布范围。", 400);
   }
-  if (scheduledAt <= new Date(now.getTime() + 15_000).toISOString() && !creator.canPostMore) {
+  if (deliveryMode === "direct" && scheduledAt <= new Date(now.getTime() + 15_000).toISOString() && !creator.canPostMore) {
     throw new TikTokPublishingError("TIKTOK_DAILY_LIMIT", "该 TikTok 账号当前已达到官方 API 发布上限，请稍后再试。", 429);
   }
   const duration = Number(item.params.duration || 0);
@@ -301,6 +310,7 @@ export async function scheduleTikTokPublish(input: {
     disableStitch: creator.stitchDisabled || input.disableStitch,
     brandContentToggle: input.brandContentToggle,
     brandOrganicToggle: input.brandOrganicToggle,
+    deliveryMode,
     scheduledAt,
   });
   return publicTikTokPublishJob(job);
@@ -371,7 +381,7 @@ async function processClaimedJob(job: TikTokPublishJob, workerId: string) {
   }
 
   const creator = await fetchZernioTikTokCreatorInfo({ apiKey: config.apiKey, baseUrl: config.apiBaseUrl, accountId });
-  if (!creator.canPostMore) {
+  if (job.deliveryMode === "direct" && !creator.canPostMore) {
     await unlockTikTokPublishJobForRetry(job.id, workerId, {
       status: "queued",
       nextAttemptAt: nextIso(dailyLimitDelayMs),
@@ -403,6 +413,7 @@ async function processClaimedJob(job: TikTokPublishJob, workerId: string) {
     disableStitch: job.disableStitch,
     brandContentToggle: job.brandContentToggle,
     brandOrganicToggle: job.brandOrganicToggle,
+    deliveryMode: job.deliveryMode,
     requestId: job.id,
   });
   const postId = post._id!;

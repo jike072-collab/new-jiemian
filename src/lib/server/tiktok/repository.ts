@@ -4,7 +4,7 @@ import { randomUUID } from "node:crypto";
 import type { QueryResultRow } from "pg";
 
 import { applicationQuery, withApplicationTransaction } from "@/lib/server/database/client";
-import type { TikTokConnectionRecord, TikTokPrivacyLevel, TikTokPublishJob } from "./types";
+import type { TikTokConnectionRecord, TikTokDeliveryMode, TikTokPrivacyLevel, TikTokPublishJob } from "./types";
 
 type ConnectionRow = QueryResultRow & {
   user_id: string;
@@ -33,6 +33,7 @@ type PublishJobRow = QueryResultRow & {
   disable_stitch: boolean;
   brand_content_toggle: boolean;
   brand_organic_toggle: boolean;
+  delivery_mode: TikTokDeliveryMode;
   is_aigc: boolean;
   status: TikTokPublishJob["status"];
   scheduled_at: string | Date;
@@ -82,6 +83,7 @@ function jobFromRow(row: PublishJobRow): TikTokPublishJob {
     disableStitch: row.disable_stitch,
     brandContentToggle: row.brand_content_toggle,
     brandOrganicToggle: row.brand_organic_toggle,
+    deliveryMode: row.delivery_mode,
     isAigc: row.is_aigc,
     status: row.status,
     scheduledAt: iso(row.scheduled_at),
@@ -181,22 +183,22 @@ export async function consumeTikTokOAuthState(stateHash: string) {
 export async function createTikTokPublishJob(input: {
   userId: string; sourceOwnerId: string; libraryItemId: string; idempotencyKey: string; caption: string;
   privacyLevel: TikTokPrivacyLevel; disableComment: boolean; disableDuet: boolean; disableStitch: boolean;
-  brandContentToggle: boolean; brandOrganicToggle: boolean; scheduledAt: string;
+  brandContentToggle: boolean; brandOrganicToggle: boolean; deliveryMode: TikTokDeliveryMode; scheduledAt: string;
 }) {
   return withApplicationTransaction(async (client) => {
     const created = await client.query<PublishJobRow>(`
       insert into tiktok_publish_jobs(
         id, user_id, source_owner_id, library_item_id, idempotency_key, caption, privacy_level,
-        disable_comment, disable_duet, disable_stitch, brand_content_toggle, brand_organic_toggle,
+        disable_comment, disable_duet, disable_stitch, brand_content_toggle, brand_organic_toggle, delivery_mode,
         is_aigc, status, scheduled_at, next_attempt_at, attempts, created_at, updated_at
       ) values (
-        $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,true,
-        case when $13::timestamptz > now() + interval '15 seconds' then 'scheduled' else 'queued' end,
-        greatest($13::timestamptz, now()),greatest($13::timestamptz, now()),0,now(),now()
+        $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,true,
+        case when $14::timestamptz > now() + interval '15 seconds' then 'scheduled' else 'queued' end,
+        greatest($14::timestamptz, now()),greatest($14::timestamptz, now()),0,now(),now()
       ) on conflict (user_id, idempotency_key) do nothing returning *
     `, [
       randomUUID(), input.userId, input.sourceOwnerId, input.libraryItemId, input.idempotencyKey, input.caption, input.privacyLevel,
-      input.disableComment, input.disableDuet, input.disableStitch, input.brandContentToggle, input.brandOrganicToggle, input.scheduledAt,
+      input.disableComment, input.disableDuet, input.disableStitch, input.brandContentToggle, input.brandOrganicToggle, input.deliveryMode, input.scheduledAt,
     ]);
     if (created.rows[0]) return jobFromRow(created.rows[0]);
     const existing = await client.query<PublishJobRow>("select * from tiktok_publish_jobs where user_id = $1 and idempotency_key = $2", [input.userId, input.idempotencyKey]);

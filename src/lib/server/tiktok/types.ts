@@ -6,6 +6,7 @@ export const tiktokPrivacyLevels = [
 ] as const;
 
 export type TikTokPrivacyLevel = (typeof tiktokPrivacyLevels)[number];
+export type TikTokDeliveryMode = "direct" | "creator_inbox";
 export type TikTokPublishStatus = "scheduled" | "queued" | "uploading" | "processing" | "published" | "failed" | "canceled";
 
 export type TikTokConnectionRecord = {
@@ -60,6 +61,7 @@ export type TikTokPublishJob = {
   disableStitch: boolean;
   brandContentToggle: boolean;
   brandOrganicToggle: boolean;
+  deliveryMode: TikTokDeliveryMode;
   isAigc: boolean;
   status: TikTokPublishStatus;
   scheduledAt: string;

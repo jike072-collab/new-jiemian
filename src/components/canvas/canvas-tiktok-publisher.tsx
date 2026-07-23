@@ -1,11 +1,11 @@
 "use client";
 
-import { CalendarClock, Check, Clock3, Download, ExternalLink, LoaderCircle, LogOut, RefreshCw, Send, Sparkles, X } from "lucide-react";
+import { CalendarClock, Check, Clock3, Download, ExternalLink, LoaderCircle, LogOut, Music2, RefreshCw, Send, Sparkles, Volume2, X } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from "react";
 
 import { ApiError, fetchJson, fetchJsonWithCsrf } from "@/lib/client/api";
 import type { LibraryItem } from "@/lib/server/types";
-import type { TikTokAvailableAccount, TikTokConnectionSummary, TikTokCreatorInfo, TikTokPrivacyLevel, TikTokPublicPublishJob } from "@/lib/server/tiktok/types";
+import type { TikTokAvailableAccount, TikTokConnectionSummary, TikTokCreatorInfo, TikTokDeliveryMode, TikTokPrivacyLevel, TikTokPublicPublishJob } from "@/lib/server/tiktok/types";
 import { composeTikTokCaption, malaysiaTikTokCopyAngles, type MalaysiaTikTokCopyAngle, type TikTokCopyDraft } from "@/lib/tiktok-copy";
 import { cn } from "@/lib/utils";
 
@@ -36,6 +36,7 @@ export function CanvasTikTokPublisher({ item, scope, initialCopy, onCopyChange, 
   const [allowStitch, setAllowStitch] = useState(true);
   const [brandContent, setBrandContent] = useState(false);
   const [brandOrganic, setBrandOrganic] = useState(false);
+  const [deliveryMode, setDeliveryMode] = useState<TikTokDeliveryMode>("direct");
   const [mode, setMode] = useState<"now" | "scheduled">("now");
   const [scheduledAt, setScheduledAt] = useState("");
   const [copyAngle, setCopyAngle] = useState<MalaysiaTikTokCopyAngle>(initialCopy?.angle || "auto");
@@ -127,7 +128,7 @@ export function CanvasTikTokPublisher({ item, scope, initialCopy, onCopyChange, 
   }, [jobs, loadJobs]);
 
   const itemJobs = useMemo(() => jobs.filter((job) => job.libraryItemId === item.id).slice(0, 6), [item.id, jobs]);
-  const immediateLimitReached = mode === "now" && creator?.canPostMore === false;
+  const immediateLimitReached = deliveryMode === "direct" && mode === "now" && creator?.canPostMore === false;
   const publishCaption = useMemo(() => composeTikTokCaption({
     title,
     caption,
@@ -215,11 +216,14 @@ export function CanvasTikTokPublisher({ item, scope, initialCopy, onCopyChange, 
           disableStitch: !allowStitch,
           brandContentToggle: brandContent,
           brandOrganicToggle: brandOrganic,
+          deliveryMode,
           scheduledAt: publishAt,
         }),
       });
       setJobs((current) => [response.job, ...current.filter((job) => job.id !== response.job.id)]);
-      setMessage(response.job.status === "scheduled" ? "已加入定时发布。" : "已加入 TikTok 发布队列。");
+      setMessage(deliveryMode === "creator_inbox"
+        ? "正在发送到 TikTok 草稿箱，完成后请在 TikTok 内选择热门英文音乐并发布。"
+        : response.job.status === "scheduled" ? "已加入定时发布。" : "已加入 TikTok 发布队列。");
     } catch (error) {
       setMessage(apiMessage(error, "TikTok 发布任务创建失败。"));
     } finally {
@@ -357,16 +361,41 @@ export function CanvasTikTokPublisher({ item, scope, initialCopy, onCopyChange, 
                   <label><input type="checkbox" checked={brandContent} onChange={(event) => setBrandContent(event.target.checked)} />品牌合作内容</label>
                   <label><input type="checkbox" checked={brandOrganic} onChange={(event) => setBrandOrganic(event.target.checked)} />自有品牌推广</label>
                 </div>
+                <fieldset className="canvas-tiktok-form__music">
+                  <legend>背景音乐</legend>
+                  <div>
+                    <label className={deliveryMode === "direct" ? "is-active" : undefined}>
+                      <input type="radio" name="tiktok-delivery" checked={deliveryMode === "direct"} onChange={() => setDeliveryMode("direct")} />
+                      <Volume2 />
+                      <span><strong>使用视频原声</strong><small>支持立即发布和定时发布</small></span>
+                    </label>
+                    <label className={deliveryMode === "creator_inbox" ? "is-active" : undefined}>
+                      <input
+                        type="radio"
+                        name="tiktok-delivery"
+                        checked={deliveryMode === "creator_inbox"}
+                        onChange={() => {
+                          setDeliveryMode("creator_inbox");
+                          setMode("now");
+                          setScheduledAt("");
+                        }}
+                      />
+                      <Music2 />
+                      <span><strong>TikTok 热门英文音乐</strong><small>发送到草稿箱，在 TikTok 内选择马来西亚近期同类热门音乐</small></span>
+                    </label>
+                  </div>
+                  {deliveryMode === "creator_inbox" ? <p>具体歌曲由 TikTok 按账号地区和商业音乐权限实时提供，选曲后需要在 TikTok 内确认发布。</p> : null}
+                </fieldset>
                 <div className="canvas-tiktok-form__schedule">
                   <div role="tablist" aria-label="发布时间">
                     <button type="button" role="tab" aria-selected={mode === "now"} className={mode === "now" ? "is-active" : undefined} onClick={() => setMode("now")}><Send />立即发布</button>
-                    <button type="button" role="tab" aria-selected={mode === "scheduled"} className={mode === "scheduled" ? "is-active" : undefined} onClick={() => setMode("scheduled")}><CalendarClock />定时发布</button>
+                    <button type="button" role="tab" aria-selected={mode === "scheduled"} className={mode === "scheduled" ? "is-active" : undefined} disabled={deliveryMode === "creator_inbox"} onClick={() => setMode("scheduled")}><CalendarClock />定时发布</button>
                   </div>
                   {mode === "scheduled" ? <input type="datetime-local" required value={scheduledAt} onChange={(event) => setScheduledAt(event.target.value)} /> : null}
                 </div>
                 <button type="submit" className="canvas-tiktok-form__submit" disabled={busy || copyLoading || !title.trim() || !caption.trim() || !privacyLevel || immediateLimitReached}>
                   {busy ? <LoaderCircle className="is-spinning" /> : mode === "scheduled" ? <CalendarClock /> : <Send />}
-                  {busy ? "提交中" : immediateLimitReached ? "已达到当前 API 发布额度" : mode === "scheduled" ? "加入定时发布" : "发布到 TikTok"}
+                  {busy ? "提交中" : immediateLimitReached ? "已达到当前 API 发布额度" : deliveryMode === "creator_inbox" ? "发送到 TikTok 草稿箱" : mode === "scheduled" ? "加入定时发布" : "发布到 TikTok"}
                 </button>
               </form>
             ) : <div className="canvas-tiktok-panel__loading"><LoaderCircle className="is-spinning" /><span>正在读取发布权限</span></div>}
@@ -379,7 +408,7 @@ export function CanvasTikTokPublisher({ item, scope, initialCopy, onCopyChange, 
             {itemJobs.map((job) => (
               <div key={job.id} className={cn("canvas-tiktok-job", `is-${job.status}`)}>
                 {job.status === "published" ? <Check /> : activeStatuses.has(job.status) ? <LoaderCircle className="is-spinning" /> : <Clock3 />}
-                <span><strong>{jobStatusLabel(job.status)}</strong><small>{formatDate(job.scheduledAt)}{job.errorMessage ? ` - ${job.errorMessage}` : ""}</small></span>
+                <span><strong>{jobStatusLabel(job)}</strong><small>{formatDate(job.scheduledAt)}{job.errorMessage ? ` - ${job.errorMessage}` : ""}</small></span>
                 {job.postUrl ? <a href={job.postUrl} target="_blank" rel="noreferrer" aria-label="打开 TikTok 作品"><ExternalLink /></a> : null}
                 {["scheduled", "queued"].includes(job.status) ? <button type="button" disabled={busy} onClick={() => { void cancel(job.id); }}>取消</button> : null}
               </div>
@@ -399,7 +428,16 @@ function privacyLabel(value: TikTokPrivacyLevel) {
   return "仅自己";
 }
 
-function jobStatusLabel(status: TikTokPublicPublishJob["status"]) {
+function jobStatusLabel(job: TikTokPublicPublishJob) {
+  const status = job.status;
+  if (job.deliveryMode === "creator_inbox") {
+    if (status === "queued" || status === "scheduled") return "等待发送草稿";
+    if (status === "uploading") return "正在上传草稿";
+    if (status === "processing") return "TikTok 正在接收草稿";
+    if (status === "published") return "已发送到 TikTok 草稿箱";
+    if (status === "canceled") return "已取消";
+    return "草稿发送失败";
+  }
   if (status === "scheduled") return "等待定时发布";
   if (status === "queued") return "等待发布";
   if (status === "uploading") return "正在上传";

@@ -44,6 +44,7 @@ export async function POST(request: NextRequest) {
       disableStitch: Boolean(body.disableStitch),
       brandContentToggle: Boolean(body.brandContentToggle),
       brandOrganicToggle: Boolean(body.brandOrganicToggle),
+      deliveryMode: String(body.deliveryMode || "direct"),
       scheduledAt: typeof body.scheduledAt === "string" ? body.scheduledAt : undefined,
     });
     return NextResponse.json({ ok: true, job }, { status: 201 });
