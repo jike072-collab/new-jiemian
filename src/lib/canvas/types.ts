@@ -42,6 +42,7 @@ export type CanvasNodeData = Record<string, unknown> & {
   imageMode?: "text-to-image" | "image-to-image";
   count?: number;
   ratio?: string;
+  ratioAutoAdjusted?: boolean;
   quality?: string;
   duration?: number;
   resolution?: string;

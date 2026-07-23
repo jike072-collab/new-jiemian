@@ -1,6 +1,8 @@
 const MEDIA_NODE_CHROME_HEIGHT = 75;
 const MEDIA_NODE_HORIZONTAL_BORDER = 2;
 
+export const CANVAS_IMAGE_RATIOS = ["1:1", "16:9", "9:16", "4:3", "3:4"];
+
 export type CanvasMediaNodeSize = {
   width: number;
   height: number;
@@ -16,6 +18,25 @@ export function normalizeMediaDimensions(widthValue: unknown, heightValue: unkno
     width: Math.min(width, 32_768),
     height: Math.min(height, 32_768),
   };
+}
+
+export function nearestCanvasAspectRatio(widthValue: unknown, heightValue: unknown, options: readonly string[]) {
+  const dimensions = normalizeMediaDimensions(widthValue, heightValue);
+  if (!dimensions) return null;
+  const sourceRatio = dimensions.width / dimensions.height;
+  let nearest: { value: string; distance: number } | null = null;
+
+  for (const value of options) {
+    const match = /^(\d+(?:\.\d+)?):(\d+(?:\.\d+)?)$/.exec(value.trim());
+    if (!match) continue;
+    const width = Number(match[1]);
+    const height = Number(match[2]);
+    if (!(width > 0) || !(height > 0)) continue;
+    const distance = Math.abs(Math.log((width / height) / sourceRatio));
+    if (!nearest || distance < nearest.distance) nearest = { value, distance };
+  }
+
+  return nearest?.value || null;
 }
 
 export function canvasMediaNodeSize(widthValue: unknown, heightValue: unknown): CanvasMediaNodeSize | null {

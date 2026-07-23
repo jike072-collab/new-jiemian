@@ -221,6 +221,7 @@ function normalizeNode(value: unknown): CanvasStoredNode {
       data.count = boundedNumber(value.data.count, 1, 15, 1);
     }
     data.ratio = optionalString(value.data.ratio, 32) || (generationKind === "image" ? "1:1" : "16:9");
+    if (value.data.ratioAutoAdjusted) data.ratioAutoAdjusted = true;
     data.quality = optionalString(value.data.quality, 32) || "1k";
     data.duration = boundedNumber(value.data.duration, 1, 60, 5);
     data.resolution = optionalString(value.data.resolution, 32) || "720p";

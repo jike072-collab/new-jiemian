@@ -21,6 +21,7 @@ export function duplicateCanvasNodeData(
   if (data.kind === "generator") {
     duplicate.status = "idle";
     duplicate.progress = 0;
+    delete duplicate.ratioAutoAdjusted;
     delete duplicate.jobId;
     delete duplicate.outputNodeId;
     delete duplicate.error;

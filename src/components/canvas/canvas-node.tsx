@@ -37,6 +37,7 @@ import type { EnabledProviders, WorkspacePublicProvider } from "@/components/stu
 import { CanvasVideoPreview } from "@/components/canvas/canvas-video-preview";
 import { canvasImageCountLimit } from "@/lib/canvas/image-batch";
 import { canvasMediaMetadata } from "@/lib/canvas/media-metadata";
+import { CANVAS_IMAGE_RATIOS } from "@/lib/canvas/media-sizing";
 import {
   canvasPresenceNodeActivity,
   type CanvasPresenceMember,
@@ -81,7 +82,6 @@ type CanvasNodeActions = {
 
 export const CanvasNodeActionsContext = createContext<CanvasNodeActions | null>(null);
 
-const imageRatios = ["1:1", "16:9", "9:16", "4:3", "3:4"];
 const imageQualities = ["1k", "2k", "4k"];
 
 export function CanvasNode({ id, data, selected }: NodeProps<CanvasFlowNode>) {
@@ -495,7 +495,7 @@ function GeneratorNode({ id, data }: { id: string; data: CanvasNodeData }) {
   const providerGroups = isVideo ? groupVideoProviders(providers) : [];
   const selectedProvider = providers.find((provider) => provider.id === data.providerId) || providers[0];
   const videoOptions = selectedProvider?.videoOptions;
-  const ratios = isVideo && videoOptions?.ratios?.length ? videoOptions.ratios : isVideo ? ["16:9", "9:16", "1:1"] : imageRatios;
+  const ratios = isVideo && videoOptions?.ratios?.length ? videoOptions.ratios : isVideo ? ["16:9", "9:16", "1:1"] : CANVAS_IMAGE_RATIOS;
   const durations = videoOptions?.durations?.length ? videoOptions.durations : [5, 10, 15];
   const resolutions = videoOptions?.resolutions?.length
     ? videoOptions.resolutions
@@ -545,7 +545,7 @@ function GeneratorNode({ id, data }: { id: string; data: CanvasNodeData }) {
       <div className={cn("canvas-node__field-grid", !isVideo && "is-image")}>
         <label className="canvas-node__field">
           <span>比例</span>
-          <select className="nodrag nowheel" value={selectedRatio} disabled={busy} onChange={(event) => actions.updateNodeData(id, { ratio: event.target.value })}>
+          <select className="nodrag nowheel" value={selectedRatio} disabled={busy} onChange={(event) => actions.updateNodeData(id, { ratio: event.target.value, ratioAutoAdjusted: true })}>
             {ratios.map((ratio) => <option key={ratio} value={ratio}>{ratio}</option>)}
           </select>
         </label>

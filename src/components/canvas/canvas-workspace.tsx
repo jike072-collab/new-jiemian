@@ -140,7 +140,12 @@ import type {
 import { normalizeCanvasDocument, removeUnavailableLibraryItemsFromCanvasDocument } from "@/lib/canvas/document";
 import { duplicateCanvasNodeData } from "@/lib/canvas/duplicate";
 import { collectCanvasFolderDropFiles, isSupportedCanvasDropFile, MAX_CANVAS_FOLDER_FILES } from "@/lib/canvas/folder-drop";
-import { canvasMediaNodeSize, normalizeMediaDimensions } from "@/lib/canvas/media-sizing";
+import {
+  CANVAS_IMAGE_RATIOS,
+  canvasMediaNodeSize,
+  nearestCanvasAspectRatio,
+  normalizeMediaDimensions,
+} from "@/lib/canvas/media-sizing";
 import {
   canvasImageResultGrid,
   INTERNAL_CANVAS_IMAGE_REQUEST_CONCURRENCY,
@@ -214,6 +219,29 @@ function decorateCanvasEdge(edge: Edge | CanvasStoredEdge, nodes: Array<CanvasFl
     type: "canvas-edge",
     data: { ...data, routing },
   };
+}
+
+function adjustConnectedGeneratorRatios(nodes: CanvasFlowNode[], edges: Edge[], providers: EnabledProviders) {
+  let changed = false;
+  const nextNodes = nodes.map((generator) => {
+    if (generator.data.kind !== "generator" || generator.data.ratioAutoAdjusted) return generator;
+    const source = edges
+      .filter((edge) => edge.target === generator.id)
+      .map((edge) => nodes.find((node) => node.id === edge.source))
+      .find((node) => node?.data.kind === "media" && node.data.mediaType !== "audio");
+    if (!source?.data.intrinsicWidth || !source.data.intrinsicHeight) return generator;
+
+    const providerList = generator.data.generationKind === "video" ? providers.video : providers.image;
+    const provider = providerList.find((item) => item.id === generator.data.providerId) || providerList[0];
+    const ratios = generator.data.generationKind === "video"
+      ? provider?.videoOptions?.ratios?.length ? provider.videoOptions.ratios : ["16:9", "9:16", "1:1"]
+      : CANVAS_IMAGE_RATIOS;
+    const ratio = nearestCanvasAspectRatio(source.data.intrinsicWidth, source.data.intrinsicHeight, ratios);
+    if (!ratio) return generator;
+    changed = true;
+    return { ...generator, data: { ...generator.data, ratio, ratioAutoAdjusted: true } };
+  });
+  return changed ? nextNodes : nodes;
 }
 
 function applyCanvasNodePresentation(nodes: CanvasFlowNode[], edges: Edge[]) {
@@ -576,6 +604,18 @@ function CanvasWorkspaceInner({
     setSaveState("dirty");
     scheduleSave();
   }, [scheduleSave]);
+
+  useEffect(() => {
+    const frame = window.requestAnimationFrame(() => {
+      if (!loadedRef.current) return;
+      const adjusted = adjustConnectedGeneratorRatios(nodesRef.current, edgesRef.current, providersRef.current);
+      if (adjusted === nodesRef.current) return;
+      nodesRef.current = adjusted;
+      setNodes(adjusted);
+      markDirty();
+    });
+    return () => window.cancelAnimationFrame(frame);
+  }, [edges, markDirty, nodes, providers]);
 
   const hydrateMediaNodes = useCallback((sourceNodes: CanvasStoredNode[] | CanvasFlowNode[], items: LibraryItem[], preserveNonMedia = false) => {
     const itemMap = new Map(items.map((item) => [item.id, item]));

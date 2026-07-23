@@ -10,7 +10,7 @@ const {
   removeUnavailableLibraryItemsFromCanvasDocument,
 } = await import(new URL("../src/lib/canvas/document.ts", import.meta.url));
 const { duplicateCanvasNodeData } = await import(new URL("../src/lib/canvas/duplicate.ts", import.meta.url));
-const { canvasMediaNodeSize, normalizeMediaDimensions } = await import(new URL("../src/lib/canvas/media-sizing.ts", import.meta.url));
+const { canvasMediaNodeSize, nearestCanvasAspectRatio, normalizeMediaDimensions } = await import(new URL("../src/lib/canvas/media-sizing.ts", import.meta.url));
 const { matchPendingGeneratedMedia } = await import(new URL("../src/lib/canvas/pending-results.ts", import.meta.url));
 
 assert.deepEqual(normalizeCanvasDocument(emptyCanvasDocument()), emptyCanvasDocument());
@@ -45,6 +45,10 @@ assert.deepEqual(canvasMediaNodeSize(1080, 1920), { width: 260, height: 534, fra
 assert.deepEqual(canvasMediaNodeSize(1024, 1024), { width: 360, height: 433, frameWidth: 358, frameHeight: 358 });
 assert.equal(normalizeMediaDimensions(0, 1080), null);
 assert.equal(normalizeMediaDimensions(Number.NaN, 1080), null);
+assert.equal(nearestCanvasAspectRatio(1080, 1920, ["16:9", "9:16"]), "9:16");
+assert.equal(nearestCanvasAspectRatio(1920, 1080, ["16:9", "9:16"]), "16:9");
+assert.equal(nearestCanvasAspectRatio(1080, 1350, ["1:1", "16:9", "9:16", "4:3", "3:4"]), "3:4");
+assert.equal(nearestCanvasAspectRatio(0, 1080, ["16:9", "9:16"]), null);
 
 const pendingResult = normalizeCanvasDocument({
   nodes: [{
@@ -144,6 +148,7 @@ const duplicatedGenerator = duplicateCanvasNodeData({
   generationKind: "video",
   providerId: "video-provider",
   ratio: "16:9",
+  ratioAutoAdjusted: true,
   duration: 14,
   status: "generating",
   progress: 38,
@@ -158,6 +163,7 @@ assert.equal(duplicatedGenerator.progress, 0);
 assert.equal(duplicatedGenerator.jobId, undefined);
 assert.equal(duplicatedGenerator.outputNodeId, undefined);
 assert.equal(duplicatedGenerator.error, undefined);
+assert.equal(duplicatedGenerator.ratioAutoAdjusted, undefined);
 assert.deepEqual(duplicatedGenerator.sourceNodeIds, ["prompt-copy"]);
 assert.equal(duplicatedGenerator.providerId, "video-provider");
 assert.equal(duplicatedGenerator.duration, 14);
@@ -235,6 +241,7 @@ const imageGenerator = normalizeCanvasDocument({
       generationKind: "image",
       imageMode: "image-to-image",
       count: 9,
+      ratioAutoAdjusted: true,
     },
   }],
   edges: [],
@@ -242,6 +249,7 @@ const imageGenerator = normalizeCanvasDocument({
 });
 assert.equal(imageGenerator.nodes[0].data.imageMode, "image-to-image");
 assert.equal(imageGenerator.nodes[0].data.count, 9);
+assert.equal(imageGenerator.nodes[0].data.ratioAutoAdjusted, true);
 
 const maxImageGenerator = normalizeCanvasDocument({
   nodes: [{
