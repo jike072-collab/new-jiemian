@@ -119,6 +119,7 @@ export function pricingEndpointFor(apiUrl) {
 
 function displayName(model, humanFace = "unknown") {
   const normalized = model.toLowerCase();
+  const channel = normalized.match(/^([a-z0-9]+)[-_ ]+seedance/)?.[1];
   const seconds = normalized.match(/(?:^|[-_ ])(\d+)s(?:$|[-_ ])/i)?.[1];
   const fixedLabel = seconds && normalized.includes("gz") ? `${seconds} 秒` : "";
   const base = normalized.includes("933")
@@ -129,7 +130,7 @@ function displayName(model, humanFace = "unknown") {
           : normalized.includes("pro") ? (fixedLabel ? `Pro ${fixedLabel}` : "Pro")
             : fixedLabel ? `720P ${fixedLabel}` : "Seedance 2.0 720P";
   const humanFaceLabel = humanFace === "supported" ? "过真人" : humanFace === "restricted" ? "卡真人" : "真人未知";
-  return `${base} · ${humanFaceLabel}`;
+  return `${channel ? `${channel} · ` : ""}${base} · ${humanFaceLabel}`;
 }
 
 export function syncProviderDocument(document, upstreamModels, pricingEntries) {

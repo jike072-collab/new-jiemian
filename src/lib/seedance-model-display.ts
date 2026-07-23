@@ -7,16 +7,16 @@ export const seedanceVideoDisplayNames: Record<string, string> = {
 };
 
 export const clmmSeedanceVideoDisplayNames: Record<string, string> = {
-  "bb-seedance2.0 1080p-pro-gz-15s": "Pro 1080P 15 秒",
-  "bb-seedance2.0 720p-fast-gz-15s": "Fast 15 秒",
-  "bb-seedance2.0 720p-pro-gz-15s": "Pro 15 秒",
-  "mg-seedance2.0 -1080p": "1080P",
-  "mg-seedance2.0 -720p fast": "Fast",
-  "mg-seedance2.0 -720p mini": "Mini",
-  "mg-seedance2.0 -720p pro": "Pro",
-  "mg-seedance2.0 -720p-gz-15s": "720P 15 秒",
-  "mg-seedance2.0 720p-pro-gz-15s": "Pro 15 秒",
-  "oe-seedance-2.0-pro-720p-14s-gz": "Pro 14 秒 不卡真人",
+  "bb-seedance2.0 1080p-pro-gz-15s": "bb · Pro 1080P 15 秒",
+  "bb-seedance2.0 720p-fast-gz-15s": "bb · Fast 15 秒",
+  "bb-seedance2.0 720p-pro-gz-15s": "bb · Pro 15 秒",
+  "mg-seedance2.0 -1080p": "mg · 1080P",
+  "mg-seedance2.0 -720p fast": "mg · Fast",
+  "mg-seedance2.0 -720p mini": "mg · Mini",
+  "mg-seedance2.0 -720p pro": "mg · Pro",
+  "mg-seedance2.0 -720p-gz-15s": "mg · 720P 15 秒",
+  "mg-seedance2.0 720p-pro-gz-15s": "mg · Pro 15 秒",
+  "oe-seedance-2.0-pro-720p-14s-gz": "oe · Pro 14 秒 不卡真人",
   "seedance2.0 720p-933-pro-gz-15s": "满血 933 不卡真人",
   "seedance2.0 720p-fast-gz-15s": "Fast 15 秒 不卡真人",
   "seedance2.0 720p-pro-gz-15s": "Pro 15 秒 不卡真人",
@@ -33,14 +33,16 @@ export function clmmSeedanceVideoDisplayName(model: string) {
   const normalized = model.trim().toLowerCase();
   const known = clmmSeedanceVideoDisplayNames[model] || clmmSeedanceVideoDisplayNames[normalized];
   if (known) return known;
+  const channel = normalized.match(/^([a-z0-9]+)[-_ ]+seedance/)?.[1];
+  const withChannel = (label: string) => channel ? `${channel} · ${label}` : label;
   const seconds = normalized.match(/(?:^|[-_ ])(\d+)s(?:$|[-_ ])/i)?.[1];
   const fixedLabel = seconds && normalized.includes("gz") ? `${seconds} 秒` : "";
-  if (normalized.includes("933")) return "满血 933";
-  if (normalized.includes("1080")) return fixedLabel ? `Pro 1080P ${fixedLabel}` : "1080P";
-  if (normalized.includes("mini")) return "Mini";
-  if (normalized.includes("fast")) return fixedLabel ? `Fast ${fixedLabel}` : "Fast";
-  if (normalized.includes("pro")) return fixedLabel ? `Pro ${fixedLabel}` : "Pro";
-  return fixedLabel ? `720P ${fixedLabel}` : "Seedance 2.0 720P";
+  if (normalized.includes("933")) return withChannel("满血 933");
+  if (normalized.includes("1080")) return withChannel(fixedLabel ? `Pro 1080P ${fixedLabel}` : "1080P");
+  if (normalized.includes("mini")) return withChannel("Mini");
+  if (normalized.includes("fast")) return withChannel(fixedLabel ? `Fast ${fixedLabel}` : "Fast");
+  if (normalized.includes("pro")) return withChannel(fixedLabel ? `Pro ${fixedLabel}` : "Pro");
+  return withChannel(fixedLabel ? `720P ${fixedLabel}` : "Seedance 2.0 720P");
 }
 
 const seedanceVideoModelIds = new Set(

@@ -164,6 +164,11 @@ type CanvasWorkspaceSnapshot = {
   title: string;
   document: CanvasProjectDocument;
 };
+type DeferredCanvasSync = {
+  base: CanvasWorkspaceSnapshot;
+  project: CanvasProject;
+  notice: string;
+};
 type CanvasTheme = "midnight" | "light";
 type ConnectionStyle = "bezier" | "smoothstep" | "straight";
 type CanvasContextMenuState = {
@@ -447,6 +452,9 @@ function CanvasWorkspaceInner({
   const saveTimerRef = useRef<number | null>(null);
   const savePromiseRef = useRef<Promise<boolean> | null>(null);
   const queuedSaveRef = useRef(false);
+  const deferredCanvasSyncRef = useRef<DeferredCanvasSync | null>(null);
+  const focusedEditorNodeIdRef = useRef("");
+  const contextMenuOpenRef = useRef(false);
   const historyPastRef = useRef<CanvasWorkspaceSnapshot[]>([]);
   const historyFutureRef = useRef<CanvasWorkspaceSnapshot[]>([]);
   const historySignatureRef = useRef("");
@@ -567,11 +575,14 @@ function CanvasWorkspaceInner({
     scheduleSave();
   }, [scheduleSave]);
 
-  const hydrateMediaNodes = useCallback((sourceNodes: CanvasStoredNode[] | CanvasFlowNode[], items: LibraryItem[]) => {
+  const hydrateMediaNodes = useCallback((sourceNodes: CanvasStoredNode[] | CanvasFlowNode[], items: LibraryItem[], preserveNonMedia = false) => {
     const itemMap = new Map(items.map((item) => [item.id, item]));
     return sourceNodes.map((node) => {
       const dragHandle = canvasNodeDragHandle(node.data.kind);
-      if (node.data.kind !== "media" || !node.data.libraryItemId) return { ...node, type: node.data.kind === "group" ? "group" as const : "canvas" as const, dragHandle };
+      if (node.data.kind !== "media" || !node.data.libraryItemId) {
+        if (preserveNonMedia && "dragHandle" in node) return node as CanvasFlowNode;
+        return { ...node, type: node.data.kind === "group" ? "group" as const : "canvas" as const, dragHandle };
+      }
       const item = itemMap.get(node.data.libraryItemId);
       if (!item) {
         return {
@@ -637,9 +648,50 @@ function CanvasWorkspaceInner({
     resetHistory();
   }, [applyWorkspaceDocument, resetHistory]);
 
+  const hasTransientCanvasInteraction = useCallback(() => (
+    Boolean(focusedEditorNodeIdRef.current || contextMenuOpenRef.current)
+  ), []);
+
+  const deferCanvasSync = useCallback((base: CanvasWorkspaceSnapshot, project: CanvasProject, notice: string) => {
+    const current = deferredCanvasSyncRef.current;
+    if (current && current.project.version > project.version) return;
+    deferredCanvasSyncRef.current = {
+      base: current?.base || base,
+      project,
+      notice,
+    };
+    setSyncState("syncing");
+  }, []);
+
+  const flushDeferredCanvasSync = useCallback(() => {
+    if (hasTransientCanvasInteraction()) return;
+    const deferred = deferredCanvasSyncRef.current;
+    if (!deferred) return;
+    deferredCanvasSyncRef.current = null;
+    const hasLocalChanges = revisionRef.current !== savedRevisionRef.current;
+    const merged = mergeCanvasWorkspace(deferred.base, snapshotWorkspace(), deferred.project);
+    activeProjectRef.current = deferred.project;
+    setProjects((current) => current
+      .map((item) => item.id === deferred.project.id ? deferred.project : item)
+      .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt)));
+    titleRef.current = merged.title;
+    setTitle(merged.title);
+    applyWorkspaceDocument(merged.document);
+    setSyncState("live");
+    if (deferred.notice) setNotice(deferred.notice);
+    if (hasLocalChanges) {
+      setSaveState("dirty");
+      scheduleSave();
+    }
+  }, [applyWorkspaceDocument, hasTransientCanvasInteraction, scheduleSave, snapshotWorkspace]);
+
   const acceptRemoteProject = useCallback((project: CanvasProject) => {
     const active = activeProjectRef.current;
     if (!active || active.id !== project.id || project.version <= active.version) return;
+    if (hasTransientCanvasInteraction()) {
+      deferCanvasSync(active, project, "已在编辑结束后同步团队成员的画布更新。");
+      return;
+    }
     const hasLocalChanges = revisionRef.current !== savedRevisionRef.current;
     if (hasLocalChanges || savePromiseRef.current) {
       const merged = mergeCanvasWorkspace(active, snapshotWorkspace(), project);
@@ -663,7 +715,15 @@ function CanvasWorkspaceInner({
     activateProject(project);
     setSyncState("live");
     setNotice("已同步团队成员的最新画布。");
-  }, [activateProject, applyWorkspaceDocument, scheduleSave, snapshotWorkspace]);
+  }, [activateProject, applyWorkspaceDocument, deferCanvasSync, hasTransientCanvasInteraction, scheduleSave, snapshotWorkspace]);
+
+  useEffect(() => {
+    focusedEditorNodeIdRef.current = presenceEditingNodeId;
+    contextMenuOpenRef.current = Boolean(contextMenu);
+    if (presenceEditingNodeId || contextMenu || !deferredCanvasSyncRef.current) return;
+    const frame = window.requestAnimationFrame(flushDeferredCanvasSync);
+    return () => window.cancelAnimationFrame(frame);
+  }, [contextMenu, flushDeferredCanvasSync, presenceEditingNodeId]);
 
   const reconcileCanvasLibrary = useCallback((items: LibraryItem[], persist = true) => {
     if (!activeProjectRef.current) return 0;
@@ -672,7 +732,7 @@ function CanvasWorkspaceInner({
       items.map((item) => item.id),
     );
     if (!result.removedNodeIds.length) {
-      setNodes((current) => hydrateMediaNodes(current, items));
+      setNodes((current) => hydrateMediaNodes(current, items, true));
       return 0;
     }
     applyWorkspaceDocument(result.document, items);
@@ -798,20 +858,28 @@ function CanvasWorkspaceInner({
         if (revisionRef.current === snapshotRevision) {
           savedRevisionRef.current = snapshotRevision;
           if (response.merged) {
-            titleRef.current = response.project.title;
-            setTitle(response.project.title);
-            applyWorkspaceDocument(response.project.document);
+            if (hasTransientCanvasInteraction()) {
+              deferCanvasSync(project, response.project, "已在编辑结束后应用合并的团队更新。");
+            } else {
+              titleRef.current = response.project.title;
+              setTitle(response.project.title);
+              applyWorkspaceDocument(response.project.document);
+            }
           }
           setSaveState("saved");
         } else {
-          const mergedLive = mergeCanvasWorkspace(submitted, snapshotWorkspace(), response.project);
-          activeProjectRef.current = response.project;
-          titleRef.current = mergedLive.title;
-          setTitle(mergedLive.title);
-          applyWorkspaceDocument(mergedLive.document);
           savedRevisionRef.current = snapshotRevision;
           queuedSaveRef.current = true;
           setSaveState("dirty");
+          if (hasTransientCanvasInteraction()) {
+            deferCanvasSync(project, response.project, "已在编辑结束后合并保存期间的团队更新。");
+          } else {
+            const mergedLive = mergeCanvasWorkspace(submitted, snapshotWorkspace(), response.project);
+            activeProjectRef.current = response.project;
+            titleRef.current = mergedLive.title;
+            setTitle(mergedLive.title);
+            applyWorkspaceDocument(mergedLive.document);
+          }
         }
         if (response.merged) {
           setNotice(response.conflictCount
@@ -833,7 +901,7 @@ function CanvasWorkspaceInner({
     } finally {
       if (savePromiseRef.current === savePromise) savePromiseRef.current = null;
     }
-  }, [applyWorkspaceDocument, collaborationClientId, scheduleSave, snapshotWorkspace]);
+  }, [applyWorkspaceDocument, collaborationClientId, deferCanvasSync, hasTransientCanvasInteraction, scheduleSave, snapshotWorkspace]);
 
   useEffect(() => { saveNowRef.current = saveNow; }, [saveNow]);
   useEffect(() => () => {
@@ -2127,6 +2195,7 @@ function CanvasWorkspaceInner({
 
   const openContextMenu = useCallback((event: ReactMouseEvent | MouseEvent, kind: CanvasContextMenuState["kind"], id?: string) => {
     event.preventDefault();
+    contextMenuOpenRef.current = true;
     const bounds = stageRef.current?.getBoundingClientRect();
     const left = event.clientX - (bounds?.left || 0);
     const top = event.clientY - (bounds?.top || 0);
@@ -3230,17 +3299,22 @@ function CanvasWorkspaceInner({
           onFocusCapture={(event) => {
             const target = event.target instanceof HTMLElement ? event.target : null;
             if (!target?.matches("textarea, input, select, [contenteditable='true']")) return;
-            setPresenceEditingNodeId(target.closest<HTMLElement>("[data-canvas-node-id]")?.dataset.canvasNodeId || "");
+            const nodeId = target.closest<HTMLElement>("[data-canvas-node-id]")?.dataset.canvasNodeId || "";
+            focusedEditorNodeIdRef.current = nodeId;
+            setPresenceEditingNodeId(nodeId);
           }}
           onBlurCapture={(event) => {
             const stage = event.currentTarget;
             window.requestAnimationFrame(() => {
               const active = document.activeElement;
               if (!(active instanceof HTMLElement) || !stage.contains(active) || !active.matches("textarea, input, select, [contenteditable='true']")) {
+                focusedEditorNodeIdRef.current = "";
                 setPresenceEditingNodeId("");
                 return;
               }
-              setPresenceEditingNodeId(active.closest<HTMLElement>("[data-canvas-node-id]")?.dataset.canvasNodeId || "");
+              const nodeId = active.closest<HTMLElement>("[data-canvas-node-id]")?.dataset.canvasNodeId || "";
+              focusedEditorNodeIdRef.current = nodeId;
+              setPresenceEditingNodeId(nodeId);
             });
           }}
         >

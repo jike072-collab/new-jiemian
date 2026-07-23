@@ -598,10 +598,14 @@ function parseVirtualProviderId(id: string) {
 
 function publicDisplayName(provider: ProviderConfig, model: string, hasMultipleModels: boolean) {
   if (provider.endpointType === "grok-videos" && model.trim().toLowerCase() === "grok-video-1.5") return "grok";
-  const modelDisplayName = normalizeModelDisplayNames(provider.modelDisplayNames)?.[model]
-    || (provider.id.startsWith("video-seedance-new") && isDynamicClmmSeedance20Model(model)
-      ? clmmSeedanceVideoDisplayName(model)
-      : undefined);
+  const storedDisplayName = normalizeModelDisplayNames(provider.modelDisplayNames)?.[model];
+  const isClmmSeedance = provider.id.startsWith("video-seedance-new") && isDynamicClmmSeedance20Model(model);
+  const channel = isClmmSeedance ? model.trim().toLowerCase().match(/^([a-z0-9]+)[-_ ]+seedance/)?.[1] : undefined;
+  const modelDisplayName = storedDisplayName
+    ? channel && !storedDisplayName.trim().toLowerCase().startsWith(`${channel} ·`)
+      ? `${channel} · ${storedDisplayName}`
+      : storedDisplayName
+    : isClmmSeedance ? clmmSeedanceVideoDisplayName(model) : undefined;
   if (modelDisplayName) return modelDisplayName;
   if (!hasMultipleModels) return provider.displayName || model;
   return `${provider.title} · ${model}`;

@@ -42,6 +42,7 @@ test("filters only Seedance 2.0 720p or 1080p models", () => {
   assert.equal(isTargetClmmSeedanceModel("mg-seedance2.0 -480p fast"), false);
   assert.equal(isTargetClmmSeedanceModel("seedance2.0 720p-dark"), false);
   assert.equal(isTargetClmmSeedanceModel("mg-seedance 720-gz-fast-15s"), false);
+  assert.equal(isTargetClmmSeedanceModel("op-seedance 720-gz-fast-15s"), false);
 });
 
 test("extracts common upstream model response shapes", () => {
@@ -127,8 +128,8 @@ test("updates only the CLMM provider document and keeps its key unchanged", asyn
     assert.equal(saved[0].apiKey, "other-secret");
     assert.equal(saved[1].apiKey, "secret-that-must-not-print");
     assert.deepEqual(saved[1].enabledModels, result.selection.models);
-    assert.equal(saved[1].modelDisplayNames["bb-seedance2.0 720p-fast-gz-15s"], "Fast 15 秒 · 卡真人");
-    assert.equal(saved[1].modelDisplayNames["oe-seedance-2.0-pro-720p-14s-gz"], "Pro 14 秒 · 过真人");
+    assert.equal(saved[1].modelDisplayNames["bb-seedance2.0 720p-fast-gz-15s"], "bb · Fast 15 秒 · 卡真人");
+    assert.equal(saved[1].modelDisplayNames["oe-seedance-2.0-pro-720p-14s-gz"], "oe · Pro 14 秒 · 过真人");
     assert.deepEqual(saved[1].modelUpstreamPrices["bb-seedance2.0 720p-fast-gz-15s"], { amount: 3.78, currency: "CNY", unit: "request" });
   } finally {
     await rm(root, { recursive: true, force: true });
