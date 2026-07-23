@@ -6,6 +6,7 @@ import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { test } from "node:test";
 import {
+  classifyHumanFaceSupport,
   extractModelNames,
   extractPricingEntries,
   isMainModule,
@@ -50,13 +51,20 @@ test("extracts common upstream model response shapes", () => {
 
 test("extracts CLMM video prices with request and second units", () => {
   assert.deepEqual(extractPricingEntries({ data: [
-    { model_name: "mg-seedance2.0 -1080p", model_price: 0.368, description: "按秒计费", supported_endpoint_types: ["openai-video"] },
-    { model_name: "mg-seedance2.0 -720p-gz-15s", model_price: 2.48, description: "固定价格", supported_endpoint_types: ["openai-video"] },
+    { model_name: "mg-seedance2.0 -1080p", model_price: 0.368, description: "过真人脸，按秒计费", supported_endpoint_types: ["openai-video"] },
+    { model_name: "mg-seedance2.0 -720p-gz-15s", model_price: 2.48, description: "卡真人脸，固定价格", supported_endpoint_types: ["openai-video"] },
     { model_name: "gpt-5.6-sol", model_price: 1, supported_endpoint_types: ["openai"] },
   ] }), [
-    { model: "mg-seedance2.0 -1080p", amount: 0.368, currency: "CNY", unit: "second" },
-    { model: "mg-seedance2.0 -720p-gz-15s", amount: 2.48, currency: "CNY", unit: "request" },
+    { model: "mg-seedance2.0 -1080p", amount: 0.368, currency: "CNY", unit: "second", humanFace: "supported" },
+    { model: "mg-seedance2.0 -720p-gz-15s", amount: 2.48, currency: "CNY", unit: "request", humanFace: "restricted" },
   ]);
+});
+
+test("classifies upstream human-face support without treating 不卡 as 卡真人", () => {
+  assert.equal(classifyHumanFaceSupport("不卡人脸，不排队"), "supported");
+  assert.equal(classifyHumanFaceSupport("过真人脸 按秒计费"), "supported");
+  assert.equal(classifyHumanFaceSupport("卡真人脸，固定价格"), "restricted");
+  assert.equal(classifyHumanFaceSupport("固定价格"), "unknown");
 });
 
 test("adds new models and removes retired models, including the old 933 entry", () => {
@@ -111,16 +119,16 @@ test("updates only the CLMM provider document and keeps its key unchanged", asyn
       "bb-seedance2.0 720p-fast-gz-15s",
       "oe-seedance-2.0-pro-720p-14s-gz",
     ], [
-      { model: "bb-seedance2.0 720p-fast-gz-15s", amount: 3.78, currency: "CNY", unit: "request" },
-      { model: "oe-seedance-2.0-pro-720p-14s-gz", amount: 4.68, currency: "CNY", unit: "request" },
+      { model: "bb-seedance2.0 720p-fast-gz-15s", amount: 3.78, currency: "CNY", unit: "request", humanFace: "restricted" },
+      { model: "oe-seedance-2.0-pro-720p-14s-gz", amount: 4.68, currency: "CNY", unit: "request", humanFace: "supported" },
     ]);
     await writeFile(providerPath, JSON.stringify(result.document));
     const saved = JSON.parse(await readFile(providerPath, "utf8"));
     assert.equal(saved[0].apiKey, "other-secret");
     assert.equal(saved[1].apiKey, "secret-that-must-not-print");
     assert.deepEqual(saved[1].enabledModels, result.selection.models);
-    assert.equal(saved[1].modelDisplayNames["bb-seedance2.0 720p-fast-gz-15s"], "Fast 15 秒");
-    assert.equal(saved[1].modelDisplayNames["oe-seedance-2.0-pro-720p-14s-gz"], "Pro 14 秒");
+    assert.equal(saved[1].modelDisplayNames["bb-seedance2.0 720p-fast-gz-15s"], "Fast 15 秒 · 卡真人");
+    assert.equal(saved[1].modelDisplayNames["oe-seedance-2.0-pro-720p-14s-gz"], "Pro 14 秒 · 过真人");
     assert.deepEqual(saved[1].modelUpstreamPrices["bb-seedance2.0 720p-fast-gz-15s"], { amount: 3.78, currency: "CNY", unit: "request" });
   } finally {
     await rm(root, { recursive: true, force: true });

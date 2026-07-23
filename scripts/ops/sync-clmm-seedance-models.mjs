@@ -64,8 +64,17 @@ export function extractPricingEntries(payload) {
       ? "request"
       : description.includes("按秒计费") ? "second" : null;
     if (!unit) return [];
-    return [{ model, amount, currency: "CNY", unit }];
+    return [{ model, amount, currency: "CNY", unit, humanFace: classifyHumanFaceSupport(description) }];
   });
+}
+
+export function classifyHumanFaceSupport(description) {
+  const normalized = String(description || "").replace(/\s+/g, "").toLowerCase();
+  if (["不卡人脸", "不卡真人", "过真人脸", "过真人", "支持真人"].some((label) => normalized.includes(label))) {
+    return "supported";
+  }
+  if (["卡人脸", "卡真人脸", "卡真人"].some((label) => normalized.includes(label))) return "restricted";
+  return "unknown";
 }
 
 export function selectClmmModels(upstreamModels, currentModels = [], pricingEntries) {
@@ -108,16 +117,19 @@ export function pricingEndpointFor(apiUrl) {
   return parsed.toString();
 }
 
-function displayName(model) {
+function displayName(model, humanFace = "unknown") {
   const normalized = model.toLowerCase();
   const seconds = normalized.match(/(?:^|[-_ ])(\d+)s(?:$|[-_ ])/i)?.[1];
   const fixedLabel = seconds && normalized.includes("gz") ? `${seconds} 秒` : "";
-  if (normalized.includes("933")) return "满血 933";
-  if (normalized.includes("1080")) return fixedLabel ? `Pro 1080P ${fixedLabel}` : "1080P";
-  if (normalized.includes("mini")) return "Mini";
-  if (normalized.includes("fast")) return fixedLabel ? `Fast ${fixedLabel}` : "Fast";
-  if (normalized.includes("pro")) return fixedLabel ? `Pro ${fixedLabel}` : "Pro";
-  return fixedLabel ? `720P ${fixedLabel}` : "Seedance 2.0 720P";
+  const base = normalized.includes("933")
+    ? "满血 933"
+    : normalized.includes("1080") ? (fixedLabel ? `Pro 1080P ${fixedLabel}` : "1080P")
+      : normalized.includes("mini") ? "Mini"
+        : normalized.includes("fast") ? (fixedLabel ? `Fast ${fixedLabel}` : "Fast")
+          : normalized.includes("pro") ? (fixedLabel ? `Pro ${fixedLabel}` : "Pro")
+            : fixedLabel ? `720P ${fixedLabel}` : "Seedance 2.0 720P";
+  const humanFaceLabel = humanFace === "supported" ? "过真人" : humanFace === "restricted" ? "卡真人" : "真人未知";
+  return `${base} · ${humanFaceLabel}`;
 }
 
 export function syncProviderDocument(document, upstreamModels, pricingEntries) {
@@ -127,8 +139,11 @@ export function syncProviderDocument(document, upstreamModels, pricingEntries) {
   const provider = document[index];
   const selection = selectClmmModels(upstreamModels, provider.models || [], pricingEntries);
   if (!selection.models.length) throw new Error("No priced Seedance 2.0 720p models were returned");
-  const modelDisplayNames = Object.fromEntries(selection.models.map((model) => [model, displayName(model)]));
   const pricesByModel = new Map((pricingEntries || []).map((entry) => [normalizeModel(entry.model).toLowerCase(), entry]));
+  const modelDisplayNames = Object.fromEntries(selection.models.map((model) => [
+    model,
+    displayName(model, pricesByModel.get(model.toLowerCase())?.humanFace),
+  ]));
   const modelUpstreamPrices = Object.fromEntries(selection.models.flatMap((model) => {
     const price = pricesByModel.get(model.toLowerCase());
     return price ? [[model, { amount: price.amount, currency: "CNY", unit: price.unit }]] : [];
