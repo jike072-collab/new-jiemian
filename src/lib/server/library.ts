@@ -184,16 +184,16 @@ export async function readLibraryForOwner(ownerLocalUserId: string) {
   ));
 }
 
-export async function readLibraryMetadataForOwner(ownerLocalUserId: string) {
-  return readLibraryMetadataForOwners([ownerLocalUserId]);
+export async function readLibraryMetadataForOwner(ownerLocalUserId: string, options: { includeFailed?: boolean } = {}) {
+  return readLibraryMetadataForOwners([ownerLocalUserId], options);
 }
 
-export async function readLibraryMetadataForOwners(ownerLocalUserIds: readonly string[]) {
+export async function readLibraryMetadataForOwners(ownerLocalUserIds: readonly string[], options: { includeFailed?: boolean } = {}) {
   const owners = new Set(ownerLocalUserIds.map((id) => id.trim()).filter(Boolean));
   return (await readLibraryMetadata()).filter((item) => (
     item.ownerLocalUserId && owners.has(item.ownerLocalUserId)
     && !item.expired
-    && item.status !== "failed"
+    && (options.includeFailed || item.status !== "failed")
   ));
 }
 

@@ -172,6 +172,7 @@ type DeferredCanvasSync = {
 };
 type CanvasTheme = "midnight" | "light";
 type ConnectionStyle = "bezier" | "smoothstep" | "straight";
+type CanvasLibraryResponse = { items: LibraryItem[]; recoveryItems?: LibraryItem[] };
 type CanvasContextMenuState = {
   kind: "pane" | "node" | "edge" | "connection";
   left: number;
@@ -752,10 +753,11 @@ function CanvasWorkspaceInner({
   const refreshLibrary = useCallback(() => {
     if (libraryRefreshPromiseRef.current) return libraryRefreshPromiseRef.current;
     const refresh = (async () => {
-      const data = await fetchJson<{ items: LibraryItem[] }>(canvasLibraryUrl());
+      const data = await fetchJson<CanvasLibraryResponse>(canvasLibraryUrl());
+      const hydrationItems = [...data.items, ...(data.recoveryItems || [])];
       libraryRef.current = data.items;
       setLibrary(data.items);
-      reconcileCanvasLibrary(data.items);
+      reconcileCanvasLibrary(hydrationItems);
       return data.items;
     })().finally(() => {
       libraryRefreshPromiseRef.current = null;
@@ -779,7 +781,7 @@ function CanvasWorkspaceInner({
         const [projectData, providerData, libraryData] = await Promise.all([
           fetchJson<{ projects: CanvasProject[] }>(canvasProjectsUrl()),
           fetchJson<{ providers: EnabledProviders }>(`/api/providers/enabled?refresh=${Date.now()}`),
-          fetchJson<{ items: LibraryItem[] }>(canvasLibraryUrl()),
+          fetchJson<CanvasLibraryResponse>(canvasLibraryUrl()),
         ]);
         if (cancelled) return;
         let nextProjects = projectData.projects;
@@ -797,8 +799,9 @@ function CanvasWorkspaceInner({
         setProjects(nextProjects);
         setProviders(providerData.providers);
         setLibrary(libraryData.items);
-        activateProject(nextProjects[0], libraryData.items);
-        const removedCount = reconcileCanvasLibrary(libraryData.items, false);
+        const hydrationItems = [...libraryData.items, ...(libraryData.recoveryItems || [])];
+        activateProject(nextProjects[0], hydrationItems);
+        const removedCount = reconcileCanvasLibrary(hydrationItems, false);
         if (removedCount) window.requestAnimationFrame(() => markDirty());
       } catch (error) {
         if (!cancelled) setNotice(apiMessage(error, "画布加载失败。"));

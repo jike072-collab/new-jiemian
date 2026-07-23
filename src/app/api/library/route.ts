@@ -29,13 +29,15 @@ export async function GET(request: NextRequest) {
   void import("@/lib/server/provider-call")
     .then(({ refreshPendingVideoJobsForOwner }) => Promise.all(ownerIds.map((ownerId) => refreshPendingVideoJobsForOwner(ownerId))))
     .catch(() => undefined);
-  const items = shared
-    ? filterCanvasLibraryItems(await readLibraryMetadataForOwners(ownerIds), "shared").map((item) => item.output ? {
+  const scopedItems = shared
+    ? filterCanvasLibraryItems(await readLibraryMetadataForOwners(ownerIds, { includeFailed: true }), "shared").map((item) => item.output ? {
       ...item,
       output: { ...item.output, url: `/api/library/${encodeURIComponent(item.id)}/media?scope=shared` },
     } : item)
-    : filterCanvasLibraryItems(await readLibraryMetadataForOwner(session.user.local_user_id), "personal");
-  return NextResponse.json({ items, total: items.length });
+    : filterCanvasLibraryItems(await readLibraryMetadataForOwner(session.user.local_user_id, { includeFailed: true }), "personal");
+  const items = scopedItems.filter((item) => item.status !== "failed");
+  const recoveryItems = scopedItems.filter((item) => item.status === "failed");
+  return NextResponse.json({ items, recoveryItems, total: items.length });
 }
 
 export async function DELETE(request: NextRequest) {

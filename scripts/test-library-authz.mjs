@@ -28,7 +28,7 @@ for (const source of [libraryRoute, filesRoute, libraryMediaRoute]) {
 
 assert(authService.includes("status: 401"), "auth service must use 401 for missing or invalid sessions");
 
-assert(libraryRoute.includes("readLibraryMetadataForOwner(session.user.local_user_id)"), "/api/library GET must list metadata only for the current owner");
+assert(libraryRoute.includes("readLibraryMetadataForOwner(session.user.local_user_id, { includeFailed: true })"), "/api/library GET must list metadata only for the current owner");
 assert(libraryRoute.includes("deleteLibraryItemForOwner(body.id!, session.user.local_user_id)"), "/api/library DELETE must delete only the current owner");
 assert(libraryRoute.includes("findMissingStoredLibraryItemsForOwners(ownerIds)"), "/api/library GET must identify confirmed missing local files");
 assert(libraryRoute.includes("removeLibraryItemsFromCanvasProjects(missingItems.map((item) => item.id))"), "missing library files must be removed from canvas projects before metadata deletion");

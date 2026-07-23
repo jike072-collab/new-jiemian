@@ -102,7 +102,7 @@ function checkUserResourceAuth() {
   assertSequence("/api/library auth before owner work", source.libraryRoute, [
     "const session = await requireAuthSession(request)",
     "if (!session.ok) return authResultResponse(request, session)",
-    "readLibraryMetadataForOwner(session.user.local_user_id)",
+    "readLibraryMetadataForOwner(session.user.local_user_id, { includeFailed: true })",
   ]);
   assertSequence("/api/library delete auth before owner work", source.libraryRoute, [
     "const session = await requireAuthSession(request)",
