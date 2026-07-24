@@ -207,6 +207,45 @@ const emptyProviders: EnabledProviders = { image: [], video: [] };
 const defaultViewport: Viewport = { x: 0, y: 0, zoom: 1 };
 const libraryDragType = "application/x-aohuang-library-item";
 
+function canvasConnectionError(
+  connection: Connection | Edge,
+  nodes: readonly CanvasFlowNode[],
+  edges: readonly Edge[],
+  providers: EnabledProviders,
+  ignoredEdgeId?: string,
+) {
+  if (!connection.source || !connection.target || connection.source === connection.target) return "连接节点无效。";
+  const source = nodes.find((node) => node.id === connection.source);
+  const target = nodes.find((node) => node.id === connection.target);
+  if (!source || target?.data.kind !== "generator") return "只能连接到生成节点。";
+  if (source.data.kind !== "prompt" && source.data.kind !== "media") return "只有提示词或素材节点可以作为输入。";
+  if (edges.some((edge) => edge.id !== ignoredEdgeId && edge.source === connection.source && edge.target === connection.target)) return "该节点已经连接到此生成节点。";
+  if (source.data.kind === "prompt") return null;
+
+  const mediaType = source.data.mediaType || "image";
+  if (target.data.generationKind === "image") {
+    return mediaType === "image" ? null : "图片生成节点只支持图片素材。";
+  }
+  if (target.data.generationKind !== "video") return "当前生成节点没有可用的视频能力。";
+
+  const provider = providers.video.find((item) => item.id === target.data.providerId) || providers.video[0];
+  if (!provider) return "当前没有可用的视频模型。";
+  const options = provider.videoOptions;
+  if (mediaType === "video" && options?.supportsVideoReference === false) return "当前视频模型不支持参考视频。";
+  if (mediaType === "audio" && options?.supportsAudioReference === false) return "当前视频模型不支持参考音频。";
+  const limit = mediaType === "image"
+    ? options?.maxReferenceImages ?? 1
+    : mediaType === "video"
+      ? options?.maxReferenceVideos ?? 0
+      : options?.maxReferenceAudios ?? 0;
+  if (!limit) return `当前视频模型不支持参考${mediaType === "video" ? "视频" : mediaType === "audio" ? "音频" : "图"}。`;
+  const connected = edges.filter((edge) => edge.id !== ignoredEdgeId && edge.target === target.id)
+    .map((edge) => nodes.find((node) => node.id === edge.source))
+    .filter((node): node is CanvasFlowNode => Boolean(node?.data.kind === "media" && (node.data.mediaType || "image") === mediaType));
+  if (connected.length >= limit) return `当前视频模型最多支持 ${limit} 个参考${mediaType === "image" ? "图" : mediaType === "video" ? "视频" : "音频"}。`;
+  return null;
+}
+
 function canvasNodeDragHandle(kind: CanvasNodeData["kind"]) {
   return kind === "group" ? ".canvas-node-group__header" : ".canvas-node__header";
 }
@@ -1976,22 +2015,21 @@ function CanvasWorkspaceInner({
   }, [markDirty, pushHistorySnapshot]);
 
   const canConnect = useCallback((connection: Connection | Edge, ignoredEdgeId?: string) => {
-    if (!connection.source || !connection.target || connection.source === connection.target) return false;
-    const source = nodesRef.current.find((node) => node.id === connection.source);
-    const target = nodesRef.current.find((node) => node.id === connection.target);
-    if (!source || target?.data.kind !== "generator") return false;
-    if (source.data.kind !== "prompt" && source.data.kind !== "media") return false;
-    return !edgesRef.current.some((edge) => edge.id !== ignoredEdgeId && edge.source === connection.source && edge.target === connection.target);
+    return !canvasConnectionError(connection, nodesRef.current, edgesRef.current, providersRef.current, ignoredEdgeId);
   }, []);
 
   const isValidConnection = useCallback((connection: Connection | Edge) => canConnect(connection), [canConnect]);
 
   const onConnect = useCallback((connection: Connection) => {
-    if (!isValidConnection(connection)) return;
+    const error = canvasConnectionError(connection, nodesRef.current, edgesRef.current, providersRef.current);
+    if (error) {
+      setNotice(error);
+      return;
+    }
     pushHistorySnapshot();
     setEdges((current) => addEdge(decorateCanvasEdge({ ...connection, id: canvasId("edge") } as Edge, nodesRef.current, connectionStyle), current));
     markDirty();
-  }, [connectionStyle, isValidConnection, markDirty, pushHistorySnapshot]);
+  }, [connectionStyle, markDirty, pushHistorySnapshot]);
 
   const onConnectEnd = useCallback<OnConnectEnd>((event, connectionState) => {
     const sourceId = connectionState.fromNode?.id;
@@ -2020,14 +2058,33 @@ function CanvasWorkspaceInner({
       setContextMenu(null);
       return;
     }
+    const available = kind === "image" ? providersRef.current.image : providersRef.current.video;
+    const provider = available[0] as WorkspacePublicProvider | undefined;
+    if (source) {
+      const provisionalGenerator = {
+        id: "new-generator",
+        type: "canvas",
+        position: state.flowPosition,
+        data: { kind: "generator", title: "生成", generationKind: kind, providerId: provider?.id || "" },
+      } as CanvasFlowNode;
+      const error = canvasConnectionError(
+        { source: source.id, target: provisionalGenerator.id, sourceHandle: "output", targetHandle: "input" },
+        [...nodesRef.current, provisionalGenerator],
+        edgesRef.current,
+        providersRef.current,
+      );
+      if (error) {
+        setNotice(error);
+        setContextMenu(null);
+        return;
+      }
+    }
     const generator = addGeneratorNode(kind, state.flowPosition);
     if (generator && source) {
+      const connection = { source: source.id, target: generator.id, sourceHandle: "output", targetHandle: "input" };
       setEdges((current) => addEdge(decorateCanvasEdge({
         id: canvasId("edge"),
-        source: source.id,
-        sourceHandle: "output",
-        target: generator.id,
-        targetHandle: "input",
+        ...connection,
       }, nodesRef.current, connectionStyle), current));
       setNodes((current) => current.map((node) => ({ ...node, selected: node.id === generator.id })));
       markDirty();

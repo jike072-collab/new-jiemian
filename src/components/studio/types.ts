@@ -27,6 +27,8 @@ export type WorkspaceVideoOptions = {
   maxReferenceDurationSeconds?: number;
   maxPromptCharacters?: number;
   requiredReferenceMedia?: Array<"image" | "video" | "audio">;
+  supportsVideoReference?: boolean;
+  supportsAudioReference?: boolean;
 };
 
 export type WorkspacePublicProvider = FrontendProvider & {
