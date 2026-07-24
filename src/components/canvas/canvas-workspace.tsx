@@ -508,6 +508,7 @@ function CanvasWorkspaceInner({
   const providersRef = useRef(providers);
   const titleRef = useRef(title);
   const viewportRef = useRef(viewport);
+  const viewportInteractingRef = useRef(false);
   const stageRef = useRef<HTMLElement | null>(null);
   const importInputRef = useRef<HTMLInputElement | null>(null);
   const audioInputRef = useRef<HTMLInputElement | null>(null);
@@ -735,7 +736,7 @@ function CanvasWorkspaceInner({
   }, [applyWorkspaceDocument, resetHistory]);
 
   const hasTransientCanvasInteraction = useCallback(() => (
-    Boolean(focusedEditorNodeIdRef.current || contextMenuOpenRef.current)
+    Boolean(focusedEditorNodeIdRef.current || contextMenuOpenRef.current || viewportInteractingRef.current)
   ), []);
 
   const deferCanvasSync = useCallback((base: CanvasWorkspaceSnapshot, project: CanvasProject, notice: string) => {
@@ -1427,13 +1428,23 @@ function CanvasWorkspaceInner({
           const form = new FormData();
           form.append("file", files[index]);
           form.append("canvasScope", canvasScope());
-          const response = await fetchJsonWithCsrf<{ item: LibraryItem }>("/api/canvas/media", { method: "POST", body: form });
+          const response = await fetchJsonWithCsrf<{ item: LibraryItem; reused?: boolean }>("/api/canvas/media", { method: "POST", body: form });
           const item = response.item;
           const placeholder = placeholders[index];
           const objectUrl = placeholder.data.mediaUrl;
           uploadedCount += 1;
           setLibrary((current) => [item, ...current.filter((candidate) => candidate.id !== item.id)]);
           setNodes((current) => {
+            const existing = response.reused
+              ? current.find((node) => node.id !== placeholder.id && node.data.kind === "media" && node.data.libraryItemId === item.id)
+              : undefined;
+            if (existing) {
+              const next = current
+                .filter((node) => node.id !== placeholder.id)
+                .map((node) => ({ ...node, selected: node.id === existing.id }));
+              nodesRef.current = next;
+              return next;
+            }
             const next = current.map((node) => node.id === placeholder.id ? {
               ...node,
               data: {
@@ -1454,7 +1465,7 @@ function CanvasWorkspaceInner({
             return next;
           });
           markDirty();
-          setNotice(`已上传 ${uploadedCount}/${files.length} 个素材`);
+          setNotice(response.reused ? `已复用已有素材 ${uploadedCount}/${files.length}` : `已上传 ${uploadedCount}/${files.length} 个素材`);
           if (typeof objectUrl === "string" && objectUrl.startsWith("blob:")) {
             window.requestAnimationFrame(() => window.requestAnimationFrame(() => URL.revokeObjectURL(objectUrl)));
           }
@@ -3465,16 +3476,22 @@ function CanvasWorkspaceInner({
                 setEdges((current) => current.map((edge) => ({ ...edge, selected: false })));
               }}
               onEdgeContextMenu={(event, edge) => openContextMenu(event, "edge", edge.id)}
-              onMoveStart={() => setContextMenu(null)}
+              onMoveStart={() => {
+                viewportInteractingRef.current = true;
+                setContextMenu(null);
+              }}
               onMoveEnd={(_, nextViewport) => {
                 viewportRef.current = nextViewport;
                 setViewportState(nextViewport);
+                viewportInteractingRef.current = false;
                 if (canvasScope() === "shared") {
                   if (activeProjectRef.current) writeSharedViewport(accountName, activeProjectRef.current.id, nextViewport);
+                  window.requestAnimationFrame(flushDeferredCanvasSync);
                   return;
                 }
                 pushHistorySnapshot();
                 markDirty();
+                window.requestAnimationFrame(flushDeferredCanvasSync);
               }}
               onDragOver={(event) => {
                 event.preventDefault();
