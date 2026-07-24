@@ -72,7 +72,7 @@ const imageProviderRequestTimeoutMs = 600000;
 const getTokenBananaPollIntervalMs = 2800;
 const getTokenBananaTaskAttempts = 3;
 const getTokenBananaPeakTaskAttempts = 8;
-const seedanceVideoResultDownloadOptions = { timeoutMs: 600_000, idleTimeoutMs: 90_000 };
+const seedanceVideoResultDownloadOptions = { timeoutMs: 900_000, idleTimeoutMs: 300_000 };
 
 const grokVideo10Durations = new Set([6, 8, 10, 12, 15]);
 const grokVideo15Durations = new Set([6, 8, 10, 12, 15]);

@@ -1382,7 +1382,7 @@ test("Seedance result recovery uses the configured endpoint and slow-download li
   const seedanceProvider = { ...provider, id: "video-seedance-new", apiUrl: "https://clmm-mall.top/v1/videos" };
   assert.equal(providerCallInternalsForTests.canUseSeedanceStatusFallback(seedanceProvider, "https://clmm-mall.top/v1/videos/task-1"), true);
   assert.equal(providerCallInternalsForTests.canUseSeedanceStatusFallback(seedanceProvider, "https://untrusted.example.test/v1/videos/task-1"), false);
-  assert.deepEqual(providerCallInternalsForTests.seedanceVideoResultDownloadOptions, { timeoutMs: 600_000, idleTimeoutMs: 90_000 });
+  assert.deepEqual(providerCallInternalsForTests.seedanceVideoResultDownloadOptions, { timeoutMs: 900_000, idleTimeoutMs: 300_000 });
 });
 
 function jsonResponse(payload: unknown, init: ResponseInit = {}) {
