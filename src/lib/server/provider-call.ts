@@ -1,4 +1,7 @@
 import { randomUUID } from "node:crypto";
+import { request as httpRequest } from "node:http";
+import { request as httpsRequest } from "node:https";
+import { Readable } from "node:stream";
 import { parseBuffer } from "music-metadata";
 
 import {
@@ -69,6 +72,7 @@ const imageProviderRequestTimeoutMs = 600000;
 const getTokenBananaPollIntervalMs = 2800;
 const getTokenBananaTaskAttempts = 3;
 const getTokenBananaPeakTaskAttempts = 8;
+const seedanceVideoResultDownloadOptions = { timeoutMs: 600_000, idleTimeoutMs: 90_000 };
 
 const grokVideo10Durations = new Set([6, 8, 10, 12, 15]);
 const grokVideo15Durations = new Set([6, 8, 10, 12, 15]);
@@ -805,6 +809,65 @@ function normalizeStatus(value: string) {
   return "queued";
 }
 
+function canUseSeedanceStatusFallback(provider: ProviderConfig, statusUrl: string) {
+  if (!isSeedanceTaskProvider(provider)) return false;
+  try {
+    const endpoint = new URL(statusUrl);
+    const configured = new URL(provider.apiUrl);
+    return ["http:", "https:"].includes(endpoint.protocol)
+      && endpoint.protocol === configured.protocol
+      && endpoint.hostname === configured.hostname;
+  } catch {
+    return false;
+  }
+}
+
+function fetchSeedanceStatusViaIpv4(provider: ProviderConfig, rawUrl: string) {
+  const url = new URL(rawUrl);
+  const requestImpl = url.protocol === "https:" ? httpsRequest : httpRequest;
+  return new Promise<Response>((resolve, reject) => {
+    const request = requestImpl({
+      protocol: url.protocol,
+      hostname: url.hostname,
+      port: url.port || (url.protocol === "https:" ? 443 : 80),
+      path: `${url.pathname}${url.search}`,
+      method: "GET",
+      family: 4,
+      servername: url.hostname,
+      headers: authHeaders(provider),
+      timeout: 60_000,
+    }, (incoming) => {
+      resolve(new Response(Readable.toWeb(incoming) as ReadableStream<Uint8Array>, {
+        status: incoming.statusCode || 0,
+        statusText: incoming.statusMessage,
+        headers: incoming.headers as HeadersInit,
+      }));
+    });
+    request.on("timeout", () => request.destroy(new Error("Seedance status request timed out.")));
+    request.on("error", reject);
+    request.end();
+  });
+}
+
+async function fetchVideoJobStatus(provider: ProviderConfig, statusUrl: string, getTokenVeo: boolean, jobId: string) {
+  try {
+    return await fetch(statusUrl, {
+      method: getTokenVeo ? "POST" : "GET",
+      headers: {
+        ...(getTokenVeo ? { "Content-Type": "application/json" } : {}),
+        ...authHeaders(provider),
+      },
+      ...(getTokenVeo ? { body: JSON.stringify({ taskId: jobId }) } : {}),
+      signal: AbortSignal.timeout(60_000),
+    });
+  } catch (error) {
+    if (!getTokenVeo && canUseSeedanceStatusFallback(provider, statusUrl)) {
+      return fetchSeedanceStatusViaIpv4(provider, statusUrl);
+    }
+    throw error;
+  }
+}
+
 function videoJobFailureMessage(payload: unknown) {
   const reason = nestedString(payload, ["error", "error_message", "message", "detail", "fail_reason", "failed_reason", "reason"]);
   if (/moderation|content[_\s-]*policy|safety/i.test(reason)) return "视频内容未通过上游审核。";
@@ -1232,11 +1295,17 @@ async function callGrokVideoProvider(provider: ProviderConfig, input: {
   return parseProviderOutput(await readProviderJson(response, provider));
 }
 
-async function outputToLibraryFromAuthenticatedUrl(provider: ProviderConfig, url: string, prefix: string) {
+async function outputToLibraryFromAuthenticatedUrl(
+  provider: ProviderConfig,
+  url: string,
+  prefix: string,
+  timeoutOptions?: Pick<Parameters<typeof storeRemoteUrlStreamed>[1], "timeoutMs" | "idleTimeoutMs">,
+) {
   return storeRemoteUrlStreamed(url, {
     prefix,
     fallbackMime: "video/mp4",
     headers: authHeaders(provider),
+    ...timeoutOptions,
   });
 }
 
@@ -2405,15 +2474,7 @@ export async function refreshVideoJob(jobId: string, localUserId?: string | null
   if (!job.statusUrl) return job;
 
   const getTokenVeo = isGetTokenVeoProvider(provider);
-  const response = await fetch(job.statusUrl, {
-    method: getTokenVeo ? "POST" : "GET",
-    headers: {
-      ...(getTokenVeo ? { "Content-Type": "application/json" } : {}),
-      ...authHeaders(provider),
-    },
-    ...(getTokenVeo ? { body: JSON.stringify({ taskId: job.id }) } : {}),
-    signal: AbortSignal.timeout(60000),
-  });
+  const response = await fetchVideoJobStatus(provider, job.statusUrl, getTokenVeo, job.id);
   if (isSeedanceTaskProvider(provider) && response.status === 404) {
     await response.body?.cancel();
     await updateLibraryItem(job.libraryItemId, {
@@ -2483,8 +2544,10 @@ export async function refreshVideoJob(jobId: string, localUserId?: string | null
   if (output.url) {
     const outputUrl = absolutizeProviderUrl(provider, output.url);
     const stored = outputUrl.includes("/content")
-      ? await outputToLibraryFromAuthenticatedUrl(provider, outputUrl, "video")
-      : await outputToLibrary({ ...output, url: outputUrl }, "video", "video");
+      ? await outputToLibraryFromAuthenticatedUrl(provider, outputUrl, "video", isSeedanceTaskProvider(provider) ? seedanceVideoResultDownloadOptions : undefined)
+      : isSeedanceTaskProvider(provider)
+        ? await storeRemoteUrlStreamed(outputUrl, { prefix: "video", fallbackMime: "video/mp4", ...seedanceVideoResultDownloadOptions })
+        : await outputToLibrary({ ...output, url: outputUrl }, "video", "video");
     await updateLibraryItem(job.libraryItemId, {
       status: "done",
       output: stored,
@@ -2561,19 +2624,24 @@ export async function refreshVideoJob(jobId: string, localUserId?: string | null
   });
 }
 
-export async function refreshPendingVideoJobsForOwner(localUserId: string, limit = 3) {
-  const ownerId = localUserId.trim();
-  if (!ownerId) return;
-  const { readJobs } = await import("./library");
-  const jobs = (await readJobs())
+function selectPendingVideoJobsForOwner(jobs: JobRecord[], ownerId: string, limit: number) {
+  return jobs
     .filter((job: JobRecord) => (
       job.type === "video"
       && job.status !== "done"
       && job.status !== "failed"
       && (job.ownerLocalUserId === ownerId || job.billing_local_user_id === ownerId)
     ))
-    .sort((a: JobRecord, b: JobRecord) => b.updatedAt.localeCompare(a.updatedAt))
+    // Rotate recovery toward jobs that have waited the longest since their last status check.
+    .sort((a: JobRecord, b: JobRecord) => a.updatedAt.localeCompare(b.updatedAt) || a.createdAt.localeCompare(b.createdAt))
     .slice(0, Math.max(1, Math.min(10, Math.floor(limit))));
+}
+
+export async function refreshPendingVideoJobsForOwner(localUserId: string, limit = 3) {
+  const ownerId = localUserId.trim();
+  if (!ownerId) return;
+  const { readJobs } = await import("./library");
+  const jobs = selectPendingVideoJobsForOwner(await readJobs(), ownerId, limit);
   for (const job of jobs) {
     await refreshVideoJob(job.id, ownerId).catch(() => undefined);
   }
@@ -2636,6 +2704,9 @@ export async function uploadedMediaFromForm(
 export const providerCallInternalsForTests = {
   validateVideoInput,
   validateGrokVideoInput,
+  selectPendingVideoJobsForOwner,
+  canUseSeedanceStatusFallback,
+  seedanceVideoResultDownloadOptions,
   callOpenAiCompatibleGrokVideoProvider,
   callImageProviderOnce,
   collectImageProviderOutputs,

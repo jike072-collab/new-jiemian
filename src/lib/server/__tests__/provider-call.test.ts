@@ -1357,6 +1357,34 @@ test("provider call tests do not leave temp upload files behind", async () => {
   assert.deepEqual(leftovers, []);
 });
 
+test("background video recovery prioritizes the longest-unchecked jobs", () => {
+  const job = (id: string, status: "queued" | "generating" | "done", ownerLocalUserId: string, createdAt: string, updatedAt: string) => ({
+    id,
+    libraryItemId: `library-${id}`,
+    type: "video" as const,
+    ownerLocalUserId,
+    providerId: "video-test",
+    status,
+    statusUrl: "https://provider.example.test/status",
+    createdAt,
+    updatedAt,
+  });
+  const selected = providerCallInternalsForTests.selectPendingVideoJobsForOwner([
+    job("newest", "queued", "owner", "2026-07-24T06:00:00.000Z", "2026-07-24T07:00:00.000Z"),
+    job("oldest", "generating", "owner", "2026-07-24T05:00:00.000Z", "2026-07-24T05:30:00.000Z"),
+    job("other-owner", "queued", "other", "2026-07-24T04:00:00.000Z", "2026-07-24T04:30:00.000Z"),
+    job("done", "done", "owner", "2026-07-24T03:00:00.000Z", "2026-07-24T03:30:00.000Z"),
+  ], "owner", 2);
+  assert.deepEqual(selected.map((job) => job.id), ["oldest", "newest"]);
+});
+
+test("Seedance result recovery uses the configured endpoint and slow-download limits", () => {
+  const seedanceProvider = { ...provider, id: "video-seedance-new", apiUrl: "https://clmm-mall.top/v1/videos" };
+  assert.equal(providerCallInternalsForTests.canUseSeedanceStatusFallback(seedanceProvider, "https://clmm-mall.top/v1/videos/task-1"), true);
+  assert.equal(providerCallInternalsForTests.canUseSeedanceStatusFallback(seedanceProvider, "https://untrusted.example.test/v1/videos/task-1"), false);
+  assert.deepEqual(providerCallInternalsForTests.seedanceVideoResultDownloadOptions, { timeoutMs: 600_000, idleTimeoutMs: 90_000 });
+});
+
 function jsonResponse(payload: unknown, init: ResponseInit = {}) {
   return new Response(JSON.stringify(payload), {
     status: init.status ?? 200,
