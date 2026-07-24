@@ -30,8 +30,15 @@ test("4K video generation requires two membership entitlement units", () => {
 });
 
 test("Seedance pricing follows model cost and duration tiers", () => {
+  assert.equal(estimateVideoGenerationQuota({ ...baseInput, model: "sdquan-2", resolution: "720p", durationSeconds: 15 }), 1740);
   assert.equal(estimateVideoGenerationQuota({ ...baseInput, model: "quanneng2.0-9tu", resolution: "720p", durationSeconds: 15 }), 300);
   assert.equal(estimateVideoGenerationQuota({ ...baseInput, model: "video-2.0-fast-720P", resolution: "720p", durationSeconds: 10 }), 550);
+  assert.equal(estimateVideoGenerationQuota({ ...baseInput, model: "seedance-fast-720p-pf", resolution: "720p", durationSeconds: 4 }), 280);
+  assert.equal(estimateVideoGenerationQuota({ ...baseInput, model: "seedance-2.0-930", resolution: "720p", durationSeconds: 15 }), 1350);
+  assert.equal(estimateVideoGenerationQuota({ ...baseInput, model: "seedance2.0-9tu-manxue", resolution: "720p", durationSeconds: 15 }), 840);
+  assert.equal(estimateVideoGenerationQuota({ ...baseInput, model: "video-standard-720p", resolution: "720p", durationSeconds: 15 }), 1560);
+  assert.equal(estimateVideoGenerationQuota({ ...baseInput, model: "video-standard-720p-fast", resolution: "720p", durationSeconds: 15 }), 1200);
+  assert.equal(estimateVideoGenerationQuota({ ...baseInput, model: "seedance-2.0-720p-pf", resolution: "720p", durationSeconds: 15 }), 1500);
   assert.equal(estimateVideoGenerationQuota({ ...baseInput, model: "video-2.0-fast-720P", resolution: "720p", durationSeconds: 15 }), 650);
   assert.equal(estimateVideoGenerationQuota({ ...baseInput, model: "B-quannengship2.0", resolution: "720p", durationSeconds: 5 }), 650);
   assert.equal(estimateVideoGenerationQuota({ ...baseInput, model: "B-quannengship2.0", resolution: "720p", durationSeconds: 10 }), 750);
@@ -66,6 +73,10 @@ test("CLMM Seedance pricing follows the new model tiers", () => {
 });
 
 test("Seedance premium models consume multiple membership video entitlements", () => {
+  assert.equal(estimateVideoGenerationEntitlementUnits({ resolution: "720p", model: "sdquan-2", durationSeconds: 15 }), 3);
+  assert.equal(estimateVideoGenerationEntitlementUnits({ resolution: "720p", model: "seedance-fast-720p-pf", durationSeconds: 9 }), 1);
+  assert.equal(estimateVideoGenerationEntitlementUnits({ resolution: "720p", model: "seedance-fast-720p-pf", durationSeconds: 10 }), 2);
+  assert.equal(estimateVideoGenerationEntitlementUnits({ resolution: "720p", model: "video-standard-720p-fast", durationSeconds: 15 }), 2);
   assert.equal(estimateVideoGenerationEntitlementUnits({ resolution: "720p", model: "quanneng2.0-9tu" }), 1);
   assert.equal(estimateVideoGenerationEntitlementUnits({ resolution: "720p", model: "video-2.0-fast-720P" }), 1);
   assert.equal(estimateVideoGenerationEntitlementUnits({ resolution: "720p", model: "B-quannengship2.0" }), 2);
@@ -84,6 +95,12 @@ test("Seedance premium models consume multiple membership video entitlements", (
 test("only unpriced legacy Seedance models remain blocked", () => {
   assert.equal(isVideoGenerationPricingPending("Doubao-Seedance-2.0-fast-260128"), true);
   assert.equal(isVideoGenerationPricingPending("sdquan-2-miao_fast"), true);
+  assert.equal(isVideoGenerationPricingPending("sdquan-2"), false);
+  assert.equal(isVideoGenerationPricingPending("seedance-fast-720p-pf"), false);
+  assert.equal(isVideoGenerationPricingPending("seedance-2.0-930"), false);
+  assert.equal(isVideoGenerationPricingPending("seedance2.0-9tu-manxue"), false);
+  assert.equal(isVideoGenerationPricingPending("video-standard-720p"), false);
+  assert.equal(isVideoGenerationPricingPending("seedance-2.0-720p-pf"), false);
   assert.equal(isVideoGenerationPricingPending("quanneng2.0-9tu"), false);
   assert.equal(isVideoGenerationPricingPending("sdquan-2-miao"), false);
   assert.equal(isVideoGenerationPricingPending("Doubao-Seedance-2-0-260128-grid"), false);

@@ -33,12 +33,32 @@ const endpointTypes = [
 ] as const satisfies readonly EndpointType[];
 
 const seedanceVideoModels = [
+  "sdquan-2",
   "video-2.0-fast-720P",
+  "seedance-fast-720p-pf",
+  "seedance-2.0-930",
   "quanneng2.0-9tu",
+  "seedance2.0-9tu-manxue",
+  "video-standard-720p",
+  "B-quannengship2.0",
+  "video-standard-720p-fast",
   "quanneng2.0",
-  "sdquan-2-miao",
-  "Doubao-Seedance-2-0-260128-grid",
+  "seedance-2.0-720p-pf",
 ];
+
+const seedanceVideoModelUpstreamPrices: Record<string, ProviderUpstreamPrice> = {
+  "sdquan-2": { amount: 5.8, currency: "CNY", unit: "request" },
+  "video-2.0-fast-720P": { amount: 1.8, currency: "CNY", unit: "request" },
+  "seedance-fast-720p-pf": { amount: 0.23, currency: "CNY", unit: "second" },
+  "seedance-2.0-930": { amount: 4.5, currency: "CNY", unit: "request" },
+  "quanneng2.0-9tu": { amount: 1, currency: "CNY", unit: "request" },
+  "seedance2.0-9tu-manxue": { amount: 2.8, currency: "CNY", unit: "request" },
+  "video-standard-720p": { amount: 5.2, currency: "CNY", unit: "request" },
+  "B-quannengship2.0": { amount: 2.6, currency: "CNY", unit: "request" },
+  "video-standard-720p-fast": { amount: 4, currency: "CNY", unit: "request" },
+  "quanneng2.0": { amount: 2.8, currency: "CNY", unit: "request" },
+  "seedance-2.0-720p-pf": { amount: 0.33, currency: "CNY", unit: "second" },
+};
 
 const clmmSeedanceVideoModels = [
   "bb-seedance2.0 1080p-pro-gz-15s",
@@ -63,10 +83,17 @@ const clmmSeedanceVideoOptionsByModel: Record<string, NonNullable<ProviderConfig
 };
 
 const seedanceVideoOptionsByModel: Record<string, NonNullable<ProviderConfig["videoOptions"]>> = {
+  "sdquan-2": { durations: [15], ratios: ["16:9", "9:16", "4:3", "3:4", "1:1", "21:9"], resolution: "720p", maxReferenceImages: 9, maxReferenceVideos: 0, maxReferenceAudios: 3, maxReferenceDurationSeconds: 15, requiredReferenceMedia: ["image"], supportsAudioReference: true },
   "video-2.0-fast-720p": { durations: [10, 15], ratios: ["16:9", "9:16"], resolution: "720p", maxReferenceImages: 4, maxReferenceVideos: 3, maxReferenceAudios: 1, maxReferenceDurationSeconds: 15, requiredReferenceMedia: ["image"], supportsVideoReference: true, supportsAudioReference: true },
+  "seedance-fast-720p-pf": { durations: [4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15], ratios: ["16:9", "9:16"], resolution: "720p", maxReferenceImages: 9, maxReferenceVideos: 3, maxReferenceAudios: 3, maxReferenceDurationSeconds: 15, supportsVideoReference: true, supportsAudioReference: true },
+  "seedance-2.0-930": { durations: [15], ratios: ["16:9", "9:16"], resolution: "720p", maxReferenceImages: 9, maxReferenceVideos: 0, maxReferenceAudios: 3, maxReferenceDurationSeconds: 15, supportsAudioReference: true },
   "quanneng2.0-9tu": { durations: [15], ratios: ["16:9", "9:16"], resolution: "720p", maxReferenceImages: 9, maxReferenceVideos: 0, maxReferenceAudios: 0, maxReferenceDurationSeconds: 15 },
+  "seedance2.0-9tu-manxue": { durations: [15], ratios: ["16:9", "9:16", "21:9"], resolution: "720p", maxReferenceImages: 9, maxReferenceVideos: 0, maxReferenceAudios: 0, maxReferenceDurationSeconds: 15 },
+  "video-standard-720p": { durations: [15], ratios: ["16:9", "9:16", "21:9"], resolution: "720p", maxReferenceImages: 9, maxReferenceVideos: 3, maxReferenceAudios: 3, maxReferenceDurationSeconds: 15, supportsVideoReference: true, supportsAudioReference: true },
   "b-quannengship2.0": { durations: [5, 10, 15], ratios: ["16:9", "9:16"], resolution: "720p", maxReferenceImages: 9, maxReferenceVideos: 0, maxReferenceAudios: 0, maxReferenceDurationSeconds: 15 },
+  "video-standard-720p-fast": { durations: [15], ratios: ["16:9", "9:16", "21:9"], resolution: "720p", maxReferenceImages: 9, maxReferenceVideos: 3, maxReferenceAudios: 3, maxReferenceDurationSeconds: 15, supportsVideoReference: true, supportsAudioReference: true },
   "quanneng2.0": { durations: [10, 15], ratios: ["16:9", "9:16"], resolution: "720p", maxReferenceImages: 4, maxReferenceVideos: 3, maxReferenceAudios: 1, maxReferenceDurationSeconds: 15, maxPromptCharacters: 80, supportsVideoReference: true, supportsAudioReference: true },
+  "seedance-2.0-720p-pf": { durations: [4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15], ratios: ["16:9", "9:16"], resolution: "720p", maxReferenceImages: 9, maxReferenceVideos: 3, maxReferenceAudios: 3, maxReferenceDurationSeconds: 15, supportsVideoReference: true, supportsAudioReference: true },
   "sdquan-2-miao": { durations: [4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15], ratios: ["16:9", "9:16", "4:3", "3:4", "1:1", "21:9"], resolution: "720p", maxReferenceImages: 9, maxReferenceVideos: 0, maxReferenceAudios: 3, maxReferenceDurationSeconds: 15, requiredReferenceMedia: ["image"], supportsAudioReference: true },
   "doubao-seedance-2.0-fast-260128-grid": { durations: [15], ratios: ["16:9", "9:16"], resolution: "720p", maxReferenceImages: 9, maxReferenceVideos: 3, maxReferenceAudios: 3, maxReferenceDurationSeconds: 15, supportsVideoReference: true, supportsAudioReference: true },
   "doubao-seedance-2-0-260128-grid": { durations: [15], ratios: ["16:9", "9:16"], resolution: "720p", maxReferenceImages: 9, maxReferenceVideos: 3, maxReferenceAudios: 3, maxReferenceDurationSeconds: 15, supportsVideoReference: true, supportsAudioReference: true },
@@ -410,6 +437,7 @@ export function defaultProviders(): ProviderConfig[] {
       model: env("REDBIRD_SEEDANCE_VIDEO_MODEL", "video-2.0-fast-720P"),
       models: seedanceVideoModels,
       modelDisplayNames: seedanceVideoDisplayNames,
+      modelUpstreamPrices: seedanceVideoModelUpstreamPrices,
       enabledModels: seedanceVideoModels,
       displayName: env("REDBIRD_SEEDANCE_VIDEO_DISPLAY_NAME", env("REDBIRD_SEEDANCE_VIDEO_MODEL", "video-2.0-fast-720P")),
       apiKey: env("REDBIRD_SEEDANCE_VIDEO_API_KEY"),

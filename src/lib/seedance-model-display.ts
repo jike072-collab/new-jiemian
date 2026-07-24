@@ -1,7 +1,15 @@
 export const seedanceVideoDisplayNames: Record<string, string> = {
-  "video-2.0-fast-720P": "Fast 720P",
-  "quanneng2.0-9tu": "9 图 首帧",
-  "quanneng2.0": "线路 S",
+  "sdquan-2": "930 · 满血",
+  "video-2.0-fast-720P": "413 · Fast 720P",
+  "seedance-fast-720p-pf": "933 · Fast 720P",
+  "seedance-2.0-930": "930 · 满血",
+  "quanneng2.0-9tu": "900 · 9 图",
+  "seedance2.0-9tu-manxue": "900 · 满血 9 图",
+  "video-standard-720p": "933 · 满血 720P",
+  "B-quannengship2.0": "900 · 线路 B",
+  "video-standard-720p-fast": "933 · Fast 720P",
+  "quanneng2.0": "413 · 线路 S",
+  "seedance-2.0-720p-pf": "933 · 满血 720P",
   "sdquan-2-miao": "Pro",
   "Doubao-Seedance-2-0-260128-grid": "满血 933 不卡真人",
 };
@@ -58,7 +66,7 @@ const seedanceLibraryShortNames: Record<string, string> = {
   ...Object.fromEntries(
     Object.entries(seedanceVideoDisplayNames).map(([model, displayName]) => [model.toLowerCase(), displayName]),
   ),
-  "b-quannengship2.0": "线路 B",
+  "b-quannengship2.0": "900 · 线路 B",
   "doubao-seedance-2.0-fast-260128-grid": "Fast 933 不卡真人",
 };
 

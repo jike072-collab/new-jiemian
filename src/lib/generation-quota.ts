@@ -61,6 +61,9 @@ export function estimateVideoGenerationQuota(input: {
 export function estimateVideoGenerationEntitlementUnits(input: { resolution: string; model?: string | null; durationSeconds?: number }) {
   const normalizedModel = String(input.model || "").trim().toLowerCase();
   const duration = Math.max(1, Math.floor(input.durationSeconds || 15));
+  if (normalizedModel === "sdquan-2" || normalizedModel === "seedance-2.0-930" || normalizedModel === "video-standard-720p") return 3;
+  if (normalizedModel === "seedance2.0-9tu-manxue" || normalizedModel === "video-standard-720p-fast") return 2;
+  if (normalizedModel === "seedance-fast-720p-pf" || normalizedModel === "seedance-2.0-720p-pf") return duration >= 10 ? 2 : 1;
   if (normalizedModel === "seedance2.0 720p-933-pro-gz-15s") return 3;
   if (/seedance[-_ ]*2(?:\.0)?.*(?:720|1080)\s*p/.test(normalizedModel)) {
     if (normalizedModel.includes("933") || normalizedModel.includes("1080")) return 3;
@@ -210,6 +213,13 @@ function applyVideoModelPricing(base: number, model: string | null | undefined, 
 
 function seedanceVideoQuota(model: string | null | undefined, duration: number) {
   const normalizedModel = String(model || "").trim().toLowerCase();
+  if (normalizedModel === "sdquan-2") return 1740;
+  if (normalizedModel === "seedance-fast-720p-pf") return duration * 70;
+  if (normalizedModel === "seedance-2.0-930") return 1350;
+  if (normalizedModel === "seedance2.0-9tu-manxue") return 840;
+  if (normalizedModel === "video-standard-720p") return 1560;
+  if (normalizedModel === "video-standard-720p-fast") return 1200;
+  if (normalizedModel === "seedance-2.0-720p-pf") return duration * 100;
   if (normalizedModel === "mg-seedance2.0 -720p mini") return duration * 60;
   if (normalizedModel === "mg-seedance2.0 -720p fast") return duration * 80;
   if (normalizedModel === "mg-seedance2.0 -720p pro") return duration * 100;
