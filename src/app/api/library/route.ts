@@ -35,7 +35,7 @@ export async function GET(request: NextRequest) {
       output: { ...item.output, url: `/api/library/${encodeURIComponent(item.id)}/media?scope=shared` },
     } : item)
     : filterCanvasLibraryItems(await readLibraryMetadataForOwner(session.user.local_user_id, { includeFailed: true }), "personal");
-  const items = scopedItems.filter((item) => item.status !== "failed");
+  const items = scopedItems.filter((item) => item.status === "done" && Boolean(item.output?.storedName || item.output?.url));
   const recoveryItems = scopedItems.filter((item) => item.status === "failed");
   return NextResponse.json({ items, recoveryItems, total: items.length });
 }

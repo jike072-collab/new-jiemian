@@ -2204,6 +2204,7 @@ function CanvasWorkspaceInner({
   const filteredLibrary = useMemo(() => {
     const query = librarySearch.trim().toLowerCase();
     return library.filter((item) => {
+      if (item.status !== "done" || !(item.output?.storedName || item.output?.url)) return false;
       if (libraryFilter !== "all" && item.type !== libraryFilter) return false;
       return !query || item.title.toLowerCase().includes(query) || item.prompt.toLowerCase().includes(query);
     }).sort((a, b) => Number(Boolean(b.favorite || b.params.favorite)) - Number(Boolean(a.favorite || a.params.favorite)) || b.updatedAt.localeCompare(a.updatedAt));

@@ -249,6 +249,8 @@ assert.match(workspace, /writeSharedViewport\(accountName, activeProjectRef\.cur
 assert.match(workspace, /document\.viewport = activeProjectRef\.current\.document\.viewport/);
 assert.match(libraryRoute, /filterCanvasLibraryItems\(await readLibraryMetadataForOwners\(ownerIds, \{ includeFailed: true \}\), "shared"\)/);
 assert.match(libraryRoute, /filterCanvasLibraryItems\(await readLibraryMetadataForOwner\(session\.user\.local_user_id, \{ includeFailed: true \}\), "personal"\)/);
+assert.match(libraryRoute, /item\.status === "done" && Boolean\(item\.output\?\.storedName \|\| item\.output\?\.url\)/);
+assert.match(workspace, /item\.status !== "done" \|\| !\(item\.output\?\.storedName \|\| item\.output\?\.url\)/);
 assert.match(libraryMediaRoute, /resolveLibraryMediaForOwners[\s\S]+"shared"/);
 assert.match(filesRoute, /resolveStoredFileForOwners[\s\S]+"shared"/);
 assert.match(canvasNode, /canvas-node__media-metadata/);
