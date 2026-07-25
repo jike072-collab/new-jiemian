@@ -204,6 +204,15 @@ assert.deepEqual(duplicatedGenerator.sourceNodeIds, ["prompt-copy"]);
 assert.equal(duplicatedGenerator.providerId, "video-provider");
 assert.equal(duplicatedGenerator.duration, 14);
 
+const duplicatedWithExternalInput = duplicateCanvasNodeData({
+  kind: "generator",
+  title: "Video generator",
+  generationKind: "video",
+  sourceNodeIds: ["source-original"],
+  status: "idle",
+}, new Map());
+assert.deepEqual(duplicatedWithExternalInput.sourceNodeIds, ["source-original"]);
+
 const removedMedia = removeLibraryItemsFromCanvasDocument({
   nodes: [
     { id: "prompt-1", type: "canvas", position: { x: 0, y: 0 }, data: { kind: "prompt", title: "prompt" } },

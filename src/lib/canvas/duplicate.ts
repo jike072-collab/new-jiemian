@@ -11,8 +11,7 @@ export function duplicateCanvasNodeData(
     createdAt,
   };
   const sourceNodeIds = data.sourceNodeIds?.flatMap((id) => {
-    const mapped = nodeIdMap.get(id);
-    return mapped ? [mapped] : [];
+    return [nodeIdMap.get(id) || id];
   });
   if (sourceNodeIds?.length) duplicate.sourceNodeIds = sourceNodeIds;
   else delete duplicate.sourceNodeIds;

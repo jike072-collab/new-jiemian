@@ -2331,7 +2331,9 @@ function CanvasWorkspaceInner({
     const ids = new Set(selected.map((node) => node.id));
     clipboardRef.current = {
       nodes: selected,
-      edges: edgesRef.current.filter((edge) => ids.has(edge.source) && ids.has(edge.target)).map((edge) => ({ ...edge })),
+      edges: edgesRef.current
+        .filter((edge) => ids.has(edge.target) && (ids.has(edge.source) || selected.some((node) => node.id === edge.target && node.data.kind === "generator")))
+        .map((edge) => ({ ...edge })),
     };
     setClipboardHasNodes(true);
     setNotice(`已复制 ${selected.length} 个节点。`);
@@ -2369,8 +2371,8 @@ function CanvasWorkspaceInner({
     const copiedEdges = copied.edges.map((edge) => ({
       ...edge,
       id: canvasId("edge"),
-      source: idMap.get(edge.source)!,
-      target: idMap.get(edge.target)!,
+      source: idMap.get(edge.source) || edge.source,
+      target: idMap.get(edge.target) || edge.target,
       selected: false,
     }));
     setNodes((current) => [...current.map((node) => ({ ...node, selected: false })), ...copies]);
