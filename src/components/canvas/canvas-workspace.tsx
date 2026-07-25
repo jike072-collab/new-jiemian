@@ -92,6 +92,7 @@ import {
   type EdgeChange,
   type NodeChange,
   type OnConnectEnd,
+  type OnSelectionChangeParams,
   type Viewport,
 } from "@xyflow/react";
 
@@ -525,6 +526,7 @@ function CanvasWorkspaceInner({
   const deferredCanvasSyncRef = useRef<DeferredCanvasSync | null>(null);
   const focusedEditorNodeIdRef = useRef("");
   const contextMenuOpenRef = useRef(false);
+  const selectionActiveRef = useRef(false);
   const historyPastRef = useRef<CanvasWorkspaceSnapshot[]>([]);
   const historyFutureRef = useRef<CanvasWorkspaceSnapshot[]>([]);
   const historySignatureRef = useRef("");
@@ -736,7 +738,7 @@ function CanvasWorkspaceInner({
   }, [applyWorkspaceDocument, resetHistory]);
 
   const hasTransientCanvasInteraction = useCallback(() => (
-    Boolean(focusedEditorNodeIdRef.current || contextMenuOpenRef.current || viewportInteractingRef.current)
+    Boolean(focusedEditorNodeIdRef.current || contextMenuOpenRef.current || viewportInteractingRef.current || selectionActiveRef.current)
   ), []);
 
   const deferCanvasSync = useCallback((base: CanvasWorkspaceSnapshot, project: CanvasProject, notice: string) => {
@@ -771,6 +773,13 @@ function CanvasWorkspaceInner({
       scheduleSave();
     }
   }, [applyWorkspaceDocument, hasTransientCanvasInteraction, scheduleSave, snapshotWorkspace]);
+
+  const onSelectionChange = useCallback(({ nodes: selectedNodes, edges: selectedEdges }: OnSelectionChangeParams<CanvasFlowNode, Edge>) => {
+    selectionActiveRef.current = selectedNodes.length > 0 || selectedEdges.length > 0;
+    if (!selectionActiveRef.current && deferredCanvasSyncRef.current) {
+      window.requestAnimationFrame(flushDeferredCanvasSync);
+    }
+  }, [flushDeferredCanvasSync]);
 
   const acceptRemoteProject = useCallback((project: CanvasProject) => {
     const active = activeProjectRef.current;
@@ -3460,6 +3469,7 @@ function CanvasWorkspaceInner({
               edgeTypes={edgeTypes}
               onNodesChange={onNodesChange}
               onEdgesChange={onEdgesChange}
+              onSelectionChange={onSelectionChange}
               onConnect={onConnect}
               onConnectEnd={onConnectEnd}
               onReconnect={onReconnect}

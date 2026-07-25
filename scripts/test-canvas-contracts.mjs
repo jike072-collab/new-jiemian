@@ -49,6 +49,8 @@ assert.match(jobsRoute, /refreshVideoJob\(id, session\.user\.local_user_id, allo
 assert.match(libraryRoute, /ownerIds\.map\(\(ownerId\) => refreshPendingVideoJobsForOwner\(ownerId\)\)/);
 assert.match(workspace, /canvasJobUrl\(node\.data\.jobId!\)/);
 assert.match(workspace, /adjustConnectedGeneratorRatios\(nodesRef\.current, edgesRef\.current, providersRef\.current\)/);
+assert.match(workspace, /node\?\.data\.kind === "media" && node\.data\.mediaType !== "audio"/);
+assert.match(workspace, /if \(!source\?\.data\.intrinsicWidth \|\| !source\.data\.intrinsicHeight\) return generator/);
 assert.match(canvasNode, /ratioAutoAdjusted: true/);
 assert.match(mediaSizing, /nearestCanvasAspectRatio/);
 assert.match(workspace, /recoveryItems/);
@@ -154,6 +156,9 @@ assert.match(workspace, /\s+panOnDrag\s+/);
 assert.match(workspace, /selectionOnDrag=\{false\}/);
 assert.match(workspace, /selectionKeyCode=\{presentation === "vozeb" \? "Control" : "Shift"\}/);
 assert.match(workspace, /selectionMode=\{SelectionMode\.Partial\}/);
+assert.match(workspace, /const selectionActiveRef = useRef\(false\)/);
+assert.match(workspace, /selectionActiveRef\.current/);
+assert.match(workspace, /onSelectionChange=\{onSelectionChange\}/);
 assert.doesNotMatch(workspace, /onlyRenderVisibleElements/);
 assert.match(workspace, /URL\.createObjectURL\(file\)/);
 assert.match(workspace, /node\.data\.mediaOrigin === "upload"[\s\S]+!node\.data\.libraryItemId/);
