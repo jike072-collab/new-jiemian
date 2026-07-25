@@ -22,11 +22,24 @@ export type CanvasFolderDropResult = {
   truncated: boolean;
 };
 
-const supportedMediaExtension = /\.(?:png|jpe?g|webp|mp4|webm|mov)$/i;
-const supportedMediaMime = /^(?:image\/(?:png|jpeg|webp)|video\/(?:mp4|webm|quicktime))$/i;
+export type CanvasDropMediaType = "image" | "video" | "audio";
+
+const imageExtension = /\.(?:png|jpe?g|webp)$/i;
+const videoExtension = /\.(?:mp4|webm|mov)$/i;
+const audioExtension = /\.(?:mp3|m4a|wav)$/i;
+const imageMime = /^image\/(?:png|jpeg|webp)$/i;
+const videoMime = /^video\/(?:mp4|webm|quicktime)$/i;
+const audioMime = /^audio\/(?:mpeg|mp4|x-m4a|wav|x-wav)$/i;
+
+export function canvasDropMediaType(file: Pick<File, "name" | "type">): CanvasDropMediaType | null {
+  if (imageMime.test(file.type) || imageExtension.test(file.name)) return "image";
+  if (videoMime.test(file.type) || videoExtension.test(file.name)) return "video";
+  if (audioMime.test(file.type) || audioExtension.test(file.name)) return "audio";
+  return null;
+}
 
 export function isSupportedCanvasDropFile(file: Pick<File, "name" | "type">) {
-  return supportedMediaMime.test(file.type) || supportedMediaExtension.test(file.name);
+  return canvasDropMediaType(file) !== null;
 }
 
 export async function collectCanvasFolderDropFiles(
@@ -65,7 +78,7 @@ export async function collectCanvasFolderDropFiles(
       return;
     }
     if (entry.isFile) {
-      if (!supportedMediaExtension.test(entry.name)) {
+      if (!canvasDropMediaType({ name: entry.name, type: "" })) {
         skippedCount += 1;
         return;
       }

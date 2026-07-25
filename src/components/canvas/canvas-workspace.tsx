@@ -140,7 +140,7 @@ import type {
 } from "@/lib/canvas/types";
 import { normalizeCanvasDocument, removeUnavailableLibraryItemsFromCanvasDocument } from "@/lib/canvas/document";
 import { duplicateCanvasNodeData } from "@/lib/canvas/duplicate";
-import { collectCanvasFolderDropFiles, isSupportedCanvasDropFile, MAX_CANVAS_FOLDER_FILES } from "@/lib/canvas/folder-drop";
+import { canvasDropMediaType, collectCanvasFolderDropFiles, isSupportedCanvasDropFile, MAX_CANVAS_FOLDER_FILES } from "@/lib/canvas/folder-drop";
 import {
   CANVAS_IMAGE_RATIOS,
   canvasMediaNodeSize,
@@ -1355,6 +1355,16 @@ function CanvasWorkspaceInner({
     markDirty();
   }, [addNodeAtCenter, flow, markDirty, pushHistorySnapshot]);
 
+  const uploadCanvasAudioReference = useCallback(async (file: File) => {
+    try {
+      const form = new FormData();
+      form.append("file", file);
+      return await fetchJsonWithCsrf<{ url: string; title?: string; mimeType?: string }>("/api/canvas/audio", { method: "POST", body: form });
+    } catch (error) {
+      throw new Error(apiMessage(error, "音频上传失败。"));
+    }
+  }, []);
+
   const addAudioReference = useCallback(async (file: File) => {
     if (!isInternalCanvas) {
       setNotice("音频参考素材只在内部画布可用。");
@@ -1362,9 +1372,7 @@ function CanvasWorkspaceInner({
     }
     setNotice("正在上传音频参考素材…");
     try {
-      const form = new FormData();
-      form.append("file", file);
-      const result = await fetchJsonWithCsrf<{ url: string; title?: string; mimeType?: string }>("/api/canvas/audio", { method: "POST", body: form });
+      const result = await uploadCanvasAudioReference(file);
       addNodeAtCenter({
         kind: "media",
         title: result.title || file.name || "音频参考",
@@ -1378,7 +1386,7 @@ function CanvasWorkspaceInner({
     } catch (error) {
       setNotice(apiMessage(error, "音频上传失败。"));
     }
-  }, [addNodeAtCenter, isInternalCanvas]);
+  }, [addNodeAtCenter, isInternalCanvas, uploadCanvasAudioReference]);
 
   const uploadCanvasMediaFiles = useCallback(async (input: File[], position?: { x: number; y: number }, truncated = false) => {
     if (!isInternalCanvas) {
@@ -1405,7 +1413,8 @@ function CanvasWorkspaceInner({
       y: anchor.y - (rows * 370 - 30) / 2,
     };
     const placeholders = files.map((file, index): CanvasFlowNode => {
-      const mediaType = file.type.startsWith("video/") ? "video" as const : "image" as const;
+      const mediaType = canvasDropMediaType(file);
+      if (!mediaType) throw new Error("Unsupported canvas media file.");
       return {
         id: canvasId("upload"),
         type: "canvas",
@@ -1415,11 +1424,11 @@ function CanvasWorkspaceInner({
           y: basePosition.y + Math.floor(index / columns) * 370,
         },
         width: 320,
-        height: mediaType === "image" ? 300 : 340,
+        height: mediaType === "audio" ? 180 : mediaType === "image" ? 300 : 340,
         selected: true,
         data: {
           kind: "media",
-          title: file.name || (mediaType === "image" ? "图片素材" : "视频素材"),
+          title: file.name || (mediaType === "image" ? "图片素材" : mediaType === "video" ? "视频素材" : "音频参考"),
           mediaType,
           mediaUrl: URL.createObjectURL(file),
           mediaOrigin: "upload",
@@ -1448,13 +1457,37 @@ function CanvasWorkspaceInner({
         const index = nextIndex;
         nextIndex += 1;
         try {
+          const placeholder = placeholders[index];
+          const objectUrl = placeholder.data.mediaUrl;
+          if (placeholder.data.mediaType === "audio") {
+            const result = await uploadCanvasAudioReference(files[index]);
+            uploadedCount += 1;
+            setNodes((current) => {
+              const next = current.map((node) => node.id === placeholder.id ? {
+                ...node,
+                data: {
+                  ...node.data,
+                  title: result.title || node.data.title,
+                  mediaUrl: result.url,
+                  status: "done" as const,
+                  progress: 0,
+                  error: undefined,
+                  notes: "Seedance 参考音频。请连接到视频生成节点，并在提示词中使用 @AudioN 指定音频职责。",
+                },
+              } : node);
+              nodesRef.current = next;
+              return next;
+            });
+            markDirty();
+            setNotice(`已上传 ${uploadedCount}/${files.length} 个素材`);
+            if (typeof objectUrl === "string" && objectUrl.startsWith("blob:")) URL.revokeObjectURL(objectUrl);
+            continue;
+          }
           const form = new FormData();
           form.append("file", files[index]);
           form.append("canvasScope", canvasScope());
           const response = await fetchJsonWithCsrf<{ item: LibraryItem; reused?: boolean }>("/api/canvas/media", { method: "POST", body: form });
           const item = response.item;
-          const placeholder = placeholders[index];
-          const objectUrl = placeholder.data.mediaUrl;
           uploadedCount += 1;
           setLibrary((current) => [item, ...current.filter((candidate) => candidate.id !== item.id)]);
           setNodes((current) => {
@@ -1511,7 +1544,7 @@ function CanvasWorkspaceInner({
     } else {
       setNotice(`已添加 ${uploadedCount} 个素材到画布和作品库${reachedLimit ? `；单次最多导入 ${MAX_CANVAS_FOLDER_FILES} 个素材` : ""}。`);
     }
-  }, [flow, isInternalCanvas, markDirty, pushHistorySnapshot]);
+  }, [flow, isInternalCanvas, markDirty, pushHistorySnapshot, uploadCanvasAudioReference]);
 
   const addLibraryNodes = useCallback((items: LibraryItem[]) => {
     const existingIds = new Set(nodesRef.current.flatMap((node) => node.data.kind === "media" && node.data.libraryItemId ? [node.data.libraryItemId] : []));
@@ -3240,7 +3273,7 @@ function CanvasWorkspaceInner({
         x: stageBounds ? stageBounds.left + stageBounds.width / 2 : window.innerWidth / 2,
         y: stageBounds ? stageBounds.top + stageBounds.height / 2 : window.innerHeight / 2,
       });
-      const files = Array.from(event.clipboardData?.files || []).filter((file) => file.type.startsWith("image/") || file.type.startsWith("video/") || /\.(png|jpe?g|webp|mp4|webm|mov)$/i.test(file.name));
+      const files = Array.from(event.clipboardData?.files || []).filter(isSupportedCanvasDropFile);
       if (files.length) {
         event.preventDefault();
         void uploadCanvasMediaFiles(files, position);
@@ -3423,7 +3456,7 @@ function CanvasWorkspaceInner({
         ref={mediaInputRef}
         type="file"
         multiple
-        accept="image/png,image/jpeg,image/webp,video/mp4,video/webm,video/quicktime,.png,.jpg,.jpeg,.webp,.mp4,.webm,.mov"
+        accept="image/png,image/jpeg,image/webp,video/mp4,video/webm,video/quicktime,audio/mpeg,audio/mp4,audio/x-m4a,audio/wav,audio/x-wav,.png,.jpg,.jpeg,.webp,.mp4,.webm,.mov,.mp3,.m4a,.wav"
         className="canvas-import-input"
         onChange={(event) => {
           const files = Array.from(event.target.files || []);
