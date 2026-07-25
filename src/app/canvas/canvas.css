@@ -1318,6 +1318,13 @@
 }
 .canvas-assistant__selection span { color: var(--muted); white-space: nowrap; }
 .canvas-assistant__selection strong { min-width: 0; overflow: hidden; color: var(--muted-strong); font-size: 11px; font-weight: 600; text-overflow: ellipsis; white-space: nowrap; }
+.canvas-assistant__compact-controls { display: flex; min-width: 0; align-items: center; gap: 7px; }
+.canvas-assistant__compact-controls .canvas-assistant__selection { flex: 0 1 150px; }
+.canvas-assistant__directions { display: flex; min-width: 0; flex: 1; gap: 4px; overflow-x: auto; scrollbar-width: none; }
+.canvas-assistant__directions::-webkit-scrollbar { display: none; }
+.canvas-assistant__directions button { min-width: max-content; height: 30px; border: 1px solid var(--border-subtle); border-radius: 5px; background: var(--surface); color: var(--muted-strong); cursor: pointer; padding: 0 8px; font-size: 10px; white-space: nowrap; }
+.canvas-assistant__directions button:hover,
+.canvas-assistant__directions button.is-active { border-color: color-mix(in srgb, var(--primary) 60%, var(--border-subtle)); background: color-mix(in srgb, var(--primary) 10%, var(--surface)); color: var(--foreground); }
 .canvas-assistant__target { display: grid; grid-column: 1 / -1; gap: 4px; min-width: 0; color: var(--muted); font-size: 10px; }
 .canvas-assistant__target select { min-width: 0; height: 30px; border: 1px solid var(--border-subtle); border-radius: 6px; background: var(--surface); color: var(--foreground); padding: 0 7px; font: inherit; font-size: 11px; }
 .canvas-assistant__validation { margin: 0; color: var(--warning, #f0b35a); font-size: 10px; line-height: 1.4; }
@@ -1332,11 +1339,11 @@
 .canvas-assistant__preview-heading { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
 .canvas-assistant__preview-heading strong { font-size: 12px; }
 .canvas-assistant__preview-heading span { color: var(--muted); font-size: 10px; }
-.canvas-assistant__preview textarea { width: 100%; min-height: 168px; resize: vertical; box-sizing: border-box; border: 1px solid var(--border-subtle); border-radius: 6px; background: var(--surface); color: var(--foreground); outline: none; padding: 8px; font: inherit; font-size: 11px; line-height: 1.55; }
+.canvas-assistant__preview textarea { width: 100%; min-height: 132px; max-height: 230px; resize: vertical; box-sizing: border-box; border: 1px solid var(--border-subtle); border-radius: 6px; background: var(--surface); color: var(--foreground); outline: none; padding: 8px; font: inherit; font-size: 11px; line-height: 1.55; }
 .canvas-assistant__preview textarea:focus { border-color: color-mix(in srgb, var(--primary) 62%, var(--border-subtle)); }
-.canvas-assistant__bindings { display: grid; gap: 4px; min-width: 0; }
+.canvas-assistant__bindings { display: flex; min-width: 0; flex-wrap: wrap; align-items: center; gap: 4px 7px; }
 .canvas-assistant__bindings > span { color: var(--muted); font-size: 10px; }
-.canvas-assistant__bindings small { overflow: hidden; color: var(--muted-strong); text-overflow: ellipsis; white-space: nowrap; font-size: 10px; }
+.canvas-assistant__bindings small { min-width: 0; overflow: hidden; color: var(--muted-strong); text-overflow: ellipsis; white-space: nowrap; font-size: 10px; }
 
 .canvas-assistant__fields { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 7px; }
 .canvas-assistant__fields label { display: grid; gap: 4px; min-width: 0; color: var(--muted); font-size: 10px; }

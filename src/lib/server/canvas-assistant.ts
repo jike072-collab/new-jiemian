@@ -34,6 +34,7 @@ export type CanvasAssistantInput = {
   nodes?: CanvasAssistantNode[];
   history?: Array<{ role: "user" | "assistant"; content: string }>;
   assistantMode?: "prompt-generation" | "reference-replacement";
+  contentDirection?: "human-demo" | "sport-scene" | "product-detail" | "daily-use" | "spoken-review";
   selectedNodeIds?: string[];
   targetGeneratorId?: string;
 };
@@ -78,6 +79,7 @@ const systemPrompt = [
   "用户没有明确要求改动画布时 actions 必须为空；但写提示词、换物方案、优化提示词和生成分镜本身视为明确请求，可返回对应的提示词或分镜动作。最多返回 8 个动作。",
   "当 assistantMode 为 prompt-generation 或 reference-replacement 时，只返回一个 add_prompt 动作，不返回 add_storyboard、organize、connect_nodes 或其他画布动作；分析阶段不代表已经创建节点。",
   "assistantMode 请求已经提供 selectedNodeIds 和 targetGeneratorId 时，必须使用这些范围，不要再次要求用户选择链路，也不要擅自扩大到全画布。",
+  "当 assistantMode 为 prompt-generation 且 contentDirection 已提供时，必须围绕该方向完成 15 秒马来西亚 TikTok Shop 视频提示词。口播、屏幕内自然语言和行动引导使用自然的 Bahasa Melayu；镜头和节奏贴近当地短视频习惯，避免生硬直译、夸张承诺或未经视觉证据支持的促销话术。",
 ].join("\n");
 
 const canvasAssistantRetryDelayMs = 350;
@@ -130,11 +132,14 @@ function normalizeInput(input: Partial<CanvasAssistantInput>): CanvasAssistantIn
   const assistantMode = input.assistantMode === "prompt-generation" || input.assistantMode === "reference-replacement"
     ? input.assistantMode
     : undefined;
+  const contentDirection = ["human-demo", "sport-scene", "product-detail", "daily-use", "spoken-review"].includes(String(input.contentDirection))
+    ? input.contentDirection as NonNullable<CanvasAssistantInput["contentDirection"]>
+    : undefined;
   const selectedNodeIds = Array.isArray(input.selectedNodeIds)
     ? [...new Set(input.selectedNodeIds.slice(0, 16).map((value) => text(value, 100)).filter(Boolean))]
     : undefined;
   const targetGeneratorId = text(input.targetGeneratorId, 100) || undefined;
-  return { message, canvasTitle: text(input.canvasTitle, 120), nodes, history, assistantMode, selectedNodeIds, targetGeneratorId };
+  return { message, canvasTitle: text(input.canvasTitle, 120), nodes, history, assistantMode, contentDirection, selectedNodeIds, targetGeneratorId };
 }
 
 function normalizeReferenceLabels(value: unknown) {
@@ -241,6 +246,7 @@ export function createCanvasAssistantService(caller: PromptModelCaller = createN
           userPrompt: JSON.stringify({
             userRequest: normalized.message,
             assistantMode: normalized.assistantMode,
+            contentDirection: normalized.contentDirection,
             selectedNodeIds: normalized.selectedNodeIds,
             targetGeneratorId: normalized.targetGeneratorId,
             canvas: { title: normalized.canvasTitle, nodes: normalized.nodes },

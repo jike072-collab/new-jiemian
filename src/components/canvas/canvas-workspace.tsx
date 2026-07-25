@@ -2828,22 +2828,46 @@ function CanvasWorkspaceInner({
     const actions = normalizeCanvasAssistantResponse({ reply: "已应用", actions: input }).actions;
     for (const action of actions) {
       if (action.type === "add_prompt") {
+        const sources = action.sourceNodeIds?.length
+          ? nodesRef.current.filter((node) => action.sourceNodeIds?.includes(node.id) && node.data.kind === "media")
+          : [];
         const target = action.targetGeneratorId
           ? nodesRef.current.find((node) => node.id === action.targetGeneratorId && node.data.kind === "generator")
           : undefined;
+        const sourcePosition = sources[0]?.position;
         const promptNode = addPromptNode(
           { title: action.title, prompt: action.prompt, referenceBindings: action.referenceBindings },
-          target ? { x: target.position.x - 400, y: target.position.y } : undefined,
+          target ? { x: target.position.x - 400, y: target.position.y } : sourcePosition ? { x: sourcePosition.x + 410, y: sourcePosition.y } : undefined,
         );
-        if (target) {
+        const generator = target || (action.createVideoGenerator
+          ? addGeneratorNode("video", sourcePosition ? { x: sourcePosition.x + 820, y: sourcePosition.y } : undefined)
+          : undefined);
+        if (generator) {
+          if (action.createVideoGenerator && sources.length) {
+            const sourceNodeIds = [promptNode.id, ...sources.map((node) => node.id)];
+            const nextNodes = nodesRef.current.map((node) => node.id === generator.id
+              ? { ...node, data: { ...node.data, sourceNodeIds } }
+              : node);
+            nodesRef.current = nextNodes;
+            setNodes(nextNodes);
+          }
+          const sourceEdges = action.createVideoGenerator
+            ? sources.map((source) => decorateCanvasEdge({
+              id: canvasId("edge"),
+              source: source.id,
+              sourceHandle: "output",
+              target: generator.id,
+              targetHandle: "input",
+            }, nodesRef.current, connectionStyle))
+            : [];
           const edge = decorateCanvasEdge({
             id: canvasId("edge"),
             source: promptNode.id,
             sourceHandle: "output",
-            target: target.id,
+            target: generator.id,
             targetHandle: "input",
           }, nodesRef.current, connectionStyle);
-          edgesRef.current = [...edgesRef.current, edge];
+          edgesRef.current = [...edgesRef.current, ...sourceEdges, edge];
           setEdges(edgesRef.current);
           markDirty();
         }

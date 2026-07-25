@@ -2,7 +2,7 @@ import type { CanvasMediaType, CanvasReferenceBinding, CanvasSequenceState } fro
 import { isTikTokShopVideoRequest, tiktokShopVideoGuidance } from "#tiktok-shop-video-guidance";
 
 export type CanvasAssistantAction =
-  | { type: "add_prompt"; title?: string; prompt: string; targetGeneratorId?: string; referenceBindings?: CanvasReferenceBinding[] }
+  | { type: "add_prompt"; title?: string; prompt: string; targetGeneratorId?: string; sourceNodeIds?: string[]; createVideoGenerator?: boolean; referenceBindings?: CanvasReferenceBinding[] }
   | { type: "add_generator"; generationKind: "image" | "video" }
   | { type: "replace_selected_prompt"; prompt: string }
   | { type: "organize"; layout: "flow" | "grid" }
@@ -186,12 +186,15 @@ export function normalizeCanvasAssistantResponse(value: unknown): CanvasAssistan
       const prompt = boundedText(action.prompt, 4_000);
       if (prompt) {
         const targetGeneratorId = boundedText(action.targetGeneratorId, 100);
+        const sourceNodeIds = normalizeIds(action.sourceNodeIds, 8);
         const referenceBindings = normalizeReferenceBindings(action.referenceBindings);
         actions.push({
           type,
           prompt,
           title: boundedText(action.title, 80) || undefined,
           ...(targetGeneratorId ? { targetGeneratorId } : {}),
+          ...(sourceNodeIds.length ? { sourceNodeIds } : {}),
+          ...(action.createVideoGenerator === true ? { createVideoGenerator: true } : {}),
           ...(referenceBindings.length ? { referenceBindings } : {}),
         });
       }

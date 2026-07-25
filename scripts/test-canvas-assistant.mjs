@@ -64,7 +64,7 @@ assert.match(assistantPanel, /提示词生成/);
 assert.match(assistantPanel, /参考图替换/);
 assert.match(assistantPanel, /分析提示词/);
 assert.match(assistantPanel, /分析结果/);
-assert.match(assistantPanel, /生成提示词/);
+assert.match(assistantPanel, /创建提示词和视频节点/);
 assert.match(assistantPanel, /phase === "preview"/);
 assert.match(assistantPanel, /分析中/);
 assert.match(assistantPanel, /可编辑预览/);
@@ -75,14 +75,18 @@ assert.match(assistantPanel, /mentionSelection/);
 assert.match(assistantPanel, /onMentionModeChange\(Boolean\(mentionQuery\)\)/);
 assert.match(assistantPanel, /contextNodes\.find\(\(candidate\) => candidate\.id === mentionSelection\.nodeId\)/);
 assert.match(assistantPanel, /mentionSelection\.revision <= handledMentionRevisionRef\.current/);
-assert.match(assistantPanel, /带货短视频/);
-assert.match(assistantPanel, /目标视频链路/);
+assert.match(assistantPanel, /马来西亚带货提示词/);
+assert.match(assistantPanel, /真人展示/);
+assert.match(assistantPanel, /Bahasa Melayu/);
+assert.match(assistantPanel, /createVideoGenerator: true/);
 assert.match(assistantPanel, /0-2 秒/);
 assert.match(workspace, /applyAssistantActions/);
 assert.match(workspace, /assistantNodeContexts/);
 assert.match(workspace, /referenceLabels/);
 assert.match(workspace, /libraryItemId/);
 assert.match(workspace, /action\.targetGeneratorId/);
+assert.match(workspace, /action\.createVideoGenerator/);
+assert.match(workspace, /sourceEdges/);
 assert.match(workspace, /action\.type === "add_generator"/);
 assert.match(workspace, /action\.type === "select_nodes"/);
 assert.match(workspace, /action\.type === "connect_nodes"/);
@@ -119,6 +123,17 @@ assert.deepEqual(normalizeCanvasAssistantResponse({
     { type: "ungroup", groupId: "group-1" },
     { type: "organize", layout: "flow" },
   ],
+});
+
+assert.deepEqual(normalizeCanvasAssistantResponse({
+  reply: "ok",
+  actions: [{ type: "add_prompt", prompt: "马来语提示词", sourceNodeIds: ["image-1", "image-1"], createVideoGenerator: true }],
+}).actions[0], {
+  type: "add_prompt",
+  title: undefined,
+  prompt: "马来语提示词",
+  sourceNodeIds: ["image-1"],
+  createVideoGenerator: true,
 });
 
 const normalizedBindings = normalizeCanvasAssistantResponse({

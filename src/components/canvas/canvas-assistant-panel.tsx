@@ -29,8 +29,17 @@ export type CanvasAssistantNodeContext = {
 type Message = { role: "user" | "assistant"; content: string };
 type MentionQuery = { start: number; end: number; query: string };
 type AssistantModule = "prompt" | "replace";
+type ContentDirection = "human-demo" | "sport-scene" | "product-detail" | "daily-use" | "spoken-review";
 type AssistantPhase = "idle" | "analyzing" | "preview" | "created" | "error";
 type PromptAction = Extract<CanvasAssistantAction, { type: "add_prompt" }>;
+
+const contentDirections: Array<{ id: ContentDirection; label: string; detail: string }> = [
+  { id: "human-demo", label: "真人展示", detail: "真人自然试用与动作展示" },
+  { id: "sport-scene", label: "运动场景", detail: "运动前后与动态细节" },
+  { id: "product-detail", label: "产品细节", detail: "材质、结构与近景展示" },
+  { id: "daily-use", label: "生活场景", detail: "马来西亚日常使用场景" },
+  { id: "spoken-review", label: "口播推荐", detail: "自然马来语口播与演示" },
+];
 
 export function CanvasAssistantPanel({
   canvasTitle,
@@ -50,8 +59,7 @@ export function CanvasAssistantPanel({
   onClose: () => void;
 }) {
   const [activeModule, setActiveModule] = useState<AssistantModule>("prompt");
-  const [hookStyle, setHookStyle] = useState("痛点钩子");
-  const [targetGeneratorId, setTargetGeneratorId] = useState("");
+  const [contentDirection, setContentDirection] = useState<ContentDirection>("human-demo");
   const [phase, setPhase] = useState<AssistantPhase>("idle");
   const [previewPrompt, setPreviewPrompt] = useState("");
   const [previewTitle, setPreviewTitle] = useState("提示词");
@@ -64,13 +72,11 @@ export function CanvasAssistantPanel({
   const [mentionQuery, setMentionQuery] = useState<MentionQuery | null>(null);
   const [mentionIndex, setMentionIndex] = useState(0);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
-  const autoTargetGeneratorIdRef = useRef("");
   const handledMentionRevisionRef = useRef(0);
   const contextNodes = useMemo(() => nodes.slice(0, 120), [nodes]);
   const selectedNodes = useMemo(() => nodes.filter((node) => node.selected), [nodes]);
   const selectedImages = useMemo(() => selectedNodes.filter((node) => node.kind === "media" && node.mediaType === "image"), [selectedNodes]);
   const selectedVideos = useMemo(() => selectedNodes.filter((node) => node.kind === "media" && node.mediaType === "video"), [selectedNodes]);
-  const videoGenerators = useMemo(() => nodes.filter((node) => node.kind === "generator" && node.generationKind === "video"), [nodes]);
   const mentionCandidates = useMemo(() => {
     if (!mentionQuery) return [];
     const query = mentionQuery.query.trim().toLowerCase();
@@ -80,33 +86,13 @@ export function CanvasAssistantPanel({
       .slice(0, 8);
   }, [contextNodes, mentionQuery]);
   const selectedImageOverflow = selectedImages.length > 4;
-  const resolvedTargetGeneratorId = targetGeneratorId && videoGenerators.some((node) => node.id === targetGeneratorId)
-    ? targetGeneratorId
-    : videoGenerators.length === 1 ? videoGenerators[0].id : "";
-  const targetGenerator = videoGenerators.find((node) => node.id === resolvedTargetGeneratorId);
-  const canPromptAnalyze = selectedImages.length > 0 && !selectedImageOverflow && Boolean(resolvedTargetGeneratorId);
-  const canReplaceAnalyze = selectedVideos.length === 1 && selectedImages.length > 0 && !selectedImageOverflow && Boolean(resolvedTargetGeneratorId);
+  const canPromptAnalyze = selectedImages.length > 0 && !selectedImageOverflow;
+  const canReplaceAnalyze = selectedVideos.length === 1 && selectedImages.length > 0 && !selectedImageOverflow;
   const canAnalyze = activeModule === "prompt" ? canPromptAnalyze : canReplaceAnalyze;
-  const selectionSignature = `${activeModule}:${selectedNodes.map((node) => node.id).sort().join(",")}:${resolvedTargetGeneratorId}`;
+  const selectionSignature = `${activeModule}:${contentDirection}:${selectedNodes.map((node) => node.id).sort().join(",")}`;
 
   useEffect(() => {
-    if (videoGenerators.length === 1) {
-      const onlyGeneratorId = videoGenerators[0].id;
-      if (targetGeneratorId !== onlyGeneratorId) {
-        autoTargetGeneratorIdRef.current = onlyGeneratorId;
-        setTargetGeneratorId(onlyGeneratorId);
-      }
-      return;
-    }
-    if (autoTargetGeneratorIdRef.current && targetGeneratorId === autoTargetGeneratorIdRef.current) {
-      setTargetGeneratorId("");
-    }
-    autoTargetGeneratorIdRef.current = "";
-    if (targetGeneratorId && !videoGenerators.some((node) => node.id === targetGeneratorId)) setTargetGeneratorId("");
-  }, [targetGeneratorId, videoGenerators]);
-
-  useEffect(() => {
-    // A changed selection or target invalidates the previous analysis.
+    // A changed selection or content direction invalidates the previous analysis.
     setPhase("idle");
     setPreviewPrompt("");
     setPreviewTitle("提示词");
@@ -177,7 +163,7 @@ export function CanvasAssistantPanel({
     }
   }
 
-  async function submitMessage(value: string, mode: AssistantModule, selectedIds: string[], targetId: string) {
+  async function submitMessage(value: string, mode: AssistantModule, selectedIds: string[]) {
     const message = value.trim();
     if (!message || busyPhase(phase)) return;
     const nextMessages = [...messages, { role: "user" as const, content: message }];
@@ -193,8 +179,8 @@ export function CanvasAssistantPanel({
           canvasTitle,
           scope,
           assistantMode: mode === "prompt" ? "prompt-generation" : "reference-replacement",
+          contentDirection,
           selectedNodeIds: selectedIds,
-          targetGeneratorId: targetId,
           nodes: contextNodes.map((node) => ({ ...node, selected: selected.has(node.id) })),
           history: nextMessages.slice(-8),
         }),
@@ -204,15 +190,14 @@ export function CanvasAssistantPanel({
       if (!action) throw new Error("助手没有返回可确认的提示词，请补充素材或要求后重试。");
       const promptAction: PromptAction = {
         ...action,
-        targetGeneratorId: action.targetGeneratorId || targetId,
       };
       const bindings = promptAction.referenceBindings?.length
         ? promptAction.referenceBindings
-        : buildReferenceBindings(mode, selectedImages, selectedVideos, targetId);
+        : buildReferenceBindings(mode, selectedImages, selectedVideos, "");
       setPreviewTitle(promptAction.title || (mode === "prompt" ? "15 秒带货视频提示词" : "专业视频换物提示词"));
       setPreviewPrompt(promptAction.prompt);
       setPreviewBindings(bindings);
-      setMessages((current) => [...current, { role: "assistant", content: normalized.reply }]);
+      setMessages((current) => [...current, { role: "assistant", content: normalized.reply.slice(0, 240) }]);
       setPhase("preview");
     } catch (error) {
       setMessages((current) => [...current, { role: "assistant", content: error instanceof Error ? error.message : "助手暂时不可用，请稍后重试。" }]);
@@ -221,28 +206,33 @@ export function CanvasAssistantPanel({
   }
 
   function analyzeCurrent() {
-    if (!canAnalyze || !targetGenerator) return;
+    if (!canAnalyze) return;
     const selectedIds = activeModule === "prompt"
-      ? [...selectedImages.slice(0, 4).map((node) => node.id), targetGenerator.id]
-      : [...selectedVideos.map((node) => node.id), ...selectedImages.slice(0, 4).map((node) => node.id), targetGenerator.id];
+      ? selectedImages.slice(0, 4).map((node) => node.id)
+      : [...selectedVideos.map((node) => node.id), ...selectedImages.slice(0, 4).map((node) => node.id)];
     const extra = input.trim() ? `用户补充要求：${input.trim()}` : "没有额外要求。";
+    const direction = contentDirections.find((item) => item.id === contentDirection)?.detail || "真人自然展示";
     const message = activeModule === "prompt"
-      ? `只分析明确选中的产品图片，为目标链路“${targetGenerator.title}”生成一条 15 秒 TikTok Shop 带货提示词。开头使用${hookStyle}，采用 0-2 秒钩子、2-7 秒核心价值、7-12 秒可见证据、12-15 秒行动的时间轴。输出素材职责、产品可见事实、时间轴、声音/口播和禁止项；只返回一个 add_prompt，不生成分镜，不开始生成视频。${extra}`
-      : `只分析明确选中的 @Video 基础视频和 @Image 参考图，为目标链路“${targetGenerator.title}”生成一条局部换物提示词。@Video 只负责原视频动作、镜头和时间线，@Image 只负责目标物外观；只返回一个 add_prompt，不开始生成视频。${extra}`;
-    void submitMessage(message, activeModule, selectedIds, targetGenerator.id);
+      ? `只分析明确选中的产品图片，按“${direction}”制作一条 15 秒马来西亚 TikTok Shop 带货提示词。口播和画面内自然语言使用 Bahasa Melayu，表达贴近当地短视频习惯但不虚构商品事实。采用 0-2 秒钩子、2-7 秒核心价值、7-12 秒可见证据、12-15 秒行动的时间轴。输出素材职责、产品可见事实、时间轴、声音/口播和禁止项；只返回一个 add_prompt，不生成分镜，不开始生成视频。${extra}`
+      : `只分析明确选中的 @Video 基础视频和 @Image 参考图，按马来西亚本地短视频表达生成一条局部换物提示词。@Video 只负责原视频动作、镜头和时间线，@Image 只负责目标物外观；只返回一个 add_prompt，不开始生成视频。${extra}`;
+    void submitMessage(message, activeModule, selectedIds);
   }
 
   function createPromptNode() {
-    if (phase !== "preview" || !previewPrompt.trim() || !targetGenerator) return;
+    if (phase !== "preview" || !previewPrompt.trim()) return;
+    const sourceNodeIds = activeModule === "prompt"
+      ? selectedImages.slice(0, 4).map((node) => node.id)
+      : [...selectedVideos.slice(0, 1).map((node) => node.id), ...selectedImages.slice(0, 4).map((node) => node.id)];
     onApply([{
       type: "add_prompt",
       title: previewTitle,
       prompt: previewPrompt.trim(),
-      targetGeneratorId: targetGenerator.id,
+      sourceNodeIds,
+      createVideoGenerator: true,
       ...(previewBindings.length ? { referenceBindings: previewBindings } : {}),
     }]);
     setPhase("created");
-    setMessages((current) => [...current, { role: "assistant", content: "提示词已创建并连接到目标视频链路；尚未开始生成。" }]);
+    setMessages((current) => [...current, { role: "assistant", content: "提示词和视频生成节点已创建，并已连接选中的素材；尚未开始生成。" }]);
   }
 
   function submit(event: FormEvent) {
@@ -272,21 +262,21 @@ export function CanvasAssistantPanel({
       </div>
       {activeModule === "prompt" ? (
         <section className="canvas-assistant__module-panel" aria-label="提示词生成">
-          <div className="canvas-assistant__module-heading"><div><strong>15 秒带货提示词</strong><span>先选图，再分析；确认后才创建节点</span></div><Film /></div>
-          <SelectionSummary label="分析图片" nodes={selectedImages} empty="请先在画布中选中产品图片" limit={4} />
-          <div className="canvas-assistant__fields">
-            <label><span>开头钩子</span><select value={hookStyle} onChange={(event) => setHookStyle(event.target.value)}><option>痛点钩子</option><option>结果钩子</option><option>场景钩子</option><option>反差钩子</option></select></label>
-            <TargetGeneratorField generators={videoGenerators} value={resolvedTargetGeneratorId} onChange={(value) => { autoTargetGeneratorIdRef.current = ""; setTargetGeneratorId(value); }} />
+          <div className="canvas-assistant__module-heading"><div><strong>15 秒马来西亚带货提示词</strong><span>选图和方向，确认后自动创建并连接视频节点</span></div><Film /></div>
+          <div className="canvas-assistant__compact-controls">
+            <SelectionSummary label="图片" nodes={selectedImages} empty="未选中" limit={4} />
+            <DirectionPicker value={contentDirection} onChange={setContentDirection} />
           </div>
           {selectedImageOverflow ? <p className="canvas-assistant__validation">最多选择 4 张图片，请取消多余选择。</p> : null}
           <button type="button" className="canvas-assistant__analyze-action" disabled={phase === "analyzing" || !canPromptAnalyze} onClick={analyzeCurrent}><Sparkles />分析提示词</button>
         </section>
       ) : (
         <section className="canvas-assistant__module-panel" aria-label="参考图替换">
-          <div className="canvas-assistant__module-heading"><div><strong>参考图替换</strong><span>先选基础视频和参考图，再分析换物提示词</span></div><ImageIcon /></div>
-          <SelectionSummary label="基础视频" nodes={selectedVideos} empty="请先在画布中选中一个基础视频" limit={1} />
-          <SelectionSummary label="参考图片" nodes={selectedImages} empty="请先在画布中选中目标物参考图" limit={4} />
-          <TargetGeneratorField generators={videoGenerators} value={resolvedTargetGeneratorId} onChange={(value) => { autoTargetGeneratorIdRef.current = ""; setTargetGeneratorId(value); }} />
+          <div className="canvas-assistant__module-heading"><div><strong>参考图替换</strong><span>确认后自动创建并连接视频节点</span></div><ImageIcon /></div>
+          <div className="canvas-assistant__compact-controls">
+            <SelectionSummary label="基础视频" nodes={selectedVideos} empty="未选中" limit={1} />
+            <SelectionSummary label="参考图" nodes={selectedImages} empty="未选中" limit={4} />
+          </div>
           {selectedVideos.length > 1 ? <p className="canvas-assistant__validation">参考图替换一次只能选择一个基础视频。</p> : null}
           {selectedImageOverflow ? <p className="canvas-assistant__validation">最多选择 4 张参考图片，请取消多余选择。</p> : null}
           <button type="button" className="canvas-assistant__analyze-action" disabled={phase === "analyzing" || !canReplaceAnalyze} onClick={analyzeCurrent}><Sparkles />分析换物提示词</button>
@@ -298,19 +288,19 @@ export function CanvasAssistantPanel({
           <div className="canvas-assistant__preview-heading"><strong>分析结果</strong><span>可编辑</span></div>
           <textarea value={previewPrompt} onChange={(event) => setPreviewPrompt(event.target.value)} disabled={phase === "created"} aria-label="可编辑提示词预览" />
           <div className="canvas-assistant__bindings"><span>素材职责</span>{previewBindings.length ? previewBindings.map((binding) => <small key={`${binding.label}-${binding.role}`}>{binding.label} · {binding.role}{binding.transfer ? ` · ${binding.transfer}` : ""}</small>) : <small>助手未返回结构化职责，请在提示词中检查引用。</small>}</div>
-          <button type="button" className="canvas-assistant__create-action" disabled={phase !== "preview" || !previewPrompt.trim()} onClick={createPromptNode}><Check />生成提示词</button>
+          <button type="button" className="canvas-assistant__create-action" disabled={phase !== "preview" || !previewPrompt.trim()} onClick={createPromptNode}><Check />创建提示词和视频节点</button>
         </section>
       ) : null}
-      <div className="canvas-assistant__messages" aria-live="polite">
+      {phase !== "preview" && phase !== "created" ? <div className="canvas-assistant__messages" aria-live="polite">
         {messages.map((message, index) => <div key={`${message.role}-${index}`} className={`canvas-assistant__message is-${message.role}`}>{message.role === "assistant" ? <Sparkles /> : null}<p>{message.content}</p></div>)}
         {phase === "analyzing" ? <div className="canvas-assistant__message is-assistant"><LoaderCircle className="is-spinning" /><p>正在读取已选素材并分析提示词…</p></div> : null}
-      </div>
+      </div> : null}
       <form className="canvas-assistant__composer" onSubmit={submit}>
         {mentionQuery && mentionCandidates.length ? <div className="canvas-assistant__mentions" role="listbox" aria-label="引用画布节点">{mentionCandidates.map((node, index) => <button key={node.id} type="button" role="option" aria-selected={index === mentionIndex} className={index === mentionIndex ? "is-active" : undefined} onMouseDown={(event) => event.preventDefault()} onClick={() => selectMention(node)}><strong>{assistantMentionToken(node)}</strong><small>{assistantNodeKindLabel(node)} · {node.title}</small></button>)}</div> : null}
         <textarea ref={textareaRef} value={input} maxLength={1_200} onChange={(event) => updateInput(event.target.value, event.target.selectionStart)} onKeyDown={handleComposerKeyDown} placeholder="补充要求（可选），点击上方分析按钮后发送" aria-label="提示词补充要求" aria-autocomplete="list" />
         <button type="submit" disabled={phase === "analyzing" || !canAnalyze} aria-label="分析提示词" title="分析提示词"><Send /></button>
       </form>
-      <small className="canvas-assistant__scope">只分析明确选中的素材；不会自动生成视频或访问画布外内容</small>
+      <small className="canvas-assistant__scope">只分析明确选中的素材；节点创建后仍需你手动点击生成</small>
     </aside>
   );
 }
@@ -323,8 +313,8 @@ function SelectionSummary({ label, nodes, empty, limit }: { label: string; nodes
   return <div className="canvas-assistant__selection"><span>{label}</span><strong>{nodes.length ? nodes.slice(0, limit).map((node) => node.title).join("、") : empty}</strong></div>;
 }
 
-function TargetGeneratorField({ generators, value, onChange }: { generators: CanvasAssistantNodeContext[]; value: string; onChange: (value: string) => void }) {
-  return <label className="canvas-assistant__target"><span>目标视频链路</span><select value={value} onChange={(event) => onChange(event.target.value)} aria-label="选择目标视频链路"><option value="">{generators.length > 1 ? "请选择视频生成链路" : generators.length === 1 ? generators[0].title : "没有视频生成链路"}</option>{generators.map((node) => <option key={node.id} value={node.id}>{node.title}</option>)}</select></label>;
+function DirectionPicker({ value, onChange }: { value: ContentDirection; onChange: (value: ContentDirection) => void }) {
+  return <div className="canvas-assistant__directions" role="group" aria-label="视频方向">{contentDirections.map((direction) => <button key={direction.id} type="button" className={direction.id === value ? "is-active" : undefined} onClick={() => onChange(direction.id)} title={direction.detail}>{direction.label}</button>)}</div>;
 }
 
 function buildReferenceBindings(mode: AssistantModule, images: CanvasAssistantNodeContext[], videos: CanvasAssistantNodeContext[], generatorId: string): CanvasReferenceBinding[] {
