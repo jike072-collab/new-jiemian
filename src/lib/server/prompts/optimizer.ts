@@ -654,10 +654,15 @@ export function createProviderPromptModelCaller(loadProvider: PromptProviderLoad
   };
 }
 
-function isProviderConfigFallback(error: unknown) {
+function shouldFallbackToAdminPromptModel(error: unknown) {
   return error instanceof NewApiError
-    && (error.code === "NEW_API_CONFIG_MISSING" || error.code === "NEW_API_CONFIG_INVALID" || error.code === "NEW_API_DISABLED")
-    && error.safeDetails?.providerId === PROMPT_OPTIMIZER_PROVIDER_ID;
+    && error.safeDetails?.providerId === PROMPT_OPTIMIZER_PROVIDER_ID
+    && (
+      error.retryable
+      || error.code === "NEW_API_CONFIG_MISSING"
+      || error.code === "NEW_API_CONFIG_INVALID"
+      || error.code === "NEW_API_DISABLED"
+    );
 }
 
 function createNewApiAdminPromptModelCaller(client: NewApiHttpClient): PromptModelCaller {
@@ -683,16 +688,15 @@ function createNewApiAdminPromptModelCaller(client: NewApiHttpClient): PromptMod
   };
 }
 
-export function createNewApiPromptModelCaller(client?: NewApiHttpClient): PromptModelCaller {
+export function createNewApiPromptModelCaller(client?: NewApiHttpClient, fallbackProviderCaller?: PromptModelCaller): PromptModelCaller {
   const adminCaller = createNewApiAdminPromptModelCaller(client || new NewApiHttpClient());
-  if (client) return adminCaller;
-
-  const providerCaller = createProviderPromptModelCaller();
+  const providerCaller = fallbackProviderCaller || (client ? null : createProviderPromptModelCaller());
+  if (!providerCaller) return adminCaller;
   return async (input) => {
     try {
       return await providerCaller(input);
     } catch (error) {
-      if (!isProviderConfigFallback(error)) throw error;
+      if (!shouldFallbackToAdminPromptModel(error)) throw error;
       return adminCaller(input);
     }
   };

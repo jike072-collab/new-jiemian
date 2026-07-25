@@ -546,3 +546,39 @@ test("New API caller uses chat completions without exposing admin credentials", 
     else process.env.PROMPT_OPTIMIZER_MODEL = previousModel;
   }
 });
+
+test("New API caller falls back when the dedicated prompt provider is temporarily unavailable", async () => {
+  handlers.set("POST /v1/chat/completions", async (_request, response) => {
+    json(response, 200, { choices: [{ message: { content: "来自备用模型的文案" } }] });
+  });
+  let providerCalls = 0;
+  const caller = createNewApiPromptModelCaller(new NewApiHttpClient({
+    enabled: true,
+    baseUrl,
+    timeoutMs: 500,
+    maxResponseBytes: 65536,
+    environment: "test",
+    adminAccessToken: "admin-secret",
+    adminUserId: 1,
+  }), async () => {
+    providerCalls += 1;
+    throw new NewApiError({
+      code: "NEW_API_UPSTREAM_ERROR",
+      message: "Dedicated prompt provider is unavailable.",
+      status: 502,
+      retryable: true,
+      requestId: "req-provider-fallback",
+      safeDetails: { providerId: "prompt-optimizer" },
+    });
+  });
+
+  const output = await caller({
+    systemPrompt: "system",
+    userPrompt: "user",
+    requestId: "req-provider-fallback",
+    timeoutMs: 500,
+  });
+
+  assert.equal(providerCalls, 1);
+  assert.equal(output, "来自备用模型的文案");
+});
