@@ -18,7 +18,7 @@ export function matchPendingGeneratedMedia(
       || node.data.libraryItemId
       || node.data.mediaOrigin !== "generated"
       || !node.data.mediaType
-      || !["queued", "generating", "failed"].includes(node.data.status || "")
+      || !["queued", "generating", "done", "failed"].includes(node.data.status || "")
     ) continue;
 
     const generator = node.data.sourceNodeIds
