@@ -1,12 +1,11 @@
 "use client";
 
-import { Bot, Check, Film, Image as ImageIcon, LoaderCircle, ListVideo, Send, Sparkles, WandSparkles, X } from "lucide-react";
+import { Bot, Check, Film, Image as ImageIcon, LoaderCircle, Send, Sparkles, WandSparkles, X } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent, type KeyboardEvent } from "react";
 
 import { fetchJsonWithCsrf } from "@/lib/client/api";
 import { normalizeCanvasAssistantResponse, type CanvasAssistantAction, type CanvasAssistantResponse } from "@/lib/canvas/assistant";
 import type { CanvasMediaType, CanvasReferenceBinding, CanvasSequenceState } from "@/lib/canvas/types";
-import { seedanceTemplates } from "@/lib/seedance/templates";
 
 export type CanvasAssistantNodeContext = {
   id: string;
@@ -30,6 +29,8 @@ export type CanvasAssistantNodeContext = {
 type Message = { role: "user" | "assistant"; content: string };
 type MentionQuery = { start: number; end: number; query: string };
 type AssistantModule = "prompt" | "replace";
+type AssistantPhase = "idle" | "analyzing" | "preview" | "created" | "error";
+type PromptAction = Extract<CanvasAssistantAction, { type: "add_prompt" }>;
 
 export function CanvasAssistantPanel({
   canvasTitle,
@@ -48,51 +49,80 @@ export function CanvasAssistantPanel({
   onApply: (actions: CanvasAssistantAction[]) => void;
   onClose: () => void;
 }) {
-  const selectedPrompt = nodes.find((node) => node.selected && node.kind === "prompt")?.prompt || "";
   const [activeModule, setActiveModule] = useState<AssistantModule>("prompt");
   const [hookStyle, setHookStyle] = useState("痛点钩子");
-  const [storyboardTemplate, setStoryboardTemplate] = useState("产品展示");
+  const [targetGeneratorId, setTargetGeneratorId] = useState("");
+  const [phase, setPhase] = useState<AssistantPhase>("idle");
+  const [previewPrompt, setPreviewPrompt] = useState("");
+  const [previewTitle, setPreviewTitle] = useState("提示词");
+  const [previewBindings, setPreviewBindings] = useState<CanvasReferenceBinding[]>([]);
+  const [input, setInput] = useState("");
   const [messages, setMessages] = useState<Message[]>([{
     role: "assistant",
-    content: "我只处理当前画布。可以让我写提示词、改写选中的提示词，或整理节点布局。",
+    content: "先在画布中选中要分析的素材，再选择功能并点击分析。分析结果确认后，才会创建一个提示词节点。",
   }]);
-  const [input, setInput] = useState("");
-  const [busy, setBusy] = useState(false);
-  const [pendingActions, setPendingActions] = useState<CanvasAssistantAction[]>([]);
   const [mentionQuery, setMentionQuery] = useState<MentionQuery | null>(null);
   const [mentionIndex, setMentionIndex] = useState(0);
-  const [mentionedNodeIds, setMentionedNodeIds] = useState<string[]>([]);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const autoTargetGeneratorIdRef = useRef("");
   const handledMentionRevisionRef = useRef(0);
   const contextNodes = useMemo(() => nodes.slice(0, 120), [nodes]);
   const selectedNodes = useMemo(() => nodes.filter((node) => node.selected), [nodes]);
-  const mentionedNodes = useMemo(() => nodes.filter((node) => mentionedNodeIds.includes(node.id)), [mentionedNodeIds, nodes]);
+  const selectedImages = useMemo(() => selectedNodes.filter((node) => node.kind === "media" && node.mediaType === "image"), [selectedNodes]);
+  const selectedVideos = useMemo(() => selectedNodes.filter((node) => node.kind === "media" && node.mediaType === "video"), [selectedNodes]);
+  const videoGenerators = useMemo(() => nodes.filter((node) => node.kind === "generator" && node.generationKind === "video"), [nodes]);
   const mentionCandidates = useMemo(() => {
     if (!mentionQuery) return [];
     const query = mentionQuery.query.trim().toLowerCase();
     return contextNodes
       .filter((node) => node.kind !== "group")
-      .filter((node) => {
-        if (!query) return true;
-        return `${assistantMentionToken(node)} ${node.title} ${assistantNodeKindLabel(node)}`.toLowerCase().includes(query);
-      })
+      .filter((node) => !query || `${assistantMentionToken(node)} ${node.title} ${assistantNodeKindLabel(node)}`.toLowerCase().includes(query))
       .slice(0, 8);
   }, [contextNodes, mentionQuery]);
-  const generatorCount = useMemo(() => nodes.filter((node) => node.kind === "generator").length, [nodes]);
-  const imageCount = useMemo(() => nodes.filter((node) => node.kind === "media" && node.mediaType === "image").length, [nodes]);
-  const videoCount = useMemo(() => nodes.filter((node) => node.kind === "media" && node.mediaType === "video").length, [nodes]);
-  const contextLabel = mentionedNodes.length
-    ? `已引用 ${mentionedNodes.length} 个：${mentionedNodes.slice(0, 2).map((node) => node.title).join("、")}${mentionedNodes.length > 2 ? "…" : ""}`
-    : selectedNodes.length
-    ? `已选 ${selectedNodes.length} 个：${selectedNodes.slice(0, 2).map((node) => node.title).join("、")}${selectedNodes.length > 2 ? "…" : ""}`
-    : generatorCount === 1 ? "自动使用唯一生成链路" : `全画布 ${generatorCount} 条生成链路`;
+  const selectedImageOverflow = selectedImages.length > 4;
+  const resolvedTargetGeneratorId = targetGeneratorId && videoGenerators.some((node) => node.id === targetGeneratorId)
+    ? targetGeneratorId
+    : videoGenerators.length === 1 ? videoGenerators[0].id : "";
+  const targetGenerator = videoGenerators.find((node) => node.id === resolvedTargetGeneratorId);
+  const canPromptAnalyze = selectedImages.length > 0 && !selectedImageOverflow && Boolean(resolvedTargetGeneratorId);
+  const canReplaceAnalyze = selectedVideos.length === 1 && selectedImages.length > 0 && !selectedImageOverflow && Boolean(resolvedTargetGeneratorId);
+  const canAnalyze = activeModule === "prompt" ? canPromptAnalyze : canReplaceAnalyze;
+  const selectionSignature = `${activeModule}:${selectedNodes.map((node) => node.id).sort().join(",")}:${resolvedTargetGeneratorId}`;
+
+  useEffect(() => {
+    if (videoGenerators.length === 1) {
+      const onlyGeneratorId = videoGenerators[0].id;
+      if (targetGeneratorId !== onlyGeneratorId) {
+        autoTargetGeneratorIdRef.current = onlyGeneratorId;
+        setTargetGeneratorId(onlyGeneratorId);
+      }
+      return;
+    }
+    if (autoTargetGeneratorIdRef.current && targetGeneratorId === autoTargetGeneratorIdRef.current) {
+      setTargetGeneratorId("");
+    }
+    autoTargetGeneratorIdRef.current = "";
+    if (targetGeneratorId && !videoGenerators.some((node) => node.id === targetGeneratorId)) setTargetGeneratorId("");
+  }, [targetGeneratorId, videoGenerators]);
+
+  useEffect(() => {
+    // A changed selection or target invalidates the previous analysis.
+    setPhase("idle");
+    setPreviewPrompt("");
+    setPreviewTitle("提示词");
+    setPreviewBindings([]);
+  }, [selectionSignature]);
+
+  function resetPreview(nextModule = activeModule) {
+    setActiveModule(nextModule);
+    setPhase("idle");
+    setPreviewPrompt("");
+    setPreviewTitle("提示词");
+    setPreviewBindings([]);
+  }
 
   function updateInput(value: string, cursor: number) {
     setInput(value);
-    setMentionedNodeIds((current) => current.filter((id) => {
-      const node = nodes.find((candidate) => candidate.id === id);
-      return Boolean(node && value.includes(assistantMentionToken(node)));
-    }));
     const match = value.slice(0, cursor).match(/(?:^|\s)(@[^\s@]*)$/u);
     if (!match) {
       setMentionQuery(null);
@@ -108,7 +138,6 @@ export function CanvasAssistantPanel({
     const next = `${input.slice(0, mentionQuery.start)}${token} ${input.slice(mentionQuery.end)}`;
     const cursor = mentionQuery.start + token.length + 1;
     setInput(next);
-    setMentionedNodeIds((current) => current.includes(node.id) ? current : [...current, node.id]);
     setMentionQuery(null);
     requestAnimationFrame(() => {
       textareaRef.current?.focus();
@@ -148,17 +177,14 @@ export function CanvasAssistantPanel({
     }
   }
 
-  async function submitMessage(value: string) {
+  async function submitMessage(value: string, mode: AssistantModule, selectedIds: string[], targetId: string) {
     const message = value.trim();
-    if (!message || busy) return;
+    if (!message || busyPhase(phase)) return;
     const nextMessages = [...messages, { role: "user" as const, content: message }];
-    const mentioned = new Set(mentionedNodeIds);
+    const selected = new Set(selectedIds);
     setMessages(nextMessages);
-    setInput("");
     setMentionQuery(null);
-    setMentionedNodeIds([]);
-    setBusy(true);
-    setPendingActions([]);
+    setPhase("analyzing");
     try {
       const response = await fetchJsonWithCsrf<CanvasAssistantResponse>("/api/canvas/assistant", {
         method: "POST",
@@ -166,47 +192,73 @@ export function CanvasAssistantPanel({
           message,
           canvasTitle,
           scope,
-          nodes: contextNodes.map((node) => ({
-            ...node,
-            selected: mentioned.size ? mentioned.has(node.id) : node.selected,
-          })),
+          assistantMode: mode === "prompt" ? "prompt-generation" : "reference-replacement",
+          selectedNodeIds: selectedIds,
+          targetGeneratorId: targetId,
+          nodes: contextNodes.map((node) => ({ ...node, selected: selected.has(node.id) })),
           history: nextMessages.slice(-8),
         }),
       });
       const normalized = normalizeCanvasAssistantResponse(response);
+      const action = normalized.actions.find((candidate): candidate is PromptAction => candidate.type === "add_prompt");
+      if (!action) throw new Error("助手没有返回可确认的提示词，请补充素材或要求后重试。");
+      const promptAction: PromptAction = {
+        ...action,
+        targetGeneratorId: action.targetGeneratorId || targetId,
+      };
+      const bindings = promptAction.referenceBindings?.length
+        ? promptAction.referenceBindings
+        : buildReferenceBindings(mode, selectedImages, selectedVideos, targetId);
+      setPreviewTitle(promptAction.title || (mode === "prompt" ? "15 秒带货视频提示词" : "专业视频换物提示词"));
+      setPreviewPrompt(promptAction.prompt);
+      setPreviewBindings(bindings);
       setMessages((current) => [...current, { role: "assistant", content: normalized.reply }]);
-      setPendingActions(normalized.actions);
+      setPhase("preview");
     } catch (error) {
-      setMessages((current) => [...current, {
-        role: "assistant",
-        content: error instanceof Error ? error.message : "助手暂时不可用，请稍后重试。",
-      }]);
-    } finally {
-      setBusy(false);
+      setMessages((current) => [...current, { role: "assistant", content: error instanceof Error ? error.message : "助手暂时不可用，请稍后重试。" }]);
+      setPhase("error");
     }
+  }
+
+  function analyzeCurrent() {
+    if (!canAnalyze || !targetGenerator) return;
+    const selectedIds = activeModule === "prompt"
+      ? [...selectedImages.slice(0, 4).map((node) => node.id), targetGenerator.id]
+      : [...selectedVideos.map((node) => node.id), ...selectedImages.slice(0, 4).map((node) => node.id), targetGenerator.id];
+    const extra = input.trim() ? `用户补充要求：${input.trim()}` : "没有额外要求。";
+    const message = activeModule === "prompt"
+      ? `只分析明确选中的产品图片，为目标链路“${targetGenerator.title}”生成一条 15 秒 TikTok Shop 带货提示词。开头使用${hookStyle}，采用 0-2 秒钩子、2-7 秒核心价值、7-12 秒可见证据、12-15 秒行动的时间轴。输出素材职责、产品可见事实、时间轴、声音/口播和禁止项；只返回一个 add_prompt，不生成分镜，不开始生成视频。${extra}`
+      : `只分析明确选中的 @Video 基础视频和 @Image 参考图，为目标链路“${targetGenerator.title}”生成一条局部换物提示词。@Video 只负责原视频动作、镜头和时间线，@Image 只负责目标物外观；只返回一个 add_prompt，不开始生成视频。${extra}`;
+    void submitMessage(message, activeModule, selectedIds, targetGenerator.id);
+  }
+
+  function createPromptNode() {
+    if (phase !== "preview" || !previewPrompt.trim() || !targetGenerator) return;
+    onApply([{
+      type: "add_prompt",
+      title: previewTitle,
+      prompt: previewPrompt.trim(),
+      targetGeneratorId: targetGenerator.id,
+      ...(previewBindings.length ? { referenceBindings: previewBindings } : {}),
+    }]);
+    setPhase("created");
+    setMessages((current) => [...current, { role: "assistant", content: "提示词已创建并连接到目标视频链路；尚未开始生成。" }]);
   }
 
   function submit(event: FormEvent) {
     event.preventDefault();
-    void submitMessage(input);
+    analyzeCurrent();
   }
 
-  function requestCommercePrompt(includeStoryboard: boolean) {
-    const storyboard = includeStoryboard
-      ? `同时输出 3 段分镜脚本（0-3 秒、3-10 秒、10-15 秒），每段写清画面、动作、口播/字幕和素材引用。`
-      : "只输出一条完整视频提示词，不创建分镜节点。";
-    void submitMessage([
-      "根据当前选中或已连接的产品图片/素材，制作一条 15 秒 TikTok Shop 带货视频。",
-      `采用${storyboardTemplate}分镜模板，开头使用${hookStyle}，按注意（0-3 秒）、兴趣与欲望（3-10 秒）、信任（10-12 秒）、行动（12-15 秒）组织。`,
-      "只使用图片中真实可见的产品外观、材质、颜色和使用场景，提炼一个核心卖点；不虚构功效、价格、折扣、销量或用户证言。",
-      "保留并准确使用当前画布的 @ImageN、@VideoN、@AudioN 引用，明确每个引用的职责和禁止转移的内容。",
-      `${storyboard} 只创建提示词或分镜节点，等待我确认，不要开始生成视频。`,
-    ].join(" "));
-  }
-
-  function requestReplacementPrompt() {
-    void submitMessage("根据当前画布中的 @VideoN 基础视频和 @ImageN 参考图，生成一条局部换物提示词。@VideoN 只负责原视频动作、镜头和时间线，@ImageN 只负责目标物外观；逐帧保持目标物的出现、消失、遮挡、透视、运动模糊和接触阴影与原对象一致，其余人物、动作、场景、光线、声音和时长保持不变。只创建提示词，不开始生成。");
-  }
+  const phaseLabel = phase === "analyzing"
+    ? "分析中"
+    : phase === "preview"
+      ? "可编辑预览"
+      : phase === "created"
+        ? "已创建"
+        : phase === "error"
+          ? "失败，可重新分析"
+          : canAnalyze ? "待分析" : "待选素材";
 
   return (
     <aside className="canvas-assistant" aria-label="画布智能助手">
@@ -215,91 +267,85 @@ export function CanvasAssistantPanel({
         <button type="button" className="canvas-icon-button" onClick={onClose} aria-label="关闭智能助手" title="关闭智能助手"><X /></button>
       </header>
       <div className="canvas-assistant__modules" role="tablist" aria-label="助手模块">
-        <button type="button" role="tab" aria-selected={activeModule === "prompt"} className={activeModule === "prompt" ? "is-active" : undefined} onClick={() => setActiveModule("prompt")}><WandSparkles /><span>提示词生成</span><small>15 秒带货短视频</small></button>
-        <button type="button" role="tab" aria-selected={activeModule === "replace"} className={activeModule === "replace" ? "is-active" : undefined} onClick={() => setActiveModule("replace")}><ImageIcon /><span>参考图替换</span><small>视频换物</small></button>
+        <button type="button" role="tab" aria-selected={activeModule === "prompt"} className={activeModule === "prompt" ? "is-active" : undefined} onClick={() => resetPreview("prompt")}><WandSparkles /><span>提示词生成</span><small>15 秒带货短视频</small></button>
+        <button type="button" role="tab" aria-selected={activeModule === "replace"} className={activeModule === "replace" ? "is-active" : undefined} onClick={() => resetPreview("replace")}><ImageIcon /><span>参考图替换</span><small>视频换物</small></button>
       </div>
       {activeModule === "prompt" ? (
         <section className="canvas-assistant__module-panel" aria-label="提示词生成">
-          <div className="canvas-assistant__module-heading"><div><strong>15 秒带货视频</strong><span>根据当前图片生成提示词和分镜脚本</span></div><Film /></div>
+          <div className="canvas-assistant__module-heading"><div><strong>15 秒带货提示词</strong><span>先选图，再分析；确认后才创建节点</span></div><Film /></div>
+          <SelectionSummary label="分析图片" nodes={selectedImages} empty="请先在画布中选中产品图片" limit={4} />
           <div className="canvas-assistant__fields">
-            <label><span>分镜模板</span><select value={storyboardTemplate} onChange={(event) => setStoryboardTemplate(event.target.value)}><option>产品展示</option><option>真人演示</option><option>开箱测评</option></select></label>
             <label><span>开头钩子</span><select value={hookStyle} onChange={(event) => setHookStyle(event.target.value)}><option>痛点钩子</option><option>结果钩子</option><option>场景钩子</option><option>反差钩子</option></select></label>
+            <TargetGeneratorField generators={videoGenerators} value={resolvedTargetGeneratorId} onChange={(value) => { autoTargetGeneratorIdRef.current = ""; setTargetGeneratorId(value); }} />
           </div>
-          <div className="canvas-assistant__prompt-actions">
-            <button type="button" className="is-primary" disabled={busy} onClick={() => requestCommercePrompt(false)}><Sparkles />生成提示词</button>
-            <button type="button" disabled={busy} onClick={() => requestCommercePrompt(true)}><ListVideo />提示词 + 分镜</button>
-          </div>
-          <div className="canvas-assistant__utility" aria-label="提示词工具">
-            <button type="button" disabled={busy} onClick={() => { void submitMessage("分析当前画布已经连接的素材和生成参数，新增一条专业、完整、可直接生成的提示词；使用准确引用标签，写清必须保留、需要改变和禁止变化的内容。"); }}>专业提示词</button>
-            <button type="button" disabled={busy || !selectedPrompt} onClick={() => { void submitMessage("优化当前选中的提示词，保留原意并让它更适合生成。"); }}>优化选中</button>
-            <button type="button" disabled={busy} onClick={() => { void submitMessage("按从左到右的创作流程整理当前画布节点。"); }}>整理画布</button>
-          </div>
-          <label className="canvas-assistant__template"><span>Seedance 模板</span><select aria-label="选择 Seedance 模板" defaultValue="" onChange={(event) => { const template = seedanceTemplates.find((item) => item.id === event.target.value); if (template) setInput(template.prompt); event.currentTarget.value = ""; }}><option value="">选择模板</option>{seedanceTemplates.map((template) => <option key={template.id} value={template.id}>{template.name}</option>)}</select></label>
+          {selectedImageOverflow ? <p className="canvas-assistant__validation">最多选择 4 张图片，请取消多余选择。</p> : null}
+          <button type="button" className="canvas-assistant__analyze-action" disabled={phase === "analyzing" || !canPromptAnalyze} onClick={analyzeCurrent}><Sparkles />分析提示词</button>
         </section>
       ) : (
         <section className="canvas-assistant__module-panel" aria-label="参考图替换">
-          <div className="canvas-assistant__module-heading"><div><strong>参考图替换</strong><span>用图片替换视频中的指定对象</span></div><ImageIcon /></div>
-          <div className="canvas-assistant__replace-summary"><span className={videoCount ? "is-ready" : undefined}>@Video · {videoCount ? `${videoCount} 个基础视频` : "未连接"}</span><span className={imageCount ? "is-ready" : undefined}>@Image · {imageCount ? `${imageCount} 张参考图` : "未连接"}</span></div>
-          <button type="button" className="canvas-assistant__replace-action" disabled={busy || !videoCount || !imageCount} onClick={requestReplacementPrompt}><WandSparkles />生成换物提示词</button>
+          <div className="canvas-assistant__module-heading"><div><strong>参考图替换</strong><span>先选基础视频和参考图，再分析换物提示词</span></div><ImageIcon /></div>
+          <SelectionSummary label="基础视频" nodes={selectedVideos} empty="请先在画布中选中一个基础视频" limit={1} />
+          <SelectionSummary label="参考图片" nodes={selectedImages} empty="请先在画布中选中目标物参考图" limit={4} />
+          <TargetGeneratorField generators={videoGenerators} value={resolvedTargetGeneratorId} onChange={(value) => { autoTargetGeneratorIdRef.current = ""; setTargetGeneratorId(value); }} />
+          {selectedVideos.length > 1 ? <p className="canvas-assistant__validation">参考图替换一次只能选择一个基础视频。</p> : null}
+          {selectedImageOverflow ? <p className="canvas-assistant__validation">最多选择 4 张参考图片，请取消多余选择。</p> : null}
+          <button type="button" className="canvas-assistant__analyze-action" disabled={phase === "analyzing" || !canReplaceAnalyze} onClick={analyzeCurrent}><Sparkles />分析换物提示词</button>
         </section>
       )}
-      <div className="canvas-assistant__context" title={(mentionedNodes.length ? mentionedNodes : selectedNodes).map((node) => node.title).join("、") || contextLabel}>
-        <span>分析范围</span><strong>{contextLabel}</strong>
-      </div>
-      <div className="canvas-assistant__messages" aria-live="polite">
-        {messages.map((message, index) => (
-          <div key={`${message.role}-${index}`} className={`canvas-assistant__message is-${message.role}`}>
-            {message.role === "assistant" ? <Sparkles /> : null}
-            <p>{message.content}</p>
-          </div>
-        ))}
-        {busy ? <div className="canvas-assistant__message is-assistant"><LoaderCircle className="is-spinning" /><p>正在分析当前画布…</p></div> : null}
-      </div>
-      {pendingActions.length ? (
-        <div className="canvas-assistant__actions">
-          <span><WandSparkles />建议执行 {pendingActions.length} 项画布操作</span>
-          <button type="button" onClick={() => {
-            const count = pendingActions.length;
-            onApply(pendingActions);
-            setPendingActions([]);
-            setMessages((current) => [...current, { role: "assistant", content: `已应用 ${count} 项操作，画布未自动开始生成。` }]);
-          }}><Check />应用到画布</button>
-        </div>
+      <div className="canvas-assistant__context"><span>当前状态</span><strong>{phaseLabel}</strong></div>
+      {previewPrompt ? (
+        <section className="canvas-assistant__preview" aria-label="提示词分析结果">
+          <div className="canvas-assistant__preview-heading"><strong>分析结果</strong><span>可编辑</span></div>
+          <textarea value={previewPrompt} onChange={(event) => setPreviewPrompt(event.target.value)} disabled={phase === "created"} aria-label="可编辑提示词预览" />
+          <div className="canvas-assistant__bindings"><span>素材职责</span>{previewBindings.length ? previewBindings.map((binding) => <small key={`${binding.label}-${binding.role}`}>{binding.label} · {binding.role}{binding.transfer ? ` · ${binding.transfer}` : ""}</small>) : <small>助手未返回结构化职责，请在提示词中检查引用。</small>}</div>
+          <button type="button" className="canvas-assistant__create-action" disabled={phase !== "preview" || !previewPrompt.trim()} onClick={createPromptNode}><Check />生成提示词</button>
+        </section>
       ) : null}
+      <div className="canvas-assistant__messages" aria-live="polite">
+        {messages.map((message, index) => <div key={`${message.role}-${index}`} className={`canvas-assistant__message is-${message.role}`}>{message.role === "assistant" ? <Sparkles /> : null}<p>{message.content}</p></div>)}
+        {phase === "analyzing" ? <div className="canvas-assistant__message is-assistant"><LoaderCircle className="is-spinning" /><p>正在读取已选素材并分析提示词…</p></div> : null}
+      </div>
       <form className="canvas-assistant__composer" onSubmit={submit}>
-        {mentionQuery && mentionCandidates.length ? (
-          <div className="canvas-assistant__mentions" role="listbox" aria-label="引用画布节点">
-            {mentionCandidates.map((node, index) => (
-              <button
-                key={node.id}
-                type="button"
-                role="option"
-                aria-selected={index === mentionIndex}
-                className={index === mentionIndex ? "is-active" : undefined}
-                onMouseDown={(event) => event.preventDefault()}
-                onClick={() => selectMention(node)}
-              >
-                <strong>{assistantMentionToken(node)}</strong>
-                <small>{assistantNodeKindLabel(node)} · {node.title}</small>
-              </button>
-            ))}
-          </div>
-        ) : null}
-        <textarea
-          ref={textareaRef}
-          value={input}
-          maxLength={1_200}
-          onChange={(event) => updateInput(event.target.value, event.target.selectionStart)}
-          onKeyDown={handleComposerKeyDown}
-          placeholder="输入 @ 引用画布节点"
-          aria-label="给画布助手发送消息"
-          aria-autocomplete="list"
-        />
-        <button type="submit" disabled={busy || !input.trim()} aria-label="发送" title="发送"><Send /></button>
+        {mentionQuery && mentionCandidates.length ? <div className="canvas-assistant__mentions" role="listbox" aria-label="引用画布节点">{mentionCandidates.map((node, index) => <button key={node.id} type="button" role="option" aria-selected={index === mentionIndex} className={index === mentionIndex ? "is-active" : undefined} onMouseDown={(event) => event.preventDefault()} onClick={() => selectMention(node)}><strong>{assistantMentionToken(node)}</strong><small>{assistantNodeKindLabel(node)} · {node.title}</small></button>)}</div> : null}
+        <textarea ref={textareaRef} value={input} maxLength={1_200} onChange={(event) => updateInput(event.target.value, event.target.selectionStart)} onKeyDown={handleComposerKeyDown} placeholder="补充要求（可选），点击上方分析按钮后发送" aria-label="提示词补充要求" aria-autocomplete="list" />
+        <button type="submit" disabled={phase === "analyzing" || !canAnalyze} aria-label="分析提示词" title="分析提示词"><Send /></button>
       </form>
-      <small className="canvas-assistant__scope">不会访问账号、服务器、网页，也不会自动提交生成任务</small>
+      <small className="canvas-assistant__scope">只分析明确选中的素材；不会自动生成视频或访问画布外内容</small>
     </aside>
   );
+}
+
+function busyPhase(phase: AssistantPhase) {
+  return phase === "analyzing";
+}
+
+function SelectionSummary({ label, nodes, empty, limit }: { label: string; nodes: CanvasAssistantNodeContext[]; empty: string; limit: number }) {
+  return <div className="canvas-assistant__selection"><span>{label}</span><strong>{nodes.length ? nodes.slice(0, limit).map((node) => node.title).join("、") : empty}</strong></div>;
+}
+
+function TargetGeneratorField({ generators, value, onChange }: { generators: CanvasAssistantNodeContext[]; value: string; onChange: (value: string) => void }) {
+  return <label className="canvas-assistant__target"><span>目标视频链路</span><select value={value} onChange={(event) => onChange(event.target.value)} aria-label="选择目标视频链路"><option value="">{generators.length > 1 ? "请选择视频生成链路" : generators.length === 1 ? generators[0].title : "没有视频生成链路"}</option>{generators.map((node) => <option key={node.id} value={node.id}>{node.title}</option>)}</select></label>;
+}
+
+function buildReferenceBindings(mode: AssistantModule, images: CanvasAssistantNodeContext[], videos: CanvasAssistantNodeContext[], generatorId: string): CanvasReferenceBinding[] {
+  const imageBindings = images.slice(0, 4).map((node, index) => ({
+    label: referenceLabel(node, generatorId, `@Image${index + 1}`),
+    role: "product" as const,
+    transfer: mode === "replace" ? "只转移参考图中的目标物外观、材质和颜色" : "只转移图片中真实可见的产品外观、材质和颜色",
+    ignore: "不转移背景、动作、镜头或未提供的功效信息",
+  }));
+  if (mode === "prompt") return imageBindings;
+  const videoBindings = videos.slice(0, 1).map((node) => ({
+    label: referenceLabel(node, generatorId, "@Video1"),
+    role: "motion" as const,
+    transfer: "只保留基础视频中的动作、镜头和时间线",
+    ignore: "不把基础视频中的原产品外观带入替换结果",
+  }));
+  return [...videoBindings, ...imageBindings];
+}
+
+function referenceLabel(node: CanvasAssistantNodeContext, generatorId: string, fallback: string) {
+  return node.referenceLabels?.find((item) => item.generatorId === generatorId)?.label || node.referenceLabels?.[0]?.label || fallback;
 }
 
 function assistantMentionToken(node: CanvasAssistantNodeContext) {

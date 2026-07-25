@@ -12,7 +12,7 @@ const assistantMedia = read("src/lib/server/canvas-assistant-media.ts");
 const optimizer = read("src/lib/server/prompts/optimizer.ts");
 const workspace = read("src/components/canvas/canvas-workspace.tsx");
 const canvasCss = read("src/app/canvas/canvas.css");
-const { canvasAssistantVideoTimestamps, localCanvasAssistantFallback, normalizeCanvasAssistantResponse } = await import(new URL("../src/lib/canvas/assistant.ts", import.meta.url));
+const { canvasAssistantVideoTimestamps, localCanvasAssistantFallback, normalizeCanvasAssistantResponse, restrictCanvasAssistantResponse } = await import(new URL("../src/lib/canvas/assistant.ts", import.meta.url));
 const { resolveCanvasAssistantMediaFocus } = await import(new URL("../src/lib/canvas/assistant-focus.ts", import.meta.url));
 const { inferSeedancePromptMode, seedancePromptGuidance, seedanceReferenceIssues } = await import(new URL("../src/lib/seedance/prompt-guidance.ts", import.meta.url));
 const { isTikTokShopVideoRequest, tiktokShopVideoGuidance, tiktokShopVideoTiming } = await import(new URL("../src/lib/tiktok-shop-video-guidance.ts", import.meta.url));
@@ -60,12 +60,24 @@ assert.match(workspace, /CanvasAssistantPanel/);
 assert.match(workspace, /flowRef\.current\.setCenter/);
 const assistantPanel = read("src/components/canvas/canvas-assistant-panel.tsx");
 assert.match(assistantPanel, /submitMessage/);
-assert.match(assistantPanel, /已应用.*项操作/);
+assert.match(assistantPanel, /提示词生成/);
+assert.match(assistantPanel, /参考图替换/);
+assert.match(assistantPanel, /分析提示词/);
+assert.match(assistantPanel, /分析结果/);
+assert.match(assistantPanel, /生成提示词/);
+assert.match(assistantPanel, /phase === "preview"/);
+assert.match(assistantPanel, /分析中/);
+assert.match(assistantPanel, /可编辑预览/);
+assert.match(assistantPanel, /待分析/);
+assert.match(assistantPanel, /selectedNodeIds: selectedIds/);
+assert.match(assistantPanel, /referenceBindings/);
 assert.match(assistantPanel, /mentionSelection/);
 assert.match(assistantPanel, /onMentionModeChange\(Boolean\(mentionQuery\)\)/);
 assert.match(assistantPanel, /contextNodes\.find\(\(candidate\) => candidate\.id === mentionSelection\.nodeId\)/);
 assert.match(assistantPanel, /mentionSelection\.revision <= handledMentionRevisionRef\.current/);
 assert.match(assistantPanel, /带货短视频/);
+assert.match(assistantPanel, /目标视频链路/);
+assert.match(assistantPanel, /0-2 秒/);
 assert.match(workspace, /applyAssistantActions/);
 assert.match(workspace, /assistantNodeContexts/);
 assert.match(workspace, /referenceLabels/);
@@ -108,6 +120,32 @@ assert.deepEqual(normalizeCanvasAssistantResponse({
     { type: "organize", layout: "flow" },
   ],
 });
+
+const normalizedBindings = normalizeCanvasAssistantResponse({
+  reply: "ok",
+  actions: [{
+    type: "add_prompt",
+    prompt: "使用 @Image1",
+    referenceBindings: [
+      { label: "@Image1", role: "product", transfer: "只转移产品外观", ignore: "不转移背景" },
+      { label: "Image2", role: "product" },
+    ],
+  }],
+});
+assert.deepEqual(normalizedBindings.actions[0].referenceBindings, [{
+  label: "@Image1",
+  role: "product",
+  transfer: "只转移产品外观",
+  ignore: "不转移背景",
+}]);
+assert.equal(restrictCanvasAssistantResponse(normalizeCanvasAssistantResponse({
+  reply: "ok",
+  actions: [
+    { type: "add_prompt", prompt: "第一条" },
+    { type: "add_prompt", prompt: "第二条" },
+    { type: "add_storyboard", shots: [{ shotId: "SH01", title: "开场", timeRange: "0-2s", prompt: "开场" }] },
+  ],
+}), "prompt-generation").actions.length, 1);
 
 assert.deepEqual(normalizeCanvasAssistantResponse({
   reply: "连接提示词",
@@ -160,6 +198,11 @@ assert.equal(localCanvasAssistantFallback({ message: "帮我写一段产品提�
 const localStoryboard = localCanvasAssistantFallback({ message: "把当前故事拆成分镜", canvasTitle: "雨夜短片" });
 assert.equal(localStoryboard.actions[0].type, "add_storyboard");
 assert.equal(localStoryboard.actions[0].shots.length, 3);
+const localCommerceStoryboard = localCanvasAssistantFallback({ message: "根据商品图片生成 15 秒 TikTok Shop 带货提示词和分镜", canvasTitle: "新品" });
+assert.equal(localCommerceStoryboard.actions[0].type, "add_prompt");
+assert.equal(localCommerceStoryboard.actions[1].type, "add_storyboard");
+assert.equal(localCommerceStoryboard.actions[1].shots.length, 4);
+assert.match(localCommerceStoryboard.actions[0].prompt, /0-2 秒/);
 assert.deepEqual(localCanvasAssistantFallback({ message: "继续上一段视频", nodes: [{ kind: "media", title: "未完成视频", mediaType: "video" }] }).actions, []);
 assert.equal(localCanvasAssistantFallback({ message: "继续上一段视频", nodes: [{ kind: "media", title: "成功视频", mediaType: "video", sequenceState: { accepted: true } }] }).actions[0].type, "add_prompt");
 

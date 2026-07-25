@@ -130,6 +130,7 @@ import {
 } from "@/lib/generation-quota";
 import { ApiError, fetchJson, fetchJsonWithCsrf } from "@/lib/client/api";
 import type {
+  CanvasReferenceBinding,
   CanvasMediaType,
   CanvasNodeData,
   CanvasProject,
@@ -1257,12 +1258,13 @@ function CanvasWorkspaceInner({
     return node;
   }, [flow, markDirty, pushHistorySnapshot]);
 
-  const addPromptNode = useCallback((input?: { title?: string; prompt?: string }, position?: { x: number; y: number }) => {
+  const addPromptNode = useCallback((input?: { title?: string; prompt?: string; referenceBindings?: CanvasReferenceBinding[] }, position?: { x: number; y: number }) => {
     return addNodeAtCenter({
       kind: "prompt",
       title: input?.title?.trim().slice(0, 80) || "提示词",
       prompt: input?.prompt?.trim().slice(0, 4_000) || "",
       createdAt: new Date().toISOString(),
+      ...(input?.referenceBindings?.length ? { referenceBindings: input.referenceBindings } : {}),
     }, { width: 320, height: 230 }, position);
   }, [addNodeAtCenter]);
 
@@ -2830,7 +2832,7 @@ function CanvasWorkspaceInner({
           ? nodesRef.current.find((node) => node.id === action.targetGeneratorId && node.data.kind === "generator")
           : undefined;
         const promptNode = addPromptNode(
-          { title: action.title, prompt: action.prompt },
+          { title: action.title, prompt: action.prompt, referenceBindings: action.referenceBindings },
           target ? { x: target.position.x - 400, y: target.position.y } : undefined,
         );
         if (target) {

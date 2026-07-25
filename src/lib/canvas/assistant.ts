@@ -2,7 +2,7 @@ import type { CanvasMediaType, CanvasReferenceBinding, CanvasSequenceState } fro
 import { isTikTokShopVideoRequest, tiktokShopVideoGuidance } from "#tiktok-shop-video-guidance";
 
 export type CanvasAssistantAction =
-  | { type: "add_prompt"; title?: string; prompt: string; targetGeneratorId?: string }
+  | { type: "add_prompt"; title?: string; prompt: string; targetGeneratorId?: string; referenceBindings?: CanvasReferenceBinding[] }
   | { type: "add_generator"; generationKind: "image" | "video" }
   | { type: "replace_selected_prompt"; prompt: string }
   | { type: "organize"; layout: "flow" | "grid" }
@@ -29,6 +29,7 @@ export type CanvasAssistantResponse = {
   reply: string;
   actions: CanvasAssistantAction[];
 };
+export type CanvasAssistantMode = "prompt-generation" | "reference-replacement";
 
 export function canvasAssistantVideoTimestamps(durationSeconds: number, message = "") {
   if (!Number.isFinite(durationSeconds) || durationSeconds <= 0) return [];
@@ -90,22 +91,30 @@ export function localCanvasAssistantFallback(input: {
     const subject = sourcePrompt || boundedText(input.canvasTitle, 120) || "当前故事主题";
     const isCommerceStoryboard = /(带货|TikTok\s*Shop|电商)/iu.test(message);
     const commercePrompt = isCommerceStoryboard
-      ? `${subject.replace(/[。！？!?.]+$/u, "")}。${tiktokShopVideoGuidance({ prompt: message, duration: 15 }).join("；")}只使用图片中真实可见的产品信息，保留准确的 @ImageN、@VideoN、@AudioN 引用，不虚构功效、价格、折扣、销量或用户证言。`
+      ? `${subject.replace(/[。！？!?.]+$/u, "")}。先列出 @ImageN、@VideoN、@AudioN 的素材职责，再按 0-2 秒开头钩子、2-7 秒一个核心价值演示、7-12 秒可见细节证据、12-15 秒结果和行动组织画面；${tiktokShopVideoGuidance({ prompt: message, duration: 15 }).join("；")}只使用图片中真实可见的产品信息，不虚构功效、成分、价格、折扣、销量、评价或品牌身份。`
       : "";
+    const shots = isCommerceStoryboard
+      ? [
+        { shotId: "SH01", title: "开头钩子", timeRange: "0-2s", prompt: `${subject}，用一个可见的痛点、结果或反差画面抓住注意，单一主要动作，使用服务于动作的短促推近或固定特写。`, sequenceState: { shotId: "SH01", completedBeats: [] } },
+        { shotId: "SH02", title: "核心价值演示", timeRange: "2-7s", prompt: `${subject}，只演示一个可从画面确认的核心价值或使用动作，保持产品结构和比例稳定，使用一个跟拍或中近景推进。`, sequenceState: { shotId: "SH02", completedBeats: [] } },
+        { shotId: "SH03", title: "细节与信任", timeRange: "7-12s", prompt: `${subject}，用材质、结构、使用结果或连续细节建立信任，不新增图片中没有的事实，使用一个稳定特写。`, sequenceState: { shotId: "SH03", completedBeats: [] } },
+        { shotId: "SH04", title: "结果与行动", timeRange: "12-15s", prompt: `${subject}，收束到清晰结果和一个简短行动指令，保持产品和场景连续，不添加未被要求的价格、Logo 或促销文字。`, sequenceState: { shotId: "SH04", completedBeats: [] } },
+      ]
+      : [
+        { shotId: "SH01", title: "建立主体和场景", timeRange: "0-3s", prompt: `${subject}，明确主体、场景和起始状态，使用一个稳定的建立镜头。`, sequenceState: { shotId: "SH01", completedBeats: [] } },
+        { shotId: "SH02", title: "推进主要动作", timeRange: "3-10s", prompt: `${subject}，从上一镜头实际结束状态继续，只完成一个主要动作，使用一个服务于动作的运镜。`, sequenceState: { shotId: "SH02", completedBeats: [] } },
+        { shotId: "SH03", title: "收束到结束状态", timeRange: "10-15s", prompt: `${subject}，保持角色和场景连续，完成动作后的收束画面，不重复前面已完成的动作。`, sequenceState: { shotId: "SH03", completedBeats: [] } },
+      ];
     return {
       reply: isCommerceStoryboard
-        ? "上游助手暂时不可用，我已生成一条 15 秒带货提示词和 3 个可继续编辑的分镜节点；请确认后再逐个生成。"
+        ? "上游助手暂时不可用，我已生成一条结构化的 15 秒带货提示词和 4 个可继续编辑的分镜节点；请确认后再逐个生成。"
         : "上游助手暂时不可用，我已生成 3 个可继续编辑的基础分镜节点；请确认每个镜头后再逐个生成。",
       actions: [
         ...(commercePrompt ? [{ type: "add_prompt" as const, title: "15 秒带货视频提示词", prompt: commercePrompt }] : []),
         {
           type: "add_storyboard" as const,
           title: isCommerceStoryboard ? "15 秒带货分镜项目" : "Seedance 分镜项目",
-          shots: [
-            { shotId: "SH01", title: "建立主体和场景", timeRange: "0-3s", prompt: `${subject}，明确主体、场景和起始状态，使用一个稳定的建立镜头。`, sequenceState: { shotId: "SH01", completedBeats: [] } },
-            { shotId: "SH02", title: "推进主要动作", timeRange: "3-10s", prompt: `${subject}，从上一镜头实际结束状态继续，只完成一个主要动作，使用一个服务于动作的运镜。`, sequenceState: { shotId: "SH02", completedBeats: [] } },
-            { shotId: "SH03", title: "收束到结束状态", timeRange: "10-15s", prompt: `${subject}，保持角色和场景连续，完成动作后的收束画面，不重复前面已完成的动作。`, sequenceState: { shotId: "SH03", completedBeats: [] } },
-          ],
+          shots,
         },
       ],
     };
@@ -177,11 +186,13 @@ export function normalizeCanvasAssistantResponse(value: unknown): CanvasAssistan
       const prompt = boundedText(action.prompt, 4_000);
       if (prompt) {
         const targetGeneratorId = boundedText(action.targetGeneratorId, 100);
+        const referenceBindings = normalizeReferenceBindings(action.referenceBindings);
         actions.push({
           type,
           prompt,
           title: boundedText(action.title, 80) || undefined,
           ...(targetGeneratorId ? { targetGeneratorId } : {}),
+          ...(referenceBindings.length ? { referenceBindings } : {}),
         });
       }
       continue;
@@ -234,6 +245,13 @@ export function normalizeCanvasAssistantResponse(value: unknown): CanvasAssistan
   }
 
   return { reply, actions };
+}
+
+/** Module requests are two-phase: preview and then one prompt-node creation. */
+export function restrictCanvasAssistantResponse(response: CanvasAssistantResponse, mode?: CanvasAssistantMode): CanvasAssistantResponse {
+  if (!mode) return response;
+  const prompt = response.actions.find((action): action is Extract<CanvasAssistantAction, { type: "add_prompt" }> => action.type === "add_prompt");
+  return { ...response, actions: prompt ? [prompt] : [] };
 }
 
 function normalizeIds(value: unknown, limit: number) {

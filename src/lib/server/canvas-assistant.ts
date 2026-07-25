@@ -1,6 +1,6 @@
 import "server-only";
 
-import { localCanvasAssistantFallback, normalizeCanvasAssistantResponse, type CanvasAssistantResponse } from "@/lib/canvas/assistant";
+import { localCanvasAssistantFallback, normalizeCanvasAssistantResponse, restrictCanvasAssistantResponse, type CanvasAssistantResponse } from "@/lib/canvas/assistant";
 import { NewApiError } from "@/lib/server/integrations/new-api";
 import { newApiLogger } from "@/lib/server/integrations/new-api/logger";
 import { createNewApiPromptModelCaller, type PromptModelCaller } from "@/lib/server/prompts";
@@ -33,6 +33,9 @@ export type CanvasAssistantInput = {
   canvasTitle?: string;
   nodes?: CanvasAssistantNode[];
   history?: Array<{ role: "user" | "assistant"; content: string }>;
+  assistantMode?: "prompt-generation" | "reference-replacement";
+  selectedNodeIds?: string[];
+  targetGeneratorId?: string;
 };
 
 const systemPrompt = [
@@ -48,6 +51,9 @@ const systemPrompt = [
   "只要用户的主要意图是得到新提示词或完成视频换物方案，就同时返回一个 add_prompt 动作供用户确认应用；动作只创建提示词节点，绝不自动生成。",
   "专业提示词必须具体、可见、可执行，只保留任务目标、素材职责、关键时序、必要连续性和禁止变化；Seedance 能理解的明确约束只写一次，不用近义句反复强调，也不堆砌电影感、高级感、专业感等空词。",
   "用户明确要制作 TikTok Shop 或电商带货短视频时，按注意、兴趣与欲望、信任、行动组织内容；根据生成节点时长压缩结构，只保留一个核心卖点，不虚构功效、价格、折扣、销量或用户证言。",
+  "15 秒带货提示词优先按以下顺序输出：素材职责；主体/产品可见事实；0-2 秒开头钩子；2-7 秒核心价值演示；7-12 秒细节或可信证据；12-15 秒结果收束与行动。每个时间段只安排一个主要动作和一个服务于该动作的主要运镜。",
+  "产品图片看不见或没有明确提供的信息不得写成事实，尤其是功效、成分、价格、折扣、销量、评价和品牌身份；卖点不足时只写可见的外观、材质、结构、使用动作或对比结果，不用空泛广告词补齐。",
+  "提示词必须能直接复制给 Seedance：引用职责、时间轴、声音/口播和合并后的禁止项要彼此不重复；不要只回复营销策略，也不要在已经选定目标生成链路时要求用户再次选择。",
   "处理通用视频换物时：把 @VideoN 定义为基础视频，把 @ImageN 定义为目标物体外观参考。先按时间顺序识别用户指定对象在每个主体或身体部位上的存在、缺失、首次出现、消失和遮挡状态；只在原对象实际存在的帧中替换，原对象不存在时目标物也必须不存在，目标物的出现和消失必须与原对象同一时点，禁止提前生成、延后出现或跨主体复制。",
   "视频换物必须在所有帧、遮挡、运动模糊、透视变化、接触和离地状态下保持目标物体结构一致。人物、动作、镜头、构图、场景、光线、阴影、声音和时长默认只锁定为不可误改的背景条件，不要抢占提示词重点；禁止新增对象、复制目标、改变身体结构或把任务改写成从零生成。",
   "例如换鞋时，如果开头一只脚光脚、另一只脚穿鞋：已穿鞋的一侧从首次可见帧起替换；光脚一侧保持光脚，直到基础视频中该侧鞋原本首次出现时才同步出现替换鞋。不得把两只脚从第一帧都补成穿鞋。",
@@ -56,7 +62,7 @@ const systemPrompt = [
   ...seedanceCanvasAssistantRules,
   "仅输出 JSON，不要 Markdown。结构为：{\"reply\":\"简体中文回复\",\"actions\":[...]}",
   "actions 只允许：",
-  "{\"type\":\"add_prompt\",\"title\":\"可选标题\",\"prompt\":\"提示词\",\"targetGeneratorId\":\"可选的目标生成节点ID\"}",
+  "{\"type\":\"add_prompt\",\"title\":\"可选标题\",\"prompt\":\"提示词\",\"targetGeneratorId\":\"可选的目标生成节点ID\",\"referenceBindings\":[{\"label\":\"@Image1\",\"role\":\"product\",\"transfer\":\"产品外观\",\"ignore\":\"背景\"}]}",
   "{\"type\":\"add_generator\",\"generationKind\":\"image或video\"}",
   "{\"type\":\"replace_selected_prompt\",\"prompt\":\"新提示词\"}",
   "{\"type\":\"organize\",\"layout\":\"flow或grid\"}",
@@ -70,6 +76,8 @@ const systemPrompt = [
   "这些动作只能改变画布结构。禁止输出删除、运行生成、上传、下载、账号、权限或任何外部操作。",
   "创建给现有生成链路使用的提示词时，必须在 add_prompt 中填写该链路的 targetGeneratorId；只有目标不明确时才省略。",
   "用户没有明确要求改动画布时 actions 必须为空；但写提示词、换物方案、优化提示词和生成分镜本身视为明确请求，可返回对应的提示词或分镜动作。最多返回 8 个动作。",
+  "当 assistantMode 为 prompt-generation 或 reference-replacement 时，只返回一个 add_prompt 动作，不返回 add_storyboard、organize、connect_nodes 或其他画布动作；分析阶段不代表已经创建节点。",
+  "assistantMode 请求已经提供 selectedNodeIds 和 targetGeneratorId 时，必须使用这些范围，不要再次要求用户选择链路，也不要擅自扩大到全画布。",
 ].join("\n");
 
 const canvasAssistantRetryDelayMs = 350;
@@ -119,7 +127,14 @@ function normalizeInput(input: Partial<CanvasAssistantInput>): CanvasAssistantIn
     const content = text(entry.content, 600);
     return content ? [{ role: entry.role, content }] : [];
   }) : [];
-  return { message, canvasTitle: text(input.canvasTitle, 120), nodes, history };
+  const assistantMode = input.assistantMode === "prompt-generation" || input.assistantMode === "reference-replacement"
+    ? input.assistantMode
+    : undefined;
+  const selectedNodeIds = Array.isArray(input.selectedNodeIds)
+    ? [...new Set(input.selectedNodeIds.slice(0, 16).map((value) => text(value, 100)).filter(Boolean))]
+    : undefined;
+  const targetGeneratorId = text(input.targetGeneratorId, 100) || undefined;
+  return { message, canvasTitle: text(input.canvasTitle, 120), nodes, history, assistantMode, selectedNodeIds, targetGeneratorId };
 }
 
 function normalizeReferenceLabels(value: unknown) {
@@ -225,6 +240,9 @@ export function createCanvasAssistantService(caller: PromptModelCaller = createN
           systemPrompt,
           userPrompt: JSON.stringify({
             userRequest: normalized.message,
+            assistantMode: normalized.assistantMode,
+            selectedNodeIds: normalized.selectedNodeIds,
+            targetGeneratorId: normalized.targetGeneratorId,
             canvas: { title: normalized.canvasTitle, nodes: normalized.nodes },
             recentConversation: normalized.history,
             seedanceTaskGuidance,
@@ -244,7 +262,7 @@ export function createCanvasAssistantService(caller: PromptModelCaller = createN
           await delay(canvasAssistantRetryDelayMs);
           output = await caller(callInput);
         }
-        return attachUnambiguousPromptTargets(parseModelResponse(output), normalized.nodes);
+        return attachUnambiguousPromptTargets(restrictCanvasAssistantResponse(parseModelResponse(output), normalized.assistantMode), normalized.nodes);
       } catch (error) {
         newApiLogger.warn({
           event: "canvas_assistant_failed",
@@ -260,7 +278,7 @@ export function createCanvasAssistantService(caller: PromptModelCaller = createN
           },
         });
         const fallback = localCanvasAssistantFallback(normalized);
-        if (fallback) return attachUnambiguousPromptTargets(fallback, normalized.nodes);
+        if (fallback) return attachUnambiguousPromptTargets(restrictCanvasAssistantResponse(fallback, normalized.assistantMode), normalized.nodes);
         throw new CanvasAssistantError("CANVAS_ASSISTANT_FAILED", "助手暂时不可用，请稍后重试。", 502);
       }
     },
