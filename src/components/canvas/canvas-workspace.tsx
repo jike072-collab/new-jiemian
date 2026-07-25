@@ -484,6 +484,7 @@ function CanvasWorkspaceInner({
   const [editingNodeId, setEditingNodeId] = useState("");
   const [previewingNodeId, setPreviewingNodeId] = useState("");
   const [trimmingLibraryItemId, setTrimmingLibraryItemId] = useState("");
+  const [batchTrimming, setBatchTrimming] = useState(false);
   const [tiktokLibraryItemId, setTikTokLibraryItemId] = useState("");
   const [tiktokCopyDrafts, setTikTokCopyDrafts] = useState<Record<string, CanvasTikTokCopyState>>({});
   const [teamOpen, setTeamOpen] = useState(false);
@@ -1560,6 +1561,42 @@ function CanvasWorkspaceInner({
     setNotice("视频片段已保存到作品库并添加到画布。");
   }, [addLibraryNode, trimmingLibraryItemId]);
 
+  const batchTrimSelectedVideos = useCallback(async () => {
+    if (batchTrimming) return;
+    const libraryItemIds = [...new Set(nodesRef.current
+      .filter((node) => node.selected && node.data.kind === "media" && node.data.mediaType === "video" && node.data.libraryItemId)
+      .map((node) => node.data.libraryItemId!))];
+    if (!libraryItemIds.length) {
+      setNotice("请先框选已完成的视频节点。");
+      return;
+    }
+    if (!window.confirm(`将依次把 ${libraryItemIds.length} 个视频裁剪为开头 15 秒，原视频会保留。短视频会自动跳过。`)) return;
+    setBatchTrimming(true);
+    setNotice(`正在依次裁剪 ${libraryItemIds.length} 个视频…`);
+    try {
+      const response = await fetchJsonWithCsrf<{ items: LibraryItem[]; skipped: number; failed: number }>("/api/canvas/video-trim", {
+        method: "POST",
+        body: JSON.stringify({ libraryItemIds, scope: canvasScope() }),
+      });
+      if (response.items.length) {
+        setLibrary((current) => [...response.items, ...current.filter((item) => !response.items.some((trimmed) => trimmed.id === item.id))]);
+        for (const item of response.items) {
+          const sourceId = typeof item.params.sourceLibraryItemId === "string" ? item.params.sourceLibraryItemId : "";
+          const sourceNode = nodesRef.current.find((node) => node.data.kind === "media" && node.data.libraryItemId === sourceId);
+          addLibraryNode(item, sourceNode ? {
+            x: sourceNode.position.x + (sourceNode.width || 320) + 48,
+            y: sourceNode.position.y,
+          } : undefined);
+        }
+      }
+      setNotice(`已裁剪 ${response.items.length} 个视频${response.skipped ? `，跳过 ${response.skipped} 个短视频或不可用素材` : ""}${response.failed ? `，${response.failed} 个失败` : ""}。`);
+    } catch (error) {
+      setNotice(apiMessage(error, "批量视频裁剪失败，请稍后重试。"));
+    } finally {
+      setBatchTrimming(false);
+    }
+  }, [addLibraryNode, batchTrimming]);
+
   const replaceSelectedMaterial = useCallback((item: LibraryItem) => {
     const selected = nodesRef.current.find((node) => node.selected && node.data.kind === "media");
     if (!selected) {
@@ -2234,6 +2271,9 @@ function CanvasWorkspaceInner({
 
   const selectedNodes = useMemo(() => nodes.filter((node) => node.selected), [nodes]);
   const selectedNode = selectedNodes[0] || null;
+  const selectedVideoTrimCount = useMemo(() => selectedNodes.filter((node) => (
+    node.data.kind === "media" && node.data.mediaType === "video" && node.data.libraryItemId && node.data.status === "done"
+  )).length, [selectedNodes]);
   const activeRelationNodeId = hoveredNodeId || (selectedNodes.length === 1 ? selectedNode?.id || "" : "");
   const displayEdges = useMemo(() => edges.map((edge) => ({
     ...edge,
@@ -3470,6 +3510,9 @@ function CanvasWorkspaceInner({
               style={selectionToolbarStyle}
               onConnect={connectSelectedNodes}
               onArrange={arrangeSelectedNodes}
+              trimCount={isInternalCanvas ? selectedVideoTrimCount : 0}
+              trimming={batchTrimming}
+              onTrim={() => { void batchTrimSelectedVideos(); }}
               onGroup={groupSelectedNodes}
               onDuplicate={duplicateSelectedNodes}
               onDelete={removeSelectedNodes}
@@ -3937,11 +3980,14 @@ function CanvasSelectionToolbar({
   );
 }
 
-function CanvasBatchToolbar({ count, style, onConnect, onArrange, onGroup, onDuplicate, onDelete }: {
+function CanvasBatchToolbar({ count, trimCount, trimming, style, onConnect, onArrange, onTrim, onGroup, onDuplicate, onDelete }: {
   count: number;
+  trimCount: number;
+  trimming: boolean;
   style?: CSSProperties;
   onConnect: () => void;
   onArrange: (mode: CanvasBatchArrangeMode) => void;
+  onTrim: () => void;
   onGroup: () => void;
   onDuplicate: () => void;
   onDelete: () => void;
@@ -3965,6 +4011,7 @@ function CanvasBatchToolbar({ count, style, onConnect, onArrange, onGroup, onDup
           <button type="button" role="menuitem" onClick={(event) => chooseBatchArrange(event, onArrange, "distribute-vertical")}><AlignVerticalSpaceBetween />垂直分布</button>
         </div>
       </details>
+      {trimCount ? <button type="button" disabled={trimming} onClick={onTrim} title="将选中的长视频依次裁剪为开头 15 秒" aria-label="批量裁剪视频"><Scissors />{trimming ? <span>裁剪中</span> : <span>裁剪 {trimCount}</span>}</button> : null}
       <button type="button" onClick={onGroup} title="建立节点分组" aria-label="建立节点分组"><Layers3 /><span>分组</span></button>
       <button type="button" onClick={onDuplicate} title="批量复制" aria-label="批量复制"><CopyPlus /><span>复制</span></button>
       <button type="button" onClick={onDelete} title="批量删除" aria-label="批量删除"><Trash2 /><span>删除</span></button>
