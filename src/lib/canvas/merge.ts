@@ -23,6 +23,11 @@ export function mergeCanvasWorkspace(
   const nodeIds = new Set(cleanedNodes.map((node) => node.id));
   const edges = mergeCollection(base.document.edges, incoming.document.edges, current.document.edges);
   const viewport = mergeValue(base.document.viewport, incoming.document.viewport, current.document.viewport);
+  const assistantState = mergeValue(
+    base.document.assistantState ?? missing,
+    incoming.document.assistantState ?? missing,
+    current.document.assistantState ?? missing,
+  );
 
   return {
     title: String(title.value),
@@ -30,8 +35,11 @@ export function mergeCanvasWorkspace(
       nodes: cleanedNodes,
       edges: edges.value.filter((edge) => edge.source !== edge.target && nodeIds.has(edge.source) && nodeIds.has(edge.target)),
       viewport: viewport.value as CanvasProjectDocument["viewport"],
+      ...(assistantState.value !== missing
+        ? { assistantState: assistantState.value as CanvasProjectDocument["assistantState"] }
+        : {}),
     },
-    conflictCount: title.conflicts + nodes.conflicts + edges.conflicts + viewport.conflicts,
+    conflictCount: title.conflicts + nodes.conflicts + edges.conflicts + viewport.conflicts + assistantState.conflicts,
   };
 }
 

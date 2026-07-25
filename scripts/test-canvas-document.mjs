@@ -30,15 +30,40 @@ const normalized = normalizeCanvasDocument({
       intrinsicWidth: 1080,
       intrinsicHeight: 1920,
       status: "done",
+      assistantProductId: "product-1",
     },
   }],
   edges: [],
   viewport: { x: 0, y: 0, zoom: 1 },
+  assistantState: {
+    commerce: {
+      products: {
+        "product-1": {
+          id: "product-1",
+          createdAt: "2026-07-26T00:00:00.000Z",
+          updatedAt: "2026-07-26T00:01:00.000Z",
+          images: [{ nodeId: "node-media-1", libraryItemId: "library-item-1", title: "结果图" }],
+          productName: "复古系带鞋",
+          sellingPoints: ["厚底视觉", "复古配色", "鞋面拼接", "系带结构"],
+          visibleFacts: ["米白色鞋面"],
+          recommendedDirections: ["daily-style", "product-asmr"],
+          selectedDirections: ["product-asmr"],
+          directionSellingPoints: { "product-asmr": "鞋面拼接" },
+          plans: [{ id: "plan-1", direction: "product-asmr", title: "细节方案", sellingPoint: "鞋面拼接", prompt: "0-2 秒钩子", referenceBindings: [{ label: "@Image1", role: "product" }], selected: true }],
+          extraRequirements: "不要包装",
+          phase: "plans-ready",
+        },
+      },
+    },
+  },
 });
 assert.equal(normalized.nodes[0].data.libraryItemId, "library-item-1");
 assert.equal(normalized.nodes[0].data.mediaUrl, undefined);
 assert.equal(normalized.nodes[0].data.intrinsicWidth, 1080);
 assert.equal(normalized.nodes[0].data.intrinsicHeight, 1920);
+assert.equal(normalized.nodes[0].data.assistantProductId, "product-1");
+assert.equal(normalized.assistantState?.commerce?.products["product-1"].plans[0].direction, "product-asmr");
+assert.equal(normalized.assistantState?.commerce?.products["product-1"].directionSellingPoints["product-asmr"], "鞋面拼接");
 
 assert.deepEqual(canvasMediaNodeSize(1920, 1080), { width: 420, height: 310, frameWidth: 418, frameHeight: 235 });
 assert.deepEqual(canvasMediaNodeSize(1080, 1920), { width: 260, height: 534, frameWidth: 258, frameHeight: 459 });

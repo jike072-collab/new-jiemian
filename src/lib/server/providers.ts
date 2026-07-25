@@ -99,6 +99,29 @@ const seedanceVideoOptionsByModel: Record<string, NonNullable<ProviderConfig["vi
   "doubao-seedance-2-0-260128-grid": { durations: [15], ratios: ["16:9", "9:16"], resolution: "720p", maxReferenceImages: 9, maxReferenceVideos: 3, maxReferenceAudios: 3, maxReferenceDurationSeconds: 15, supportsVideoReference: true, supportsAudioReference: true },
 };
 
+const humanAllowedSeedanceModels = new Set([
+  "sdquan-2",
+  "video-2.0-fast-720p",
+  "seedance-2.0-930",
+  "quanneng2.0-9tu",
+  "video-standard-720p",
+  "b-quannengship2.0",
+  "video-standard-720p-fast",
+  "quanneng2.0",
+  "doubao-seedance-2-0-260128-grid",
+]);
+const humanBlockedSeedanceModels = new Set([
+  "seedance-fast-720p-pf",
+  "seedance2.0-9tu-manxue",
+  "seedance-2.0-720p-pf",
+]);
+const humanAllowedClmmSeedanceModels = new Set([
+  "oe-seedance-2.0-pro-720p-14s-gz",
+  "seedance2.0 720p-933-pro-gz-15s",
+  "seedance2.0 720p-fast-gz-15s",
+  "seedance2.0 720p-pro-gz-15s",
+]);
+
 function env(name: string, fallback = "") {
   return process.env[name] || fallback;
 }
@@ -156,6 +179,9 @@ function normalizeVideoOptions(value: unknown): ProviderConfig["videoOptions"] {
     : undefined;
   const supportsVideoReference = typeof input.supportsVideoReference === "boolean" ? input.supportsVideoReference : undefined;
   const supportsAudioReference = typeof input.supportsAudioReference === "boolean" ? input.supportsAudioReference : undefined;
+  const humanReferencePolicy = input.humanReferencePolicy === "allowed" || input.humanReferencePolicy === "blocked" || input.humanReferencePolicy === "unknown"
+    ? input.humanReferencePolicy
+    : undefined;
   const normalized: NonNullable<ProviderConfig["videoOptions"]> = {};
   if (durations?.length) normalized.durations = durations;
   if (ratios?.length) normalized.ratios = ratios;
@@ -169,11 +195,28 @@ function normalizeVideoOptions(value: unknown): ProviderConfig["videoOptions"] {
   if (requiredReferenceMedia?.length) normalized.requiredReferenceMedia = requiredReferenceMedia;
   if (supportsVideoReference !== undefined) normalized.supportsVideoReference = supportsVideoReference;
   if (supportsAudioReference !== undefined) normalized.supportsAudioReference = supportsAudioReference;
+  if (humanReferencePolicy) normalized.humanReferencePolicy = humanReferencePolicy;
   return Object.keys(normalized).length ? normalized : undefined;
 }
 
+function normalizeModelHumanReferencePolicies(value: unknown): ProviderConfig["modelHumanReferencePolicies"] {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return undefined;
+  const entries = Object.entries(value as Record<string, unknown>).flatMap(([model, policy]) => {
+    const normalizedModel = String(model || "").trim();
+    if (!normalizedModel || (policy !== "allowed" && policy !== "blocked" && policy !== "unknown")) return [];
+    return [[normalizedModel, policy] as const];
+  });
+  return entries.length ? Object.fromEntries(entries) : undefined;
+}
+
 export function seedanceVideoOptionsForModel(model: string): ProviderConfig["videoOptions"] {
-  return seedanceVideoOptionsByModel[model.trim().toLowerCase()];
+  const normalized = model.trim().toLowerCase();
+  const options = seedanceVideoOptionsByModel[normalized];
+  if (!options) return undefined;
+  const humanReferencePolicy = humanAllowedSeedanceModels.has(normalized)
+    ? "allowed" as const
+    : humanBlockedSeedanceModels.has(normalized) ? "blocked" as const : "unknown" as const;
+  return { ...options, humanReferencePolicy };
 }
 
 function normalizeModelUpstreamPrices(value: unknown): Record<string, ProviderUpstreamPrice> | undefined {
@@ -197,7 +240,8 @@ export function seedanceVideoRequestSecondsForModel(_model: string, duration: nu
 export function clmmSeedanceVideoOptionsForModel(model: string): ProviderConfig["videoOptions"] {
   const normalized = model.trim().toLowerCase();
   const known = clmmSeedanceVideoOptionsByModel[normalized];
-  if (known || !isDynamicClmmSeedance20Model(model)) return known;
+  if (known) return { ...known, humanReferencePolicy: humanAllowedClmmSeedanceModels.has(normalized) ? "allowed" : "unknown" };
+  if (!isDynamicClmmSeedance20Model(model)) return undefined;
   const fixedSeconds = Number(normalized.match(/(?:^|[-_ ])(\d+)s(?:$|[-_ ])/i)?.[1] || 0);
   const fixedDuration = fixedSeconds > 0;
   const is1080 = normalized.includes("1080");
@@ -212,6 +256,7 @@ export function clmmSeedanceVideoOptionsForModel(model: string): ProviderConfig[
     maxReferenceDurationSeconds: 15,
     supportsVideoReference: true,
     supportsAudioReference: true,
+    humanReferencePolicy: humanAllowedClmmSeedanceModels.has(normalized) ? "allowed" : "unknown",
   };
 }
 
@@ -259,11 +304,14 @@ function getTokenVeoOptionsForModel(model: string): ProviderConfig["videoOptions
 }
 
 function providerVideoOptions(provider: ProviderConfig) {
-  return grokVideoOptionsForModel(provider.model)
+  const options = grokVideoOptionsForModel(provider.model)
     || getTokenVeoOptionsForModel(provider.model)
     || seedanceVideoOptionsForModel(provider.model)
     || clmmSeedanceVideoOptionsForModel(provider.model)
     || normalizeVideoOptions(provider.videoOptions);
+  if (!options) return undefined;
+  const humanReferencePolicy = provider.modelHumanReferencePolicies?.[provider.model];
+  return humanReferencePolicy ? { ...options, humanReferencePolicy } : options;
 }
 
 function legacyUpscaleEndpointForKind(kind: ProviderKind) {
@@ -541,6 +589,7 @@ function normalizeProvider(provider: ProviderConfig): ProviderConfig {
       : undefined,
     modelDisplayNames: normalizeModelDisplayNames(legacyNormalized.modelDisplayNames),
     modelUpstreamPrices: normalizeModelUpstreamPrices(legacyNormalized.modelUpstreamPrices),
+    modelHumanReferencePolicies: normalizeModelHumanReferencePolicies(legacyNormalized.modelHumanReferencePolicies),
     displayName: String(legacyNormalized.displayName || legacyNormalized.model || "").trim() || undefined,
     upstreamPrice: normalizeModelUpstreamPrices({ current: legacyNormalized.upstreamPrice })?.current,
     videoOptions: normalizeVideoOptions(legacyNormalized.videoOptions),
@@ -581,6 +630,7 @@ export function sanitizeProvider(provider: ProviderConfig): PublicProvider {
     models: normalized.models,
     modelDisplayNames: normalized.modelDisplayNames,
     modelUpstreamPrices: normalized.modelUpstreamPrices,
+    modelHumanReferencePolicies: normalized.modelHumanReferencePolicies,
     enabledModels: normalized.enabledModels,
     displayName: normalized.displayName || normalized.model,
     upstreamPrice: normalized.upstreamPrice,
@@ -686,6 +736,7 @@ function mergeStoredProvider(fallback: ProviderConfig, stored: ProviderConfig | 
     const storedModels = normalizeModels(legacyStored.models);
     const storedDisplayNames = normalizeModelDisplayNames(legacyStored.modelDisplayNames);
     const storedUpstreamPrices = normalizeModelUpstreamPrices(legacyStored.modelUpstreamPrices);
+    const storedHumanReferencePolicies = normalizeModelHumanReferencePolicies(legacyStored.modelHumanReferencePolicies);
     const models = isDynamicClmm && storedModels.length ? storedModels : fallback.models;
     const modelDisplayNames = isDynamicClmm
       ? { ...(fallback.modelDisplayNames || {}), ...(storedDisplayNames || {}) }
@@ -704,6 +755,9 @@ function mergeStoredProvider(fallback: ProviderConfig, stored: ProviderConfig | 
       modelUpstreamPrices: isDynamicClmm && storedUpstreamPrices
         ? storedUpstreamPrices
         : fallback.modelUpstreamPrices,
+      modelHumanReferencePolicies: isDynamicClmm && storedHumanReferencePolicies
+        ? storedHumanReferencePolicies
+        : fallback.modelHumanReferencePolicies,
       enabledModels,
       title: legacyStored.title || fallback.title,
       role: fallback.role,
@@ -905,6 +959,9 @@ export async function updateProviders(updates: ProviderUpdate[]) {
       modelUpstreamPrices: update.modelUpstreamPrices === undefined
         ? baseProvider.modelUpstreamPrices
         : normalizeModelUpstreamPrices(update.modelUpstreamPrices),
+      modelHumanReferencePolicies: update.modelHumanReferencePolicies === undefined
+        ? baseProvider.modelHumanReferencePolicies
+        : normalizeModelHumanReferencePolicies(update.modelHumanReferencePolicies),
       enabledModels: update.enabledModels === undefined
         ? baseProvider.enabledModels
         : normalizeModels(update.enabledModels),

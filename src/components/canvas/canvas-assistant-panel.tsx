@@ -1,11 +1,17 @@
 "use client";
 
-import { Bot, Check, Film, Image as ImageIcon, LoaderCircle, Send, Sparkles, WandSparkles, X } from "lucide-react";
+import { Bot, Check, Image as ImageIcon, LoaderCircle, Send, Sparkles, WandSparkles, X } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent, type KeyboardEvent } from "react";
 
 import { fetchJsonWithCsrf } from "@/lib/client/api";
+import {
+  CanvasCommerceAssistant,
+  type CanvasCommerceCreateResult,
+  type CanvasCommerceLibraryImage,
+} from "@/components/canvas/canvas-commerce-assistant";
+import type { EnabledProviders } from "@/components/studio/types";
 import { normalizeCanvasAssistantResponse, type CanvasAssistantAction, type CanvasAssistantResponse } from "@/lib/canvas/assistant";
-import type { CanvasMediaType, CanvasReferenceBinding, CanvasSequenceState } from "@/lib/canvas/types";
+import type { CanvasCommerceAssistantState, CanvasCommerceProductDraft, CanvasMediaType, CanvasReferenceBinding, CanvasSequenceState } from "@/lib/canvas/types";
 
 export type CanvasAssistantNodeContext = {
   id: string;
@@ -42,24 +48,40 @@ const contentDirections: Array<{ id: ContentDirection; label: string; detail: st
 ];
 
 export function CanvasAssistantPanel({
+  projectId,
   canvasTitle,
   scope,
   nodes,
+  providers,
+  commerceState,
+  libraryImages,
   mentionSelection,
   onMentionModeChange,
   onApply,
+  onCommerceStateChange,
+  onUploadProductImages,
+  onAddLibraryImage,
+  onCreateCommercePlans,
   onClose,
 }: {
+  projectId: string;
   canvasTitle: string;
   scope: "personal" | "shared";
   nodes: CanvasAssistantNodeContext[];
+  providers: EnabledProviders;
+  commerceState?: CanvasCommerceAssistantState;
+  libraryImages: CanvasCommerceLibraryImage[];
   mentionSelection: { nodeId: string; revision: number } | null;
   onMentionModeChange: (active: boolean) => void;
   onApply: (actions: CanvasAssistantAction[]) => void;
+  onCommerceStateChange: (state: CanvasCommerceAssistantState) => void;
+  onUploadProductImages: (files: File[]) => Promise<string[]>;
+  onAddLibraryImage: (libraryItemId: string) => string | undefined;
+  onCreateCommercePlans: (draft: CanvasCommerceProductDraft, planIds: string[]) => CanvasCommerceCreateResult[];
   onClose: () => void;
 }) {
   const [activeModule, setActiveModule] = useState<AssistantModule>("prompt");
-  const [contentDirection, setContentDirection] = useState<ContentDirection>("human-demo");
+  const [contentDirection] = useState<ContentDirection>("human-demo");
   const [phase, setPhase] = useState<AssistantPhase>("idle");
   const [previewPrompt, setPreviewPrompt] = useState("");
   const [previewTitle, setPreviewTitle] = useState("提示词");
@@ -251,7 +273,7 @@ export function CanvasAssistantPanel({
           : canAnalyze ? "待分析" : "待选素材";
 
   return (
-    <aside className="canvas-assistant" aria-label="画布智能助手">
+    <aside className={`canvas-assistant${activeModule === "prompt" ? " is-commerce" : ""}`} aria-label="画布智能助手">
       <header className="canvas-assistant__header">
         <div><Bot /><span><strong>智能助手</strong><small>GPT-5.6 Luna · 仅限当前画布</small></span></div>
         <button type="button" className="canvas-icon-button" onClick={onClose} aria-label="关闭智能助手" title="关闭智能助手"><X /></button>
@@ -260,19 +282,21 @@ export function CanvasAssistantPanel({
         <button type="button" role="tab" aria-selected={activeModule === "prompt"} className={activeModule === "prompt" ? "is-active" : undefined} onClick={() => resetPreview("prompt")}><WandSparkles /><span>提示词生成</span><small>15 秒带货短视频</small></button>
         <button type="button" role="tab" aria-selected={activeModule === "replace"} className={activeModule === "replace" ? "is-active" : undefined} onClick={() => resetPreview("replace")}><ImageIcon /><span>参考图替换</span><small>视频换物</small></button>
       </div>
-      {activeModule === "prompt" ? (
-        <section className="canvas-assistant__module-panel" aria-label="提示词生成">
-          <div className="canvas-assistant__module-heading"><div><strong>15 秒马来西亚带货提示词</strong><span>选图和方向，确认后自动创建并连接视频节点</span></div><Film /></div>
-          <div className="canvas-assistant__compact-controls">
-            <SelectionSummary label="图片" nodes={selectedImages} empty="未选中" limit={4} />
-            <DirectionPicker value={contentDirection} onChange={setContentDirection} />
-          </div>
-          {selectedImageOverflow ? <p className="canvas-assistant__validation">最多选择 4 张图片，请取消多余选择。</p> : null}
-          <button type="button" className="canvas-assistant__analyze-action" disabled={phase === "analyzing" || !canPromptAnalyze} onClick={analyzeCurrent}><Sparkles />分析提示词</button>
-        </section>
-      ) : (
+      {activeModule === "prompt" ? <CanvasCommerceAssistant
+        projectId={projectId}
+        canvasTitle={canvasTitle}
+        scope={scope}
+        nodes={nodes}
+        providers={providers}
+        state={commerceState}
+        libraryImages={libraryImages}
+        onStateChange={onCommerceStateChange}
+        onUploadImages={onUploadProductImages}
+        onAddLibraryImage={onAddLibraryImage}
+        onCreatePlans={onCreateCommercePlans}
+      /> : <>
         <section className="canvas-assistant__module-panel" aria-label="参考图替换">
-          <div className="canvas-assistant__module-heading"><div><strong>参考图替换</strong><span>确认后自动创建并连接视频节点</span></div><ImageIcon /></div>
+          <div className="canvas-assistant__module-heading"><div><strong>参考图替换</strong><span>分析、编辑、确认后创建连接好的节点</span></div><ImageIcon /></div>
           <div className="canvas-assistant__compact-controls">
             <SelectionSummary label="基础视频" nodes={selectedVideos} empty="未选中" limit={1} />
             <SelectionSummary label="参考图" nodes={selectedImages} empty="未选中" limit={4} />
@@ -281,26 +305,26 @@ export function CanvasAssistantPanel({
           {selectedImageOverflow ? <p className="canvas-assistant__validation">最多选择 4 张参考图片，请取消多余选择。</p> : null}
           <button type="button" className="canvas-assistant__analyze-action" disabled={phase === "analyzing" || !canReplaceAnalyze} onClick={analyzeCurrent}><Sparkles />分析换物提示词</button>
         </section>
-      )}
-      <div className="canvas-assistant__context"><span>当前状态</span><strong>{phaseLabel}</strong></div>
-      {previewPrompt ? (
-        <section className="canvas-assistant__preview" aria-label="提示词分析结果">
-          <div className="canvas-assistant__preview-heading"><strong>分析结果</strong><span>可编辑</span></div>
-          <textarea value={previewPrompt} onChange={(event) => setPreviewPrompt(event.target.value)} disabled={phase === "created"} aria-label="可编辑提示词预览" />
-          <div className="canvas-assistant__bindings"><span>素材职责</span>{previewBindings.length ? previewBindings.map((binding) => <small key={`${binding.label}-${binding.role}`}>{binding.label} · {binding.role}{binding.transfer ? ` · ${binding.transfer}` : ""}</small>) : <small>助手未返回结构化职责，请在提示词中检查引用。</small>}</div>
-          <button type="button" className="canvas-assistant__create-action" disabled={phase !== "preview" || !previewPrompt.trim()} onClick={createPromptNode}><Check />创建提示词和视频节点</button>
-        </section>
-      ) : null}
-      {phase !== "preview" && phase !== "created" ? <div className="canvas-assistant__messages" aria-live="polite">
-        {messages.map((message, index) => <div key={`${message.role}-${index}`} className={`canvas-assistant__message is-${message.role}`}>{message.role === "assistant" ? <Sparkles /> : null}<p>{message.content}</p></div>)}
-        {phase === "analyzing" ? <div className="canvas-assistant__message is-assistant"><LoaderCircle className="is-spinning" /><p>正在读取已选素材并分析提示词…</p></div> : null}
-      </div> : null}
-      <form className="canvas-assistant__composer" onSubmit={submit}>
-        {mentionQuery && mentionCandidates.length ? <div className="canvas-assistant__mentions" role="listbox" aria-label="引用画布节点">{mentionCandidates.map((node, index) => <button key={node.id} type="button" role="option" aria-selected={index === mentionIndex} className={index === mentionIndex ? "is-active" : undefined} onMouseDown={(event) => event.preventDefault()} onClick={() => selectMention(node)}><strong>{assistantMentionToken(node)}</strong><small>{assistantNodeKindLabel(node)} · {node.title}</small></button>)}</div> : null}
-        <textarea ref={textareaRef} value={input} maxLength={1_200} onChange={(event) => updateInput(event.target.value, event.target.selectionStart)} onKeyDown={handleComposerKeyDown} placeholder="补充要求（可选），点击上方分析按钮后发送" aria-label="提示词补充要求" aria-autocomplete="list" />
-        <button type="submit" disabled={phase === "analyzing" || !canAnalyze} aria-label="分析提示词" title="分析提示词"><Send /></button>
-      </form>
-      <small className="canvas-assistant__scope">只分析明确选中的素材；节点创建后仍需你手动点击生成</small>
+        <div className="canvas-assistant__context"><span>当前状态</span><strong>{phaseLabel}</strong></div>
+        {previewPrompt ? (
+          <section className="canvas-assistant__preview" aria-label="提示词分析结果">
+            <div className="canvas-assistant__preview-heading"><strong>分析结果</strong><span>可编辑</span></div>
+            <textarea value={previewPrompt} onChange={(event) => setPreviewPrompt(event.target.value)} disabled={phase === "created"} aria-label="可编辑提示词预览" />
+            <div className="canvas-assistant__bindings"><span>素材职责</span>{previewBindings.length ? previewBindings.map((binding) => <small key={`${binding.label}-${binding.role}`}>{binding.label} · {binding.role}{binding.transfer ? ` · ${binding.transfer}` : ""}</small>) : <small>助手未返回结构化职责，请在提示词中检查引用。</small>}</div>
+            <button type="button" className="canvas-assistant__create-action" disabled={phase !== "preview" || !previewPrompt.trim()} onClick={createPromptNode}><Check />创建提示词和视频节点</button>
+          </section>
+        ) : null}
+        {phase !== "preview" && phase !== "created" ? <div className="canvas-assistant__messages" aria-live="polite">
+          {messages.map((message, index) => <div key={`${message.role}-${index}`} className={`canvas-assistant__message is-${message.role}`}>{message.role === "assistant" ? <Sparkles /> : null}<p>{message.content}</p></div>)}
+          {phase === "analyzing" ? <div className="canvas-assistant__message is-assistant"><LoaderCircle className="is-spinning" /><p>正在读取已选素材并分析提示词…</p></div> : null}
+        </div> : null}
+        <form className="canvas-assistant__composer" onSubmit={submit}>
+          {mentionQuery && mentionCandidates.length ? <div className="canvas-assistant__mentions" role="listbox" aria-label="引用画布节点">{mentionCandidates.map((node, index) => <button key={node.id} type="button" role="option" aria-selected={index === mentionIndex} className={index === mentionIndex ? "is-active" : undefined} onMouseDown={(event) => event.preventDefault()} onClick={() => selectMention(node)}><strong>{assistantMentionToken(node)}</strong><small>{assistantNodeKindLabel(node)} · {node.title}</small></button>)}</div> : null}
+          <textarea ref={textareaRef} value={input} maxLength={1_200} onChange={(event) => updateInput(event.target.value, event.target.selectionStart)} onKeyDown={handleComposerKeyDown} placeholder="补充换物要求（可选）" aria-label="换物补充要求" aria-autocomplete="list" />
+          <button type="submit" disabled={phase === "analyzing" || !canAnalyze} aria-label="分析换物提示词" title="分析换物提示词"><Send /></button>
+        </form>
+        <small className="canvas-assistant__scope">只分析明确选中的素材；节点创建后仍需你手动点击生成</small>
+      </>}
     </aside>
   );
 }
@@ -311,10 +335,6 @@ function busyPhase(phase: AssistantPhase) {
 
 function SelectionSummary({ label, nodes, empty, limit }: { label: string; nodes: CanvasAssistantNodeContext[]; empty: string; limit: number }) {
   return <div className="canvas-assistant__selection"><span>{label}</span><strong>{nodes.length ? nodes.slice(0, limit).map((node) => node.title).join("、") : empty}</strong></div>;
-}
-
-function DirectionPicker({ value, onChange }: { value: ContentDirection; onChange: (value: ContentDirection) => void }) {
-  return <div className="canvas-assistant__directions" role="group" aria-label="视频方向">{contentDirections.map((direction) => <button key={direction.id} type="button" className={direction.id === value ? "is-active" : undefined} onClick={() => onChange(direction.id)} title={direction.detail}>{direction.label}</button>)}</div>;
 }
 
 function buildReferenceBindings(mode: AssistantModule, images: CanvasAssistantNodeContext[], videos: CanvasAssistantNodeContext[], generatorId: string): CanvasReferenceBinding[] {

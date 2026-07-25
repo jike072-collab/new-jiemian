@@ -29,6 +29,7 @@ export type WorkspaceVideoOptions = {
   requiredReferenceMedia?: Array<"image" | "video" | "audio">;
   supportsVideoReference?: boolean;
   supportsAudioReference?: boolean;
+  humanReferencePolicy?: "allowed" | "blocked" | "unknown";
 };
 
 export type WorkspacePublicProvider = FrontendProvider & {

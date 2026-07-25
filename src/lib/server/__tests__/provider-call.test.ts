@@ -99,6 +99,8 @@ test("Seedance defaults expose the Redbird Seedance 2.0 model catalog", () => {
   assert.equal(seedanceVideoOptionsForModel("video-2.0-fast-720P")?.maxReferenceImages, 4);
   assert.equal(seedanceVideoOptionsForModel("video-2.0-fast-720P")?.maxReferenceVideos, 3);
   assert.equal(seedanceVideoOptionsForModel("video-2.0-fast-720P")?.maxReferenceAudios, 1);
+  assert.equal(seedanceVideoOptionsForModel("video-2.0-fast-720P")?.humanReferencePolicy, "allowed");
+  assert.equal(seedanceVideoOptionsForModel("seedance2.0-9tu-manxue")?.humanReferencePolicy, "blocked");
   assert.deepEqual(seedanceVideoOptionsForModel("sdquan-2")?.durations, [15]);
   assert.deepEqual(seedanceVideoOptionsForModel("sdquan-2")?.ratios, ["16:9", "9:16", "4:3", "3:4", "1:1", "21:9"]);
   assert.equal(seedanceVideoOptionsForModel("sdquan-2")?.maxReferenceVideos, 0);
@@ -152,6 +154,7 @@ test("CLMM Seedance defaults contain only supported 720P/1080P models", () => {
   const dynamicModel = "oe-seedance-2.0-pro-720p-14s-gz";
   assert.deepEqual(clmmSeedanceVideoOptionsForModel(dynamicModel)?.durations, [14]);
   assert.equal(clmmSeedanceVideoOptionsForModel(dynamicModel)?.resolution, "720p");
+  assert.equal(clmmSeedanceVideoOptionsForModel(dynamicModel)?.humanReferencePolicy, "allowed");
   assert.equal(clmmSeedanceVideoMySecondsForModel(dynamicModel), 14);
   assert.equal(isSeedance20VideoModel(dynamicModel), true);
   assert.equal(seedanceLibraryModelName(dynamicModel), "Seedance 2.0 新 · Pro 14 秒 不卡真人");

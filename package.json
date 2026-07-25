@@ -118,7 +118,7 @@
     "test:video-trim": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON scripts/test-video-trim.mjs",
     "test:internal-team": "node scripts/test-internal-team.mjs",
     "test:internal-canvas": "node scripts/test-internal-canvas-access.mjs",
-    "test:canvas-assistant": "node scripts/test-canvas-assistant.mjs",
+    "test:canvas-assistant": "node scripts/test-canvas-assistant.mjs && node --no-warnings --experimental-transform-types --import ./scripts/register-test-typescript-paths.mjs scripts/test-canvas-commerce-service.mjs",
     "test:canvas-image-batching": "node scripts/test-canvas-image-batching.mjs",
     "test:canvas-presence": "node scripts/test-canvas-presence.mjs",
     "test:canvas-vozeb-shell": "node scripts/test-canvas-vozeb-shell.mjs",

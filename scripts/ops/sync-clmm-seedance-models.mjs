@@ -149,6 +149,10 @@ export function syncProviderDocument(document, upstreamModels, pricingEntries) {
     const price = pricesByModel.get(model.toLowerCase());
     return price ? [[model, { amount: price.amount, currency: "CNY", unit: price.unit }]] : [];
   }));
+  const modelHumanReferencePolicies = Object.fromEntries(selection.models.map((model) => {
+    const humanFace = pricesByModel.get(model.toLowerCase())?.humanFace;
+    return [model, humanFace === "supported" ? "allowed" : humanFace === "restricted" ? "blocked" : "unknown"];
+  }));
   const selectedModel = selection.models.includes(provider.model) ? provider.model : selection.models[0];
   const nextProvider = {
     ...provider,
@@ -157,6 +161,7 @@ export function syncProviderDocument(document, upstreamModels, pricingEntries) {
     enabledModels: selection.models,
     modelDisplayNames,
     modelUpstreamPrices,
+    modelHumanReferencePolicies,
     displayName: modelDisplayNames[selectedModel],
   };
   const next = document.slice();

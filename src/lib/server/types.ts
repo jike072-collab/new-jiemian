@@ -27,6 +27,7 @@ export type ProviderConfig = {
   models?: string[];
   modelDisplayNames?: Record<string, string>;
   modelUpstreamPrices?: Record<string, ProviderUpstreamPrice>;
+  modelHumanReferencePolicies?: Record<string, "allowed" | "blocked" | "unknown">;
   enabledModels?: string[];
   displayName?: string;
   upstreamPrice?: ProviderUpstreamPrice;
@@ -43,6 +44,7 @@ export type ProviderConfig = {
     requiredReferenceMedia?: Array<"image" | "video" | "audio">;
     supportsVideoReference?: boolean;
     supportsAudioReference?: boolean;
+    humanReferencePolicy?: "allowed" | "blocked" | "unknown";
   };
   apiKey: string;
   fallbackApiKey?: string;
@@ -69,7 +71,7 @@ export type FrontendProvider = {
 };
 
 export type ProviderUpdate = Partial<
-  Pick<ProviderConfig, "apiUrl" | "model" | "models" | "modelDisplayNames" | "modelUpstreamPrices" | "enabledModels" | "displayName" | "videoOptions" | "enabled" | "endpointType">
+  Pick<ProviderConfig, "apiUrl" | "model" | "models" | "modelDisplayNames" | "modelUpstreamPrices" | "modelHumanReferencePolicies" | "enabledModels" | "displayName" | "videoOptions" | "enabled" | "endpointType">
 > & {
   id: string;
   kind?: ProviderKind;

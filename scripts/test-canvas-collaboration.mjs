@@ -52,9 +52,19 @@ assert.deepEqual(deletion.document.edges, []);
 const remoteTitle = mergeCanvasWorkspace(base, base, state("远端标题", base.document.nodes));
 assert.equal(remoteTitle.title, "远端标题");
 
+const assistantBase = state("共享画布", []);
+assistantBase.document.assistantState = { commerce: { products: {} } };
+const assistantLocal = structuredClone(assistantBase);
+assistantLocal.document.assistantState.commerce.products["product-local"] = { id: "product-local", productName: "本地产品" };
+const assistantRemote = structuredClone(assistantBase);
+assistantRemote.document.assistantState.commerce.products["product-remote"] = { id: "product-remote", productName: "远端产品" };
+const assistantMerge = mergeCanvasWorkspace(assistantBase, assistantLocal, assistantRemote);
+assert.deepEqual(Object.keys(assistantMerge.document.assistantState.commerce.products).sort(), ["product-local", "product-remote"]);
+assert.equal(assistantMerge.conflictCount, 0);
+
 console.log(JSON.stringify({
   ok: true,
-  checks: 11,
+  checks: 13,
   generationSubmitted: false,
   databaseWritten: false,
 }));

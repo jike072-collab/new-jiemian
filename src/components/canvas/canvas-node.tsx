@@ -676,7 +676,8 @@ function providerParameterSummary(provider: WorkspacePublicProvider) {
     options.maxReferenceVideos ? `${options.maxReferenceVideos}视频` : "",
     options.maxReferenceAudios ? `${options.maxReferenceAudios}音频` : "",
   ].filter(Boolean).join(" · ");
-  return `${durationLabel} · ${ratios} · ${media || "无参考素材"}`;
+  const human = options.humanReferencePolicy === "allowed" ? "过真人" : options.humanReferencePolicy === "blocked" ? "卡真人" : "真人能力未确认";
+  return `${durationLabel} · ${ratios} · ${media || "无参考素材"} · ${human}`;
 }
 
 function StatusLine({ status, progress, error }: Pick<CanvasNodeData, "status" | "progress" | "error">) {

@@ -1,4 +1,8 @@
 import type {
+  CanvasCommerceAssistantState,
+  CanvasCommerceDirection,
+  CanvasCommercePlan,
+  CanvasCommerceProductDraft,
   CanvasGenerationKind,
   CanvasGeneratorStatus,
   CanvasMediaType,
@@ -21,6 +25,7 @@ const mediaTypes = new Set<CanvasMediaType>(["image", "video", "audio"]);
 const referenceRoles = new Set<CanvasReferenceRole>(["identity", "first-frame", "last-frame", "product", "environment", "motion", "camera", "timing", "audio", "style"]);
 const generationKinds = new Set<CanvasGenerationKind>(["image", "video"]);
 const generatorStatuses = new Set<CanvasGeneratorStatus>(["idle", "queued", "generating", "done", "failed"]);
+const commerceDirections = new Set<CanvasCommerceDirection>(["human-wear", "sport-motion", "daily-style", "product-asmr", "handheld", "malay-review"]);
 
 export class CanvasDocumentError extends Error {
   readonly code = "CANVAS_DOCUMENT_INVALID";
@@ -92,6 +97,9 @@ export function normalizeCanvasDocument(value: unknown): CanvasProjectDocument {
     nodes,
     edges,
     viewport: normalizeViewport(value.viewport),
+    ...(isRecord(value.assistantState) && isRecord(value.assistantState.commerce)
+      ? { assistantState: { commerce: normalizeCommerceAssistantState(value.assistantState.commerce) } }
+      : {}),
   };
 }
 
@@ -161,6 +169,10 @@ function normalizeNode(value: unknown): CanvasStoredNode {
   if (referenceBindings.length) data.referenceBindings = referenceBindings;
   const sequenceState = normalizeSequenceState(value.data.sequenceState);
   if (sequenceState) data.sequenceState = sequenceState;
+  const assistantProductId = optionalIdentifier(value.data.assistantProductId, 120);
+  const assistantPlanId = optionalIdentifier(value.data.assistantPlanId, 120);
+  if (assistantProductId) data.assistantProductId = assistantProductId;
+  if (assistantPlanId) data.assistantPlanId = assistantPlanId;
   const createdAt = optionalString(value.data.createdAt, 64);
   const completedAt = optionalString(value.data.completedAt, 64);
   const generationStartedAt = optionalString(value.data.generationStartedAt, 64);
@@ -324,6 +336,94 @@ function normalizeSequenceState(value: unknown): CanvasSequenceState | undefined
     ...(completedBeats.length ? { completedBeats } : {}),
     ...(typeof value.accepted === "boolean" ? { accepted: value.accepted } : {}),
   };
+}
+
+function normalizeCommerceAssistantState(value: Record<string, unknown>): CanvasCommerceAssistantState {
+  if (!isRecord(value.products)) return { products: {} };
+  const products = Object.entries(value.products).slice(0, 32).flatMap(([key, candidate]) => {
+    if (!isRecord(candidate)) return [];
+    const id = optionalIdentifier(candidate.id, 120) || optionalIdentifier(key, 120);
+    if (!id) return [];
+    return [[id, normalizeCommerceProductDraft(candidate, id)] as const];
+  });
+  return { products: Object.fromEntries(products) };
+}
+
+function normalizeCommerceProductDraft(value: Record<string, unknown>, id: string): CanvasCommerceProductDraft {
+  const createdAt = optionalString(value.createdAt, 64) || new Date(0).toISOString();
+  const updatedAt = optionalString(value.updatedAt, 64) || createdAt;
+  const images = Array.isArray(value.images) ? value.images.slice(0, 4).flatMap((candidate) => {
+    if (!isRecord(candidate)) return [];
+    const nodeId = optionalIdentifier(candidate.nodeId, 160);
+    if (!nodeId) return [];
+    const libraryItemId = optionalIdentifier(candidate.libraryItemId, 160);
+    return [{ nodeId, title: boundedString(candidate.title, 120).trim() || "产品图片", ...(libraryItemId ? { libraryItemId } : {}) }];
+  }) : [];
+  const directionSellingPoints = isRecord(value.directionSellingPoints)
+    ? Object.fromEntries(Object.entries(value.directionSellingPoints).flatMap(([direction, sellingPoint]) => {
+      if (!commerceDirections.has(direction as CanvasCommerceDirection)) return [];
+      const normalized = boundedString(sellingPoint, 160).trim();
+      return normalized ? [[direction, normalized]] : [];
+    })) as Partial<Record<CanvasCommerceDirection, string>>
+    : {};
+  const plans = Array.isArray(value.plans) ? value.plans.slice(0, 12).flatMap((candidate) => {
+    const plan = normalizeCommercePlan(candidate);
+    return plan ? [plan] : [];
+  }) : [];
+  const phase = value.phase === "product-ready" || value.phase === "planning" || value.phase === "plans-ready" || value.phase === "error"
+    ? value.phase
+    : "setup";
+  const sharedProviderId = optionalString(value.sharedProviderId, 240);
+  const error = optionalString(value.error, 500);
+  return {
+    id,
+    createdAt,
+    updatedAt,
+    images,
+    productName: boundedString(value.productName, 120).trim(),
+    sellingPoints: normalizeShortList(value.sellingPoints, 8, 160),
+    visibleFacts: normalizeShortList(value.visibleFacts, 16, 160),
+    recommendedDirections: normalizeCommerceDirections(value.recommendedDirections, 6),
+    selectedDirections: normalizeCommerceDirections(value.selectedDirections, 3),
+    directionSellingPoints,
+    plans,
+    ...(sharedProviderId ? { sharedProviderId } : {}),
+    extraRequirements: boundedString(value.extraRequirements, 1_200).trim(),
+    phase,
+    ...(error ? { error } : {}),
+  };
+}
+
+function normalizeCommercePlan(value: unknown): CanvasCommercePlan | null {
+  if (!isRecord(value)) return null;
+  const id = optionalIdentifier(value.id, 120);
+  const direction = boundedString(value.direction, 40) as CanvasCommerceDirection;
+  const prompt = boundedString(value.prompt, 8_000).trim();
+  if (!id || !commerceDirections.has(direction) || !prompt) return null;
+  const providerId = optionalString(value.providerId, 240);
+  const createdGroupId = optionalIdentifier(value.createdGroupId, 160);
+  const createdPromptNodeId = optionalIdentifier(value.createdPromptNodeId, 160);
+  const createdGeneratorNodeId = optionalIdentifier(value.createdGeneratorNodeId, 160);
+  return {
+    id,
+    direction,
+    title: boundedString(value.title, 120).trim() || "15 秒带货方案",
+    sellingPoint: boundedString(value.sellingPoint, 160).trim(),
+    prompt,
+    referenceBindings: normalizeReferenceBindings(value.referenceBindings),
+    selected: Boolean(value.selected),
+    ...(providerId ? { providerId } : {}),
+    ...(createdGroupId ? { createdGroupId } : {}),
+    ...(createdPromptNodeId ? { createdPromptNodeId } : {}),
+    ...(createdGeneratorNodeId ? { createdGeneratorNodeId } : {}),
+  };
+}
+
+function normalizeCommerceDirections(value: unknown, limit: number): CanvasCommerceDirection[] {
+  if (!Array.isArray(value)) return [];
+  return [...new Set(value.slice(0, limit)
+    .map((item) => boundedString(item, 40) as CanvasCommerceDirection)
+    .filter((item) => commerceDirections.has(item)))];
 }
 
 function normalizeShortList(value: unknown, limit: number, maxLength: number) {

@@ -133,6 +133,8 @@ test("updates only the CLMM provider document and keeps its key unchanged", asyn
     assert.equal(saved[1].modelDisplayNames["bb-seedance2.0 720p-fast-gz-15s"], "bb · Fast 15 秒 · 卡真人");
     assert.equal(saved[1].modelDisplayNames["bb16：9-seedance2.0 720p-fast-gz-15s"], "bb16:9 · Fast 15 秒 · 卡真人");
     assert.equal(saved[1].modelDisplayNames["oe-seedance-2.0-pro-720p-14s-gz"], "oe · Pro 14 秒 · 过真人");
+    assert.equal(saved[1].modelHumanReferencePolicies["bb-seedance2.0 720p-fast-gz-15s"], "blocked");
+    assert.equal(saved[1].modelHumanReferencePolicies["oe-seedance-2.0-pro-720p-14s-gz"], "allowed");
     assert.deepEqual(saved[1].modelUpstreamPrices["bb-seedance2.0 720p-fast-gz-15s"], { amount: 3.78, currency: "CNY", unit: "request" });
   } finally {
     await rm(root, { recursive: true, force: true });

@@ -12,10 +12,18 @@ const assistantMedia = read("src/lib/server/canvas-assistant-media.ts");
 const optimizer = read("src/lib/server/prompts/optimizer.ts");
 const workspace = read("src/components/canvas/canvas-workspace.tsx");
 const canvasCss = read("src/app/canvas/canvas.css");
+const commercePanel = read("src/components/canvas/canvas-commerce-assistant.tsx");
+const commerceContract = read("src/lib/canvas/commerce-assistant.ts");
 const { canvasAssistantVideoTimestamps, localCanvasAssistantFallback, normalizeCanvasAssistantResponse, restrictCanvasAssistantResponse } = await import(new URL("../src/lib/canvas/assistant.ts", import.meta.url));
 const { resolveCanvasAssistantMediaFocus } = await import(new URL("../src/lib/canvas/assistant-focus.ts", import.meta.url));
 const { inferSeedancePromptMode, seedancePromptGuidance, seedanceReferenceIssues } = await import(new URL("../src/lib/seedance/prompt-guidance.ts", import.meta.url));
 const { isTikTokShopVideoRequest, tiktokShopVideoGuidance, tiktokShopVideoTiming } = await import(new URL("../src/lib/tiktok-shop-video-guidance.ts", import.meta.url));
+const {
+  buildCommerceCanvasBranchData,
+  normalizeCommercePlanGeneration,
+  normalizeCommerceProductAnalysis,
+  planCommerceCanvasCreation,
+} = await import(new URL("../src/lib/canvas/commerce-assistant.ts", import.meta.url));
 
 assert.match(route, /isInternalCanvasHostname/);
 assert.match(route, /getInternalCanvasAccess/);
@@ -59,6 +67,7 @@ assert.doesNotMatch(service, /apiKey|Authorization|child_process|exec\(/);
 assert.match(workspace, /CanvasAssistantPanel/);
 assert.match(workspace, /flowRef\.current\.setCenter/);
 const assistantPanel = read("src/components/canvas/canvas-assistant-panel.tsx");
+const assistantUi = `${assistantPanel}\n${commercePanel}`;
 assert.match(assistantPanel, /submitMessage/);
 assert.match(assistantPanel, /提示词生成/);
 assert.match(assistantPanel, /参考图替换/);
@@ -69,17 +78,32 @@ assert.match(assistantPanel, /phase === "preview"/);
 assert.match(assistantPanel, /分析中/);
 assert.match(assistantPanel, /可编辑预览/);
 assert.match(assistantPanel, /待分析/);
-assert.match(assistantPanel, /selectedNodeIds: selectedIds/);
-assert.match(assistantPanel, /referenceBindings/);
+assert.match(assistantUi, /selectedNodeIds: selectedIds/);
+assert.match(assistantUi, /referenceBindings/);
 assert.match(assistantPanel, /mentionSelection/);
 assert.match(assistantPanel, /onMentionModeChange\(Boolean\(mentionQuery\)\)/);
 assert.match(assistantPanel, /contextNodes\.find\(\(candidate\) => candidate\.id === mentionSelection\.nodeId\)/);
 assert.match(assistantPanel, /mentionSelection\.revision <= handledMentionRevisionRef\.current/);
-assert.match(assistantPanel, /马来西亚带货提示词/);
-assert.match(assistantPanel, /真人展示/);
-assert.match(assistantPanel, /Bahasa Melayu/);
+assert.match(commercePanel, /分析产品/);
+assert.match(commerceContract, /真人上脚/);
+assert.match(service, /Bahasa Melayu/);
+assert.match(commercePanel, /commerce-product-analysis/);
+assert.match(commercePanel, /commerce-plan-generation/);
+assert.match(commercePanel, /全部方案共用模型/);
+assert.match(commercePanel, /创建选中方案节点/);
+assert.match(commercePanel, /重新分析/);
+assert.match(commercePanel, /uncreatedDirections/);
+assert.match(commercePanel, /不会自动提交视频生成/);
+assert.match(commercePanel, /options\.durations\?\.includes\(15\)/);
+assert.match(commercePanel, /options\.ratios\?\.includes\("9:16"\)/);
+assert.match(commercePanel, /resolutionNumber\(resolution\) >= 720/);
+assert.match(commercePanel, /humanReferencePolicy === "allowed"/);
+assert.match(service, /scope: normalized\.scope/);
 assert.match(assistantPanel, /createVideoGenerator: true/);
-assert.match(assistantPanel, /0-2 秒/);
+assert.match(service, /0-2 秒/);
+assert.match(service, /4-8 条简体中文卖点/);
+assert.match(service, /禁止推断舒适、防滑、耐磨、真皮/);
+assert.match(commerceContract, /recommendedDirections/);
 assert.match(workspace, /applyAssistantActions/);
 assert.match(workspace, /assistantNodeContexts/);
 assert.match(workspace, /referenceLabels/);
@@ -99,6 +123,137 @@ assert.match(workspace, /node\.data\.kind === "group"/);
 assert.match(canvasCss, /is-assistant-mentioning \.canvas-node:hover/);
 assert.match(canvasCss, /grid-template-columns: minmax\(0, 96px\) minmax\(0, 1fr\)/);
 assert.match(canvasCss, /\.canvas-assistant__quick\s*\{[^}]*flex-wrap: wrap/s);
+assert.match(canvasCss, /\.canvas-assistant__direction-grid/);
+assert.match(workspace, /createCommercePlanNodes/);
+assert.match(workspace, /assistantProductId/);
+assert.match(workspace, /assistantPlanId/);
+assert.match(commerceContract, /ratio: "9:16"/);
+assert.match(commerceContract, /duration: 15/);
+
+assert.deepEqual(normalizeCommerceProductAnalysis({
+  kind: "commerce-product-analysis",
+  sameProduct: true,
+  suggestedName: "复古厚底系带鞋",
+  sellingPoints: ["厚底视觉", "复古配色", "鞋面拼接层次", "系带结构"],
+  visibleFacts: ["米白色鞋面", "深色鞋底"],
+  recommendedDirections: ["daily-style", "product-asmr"],
+}), {
+  kind: "commerce-product-analysis",
+  sameProduct: true,
+  conflictMessage: undefined,
+  suggestedName: "复古厚底系带鞋",
+  sellingPoints: ["厚底视觉", "复古配色", "鞋面拼接层次", "系带结构"],
+  visibleFacts: ["米白色鞋面", "深色鞋底"],
+  recommendedDirections: ["daily-style", "product-asmr"],
+});
+
+assert.equal(normalizeCommercePlanGeneration({
+  kind: "commerce-plan-generation",
+  plans: [{
+    id: "plan-1",
+    direction: "product-asmr",
+    title: "细节方案",
+    sellingPoint: "鞋面拼接层次",
+    prompt: "素材职责；0-2 秒钩子；2-7 秒演示；7-12 秒细节；12-15 秒 CTA。",
+    referenceBindings: [{ label: "@Image1", role: "product", transfer: "产品外观", ignore: "背景" }],
+  }],
+}, ["product-asmr"]).plans.length, 1);
+
+const commerceDraft = {
+  id: "product-1",
+  createdAt: "2026-07-26T00:00:00.000Z",
+  updatedAt: "2026-07-26T00:00:00.000Z",
+  images: [
+    { nodeId: "source-image-1", title: "主图" },
+    { nodeId: "source-image-2", title: "侧面" },
+    { nodeId: "source-image-3", title: "鞋底" },
+  ],
+  productName: "复古系带鞋",
+  sellingPoints: ["复古配色", "鞋面拼接", "厚底轮廓", "系带结构"],
+  visibleFacts: ["米白色鞋面"],
+  recommendedDirections: ["daily-style", "product-asmr"],
+  selectedDirections: ["daily-style", "product-asmr"],
+  directionSellingPoints: { "daily-style": "复古配色", "product-asmr": "鞋面拼接" },
+  plans: [
+    {
+      id: "plan-daily",
+      direction: "daily-style",
+      title: "日常穿搭",
+      sellingPoint: "复古配色",
+      prompt: "素材职责；0-2 秒钩子；2-7 秒展示；7-12 秒证据；12-15 秒 CTA。",
+      referenceBindings: [
+        { label: "@Image1", role: "product" },
+        { label: "@Image2", role: "product" },
+        { label: "@Image3", role: "product" },
+      ],
+      selected: true,
+      providerId: "seedance-old",
+    },
+    {
+      id: "plan-detail",
+      direction: "product-asmr",
+      title: "细节 ASMR",
+      sellingPoint: "鞋面拼接",
+      prompt: "素材职责；0-2 秒钩子；2-7 秒展示；7-12 秒证据；12-15 秒收束。",
+      referenceBindings: [{ label: "@Image1", role: "product" }],
+      selected: true,
+      providerId: "seedance-new",
+    },
+  ],
+  sharedProviderId: "seedance-old",
+  extraRequirements: "",
+  phase: "plans-ready",
+};
+const creationProviders = [
+  { id: "seedance-old", model: "seedance-2.0-720p", videoOptions: { maxReferenceImages: 2, resolutions: ["720p", "1080p"] } },
+  { id: "seedance-new", model: "seedance-2.0-1080p", videoOptions: { maxReferenceImages: 3, resolution: "1080p" } },
+];
+const creationBranches = planCommerceCanvasCreation({
+  draft: commerceDraft,
+  planIds: ["plan-daily", "plan-detail"],
+  providers: creationProviders,
+  existingPlanIds: ["plan-daily"],
+  imageCount: 3,
+});
+assert.equal(creationBranches.length, 1);
+assert.equal(creationBranches[0].plan.id, "plan-detail");
+assert.equal(creationBranches[0].imageLimit, 3);
+assert.equal(creationBranches[0].omittedImageCount, 0);
+assert.equal(creationBranches[0].resolution, "1080p");
+assert.deepEqual(planCommerceCanvasCreation({
+  draft: commerceDraft,
+  planIds: ["plan-daily", "plan-detail"],
+  providers: creationProviders,
+  existingPlanIds: ["plan-daily", "plan-detail"],
+  imageCount: 3,
+}), []);
+
+const limitedBranch = planCommerceCanvasCreation({
+  draft: commerceDraft,
+  planIds: ["plan-daily"],
+  providers: creationProviders,
+  imageCount: 3,
+})[0];
+assert.equal(limitedBranch.imageLimit, 2);
+assert.equal(limitedBranch.omittedImageCount, 1);
+assert.equal(limitedBranch.resolution, "720p");
+const branchData = buildCommerceCanvasBranchData({
+  branch: limitedBranch,
+  productId: commerceDraft.id,
+  promptNodeId: "prompt-node-1",
+  generatorNodeId: "generator-node-1",
+  imageNodeIds: ["image-node-1", "image-node-2", "image-node-3"],
+  createdAt: "2026-07-26T00:01:00.000Z",
+});
+assert.equal(branchData.promptData.referenceBindings.length, 2);
+assert.deepEqual(branchData.generatorData.sourceNodeIds, ["prompt-node-1", "image-node-1", "image-node-2"]);
+assert.equal(branchData.generatorData.status, "idle");
+assert.equal(branchData.generatorData.duration, 15);
+assert.equal(branchData.generatorData.ratio, "9:16");
+assert.equal(branchData.generatorData.resolution, "720p");
+assert.equal(Object.hasOwn(branchData.generatorData, "jobId"), false);
+assert.equal(Object.hasOwn(branchData.generatorData, "generationRequestId"), false);
+assert.deepEqual(branchData.edges.map((edge) => edge.source), ["image-node-1", "image-node-2", "prompt-node-1"]);
 
 assert.deepEqual(normalizeCanvasAssistantResponse({
   reply: "ok",

@@ -98,6 +98,7 @@ import {
 
 import { BrandLogo } from "@/components/brand-logo";
 import { CanvasAssistantPanel, type CanvasAssistantNodeContext } from "@/components/canvas/canvas-assistant-panel";
+import type { CanvasCommerceCreateResult } from "@/components/canvas/canvas-commerce-assistant";
 import { CanvasCommandPalette, type CanvasCommand } from "@/components/canvas/canvas-command-palette";
 import { CanvasSelectionHint, CanvasShortcutsPanel } from "@/components/canvas/canvas-shortcuts-panel";
 import {
@@ -130,6 +131,8 @@ import {
 } from "@/lib/generation-quota";
 import { ApiError, fetchJson, fetchJsonWithCsrf } from "@/lib/client/api";
 import type {
+  CanvasCommerceAssistantState,
+  CanvasCommerceProductDraft,
   CanvasReferenceBinding,
   CanvasMediaType,
   CanvasNodeData,
@@ -140,6 +143,7 @@ import type {
   CanvasStoredNode,
 } from "@/lib/canvas/types";
 import { normalizeCanvasDocument, removeUnavailableLibraryItemsFromCanvasDocument } from "@/lib/canvas/document";
+import { buildCommerceCanvasBranchData, planCommerceCanvasCreation } from "@/lib/canvas/commerce-assistant";
 import { duplicateCanvasNodeData } from "@/lib/canvas/duplicate";
 import { canvasDropMediaType, collectCanvasFolderDropFiles, isSupportedCanvasDropFile, MAX_CANVAS_FOLDER_FILES } from "@/lib/canvas/folder-drop";
 import {
@@ -478,6 +482,7 @@ function CanvasWorkspaceInner({
   const [assistantOpen, setAssistantOpen] = useState(false);
   const [assistantMentionMode, setAssistantMentionMode] = useState(false);
   const [assistantMentionSelection, setAssistantMentionSelection] = useState<{ nodeId: string; revision: number } | null>(null);
+  const [commerceAssistantState, setCommerceAssistantState] = useState<CanvasCommerceAssistantState>();
   const [shortcutsOpen, setShortcutsOpen] = useState(false);
   const [commandOpen, setCommandOpen] = useState(false);
   const [commandInsertPosition, setCommandInsertPosition] = useState<{ x: number; y: number } | undefined>();
@@ -507,6 +512,7 @@ function CanvasWorkspaceInner({
 
   const nodesRef = useRef(nodes);
   const edgesRef = useRef(edges);
+  const commerceAssistantStateRef = useRef(commerceAssistantState);
   const projectsRef = useRef(projects);
   const libraryRef = useRef(library);
   const libraryRefreshPromiseRef = useRef<Promise<LibraryItem[]> | null>(null);
@@ -541,6 +547,7 @@ function CanvasWorkspaceInner({
 
   useEffect(() => { nodesRef.current = nodes; }, [nodes]);
   useEffect(() => { edgesRef.current = edges; }, [edges]);
+  useEffect(() => { commerceAssistantStateRef.current = commerceAssistantState; }, [commerceAssistantState]);
   useEffect(() => { projectsRef.current = projects; }, [projects]);
   useEffect(() => { libraryRef.current = library; }, [library]);
   useEffect(() => { providersRef.current = providers; }, [providers]);
@@ -619,7 +626,7 @@ function CanvasWorkspaceInner({
   }, []);
 
   const snapshotWorkspace = useCallback((): CanvasWorkspaceSnapshot => {
-    const document = serializeDocument(nodesRef.current, edgesRef.current, viewportRef.current);
+    const document = serializeDocument(nodesRef.current, edgesRef.current, viewportRef.current, commerceAssistantStateRef.current);
     if (canvasScope() === "shared" && activeProjectRef.current) {
       document.viewport = activeProjectRef.current.document.viewport;
     }
@@ -727,9 +734,11 @@ function CanvasWorkspaceInner({
       ? (projectId ? readSharedViewport(accountName, projectId) || document.viewport : viewportRef.current)
       : document.viewport;
     viewportRef.current = nextViewport;
+    commerceAssistantStateRef.current = document.assistantState?.commerce;
     setNodes(hydrated.nodes);
     setEdges(hydrated.edges);
     setViewportState(nextViewport);
+    setCommerceAssistantState(document.assistantState?.commerce);
     void flowRef.current.setViewport(nextViewport, { duration: 0 });
   }, [accountName, connectionStyle, hydrateMediaNodes]);
 
@@ -839,7 +848,7 @@ function CanvasWorkspaceInner({
     if (!activeProjectRef.current) return 0;
     const recoveredCount = matchPendingGeneratedMedia(nodesRef.current, items).size;
     const result = removeUnavailableLibraryItemsFromCanvasDocument(
-      serializeDocument(nodesRef.current, edgesRef.current, viewportRef.current),
+      serializeDocument(nodesRef.current, edgesRef.current, viewportRef.current, commerceAssistantStateRef.current),
       items.map((item) => item.id),
     );
     if (!result.removedNodeIds.length) {
@@ -1325,7 +1334,7 @@ function CanvasWorkspaceInner({
       setEdges((current) => current.map((edge) => ({ ...edge, selected: false })));
       setNotice(`素材“${item.title}”已在画布中。`);
       void flow.setCenter(existing.position.x + (existing.width || 320) / 2, existing.position.y + (existing.height || 300) / 2, { duration: 240, zoom: Math.max(flow.getZoom(), 0.7) });
-      return;
+      return existing.id;
     }
     pushHistorySnapshot();
     const data: CanvasNodeData = {
@@ -1342,10 +1351,9 @@ function CanvasWorkspaceInner({
       ...canvasMediaNodeMetadata(item),
     };
     if (!position) {
-      addNodeAtCenter(data, { width: 320, height: item.type === "image" ? 300 : 340 });
-      return;
+      return addNodeAtCenter(data, { width: 320, height: item.type === "image" ? 300 : 340 }).id;
     }
-    setNodes((current) => [...current, {
+    const node: CanvasFlowNode = {
       id: canvasId("node"),
       type: "canvas",
       dragHandle: canvasNodeDragHandle(data.kind),
@@ -1353,8 +1361,10 @@ function CanvasWorkspaceInner({
       width: 320,
       height: item.type === "image" ? 300 : 340,
       data,
-    }]);
+    };
+    setNodes((current) => [...current, node]);
     markDirty();
+    return node.id;
   }, [addNodeAtCenter, flow, markDirty, pushHistorySnapshot]);
 
   const uploadCanvasAudioReference = useCallback(async (file: File) => {
@@ -1393,14 +1403,14 @@ function CanvasWorkspaceInner({
   const uploadCanvasMediaFiles = useCallback(async (input: File[], position?: { x: number; y: number }, truncated = false) => {
     if (!isInternalCanvas) {
       setNotice("本地素材上传只在内部画布可用。");
-      return;
+      return [];
     }
     const supported = input.filter(isSupportedCanvasDropFile);
     const files = supported.slice(0, MAX_CANVAS_FOLDER_FILES);
     const reachedLimit = truncated || supported.length > MAX_CANVAS_FOLDER_FILES;
     if (!files.length) {
       setNotice("文件夹中没有支持的图片或视频。");
-      return;
+      return [];
     }
     pushHistorySnapshot();
     const columns = files.length > 12 ? 5 : 3;
@@ -1453,6 +1463,7 @@ function CanvasWorkspaceInner({
     }
     let uploadedCount = 0;
     const errors: unknown[] = [];
+    const resultNodeIds: string[] = [];
     let nextIndex = 0;
     const worker = async () => {
       while (nextIndex < files.length) {
@@ -1464,6 +1475,7 @@ function CanvasWorkspaceInner({
           if (placeholder.data.mediaType === "audio") {
             const result = await uploadCanvasAudioReference(files[index]);
             uploadedCount += 1;
+            resultNodeIds[index] = placeholder.id;
             setNodes((current) => {
               const next = current.map((node) => node.id === placeholder.id ? {
                 ...node,
@@ -1497,12 +1509,14 @@ function CanvasWorkspaceInner({
               ? current.find((node) => node.id !== placeholder.id && node.data.kind === "media" && node.data.libraryItemId === item.id)
               : undefined;
             if (existing) {
+              resultNodeIds[index] = existing.id;
               const next = current
                 .filter((node) => node.id !== placeholder.id)
                 .map((node) => ({ ...node, selected: node.id === existing.id }));
               nodesRef.current = next;
               return next;
             }
+            resultNodeIds[index] = placeholder.id;
             const next = current.map((node) => node.id === placeholder.id ? {
               ...node,
               data: {
@@ -1546,6 +1560,7 @@ function CanvasWorkspaceInner({
     } else {
       setNotice(`已添加 ${uploadedCount} 个素材到画布和作品库${reachedLimit ? `；单次最多导入 ${MAX_CANVAS_FOLDER_FILES} 个素材` : ""}。`);
     }
+    return resultNodeIds.filter(Boolean);
   }, [flow, isInternalCanvas, markDirty, pushHistorySnapshot, uploadCanvasAudioReference]);
 
   const addLibraryNodes = useCallback((items: LibraryItem[]) => {
@@ -2916,6 +2931,173 @@ function CanvasWorkspaceInner({
     setNotice(actions.length ? `已应用 ${actions.length} 项助手操作。` : "助手没有请求可应用的画布操作。");
   }, [addGeneratorNode, addPromptNode, addStoryboardNodes, connectionStyle, groupSelectedNodes, markDirty, organizeCanvas, pushHistorySnapshot, ungroupSelectedNodes, updateNodeData]);
 
+  const updateCommerceAssistantState = useCallback((state: CanvasCommerceAssistantState) => {
+    commerceAssistantStateRef.current = state;
+    setCommerceAssistantState(state);
+    markDirty();
+  }, [markDirty]);
+
+  const createCommercePlanNodes = useCallback((draft: CanvasCommerceProductDraft, planIds: string[]): CanvasCommerceCreateResult[] => {
+    const requested = new Set(planIds);
+    const plans = draft.plans.filter((plan) => requested.has(plan.id));
+    if (!plans.length) return [];
+    const currentNodes = nodesRef.current;
+    const existingResults = plans.flatMap((plan) => {
+      const prompt = currentNodes.find((node) => node.data.assistantProductId === draft.id && node.data.assistantPlanId === plan.id && node.data.kind === "prompt");
+      const generator = currentNodes.find((node) => node.data.assistantProductId === draft.id && node.data.assistantPlanId === plan.id && node.data.kind === "generator");
+      const group = currentNodes.find((node) => node.id === prompt?.parentId && node.data.kind === "group");
+      return prompt && generator && group ? [{ planId: plan.id, groupId: group.id, promptNodeId: prompt.id, generatorNodeId: generator.id }] : [];
+    });
+    const existingPlanIds = new Set(existingResults.map((item) => item.planId));
+    if (plans.every((plan) => existingPlanIds.has(plan.id))) return existingResults;
+
+    const sourceByNodeId = new Map(currentNodes.map((node) => [node.id, node]));
+    const resolvedImages = draft.images.flatMap((image) => {
+      const source = sourceByNodeId.get(image.nodeId);
+      const item = image.libraryItemId ? libraryRef.current.find((candidate) => candidate.id === image.libraryItemId) : undefined;
+      if (!source && !item) return [];
+      return [{ image, source, item }];
+    });
+    const branches = planCommerceCanvasCreation({
+      draft,
+      planIds,
+      providers: providersRef.current.video as WorkspacePublicProvider[],
+      existingPlanIds,
+      imageCount: resolvedImages.length,
+    });
+
+    pushHistorySnapshot();
+    const now = new Date().toISOString();
+    let group = currentNodes.find((node) => node.data.kind === "group" && node.data.assistantProductId === draft.id);
+    const previousBranchCount = currentNodes.filter((node) => node.data.kind === "generator" && node.data.assistantProductId === draft.id && node.parentId === group?.id).length;
+    const branchCount = previousBranchCount + branches.length;
+    const groupWidth = 1_180;
+    const groupHeight = Math.min(1_800, Math.max(520, resolvedImages.length * 260 + 96, branchCount * 410 + 96));
+    const nextNodes: CanvasFlowNode[] = [];
+    const nextEdges: Edge[] = [];
+    if (!group) {
+      const center = flowRef.current.screenToFlowPosition({ x: window.innerWidth / 2, y: window.innerHeight / 2 });
+      const rightmost = currentNodes.filter((node) => !node.parentId).reduce((maximum, node) => Math.max(maximum, node.position.x + (node.width || 360)), center.x - groupWidth / 2 - 120);
+      const groupId = canvasId("commerce-group");
+      group = {
+        id: groupId,
+        type: "group",
+        dragHandle: ".canvas-node-group__header",
+        position: { x: rightmost + 120, y: center.y - groupHeight / 2 },
+        width: groupWidth,
+        height: groupHeight,
+        data: {
+          kind: "group",
+          title: draft.productName.trim() || "未命名鞋类产品",
+          createdAt: now,
+          collapsed: false,
+          expandedWidth: groupWidth,
+          expandedHeight: groupHeight,
+          assistantProductId: draft.id,
+        },
+      };
+      nextNodes.push(group);
+    } else {
+      group = {
+        ...group,
+        width: Math.max(group.width || groupWidth, groupWidth),
+        height: Math.max(group.height || groupHeight, groupHeight),
+        data: { ...group.data, title: draft.productName.trim() || group.data.title, expandedWidth: groupWidth, expandedHeight: groupHeight },
+      };
+    }
+
+    const existingImageNodes = currentNodes.filter((node) => node.parentId === group.id && node.data.kind === "media" && node.data.assistantProductId === draft.id);
+    const productImageNodes = resolvedImages.map(({ image, source, item }, index) => {
+      const existing = existingImageNodes.find((node) => node.data.libraryItemId && node.data.libraryItemId === (image.libraryItemId || source?.data.libraryItemId));
+      if (existing) return existing;
+      const libraryItemId = image.libraryItemId || source?.data.libraryItemId;
+      const node: CanvasFlowNode = {
+        id: canvasId("commerce-image"),
+        type: "canvas",
+        dragHandle: canvasNodeDragHandle("media"),
+        parentId: group!.id,
+        extent: "parent",
+        expandParent: true,
+        position: { x: 32, y: 64 + index * 260 },
+        width: 280,
+        height: 230,
+        data: {
+          ...(source?.data || {}),
+          kind: "media",
+          title: item?.title || source?.data.title || image.title,
+          mediaType: "image",
+          libraryItemId,
+          mediaUrl: item?.output?.url || source?.data.mediaUrl,
+          model: item?.model || source?.data.model,
+          createdAt: item?.createdAt || source?.data.createdAt || now,
+          status: "done",
+          progress: 0,
+          assistantProductId: draft.id,
+        },
+      };
+      nextNodes.push(node);
+      return node;
+    });
+
+    const created: CanvasCommerceCreateResult[] = [];
+    branches.forEach((branch, offset) => {
+      const plan = branch.plan;
+      const row = previousBranchCount + offset;
+      const connectedImages = productImageNodes.slice(0, branch.imageLimit);
+      const promptId = canvasId("commerce-prompt");
+      const generatorId = canvasId("commerce-video");
+      const branchData = buildCommerceCanvasBranchData({
+        branch,
+        productId: draft.id,
+        promptNodeId: promptId,
+        generatorNodeId: generatorId,
+        imageNodeIds: connectedImages.map((node) => node.id),
+        createdAt: now,
+      });
+      const promptNode: CanvasFlowNode = {
+        id: promptId,
+        type: "canvas",
+        dragHandle: canvasNodeDragHandle("prompt"),
+        parentId: group!.id,
+        extent: "parent",
+        expandParent: true,
+        position: { x: 376, y: 64 + row * 410 },
+        width: 320,
+        height: 330,
+        data: branchData.promptData,
+      };
+      const generatorNode: CanvasFlowNode = {
+        id: generatorId,
+        type: "canvas",
+        dragHandle: canvasNodeDragHandle("generator"),
+        parentId: group!.id,
+        extent: "parent",
+        expandParent: true,
+        position: { x: 776, y: 44 + row * 410 },
+        width: 360,
+        height: 370,
+        data: branchData.generatorData,
+      };
+      nextNodes.push(promptNode, generatorNode);
+      branchData.edges.forEach((edge) => nextEdges.push(decorateCanvasEdge({
+        id: canvasId("edge"),
+        ...edge,
+      }, [...currentNodes, ...nextNodes], connectionStyle)));
+      created.push({ planId: plan.id, groupId: group!.id, promptNodeId: promptId, generatorNodeId: generatorId });
+    });
+
+    const withoutOldGroup = currentNodes.filter((node) => node.id !== group!.id);
+    const presented = applyCanvasNodePresentation([...withoutOldGroup, group, ...nextNodes.filter((node) => node.id !== group!.id)], [...edgesRef.current, ...nextEdges]);
+    nodesRef.current = presented.nodes;
+    edgesRef.current = presented.edges;
+    setNodes(presented.nodes);
+    setEdges(presented.edges);
+    markDirty();
+    setNotice(`已创建 ${created.length} 套提示词和视频节点，尚未开始生成。`);
+    window.requestAnimationFrame(() => { void flowRef.current.setCenter(group!.position.x + groupWidth / 2, group!.position.y + Math.min(groupHeight, 900) / 2, { duration: 260, zoom: 0.65 }); });
+    return [...existingResults, ...created];
+  }, [connectionStyle, markDirty, pushHistorySnapshot]);
+
   const submitEditedImage = useCallback(async (file: File, prompt: string) => {
     const source = nodesRef.current.find((node) => node.id === editingNodeId && node.data.kind === "media");
     const provider = providersRef.current.image[0] as WorkspacePublicProvider | undefined;
@@ -2974,6 +3156,8 @@ function CanvasWorkspaceInner({
     setNodes(hydrated.nodes);
     setEdges(hydrated.edges);
     setViewportState(document.viewport);
+    commerceAssistantStateRef.current = document.assistantState?.commerce;
+    setCommerceAssistantState(document.assistantState?.commerce);
     setInfoOpen(false);
     historySignatureRef.current = "";
     window.requestAnimationFrame(() => {
@@ -2994,6 +3178,8 @@ function CanvasWorkspaceInner({
     setNodes(hydrated.nodes);
     setEdges(hydrated.edges);
     setViewportState(document.viewport);
+    commerceAssistantStateRef.current = document.assistantState?.commerce;
+    setCommerceAssistantState(document.assistantState?.commerce);
     setInfoOpen(false);
     historySignatureRef.current = "";
     window.requestAnimationFrame(() => {
@@ -3005,7 +3191,7 @@ function CanvasWorkspaceInner({
   const exportCanvas = useCallback(() => {
     const payload = JSON.stringify({
       title: titleRef.current,
-      document: serializeDocument(nodesRef.current, edgesRef.current, viewportRef.current),
+      document: serializeDocument(nodesRef.current, edgesRef.current, viewportRef.current, commerceAssistantStateRef.current),
     }, null, 2);
     const blob = new Blob([payload], { type: "application/json" });
     const url = URL.createObjectURL(blob);
@@ -3841,12 +4027,24 @@ function CanvasWorkspaceInner({
           ) : null}
           {assistantOpen && isInternalCanvas ? (
             <CanvasAssistantPanel
+              key={activeProjectId}
+              projectId={activeProjectId}
               canvasTitle={title}
               scope={canvasScope()}
               nodes={assistantNodeContexts}
+              providers={providers}
+              commerceState={commerceAssistantState}
+              libraryImages={library.filter((item) => item.type === "image" && item.status === "done").map((item) => ({ id: item.id, title: item.title }))}
               mentionSelection={assistantMentionSelection}
               onMentionModeChange={handleAssistantMentionModeChange}
               onApply={applyAssistantActions}
+              onCommerceStateChange={updateCommerceAssistantState}
+              onUploadProductImages={(files) => uploadCanvasMediaFiles(files.filter((file) => file.type.startsWith("image/")))}
+              onAddLibraryImage={(libraryItemId) => {
+                const item = libraryRef.current.find((candidate) => candidate.id === libraryItemId && candidate.type === "image");
+                return item ? addLibraryNode(item) : undefined;
+              }}
+              onCreateCommercePlans={createCommercePlanNodes}
               onClose={() => {
                 setAssistantOpen(false);
                 setAssistantMentionMode(false);
@@ -5054,7 +5252,7 @@ function sameOriginProviderReferenceUrl(url: string) {
   return url;
 }
 
-function serializeDocument(nodes: CanvasFlowNode[], edges: Edge[], viewport: Viewport): CanvasProjectDocument {
+function serializeDocument(nodes: CanvasFlowNode[], edges: Edge[], viewport: Viewport, commerce?: CanvasCommerceAssistantState): CanvasProjectDocument {
   const persistedNodes = nodes.filter((node) => !(
     node.data.kind === "media"
     && node.data.mediaOrigin === "upload"
@@ -5084,6 +5282,7 @@ function serializeDocument(nodes: CanvasFlowNode[], edges: Edge[], viewport: Vie
       ...(edge.targetHandle ? { targetHandle: edge.targetHandle } : {}),
     })),
     viewport,
+    ...(commerce ? { assistantState: { commerce } } : {}),
   };
 }
 

@@ -3,6 +3,7 @@ export type CanvasMediaType = "image" | "video" | "audio";
 export type CanvasGenerationKind = "image" | "video";
 export type CanvasGeneratorStatus = "idle" | "queued" | "generating" | "done" | "failed";
 export type CanvasReferenceRole = "identity" | "first-frame" | "last-frame" | "product" | "environment" | "motion" | "camera" | "timing" | "audio" | "style";
+export type CanvasCommerceDirection = "human-wear" | "sport-motion" | "daily-style" | "product-asmr" | "handheld" | "malay-review";
 
 export type CanvasReferenceBinding = {
   label: string;
@@ -19,6 +20,48 @@ export type CanvasSequenceState = {
   acceptedEndState?: string;
   continuityLocks?: string[];
   completedBeats?: string[];
+};
+
+export type CanvasCommerceProductImage = {
+  nodeId: string;
+  libraryItemId?: string;
+  title: string;
+};
+
+export type CanvasCommercePlan = {
+  id: string;
+  direction: CanvasCommerceDirection;
+  title: string;
+  sellingPoint: string;
+  prompt: string;
+  referenceBindings: CanvasReferenceBinding[];
+  selected: boolean;
+  providerId?: string;
+  createdGroupId?: string;
+  createdPromptNodeId?: string;
+  createdGeneratorNodeId?: string;
+};
+
+export type CanvasCommerceProductDraft = {
+  id: string;
+  createdAt: string;
+  updatedAt: string;
+  images: CanvasCommerceProductImage[];
+  productName: string;
+  sellingPoints: string[];
+  visibleFacts: string[];
+  recommendedDirections: CanvasCommerceDirection[];
+  selectedDirections: CanvasCommerceDirection[];
+  directionSellingPoints: Partial<Record<CanvasCommerceDirection, string>>;
+  plans: CanvasCommercePlan[];
+  sharedProviderId?: string;
+  extraRequirements: string;
+  phase: "setup" | "product-ready" | "planning" | "plans-ready" | "error";
+  error?: string;
+};
+
+export type CanvasCommerceAssistantState = {
+  products: Record<string, CanvasCommerceProductDraft>;
 };
 
 export type CanvasNodeData = Record<string, unknown> & {
@@ -61,6 +104,8 @@ export type CanvasNodeData = Record<string, unknown> & {
   notes?: string;
   referenceBindings?: CanvasReferenceBinding[];
   sequenceState?: CanvasSequenceState;
+  assistantProductId?: string;
+  assistantPlanId?: string;
 };
 
 export type CanvasStoredNode = {
@@ -92,6 +137,9 @@ export type CanvasProjectDocument = {
   nodes: CanvasStoredNode[];
   edges: CanvasStoredEdge[];
   viewport: CanvasViewport;
+  assistantState?: {
+    commerce?: CanvasCommerceAssistantState;
+  };
 };
 
 export type CanvasProject = {
