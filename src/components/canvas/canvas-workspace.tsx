@@ -2090,6 +2090,34 @@ function CanvasWorkspaceInner({
         setNotice("该视频尚未进入作品库，暂时不能裁剪。");
       }
     },
+    trimAudio: (id: string) => {
+      const node = nodesRef.current.find((item) => item.id === id);
+      if (node?.data.kind !== "media" || node.data.mediaType !== "audio" || !node.data.mediaUrl) {
+        setNotice("该音频暂时不能裁剪，请重新上传后重试。");
+        return;
+      }
+      if (!window.confirm("将把音频裁剪为开头 14.9 秒。原音频参考会保留到过期。")) return;
+      updateNodeData(id, { status: "generating", progress: 5, error: undefined });
+      void (async () => {
+        try {
+          const response = await fetchJsonWithCsrf<{ url: string; trimmed: boolean; durationSeconds: number }>("/api/canvas/audio-trim", {
+            method: "POST",
+            body: JSON.stringify({ url: node.data.mediaUrl }),
+          });
+          updateNodeData(id, {
+            mediaUrl: response.url,
+            status: "done",
+            progress: 0,
+            error: undefined,
+            notes: response.trimmed ? "已裁剪为开头 14.9 秒，可作为视频生成参考音频。" : node.data.notes,
+          });
+          setNotice(response.trimmed ? "音频已裁剪为 14.9 秒。" : "该音频已不超过 14.9 秒，无需裁剪。");
+        } catch (error) {
+          updateNodeData(id, { status: "done", progress: 0, error: undefined });
+          setNotice(apiMessage(error, "音频裁剪失败，请稍后重试。"));
+        }
+      })();
+    },
     openTikTokPublisher: (id: string) => {
       const node = nodesRef.current.find((item) => item.id === id);
       if (node?.data.kind === "media" && node.data.mediaType === "video" && node.data.libraryItemId) {

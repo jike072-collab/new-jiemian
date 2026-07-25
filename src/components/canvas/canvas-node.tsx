@@ -74,6 +74,7 @@ type CanvasNodeActions = {
   previewMedia: (id: string) => void;
   registerMediaDimensions: (id: string, width: number, height: number) => void;
   trimVideo: (id: string) => void;
+  trimAudio: (id: string) => void;
   openTikTokPublisher: (id: string) => void;
   optimizePrompt: (id: string, prompt: string) => Promise<void>;
   runGenerator: (id: string) => void;
@@ -459,7 +460,14 @@ function MediaNode({ id, data }: { id: string; data: CanvasNodeData }) {
         </>
       ) : null}
       {data.mediaUrl && data.mediaType === "audio" ? (
-        <audio src={data.mediaUrl} controls preload="metadata" className="nodrag nowheel" />
+        <>
+          <audio src={data.mediaUrl} controls preload="metadata" className="nodrag nowheel" />
+          {data.status === "done" && actions.internalCanvas ? (
+            <div className="canvas-node__video-actions nodrag">
+              <button type="button" onClick={() => actions.trimAudio(id)}><Scissors /><span>裁剪至 14.9 秒</span></button>
+            </div>
+          ) : null}
+        </>
       ) : null}
       {!data.mediaUrl ? (
         <div className={cn("canvas-node__media-placeholder", pending && "is-pending")}>

@@ -158,3 +158,42 @@ export async function trimVideoToMp4(inputPath: string, outputPath: string, star
     await unlink(outputPath).catch(() => undefined);
   }
 }
+
+export async function trimAudioToM4a(inputPath: string, outputPath: string, startValue: unknown, endValue: unknown) {
+  const range = validateVideoTrimRange(startValue, endValue);
+  const sourceDurationSeconds = await probeVideoDuration(inputPath);
+  if (range.startSeconds >= sourceDurationSeconds || range.endSeconds > sourceDurationSeconds + 0.05) {
+    throw new VideoTrimError("裁剪范围超出了音频时长。");
+  }
+
+  const endSeconds = Math.min(range.endSeconds, sourceDurationSeconds);
+  const durationSeconds = endSeconds - range.startSeconds;
+  try {
+    await runFfmpeg([
+      "-nostdin",
+      "-hide_banner",
+      "-loglevel", "error",
+      "-y",
+      "-ss", range.startSeconds.toFixed(3),
+      "-i", inputPath,
+      "-t", durationSeconds.toFixed(3),
+      "-map", "0:a:0",
+      "-vn",
+      "-sn",
+      "-dn",
+      "-c:a", "aac",
+      "-b:a", "192k",
+      "-movflags", "+faststart",
+      outputPath,
+    ]);
+    return {
+      bytes: await readFile(outputPath),
+      startSeconds: range.startSeconds,
+      endSeconds,
+      durationSeconds,
+      sourceDurationSeconds,
+    };
+  } finally {
+    await unlink(outputPath).catch(() => undefined);
+  }
+}
