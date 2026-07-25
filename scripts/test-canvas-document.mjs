@@ -111,6 +111,24 @@ const exactPending = matchPendingGeneratedMedia([
 }]);
 assert.equal(exactPending.get("pending-exact"), "library-exact");
 
+const recoveredFailed = matchPendingGeneratedMedia([
+  { id: "generator-failed", type: "canvas", position: { x: 0, y: 0 }, data: { kind: "generator", title: "Video", generationKind: "video", providerId: "video-provider" } },
+  { id: "pending-failed", type: "canvas", position: { x: 400, y: 0 }, data: { kind: "media", title: "视频生成中", mediaType: "video", mediaOrigin: "generated", sourceNodeIds: ["generator-failed"], status: "failed", generationRequestId: "canvas-video-request", generationStartedAt: "2026-07-23T10:27:53.596Z" } },
+], [{
+  id: "library-failed",
+  type: "video",
+  mode: "image-to-video",
+  title: "Failed",
+  prompt: "prompt",
+  providerId: "video-provider",
+  model: "video-model",
+  status: "failed",
+  createdAt: "2026-07-23T10:28:07.338Z",
+  updatedAt: "2026-07-23T10:35:15.171Z",
+  params: { canvasRequestedAt: "2026-07-23T10:28:00.188Z" },
+}]);
+assert.equal(recoveredFailed.get("pending-failed"), "library-failed");
+
 const ambiguousPending = matchPendingGeneratedMedia([
   { id: "generator-ambiguous", type: "canvas", position: { x: 0, y: 0 }, data: { kind: "generator", title: "Video", generationKind: "video", providerId: "video-provider" } },
   { id: "pending-ambiguous", type: "canvas", position: { x: 400, y: 0 }, data: { kind: "media", title: "视频生成中", mediaType: "video", mediaOrigin: "generated", sourceNodeIds: ["generator-ambiguous"], status: "queued", generationStartedAt: "2026-07-23T10:27:53.596Z" } },

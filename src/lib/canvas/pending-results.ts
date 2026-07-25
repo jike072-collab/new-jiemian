@@ -18,7 +18,7 @@ export function matchPendingGeneratedMedia(
       || node.data.libraryItemId
       || node.data.mediaOrigin !== "generated"
       || !node.data.mediaType
-      || !["queued", "generating"].includes(node.data.status || "")
+      || !["queued", "generating", "failed"].includes(node.data.status || "")
     ) continue;
 
     const generator = node.data.sourceNodeIds
@@ -35,7 +35,7 @@ export function matchPendingGeneratedMedia(
       : [];
     let match = exact.length === 1 ? exact[0] : undefined;
 
-    if (!match && !node.data.generationRequestId && node.data.generationStartedAt) {
+    if (!match && node.data.generationStartedAt) {
       const startedAt = Date.parse(node.data.generationStartedAt);
       const nearby = Number.isFinite(startedAt) ? eligible.filter((item) => {
         const requestedAt = typeof item.params.canvasRequestedAt === "string"
