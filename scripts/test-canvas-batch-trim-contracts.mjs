@@ -7,6 +7,7 @@ const read = (path) => readFileSync(join(root, path), "utf8");
 const route = read("src/app/api/canvas/video-trim/route.ts");
 const workspace = read("src/components/canvas/canvas-workspace.tsx");
 
+assert.match(route, /BATCH_TRIM_SECONDS = 14\.9/);
 assert.match(route, /MAX_BATCH_VIDEO_TRIMS = 12/);
 assert.match(route, /libraryItemIds/);
 assert.match(route, /for \(const id of libraryItemIds\)/);

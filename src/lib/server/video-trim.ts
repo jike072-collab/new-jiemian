@@ -1,7 +1,7 @@
 import { spawn } from "node:child_process";
 import { readFile, unlink } from "node:fs/promises";
 
-export const MAX_VIDEO_TRIM_SECONDS = 15;
+export const MAX_VIDEO_TRIM_SECONDS = 14.9;
 export const MIN_VIDEO_TRIM_SECONDS = 0.1;
 
 const PROCESS_TIMEOUT_MS = 3 * 60_000;
@@ -37,7 +37,7 @@ export function validateVideoTrimRange(startValue: unknown, endValue: unknown): 
     throw new VideoTrimError("裁剪片段不能短于 0.1 秒。");
   }
   if (durationSeconds > MAX_VIDEO_TRIM_SECONDS + 0.001) {
-    throw new VideoTrimError("单个裁剪片段最长 15 秒。");
+    throw new VideoTrimError("单个裁剪片段最长 14.9 秒。");
   }
   return { startSeconds, endSeconds, durationSeconds };
 }

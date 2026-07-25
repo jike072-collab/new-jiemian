@@ -6,7 +6,7 @@ import { useEffect, useRef, useState } from "react";
 import { fetchJsonWithCsrf } from "@/lib/client/api";
 import type { LibraryItem } from "@/lib/server/types";
 
-const MAX_CLIP_SECONDS = 15;
+const MAX_CLIP_SECONDS = 14.9;
 const MIN_CLIP_SECONDS = 0.1;
 
 function clamp(value: number, min: number, max: number) {
@@ -130,7 +130,7 @@ export function CanvasVideoTrimmer({ item, videoUrl, scope, onComplete, onClose 
         <div className="canvas-video-trimmer__controls">
           <div className="canvas-video-trimmer__summary">
             <strong>片段 {timeLabel(startSeconds)} – {timeLabel(endSeconds)}</strong>
-            <span>{clipDuration.toFixed(1)} 秒 / 最长 15 秒</span>
+            <span>{clipDuration.toFixed(1)} 秒 / 最长 14.9 秒</span>
           </div>
           <label>
             <span>开始</span>

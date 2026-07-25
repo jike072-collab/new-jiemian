@@ -1570,7 +1570,7 @@ function CanvasWorkspaceInner({
       setNotice("请先框选已完成的视频节点。");
       return;
     }
-    if (!window.confirm(`将依次把 ${libraryItemIds.length} 个视频裁剪为开头 15 秒，原视频会保留。短视频会自动跳过。`)) return;
+    if (!window.confirm(`将依次把 ${libraryItemIds.length} 个视频裁剪为开头 14.9 秒，原视频会保留。短视频会自动跳过。`)) return;
     setBatchTrimming(true);
     setNotice(`正在依次裁剪 ${libraryItemIds.length} 个视频…`);
     try {
@@ -4013,7 +4013,7 @@ function CanvasBatchToolbar({ count, trimCount, trimming, style, onConnect, onAr
           <button type="button" role="menuitem" onClick={(event) => chooseBatchArrange(event, onArrange, "distribute-vertical")}><AlignVerticalSpaceBetween />垂直分布</button>
         </div>
       </details>
-      {trimCount ? <button type="button" disabled={trimming} onClick={onTrim} title="将选中的长视频依次裁剪为开头 15 秒" aria-label="批量裁剪视频"><Scissors />{trimming ? <span>裁剪中</span> : <span>裁剪 {trimCount}</span>}</button> : null}
+      {trimCount ? <button type="button" disabled={trimming} onClick={onTrim} title="将选中的长视频依次裁剪为开头 14.9 秒" aria-label="批量裁剪视频"><Scissors />{trimming ? <span>裁剪中</span> : <span>裁剪 {trimCount}</span>}</button> : null}
       <button type="button" onClick={onGroup} title="建立节点分组" aria-label="建立节点分组"><Layers3 /><span>分组</span></button>
       <button type="button" onClick={onDuplicate} title="批量复制" aria-label="批量复制"><CopyPlus /><span>复制</span></button>
       <button type="button" onClick={onDelete} title="批量删除" aria-label="批量删除"><Trash2 /><span>删除</span></button>

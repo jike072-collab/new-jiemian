@@ -16,7 +16,7 @@ import { probeVideoDuration, trimVideoToMp4, VideoTrimError } from "@/lib/server
 
 export const runtime = "nodejs";
 
-const BATCH_TRIM_SECONDS = 15;
+const BATCH_TRIM_SECONDS = 14.9;
 const MAX_BATCH_VIDEO_TRIMS = 12;
 
 type VideoTrimRequest = {

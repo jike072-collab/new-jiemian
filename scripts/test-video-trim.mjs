@@ -32,10 +32,10 @@ test("video trim range accepts valid clips and rejects invalid or oversized clip
     endSeconds: 10,
     durationSeconds: 7.5,
   });
-  assert.equal(validateVideoTrimRange(0, MAX_VIDEO_TRIM_SECONDS).durationSeconds, 15);
+  assert.equal(validateVideoTrimRange(0, MAX_VIDEO_TRIM_SECONDS).durationSeconds, MAX_VIDEO_TRIM_SECONDS);
   assert.throws(() => validateVideoTrimRange(-1, 2), VideoTrimError);
   assert.throws(() => validateVideoTrimRange(2, 2), VideoTrimError);
-  assert.throws(() => validateVideoTrimRange(0, 15.01), /最长 15 秒/);
+  assert.throws(() => validateVideoTrimRange(0, 14.91), /最长 14.9 秒/);
   assert.throws(() => validateVideoTrimRange("bad", 3), VideoTrimError);
 });
 
