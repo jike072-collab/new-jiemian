@@ -23,6 +23,9 @@ assert.match(trimService, /"-c:a", "aac"/);
 assert.match(workspace, /"\/api\/canvas\/audio-trim"/);
 assert.match(workspace, /trimAudio: \(id: string\)/);
 assert.match(workspace, /裁剪为开头 14\.9 秒/);
+assert.match(workspace, /id: canvasId\("audio-trim"\)/);
+assert.match(workspace, /已保留原音频，并在右侧添加 14\.9 秒裁剪副本/);
+assert.match(workspace, /\.\.\.current\.map\(\(currentNode\)/);
 assert.match(canvasNode, /trimAudio: \(id: string\)/);
 assert.match(canvasNode, /actions\.trimAudio\(id\)/);
 

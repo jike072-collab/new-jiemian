@@ -2097,6 +2097,7 @@ function CanvasWorkspaceInner({
         return;
       }
       if (!window.confirm("将把音频裁剪为开头 14.9 秒。原音频参考会保留到过期。")) return;
+      pushHistorySnapshot();
       updateNodeData(id, { status: "generating", progress: 5, error: undefined });
       void (async () => {
         try {
@@ -2104,14 +2105,41 @@ function CanvasWorkspaceInner({
             method: "POST",
             body: JSON.stringify({ url: node.data.mediaUrl }),
           });
-          updateNodeData(id, {
-            mediaUrl: response.url,
-            status: "done",
-            progress: 0,
-            error: undefined,
-            notes: response.trimmed ? "已裁剪为开头 14.9 秒，可作为视频生成参考音频。" : node.data.notes,
+          if (!response.trimmed) {
+            updateNodeData(id, { status: "done", progress: 0, error: undefined });
+            setNotice("该音频已不超过 14.9 秒，无需裁剪。");
+            return;
+          }
+          const trimmedNode: CanvasFlowNode = {
+            ...node,
+            id: canvasId("audio-trim"),
+            position: { x: node.position.x + (node.width || 320) + 48, y: node.position.y },
+            selected: true,
+            data: {
+              ...node.data,
+              title: `裁剪 · ${node.data.title}`.slice(0, 120),
+              mediaUrl: response.url,
+              createdAt: new Date().toISOString(),
+              status: "done",
+              progress: 0,
+              error: undefined,
+              notes: "已裁剪为开头 14.9 秒，可作为视频生成参考音频。",
+            },
+          };
+          setNodes((current) => {
+            const next = [
+              ...current.map((currentNode) => currentNode.id === id ? {
+                ...currentNode,
+                selected: false,
+                data: { ...currentNode.data, status: "done" as const, progress: 0, error: undefined },
+              } : currentNode),
+              trimmedNode,
+            ];
+            nodesRef.current = next;
+            return next;
           });
-          setNotice(response.trimmed ? "音频已裁剪为 14.9 秒。" : "该音频已不超过 14.9 秒，无需裁剪。");
+          markDirty();
+          setNotice("已保留原音频，并在右侧添加 14.9 秒裁剪副本。");
         } catch (error) {
           updateNodeData(id, { status: "done", progress: 0, error: undefined });
           setNotice(apiMessage(error, "音频裁剪失败，请稍后重试。"));
@@ -2129,7 +2157,7 @@ function CanvasWorkspaceInner({
     optimizePrompt: optimizePromptNode,
     runGenerator: (id: string) => { void executeGenerator(id); },
     toggleGroup: toggleGroupCollapsed,
-  }), [executeGenerator, inputPreviews, inputSummary, isInternalCanvas, optimizePromptNode, presenceByNode, promptReferences, providers, registerMediaDimensions, removeNode, toggleGroupCollapsed, updateNodeData]);
+  }), [executeGenerator, inputPreviews, inputSummary, isInternalCanvas, markDirty, optimizePromptNode, presenceByNode, promptReferences, providers, pushHistorySnapshot, registerMediaDimensions, removeNode, toggleGroupCollapsed, updateNodeData]);
 
   const onNodesChange = useCallback((changes: NodeChange<CanvasFlowNode>[]) => {
     if (changes.some((change) => change.type !== "select" && !(change.type === "position" && change.dragging))) {
