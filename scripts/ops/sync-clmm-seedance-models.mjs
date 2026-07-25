@@ -69,12 +69,24 @@ export function extractPricingEntries(payload) {
 }
 
 export function classifyHumanFaceSupport(description) {
-  const normalized = String(description || "").replace(/\s+/g, "").toLowerCase();
+  const normalized = normalizePricingDescription(description).replace(/\s+/g, "").toLowerCase();
   if (["不卡人脸", "不卡真人", "过真人脸", "过真人", "支持真人"].some((label) => normalized.includes(label))) {
     return "supported";
   }
   if (["卡人脸", "卡真人脸", "卡真人"].some((label) => normalized.includes(label))) return "restricted";
   return "unknown";
+}
+
+function normalizePricingDescription(value) {
+  const original = String(value || "");
+  const codePoints = Array.from(original, (character) => character.codePointAt(0));
+  if (!codePoints.length || codePoints.some((codePoint) => codePoint > 255)) return original;
+  try {
+    const decoded = new TextDecoder("gb18030").decode(Uint8Array.from(codePoints));
+    return `${original} ${decoded}`;
+  } catch {
+    return original;
+  }
 }
 
 export function selectClmmModels(upstreamModels, currentModels = [], pricingEntries) {

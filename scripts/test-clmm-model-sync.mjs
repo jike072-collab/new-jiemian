@@ -64,6 +64,8 @@ test("extracts CLMM video prices with request and second units", () => {
 test("classifies upstream human-face support without treating 不卡 as 卡真人", () => {
   assert.equal(classifyHumanFaceSupport("不卡人脸，不排队"), "supported");
   assert.equal(classifyHumanFaceSupport("过真人脸 按秒计费"), "supported");
+  assert.equal(classifyHumanFaceSupport("Ô­Éú seedance ¹ýÕæÈËÁ³"), "supported");
+  assert.equal(classifyHumanFaceSupport("seedance ²»¿¨ÕæÈËÁ³"), "supported");
   assert.equal(classifyHumanFaceSupport("卡真人脸，固定价格"), "restricted");
   assert.equal(classifyHumanFaceSupport("固定价格"), "unknown");
 });
