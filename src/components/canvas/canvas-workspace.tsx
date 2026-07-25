@@ -342,8 +342,10 @@ function canvasJobUrl(id: string) {
   return `/api/jobs/${encodeURIComponent(id)}?scope=${canvasScope()}`;
 }
 
-function canvasLibraryMediaUrl(id: string) {
-  return `/api/library/${encodeURIComponent(id)}/media?scope=${canvasScope()}`;
+function canvasLibraryMediaUrl(id: string, revision?: string) {
+  const query = new URLSearchParams({ scope: canvasScope() });
+  if (revision) query.set("v", revision);
+  return `/api/library/${encodeURIComponent(id)}/media?${query}`;
 }
 
 function canvasLibraryThumbnailUrl(item: LibraryItem) {
@@ -678,6 +680,7 @@ function CanvasWorkspaceInner({
       }
       const item = itemMap.get(libraryItemId);
       if (!item) {
+        const pending = node.data.status === "queued" || node.data.status === "generating";
         return {
           ...node,
           type: "canvas" as const,
@@ -685,7 +688,7 @@ function CanvasWorkspaceInner({
           data: {
             ...node.data,
             libraryItemId,
-            mediaUrl: node.data.mediaUrl || canvasLibraryMediaUrl(libraryItemId),
+            mediaUrl: pending ? undefined : node.data.mediaUrl || canvasLibraryMediaUrl(libraryItemId),
           },
         };
       }
@@ -699,7 +702,9 @@ function CanvasWorkspaceInner({
           generationRequestId: undefined,
           title: item.title || node.data.title,
           mediaType: item.type,
-          mediaUrl: item.output?.url,
+          mediaUrl: item.output?.url?.startsWith("/api/library/")
+            ? canvasLibraryMediaUrl(libraryItemId, item.updatedAt)
+            : item.output?.url,
           status: libraryStatus(item),
           error: item.error || undefined,
           ...canvasMediaNodeMetadata(item),
