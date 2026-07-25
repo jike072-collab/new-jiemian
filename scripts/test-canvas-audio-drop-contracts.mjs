@@ -6,6 +6,7 @@ const root = process.cwd();
 const read = (path) => readFileSync(join(root, path), "utf8");
 const folderDrop = read("src/lib/canvas/folder-drop.ts");
 const workspace = read("src/components/canvas/canvas-workspace.tsx");
+const audioRoute = read("src/app/api/canvas/audio/route.ts");
 
 assert.ok(folderDrop.includes("const audioExtension = /\\.(?:mp3|m4a|wav)$/i;"));
 assert.ok(folderDrop.includes("const audioMime = /^audio\\/(?:mpeg|mp4|x-m4a|wav|x-wav)$/i;"));
@@ -16,5 +17,10 @@ assert.match(workspace, /await uploadCanvasAudioReference\(files\[index\]\)/);
 assert.match(workspace, /height: mediaType === "audio" \? 180/);
 assert.match(workspace, /filter\(isSupportedCanvasDropFile\)/);
 assert.match(workspace, /audio\/mpeg,audio\/mp4,audio\/x-m4a,audio\/wav,audio\/x-wav/);
+assert.match(audioRoute, /function canvasReferenceUrl\(url: string\)/);
+assert.match(audioRoute, /url: canvasReferenceUrl\(reference\.url\)/);
+assert.match(workspace, /fetch\(sameOriginProviderReferenceUrl\(url\)/);
+assert.match(workspace, /function sameOriginProviderReferenceUrl\(url: string\)/);
+assert.match(workspace, /parsed\.pathname\.startsWith\("\/api\/provider-reference\/"\)/);
 
 console.log(JSON.stringify({ ok: true, generationSubmitted: false, databaseWritten: false }));

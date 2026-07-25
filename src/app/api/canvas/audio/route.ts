@@ -7,6 +7,11 @@ import { storeProviderReference } from "@/lib/server/provider-reference";
 
 export const runtime = "nodejs";
 
+function canvasReferenceUrl(url: string) {
+  const parsed = new URL(url);
+  return `${parsed.pathname}${parsed.search}${parsed.hash}`;
+}
+
 export async function POST(request: NextRequest) {
   if (!isInternalCanvasHostname(request.headers.get("host"))) {
     return NextResponse.json({ ok: false, message: "Not found." }, { status: 404 });
@@ -26,7 +31,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({
       ok: true,
       title: file.fileName,
-      url: reference.url,
+      url: canvasReferenceUrl(reference.url),
       mimeType: file.mimeType,
       size: file.bytes.length,
     });

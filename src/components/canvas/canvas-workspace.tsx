@@ -4955,11 +4955,21 @@ async function submitVideoGeneration(
 async function libraryItemFile(item: CanvasMediaReference) {
   const url = item.output?.url;
   if (!url) throw new Error(`素材“${item.title}”暂时没有可用文件。`);
-  const response = await fetch(url, { credentials: "same-origin", cache: "no-store" });
+  const response = await fetch(sameOriginProviderReferenceUrl(url), { credentials: "same-origin", cache: "no-store" });
   if (!response.ok) throw new Error(`无法读取素材“${item.title}”。`);
   const blob = await response.blob();
   const extension = item.type === "video" ? "mp4" : item.type === "audio" ? "mp3" : blob.type.includes("jpeg") ? "jpg" : "png";
   return new File([blob], `${item.id}.${extension}`, { type: blob.type || item.output?.mimeType || (item.type === "video" ? "video/mp4" : item.type === "audio" ? "audio/mpeg" : "image/png") });
+}
+
+function sameOriginProviderReferenceUrl(url: string) {
+  try {
+    const parsed = new URL(url, "https://canvas.invalid");
+    if (parsed.pathname.startsWith("/api/provider-reference/")) return `${parsed.pathname}${parsed.search}${parsed.hash}`;
+  } catch {
+    // Preserve malformed URLs so the existing request error remains visible to the user.
+  }
+  return url;
 }
 
 function serializeDocument(nodes: CanvasFlowNode[], edges: Edge[], viewport: Viewport): CanvasProjectDocument {
