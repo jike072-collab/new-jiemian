@@ -11,6 +11,7 @@ import {
   promptPreferenceFields,
 } from "../../../prompt-preferences";
 import {
+  createNewApiAdminPromptModelCaller,
   createNewApiPromptModelCaller,
   createProviderPromptModelCaller,
   createPromptOptimizeService,
@@ -504,14 +505,14 @@ test("provider caller sends labeled visual evidence as multimodal content", asyn
   assert.equal(output, "已分析视觉素材");
 });
 
-test("New API caller uses chat completions without exposing admin credentials", async () => {
+test("New API admin caller uses the requested chat model without exposing credentials", async () => {
   handlers.set("POST /v1/chat/completions", async (request, response) => {
     assert.equal(request.headers.authorization, "Bearer admin-secret");
     assert.equal(request.headers["new-api-user"], "1");
     const chunks: Buffer[] = [];
     for await (const chunk of request) chunks.push(Buffer.from(chunk));
     const body = JSON.parse(Buffer.concat(chunks).toString("utf8"));
-    assert.equal(body.model, "prompt-test-model");
+    assert.equal(body.model, "gpt-5.6-terra");
     assert.equal(body.max_tokens, 2400);
     assert.equal(body.messages[0].role, "system");
     assert.equal(body.messages[1].role, "user");
@@ -522,10 +523,8 @@ test("New API caller uses chat completions without exposing admin credentials", 
     });
   });
 
-  const previousModel = process.env.PROMPT_OPTIMIZER_MODEL;
-  process.env.PROMPT_OPTIMIZER_MODEL = "prompt-test-model";
-  try {
-    const caller = createNewApiPromptModelCaller(new NewApiHttpClient({
+  const caller = createNewApiAdminPromptModelCaller({
+    client: new NewApiHttpClient({
       enabled: true,
       baseUrl,
       timeoutMs: 500,
@@ -533,18 +532,16 @@ test("New API caller uses chat completions without exposing admin credentials", 
       environment: "test",
       adminAccessToken: "admin-secret",
       adminUserId: 1,
-    }));
-    const output = await caller({
-      systemPrompt: "system",
-      userPrompt: "user",
-      requestId: "req-new-api",
-      timeoutMs: 500,
-    });
-    assert.equal(output, "来自 New API 的中文提示词");
-  } finally {
-    if (previousModel === undefined) delete process.env.PROMPT_OPTIMIZER_MODEL;
-    else process.env.PROMPT_OPTIMIZER_MODEL = previousModel;
-  }
+    }),
+    model: "gpt-5.6-terra",
+  });
+  const output = await caller({
+    systemPrompt: "system",
+    userPrompt: "user",
+    requestId: "req-new-api",
+    timeoutMs: 500,
+  });
+  assert.equal(output, "来自 New API 的中文提示词");
 });
 
 test("New API caller falls back when the dedicated prompt provider is temporarily unavailable", async () => {

@@ -665,7 +665,12 @@ function shouldFallbackToAdminPromptModel(error: unknown) {
     );
 }
 
-function createNewApiAdminPromptModelCaller(client: NewApiHttpClient): PromptModelCaller {
+export function createNewApiAdminPromptModelCaller(options: {
+  client?: NewApiHttpClient;
+  model?: string;
+} = {}): PromptModelCaller {
+  const client = options.client || new NewApiHttpClient();
+  const model = options.model?.trim() || envText("PROMPT_OPTIMIZER_MODEL", DEFAULT_MODEL);
   return async (input) => {
     const response = await client.request<ChatCompletionPayload>({
       method: "POST",
@@ -675,7 +680,7 @@ function createNewApiAdminPromptModelCaller(client: NewApiHttpClient): PromptMod
       maxResponseBytes: 65536,
       retry: false,
       body: {
-        model: envText("PROMPT_OPTIMIZER_MODEL", DEFAULT_MODEL),
+        model,
         temperature: 0.2,
         max_tokens: promptOptimizerMaxTokens(),
         messages: [
@@ -689,7 +694,7 @@ function createNewApiAdminPromptModelCaller(client: NewApiHttpClient): PromptMod
 }
 
 export function createNewApiPromptModelCaller(client?: NewApiHttpClient, fallbackProviderCaller?: PromptModelCaller): PromptModelCaller {
-  const adminCaller = createNewApiAdminPromptModelCaller(client || new NewApiHttpClient());
+  const adminCaller = createNewApiAdminPromptModelCaller({ client });
   const providerCaller = fallbackProviderCaller || (client ? null : createProviderPromptModelCaller());
   if (!providerCaller) return adminCaller;
   return async (input) => {
