@@ -151,6 +151,8 @@ assert.match(canvasCss, /canvas-node__mention-trigger/);
 assert.match(canvasCss, /grid-template-rows: minmax\(0, 1fr\) 26px/);
 assert.match(canvasCss, /\.canvas-node__prompt-footer \{ position: relative;/);
 assert.match(workspace, /selectedNodes/);
+assert.match(workspace, /const replaceCanvasElements = useCallback/);
+assert.match(workspace, /nodesRef\.current = nextNodes;[\s\S]+edgesRef\.current = nextEdges;/);
 assert.match(workspace, /panOnDrag/);
 assert.match(workspace, /\s+panOnDrag\s+/);
 assert.match(workspace, /selectionOnDrag=\{false\}/);

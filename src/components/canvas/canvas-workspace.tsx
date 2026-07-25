@@ -542,6 +542,13 @@ function CanvasWorkspaceInner({
   useEffect(() => { providersRef.current = providers; }, [providers]);
   useEffect(() => { titleRef.current = title; }, [title]);
   useEffect(() => { viewportRef.current = viewport; }, [viewport]);
+
+  const replaceCanvasElements = useCallback((nextNodes: CanvasFlowNode[], nextEdges: Edge[]) => {
+    nodesRef.current = nextNodes;
+    edgesRef.current = nextEdges;
+    setNodes(nextNodes);
+    setEdges(nextEdges);
+  }, []);
   useEffect(() => { flowRef.current = flow; }, [flow]);
   useEffect(() => {
     const storageKey = presentation === "vozeb" ? "aohuang-canvas-v2-settings" : "aohuang-canvas-settings";
@@ -1138,10 +1145,11 @@ function CanvasWorkspaceInner({
     const ids = new Set([id]);
     nodesRef.current.forEach((node) => { if (node.parentId === id) ids.add(node.id); });
     pushHistorySnapshot();
-    setNodes((current) => current.filter((node) => !ids.has(node.id)));
-    setEdges((current) => current.filter((edge) => !ids.has(edge.source) && !ids.has(edge.target)));
+    const nextNodes = nodesRef.current.filter((node) => !ids.has(node.id));
+    const nextEdges = edgesRef.current.filter((edge) => !ids.has(edge.source) && !ids.has(edge.target));
+    replaceCanvasElements(nextNodes, nextEdges);
     markDirty();
-  }, [markDirty, pushHistorySnapshot]);
+  }, [markDirty, pushHistorySnapshot, replaceCanvasElements]);
 
   const toggleGroupCollapsed = useCallback((id: string) => {
     const group = nodesRef.current.find((node) => node.id === id && node.data.kind === "group");
@@ -2257,20 +2265,21 @@ function CanvasWorkspaceInner({
     const edgeIds = new Set(edgesRef.current.filter((edge) => edge.selected).map((edge) => edge.id));
     if (!ids.size && !edgeIds.size) return;
     pushHistorySnapshot();
-    setNodes((current) => current.filter((node) => !ids.has(node.id)));
-    setEdges((current) => current.filter((edge) => !edgeIds.has(edge.id) && !ids.has(edge.source) && !ids.has(edge.target)));
+    const nextNodes = nodesRef.current.filter((node) => !ids.has(node.id));
+    const nextEdges = edgesRef.current.filter((edge) => !edgeIds.has(edge.id) && !ids.has(edge.source) && !ids.has(edge.target));
+    replaceCanvasElements(nextNodes, nextEdges);
     setInfoOpen(false);
     setContextMenu(null);
     markDirty();
-  }, [markDirty, pushHistorySnapshot]);
+  }, [markDirty, pushHistorySnapshot, replaceCanvasElements]);
 
   const removeEdge = useCallback((edgeId: string) => {
     if (!edgesRef.current.some((edge) => edge.id === edgeId)) return;
     pushHistorySnapshot();
-    setEdges((current) => current.filter((edge) => edge.id !== edgeId));
+    replaceCanvasElements(nodesRef.current, edgesRef.current.filter((edge) => edge.id !== edgeId));
     setContextMenu(null);
     markDirty();
-  }, [markDirty, pushHistorySnapshot]);
+  }, [markDirty, pushHistorySnapshot, replaceCanvasElements]);
   const copySelectedNodes = useCallback(() => {
     const selected = copyableCanvasSelection(nodesRef.current);
     if (!selected.length) return;
@@ -2540,10 +2549,11 @@ function CanvasWorkspaceInner({
     }
     if (!window.confirm(`确认清理 ${removable.size} 个节点？`)) return;
     pushHistorySnapshot();
-    setNodes((current) => current.filter((node) => !removable.has(node.id)));
-    setEdges((current) => current.filter((edge) => !removable.has(edge.source) && !removable.has(edge.target)));
+    const nextNodes = nodesRef.current.filter((node) => !removable.has(node.id));
+    const nextEdges = edgesRef.current.filter((edge) => !removable.has(edge.source) && !removable.has(edge.target));
+    replaceCanvasElements(nextNodes, nextEdges);
     markDirty();
-  }, [markDirty, pushHistorySnapshot]);
+  }, [markDirty, pushHistorySnapshot, replaceCanvasElements]);
   const focusSelectedText = useCallback(() => {
     if (!selectedNode) return;
     const textarea = document.querySelector<HTMLTextAreaElement>(`[data-canvas-node-id="${selectedNode.id}"] textarea`);
@@ -3007,14 +3017,13 @@ function CanvasWorkspaceInner({
   const deleteLibraryItem = useCallback(async (item: LibraryItem) => {
     if (!window.confirm(`确认删除素材“${item.title}”？`)) return;
     await fetchJsonWithCsrf("/api/library", { method: "DELETE", body: JSON.stringify({ id: item.id }) });
-    setNodes((current) => current.filter((node) => node.data.libraryItemId !== item.id));
-    setEdges((current) => {
-      const remaining = new Set(nodesRef.current.filter((node) => node.data.libraryItemId !== item.id).map((node) => node.id));
-      return current.filter((edge) => remaining.has(edge.source) && remaining.has(edge.target));
-    });
+    const nextNodes = nodesRef.current.filter((node) => node.data.libraryItemId !== item.id);
+    const remaining = new Set(nextNodes.map((node) => node.id));
+    const nextEdges = edgesRef.current.filter((edge) => remaining.has(edge.source) && remaining.has(edge.target));
+    replaceCanvasElements(nextNodes, nextEdges);
     await refreshLibrary();
     markDirty();
-  }, [markDirty, refreshLibrary]);
+  }, [markDirty, refreshLibrary, replaceCanvasElements]);
 
   const copyLibraryItemLink = useCallback(async (item: LibraryItem) => {
     if (!item.output?.url) return;
