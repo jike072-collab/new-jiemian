@@ -88,17 +88,26 @@ export function localCanvasAssistantFallback(input: {
   }
   if (/(分镜|镜头脚本|多集|故事拆解)/.test(message)) {
     const subject = sourcePrompt || boundedText(input.canvasTitle, 120) || "当前故事主题";
+    const isCommerceStoryboard = /(带货|TikTok\s*Shop|电商)/iu.test(message);
+    const commercePrompt = isCommerceStoryboard
+      ? `${subject.replace(/[。！？!?.]+$/u, "")}。${tiktokShopVideoGuidance({ prompt: message, duration: 15 }).join("；")}只使用图片中真实可见的产品信息，保留准确的 @ImageN、@VideoN、@AudioN 引用，不虚构功效、价格、折扣、销量或用户证言。`
+      : "";
     return {
-      reply: "上游助手暂时不可用，我已生成 3 个可继续编辑的基础分镜节点；请确认每个镜头后再逐个生成。",
-      actions: [{
-        type: "add_storyboard",
-        title: "Seedance 分镜项目",
-        shots: [
-          { shotId: "SH01", title: "建立主体和场景", timeRange: "0-3s", prompt: `${subject}，明确主体、场景和起始状态，使用一个稳定的建立镜头。`, sequenceState: { shotId: "SH01", completedBeats: [] } },
-          { shotId: "SH02", title: "推进主要动作", timeRange: "3-10s", prompt: `${subject}，从上一镜头实际结束状态继续，只完成一个主要动作，使用一个服务于动作的运镜。`, sequenceState: { shotId: "SH02", completedBeats: [] } },
-          { shotId: "SH03", title: "收束到结束状态", timeRange: "10-15s", prompt: `${subject}，保持角色和场景连续，完成动作后的收束画面，不重复前面已完成的动作。`, sequenceState: { shotId: "SH03", completedBeats: [] } },
-        ],
-      }],
+      reply: isCommerceStoryboard
+        ? "上游助手暂时不可用，我已生成一条 15 秒带货提示词和 3 个可继续编辑的分镜节点；请确认后再逐个生成。"
+        : "上游助手暂时不可用，我已生成 3 个可继续编辑的基础分镜节点；请确认每个镜头后再逐个生成。",
+      actions: [
+        ...(commercePrompt ? [{ type: "add_prompt" as const, title: "15 秒带货视频提示词", prompt: commercePrompt }] : []),
+        {
+          type: "add_storyboard" as const,
+          title: isCommerceStoryboard ? "15 秒带货分镜项目" : "Seedance 分镜项目",
+          shots: [
+            { shotId: "SH01", title: "建立主体和场景", timeRange: "0-3s", prompt: `${subject}，明确主体、场景和起始状态，使用一个稳定的建立镜头。`, sequenceState: { shotId: "SH01", completedBeats: [] } },
+            { shotId: "SH02", title: "推进主要动作", timeRange: "3-10s", prompt: `${subject}，从上一镜头实际结束状态继续，只完成一个主要动作，使用一个服务于动作的运镜。`, sequenceState: { shotId: "SH02", completedBeats: [] } },
+            { shotId: "SH03", title: "收束到结束状态", timeRange: "10-15s", prompt: `${subject}，保持角色和场景连续，完成动作后的收束画面，不重复前面已完成的动作。`, sequenceState: { shotId: "SH03", completedBeats: [] } },
+          ],
+        },
+      ],
     };
   }
   if (/(视频换物|局部替换|替换|换成|换掉)/.test(message) && nodes.some((node) => node.kind === "media" && node.mediaType === "video") && nodes.some((node) => node.kind === "media" && node.mediaType === "image")) {

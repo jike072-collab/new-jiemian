@@ -1,6 +1,6 @@
 "use client";
 
-import { Bot, Check, LoaderCircle, Send, Sparkles, WandSparkles, X } from "lucide-react";
+import { Bot, Check, Film, Image as ImageIcon, LoaderCircle, ListVideo, Send, Sparkles, WandSparkles, X } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent, type KeyboardEvent } from "react";
 
 import { fetchJsonWithCsrf } from "@/lib/client/api";
@@ -29,6 +29,7 @@ export type CanvasAssistantNodeContext = {
 
 type Message = { role: "user" | "assistant"; content: string };
 type MentionQuery = { start: number; end: number; query: string };
+type AssistantModule = "prompt" | "replace";
 
 export function CanvasAssistantPanel({
   canvasTitle,
@@ -48,6 +49,9 @@ export function CanvasAssistantPanel({
   onClose: () => void;
 }) {
   const selectedPrompt = nodes.find((node) => node.selected && node.kind === "prompt")?.prompt || "";
+  const [activeModule, setActiveModule] = useState<AssistantModule>("prompt");
+  const [hookStyle, setHookStyle] = useState("痛点钩子");
+  const [storyboardTemplate, setStoryboardTemplate] = useState("产品展示");
   const [messages, setMessages] = useState<Message[]>([{
     role: "assistant",
     content: "我只处理当前画布。可以让我写提示词、改写选中的提示词，或整理节点布局。",
@@ -75,6 +79,8 @@ export function CanvasAssistantPanel({
       .slice(0, 8);
   }, [contextNodes, mentionQuery]);
   const generatorCount = useMemo(() => nodes.filter((node) => node.kind === "generator").length, [nodes]);
+  const imageCount = useMemo(() => nodes.filter((node) => node.kind === "media" && node.mediaType === "image").length, [nodes]);
+  const videoCount = useMemo(() => nodes.filter((node) => node.kind === "media" && node.mediaType === "video").length, [nodes]);
   const contextLabel = mentionedNodes.length
     ? `已引用 ${mentionedNodes.length} 个：${mentionedNodes.slice(0, 2).map((node) => node.title).join("、")}${mentionedNodes.length > 2 ? "…" : ""}`
     : selectedNodes.length
@@ -185,37 +191,61 @@ export function CanvasAssistantPanel({
     void submitMessage(input);
   }
 
+  function requestCommercePrompt(includeStoryboard: boolean) {
+    const storyboard = includeStoryboard
+      ? `同时输出 3 段分镜脚本（0-3 秒、3-10 秒、10-15 秒），每段写清画面、动作、口播/字幕和素材引用。`
+      : "只输出一条完整视频提示词，不创建分镜节点。";
+    void submitMessage([
+      "根据当前选中或已连接的产品图片/素材，制作一条 15 秒 TikTok Shop 带货视频。",
+      `采用${storyboardTemplate}分镜模板，开头使用${hookStyle}，按注意（0-3 秒）、兴趣与欲望（3-10 秒）、信任（10-12 秒）、行动（12-15 秒）组织。`,
+      "只使用图片中真实可见的产品外观、材质、颜色和使用场景，提炼一个核心卖点；不虚构功效、价格、折扣、销量或用户证言。",
+      "保留并准确使用当前画布的 @ImageN、@VideoN、@AudioN 引用，明确每个引用的职责和禁止转移的内容。",
+      `${storyboard} 只创建提示词或分镜节点，等待我确认，不要开始生成视频。`,
+    ].join(" "));
+  }
+
+  function requestReplacementPrompt() {
+    void submitMessage("根据当前画布中的 @VideoN 基础视频和 @ImageN 参考图，生成一条局部换物提示词。@VideoN 只负责原视频动作、镜头和时间线，@ImageN 只负责目标物外观；逐帧保持目标物的出现、消失、遮挡、透视、运动模糊和接触阴影与原对象一致，其余人物、动作、场景、光线、声音和时长保持不变。只创建提示词，不开始生成。");
+  }
+
   return (
     <aside className="canvas-assistant" aria-label="画布智能助手">
       <header className="canvas-assistant__header">
         <div><Bot /><span><strong>智能助手</strong><small>GPT-5.6 Luna · 仅限当前画布</small></span></div>
         <button type="button" className="canvas-icon-button" onClick={onClose} aria-label="关闭智能助手" title="关闭智能助手"><X /></button>
       </header>
-      <div className="canvas-assistant__quick" aria-label="快捷请求">
-        <button type="button" disabled={busy} onClick={() => { void submitMessage("分析当前画布已经连接的素材和生成参数，新增一条专业、完整、可直接生成的提示词；使用准确引用标签，写清必须保留、需要改变和禁止变化的内容。"); }}>专业提示词</button>
-        <button type="button" disabled={busy} onClick={() => { void submitMessage("根据当前选中或已连接的素材，写一条用于马来西亚 TikTok Shop 的带货短视频提示词。按当前视频时长安排开场钩子、一个核心价值、可信证据和结尾行动，不虚构素材中没有的卖点；只创建提示词，不要开始生成。"); }}>带货短视频</button>
-        <button type="button" disabled={busy || !selectedPrompt} onClick={() => { void submitMessage("优化当前选中的提示词，保留原意并让它更适合生成。"); }}>优化选中</button>
-        <button type="button" disabled={busy} onClick={() => { void submitMessage("按从左到右的创作流程整理当前画布节点。"); }}>整理画布</button>
-        <button type="button" disabled={busy} onClick={() => { void submitMessage("把当前故事拆成 3-5 个 Seedance 分镜节点，分别生成提示词和视频生成节点。"); }}>生成分镜</button>
+      <div className="canvas-assistant__modules" role="tablist" aria-label="助手模块">
+        <button type="button" role="tab" aria-selected={activeModule === "prompt"} className={activeModule === "prompt" ? "is-active" : undefined} onClick={() => setActiveModule("prompt")}><WandSparkles /><span>提示词生成</span><small>15 秒带货短视频</small></button>
+        <button type="button" role="tab" aria-selected={activeModule === "replace"} className={activeModule === "replace" ? "is-active" : undefined} onClick={() => setActiveModule("replace")}><ImageIcon /><span>参考图替换</span><small>视频换物</small></button>
       </div>
+      {activeModule === "prompt" ? (
+        <section className="canvas-assistant__module-panel" aria-label="提示词生成">
+          <div className="canvas-assistant__module-heading"><div><strong>15 秒带货视频</strong><span>根据当前图片生成提示词和分镜脚本</span></div><Film /></div>
+          <div className="canvas-assistant__fields">
+            <label><span>分镜模板</span><select value={storyboardTemplate} onChange={(event) => setStoryboardTemplate(event.target.value)}><option>产品展示</option><option>真人演示</option><option>开箱测评</option></select></label>
+            <label><span>开头钩子</span><select value={hookStyle} onChange={(event) => setHookStyle(event.target.value)}><option>痛点钩子</option><option>结果钩子</option><option>场景钩子</option><option>反差钩子</option></select></label>
+          </div>
+          <div className="canvas-assistant__prompt-actions">
+            <button type="button" className="is-primary" disabled={busy} onClick={() => requestCommercePrompt(false)}><Sparkles />生成提示词</button>
+            <button type="button" disabled={busy} onClick={() => requestCommercePrompt(true)}><ListVideo />提示词 + 分镜</button>
+          </div>
+          <div className="canvas-assistant__utility" aria-label="提示词工具">
+            <button type="button" disabled={busy} onClick={() => { void submitMessage("分析当前画布已经连接的素材和生成参数，新增一条专业、完整、可直接生成的提示词；使用准确引用标签，写清必须保留、需要改变和禁止变化的内容。"); }}>专业提示词</button>
+            <button type="button" disabled={busy || !selectedPrompt} onClick={() => { void submitMessage("优化当前选中的提示词，保留原意并让它更适合生成。"); }}>优化选中</button>
+            <button type="button" disabled={busy} onClick={() => { void submitMessage("按从左到右的创作流程整理当前画布节点。"); }}>整理画布</button>
+          </div>
+          <label className="canvas-assistant__template"><span>Seedance 模板</span><select aria-label="选择 Seedance 模板" defaultValue="" onChange={(event) => { const template = seedanceTemplates.find((item) => item.id === event.target.value); if (template) setInput(template.prompt); event.currentTarget.value = ""; }}><option value="">选择模板</option>{seedanceTemplates.map((template) => <option key={template.id} value={template.id}>{template.name}</option>)}</select></label>
+        </section>
+      ) : (
+        <section className="canvas-assistant__module-panel" aria-label="参考图替换">
+          <div className="canvas-assistant__module-heading"><div><strong>参考图替换</strong><span>用图片替换视频中的指定对象</span></div><ImageIcon /></div>
+          <div className="canvas-assistant__replace-summary"><span className={videoCount ? "is-ready" : undefined}>@Video · {videoCount ? `${videoCount} 个基础视频` : "未连接"}</span><span className={imageCount ? "is-ready" : undefined}>@Image · {imageCount ? `${imageCount} 张参考图` : "未连接"}</span></div>
+          <button type="button" className="canvas-assistant__replace-action" disabled={busy || !videoCount || !imageCount} onClick={requestReplacementPrompt}><WandSparkles />生成换物提示词</button>
+        </section>
+      )}
       <div className="canvas-assistant__context" title={(mentionedNodes.length ? mentionedNodes : selectedNodes).map((node) => node.title).join("、") || contextLabel}>
         <span>分析范围</span><strong>{contextLabel}</strong>
       </div>
-      <label className="canvas-assistant__template">
-        <span>Seedance 模板</span>
-        <select
-          aria-label="选择 Seedance 模板"
-          defaultValue=""
-          onChange={(event) => {
-            const template = seedanceTemplates.find((item) => item.id === event.target.value);
-            if (template) setInput(template.prompt);
-            event.currentTarget.value = "";
-          }}
-        >
-          <option value="">选择模板</option>
-          {seedanceTemplates.map((template) => <option key={template.id} value={template.id}>{template.name}</option>)}
-        </select>
-      </label>
       <div className="canvas-assistant__messages" aria-live="polite">
         {messages.map((message, index) => (
           <div key={`${message.role}-${index}`} className={`canvas-assistant__message is-${message.role}`}>
