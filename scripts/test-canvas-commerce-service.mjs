@@ -218,6 +218,40 @@ const recovered = await parseRecoveryService.answer({
 assert.equal(recovered.kind, "commerce-plan-generation");
 assert.equal(malformedCalls, 2);
 
+let invalidHookCalls = 0;
+const invalidHookPlan = {
+  ...generated.plans[0],
+  hook: {
+    visualPatternId: "invented-motion-hook",
+    copyPatternId: "invented-copy-hook",
+    hookLine: "Biasa sahaja",
+  },
+};
+const hookRepairService = createCanvasAssistantService(async () => {
+  invalidHookCalls += 1;
+  return JSON.stringify({ kind: "commerce-plan-generation", plans: [invalidHookPlan] });
+});
+const hookRepaired = await hookRepairService.answer({
+  workflow: "commerce-plan-generation",
+  message: "重新分析15秒方案",
+  canvasTitle: "马来西亚鞋类测试",
+  scope: "shared",
+  productDraftId: "product-1",
+  productName: analysis.suggestedName,
+  sellingPoints: analysis.sellingPoints,
+  visibleFacts: analysis.visibleFacts,
+  selectedDirections: ["daily-style"],
+  directionSellingPoints: { "daily-style": "复古配色" },
+  selectedNodeIds: nodes.map((node) => node.id),
+  nodes,
+}, "request-hook-repair", visualEvidence);
+assert.equal(invalidHookCalls, 2);
+assert.equal(hookRepaired.kind, "commerce-plan-generation");
+assert.notEqual(hookRepaired.plans[0].hook.visualPatternId, "invented-motion-hook");
+assert.notEqual(hookRepaired.plans[0].hook.copyPatternId, "invented-copy-hook");
+assert.equal(hookRepaired.plans[0].shots[0].dialogue, hookRepaired.plans[0].hook.hookLine);
+assert.equal(hookRepaired.plans[0].shots[0].onScreenText, hookRepaired.plans[0].hook.hookLine);
+
 console.log(JSON.stringify({
   ok: true,
   stages: [analysis.kind, generated.kind],

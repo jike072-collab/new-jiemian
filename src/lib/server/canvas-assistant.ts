@@ -13,14 +13,17 @@ import { createNewApiPromptModelCaller, type PromptModelCaller } from "@/lib/ser
 import type { CanvasAssistantVisualEvidence } from "@/lib/server/canvas-assistant-media";
 import type { CanvasCommerceDirection, CanvasMediaType, CanvasReferenceBinding, CanvasSequenceState } from "@/lib/canvas/types";
 import {
+  isMalaysiaCommerceCopyHookFormulaSatisfied,
   isMalaysiaCommerceHookPairCompatible,
   isMalaysiaCommerceProductionRecipeCompatible,
   malaysiaCommerceCopyHookPattern,
+  malaysiaCommerceCopyHookPatterns,
   malaysiaCommerceHookPromptLibrary,
   malaysiaCommercePerformancePattern,
   malaysiaCommerceScenePattern,
   malaysiaCommerceShotPattern,
   malaysiaCommerceVisualHookPattern,
+  malaysiaCommerceVisualHookPatterns,
 } from "#malaysia-commerce-video-hook-library";
 import { seedanceCanvasAssistantRules, seedancePromptGuidance } from "@/lib/seedance/prompt-guidance";
 import { tiktokShopVideoGuidance } from "#tiktok-shop-video-guidance";
@@ -387,6 +390,87 @@ function parseJsonObject(value: string) {
   throw new CanvasAssistantError("CANVAS_ASSISTANT_FAILED", "助手没有返回可用的结构化结果，请重新分析。", 502);
 }
 
+const commerceHookFallbackLines: Record<string, string> = {
+  "stop-scroll-specific-reveal": "Kejap, tengok kasut ni berubah.",
+  "finally-found-match": "Akhirnya jumpa kasut yang nampak ngam.",
+  "conditional-visible-result": "Bila bergerak, warna ni terus menyerlah.",
+  "offer-surprise": "Deal kasut ni memang berbaloi.",
+  "expectation-gap": "Tak sangka warna ni terus menyerlah.",
+  "direct-problem-question": "Korang pernah susah padankan kasut?",
+};
+
+function repairCommercePlanHookMetadata(
+  value: unknown,
+  expectedDirections: CanvasCommerceDirection[] = [],
+  usedHookPatterns: CanvasAssistantInput["usedHookPatterns"] = [],
+) {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return value;
+  const root = value as Record<string, unknown>;
+  if (!Array.isArray(root.plans)) return value;
+  const usedVisualIds = new Set((usedHookPatterns || []).map((pattern) => `${pattern.direction}:${pattern.visualPatternId}`));
+  const usedCopyIds = new Set((usedHookPatterns || []).map((pattern) => `${pattern.direction}:${pattern.copyPatternId}`));
+  const plans = root.plans.map((candidate, index) => {
+    if (!candidate || typeof candidate !== "object" || Array.isArray(candidate)) return candidate;
+    const plan = candidate as Record<string, unknown>;
+    const direction = text(plan.direction, 40) as CanvasCommerceDirection;
+    if (!expectedDirections.includes(direction)) return candidate;
+    const rawHook = plan.hook && typeof plan.hook === "object" && !Array.isArray(plan.hook)
+      ? plan.hook as Record<string, unknown>
+      : {};
+    const requestedVisual = malaysiaCommerceVisualHookPattern(text(rawHook.visualPatternId, 80));
+    const compatibleVisuals = malaysiaCommerceVisualHookPatterns.filter((pattern) => pattern.directions.some((item) => item === direction));
+    const visual = requestedVisual?.directions.some((item) => item === direction)
+      ? requestedVisual
+      : compatibleVisuals.find((pattern) => !usedVisualIds.has(`${direction}:${pattern.id}`)) || compatibleVisuals[index % compatibleVisuals.length];
+    if (!visual) return candidate;
+
+    const requestedCopy = malaysiaCommerceCopyHookPattern(text(rawHook.copyPatternId, 80));
+    const requestedHookLine = text(rawHook.hookLine, 240);
+    const matchingCopy = malaysiaCommerceCopyHookPatterns.find((pattern) => pattern.directions.some((item) => item === direction)
+      && isMalaysiaCommerceHookPairCompatible(visual.id, pattern.id, direction)
+      && isMalaysiaCommerceCopyHookFormulaSatisfied(pattern.id, requestedHookLine));
+    const validRequestedCopy = requestedCopy?.directions.some((item) => item === direction)
+      && isMalaysiaCommerceHookPairCompatible(visual.id, requestedCopy.id, direction)
+      && isMalaysiaCommerceCopyHookFormulaSatisfied(requestedCopy.id, requestedHookLine)
+      ? requestedCopy
+      : undefined;
+    const fallbackCopies = Object.keys(commerceHookFallbackLines).flatMap((id) => {
+      const pattern = malaysiaCommerceCopyHookPattern(id);
+      return pattern?.directions.some((item) => item === direction)
+        && isMalaysiaCommerceHookPairCompatible(visual.id, pattern.id, direction) ? [pattern] : [];
+    });
+    const copy = validRequestedCopy || matchingCopy
+      || fallbackCopies.find((pattern) => !usedCopyIds.has(`${direction}:${pattern.id}`))
+      || fallbackCopies[index % fallbackCopies.length];
+    if (!copy) return candidate;
+    const requestedWordCount = requestedHookLine.match(/\p{L}+(?:['’-]\p{L}+)*/gu)?.length || 0;
+    const hookLine = isMalaysiaCommerceCopyHookFormulaSatisfied(copy.id, requestedHookLine)
+      && requestedWordCount >= 3 && requestedWordCount <= 7
+      ? requestedHookLine
+      : commerceHookFallbackLines[copy.id];
+    if (!hookLine) return candidate;
+    const production = plan.production && typeof plan.production === "object" && !Array.isArray(plan.production)
+      ? plan.production as Record<string, unknown>
+      : {};
+    const scene = malaysiaCommerceScenePattern(text(production.scenePatternId, 80));
+    return {
+      ...plan,
+      hook: {
+        ...rawHook,
+        visualPatternId: visual.id,
+        copyPatternId: copy.id,
+        title: text(rawHook.title, 120) || `${visual.label} + ${copy.label}`,
+        reason: text(rawHook.reason, 360) || `${visual.mechanism}${copy.formula}`,
+        hookLine,
+        onScreenText: hookLine,
+        scene: text(rawHook.scene, 240) || scene?.setting || "马来西亚本地日常场景",
+        visualBeat: text(rawHook.visualBeat, 360) || visual.firstFrame,
+      },
+    };
+  });
+  return { ...root, plans };
+}
+
 async function callAssistantModel(caller: PromptModelCaller, input: Parameters<PromptModelCaller>[0]) {
   try {
     return await caller(input);
@@ -474,7 +558,24 @@ async function answerCommerceWorkflow(
       timeoutMs: 120_000,
       maxTokens: 6_000,
     });
-    generated = normalizePlans(parseJsonObject(correctedOutput));
+    const correctedValue = parseJsonObject(correctedOutput);
+    try {
+      generated = normalizePlans(correctedValue);
+    } catch (correctionError) {
+      const correctionMessage = correctionError instanceof Error ? correctionError.message.slice(0, 300) : "结构化方案二次校验失败";
+      newApiLogger.warn({
+        event: "commerce_plan_hook_metadata_repair",
+        requestId,
+        context: "canvas-assistant",
+        retryable: false,
+        details: { correctionMessage },
+      });
+      generated = normalizePlans(repairCommercePlanHookMetadata(
+        correctedValue,
+        normalized.selectedDirections,
+        normalized.usedHookPatterns,
+      ));
+    }
   }
   return {
     ...generated,
