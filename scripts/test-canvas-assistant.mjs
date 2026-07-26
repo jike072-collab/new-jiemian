@@ -27,6 +27,7 @@ const {
   planCommerceCanvasCreation,
 } = await import(new URL("../src/lib/canvas/commerce-assistant.ts", import.meta.url));
 const {
+  isMalaysiaCommerceCopyHookFormulaSatisfied,
   isMalaysiaCommerceHookPairCompatible,
   isMalaysiaCommerceProductionRecipeCompatible,
   malaysiaCommerceCopyHookPatterns,
@@ -171,6 +172,8 @@ assert.match(commerceContract, /duration: 15/);
 assert.match(commerceContract, /notes: commercePlanNotes/);
 assert.match(hookLibrarySource, /允许非数字优惠惊喜话术/);
 assert.match(hookLibrarySource, /offer-surprise/);
+assert.match(hookLibrarySource, /单纯系鞋带、站起、走路/);
+assert.match(hookLibrarySource, /每句马来语口播都必须显示逐字相同/);
 
 const allHookPatterns = [...malaysiaCommerceVisualHookPatterns, ...malaysiaCommerceCopyHookPatterns];
 assert.equal(new Set(malaysiaCommerceVisualHookPatterns.map((pattern) => pattern.id)).size, malaysiaCommerceVisualHookPatterns.length);
@@ -179,6 +182,33 @@ assert.equal(allHookPatterns.every((pattern) => pattern.directions.length && pat
 assert.equal(malaysiaCommerceVisualHookPatterns.every((pattern) => !/(?:跳下|崴脚|投掷液体|倒地|受伤动物)/u.test(pattern.mechanism)), true);
 assert.equal(isMalaysiaCommerceHookPairCompatible("product-asmr-detail", "expectation-gap", "product-asmr"), true);
 assert.equal(isMalaysiaCommerceHookPairCompatible("barrier-pov", "numbered-specificity", "sport-motion"), false);
+assert.equal(isMalaysiaCommerceCopyHookFormulaSatisfied("late-discovery-regret", "Kalau tahu awal, memang pilih yang ni"), true);
+assert.equal(isMalaysiaCommerceCopyHookFormulaSatisfied("late-discovery-regret", "Kasut ni nampak kemas"), false);
+assert.equal(isMalaysiaCommerceCopyHookFormulaSatisfied("friend-asks-link", "Kawan terus tanya link kasut ni"), true);
+assert.equal(isMalaysiaCommerceCopyHookFormulaSatisfied("direct-problem-question", "Outfit hari ni rasa biasa?"), true);
+for (const [patternId, hookLine] of [
+  ["expectation-gap", "Tak sangka warna ni terus menyerlah"],
+  ["offer-surprise", "Deal ni memang berbaloi tengok"],
+  ["negative-setup-reversal", "Ingat outfit ni tak jadi, tapi rupanya ngam"],
+  ["avoidance-reminder", "Jangan silap pilih warna outfit ni"],
+  ["contrarian-reframe", "Bukan kena sama, sebenarnya kontras lagi kemas"],
+  ["relatable-moment", "Pernah rasa outfit harian nampak biasa?"],
+  ["numbered-specificity", "Dua detail kasut ni terus menonjol"],
+  ["conditional-visible-result", "Bila tukar kasut, outfit terus nampak kemas"],
+  ["direct-problem-question", "Korang rasa outfit ni biasa?"],
+  ["late-discovery-regret", "Baru tahu warna ni senang digayakan"],
+  ["wasted-choice-realization", "Baru sedar selalu salah pilih warna"],
+  ["finally-found-match", "Akhirnya jumpa kasut yang nampak kemas"],
+  ["unexpected-visible-delight", "Memang tak sangka warna ni menyerlah"],
+  ["audience-specific-share", "Share dengan kawan yang suka gaya santai"],
+  ["friend-asks-link", "Kawan terus tanya link kasut ni"],
+  ["beginner-simple-method", "Cuma tukar kasut, terus nampak kemas"],
+  ["hidden-detail-discovery", "Rupanya detail bahagian ni memang menyerlah"],
+  ["stop-scroll-specific-reveal", "Tunggu kejap, tengok perubahan outfit ni"],
+  ["old-method-reframe", "Lepas banding baru nampak beza warna ni"],
+]) {
+  assert.equal(isMalaysiaCommerceCopyHookFormulaSatisfied(patternId, hookLine), true, `${patternId} should accept its Malay formula`);
+}
 assert.equal(new Set(malaysiaCommerceScenePatterns.map((pattern) => pattern.id)).size, malaysiaCommerceScenePatterns.length);
 assert.equal(new Set(malaysiaCommerceShotPatterns.map((pattern) => pattern.id)).size, malaysiaCommerceShotPatterns.length);
 assert.equal(new Set(malaysiaCommercePerformancePatterns.map((pattern) => pattern.id)).size, malaysiaCommercePerformancePatterns.length);
@@ -237,7 +267,7 @@ const commerceHook = {
   title: "拼接细节预期落差",
   reason: "微距动作可以直接兑现可见拼接层次，不涉及价格。",
   hookLine: "Tak sangka detail ni menyerlah",
-  onScreenText: "Detail ni memang menyerlah",
+  onScreenText: "Tak sangka detail ni menyerlah",
   scene: "室内产品桌面",
   visualBeat: "第一帧手指已经轻触鞋面拼接。",
 };
@@ -260,9 +290,9 @@ const commerceShots = [
   { timeRange: "0-2秒", shotSize: "极近景", camera: "固定微距", action: "手指轻触鞋面拼接后停住", performance: "手部力度轻，发现细节后停顿半拍", productState: "鞋子静置，拼接处清楚可见", dialogue: commerceHook.hookLine, onScreenText: commerceHook.onScreenText, sound: "第 0 秒开始轻触和布面摩擦声", transition: "在摩擦声强拍处开始后拉" },
   { timeRange: "2-7秒", shotSize: "近景", camera: "快速后拉", action: "手扶鞋跟让完整鞋型进入画面", performance: "手部自然重新调整握持位置", productState: "完整侧面轮廓出现且配色不变", dialogue: "无口播", onScreenText: "", sound: "后拉时音乐节拍进入", transition: "手部转动动作连续进入下一镜头" },
   { timeRange: "7-12秒", shotSize: "特写", camera: "短推进", action: "手部转动鞋子展示第二处拼接", performance: "动作放慢，在结构清楚时停住", productState: "鞋面和鞋带结构保持一致", dialogue: "无口播", onScreenText: "", sound: "鞋带轻响和一次提示音", transition: "提示音强拍切到稳定正侧面" },
-  { timeRange: "12-15秒", shotSize: "中近景", camera: "固定机位", action: "双手把鞋子放回桌面并退出画面", performance: "动作平稳收势，不做广告式指点", productState: "鞋子完整正侧面稳定展示", dialogue: "无口播", onScreenText: "Korang suka detail macam ni?", sound: "音乐轻收束和桌面落放声", transition: "稳定停留到结束" },
+  { timeRange: "12-15秒", shotSize: "中近景", camera: "固定机位", action: "双手把鞋子放回桌面并退出画面", performance: "动作平稳收势，不做广告式指点", productState: "鞋子完整正侧面稳定展示", dialogue: "无口播", onScreenText: "", sound: "音乐轻收束和桌面落放声", transition: "稳定停留到结束" },
 ];
-const commercePrompt = "素材职责：@Image1 提供产品外观。产品可见事实：鞋面拼接层次。0-2 秒：手指轻触拼接，同时说‘Tak sangka detail ni menyerlah’，屏幕短字‘Detail ni memang menyerlah’；2-7 秒：后拉展示完整鞋型；7-12 秒：切换另一处拼接近景；12-15 秒：完整产品收束。声音/口播：从第 0 秒开始轻触声。禁止项：不虚构价格、折扣或性能。";
+const commercePrompt = "素材职责：@Image1 提供产品外观。产品可见事实：鞋面拼接层次。0-2 秒：手指轻触拼接，同时说‘Tak sangka detail ni menyerlah’，同步字幕‘Tak sangka detail ni menyerlah’；2-7 秒：后拉展示完整鞋型；7-12 秒：切换另一处拼接近景；12-15 秒：完整产品收束。声音/口播：从第 0 秒开始轻触声。禁止项：不虚构价格、折扣或性能。";
 
 const normalizedCommercePlan = normalizeCommercePlanGeneration({
   kind: "commerce-plan-generation",
@@ -289,7 +319,7 @@ const offerHook = {
   copyPatternId: "offer-surprise",
   title: "优惠惊喜开场",
   hookLine: "Tak sangka deal dia macam ni",
-  onScreenText: "Deal ni memang tak sangka",
+  onScreenText: "Tak sangka deal dia macam ni",
 };
 const offerShots = commerceShots.map((shot, index) => index ? shot : {
   ...shot,
@@ -325,7 +355,61 @@ const normalizedHookSync = normalizeCommercePlanGeneration({
   plans: [{ direction: "product-asmr", hook: commerceHook, production: commerceProduction, shots: commerceShots.map((shot, index) => index ? { ...shot, timeRange: shot.timeRange.replace("秒", "s") } : { ...shot, timeRange: shot.timeRange.replace("秒", "s"), dialogue: "无口播", onScreenText: "别的短字" }), publishingCopy: commercePublishingCopy }],
 }, ["product-asmr"]);
 assert.equal(normalizedHookSync.plans[0].shots[0].dialogue.startsWith(commerceHook.hookLine), true);
-assert.equal(normalizedHookSync.plans[0].shots[0].onScreenText, commerceHook.onScreenText);
+assert.equal(normalizedHookSync.plans[0].shots[0].onScreenText, commerceHook.hookLine);
+assert.equal(normalizedHookSync.plans[0].hook.onScreenText, commerceHook.hookLine);
+const spokenSubtitleSync = normalizeCommercePlanGeneration({
+  kind: "commerce-plan-generation",
+  plans: [{
+    direction: "product-asmr",
+    hook: commerceHook,
+    production: commerceProduction,
+    shots: commerceShots.map((shot, index) => index === 1
+      ? { ...shot, dialogue: "Nampak terus lebih kemas", onScreenText: "字幕不同" }
+      : shot),
+    publishingCopy: commercePublishingCopy,
+  }],
+}, ["product-asmr"]);
+assert.equal(spokenSubtitleSync.plans[0].shots[1].onScreenText, "Nampak terus lebih kemas");
+
+const plainActionHook = {
+  visualPatternId: "middle-of-action",
+  copyPatternId: "direct-problem-question",
+  title: "动作中的穿搭问题",
+  reason: "先提出具体穿搭问题，再由动作承接。",
+  hookLine: "Outfit hari ni rasa biasa?",
+  onScreenText: "Outfit hari ni rasa biasa?",
+  scene: "马来西亚公寓玄关",
+  visualBeat: "人物正在系鞋带。",
+};
+const dailyProduction = {
+  scenePatternId: "condo-entry-mirror",
+  shotPatternId: "problem-reveal-proof-result",
+  performancePatternId: "candid-curiosity",
+  energy: "balanced",
+  emotionArc: "犹豫、发现、确认和自然收束",
+  realismNotes: "普通公寓生活感，保留衣服褶皱和自然呼吸",
+};
+const dailyShots = [
+  { timeRange: "0-2秒", shotSize: "中景", camera: "固定中景", action: "人物正在系鞋带", performance: "低头专注，动作平稳", productState: "目标鞋未穿，放在脚边", dialogue: plainActionHook.hookLine, onScreenText: plainActionHook.hookLine, sound: "第0秒开始口播和鞋带声", transition: "手移向镜头形成遮挡" },
+  { timeRange: "2-7秒", shotSize: "近景", camera: "匹配剪辑后短推进", action: "遮挡后人物完成穿鞋", performance: "低头确认鞋子", productState: "双脚已穿目标鞋", dialogue: "Nampak terus lebih kemas", onScreenText: "Nampak terus lebih kemas", sound: "脚步强拍进入", transition: "脚步落点匹配下一动作" },
+  { timeRange: "7-12秒", shotSize: "全身", camera: "低机位侧向跟拍", action: "人物自然走两步", performance: "视线看前方", productState: "目标鞋保持已穿", dialogue: "无口播", onScreenText: "", sound: "自然脚步声", transition: "人物经过前景形成遮挡" },
+  { timeRange: "12-15秒", shotSize: "全身", camera: "固定机位", action: "人物停稳并整理衣角", performance: "自然半笑后离开", productState: "目标鞋保持已穿且完整可见", dialogue: "Korang suka gaya macam ni?", onScreenText: "Korang suka gaya macam ni?", sound: "音乐自然收束", transition: "人物迈出画面后结束" },
+];
+assert.throws(() => normalizeCommercePlanGeneration({
+  kind: "commerce-plan-generation",
+  plans: [{ direction: "daily-style", hook: plainActionHook, production: dailyProduction, shots: dailyShots, publishingCopy: commercePublishingCopy }],
+}, ["daily-style"]), /系鞋带、站起、走路或拿起鞋只是动作/);
+const strongActionPlan = normalizeCommercePlanGeneration({
+  kind: "commerce-plan-generation",
+  plans: [{
+    direction: "daily-style",
+    hook: { ...plainActionHook, visualBeat: "人物拿错鞋后看向镜中不协调的穿搭，犹豫时开始解开鞋带。" },
+    production: dailyProduction,
+    shots: dailyShots.map((shot, index) => index ? shot : { ...shot, action: "人物拿错鞋后发现配色不协调，犹豫时开始解开鞋带" }),
+    publishingCopy: commercePublishingCopy,
+  }],
+}, ["daily-style"]);
+assert.equal(strongActionPlan.plans[0].shots.every((shot) => shot.dialogue === "无口播" ? !shot.onScreenText : shot.dialogue === shot.onScreenText), true);
 assert.throws(() => normalizeCommercePlanGeneration({
   kind: "commerce-plan-generation",
   plans: [{ direction: "product-asmr", hook: commerceHook, production: commerceProduction, shots: commerceShots.map((shot, index) => index ? shot : { ...shot, camera: "高级电影感" }), publishingCopy: commercePublishingCopy }],

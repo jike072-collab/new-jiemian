@@ -14,6 +14,7 @@ import type {
   CanvasStoredEdge,
 } from "./types";
 import {
+  isMalaysiaCommerceCopyHookFormulaSatisfied,
   isMalaysiaCommerceHookPairCompatible,
   isMalaysiaCommerceProductionRecipeCompatible,
   malaysiaCommerceCopyHookPattern,
@@ -265,11 +266,14 @@ export function normalizeCommerceShots(value: unknown, direction: CanvasCommerce
     return [shot];
   });
   if (shots.length !== 4) return undefined;
-  const firstShot = shots[0];
-  const dialogue = firstShot.dialogue.includes(hook.hookLine)
-    ? firstShot.dialogue
-    : `${hook.hookLine}${firstShot.dialogue && firstShot.dialogue !== "无口播" ? `；${firstShot.dialogue}` : ""}`;
-  return [{ ...firstShot, dialogue, onScreenText: hook.onScreenText }, ...shots.slice(1)];
+  return shots.map((shot, index) => {
+    const dialogue = index === 0 ? hook.hookLine : shot.dialogue;
+    return {
+      ...shot,
+      dialogue,
+      onScreenText: dialogue === "无口播" ? "" : dialogue,
+    };
+  });
 }
 
 export function composeCommerceSeedancePrompt({
@@ -305,9 +309,7 @@ export function composeCommerceSeedancePrompt({
     : production.energy === "balanced"
       ? "节奏有起伏，揭示段加快、证据段放稳，镜头运动有清楚起止"
       : "节奏克制，依靠触感声和细节变化维持注意力，运镜平稳且不僵硬";
-  const openingVoice = shots[0]?.dialogue === "无口播"
-    ? `开头不口播；话术意图“${hook.hookLine}”只用于指导字幕语气，屏幕短字严格使用“${hook.onScreenText}”`
-    : `开头口播“${hook.hookLine}”，屏幕短字严格使用“${hook.onScreenText}”`;
+  const openingVoice = `开头口播“${hook.hookLine}”，同步字幕逐字使用“${hook.onScreenText}”`;
   const shotText = shots.map((shot, index) => [
     `镜头 ${index + 1}｜${shot.timeRange}｜${shot.shotSize}`,
     `动作：${shot.action}`,
@@ -330,11 +332,12 @@ export function composeCommerceSeedancePrompt({
     `动感强度：${production.energy}。${energyGuidance}。`,
     `情绪弧线：${production.emotionArc}`,
     `表演基准：${performancePattern?.performance || production.realismNotes}。情绪参考：${performancePattern?.emotionArc || production.emotionArc}。`,
-    `真人真实感：${production.realismNotes}。9:16 原生手机短视频观感，自然曝光和真实皮肤纹理；人物动作有准备、发力和收势，保留自然眨眼、呼吸、视线转移、重心变化和微小停顿，背景人物不抢戏；鞋子结构、配色、左右脚和参考图全程一致。`,
+    `真人真实感：${production.realismNotes}。9:16 原生手机短视频观感；马来西亚当地成年人物像真实生活中的普通人，不是完美广告模特。保留自然皮肤纹理、轻微出汗或碎发、衣服轻微褶皱、眨眼、呼吸、视线转移、重心变化和动作惯性；普通公寓、商场、遮雨走廊或公园允许少量背景杂物、自然人流、轻微手持微抖和曝光调整，禁止塑料皮肤、过度磨皮、完美影棚布光和空无一人的豪华广告场景；鞋子结构、配色、左右脚和参考图全程一致。`,
+    "承上启下与连续性：镜头 1 提出可见问题或信息缺口；镜头 2 必须承接镜头 1 的人物、产品和动作状态并揭示答案；镜头 3 延续同一动作或结果，用不同景别提供证据；镜头 4 延续已证明的状态闭合开头并 CTA。上一镜头结束状态就是下一镜头开始状态，人物、服装、鞋子穿着状态、动作方向、情绪和场景不得跳变；每次转场必须由动作、遮挡、落点或声音桥接。",
     "四镜头分镜脚本：",
     shotText,
-    `声音/口播：从第 0 秒开始；${openingVoice}；最多三句短马来语，动作声与节拍承担中段情绪。`,
-    "禁止项：优惠钩子不得出现具体金额、百分比、降价幅度、限时、库存或销量；不得虚构评价、品牌、材料、舒适、防滑、耐磨、透气或健康功效；不得使用危险动作、事故、受伤、街头骚扰；不得出现僵硬口型、广告式连续点头、漂浮滑步、肢体畸变、鞋子变形、文字乱码或无动机炫技运镜。",
+    `声音/口播：从第 0 秒开始；${openingVoice}；最多三句短马来语，每个有口播镜头的屏幕字幕必须与该镜头台词逐字相同，无口播镜头才不显示字幕；动作声与节拍承担中段情绪。`,
+    "禁止项：优惠钩子不得出现具体金额、百分比、降价幅度、限时、库存或销量；不得虚构评价、品牌、材料、舒适、防滑、耐磨、透气或健康功效；不得使用危险动作、事故、受伤、街头骚扰；不得出现僵硬口型、广告式连续点头、塑料皮肤、过度磨皮、完美影棚布光、漂浮滑步、无重力步态、肢体畸变、鞋子变形、文字乱码或无动机炫技运镜。",
   ].join("\n\n").slice(0, 8_000);
 }
 
@@ -346,13 +349,15 @@ export function normalizeCommercePlanHook(value: unknown, direction: CanvasComme
   if (!malaysiaCommerceVisualHookPattern(visualPatternId)
     || !malaysiaCommerceCopyHookPattern(copyPatternId)
     || !isMalaysiaCommerceHookPairCompatible(visualPatternId, copyPatternId, direction)) return undefined;
+  const hookLine = text(item.hookLine, 240);
+  if (!isMalaysiaCommerceCopyHookFormulaSatisfied(copyPatternId, hookLine)) return undefined;
   const hook = {
     visualPatternId,
     copyPatternId,
     title: text(item.title, 120),
     reason: text(item.reason, 360),
-    hookLine: text(item.hookLine, 240),
-    onScreenText: text(item.onScreenText, 120),
+    hookLine,
+    onScreenText: hookLine,
     scene: text(item.scene, 240),
     visualBeat: text(item.visualBeat, 360),
   };
@@ -502,6 +507,35 @@ function validateCommercePlanContent(prompt: string, hook: CanvasCommercePlanHoo
   }
   const wordCount = hook.onScreenText.match(/\p{L}+(?:['’-]\p{L}+)*/gu)?.length || 0;
   if (wordCount < 3 || wordCount > 7) throw new Error("马来语屏幕短字必须控制在 3-7 个词。");
+  if (!isMalaysiaCommerceCopyHookFormulaSatisfied(hook.copyPatternId, hook.hookLine)) {
+    throw new Error("钩子首句没有实际使用所选话术公式。");
+  }
+  const spokenShots = shots.filter((shot) => shot.dialogue !== "无口播");
+  if (spokenShots.length > 3) throw new Error("15 秒视频最多只能有三句短马来语口播。");
+  if (spokenShots.some((shot) => shot.onScreenText !== shot.dialogue)
+    || shots.some((shot) => shot.dialogue === "无口播" && shot.onScreenText)) {
+    throw new Error("每句马来语口播的字幕必须与口播逐字相同，无口播镜头不得显示字幕。");
+  }
+  if (hook.visualPatternId === "middle-of-action") {
+    const openingVisual = `${hook.visualBeat}\n${shots[0]?.action || ""}\n${shots[0]?.performance || ""}`;
+    const hasVisibleTension = /(?:问题|困扰|犹豫|拿错|配错|不协调|反差|落差|异常|遮挡|卡住|误拿|比较|差别|线索|发现|忘记|来不及)/u.test(openingVisual);
+    if (!hasVisibleTension) {
+      throw new Error("系鞋带、站起、走路或拿起鞋只是动作，不是钩子；首帧还必须呈现可见问题、冲突、反差或信息缺口。");
+    }
+  }
+  const invalidTransition = shots.slice(0, 3).find((shot) => /(?:直接|然后)?切到(?:下一个|下一)镜头|普通切换|自然切换/u.test(shot.transition));
+  if (invalidTransition) throw new Error("镜头之间必须用动作、遮挡、落点或声音桥接，不能只写切到下一镜头。");
+  const bridgePattern = /(?:动作|遮挡|落点|脚步|前景|移开|经过|转动|提示音|声音|强拍|匹配|节拍|光影|后拉|推进|跟随|连续)/u;
+  if (shots.slice(0, 3).some((shot) => !bridgePattern.test(shot.transition))) {
+    throw new Error("前三个镜头的转场必须明确承接人物动作、产品状态或声音节拍。");
+  }
+  let shoesAreWorn = false;
+  for (const shot of shots) {
+    if (/(?:已穿|穿着|双脚.*目标鞋|目标鞋.*上脚)/u.test(shot.productState)) shoesAreWorn = true;
+    if (shoesAreWorn && /(?:未穿|尚未穿)/u.test(shot.productState)) {
+      throw new Error("鞋子从已穿状态跳回未穿状态，四镜头产品状态不连续。");
+    }
+  }
   const requiredRanges = [/[0０]\s*[-–—]\s*2\s*秒/u, /2\s*[-–—]\s*7\s*秒/u, /7\s*[-–—]\s*12\s*秒/u, /12\s*[-–—]\s*15\s*秒/u];
   if (requiredRanges.some((range) => !range.test(prompt))) throw new Error("提示词必须完整包含四段 15 秒时间轴。");
   const shotClaims = shots.flatMap((shot) => [shot.action, shot.productState, shot.dialogue, shot.onScreenText]).join("\n");

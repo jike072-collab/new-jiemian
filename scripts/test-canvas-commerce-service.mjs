@@ -30,9 +30,9 @@ const service = createCanvasAssistantService(async (input) => {
         title: "出门穿搭选择",
         reason: "动作开场适合日常穿搭，短问句与镜前犹豫一致。",
         hookLine: "Outfit hari ni rasa biasa?",
-        onScreenText: "Outfit hari ni biasa?",
+        onScreenText: "Outfit hari ni rasa biasa?",
         scene: "马来西亚公寓玄关",
-        visualBeat: "人物正在镜前拿起目标鞋，直接看向镜中穿搭。",
+        visualBeat: "人物拿错鞋后发现镜中配色不协调，在目标鞋前明显犹豫。",
       },
       production: {
         scenePatternId: "condo-entry-mirror",
@@ -43,10 +43,10 @@ const service = createCanvasAssistantService(async (input) => {
         realismNotes: "人物像真实出门准备，保留镜前观察、眨眼和换鞋后的短暂停顿",
       },
       shots: [
-        { timeRange: "0-2秒", shotSize: "中景", camera: "固定中景", action: "人物已经在镜前拿起目标鞋并停顿", performance: "视线先看镜中穿搭再落到鞋子，眉头轻微收紧", productState: "目标鞋由人物拿在腰侧，完整侧面可见", dialogue: "Outfit hari ni rasa biasa?", onScreenText: "Outfit hari ni biasa?", sound: "第 0 秒开始室内环境声和短问句", transition: "人物把鞋移向镜头形成自然遮挡" },
-        { timeRange: "2-7秒", shotSize: "近景", camera: "匹配剪辑后短推进", action: "遮挡结束时人物完成穿鞋并踩稳", performance: "低头确认后肩膀自然放松", productState: "双脚已穿目标鞋，鞋型和配色与参考图一致", dialogue: "Nampak terus lebih kemas.", onScreenText: "", sound: "脚步落点配合音乐强拍", transition: "脚步落点匹配切到侧向动作" },
+        { timeRange: "0-2秒", shotSize: "中景", camera: "固定中景", action: "人物拿错鞋后发现配色不协调，在镜前拿起目标鞋犹豫", performance: "视线先看镜中穿搭再落到鞋子，眉头轻微收紧", productState: "目标鞋由人物拿在腰侧，完整侧面可见", dialogue: "Outfit hari ni rasa biasa?", onScreenText: "Outfit hari ni rasa biasa?", sound: "第 0 秒开始室内环境声和短问句", transition: "人物把鞋移向镜头形成自然遮挡" },
+        { timeRange: "2-7秒", shotSize: "近景", camera: "匹配剪辑后短推进", action: "遮挡结束时人物完成穿鞋并踩稳", performance: "低头确认后肩膀自然放松", productState: "双脚已穿目标鞋，鞋型和配色与参考图一致", dialogue: "Nampak terus lebih kemas.", onScreenText: "Nampak terus lebih kemas.", sound: "脚步落点配合音乐强拍", transition: "脚步落点匹配切到侧向动作" },
         { timeRange: "7-12秒", shotSize: "全身", camera: "低机位侧向跟拍", action: "人物沿玄关走两步再自然转身", performance: "步态轻松，转身时看一眼镜中整体", productState: "鞋子在移动中保持清楚且左右脚一致", dialogue: "无口播", onScreenText: "", sound: "两次自然脚步声和轻音乐", transition: "人物经过镜框前景后切到结果镜头" },
-        { timeRange: "12-15秒", shotSize: "半身与全身镜像", camera: "固定机位", action: "人物整理衣角并拿起随身包准备离开", performance: "自然半笑，视线从镜中转向出门方向", productState: "镜中完整穿搭和目标鞋同时可见", dialogue: "Korang match dengan outfit apa?", onScreenText: "Gaya harian nampak kemas", sound: "音乐轻收束，保留钥匙轻响", transition: "人物迈出画面后自然结束" },
+        { timeRange: "12-15秒", shotSize: "半身与全身镜像", camera: "固定机位", action: "人物整理衣角并拿起随身包准备离开", performance: "自然半笑，视线从镜中转向出门方向", productState: "镜中完整穿搭和目标鞋同时可见", dialogue: "Korang match dengan outfit apa?", onScreenText: "Korang match dengan outfit apa?", sound: "音乐轻收束，保留钥匙轻响", transition: "人物迈出画面后自然结束" },
       ],
       prompt: "素材职责：@Image1 与 @Image2 只提供产品外观。产品可见事实：米白色鞋面、深色鞋底。0-2 秒：人物拿起鞋并说‘Outfit hari ni rasa biasa?’，同步屏幕短字‘Outfit hari ni biasa?’；2-7 秒踩点换鞋；7-12 秒近景证据；12-15 秒马来语 CTA。声音/口播：‘Nampak kemas, senang match dengan outfit harian.’ 禁止项：不虚构价格、折扣和性能。",
       referenceBindings: [
@@ -147,6 +147,11 @@ assert.match(calls[1].systemPrompt, /双层钩子知识库/);
 assert.match(calls[1].systemPrompt, /默认不得使用 #fyp/);
 assert.match(calls[1].systemPrompt, /shotSize、camera、action、performance/);
 assert.match(calls[1].systemPrompt, /眨眼、呼吸、停顿和动作惯性/);
+assert.match(calls[1].systemPrompt, /每个有口播镜头/);
+assert.match(calls[1].systemPrompt, /上一镜头结束时的人物、服装、鞋子穿着状态/);
+assert.match(calls[1].systemPrompt, /单纯系鞋带、站起、走路/);
+assert.match(calls[1].systemPrompt, /轻微手持微抖和曝光调整/);
+assert.match(calls[1].systemPrompt, /不是完美广告模特/);
 assert.match(calls[1].systemPrompt, /Tak sangka deal dia macam ni/);
 const planRequest = JSON.parse(calls[1].userPrompt);
 assert.equal(planRequest.scope, "shared");
