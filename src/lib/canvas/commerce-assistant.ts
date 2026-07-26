@@ -499,8 +499,9 @@ function validateCommercePlanContent(prompt: string, hook: CanvasCommercePlanHoo
   const requiredRanges = [/[0０]\s*[-–—]\s*2\s*秒/u, /2\s*[-–—]\s*7\s*秒/u, /7\s*[-–—]\s*12\s*秒/u, /12\s*[-–—]\s*15\s*秒/u];
   if (requiredRanges.some((range) => !range.test(prompt))) throw new Error("提示词必须完整包含四段 15 秒时间轴。");
   const claimSurface = [prompt.split(/禁止项/u, 1)[0], hook.hookLine, hook.onScreenText, publishingCopy.title, publishingCopy.caption].join("\n");
-  if (/(?:价格|便宜|折扣|优惠|促销|清仓|退货|退款|销量|评价|舒适|防滑|耐磨|透气|脚痛|受伤|harga|murah|diskaun|promosi|clearance|refund|return|selesa|anti[- ]?slip|tahan lama|breathable|sakit|cedera)/iu.test(claimSurface)) {
-    throw new Error("方案包含当前产品资料无法证明的价格、经历或性能话术。");
+  const unsupportedClaim = claimSurface.match(/(?:价格|便宜|折扣|优惠|促销|清仓|退货|退款|销量|评价|舒适|防滑|耐磨|透气|脚痛|受伤|harga|murah|diskaun|promosi|clearance|refund|return|selesa|anti[- ]?slip|tahan lama|breathable|sakit|cedera)/iu)?.[0];
+  if (unsupportedClaim) {
+    throw new Error(`方案包含当前产品资料无法证明的话术“${unsupportedClaim}”。`);
   }
   if (hook.copyPatternId === "numbered-specificity") {
     const count = /(?:\b2\b|\bdua\b)/iu.test(`${hook.hookLine} ${hook.onScreenText}`) ? 2
