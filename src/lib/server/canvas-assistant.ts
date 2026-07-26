@@ -413,13 +413,34 @@ async function answerCommerceWorkflow(
     requestId,
     timeoutMs: normalized.workflow === "commerce-plan-generation" ? 120_000 : 60_000,
   });
-  const parsed = parseJsonObject(output);
+  let parsed = parseJsonObject(output);
   if (normalized.workflow === "commerce-product-analysis") return normalizeCommerceProductAnalysis(parsed);
-  const generated = normalizeCommercePlanGeneration(parsed, normalized.selectedDirections, {
+  const normalizePlans = (value: unknown) => normalizeCommercePlanGeneration(value, normalized.selectedDirections, {
     visibleFacts: normalized.visibleFacts,
     imageCount: selectedImages.length,
     usedHookPatterns: normalized.usedHookPatterns,
   });
+  let generated: CanvasCommercePlanGenerationResponse;
+  try {
+    generated = normalizePlans(parsed);
+  } catch (error) {
+    const validationMessage = error instanceof Error ? error.message.slice(0, 300) : "结构化方案校验失败";
+    newApiLogger.warn({
+      event: "commerce_plan_validation_retry",
+      requestId,
+      context: "canvas-assistant",
+      retryable: true,
+      details: { validationMessage },
+    });
+    const correctedOutput = await callAssistantModel(caller, {
+      systemPrompt: `${system}\n上一次输出未通过服务端校验：${validationMessage}。请完整纠正后重新输出一次 JSON。`,
+      userPrompt,
+      requestId,
+      timeoutMs: 120_000,
+    });
+    parsed = parseJsonObject(correctedOutput);
+    generated = normalizePlans(parsed);
+  }
   return {
     ...generated,
     plans: generated.plans.map((plan) => ({
@@ -502,6 +523,7 @@ export function createCanvasAssistantService(caller: PromptModelCaller = createN
           retryable: error instanceof NewApiError ? error.retryable : false,
           details: {
             errorCode: error instanceof NewApiError ? error.code : error instanceof Error ? error.name : "UNKNOWN_ERROR",
+            errorMessage: error instanceof Error ? error.message.slice(0, 500) : null,
             upstreamStatus: error instanceof NewApiError ? error.upstreamStatus || null : null,
             upstreamBody: error instanceof NewApiError && typeof error.safeDetails?.body === "string" ? error.safeDetails.body.slice(0, 500) : null,
             nodeCount: normalized.nodes?.length || 0,
