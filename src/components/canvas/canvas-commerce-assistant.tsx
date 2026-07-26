@@ -98,7 +98,10 @@ export function CanvasCommerceAssistant({
 
   if (!draft) return <div className="canvas-assistant__commerce-loading"><LoaderCircle className="is-spinning" />正在建立产品资料</div>;
 
-  const activePlan = draft.plans.find((plan) => plan.id === draft.activePlanId)
+  const requestedActivePlan = draft.plans.find((plan) => plan.id === draft.activePlanId);
+  const activePlan = requestedActivePlan?.createdGeneratorNodeId && (draft.phase === "setup" || draft.phase === "error")
+    ? [...draft.plans].reverse().find((plan) => !plan.createdGeneratorNodeId)
+    : requestedActivePlan
     || [...draft.plans].reverse().find((plan) => !plan.createdGeneratorNodeId);
   const activeProviderOptions = activePlan ? compatibleProviders.filter((provider) => providerSupportsDirection(provider, activePlan.direction)) : [];
   const activeProvider = activePlan ? providerForPlan(activePlan, draft.sharedProviderId, compatibleProviders) : undefined;

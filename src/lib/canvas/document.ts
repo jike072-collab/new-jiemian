@@ -375,13 +375,14 @@ function normalizeCommerceProductDraft(value: Record<string, unknown>, id: strin
     const plan = normalizeCommercePlan(candidate);
     return plan ? [plan] : [];
   }) : [];
-  const requestedActivePlanId = optionalIdentifier(value.activePlanId, 120);
-  const activePlanId = requestedActivePlanId && plans.some((plan) => plan.id === requestedActivePlanId)
-    ? requestedActivePlanId
-    : [...plans].reverse().find((plan) => !plan.createdGeneratorNodeId)?.id;
   const phase = value.phase === "product-ready" || value.phase === "planning" || value.phase === "plans-ready" || value.phase === "error"
     ? value.phase
     : "setup";
+  const requestedActivePlanId = optionalIdentifier(value.activePlanId, 120);
+  const requestedActivePlan = plans.find((plan) => plan.id === requestedActivePlanId);
+  const activePlanId = requestedActivePlan && !(requestedActivePlan.createdGeneratorNodeId && (phase === "setup" || phase === "error"))
+    ? requestedActivePlan.id
+    : [...plans].reverse().find((plan) => !plan.createdGeneratorNodeId)?.id;
   const sharedProviderId = optionalString(value.sharedProviderId, 240);
   const error = optionalString(value.error, 500);
   return {

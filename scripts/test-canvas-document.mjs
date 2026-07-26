@@ -141,8 +141,8 @@ const createdOnlyDocument = normalizeCanvasDocument({
       products: createdOnlyProduct ? {
         "product-1": {
           ...createdOnlyProduct,
-          activePlanId: undefined,
-          phase: "setup",
+          activePlanId: "plan-1",
+          phase: "error",
           plans: createdOnlyProduct.plans.map((plan) => ({ ...plan, createdGeneratorNodeId: "generator-old" })),
         },
       } : {},
