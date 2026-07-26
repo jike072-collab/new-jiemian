@@ -50,7 +50,7 @@ assert.match(service, /禁止输出删除、运行生成/);
 assert.match(service, /timeoutMs: 45_000/);
 assert.match(service, /commerce-plan-generation" \? 120_000 : 60_000/);
 assert.match(service, /commerce_plan_validation_retry/);
-assert.match(service, /完整纠正后重新输出一次 JSON/);
+assert.match(service, /只修正这个明确失败项/);
 assert.match(service, /canvasAssistantRetryDelayMs/);
 assert.match(service, /error\.retryable/);
 assert.match(service, /canvas_assistant_failed/);
@@ -313,19 +313,19 @@ assert.throws(() => normalizeCommercePlanGeneration({
 assert.throws(() => normalizeCommercePlanGeneration({
   kind: "commerce-plan-generation",
   plans: [{ direction: "product-asmr", prompt: commercePrompt, hook: { ...commerceHook, visualPatternId: "unknown" }, production: commerceProduction, shots: commerceShots, publishingCopy: commercePublishingCopy }],
-}, ["product-asmr"]), /合法的钩子/);
+}, ["product-asmr"]), /钩子模式、话术或首帧字段不合法/);
 assert.throws(() => normalizeCommercePlanGeneration({
   kind: "commerce-plan-generation",
   plans: [{ direction: "sport-motion", prompt: commercePrompt, hook: commerceHook, production: commerceProduction, shots: commerceShots, publishingCopy: commercePublishingCopy }],
-}, ["sport-motion"]), /合法的钩子/);
+}, ["sport-motion"]), /钩子模式、话术或首帧字段不合法/);
 assert.throws(() => normalizeCommercePlanGeneration({
   kind: "commerce-plan-generation",
   plans: [{ direction: "product-asmr", hook: commerceHook, production: commerceProduction, shots: commerceShots.map((shot, index) => index ? shot : { ...shot, onScreenText: "别的短字" }), publishingCopy: commercePublishingCopy }],
-}, ["product-asmr"]), /四镜头脚本/);
+}, ["product-asmr"]), /四个完整镜头/);
 assert.throws(() => normalizeCommercePlanGeneration({
   kind: "commerce-plan-generation",
   plans: [{ direction: "product-asmr", hook: commerceHook, production: commerceProduction, shots: commerceShots.map((shot, index) => index ? shot : { ...shot, camera: "高级电影感" }), publishingCopy: commercePublishingCopy }],
-}, ["product-asmr"]), /四镜头脚本/);
+}, ["product-asmr"]), /四个完整镜头/);
 assert.throws(() => normalizeCommercePlanGeneration({
   kind: "commerce-plan-generation",
   plans: [{

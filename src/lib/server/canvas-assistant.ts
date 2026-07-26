@@ -444,7 +444,7 @@ async function answerCommerceWorkflow(
       details: { validationMessage },
     });
     const correctedOutput = await callAssistantModel(caller, {
-      systemPrompt: `${system}\n上一次输出未通过服务端校验：${validationMessage}。请完整纠正后重新输出一次 JSON。`,
+      systemPrompt: `${system}\n上一次输出未通过服务端校验：${validationMessage}。只修正这个明确失败项，并重新输出一份字段完整的 JSON；钩子、制作模式 ID 必须逐字使用上方知识库中适用于当前方向的 ID，首镜头 dialogue 必须原样包含 hookLine，首镜头 onScreenText 必须与 hook.onScreenText 完全一致。`,
       userPrompt,
       requestId,
       timeoutMs: 120_000,

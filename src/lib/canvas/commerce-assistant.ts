@@ -177,10 +177,13 @@ export function normalizeCommercePlanGeneration(
     const direction = text(item.direction, 40) as CanvasCommerceDirection;
     if (!directions.has(direction) || seen.has(direction) || (expected && !expected.has(direction))) return [];
     const hook = normalizeCommercePlanHook(item.hook, direction);
+    if (!hook) throw new Error(`“${commerceDirectionLabel(direction)}”的钩子模式、话术或首帧字段不合法。`);
     const production = normalizeCommerceProductionRecipe(item.production, direction);
+    if (!production) throw new Error(`“${commerceDirectionLabel(direction)}”的场景、镜头节奏或表演模式不兼容。`);
     const shots = normalizeCommerceShots(item.shots, direction, hook);
+    if (!shots) throw new Error(`“${commerceDirectionLabel(direction)}”必须返回四个完整镜头，且首镜头口播和屏幕短字必须与钩子完全一致。`);
     const publishingCopy = normalizeCommercePublishingCopy(item.publishingCopy);
-    if (!hook || !production || !shots || !publishingCopy) throw new Error(`“${commerceDirectionLabel(direction)}”缺少合法的钩子、制作方案、四镜头脚本或发布文案。`);
+    if (!publishingCopy) throw new Error(`“${commerceDirectionLabel(direction)}”的发布文案必须包含马来语标题、正文和 4-6 个有效标签。`);
     const hookPair = `${hook.visualPatternId}:${hook.copyPatternId}`;
     if (seenHookPairs.has(hookPair)) throw new Error("批量方案不能重复使用完全相同的视觉与话术钩子组合。");
     const productionRecipe = `${production.scenePatternId}:${production.shotPatternId}:${production.performancePatternId}`;
