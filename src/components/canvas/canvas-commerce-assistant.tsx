@@ -101,6 +101,9 @@ export function CanvasCommerceAssistant({
   const activeProviderOptions = activePlan ? compatibleProviders.filter((provider) => providerSupportsDirection(provider, activePlan.direction)) : [];
   const activeProvider = activePlan ? providerForPlan(activePlan, draft.sharedProviderId, compatibleProviders) : undefined;
   const canCreate = Boolean(activePlan && !activePlan.createdGeneratorNodeId && activeProvider);
+  const visibleError = draft.error === "助手暂时不可用，请稍后重试。" && activePlan?.createdGeneratorNodeId
+    ? undefined
+    : draft.error;
 
   function commit(nextDraft: CanvasCommerceProductDraft) {
     onStateChange({ products: { ...normalizedState.products, [nextDraft.id]: { ...nextDraft, updatedAt: new Date().toISOString() } } });
@@ -406,7 +409,7 @@ export function CanvasCommerceAssistant({
         {!activePlan.createdGeneratorNodeId ? <button type="button" className="canvas-assistant__primary-action" disabled={!canCreate || Boolean(busy)} onClick={createPlans}>{busy === "create" ? <LoaderCircle className="is-spinning" /> : <Check />}创建提示词和视频节点</button> : null}
       </section> : null}
 
-      {draft.error ? <p className="canvas-assistant__workflow-error" role="alert">{draft.error}</p> : null}
+      {visibleError ? <p className="canvas-assistant__workflow-error" role="alert">{visibleError}</p> : null}
       <small className="canvas-assistant__scope">只创建产品分组、提示词和视频节点，不会自动提交视频生成。</small>
     </div>
   );

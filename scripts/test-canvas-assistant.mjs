@@ -117,6 +117,8 @@ assert.match(commercePanel, /按要求优化/);
 assert.match(commercePanel, /basePlanId/);
 assert.match(commercePanel, /refinementRequest/);
 assert.match(commercePanel, /activePlanId/);
+assert.match(commercePanel, /visibleError/);
+assert.match(commercePanel, /activePlan?\.createdGeneratorNodeId/);
 assert.match(commercePanel, /onCreatePlans\(prepared, \[activePlan\.id\]\)/);
 assert.match(commercePanel, /compatibleProviders\.find\(\(provider\) => providerSupportsDirection/);
 assert.doesNotMatch(commercePanel, /type="checkbox"/);
