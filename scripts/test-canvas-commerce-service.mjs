@@ -88,6 +88,7 @@ const analysis = await service.answer({
 assert.equal(analysis.kind, "commerce-product-analysis");
 assert.equal(analysis.sameProduct, true);
 assert.equal(analysis.sellingPoints.length, 4);
+assert.equal(calls[0].timeoutMs, 60_000);
 assert.equal(Object.hasOwn(analysis, "creativeOptions"), false);
 assert.equal(Object.hasOwn(analysis, "actions"), false);
 
@@ -116,6 +117,7 @@ const generated = await service.answer({
 }, "request-plans", visualEvidence);
 assert.equal(generated.kind, "commerce-plan-generation");
 assert.equal(generated.plans.length, 1);
+assert.equal(calls[1].timeoutMs, 120_000);
 assert.equal(generated.plans[0].sellingPoint, "复古配色");
 assert.match(generated.plans[0].prompt, /0-2秒/);
 assert.match(generated.plans[0].prompt, /12-15秒/);

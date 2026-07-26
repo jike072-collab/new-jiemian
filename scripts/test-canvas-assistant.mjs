@@ -48,6 +48,7 @@ assert.match(service, /connect_nodes/);
 assert.match(service, /group_nodes/);
 assert.match(service, /禁止输出删除、运行生成/);
 assert.match(service, /timeoutMs: 45_000/);
+assert.match(service, /commerce-plan-generation" \? 120_000 : 60_000/);
 assert.match(service, /canvasAssistantRetryDelayMs/);
 assert.match(service, /error\.retryable/);
 assert.match(service, /canvas_assistant_failed/);

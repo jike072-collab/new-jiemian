@@ -411,7 +411,7 @@ async function answerCommerceWorkflow(
     userPrompt,
     images: visualEvidence.images,
     requestId,
-    timeoutMs: 60_000,
+    timeoutMs: normalized.workflow === "commerce-plan-generation" ? 120_000 : 60_000,
   });
   const parsed = parseJsonObject(output);
   if (normalized.workflow === "commerce-product-analysis") return normalizeCommerceProductAnalysis(parsed);
