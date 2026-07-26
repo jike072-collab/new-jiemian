@@ -18,6 +18,7 @@ import {
   isMalaysiaCommerceHookPairCompatible,
   isMalaysiaCommerceProductionRecipeCompatible,
   malaysiaCommerceCopyHookPattern,
+  malaysiaCommerceCopyHookPatterns,
   malaysiaCommercePerformancePattern,
   malaysiaCommerceScenePattern,
   malaysiaCommerceShotPattern,
@@ -333,6 +334,7 @@ export function composeCommerceSeedancePrompt({
     `情绪弧线：${production.emotionArc}`,
     `表演基准：${performancePattern?.performance || production.realismNotes}。情绪参考：${performancePattern?.emotionArc || production.emotionArc}。`,
     `真人真实感：${production.realismNotes}。9:16 原生手机短视频观感；马来西亚当地成年人物像真实生活中的普通人，不是完美广告模特。保留自然皮肤纹理、轻微出汗或碎发、衣服轻微褶皱、眨眼、呼吸、视线转移、重心变化和动作惯性；普通公寓、商场、遮雨走廊或公园允许少量背景杂物、自然人流、轻微手持微抖和曝光调整，禁止塑料皮肤、过度磨皮、完美影棚布光和空无一人的豪华广告场景；鞋子结构、配色、左右脚和参考图全程一致。`,
+    `带货叙事骨架：情绪引发共鸣（镜头 1 用当前可见的小困扰或信息缺口让观众代入）→ 利益直接转化（镜头 2 让产品立即回答开头，并展示一个能从画面验证的穿搭或外观利益）→ 场景长期种草（镜头 3 把同一个利益放进${scenePattern?.setting || hook.scene}这类可重复发生的马来西亚生活场景）→ 闭环 CTA（镜头 4 回答开头并展示人物已获得的可见结果）。四段服务同一个核心利益，不得各说各话。`,
     "承上启下与连续性：镜头 1 提出可见问题或信息缺口；镜头 2 必须承接镜头 1 的人物、产品和动作状态并揭示答案；镜头 3 延续同一动作或结果，用不同景别提供证据；镜头 4 延续已证明的状态闭合开头并 CTA。上一镜头结束状态就是下一镜头开始状态，人物、服装、鞋子穿着状态、动作方向、情绪和场景不得跳变；每次转场必须由动作、遮挡、落点或声音桥接。",
     "四镜头分镜脚本：",
     shotText,
@@ -345,12 +347,17 @@ export function normalizeCommercePlanHook(value: unknown, direction: CanvasComme
   const item = object(value, false);
   if (!item) return undefined;
   const visualPatternId = text(item.visualPatternId, 80);
-  const copyPatternId = text(item.copyPatternId, 80);
+  const requestedCopyPatternId = text(item.copyPatternId, 80);
   if (!malaysiaCommerceVisualHookPattern(visualPatternId)
-    || !malaysiaCommerceCopyHookPattern(copyPatternId)
-    || !isMalaysiaCommerceHookPairCompatible(visualPatternId, copyPatternId, direction)) return undefined;
+    || !malaysiaCommerceCopyHookPattern(requestedCopyPatternId)) return undefined;
   const hookLine = text(item.hookLine, 240);
-  if (!isMalaysiaCommerceCopyHookFormulaSatisfied(copyPatternId, hookLine)) return undefined;
+  const copyPatternId = isMalaysiaCommerceHookPairCompatible(visualPatternId, requestedCopyPatternId, direction)
+    && isMalaysiaCommerceCopyHookFormulaSatisfied(requestedCopyPatternId, hookLine)
+    ? requestedCopyPatternId
+    : malaysiaCommerceCopyHookPatterns.find((pattern) => pattern.directions.includes(direction)
+      && isMalaysiaCommerceHookPairCompatible(visualPatternId, pattern.id, direction)
+      && isMalaysiaCommerceCopyHookFormulaSatisfied(pattern.id, hookLine))?.id;
+  if (!copyPatternId) return undefined;
   const hook = {
     visualPatternId,
     copyPatternId,
@@ -531,9 +538,12 @@ function validateCommercePlanContent(prompt: string, hook: CanvasCommercePlanHoo
   }
   let shoesAreWorn = false;
   for (const shot of shots) {
-    if (/(?:已穿|穿着|双脚.*目标鞋|目标鞋.*上脚)/u.test(shot.productState)) shoesAreWorn = true;
-    if (shoesAreWorn && /(?:未穿|尚未穿)/u.test(shot.productState)) {
+    const returnsToUnworn = /(?:(?:目标鞋|鞋子).{0,8}(?:又|重新|变回|仍然)?(?:未穿|尚未穿)|(?:未穿|尚未穿).{0,8}(?:目标鞋|鞋子))/u.test(shot.productState);
+    if (shoesAreWorn && returnsToUnworn) {
       throw new Error("鞋子从已穿状态跳回未穿状态，四镜头产品状态不连续。");
+    }
+    if (/(?:双脚.{0,12}(?:已穿|穿着).{0,12}(?:目标鞋|鞋子)|(?:目标鞋|鞋子).{0,12}(?:双脚|完整).{0,12}(?:已穿|穿着|上脚)|(?:目标鞋|鞋子).{0,12}(?:保持已穿|完整穿着))/u.test(shot.productState)) {
+      shoesAreWorn = true;
     }
   }
   const requiredRanges = [/[0０]\s*[-–—]\s*2\s*秒/u, /2\s*[-–—]\s*7\s*秒/u, /7\s*[-–—]\s*12\s*秒/u, /12\s*[-–—]\s*15\s*秒/u];

@@ -370,6 +370,17 @@ const spokenSubtitleSync = normalizeCommercePlanGeneration({
   }],
 }, ["product-asmr"]);
 assert.equal(spokenSubtitleSync.plans[0].shots[1].onScreenText, "Nampak terus lebih kemas");
+const remappedHookFormula = normalizeCommercePlanGeneration({
+  kind: "commerce-plan-generation",
+  plans: [{
+    direction: "product-asmr",
+    hook: { ...commerceHook, copyPatternId: "direct-problem-question" },
+    production: commerceProduction,
+    shots: commerceShots,
+    publishingCopy: commercePublishingCopy,
+  }],
+}, ["product-asmr"]);
+assert.equal(remappedHookFormula.plans[0].hook.copyPatternId, "expectation-gap");
 
 const plainActionHook = {
   visualPatternId: "middle-of-action",
@@ -410,6 +421,24 @@ const strongActionPlan = normalizeCommercePlanGeneration({
   }],
 }, ["daily-style"]);
 assert.equal(strongActionPlan.plans[0].shots.every((shot) => shot.dialogue === "无口播" ? !shot.onScreenText : shot.dialogue === shot.onScreenText), true);
+const partialWearPlan = normalizeCommercePlanGeneration({
+  kind: "commerce-plan-generation",
+  plans: [{
+    direction: "daily-style",
+    hook: { ...plainActionHook, visualBeat: "人物拿错鞋后看向镜中不协调的穿搭，犹豫时开始解开鞋带。" },
+    production: dailyProduction,
+    shots: dailyShots.map((shot, index) => index === 0
+      ? { ...shot, action: "人物拿错鞋后发现配色不协调，犹豫时开始解开鞋带" }
+      : index === 1
+        ? { ...shot, productState: "目标鞋已穿在一只脚上，另一只脚仍未穿，人物继续完成换鞋" }
+        : shot),
+    publishingCopy: commercePublishingCopy,
+  }],
+}, ["daily-style"]);
+assert.equal(partialWearPlan.plans.length, 1);
+assert.match(partialWearPlan.plans[0].prompt, /情绪引发共鸣/);
+assert.match(partialWearPlan.plans[0].prompt, /利益直接转化/);
+assert.match(partialWearPlan.plans[0].prompt, /场景长期种草/);
 assert.throws(() => normalizeCommercePlanGeneration({
   kind: "commerce-plan-generation",
   plans: [{ direction: "product-asmr", hook: commerceHook, production: commerceProduction, shots: commerceShots.map((shot, index) => index ? shot : { ...shot, camera: "高级电影感" }), publishingCopy: commercePublishingCopy }],
