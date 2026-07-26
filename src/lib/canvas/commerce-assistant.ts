@@ -245,7 +245,8 @@ export function normalizeCommerceShots(value: unknown, direction: CanvasCommerce
   const timeRanges: CanvasCommerceShot["timeRange"][] = ["0-2秒", "2-7秒", "7-12秒", "12-15秒"];
   const shots = value.flatMap((candidate, index) => {
     const item = object(candidate, false);
-    if (!item || text(item.timeRange, 24).replace(/\s+/gu, "").replace(/[–—]/gu, "-") !== timeRanges[index]) return [];
+    const timeRange = text(item?.timeRange, 24).replace(/\s+/gu, "").replace(/[–—]/gu, "-").replace(/s$/iu, "秒");
+    if (!item || timeRange !== timeRanges[index]) return [];
     const shot = {
       timeRange: timeRanges[index],
       shotSize: text(item.shotSize, 80),
@@ -263,9 +264,12 @@ export function normalizeCommerceShots(value: unknown, direction: CanvasCommerce
     if (!/(?:固定|推进|后拉|跟拍|侧移|环绕|低机位|手持|俯拍|仰拍|摇镜|主观|POV|匹配剪辑)/u.test(shot.camera)) return [];
     return [shot];
   });
-  if (shots.length !== 4 || shots[0].onScreenText !== hook.onScreenText) return undefined;
-  if (!shots[0].dialogue.includes(hook.hookLine)) return undefined;
-  return shots;
+  if (shots.length !== 4) return undefined;
+  const firstShot = shots[0];
+  const dialogue = firstShot.dialogue.includes(hook.hookLine)
+    ? firstShot.dialogue
+    : `${hook.hookLine}${firstShot.dialogue && firstShot.dialogue !== "无口播" ? `；${firstShot.dialogue}` : ""}`;
+  return [{ ...firstShot, dialogue, onScreenText: hook.onScreenText }, ...shots.slice(1)];
 }
 
 export function composeCommerceSeedancePrompt({

@@ -318,10 +318,12 @@ assert.throws(() => normalizeCommercePlanGeneration({
   kind: "commerce-plan-generation",
   plans: [{ direction: "sport-motion", prompt: commercePrompt, hook: commerceHook, production: commerceProduction, shots: commerceShots, publishingCopy: commercePublishingCopy }],
 }, ["sport-motion"]), /钩子模式、话术或首帧字段不合法/);
-assert.throws(() => normalizeCommercePlanGeneration({
+const normalizedHookSync = normalizeCommercePlanGeneration({
   kind: "commerce-plan-generation",
-  plans: [{ direction: "product-asmr", hook: commerceHook, production: commerceProduction, shots: commerceShots.map((shot, index) => index ? shot : { ...shot, onScreenText: "别的短字" }), publishingCopy: commercePublishingCopy }],
-}, ["product-asmr"]), /四个完整镜头/);
+  plans: [{ direction: "product-asmr", hook: commerceHook, production: commerceProduction, shots: commerceShots.map((shot, index) => index ? { ...shot, timeRange: shot.timeRange.replace("秒", "s") } : { ...shot, timeRange: shot.timeRange.replace("秒", "s"), dialogue: "无口播", onScreenText: "别的短字" }), publishingCopy: commercePublishingCopy }],
+}, ["product-asmr"]);
+assert.equal(normalizedHookSync.plans[0].shots[0].dialogue.startsWith(commerceHook.hookLine), true);
+assert.equal(normalizedHookSync.plans[0].shots[0].onScreenText, commerceHook.onScreenText);
 assert.throws(() => normalizeCommercePlanGeneration({
   kind: "commerce-plan-generation",
   plans: [{ direction: "product-asmr", hook: commerceHook, production: commerceProduction, shots: commerceShots.map((shot, index) => index ? shot : { ...shot, camera: "高级电影感" }), publishingCopy: commercePublishingCopy }],
