@@ -217,7 +217,7 @@ const commerceHook = {
   visualPatternId: "product-asmr-detail",
   copyPatternId: "expectation-gap",
   title: "拼接细节预期落差",
-  reason: "微距动作可以直接兑现可见拼接层次。",
+  reason: "微距动作可以直接兑现可见拼接层次，不涉及价格。",
   hookLine: "Tak sangka detail ni menyerlah",
   onScreenText: "Detail ni memang menyerlah",
   scene: "室内产品桌面",
