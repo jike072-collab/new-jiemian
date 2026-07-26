@@ -702,7 +702,21 @@ export function createNewApiPromptModelCaller(client?: NewApiHttpClient, fallbac
       return await providerCaller(input);
     } catch (error) {
       if (!shouldFallbackToAdminPromptModel(error)) throw error;
-      return adminCaller(input);
+      newApiLogger.warn({
+        event: "prompt_provider_fallback",
+        requestId: input.requestId,
+        context: "prompt-optimizer",
+        retryable: error instanceof NewApiError ? error.retryable : false,
+        details: {
+          errorCode: error instanceof NewApiError ? error.code : "PROMPT_PROVIDER_ERROR",
+          upstreamStatus: error instanceof NewApiError ? error.upstreamStatus : undefined,
+        },
+      });
+      try {
+        return await adminCaller(input);
+      } catch {
+        throw error;
+      }
     }
   };
 }

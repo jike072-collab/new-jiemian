@@ -579,3 +579,36 @@ test("New API caller falls back when the dedicated prompt provider is temporaril
   assert.equal(providerCalls, 1);
   assert.equal(output, "来自备用模型的文案");
 });
+
+test("New API caller preserves the provider error when the admin fallback also fails", async () => {
+  handlers.set("POST /v1/chat/completions", async (_request, response) => {
+    json(response, 401, { error: { message: "Invalid token" } });
+  });
+  const providerError = new NewApiError({
+    code: "NEW_API_UPSTREAM_ERROR",
+    message: "Dedicated prompt provider is temporarily unavailable.",
+    status: 502,
+    retryable: true,
+    requestId: "req-provider-original-error",
+    upstreamStatus: 503,
+    safeDetails: { providerId: "prompt-optimizer" },
+  });
+  const caller = createNewApiPromptModelCaller(new NewApiHttpClient({
+    enabled: true,
+    baseUrl,
+    timeoutMs: 500,
+    maxResponseBytes: 65536,
+    environment: "test",
+    adminAccessToken: "expired-admin-secret",
+    adminUserId: 1,
+  }), async () => {
+    throw providerError;
+  });
+
+  await assert.rejects(() => caller({
+    systemPrompt: "system",
+    userPrompt: "user",
+    requestId: "req-provider-original-error",
+    timeoutMs: 500,
+  }), (error) => error === providerError);
+});
