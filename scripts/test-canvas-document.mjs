@@ -11,7 +11,22 @@ const {
 } = await import(new URL("../src/lib/canvas/document.ts", import.meta.url));
 const { duplicateCanvasNodeData } = await import(new URL("../src/lib/canvas/duplicate.ts", import.meta.url));
 const { canvasMediaNodeSize, nearestCanvasAspectRatio, normalizeMediaDimensions } = await import(new URL("../src/lib/canvas/media-sizing.ts", import.meta.url));
+const { absoluteCanvasNodePosition } = await import(new URL("../src/lib/canvas/node-position.ts", import.meta.url));
 const { matchPendingGeneratedMedia } = await import(new URL("../src/lib/canvas/pending-results.ts", import.meta.url));
+
+const rootPositionNode = { id: "root-position", position: { x: 120, y: 80 } };
+const groupPositionNode = { id: "group-position", position: { x: 600, y: 400 } };
+const childPositionNode = { id: "child-position", parentId: groupPositionNode.id, position: { x: 40, y: 30 } };
+const nestedPositionNode = { id: "nested-position", parentId: childPositionNode.id, position: { x: 5, y: 7 } };
+assert.deepEqual(absoluteCanvasNodePosition(rootPositionNode, [rootPositionNode]), { x: 120, y: 80 });
+assert.deepEqual(absoluteCanvasNodePosition(childPositionNode, [groupPositionNode, childPositionNode]), { x: 640, y: 430 });
+assert.deepEqual(absoluteCanvasNodePosition(nestedPositionNode, [groupPositionNode, childPositionNode, nestedPositionNode]), { x: 645, y: 437 });
+assert.deepEqual(absoluteCanvasNodePosition({ id: "missing-child", parentId: "missing", position: { x: 8, y: 9 } }, []), { x: 8, y: 9 });
+const cyclicPositionNodes = [
+  { id: "cycle-a", parentId: "cycle-b", position: { x: 10, y: 20 } },
+  { id: "cycle-b", parentId: "cycle-a", position: { x: 30, y: 40 } },
+];
+assert.deepEqual(absoluteCanvasNodePosition(cyclicPositionNodes[0], cyclicPositionNodes), { x: 40, y: 60 });
 
 assert.deepEqual(normalizeCanvasDocument(emptyCanvasDocument()), emptyCanvasDocument());
 assert.equal(normalizeCanvasTitle("  公司广告画布  "), "公司广告画布");

@@ -223,6 +223,7 @@ assert.match(workspace, /dragHandle: "\.canvas-node-group__header"/);
 assert.match(canvasCss, /\.canvas-node__header[\s\S]+cursor: grab/);
 assert.match(workspace, /ungroupSelectedNodes/);
 assert.match(workspace, /parentId: groupId/);
+assert.equal(workspace.match(/absoluteCanvasNodePosition\(generator, nodesRef\.current\)/g)?.length, 3);
 assert.match(workspace, /type: node\.data\.kind === "group" \? "group" : "canvas"/);
 assert.match(canvasNode, /CanvasGroupNode/);
 assert.match(canvasCss, /canvas-node-group/);

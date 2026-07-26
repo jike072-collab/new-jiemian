@@ -20,6 +20,7 @@ const { inferSeedancePromptMode, seedancePromptGuidance, seedanceReferenceIssues
 const { isTikTokShopVideoRequest, tiktokShopVideoGuidance, tiktokShopVideoTiming } = await import(new URL("../src/lib/tiktok-shop-video-guidance.ts", import.meta.url));
 const {
   buildCommerceCanvasBranchData,
+  cloneCommercePlanForReuse,
   normalizeCommercePlanGeneration,
   normalizeCommerceProductAnalysis,
   planCommerceCanvasCreation,
@@ -92,6 +93,7 @@ assert.match(commercePanel, /commerce-plan-generation/);
 assert.match(commercePanel, /全部方案共用模型/);
 assert.match(commercePanel, /创建选中方案节点/);
 assert.match(commercePanel, /重新分析/);
+assert.match(commercePanel, /复用为新节点/);
 assert.match(commercePanel, /uncreatedDirections/);
 assert.match(commercePanel, /不会自动提交视频生成/);
 assert.match(commercePanel, /options\.durations\?\.includes\(15\)/);
@@ -254,6 +256,35 @@ assert.equal(branchData.generatorData.resolution, "720p");
 assert.equal(Object.hasOwn(branchData.generatorData, "jobId"), false);
 assert.equal(Object.hasOwn(branchData.generatorData, "generationRequestId"), false);
 assert.deepEqual(branchData.edges.map((edge) => edge.source), ["image-node-1", "image-node-2", "prompt-node-1"]);
+const reusedPlan = cloneCommercePlanForReuse({
+  ...commerceDraft.plans[0],
+  createdGroupId: "group-1",
+  createdPromptNodeId: "prompt-1",
+  createdGeneratorNodeId: "generator-1",
+}, "plan-reused");
+assert.equal(reusedPlan.id, "plan-reused");
+assert.equal(reusedPlan.selected, true);
+assert.equal(reusedPlan.providerId, "seedance-old");
+assert.equal(Object.hasOwn(reusedPlan, "createdGroupId"), false);
+assert.equal(Object.hasOwn(reusedPlan, "createdPromptNodeId"), false);
+assert.equal(Object.hasOwn(reusedPlan, "createdGeneratorNodeId"), false);
+const reusedBranch = planCommerceCanvasCreation({
+  draft: { ...commerceDraft, plans: [...commerceDraft.plans, reusedPlan] },
+  planIds: [reusedPlan.id],
+  providers: creationProviders,
+  existingPlanIds: commerceDraft.plans.map((plan) => plan.id),
+  imageCount: 3,
+})[0];
+const reusedBranchData = buildCommerceCanvasBranchData({
+  branch: reusedBranch,
+  productId: commerceDraft.id,
+  promptNodeId: "prompt-node-reused",
+  generatorNodeId: "generator-node-reused",
+  imageNodeIds: ["image-node-1", "image-node-2", "image-node-3"],
+  createdAt: "2026-07-26T00:02:00.000Z",
+});
+assert.deepEqual(reusedBranchData.generatorData.sourceNodeIds, ["prompt-node-reused", "image-node-1", "image-node-2"]);
+assert.equal(reusedBranchData.generatorData.status, "idle");
 
 assert.deepEqual(normalizeCanvasAssistantResponse({
   reply: "ok",

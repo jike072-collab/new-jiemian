@@ -159,6 +159,7 @@ import {
 } from "@/lib/canvas/image-batch";
 import { mergeCanvasWorkspace } from "@/lib/canvas/merge";
 import { layoutCanvasFlowNodes } from "@/lib/canvas/layout";
+import { absoluteCanvasNodePosition } from "@/lib/canvas/node-position";
 import { matchPendingGeneratedMedia } from "@/lib/canvas/pending-results";
 import {
   canvasPresenceMembersForNode,
@@ -1719,14 +1720,15 @@ function CanvasWorkspaceInner({
     }
     pushHistorySnapshot();
     const id = canvasId("node");
+    const generatorPosition = absoluteCanvasNodePosition(generator, nodesRef.current);
     const resultGrid = canvasImageResultGrid(resultIndex, resultTotal);
     const resultNode: CanvasFlowNode = {
       id,
       type: "canvas",
       dragHandle: ".canvas-node__header",
       position: {
-        x: generator.position.x + (generator.width || 340) + 130 + resultGrid.column * 380,
-        y: generator.position.y + resultGrid.row * 360 - ((resultGrid.rowCount - 1) * 180),
+        x: generatorPosition.x + (generator.width || 340) + 130 + resultGrid.column * 380,
+        y: generatorPosition.y + resultGrid.row * 360 - ((resultGrid.rowCount - 1) * 180),
       },
       width: 340,
       height: item.type === "image" ? 320 : 360,
@@ -1773,6 +1775,7 @@ function CanvasWorkspaceInner({
     if (!generator || resultTotal < 1) return [];
     pushHistorySnapshot();
     const createdAt = new Date().toISOString();
+    const generatorPosition = absoluteCanvasNodePosition(generator, nodesRef.current);
     const pendingNodes = Array.from({ length: resultTotal }, (_, resultIndex): CanvasFlowNode => {
       const resultGrid = canvasImageResultGrid(resultIndex, resultTotal);
       return {
@@ -1780,8 +1783,8 @@ function CanvasWorkspaceInner({
         type: "canvas",
         dragHandle: ".canvas-node__header",
         position: {
-          x: generator.position.x + (generator.width || 340) + 130 + resultGrid.column * 380,
-          y: generator.position.y + resultGrid.row * 360 - ((resultGrid.rowCount - 1) * 180),
+          x: generatorPosition.x + (generator.width || 340) + 130 + resultGrid.column * 380,
+          y: generatorPosition.y + resultGrid.row * 360 - ((resultGrid.rowCount - 1) * 180),
         },
         width: 340,
         height: 320,
@@ -1820,10 +1823,11 @@ function CanvasWorkspaceInner({
     pushHistorySnapshot();
     const resultIds = new Set(edgesRef.current.filter((edge) => edge.source === generatorId).map((edge) => edge.target));
     const existingResults = nodesRef.current.filter((node) => resultIds.has(node.id) && node.data.kind === "media");
-    const resultX = generator.position.x + (generator.width || 340) + 130;
+    const generatorPosition = absoluteCanvasNodePosition(generator, nodesRef.current);
+    const resultX = generatorPosition.x + (generator.width || 340) + 130;
     const resultY = existingResults.length
       ? Math.max(...existingResults.map((node) => node.position.y + (node.height || 360))) + 40
-      : generator.position.y;
+      : generatorPosition.y;
     const id = canvasId("node");
     const pendingNode: CanvasFlowNode = {
       id,

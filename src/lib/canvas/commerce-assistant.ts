@@ -15,12 +15,12 @@ export const commerceDirectionOptions: Array<{
   detail: string;
   requiresHuman: boolean;
 }> = [
-  { id: "human-wear", label: "真人上脚", detail: "真人自然穿着与动作展示", requiresHuman: true },
-  { id: "sport-motion", label: "运动动态", detail: "以一个运动动作呈现鞋型和动态视觉", requiresHuman: true },
-  { id: "daily-style", label: "日常穿搭", detail: "贴近马来西亚日常场景的穿搭展示", requiresHuman: true },
+  { id: "human-wear", label: "真人上脚", detail: "马来西亚本地真人，以痛点钩子进入上脚展示", requiresHuman: true },
+  { id: "sport-motion", label: "运动动态", detail: "本地真人用一个运动动作呈现鞋型和动态视觉", requiresHuman: true },
+  { id: "daily-style", label: "日常穿搭", detail: "马来西亚本地人物的自然日常穿搭展示", requiresHuman: true },
   { id: "product-asmr", label: "产品细节 / ASMR", detail: "产品近景、可见结构与声音细节", requiresHuman: false },
   { id: "handheld", label: "手持展示", detail: "手部拿取和转动产品；有包装证据时才允许开箱", requiresHuman: false },
-  { id: "malay-review", label: "马来语口播", detail: "自然马来语口播和产品展示", requiresHuman: true },
+  { id: "malay-review", label: "马来语口播", detail: "本地真人用自然马来语痛点钩子和推荐", requiresHuman: true },
 ];
 
 const directions = new Set(commerceDirectionOptions.map((item) => item.id));
@@ -136,6 +136,14 @@ export function commerceDirectionLabel(direction: CanvasCommerceDirection) {
 
 export function commerceDirectionRequiresHuman(direction: CanvasCommerceDirection) {
   return commerceDirectionOptions.find((item) => item.id === direction)?.requiresHuman === true;
+}
+
+export function cloneCommercePlanForReuse(plan: CanvasCommercePlan, id = commerceId("plan")): CanvasCommercePlan {
+  const clone = { ...plan, id, selected: true };
+  delete clone.createdGroupId;
+  delete clone.createdPromptNodeId;
+  delete clone.createdGeneratorNodeId;
+  return clone;
 }
 
 export function planCommerceCanvasCreation({

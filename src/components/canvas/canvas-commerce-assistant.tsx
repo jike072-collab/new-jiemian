@@ -5,6 +5,7 @@ import {
   ArrowUp,
   Check,
   ChevronDown,
+  CopyPlus,
   ImagePlus,
   LoaderCircle,
   Plus,
@@ -20,6 +21,7 @@ import {
   commerceDirectionLabel,
   commerceDirectionOptions,
   commerceDirectionRequiresHuman,
+  cloneCommercePlanForReuse,
   newCommerceProductDraft,
   normalizeCommercePlanGeneration,
   normalizeCommerceProductAnalysis,
@@ -291,6 +293,37 @@ export function CanvasCommerceAssistant({
     }
   }
 
+  function reuseCreatedPlan(plan: CanvasCommercePlan) {
+    if (busy) return;
+    const provider = providerForPlan(plan, draft.sharedProviderId, compatibleProviders);
+    if (!provider) {
+      patchDraft({ phase: "error", error: "原方案模型当前不可用，请重新选择模型后再复用。" });
+      return;
+    }
+    setBusy("create");
+    try {
+      const clonedPlan = { ...cloneCommercePlanForReuse(plan), providerId: provider.id };
+      const prepared = { ...draft, plans: [...draft.plans, clonedPlan] };
+      const created = onCreatePlans(prepared, [clonedPlan.id])[0];
+      if (!created) throw new Error("没有创建新的方案节点。");
+      patchDraft({
+        plans: [...draft.plans, {
+          ...clonedPlan,
+          selected: false,
+          createdGroupId: created.groupId,
+          createdPromptNodeId: created.promptNodeId,
+          createdGeneratorNodeId: created.generatorNodeId,
+        }],
+        phase: "plans-ready",
+        error: undefined,
+      });
+    } catch (error) {
+      patchDraft({ phase: "error", error: error instanceof Error ? error.message : "复用方案失败。" });
+    } finally {
+      setBusy("");
+    }
+  }
+
   function startNewProduct() {
     const product = newCommerceProductDraft();
     onStateChange({ products: { ...normalizedState.products, [product.id]: product } });
@@ -365,7 +398,7 @@ export function CanvasCommerceAssistant({
           const provider = planProviders[plan.id];
           const capacity = provider?.videoOptions?.maxReferenceImages || 0;
           return <article key={plan.id} className={created ? "is-created" : undefined}>
-            <header><label><input type="checkbox" checked={created || plan.selected} disabled={created} onChange={(event) => patchPlan(plan.id, { selected: event.target.checked })} /><span>{commerceDirectionLabel(plan.direction)}</span></label><div>{created ? <small><Check />已创建</small> : <button type="button" disabled={Boolean(busy)} onClick={() => { void generatePlans([plan.direction]); }}><Sparkles />重新分析</button>}</div></header>
+            <header><label><input type="checkbox" checked={created || plan.selected} disabled={created} onChange={(event) => patchPlan(plan.id, { selected: event.target.checked })} /><span>{commerceDirectionLabel(plan.direction)}</span></label><div>{created ? <><small><Check />已创建</small><button type="button" disabled={Boolean(busy)} onClick={() => reuseCreatedPlan(plan)}><CopyPlus />复用为新节点</button></> : <button type="button" disabled={Boolean(busy)} onClick={() => { void generatePlans([plan.direction]); }}><Sparkles />重新分析</button>}</div></header>
             <label><span>核心卖点</span><select value={plan.sellingPoint} disabled={created} onChange={(event) => patchDraft({ plans: draft.plans.map((item) => item.id === plan.id ? { ...item, sellingPoint: event.target.value } : item), directionSellingPoints: { ...draft.directionSellingPoints, [plan.direction]: event.target.value } })}>{draft.sellingPoints.filter(Boolean).map((point) => <option key={point} value={point}>{point}</option>)}</select></label>
             <label><span>模型</span><select value={plan.providerId || ""} disabled={created} onChange={(event) => patchPlan(plan.id, { providerId: event.target.value || undefined })}><option value="">跟随共用模型</option>{options.map((item) => <option key={item.id} value={item.id}>{providerLabel(item)}</option>)}</select></label>
             <textarea value={plan.prompt} disabled={created} onChange={(event) => patchPlan(plan.id, { prompt: event.target.value })} aria-label={`${commerceDirectionLabel(plan.direction)}提示词`} />
