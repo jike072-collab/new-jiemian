@@ -505,7 +505,7 @@ test("provider caller sends labeled visual evidence as multimodal content", asyn
   assert.equal(output, "已分析视觉素材");
 });
 
-test("New API admin caller uses the requested chat model without exposing credentials", async () => {
+test("New API admin caller uses the requested chat model and output budget without exposing credentials", async () => {
   handlers.set("POST /v1/chat/completions", async (request, response) => {
     assert.equal(request.headers.authorization, "Bearer admin-secret");
     assert.equal(request.headers["new-api-user"], "1");
@@ -513,7 +513,7 @@ test("New API admin caller uses the requested chat model without exposing creden
     for await (const chunk of request) chunks.push(Buffer.from(chunk));
     const body = JSON.parse(Buffer.concat(chunks).toString("utf8"));
     assert.equal(body.model, "gpt-5.6-terra");
-    assert.equal(body.max_tokens, 2400);
+    assert.equal(body.max_tokens, 6000);
     assert.equal(body.messages[0].role, "system");
     assert.equal(body.messages[1].role, "user");
     json(response, 200, {
@@ -540,6 +540,7 @@ test("New API admin caller uses the requested chat model without exposing creden
     userPrompt: "user",
     requestId: "req-new-api",
     timeoutMs: 500,
+    maxTokens: 6000,
   });
   assert.equal(output, "来自 New API 的中文提示词");
 });

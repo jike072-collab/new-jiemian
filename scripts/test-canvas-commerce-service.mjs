@@ -119,6 +119,7 @@ const generated = await service.answer({
 assert.equal(generated.kind, "commerce-plan-generation");
 assert.equal(generated.plans.length, 1);
 assert.equal(calls[1].timeoutMs, 120_000);
+assert.equal(calls[1].maxTokens, 6_000);
 assert.equal(generated.plans[0].sellingPoint, "复古配色");
 assert.match(generated.plans[0].prompt, /0-2秒/);
 assert.match(generated.plans[0].prompt, /12-15秒/);
@@ -198,7 +199,7 @@ const parseRecoveryService = createCanvasAssistantService(async () => {
   malformedCalls += 1;
   return malformedCalls === 1
     ? "这里是方案，但没有按要求输出 JSON"
-    : JSON.stringify({ kind: "commerce-plan-generation", plans: generated.plans });
+    : `已按要求修正：\n\`\`\`json\n${JSON.stringify({ kind: "commerce-plan-generation", plans: generated.plans })}\n\`\`\`\n以上是完整方案。`;
 });
 const recovered = await parseRecoveryService.answer({
   workflow: "commerce-plan-generation",

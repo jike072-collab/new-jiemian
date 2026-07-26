@@ -361,8 +361,30 @@ function parseJsonObject(value: string) {
   try {
     return JSON.parse(cleaned) as unknown;
   } catch {
-    throw new CanvasAssistantError("CANVAS_ASSISTANT_FAILED", "助手没有返回可用的结构化结果，请重新分析。", 502);
+    const start = cleaned.indexOf("{");
+    let depth = 0;
+    let inString = false;
+    let escaped = false;
+    for (let index = start; index >= 0 && index < cleaned.length; index += 1) {
+      const character = cleaned[index];
+      if (inString) {
+        if (escaped) escaped = false;
+        else if (character === "\\") escaped = true;
+        else if (character === '"') inString = false;
+        continue;
+      }
+      if (character === '"') inString = true;
+      else if (character === "{") depth += 1;
+      else if (character === "}" && --depth === 0) {
+        try {
+          return JSON.parse(cleaned.slice(start, index + 1)) as unknown;
+        } catch {
+          break;
+        }
+      }
+    }
   }
+  throw new CanvasAssistantError("CANVAS_ASSISTANT_FAILED", "助手没有返回可用的结构化结果，请重新分析。", 502);
 }
 
 async function callAssistantModel(caller: PromptModelCaller, input: Parameters<PromptModelCaller>[0]) {
@@ -425,6 +447,7 @@ async function answerCommerceWorkflow(
     images: normalized.workflow === "commerce-product-analysis" ? visualEvidence.images : undefined,
     requestId,
     timeoutMs: normalized.workflow === "commerce-plan-generation" ? 120_000 : 60_000,
+    ...(normalized.workflow === "commerce-plan-generation" ? { maxTokens: 6_000 } : {}),
   });
   if (normalized.workflow === "commerce-product-analysis") return normalizeCommerceProductAnalysis(parseJsonObject(output));
   const normalizePlans = (value: unknown) => normalizeCommercePlanGeneration(value, normalized.selectedDirections, {
@@ -449,6 +472,7 @@ async function answerCommerceWorkflow(
       userPrompt,
       requestId,
       timeoutMs: 120_000,
+      maxTokens: 6_000,
     });
     generated = normalizePlans(parseJsonObject(correctedOutput));
   }

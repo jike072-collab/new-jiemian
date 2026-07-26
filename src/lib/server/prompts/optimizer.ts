@@ -63,6 +63,7 @@ export type PromptModelCall = {
   images?: Array<{ label: string; description: string; dataUrl: string }>;
   requestId?: string;
   timeoutMs: number;
+  maxTokens?: number;
 };
 
 export type PromptModelCaller = (input: PromptModelCall) => Promise<string>;
@@ -90,6 +91,7 @@ const DEFAULT_TIMEOUT_MS = 15000;
 const DEFAULT_MAX_OUTPUT_TOKENS = 2400;
 const MIN_MAX_OUTPUT_TOKENS = 1200;
 const MAX_MAX_OUTPUT_TOKENS = 4000;
+const MAX_REQUEST_OUTPUT_TOKENS = 6000;
 const DEFAULT_MODEL = "gpt-5.6-luna";
 const PROMPT_OPTIMIZER_PROVIDER_ID = "prompt-optimizer";
 const PROMPT_PROVIDER_RESPONSE_LIMIT_BYTES = 65536;
@@ -134,6 +136,11 @@ function promptOptimizerMaxTokens() {
     MIN_MAX_OUTPUT_TOKENS,
     MAX_MAX_OUTPUT_TOKENS,
   );
+}
+
+function promptCallMaxTokens(input: PromptModelCall) {
+  if (!Number.isFinite(input.maxTokens)) return promptOptimizerMaxTokens();
+  return Math.min(Math.max(Math.floor(input.maxTokens || 0), MIN_MAX_OUTPUT_TOKENS), MAX_REQUEST_OUTPUT_TOKENS);
 }
 
 function text(value: unknown) {
@@ -599,7 +606,7 @@ async function callPromptProvider(provider: ProviderConfig, input: PromptModelCa
       body: JSON.stringify({
         model: provider.model,
         temperature: 0.2,
-        max_tokens: promptOptimizerMaxTokens(),
+        max_tokens: promptCallMaxTokens(input),
         messages: [
           { role: "system", content: input.systemPrompt },
           { role: "user", content: promptUserContent(input) },
@@ -682,7 +689,7 @@ export function createNewApiAdminPromptModelCaller(options: {
       body: {
         model,
         temperature: 0.2,
-        max_tokens: promptOptimizerMaxTokens(),
+        max_tokens: promptCallMaxTokens(input),
         messages: [
           { role: "system", content: input.systemPrompt },
           { role: "user", content: promptUserContent(input) },
