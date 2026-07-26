@@ -409,7 +409,7 @@ async function answerCommerceWorkflow(
   const output = await callAssistantModel(caller, {
     systemPrompt: system,
     userPrompt,
-    images: visualEvidence.images,
+    images: normalized.workflow === "commerce-product-analysis" ? visualEvidence.images : undefined,
     requestId,
     timeoutMs: normalized.workflow === "commerce-plan-generation" ? 120_000 : 60_000,
   });

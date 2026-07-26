@@ -89,6 +89,7 @@ assert.equal(analysis.kind, "commerce-product-analysis");
 assert.equal(analysis.sameProduct, true);
 assert.equal(analysis.sellingPoints.length, 4);
 assert.equal(calls[0].timeoutMs, 60_000);
+assert.equal(calls[0].images.length, 2);
 assert.equal(Object.hasOwn(analysis, "creativeOptions"), false);
 assert.equal(Object.hasOwn(analysis, "actions"), false);
 
@@ -132,7 +133,7 @@ assert.equal(Object.hasOwn(generated, "actions"), false);
 
 assert.equal(calls.length, 2);
 assert.equal(calls[0].images.length, 2);
-assert.equal(calls[1].images.length, 2);
+assert.equal(calls[1].images, undefined);
 assert.match(calls[1].systemPrompt, /马来西亚本地成年人物/);
 assert.match(calls[1].systemPrompt, /痛点问句/);
 assert.match(calls[1].systemPrompt, /不使用刻板化形象/);
