@@ -1,13 +1,22 @@
 import type {
   CanvasCommerceAssistantState,
+  CanvasCommerceCreativeOption,
+  CanvasCommerceCreativeStyle,
   CanvasCommerceDirection,
   CanvasCommercePlan,
+  CanvasCommercePlanHook,
   CanvasCommerceProductDraft,
   CanvasNodeData,
   CanvasReferenceBinding,
   CanvasReferenceRole,
   CanvasStoredEdge,
 } from "./types";
+import {
+  isMalaysiaCommerceHookPairCompatible,
+  malaysiaCommerceCopyHookPattern,
+  malaysiaCommerceVisualHookPattern,
+} from "#malaysia-commerce-video-hook-library";
+import { composeTikTokCaption, normalizeTikTokCopyDraft, type TikTokCopyDraft } from "#tiktok-copy";
 
 export const commerceDirectionOptions: Array<{
   id: CanvasCommerceDirection;
@@ -16,7 +25,7 @@ export const commerceDirectionOptions: Array<{
   requiresHuman: boolean;
 }> = [
   { id: "human-wear", label: "真人上脚", detail: "马来西亚本地真人，以痛点钩子进入上脚展示", requiresHuman: true },
-  { id: "sport-motion", label: "运动动态", detail: "本地真人用一个运动动作呈现鞋型和动态视觉", requiresHuman: true },
+  { id: "sport-motion", label: "运动动态", detail: "本地真人在匹配鞋型的快走、慢跑或轻运动场景展示", requiresHuman: true },
   { id: "daily-style", label: "日常穿搭", detail: "马来西亚本地人物的自然日常穿搭展示", requiresHuman: true },
   { id: "product-asmr", label: "产品细节 / ASMR", detail: "产品近景、可见结构与声音细节", requiresHuman: false },
   { id: "handheld", label: "手持展示", detail: "手部拿取和转动产品；有包装证据时才允许开箱", requiresHuman: false },
@@ -24,6 +33,7 @@ export const commerceDirectionOptions: Array<{
 ];
 
 const directions = new Set(commerceDirectionOptions.map((item) => item.id));
+const creativeStyles = new Set<CanvasCommerceCreativeStyle>(["pain-point", "contrast", "motion"]);
 const roles = new Set<CanvasReferenceRole>([
   "identity", "first-frame", "last-frame", "product", "environment",
   "motion", "camera", "timing", "audio", "style",
@@ -37,6 +47,7 @@ export type CanvasCommerceProductAnalysisResponse = {
   sellingPoints: string[];
   visibleFacts: string[];
   recommendedDirections: CanvasCommerceDirection[];
+  creativeOptions?: CanvasCommerceCreativeOption[];
 };
 
 export type CanvasCommercePlanGenerationResponse = {
@@ -91,6 +102,7 @@ export function normalizeCommerceProductAnalysis(value: unknown): CanvasCommerce
   const sellingPoints = stringList(record.sellingPoints, 8, 160);
   const visibleFacts = stringList(record.visibleFacts, 16, 160);
   const recommendedDirections = directionList(record.recommendedDirections, 6);
+  const creativeOptions = normalizeCommerceCreativeOptions(record.creativeOptions);
   const sameProduct = record.sameProduct === true;
   if (sameProduct && sellingPoints.length < 4) throw new Error("产品分析没有返回足够的可确认卖点。");
   return {
@@ -101,7 +113,31 @@ export function normalizeCommerceProductAnalysis(value: unknown): CanvasCommerce
     sellingPoints,
     visibleFacts,
     recommendedDirections,
+    ...(creativeOptions.length ? { creativeOptions } : {}),
   };
+}
+
+export function normalizeCommerceCreativeOptions(value: unknown, limit = 3): CanvasCommerceCreativeOption[] {
+  if (!Array.isArray(value)) return [];
+  const seenStyles = new Set<CanvasCommerceCreativeStyle>();
+  return value.slice(0, limit).flatMap((candidate, index) => {
+    const item = object(candidate, false);
+    if (!item) return [];
+    const style = text(item.style, 32) as CanvasCommerceCreativeStyle;
+    const title = text(item.title, 80);
+    const hookLine = text(item.hookLine, 160);
+    const scene = text(item.scene, 160);
+    const visualBeat = text(item.visualBeat, 200);
+    if (!creativeStyles.has(style) || seenStyles.has(style) || !title || !hookLine || !scene || !visualBeat) return [];
+    seenStyles.add(style);
+    return [{ id: text(item.id, 120) || `hook-${index + 1}`, style, title, hookLine, scene, visualBeat }];
+  });
+}
+
+export function commerceCreativeStyleLabel(style: CanvasCommerceCreativeStyle) {
+  if (style === "pain-point") return "痛点问句";
+  if (style === "contrast") return "穿搭反差";
+  return "运动场景";
 }
 
 export function normalizeCommercePlanGeneration(value: unknown, expectedDirections?: CanvasCommerceDirection[]): CanvasCommercePlanGenerationResponse {
@@ -109,13 +145,21 @@ export function normalizeCommercePlanGeneration(value: unknown, expectedDirectio
   if (record.kind !== "commerce-plan-generation" || !Array.isArray(record.plans)) throw new Error("提示词方案返回格式无效。");
   const expected = expectedDirections ? new Set(expectedDirections) : null;
   const seen = new Set<CanvasCommerceDirection>();
+  const seenHookPairs = new Set<string>();
   const plans = record.plans.slice(0, 3).flatMap((candidate) => {
     const item = object(candidate, false);
     if (!item) return [];
     const direction = text(item.direction, 40) as CanvasCommerceDirection;
     const prompt = text(item.prompt, 8_000);
     if (!directions.has(direction) || seen.has(direction) || (expected && !expected.has(direction)) || !prompt) return [];
+    const hook = normalizeCommercePlanHook(item.hook, direction);
+    const publishingCopy = normalizeCommercePublishingCopy(item.publishingCopy);
+    if (!hook || !publishingCopy) throw new Error(`“${commerceDirectionLabel(direction)}”缺少合法的钩子或发布文案。`);
+    const hookPair = `${hook.visualPatternId}:${hook.copyPatternId}`;
+    if (seenHookPairs.has(hookPair)) throw new Error("批量方案不能重复使用完全相同的视觉与话术钩子组合。");
+    validateCommercePlanContent(prompt, hook, publishingCopy);
     seen.add(direction);
+    seenHookPairs.add(hookPair);
     return [{
       id: text(item.id, 120) || commerceId("plan"),
       direction,
@@ -123,11 +167,58 @@ export function normalizeCommercePlanGeneration(value: unknown, expectedDirectio
       sellingPoint: text(item.sellingPoint, 160),
       prompt,
       referenceBindings: normalizeBindings(item.referenceBindings),
+      hook,
+      publishingCopy,
       selected: true,
     }];
   });
   if (!plans.length || (expected && plans.length !== expected.size)) throw new Error("助手没有完整返回所选方向的提示词方案。");
   return { kind: "commerce-plan-generation", plans };
+}
+
+export function normalizeCommercePlanHook(value: unknown, direction: CanvasCommerceDirection): CanvasCommercePlanHook | undefined {
+  const item = object(value, false);
+  if (!item) return undefined;
+  const visualPatternId = text(item.visualPatternId, 80);
+  const copyPatternId = text(item.copyPatternId, 80);
+  if (!malaysiaCommerceVisualHookPattern(visualPatternId)
+    || !malaysiaCommerceCopyHookPattern(copyPatternId)
+    || !isMalaysiaCommerceHookPairCompatible(visualPatternId, copyPatternId, direction)) return undefined;
+  const hook = {
+    visualPatternId,
+    copyPatternId,
+    title: text(item.title, 120),
+    reason: text(item.reason, 360),
+    hookLine: text(item.hookLine, 240),
+    onScreenText: text(item.onScreenText, 120),
+    scene: text(item.scene, 240),
+    visualBeat: text(item.visualBeat, 360),
+  };
+  return Object.values(hook).every(Boolean) ? hook : undefined;
+}
+
+export function normalizeCommercePublishingCopy(value: unknown): TikTokCopyDraft | undefined {
+  const record = object(value, false);
+  if (!record) return undefined;
+  const normalized = normalizeTikTokCopyDraft(record);
+  if (!normalized.title || !normalized.caption || normalized.hashtags.length < 4 || normalized.hashtags.length > 6) return undefined;
+  return normalized;
+}
+
+export function commercePlanNotes(plan: Pick<CanvasCommercePlan, "hook" | "publishingCopy">) {
+  const sections = [
+    plan.hook ? [
+      `钩子：${plan.hook.title}`,
+      `选择理由：${plan.hook.reason}`,
+      `视觉模式：${plan.hook.visualPatternId}`,
+      `话术模式：${plan.hook.copyPatternId}`,
+      `首句：${plan.hook.hookLine}`,
+      `屏幕短字：${plan.hook.onScreenText}`,
+      `场景与首帧：${plan.hook.scene}；${plan.hook.visualBeat}`,
+    ].join("\n") : "",
+    plan.publishingCopy ? `发布文案：\n${composeTikTokCaption(plan.publishingCopy)}` : "",
+  ].filter(Boolean);
+  return sections.join("\n\n");
 }
 
 export function commerceDirectionLabel(direction: CanvasCommerceDirection) {
@@ -210,6 +301,7 @@ export function buildCommerceCanvasBranchData({
     kind: "prompt",
     title: branch.plan.title,
     prompt: branch.plan.prompt,
+    notes: commercePlanNotes(branch.plan) || undefined,
     createdAt,
     referenceBindings: branch.plan.referenceBindings.slice(0, connectedImageNodeIds.length),
     assistantProductId: productId,
@@ -240,6 +332,30 @@ export function buildCommerceCanvasBranchData({
     targetHandle: "input",
   }));
   return { promptData, generatorData, edges };
+}
+
+function validateCommercePlanContent(prompt: string, hook: CanvasCommercePlanHook, publishingCopy: TikTokCopyDraft) {
+  if (!prompt.includes(hook.hookLine) || !prompt.includes(hook.onScreenText)) {
+    throw new Error("钩子口播和屏幕短字必须原样写入最终提示词。");
+  }
+  const wordCount = hook.onScreenText.match(/\p{L}+(?:['’-]\p{L}+)*/gu)?.length || 0;
+  if (wordCount < 3 || wordCount > 7) throw new Error("马来语屏幕短字必须控制在 3-7 个词。");
+  const requiredRanges = [/[0０]\s*[-–—]\s*2\s*秒/u, /2\s*[-–—]\s*7\s*秒/u, /7\s*[-–—]\s*12\s*秒/u, /12\s*[-–—]\s*15\s*秒/u];
+  if (requiredRanges.some((range) => !range.test(prompt))) throw new Error("提示词必须完整包含四段 15 秒时间轴。");
+  const claimSurface = [prompt.split(/禁止项/u, 1)[0], hook.hookLine, hook.onScreenText, publishingCopy.title, publishingCopy.caption].join("\n");
+  if (/(?:价格|便宜|折扣|优惠|促销|清仓|退货|退款|销量|评价|舒适|防滑|耐磨|透气|脚痛|受伤|harga|murah|diskaun|promosi|clearance|refund|return|selesa|anti[- ]?slip|tahan lama|breathable|sakit|cedera)/iu.test(claimSurface)) {
+    throw new Error("方案包含当前产品资料无法证明的价格、经历或性能话术。");
+  }
+  if (hook.copyPatternId === "numbered-specificity") {
+    const count = /(?:\b2\b|\bdua\b)/iu.test(`${hook.hookLine} ${hook.onScreenText}`) ? 2
+      : /(?:\b3\b|\btiga\b)/iu.test(`${hook.hookLine} ${hook.onScreenText}`) ? 3 : 0;
+    const fulfilled = count === 2
+      ? /(?:第一|pertama)/iu.test(prompt) && /(?:第二|kedua)/iu.test(prompt)
+      : /(?:第一|pertama)/iu.test(prompt) && /(?:第二|kedua)/iu.test(prompt) && /(?:第三|ketiga)/iu.test(prompt);
+    if (!count || !fulfilled) {
+      throw new Error("数字式钩子必须使用 2 或 3，并在时间轴中兑现相同数量的画面证据。");
+    }
+  }
 }
 
 function normalizeBindings(value: unknown): CanvasReferenceBinding[] {

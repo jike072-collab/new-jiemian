@@ -12,7 +12,14 @@ import { newApiLogger } from "@/lib/server/integrations/new-api/logger";
 import { createNewApiPromptModelCaller, type PromptModelCaller } from "@/lib/server/prompts";
 import type { CanvasAssistantVisualEvidence } from "@/lib/server/canvas-assistant-media";
 import type { CanvasCommerceDirection, CanvasMediaType, CanvasReferenceBinding, CanvasSequenceState } from "@/lib/canvas/types";
+import {
+  isMalaysiaCommerceHookPairCompatible,
+  malaysiaCommerceCopyHookPattern,
+  malaysiaCommerceHookPromptLibrary,
+  malaysiaCommerceVisualHookPattern,
+} from "#malaysia-commerce-video-hook-library";
 import { seedanceCanvasAssistantRules, seedancePromptGuidance } from "@/lib/seedance/prompt-guidance";
+import { malaysiaShoeCopyPromptLibrary } from "#malaysia-shoe-copy-library";
 import { tiktokShopVideoGuidance } from "#tiktok-shop-video-guidance";
 
 type CanvasAssistantNode = {
@@ -48,8 +55,14 @@ export type CanvasAssistantInput = {
   productDraftId?: string;
   productName?: string;
   sellingPoints?: string[];
+  visibleFacts?: string[];
   selectedDirections?: CanvasCommerceDirection[];
   directionSellingPoints?: Partial<Record<CanvasCommerceDirection, string>>;
+  usedHookPatterns?: Array<{
+    direction: CanvasCommerceDirection;
+    visualPatternId: string;
+    copyPatternId: string;
+  }>;
   extraRequirements?: string;
 };
 
@@ -106,6 +119,8 @@ const commerceProductAnalysisPrompt = [
   "允许把可见特征表达为复古、简洁、百搭、厚底视觉等风格价值；禁止推断舒适、防滑、耐磨、真皮、透气、功效、认证、参数、价格、折扣、销量、评价或品牌身份。",
   "suggestedName 是可编辑的简体中文中性商品名，不确定时可为空。visibleFacts 只记录可从图片直接核对的事实。",
   "recommendedDirections 只能从 human-wear、sport-motion、daily-style、product-asmr、handheld、malay-review 中选择 2-3 个。",
+  "普通时尚运动鞋优先马来西亚城市通勤、商场、校园、旅行、周末出行、遮雨步道和公园快走；外观明显接近跑鞋时才允许公园跑道、铺装湖边路或轻慢跑；只有 visibleFacts 明确出现深齿外底、护趾或粗犷户外结构时，才允许轻徒步或营地步行。不得把普通运动鞋写成专业跑鞋、越野鞋或露营装备。",
+  "场景使用一名马来西亚当地成年人物，不夸张族群或宗教符号。产品分析只建立可见事实和推荐方向，不生成或选择固定全局钩子。",
   "仅输出 JSON，不要 Markdown：{\"kind\":\"commerce-product-analysis\",\"sameProduct\":true,\"conflictMessage\":\"\",\"suggestedName\":\"\",\"sellingPoints\":[\"\"],\"visibleFacts\":[\"\"],\"recommendedDirections\":[\"product-asmr\"]}",
 ].join("\n");
 
@@ -115,14 +130,24 @@ const commercePlanGenerationPrompt = [
   "每个方案只突出 directionSellingPoints 指定的一个核心卖点，不把多个卖点塞进同一条视频。",
   "提示词主体使用简体中文；口播、对白、字幕和 CTA 使用自然的马来西亚马来语，可少量自然混用当地常见英语，禁止生硬逐字翻译。",
   "固定时间轴为 0-2 秒停留钩子、2-7 秒核心价值演示、7-12 秒可见细节或可信视觉证据、12-15 秒结果收束与 CTA。每段只有一个主要动作和一个有动机的主要运镜。",
+  "先为每个方向从双层知识库选择一个兼容的 visualPatternId 和 copyPatternId。批量生成尽量不重复；usedHookPatterns 是同方向历史组合，重新分析时优先更换 copyPatternId，其次更换 visualPatternId。",
+  "每个方案 hook 必须包含简体中文 title 和 reason、自然马来语 hookLine、3-7 个马来语词的 onScreenText、简体中文 scene 和 0-2 秒可执行 visualBeat。不得返回知识库外的 ID。",
+  "0-2 秒必须让 hookLine、onScreenText、首帧动作和声音表达同一钩子，并把两段马来语原样写进最终 prompt。痛点和反差可使用穿鞋前后；ASMR、动作中开场和悬念揭示不强制先拍未穿鞋。",
+  "15 秒必须有 4 个清楚不同的分镜节拍，对应四段时间轴。每段明确写出场景、人物动作、产品状态、景别或运镜、同期声音或台词；同一构图连续不超过 3 秒。禁止整段固定机位、整段只拍脚踝、只有缓慢旋转产品或从头到尾介绍参数。",
   "真人上脚、运动动态、日常穿搭和马来语口播属于真人方向：画面只安排一名马来西亚本地成年人物，从当地多元人群中自然选择，肤色、五官、发型和适应热带气候的日常穿搭真实自然；不指定或夸张族群、宗教符号，不使用刻板化形象。",
   "真人方向的 0-2 秒优先使用自然马来语痛点问句或可见困扰作为钩子，再进入产品展示。痛点只能来自已确认的风格、配色、搭配、外观结构或合理场景，例如难搭配日常服装；不得虚构脚痛、舒适、防滑、耐磨、透气或其他无法从图片验证的问题和功效。",
+  "真人方向至少一个镜头看到人物自然表情、上半身或全身穿搭反馈，鞋子在关键动作中保持清楚；不得让人物全程只剩小腿。产品细节/ASMR 使用手部动作、微距变化和有节奏的鞋带声、轻触声或脚步声制造停留，不使用静态说明片。",
+  "运动动态方向必须有真实运动感：从系鞋带、站起或起步中选择一个启动动作，随后使用快走、轻慢跑、台阶或轻运动中的一个主要动态动作，并用低机位跟拍、侧向跟拍或脚步特写证明运动状态。场景必须遵守鞋型安全边界：普通时尚运动鞋不写专业跑步、山地徒步或露营性能。",
   "真人上脚、运动动态、日常穿搭和马来语口播方向必须给出可实际说出的简短马来语台词；产品细节/ASMR 可只用音乐、环境声和产品音效。",
+  "声音从第 0 秒开始：真人方案在前 0.5 秒出现 hookLine 或同步字幕，禁止前半段安静、后半段突然口播。全片最多 3 句马来语短句，每句尽量不超过 10 个词；钩子一句、揭晓或结果一句、CTA 一句，中间让音乐、脚步和动作音效承担节奏，禁止一直解说产品。产品细节/ASMR 则从头到尾保持无口播的声音逻辑。",
+  "必须写明开头声音钩子、揭晓时的节拍变化和必要产品音效。CTA 使用一句自然马来语收束，不得出现 Klik Klik、连续重复命令或机械翻译。",
   "handheld 只有 visibleFacts 明确存在包装时才允许写开箱，否则只写手持拿取和转动展示。",
   "每条提示词按素材职责、产品可见事实、四段时间轴、声音/口播、禁止项的顺序组织，并使用 @Image1、@Image2 等准确引用。",
   "禁止虚构价格、折扣、库存、销量、评价、认证、品牌身份、材料性能或图片中不可验证的产品能力；CTA 只能使用查看商品、点击商品链接等不带虚假促销的表达。",
+  "不得伪造退货、消费者证言或长期使用经历。数字式钩子只能使用 2 或 3，并在 15 秒时间轴内逐项兑现。禁止倒地、跳椅、假装崴脚、伪装受伤动物、投掷液体、街头骚扰、阻碍交通或虚构事故。",
+  "每个方案同时返回 publishingCopy：自然马来语 title、1-2 句 caption、4-6 个相关 hashtags、angle 和 category；默认不得使用 #fyp，不得把标签写进 title 或 caption。",
   "referenceBindings 中每张图片 role 使用 product，transfer 只写产品真实外观职责，ignore 明确不转移背景和不可验证信息。",
-  "仅输出 JSON，不要 Markdown：{\"kind\":\"commerce-plan-generation\",\"plans\":[{\"id\":\"plan-1\",\"direction\":\"product-asmr\",\"title\":\"\",\"sellingPoint\":\"\",\"prompt\":\"\",\"referenceBindings\":[{\"label\":\"@Image1\",\"role\":\"product\",\"transfer\":\"产品外观\",\"ignore\":\"背景\"}]}]}",
+  "仅输出 JSON，不要 Markdown：{\"kind\":\"commerce-plan-generation\",\"plans\":[{\"id\":\"plan-1\",\"direction\":\"product-asmr\",\"title\":\"\",\"sellingPoint\":\"\",\"hook\":{\"visualPatternId\":\"product-asmr-detail\",\"copyPatternId\":\"expectation-gap\",\"title\":\"\",\"reason\":\"\",\"hookLine\":\"\",\"onScreenText\":\"\",\"scene\":\"\",\"visualBeat\":\"\"},\"prompt\":\"\",\"referenceBindings\":[{\"label\":\"@Image1\",\"role\":\"product\",\"transfer\":\"产品外观\",\"ignore\":\"背景\"}],\"publishingCopy\":{\"title\":\"\",\"caption\":\"\",\"hashtags\":[\"#kasut\",\"#shoes\",\"#sneakers\",\"#kasutharian\"],\"angle\":\"auto\",\"category\":\"auto\"}}]}",
 ].join("\n");
 
 const canvasAssistantRetryDelayMs = 350;
@@ -193,12 +218,27 @@ function normalizeInput(input: Partial<CanvasAssistantInput>): CanvasAssistantIn
   const sellingPoints = Array.isArray(input.sellingPoints)
     ? [...new Set(input.sellingPoints.slice(0, 8).map((value) => text(value, 160)).filter(Boolean))]
     : undefined;
+  const visibleFacts = Array.isArray(input.visibleFacts)
+    ? [...new Set(input.visibleFacts.slice(0, 16).map((value) => text(value, 160)).filter(Boolean))]
+    : undefined;
   const directionSellingPoints = input.directionSellingPoints && typeof input.directionSellingPoints === "object" && !Array.isArray(input.directionSellingPoints)
     ? Object.fromEntries(Object.entries(input.directionSellingPoints).flatMap(([direction, value]) => {
       const sellingPoint = text(value, 160);
       return commerceDirections.has(direction as CanvasCommerceDirection) && sellingPoint ? [[direction, sellingPoint]] : [];
     })) as Partial<Record<CanvasCommerceDirection, string>>
     : undefined;
+  const usedHookPatterns = Array.isArray(input.usedHookPatterns) ? input.usedHookPatterns.slice(0, 18).flatMap((candidate) => {
+    if (!candidate || typeof candidate !== "object" || Array.isArray(candidate)) return [];
+    const item = candidate as Record<string, unknown>;
+    const direction = text(item.direction, 40) as CanvasCommerceDirection;
+    const visualPatternId = text(item.visualPatternId, 80);
+    const copyPatternId = text(item.copyPatternId, 80);
+    if (!commerceDirections.has(direction)
+      || !malaysiaCommerceVisualHookPattern(visualPatternId)
+      || !malaysiaCommerceCopyHookPattern(copyPatternId)
+      || !isMalaysiaCommerceHookPairCompatible(visualPatternId, copyPatternId, direction)) return [];
+    return [{ direction, visualPatternId, copyPatternId }];
+  }) : undefined;
   return {
     message,
     canvasTitle: text(input.canvasTitle, 120),
@@ -213,8 +253,10 @@ function normalizeInput(input: Partial<CanvasAssistantInput>): CanvasAssistantIn
     productDraftId: text(input.productDraftId, 120) || undefined,
     productName: text(input.productName, 120),
     sellingPoints,
+    visibleFacts,
     selectedDirections,
     directionSellingPoints,
+    usedHookPatterns,
     extraRequirements: text(input.extraRequirements, 1_200),
   };
 }
@@ -314,7 +356,11 @@ async function answerCommerceWorkflow(
       throw new CanvasAssistantError("CANVAS_ASSISTANT_INVALID", "请为每个内容方向确认一个核心卖点。", 400);
     }
   }
-  const system = normalized.workflow === "commerce-product-analysis" ? commerceProductAnalysisPrompt : commercePlanGenerationPrompt;
+  const system = normalized.workflow === "commerce-product-analysis" ? commerceProductAnalysisPrompt : [
+    commercePlanGenerationPrompt,
+    `双层钩子知识库：${malaysiaCommerceHookPromptLibrary(normalized.selectedDirections)}`,
+    `马来西亚鞋类发布文案库：${malaysiaShoeCopyPromptLibrary()}`,
+  ].join("\n");
   const userPrompt = JSON.stringify({
     workflow: normalized.workflow,
     productDraftId: normalized.productDraftId,
@@ -324,8 +370,10 @@ async function answerCommerceWorkflow(
     imageCount: selectedImages.length,
     productName: normalized.productName,
     sellingPoints: normalized.sellingPoints,
+    visibleFacts: normalized.visibleFacts,
     selectedDirections: normalized.selectedDirections,
     directionSellingPoints: normalized.directionSellingPoints,
+    usedHookPatterns: normalized.usedHookPatterns,
     extraRequirements: normalized.extraRequirements,
     visualEvidence: visualEvidence.summary,
   });

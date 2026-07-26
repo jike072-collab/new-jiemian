@@ -1,9 +1,21 @@
+import type { TikTokCopyDraft } from "#tiktok-copy";
+
 export type CanvasNodeKind = "prompt" | "media" | "generator" | "group";
 export type CanvasMediaType = "image" | "video" | "audio";
 export type CanvasGenerationKind = "image" | "video";
 export type CanvasGeneratorStatus = "idle" | "queued" | "generating" | "done" | "failed";
 export type CanvasReferenceRole = "identity" | "first-frame" | "last-frame" | "product" | "environment" | "motion" | "camera" | "timing" | "audio" | "style";
 export type CanvasCommerceDirection = "human-wear" | "sport-motion" | "daily-style" | "product-asmr" | "handheld" | "malay-review";
+export type CanvasCommerceCreativeStyle = "pain-point" | "contrast" | "motion";
+
+export type CanvasCommerceCreativeOption = {
+  id: string;
+  style: CanvasCommerceCreativeStyle;
+  title: string;
+  hookLine: string;
+  scene: string;
+  visualBeat: string;
+};
 
 export type CanvasReferenceBinding = {
   label: string;
@@ -28,6 +40,17 @@ export type CanvasCommerceProductImage = {
   title: string;
 };
 
+export type CanvasCommercePlanHook = {
+  visualPatternId: string;
+  copyPatternId: string;
+  title: string;
+  reason: string;
+  hookLine: string;
+  onScreenText: string;
+  scene: string;
+  visualBeat: string;
+};
+
 export type CanvasCommercePlan = {
   id: string;
   direction: CanvasCommerceDirection;
@@ -35,6 +58,8 @@ export type CanvasCommercePlan = {
   sellingPoint: string;
   prompt: string;
   referenceBindings: CanvasReferenceBinding[];
+  hook?: CanvasCommercePlanHook;
+  publishingCopy?: TikTokCopyDraft;
   selected: boolean;
   providerId?: string;
   createdGroupId?: string;
@@ -53,6 +78,8 @@ export type CanvasCommerceProductDraft = {
   recommendedDirections: CanvasCommerceDirection[];
   selectedDirections: CanvasCommerceDirection[];
   directionSellingPoints: Partial<Record<CanvasCommerceDirection, string>>;
+  creativeOptions?: CanvasCommerceCreativeOption[];
+  selectedCreativeOptionId?: string;
   plans: CanvasCommercePlan[];
   sharedProviderId?: string;
   extraRequirements: string;

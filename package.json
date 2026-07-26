@@ -3,7 +3,9 @@
   "version": "0.1.0",
   "private": true,
   "imports": {
+    "#malaysia-commerce-video-hook-library": "./src/lib/malaysia-commerce-video-hook-library.ts",
     "#malaysia-shoe-copy-library": "./src/lib/malaysia-shoe-copy-library.ts",
+    "#tiktok-copy": "./src/lib/tiktok-copy.ts",
     "#tiktok-shop-video-guidance": "./src/lib/tiktok-shop-video-guidance.ts"
   },
   "description": "Aohuang AI local image and video generation studio",

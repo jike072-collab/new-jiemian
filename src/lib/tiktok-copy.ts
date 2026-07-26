@@ -32,7 +32,7 @@ const angleHashtags: Record<MalaysiaTikTokCopyAngle, string[]> = {
   detail: ["kasut", "shoes"],
 };
 
-const unrelatedTrendHashtags = new Set(["rainbowpfp", "spain", "final"]);
+const unrelatedTrendHashtags = new Set(["fyp", "rainbowpfp", "spain", "final"]);
 
 function text(value: unknown, maxLength: number) {
   return typeof value === "string" ? value.trim().slice(0, maxLength) : "";

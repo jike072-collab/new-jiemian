@@ -64,7 +64,38 @@ const normalized = normalizeCanvasDocument({
           recommendedDirections: ["daily-style", "product-asmr"],
           selectedDirections: ["product-asmr"],
           directionSellingPoints: { "product-asmr": "鞋面拼接" },
-          plans: [{ id: "plan-1", direction: "product-asmr", title: "细节方案", sellingPoint: "鞋面拼接", prompt: "0-2 秒钩子", referenceBindings: [{ label: "@Image1", role: "product" }], selected: true }],
+          creativeOptions: [
+            { id: "hook-1", style: "pain-point", title: "穿搭不够醒目", hookLine: "Outfit nampak terlalu biasa?", scene: "马来西亚公寓玄关", visualBeat: "人物抬起鞋子" },
+            { id: "hook-2", style: "contrast", title: "换鞋反差", hookLine: "Tengok beza bila tukar kasut.", scene: "商场走廊", visualBeat: "踩点换鞋" },
+            { id: "hook-3", style: "motion", title: "公园快走前后", hookLine: "Kasut mana ngam untuk jalan hari ni?", scene: "公园遮雨步道", visualBeat: "人物看着鞋架犹豫" },
+          ],
+          selectedCreativeOptionId: "hook-2",
+          plans: [{
+            id: "plan-1",
+            direction: "product-asmr",
+            title: "细节方案",
+            sellingPoint: "鞋面拼接",
+            hook: {
+              visualPatternId: "product-asmr-detail",
+              copyPatternId: "expectation-gap",
+              title: "拼接细节预期落差",
+              reason: "微距直接证明可见结构。",
+              hookLine: "Tak sangka detail ni menyerlah",
+              onScreenText: "Detail ni memang menyerlah",
+              scene: "室内产品桌面",
+              visualBeat: "第一帧手指已轻触鞋面拼接。",
+            },
+            prompt: "0-2 秒钩子",
+            referenceBindings: [{ label: "@Image1", role: "product" }],
+            publishingCopy: {
+              title: "Detail dia terus tarik mata",
+              caption: "Lapisan atas nampak jelas dari dekat.",
+              hashtags: ["#kasut", "#shoes", "#sneakers", "#kasutharian", "#fyp"],
+              angle: "detail",
+              category: "casual",
+            },
+            selected: true,
+          }],
           extraRequirements: "不要包装",
           phase: "plans-ready",
         },
@@ -79,6 +110,10 @@ assert.equal(normalized.nodes[0].data.intrinsicHeight, 1920);
 assert.equal(normalized.nodes[0].data.assistantProductId, "product-1");
 assert.equal(normalized.assistantState?.commerce?.products["product-1"].plans[0].direction, "product-asmr");
 assert.equal(normalized.assistantState?.commerce?.products["product-1"].directionSellingPoints["product-asmr"], "鞋面拼接");
+assert.equal(normalized.assistantState?.commerce?.products["product-1"].creativeOptions?.length, 3);
+assert.equal(normalized.assistantState?.commerce?.products["product-1"].selectedCreativeOptionId, "hook-2");
+assert.equal(normalized.assistantState?.commerce?.products["product-1"].plans[0].hook?.visualPatternId, "product-asmr-detail");
+assert.equal(normalized.assistantState?.commerce?.products["product-1"].plans[0].publishingCopy?.hashtags.includes("#fyp"), false);
 
 assert.deepEqual(canvasMediaNodeSize(1920, 1080), { width: 420, height: 310, frameWidth: 418, frameHeight: 235 });
 assert.deepEqual(canvasMediaNodeSize(1080, 1920), { width: 260, height: 534, frameWidth: 258, frameHeight: 459 });

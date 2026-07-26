@@ -1,5 +1,7 @@
 import type {
   CanvasCommerceAssistantState,
+  CanvasCommerceCreativeOption,
+  CanvasCommerceCreativeStyle,
   CanvasCommerceDirection,
   CanvasCommercePlan,
   CanvasCommerceProductDraft,
@@ -26,6 +28,7 @@ const referenceRoles = new Set<CanvasReferenceRole>(["identity", "first-frame", 
 const generationKinds = new Set<CanvasGenerationKind>(["image", "video"]);
 const generatorStatuses = new Set<CanvasGeneratorStatus>(["idle", "queued", "generating", "done", "failed"]);
 const commerceDirections = new Set<CanvasCommerceDirection>(["human-wear", "sport-motion", "daily-style", "product-asmr", "handheld", "malay-review"]);
+const commerceCreativeStyles = new Set<CanvasCommerceCreativeStyle>(["pain-point", "contrast", "motion"]);
 
 export class CanvasDocumentError extends Error {
   readonly code = "CANVAS_DOCUMENT_INVALID";
@@ -366,6 +369,8 @@ function normalizeCommerceProductDraft(value: Record<string, unknown>, id: strin
       return normalized ? [[direction, normalized]] : [];
     })) as Partial<Record<CanvasCommerceDirection, string>>
     : {};
+  const creativeOptions = normalizeCommerceCreativeOptionsForDocument(value.creativeOptions);
+  const selectedCreativeOptionId = optionalIdentifier(value.selectedCreativeOptionId, 120);
   const plans = Array.isArray(value.plans) ? value.plans.slice(0, 12).flatMap((candidate) => {
     const plan = normalizeCommercePlan(candidate);
     return plan ? [plan] : [];
@@ -386,12 +391,33 @@ function normalizeCommerceProductDraft(value: Record<string, unknown>, id: strin
     recommendedDirections: normalizeCommerceDirections(value.recommendedDirections, 6),
     selectedDirections: normalizeCommerceDirections(value.selectedDirections, 3),
     directionSellingPoints,
+    ...(creativeOptions.length ? {
+      creativeOptions,
+      ...(selectedCreativeOptionId && creativeOptions.some((option) => option.id === selectedCreativeOptionId) ? { selectedCreativeOptionId } : {}),
+    } : {}),
     plans,
     ...(sharedProviderId ? { sharedProviderId } : {}),
     extraRequirements: boundedString(value.extraRequirements, 1_200).trim(),
     phase,
     ...(error ? { error } : {}),
   };
+}
+
+function normalizeCommerceCreativeOptionsForDocument(value: unknown): CanvasCommerceCreativeOption[] {
+  if (!Array.isArray(value)) return [];
+  const seenStyles = new Set<CanvasCommerceCreativeStyle>();
+  return value.slice(0, 3).flatMap((candidate) => {
+    if (!isRecord(candidate)) return [];
+    const id = optionalIdentifier(candidate.id, 120);
+    const style = boundedString(candidate.style, 32) as CanvasCommerceCreativeStyle;
+    const title = boundedString(candidate.title, 80).trim();
+    const hookLine = boundedString(candidate.hookLine, 160).trim();
+    const scene = boundedString(candidate.scene, 160).trim();
+    const visualBeat = boundedString(candidate.visualBeat, 200).trim();
+    if (!id || !commerceCreativeStyles.has(style) || seenStyles.has(style) || !title || !hookLine || !scene || !visualBeat) return [];
+    seenStyles.add(style);
+    return [{ id, style, title, hookLine, scene, visualBeat }];
+  });
 }
 
 function normalizeCommercePlan(value: unknown): CanvasCommercePlan | null {
@@ -404,6 +430,8 @@ function normalizeCommercePlan(value: unknown): CanvasCommercePlan | null {
   const createdGroupId = optionalIdentifier(value.createdGroupId, 160);
   const createdPromptNodeId = optionalIdentifier(value.createdPromptNodeId, 160);
   const createdGeneratorNodeId = optionalIdentifier(value.createdGeneratorNodeId, 160);
+  const hook = normalizeCommercePlanHookForDocument(value.hook);
+  const publishingCopy = normalizeCommercePublishingCopyForDocument(value.publishingCopy);
   return {
     id,
     direction,
@@ -411,11 +439,50 @@ function normalizeCommercePlan(value: unknown): CanvasCommercePlan | null {
     sellingPoint: boundedString(value.sellingPoint, 160).trim(),
     prompt,
     referenceBindings: normalizeReferenceBindings(value.referenceBindings),
+    ...(hook ? { hook } : {}),
+    ...(publishingCopy ? { publishingCopy } : {}),
     selected: Boolean(value.selected),
     ...(providerId ? { providerId } : {}),
     ...(createdGroupId ? { createdGroupId } : {}),
     ...(createdPromptNodeId ? { createdPromptNodeId } : {}),
     ...(createdGeneratorNodeId ? { createdGeneratorNodeId } : {}),
+  };
+}
+
+function normalizeCommercePlanHookForDocument(value: unknown): CanvasCommercePlan["hook"] {
+  if (!isRecord(value)) return undefined;
+  const hook = {
+    visualPatternId: boundedString(value.visualPatternId, 80).trim(),
+    copyPatternId: boundedString(value.copyPatternId, 80).trim(),
+    title: boundedString(value.title, 120).trim(),
+    reason: boundedString(value.reason, 360).trim(),
+    hookLine: boundedString(value.hookLine, 240).trim(),
+    onScreenText: boundedString(value.onScreenText, 120).trim(),
+    scene: boundedString(value.scene, 240).trim(),
+    visualBeat: boundedString(value.visualBeat, 360).trim(),
+  };
+  return Object.values(hook).every(Boolean) ? hook : undefined;
+}
+
+function normalizeCommercePublishingCopyForDocument(value: unknown): CanvasCommercePlan["publishingCopy"] {
+  if (!isRecord(value)) return undefined;
+  const title = boundedString(value.title, 80).trim();
+  const caption = boundedString(value.caption, 1_200).trim();
+  const angle = boundedString(value.angle, 32) as NonNullable<CanvasCommercePlan["publishingCopy"]>["angle"];
+  const category = boundedString(value.category, 32) as NonNullable<CanvasCommercePlan["publishingCopy"]>["category"];
+  const hashtags = Array.isArray(value.hashtags) ? [...new Set(value.hashtags.slice(0, 8).flatMap((item) => {
+    const normalized = boundedString(item, 80).trim().replace(/^#+/u, "").replace(/[^\p{L}\p{N}_]/gu, "");
+    return normalized && normalized.toLocaleLowerCase("ms-MY") !== "fyp" ? [`#${normalized}`] : [];
+  }))].slice(0, 6) : [];
+  if (!title || !caption || hashtags.length < 4) return undefined;
+  const validAngles = new Set(["auto", "transformation", "daily", "style", "detail"]);
+  const validCategories = new Set(["auto", "sports", "women", "men", "kids", "safety", "outdoor", "casual"]);
+  return {
+    title,
+    caption,
+    hashtags,
+    angle: validAngles.has(angle) ? angle : "auto",
+    category: validCategories.has(category) ? category : "auto",
   };
 }
 

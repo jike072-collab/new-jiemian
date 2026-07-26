@@ -24,6 +24,7 @@ import {
   cloneCommercePlanForReuse,
   newCommerceProductDraft,
   normalizeCommercePlanGeneration,
+  normalizeCommercePublishingCopy,
   normalizeCommerceProductAnalysis,
 } from "@/lib/canvas/commerce-assistant";
 import type {
@@ -228,8 +229,14 @@ export function CanvasCommerceAssistant({
           productDraftId: draft.id,
           productName: draft.productName,
           sellingPoints: draft.sellingPoints,
+          visibleFacts: draft.visibleFacts,
           selectedDirections: targetDirections,
           directionSellingPoints: draft.directionSellingPoints,
+          usedHookPatterns: draft.plans.flatMap((plan) => plan.hook ? [{
+            direction: plan.direction,
+            visualPatternId: plan.hook.visualPatternId,
+            copyPatternId: plan.hook.copyPatternId,
+          }] : []),
           extraRequirements: draft.extraRequirements,
           canvasTitle,
           scope,
@@ -267,7 +274,10 @@ export function CanvasCommerceAssistant({
         ...draft,
         plans: draft.plans.map((plan) => {
           const provider = planProviders[plan.id];
-          return provider && createCandidates.some((candidate) => candidate.id === plan.id) ? { ...plan, providerId: provider.id } : plan;
+          if (!provider || !createCandidates.some((candidate) => candidate.id === plan.id)) return plan;
+          const publishingCopy = normalizeCommercePublishingCopy(plan.publishingCopy);
+          if (!publishingCopy) throw new Error(`方案“${plan.title}”的发布标题、正文或标签不完整。`);
+          return { ...plan, providerId: provider.id, publishingCopy };
         }),
       };
       const result = onCreatePlans(prepared, createCandidates.map((plan) => plan.id));
@@ -401,7 +411,21 @@ export function CanvasCommerceAssistant({
             <header><label><input type="checkbox" checked={created || plan.selected} disabled={created} onChange={(event) => patchPlan(plan.id, { selected: event.target.checked })} /><span>{commerceDirectionLabel(plan.direction)}</span></label><div>{created ? <><small><Check />已创建</small><button type="button" disabled={Boolean(busy)} onClick={() => reuseCreatedPlan(plan)}><CopyPlus />复用为新节点</button></> : <button type="button" disabled={Boolean(busy)} onClick={() => { void generatePlans([plan.direction]); }}><Sparkles />重新分析</button>}</div></header>
             <label><span>核心卖点</span><select value={plan.sellingPoint} disabled={created} onChange={(event) => patchDraft({ plans: draft.plans.map((item) => item.id === plan.id ? { ...item, sellingPoint: event.target.value } : item), directionSellingPoints: { ...draft.directionSellingPoints, [plan.direction]: event.target.value } })}>{draft.sellingPoints.filter(Boolean).map((point) => <option key={point} value={point}>{point}</option>)}</select></label>
             <label><span>模型</span><select value={plan.providerId || ""} disabled={created} onChange={(event) => patchPlan(plan.id, { providerId: event.target.value || undefined })}><option value="">跟随共用模型</option>{options.map((item) => <option key={item.id} value={item.id}>{providerLabel(item)}</option>)}</select></label>
+            {plan.hook ? <div className="canvas-assistant__plan-hook">
+              <div><strong>{plan.hook.title}</strong><span>{plan.hook.reason}</span></div>
+              <dl>
+                <div><dt>开头口播</dt><dd lang="ms">{plan.hook.hookLine}</dd></div>
+                <div><dt>屏幕短字</dt><dd lang="ms">{plan.hook.onScreenText}</dd></div>
+                <div><dt>首帧</dt><dd>{plan.hook.scene} · {plan.hook.visualBeat}</dd></div>
+              </dl>
+            </div> : null}
             <textarea value={plan.prompt} disabled={created} onChange={(event) => patchPlan(plan.id, { prompt: event.target.value })} aria-label={`${commerceDirectionLabel(plan.direction)}提示词`} />
+            {plan.publishingCopy ? <div className="canvas-assistant__publishing-copy">
+              <strong>马来语发布包</strong>
+              <label><span>标题</span><input value={plan.publishingCopy.title} disabled={created} maxLength={80} onChange={(event) => patchPlan(plan.id, { publishingCopy: { ...plan.publishingCopy!, title: event.target.value } })} /></label>
+              <label><span>正文</span><textarea value={plan.publishingCopy.caption} disabled={created} maxLength={1_200} onChange={(event) => patchPlan(plan.id, { publishingCopy: { ...plan.publishingCopy!, caption: event.target.value } })} /></label>
+              <label><span>标签</span><input value={plan.publishingCopy.hashtags.join(" ")} disabled={created} onChange={(event) => patchPlan(plan.id, { publishingCopy: { ...plan.publishingCopy!, hashtags: event.target.value.split(/[\s,，]+/u).filter(Boolean).slice(0, 6) } })} /></label>
+            </div> : null}
             {provider && capacity < draft.images.length ? <p>该模型接收 {capacity} 张图，将按当前顺序连接前 {capacity} 张，其余不连接。</p> : null}
           </article>;
         })}</div>

@@ -14,6 +14,7 @@ const workspace = read("src/components/canvas/canvas-workspace.tsx");
 const canvasCss = read("src/app/canvas/canvas.css");
 const commercePanel = read("src/components/canvas/canvas-commerce-assistant.tsx");
 const commerceContract = read("src/lib/canvas/commerce-assistant.ts");
+const hookLibrarySource = read("src/lib/malaysia-commerce-video-hook-library.ts");
 const { canvasAssistantVideoTimestamps, localCanvasAssistantFallback, normalizeCanvasAssistantResponse, restrictCanvasAssistantResponse } = await import(new URL("../src/lib/canvas/assistant.ts", import.meta.url));
 const { resolveCanvasAssistantMediaFocus } = await import(new URL("../src/lib/canvas/assistant-focus.ts", import.meta.url));
 const { inferSeedancePromptMode, seedancePromptGuidance, seedanceReferenceIssues } = await import(new URL("../src/lib/seedance/prompt-guidance.ts", import.meta.url));
@@ -25,6 +26,11 @@ const {
   normalizeCommerceProductAnalysis,
   planCommerceCanvasCreation,
 } = await import(new URL("../src/lib/canvas/commerce-assistant.ts", import.meta.url));
+const {
+  isMalaysiaCommerceHookPairCompatible,
+  malaysiaCommerceCopyHookPatterns,
+  malaysiaCommerceVisualHookPatterns,
+} = await import(new URL("../src/lib/malaysia-commerce-video-hook-library.ts", import.meta.url));
 
 assert.match(route, /isInternalCanvasHostname/);
 assert.match(route, /getInternalCanvasAccess/);
@@ -90,6 +96,12 @@ assert.match(commerceContract, /真人上脚/);
 assert.match(service, /Bahasa Melayu/);
 assert.match(commercePanel, /commerce-product-analysis/);
 assert.match(commercePanel, /commerce-plan-generation/);
+assert.doesNotMatch(commercePanel, /canvas-assistant__creative-picker/);
+assert.doesNotMatch(commercePanel, /selectedCreativeOptionId/);
+assert.doesNotMatch(commercePanel, /creativeOption: selectedCreativeOption/);
+assert.match(commercePanel, /usedHookPatterns/);
+assert.match(commercePanel, /canvas-assistant__plan-hook/);
+assert.match(commercePanel, /马来语发布包/);
 assert.match(commercePanel, /全部方案共用模型/);
 assert.match(commercePanel, /创建选中方案节点/);
 assert.match(commercePanel, /重新分析/);
@@ -131,6 +143,22 @@ assert.match(workspace, /assistantProductId/);
 assert.match(workspace, /assistantPlanId/);
 assert.match(commerceContract, /ratio: "9:16"/);
 assert.match(commerceContract, /duration: 15/);
+assert.match(commerceContract, /notes: commercePlanNotes/);
+assert.match(hookLibrarySource, /没有价格和促销字段时禁止任何价格、折扣、库存或退货话术/);
+
+const allHookPatterns = [...malaysiaCommerceVisualHookPatterns, ...malaysiaCommerceCopyHookPatterns];
+assert.equal(new Set(malaysiaCommerceVisualHookPatterns.map((pattern) => pattern.id)).size, malaysiaCommerceVisualHookPatterns.length);
+assert.equal(new Set(malaysiaCommerceCopyHookPatterns.map((pattern) => pattern.id)).size, malaysiaCommerceCopyHookPatterns.length);
+assert.equal(allHookPatterns.every((pattern) => pattern.directions.length && pattern.firstFrame && pattern.spokenRule && pattern.textRule && pattern.audio && pattern.evidence && pattern.safety && pattern.prohibited), true);
+assert.equal(malaysiaCommerceVisualHookPatterns.every((pattern) => !/(?:跳下|崴脚|投掷液体|倒地|受伤动物)/u.test(pattern.mechanism)), true);
+assert.equal(isMalaysiaCommerceHookPairCompatible("product-asmr-detail", "expectation-gap", "product-asmr"), true);
+assert.equal(isMalaysiaCommerceHookPairCompatible("barrier-pov", "numbered-specificity", "sport-motion"), false);
+
+const commerceCreativeOptions = [
+  { id: "hook-1", style: "pain-point", title: "穿搭不够醒目", hookLine: "Outfit nampak terlalu biasa?", scene: "马来西亚公寓玄关", visualBeat: "人物看向镜中普通穿搭后立即抬起鞋子" },
+  { id: "hook-2", style: "contrast", title: "粉色细节点亮穿搭", hookLine: "Tengok beza bila tukar kasut.", scene: "吉隆坡商场走廊", visualBeat: "踩点前后穿搭切换" },
+  { id: "hook-3", style: "motion", title: "公园快走前后", hookLine: "Kasut mana ngam untuk jalan hari ni?", scene: "马来西亚公园遮雨步道", visualBeat: "人物看着鞋架犹豫，准备出门却还没穿目标鞋" },
+];
 
 assert.deepEqual(normalizeCommerceProductAnalysis({
   kind: "commerce-product-analysis",
@@ -139,6 +167,7 @@ assert.deepEqual(normalizeCommerceProductAnalysis({
   sellingPoints: ["厚底视觉", "复古配色", "鞋面拼接层次", "系带结构"],
   visibleFacts: ["米白色鞋面", "深色鞋底"],
   recommendedDirections: ["daily-style", "product-asmr"],
+  creativeOptions: commerceCreativeOptions,
 }), {
   kind: "commerce-product-analysis",
   sameProduct: true,
@@ -147,7 +176,43 @@ assert.deepEqual(normalizeCommerceProductAnalysis({
   sellingPoints: ["厚底视觉", "复古配色", "鞋面拼接层次", "系带结构"],
   visibleFacts: ["米白色鞋面", "深色鞋底"],
   recommendedDirections: ["daily-style", "product-asmr"],
+  creativeOptions: commerceCreativeOptions,
 });
+
+assert.deepEqual(normalizeCommerceProductAnalysis({
+  kind: "commerce-product-analysis",
+  sameProduct: true,
+  sellingPoints: ["厚底视觉", "复古配色", "鞋面拼接层次", "系带结构"],
+  visibleFacts: ["米白色鞋面"],
+  recommendedDirections: ["daily-style"],
+}), {
+  kind: "commerce-product-analysis",
+  sameProduct: true,
+  conflictMessage: undefined,
+  suggestedName: "",
+  sellingPoints: ["厚底视觉", "复古配色", "鞋面拼接层次", "系带结构"],
+  visibleFacts: ["米白色鞋面"],
+  recommendedDirections: ["daily-style"],
+});
+
+const commerceHook = {
+  visualPatternId: "product-asmr-detail",
+  copyPatternId: "expectation-gap",
+  title: "拼接细节预期落差",
+  reason: "微距动作可以直接兑现可见拼接层次。",
+  hookLine: "Tak sangka detail ni menyerlah",
+  onScreenText: "Detail ni memang menyerlah",
+  scene: "室内产品桌面",
+  visualBeat: "第一帧手指已经轻触鞋面拼接。",
+};
+const commercePublishingCopy = {
+  title: "Detail dia terus tarik mata",
+  caption: "Lapisan pada bahagian atas nampak jelas dari dekat. Korang suka detail macam ni?",
+  hashtags: ["#kasut", "#shoes", "#sneakers", "#fyp"],
+  angle: "detail",
+  category: "casual",
+};
+const commercePrompt = "素材职责：@Image1 提供产品外观。产品可见事实：鞋面拼接层次。0-2 秒：手指轻触拼接，同时说‘Tak sangka detail ni menyerlah’，屏幕短字‘Detail ni memang menyerlah’；2-7 秒：后拉展示完整鞋型；7-12 秒：切换另一处拼接近景；12-15 秒：完整产品收束。声音/口播：从第 0 秒开始轻触声。禁止项：不虚构价格、折扣或性能。";
 
 assert.equal(normalizeCommercePlanGeneration({
   kind: "commerce-plan-generation",
@@ -156,10 +221,41 @@ assert.equal(normalizeCommercePlanGeneration({
     direction: "product-asmr",
     title: "细节方案",
     sellingPoint: "鞋面拼接层次",
-    prompt: "素材职责；0-2 秒钩子；2-7 秒演示；7-12 秒细节；12-15 秒 CTA。",
+    hook: commerceHook,
+    prompt: commercePrompt,
     referenceBindings: [{ label: "@Image1", role: "product", transfer: "产品外观", ignore: "背景" }],
+    publishingCopy: commercePublishingCopy,
   }],
 }, ["product-asmr"]).plans.length, 1);
+
+assert.throws(() => normalizeCommercePlanGeneration({
+  kind: "commerce-plan-generation",
+  plans: [{ direction: "product-asmr", prompt: commercePrompt, hook: { ...commerceHook, visualPatternId: "unknown" }, publishingCopy: commercePublishingCopy }],
+}, ["product-asmr"]), /合法的钩子/);
+assert.throws(() => normalizeCommercePlanGeneration({
+  kind: "commerce-plan-generation",
+  plans: [{ direction: "sport-motion", prompt: commercePrompt, hook: commerceHook, publishingCopy: commercePublishingCopy }],
+}, ["sport-motion"]), /合法的钩子/);
+assert.throws(() => normalizeCommercePlanGeneration({
+  kind: "commerce-plan-generation",
+  plans: [{ direction: "product-asmr", prompt: commercePrompt.replace(commerceHook.onScreenText, "别的短字"), hook: commerceHook, publishingCopy: commercePublishingCopy }],
+}, ["product-asmr"]), /原样写入/);
+assert.throws(() => normalizeCommercePlanGeneration({
+  kind: "commerce-plan-generation",
+  plans: [{
+    direction: "product-asmr",
+    prompt: commercePrompt.replace(commerceHook.hookLine, "Dua detail terus menyerlah").replace(commerceHook.onScreenText, "Dua detail terus menyerlah"),
+    hook: { ...commerceHook, copyPatternId: "numbered-specificity", hookLine: "Dua detail terus menyerlah", onScreenText: "Dua detail terus menyerlah" },
+    publishingCopy: commercePublishingCopy,
+  }],
+}, ["product-asmr"]), /兑现相同数量/);
+
+const normalizedPublishing = normalizeCommercePlanGeneration({
+  kind: "commerce-plan-generation",
+  plans: [{ direction: "product-asmr", prompt: commercePrompt, hook: commerceHook, publishingCopy: commercePublishingCopy }],
+}, ["product-asmr"]).plans[0].publishingCopy;
+assert.equal(normalizedPublishing.hashtags.includes("#fyp"), false);
+assert.equal(normalizedPublishing.hashtags.length >= 4 && normalizedPublishing.hashtags.length <= 6, true);
 
 const commerceDraft = {
   id: "product-1",
@@ -176,6 +272,8 @@ const commerceDraft = {
   recommendedDirections: ["daily-style", "product-asmr"],
   selectedDirections: ["daily-style", "product-asmr"],
   directionSellingPoints: { "daily-style": "复古配色", "product-asmr": "鞋面拼接" },
+  creativeOptions: commerceCreativeOptions,
+  selectedCreativeOptionId: "hook-1",
   plans: [
     {
       id: "plan-daily",
@@ -183,6 +281,8 @@ const commerceDraft = {
       title: "日常穿搭",
       sellingPoint: "复古配色",
       prompt: "素材职责；0-2 秒钩子；2-7 秒展示；7-12 秒证据；12-15 秒 CTA。",
+      hook: commerceHook,
+      publishingCopy: commercePublishingCopy,
       referenceBindings: [
         { label: "@Image1", role: "product" },
         { label: "@Image2", role: "product" },
@@ -253,6 +353,9 @@ assert.equal(branchData.generatorData.status, "idle");
 assert.equal(branchData.generatorData.duration, 15);
 assert.equal(branchData.generatorData.ratio, "9:16");
 assert.equal(branchData.generatorData.resolution, "720p");
+assert.match(branchData.promptData.notes, /拼接细节预期落差/);
+assert.match(branchData.promptData.notes, /Detail dia terus tarik mata/);
+assert.match(branchData.promptData.notes, /#kasut/);
 assert.equal(Object.hasOwn(branchData.generatorData, "jobId"), false);
 assert.equal(Object.hasOwn(branchData.generatorData, "generationRequestId"), false);
 assert.deepEqual(branchData.edges.map((edge) => edge.source), ["image-node-1", "image-node-2", "prompt-node-1"]);
