@@ -390,11 +390,21 @@ export function malaysiaCommerceHookPromptLibrary(directions?: readonly CanvasCo
   const matches = (pattern: { directions: readonly CanvasCommerceDirection[] }) => !selectedDirections
     || pattern.directions.some((direction) => selectedDirections.has(direction));
   return JSON.stringify({
-    visualPatterns: malaysiaCommerceVisualHookPatterns.filter(matches),
-    copyPatterns: malaysiaCommerceCopyHookPatterns.filter(matches),
-    scenePatterns: malaysiaCommerceScenePatterns.filter(matches),
-    shotPatterns: malaysiaCommerceShotPatterns.filter(matches),
-    performancePatterns: malaysiaCommercePerformancePatterns.filter(matches),
+    visualPatterns: malaysiaCommerceVisualHookPatterns.filter(matches).map((pattern) => ({
+      id: pattern.id, directions: pattern.directions, mechanism: pattern.mechanism, firstFrame: pattern.firstFrame,
+    })),
+    copyPatterns: malaysiaCommerceCopyHookPatterns.filter(matches).map((pattern) => ({
+      id: pattern.id, directions: pattern.directions, formula: pattern.formula,
+    })),
+    scenePatterns: malaysiaCommerceScenePatterns.filter(matches).map((pattern) => ({
+      id: pattern.id, directions: pattern.directions, setting: pattern.setting,
+    })),
+    shotPatterns: malaysiaCommerceShotPatterns.filter(matches).map((pattern) => ({
+      id: pattern.id, directions: pattern.directions, beats: pattern.beats,
+    })),
+    performancePatterns: malaysiaCommercePerformancePatterns.filter(matches).map((pattern) => ({
+      id: pattern.id, directions: pattern.directions, performance: pattern.performance,
+    })),
     globalRules: [
       "自动为每个方向选择一个兼容视觉模式和一个兼容话术模式",
       "同时选择兼容的马来西亚场景、四镜头节奏和人物表演模式",

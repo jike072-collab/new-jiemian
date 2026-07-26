@@ -23,7 +23,6 @@ import {
   malaysiaCommerceVisualHookPattern,
 } from "#malaysia-commerce-video-hook-library";
 import { seedanceCanvasAssistantRules, seedancePromptGuidance } from "@/lib/seedance/prompt-guidance";
-import { malaysiaShoeCopyPromptLibrary } from "#malaysia-shoe-copy-library";
 import { tiktokShopVideoGuidance } from "#tiktok-shop-video-guidance";
 
 type CanvasAssistantNode = {
@@ -388,7 +387,6 @@ async function answerCommerceWorkflow(
   const system = normalized.workflow === "commerce-product-analysis" ? commerceProductAnalysisPrompt : [
     commercePlanGenerationPrompt,
     `双层钩子知识库：${malaysiaCommerceHookPromptLibrary(normalized.selectedDirections)}`,
-    `马来西亚鞋类发布文案库：${malaysiaShoeCopyPromptLibrary()}`,
   ].join("\n");
   const userPrompt = JSON.stringify({
     workflow: normalized.workflow,
