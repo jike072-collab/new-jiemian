@@ -306,6 +306,17 @@ assert.throws(() => normalizeCommercePlanGeneration({
   }],
 }), /历史完整制作配方/);
 
+assert.throws(() => normalizeCommercePlanGeneration({
+  kind: "commerce-plan-generation",
+  plans: [{
+    direction: "product-asmr",
+    hook: commerceHook,
+    production: commerceProduction,
+    shots: commerceShots.map((shot, index) => index === 1 ? { ...shot, dialogue: "Harga murah" } : shot),
+    publishingCopy: commercePublishingCopy,
+  }],
+}, ["product-asmr"]), /harga/i);
+
 const normalizedPublishing = normalizeCommercePlanGeneration({
   kind: "commerce-plan-generation",
   plans: [{ direction: "product-asmr", prompt: commercePrompt, hook: commerceHook, production: commerceProduction, shots: commerceShots, publishingCopy: commercePublishingCopy }],
