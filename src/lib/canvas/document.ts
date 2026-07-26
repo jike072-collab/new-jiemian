@@ -375,6 +375,10 @@ function normalizeCommerceProductDraft(value: Record<string, unknown>, id: strin
     const plan = normalizeCommercePlan(candidate);
     return plan ? [plan] : [];
   }) : [];
+  const requestedActivePlanId = optionalIdentifier(value.activePlanId, 120);
+  const activePlanId = requestedActivePlanId && plans.some((plan) => plan.id === requestedActivePlanId)
+    ? requestedActivePlanId
+    : plans.at(-1)?.id;
   const phase = value.phase === "product-ready" || value.phase === "planning" || value.phase === "plans-ready" || value.phase === "error"
     ? value.phase
     : "setup";
@@ -396,6 +400,7 @@ function normalizeCommerceProductDraft(value: Record<string, unknown>, id: strin
       ...(selectedCreativeOptionId && creativeOptions.some((option) => option.id === selectedCreativeOptionId) ? { selectedCreativeOptionId } : {}),
     } : {}),
     plans,
+    ...(activePlanId ? { activePlanId } : {}),
     ...(sharedProviderId ? { sharedProviderId } : {}),
     extraRequirements: boundedString(value.extraRequirements, 1_200).trim(),
     phase,

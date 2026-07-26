@@ -147,6 +147,7 @@ assert.match(calls[1].systemPrompt, /双层钩子知识库/);
 assert.match(calls[1].systemPrompt, /默认不得使用 #fyp/);
 assert.match(calls[1].systemPrompt, /shotSize、camera、action、performance/);
 assert.match(calls[1].systemPrompt, /眨眼、呼吸、停顿和动作惯性/);
+assert.match(calls[1].systemPrompt, /Tak sangka deal dia macam ni/);
 const planRequest = JSON.parse(calls[1].userPrompt);
 assert.equal(planRequest.scope, "shared");
 assert.equal(planRequest.productDraftId, "product-1");
@@ -162,6 +163,54 @@ assert.deepEqual(planRequest.usedHookPatterns, [{
   performancePatternId: "style-self-check",
 }]);
 assert.equal(calls.some((call) => /generate\/video|生成接口|提交任务/.test(call.userPrompt)), false);
+
+const refined = await service.answer({
+  workflow: "commerce-plan-generation",
+  message: "按要求优化当前15秒方案",
+  canvasTitle: "马来西亚鞋类测试",
+  scope: "shared",
+  productDraftId: "product-1",
+  productName: analysis.suggestedName,
+  sellingPoints: analysis.sellingPoints,
+  visibleFacts: analysis.visibleFacts,
+  selectedDirections: ["daily-style"],
+  directionSellingPoints: { "daily-style": "复古配色" },
+  basePlanId: generated.plans[0].id,
+  basePrompt: generated.plans[0].prompt,
+  refinementRequest: "只加强前两秒冲突，其他镜头保持",
+  selectedNodeIds: nodes.map((node) => node.id),
+  nodes,
+}, "request-refine", visualEvidence);
+assert.equal(refined.plans.length, 1);
+const refinementRequest = JSON.parse(calls[2].userPrompt);
+assert.equal(refinementRequest.basePlanId, generated.plans[0].id);
+assert.match(refinementRequest.basePrompt, /镜头 1/);
+assert.equal(refinementRequest.refinementRequest, "只加强前两秒冲突，其他镜头保持");
+assert.match(calls[2].systemPrompt, /只按 refinementRequest 修改相关部分/);
+
+let malformedCalls = 0;
+const parseRecoveryService = createCanvasAssistantService(async () => {
+  malformedCalls += 1;
+  return malformedCalls === 1
+    ? "这里是方案，但没有按要求输出 JSON"
+    : JSON.stringify({ kind: "commerce-plan-generation", plans: generated.plans });
+});
+const recovered = await parseRecoveryService.answer({
+  workflow: "commerce-plan-generation",
+  message: "重新分析15秒方案",
+  canvasTitle: "马来西亚鞋类测试",
+  scope: "shared",
+  productDraftId: "product-1",
+  productName: analysis.suggestedName,
+  sellingPoints: analysis.sellingPoints,
+  visibleFacts: analysis.visibleFacts,
+  selectedDirections: ["daily-style"],
+  directionSellingPoints: { "daily-style": "复古配色" },
+  selectedNodeIds: nodes.map((node) => node.id),
+  nodes,
+}, "request-parse-recovery", visualEvidence);
+assert.equal(recovered.kind, "commerce-plan-generation");
+assert.equal(malformedCalls, 2);
 
 console.log(JSON.stringify({
   ok: true,

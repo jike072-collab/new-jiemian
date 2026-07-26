@@ -98,7 +98,7 @@ assert.match(assistantPanel, /mentionSelection/);
 assert.match(assistantPanel, /onMentionModeChange\(Boolean\(mentionQuery\)\)/);
 assert.match(assistantPanel, /contextNodes\.find\(\(candidate\) => candidate\.id === mentionSelection\.nodeId\)/);
 assert.match(assistantPanel, /mentionSelection\.revision <= handledMentionRevisionRef\.current/);
-assert.match(commercePanel, /分析产品/);
+assert.match(commercePanel, /分析并生成中/);
 assert.match(commerceContract, /真人上脚/);
 assert.match(service, /Bahasa Melayu/);
 assert.match(commercePanel, /commerce-product-analysis/);
@@ -109,12 +109,27 @@ assert.doesNotMatch(commercePanel, /creativeOption: selectedCreativeOption/);
 assert.match(commercePanel, /usedHookPatterns/);
 assert.match(commercePanel, /canvas-assistant__plan-hook/);
 assert.match(commercePanel, /4 镜头分镜脚本/);
-assert.match(commercePanel, /马来语发布包/);
-assert.match(commercePanel, /全部方案共用模型/);
-assert.match(commercePanel, /创建选中方案节点/);
-assert.match(commercePanel, /重新分析/);
-assert.match(commercePanel, /复用为新节点/);
-assert.match(commercePanel, /uncreatedDirections/);
+assert.doesNotMatch(commercePanel, /马来语发布包/);
+assert.doesNotMatch(commercePanel, /全部方案共用模型/);
+assert.match(commercePanel, /创建提示词和视频节点/);
+assert.match(commercePanel, /重新生成一段/);
+assert.match(commercePanel, /按要求优化/);
+assert.match(commercePanel, /basePlanId/);
+assert.match(commercePanel, /refinementRequest/);
+assert.match(commercePanel, /activePlanId/);
+assert.match(commercePanel, /onCreatePlans\(prepared, \[activePlan\.id\]\)/);
+assert.match(commercePanel, /compatibleProviders\.find\(\(provider\) => providerSupportsDirection/);
+assert.doesNotMatch(commercePanel, /type="checkbox"/);
+assert.match(commercePanel, /生成15秒提示词/);
+assert.match(commercePanel, /自动选择最适合当前产品的反差、冲突、意外、悬念或动作钩子/);
+assert.doesNotMatch(commercePanel, /canvas-assistant__direction-grid/);
+assert.doesNotMatch(commercePanel, /directionHookPreferences/);
+assert.doesNotMatch(commercePanel, /uncreatedDirections/);
+assert.match(commercePanel, /generatePlans\(targetDirections = draft\.selectedDirections\.slice\(0, 1\)\)/);
+assert.match(commercePanel, /id: generatedPlanId\(index\)/);
+assert.match(commercePanel, /selectedDirections = analysis\.recommendedDirections\.slice\(0, 1\)/);
+assert.doesNotMatch(commercePanel, /canvas-assistant__locked-fields/);
+assert.doesNotMatch(commercePanel, /canvas-assistant__product-switcher/);
 assert.match(commercePanel, /不会自动提交视频生成/);
 assert.match(commercePanel, /options\.durations\?\.includes\(15\)/);
 assert.match(commercePanel, /options\.ratios\?\.includes\("9:16"\)/);
@@ -152,7 +167,8 @@ assert.match(workspace, /assistantPlanId/);
 assert.match(commerceContract, /ratio: "9:16"/);
 assert.match(commerceContract, /duration: 15/);
 assert.match(commerceContract, /notes: commercePlanNotes/);
-assert.match(hookLibrarySource, /没有价格和促销字段时禁止任何价格、折扣、库存或退货话术/);
+assert.match(hookLibrarySource, /允许非数字优惠惊喜话术/);
+assert.match(hookLibrarySource, /offer-surprise/);
 
 const allHookPatterns = [...malaysiaCommerceVisualHookPatterns, ...malaysiaCommerceCopyHookPatterns];
 assert.equal(new Set(malaysiaCommerceVisualHookPatterns.map((pattern) => pattern.id)).size, malaysiaCommerceVisualHookPatterns.length);
@@ -239,7 +255,7 @@ const commerceProduction = {
   realismNotes: "真实手部轻触，保留自然停顿和材质摩擦声，不做破坏测试",
 };
 const commerceShots = [
-  { timeRange: "0-2秒", shotSize: "极近景", camera: "固定微距", action: "手指轻触鞋面拼接后停住", performance: "手部力度轻，发现细节后停顿半拍", productState: "鞋子静置，拼接处清楚可见", dialogue: "无口播", onScreenText: commerceHook.onScreenText, sound: "第 0 秒开始轻触和布面摩擦声", transition: "在摩擦声强拍处开始后拉" },
+  { timeRange: "0-2秒", shotSize: "极近景", camera: "固定微距", action: "手指轻触鞋面拼接后停住", performance: "手部力度轻，发现细节后停顿半拍", productState: "鞋子静置，拼接处清楚可见", dialogue: commerceHook.hookLine, onScreenText: commerceHook.onScreenText, sound: "第 0 秒开始轻触和布面摩擦声", transition: "在摩擦声强拍处开始后拉" },
   { timeRange: "2-7秒", shotSize: "近景", camera: "快速后拉", action: "手扶鞋跟让完整鞋型进入画面", performance: "手部自然重新调整握持位置", productState: "完整侧面轮廓出现且配色不变", dialogue: "无口播", onScreenText: "", sound: "后拉时音乐节拍进入", transition: "手部转动动作连续进入下一镜头" },
   { timeRange: "7-12秒", shotSize: "特写", camera: "短推进", action: "手部转动鞋子展示第二处拼接", performance: "动作放慢，在结构清楚时停住", productState: "鞋面和鞋带结构保持一致", dialogue: "无口播", onScreenText: "", sound: "鞋带轻响和一次提示音", transition: "提示音强拍切到稳定正侧面" },
   { timeRange: "12-15秒", shotSize: "中近景", camera: "固定机位", action: "双手把鞋子放回桌面并退出画面", performance: "动作平稳收势，不做广告式指点", productState: "鞋子完整正侧面稳定展示", dialogue: "无口播", onScreenText: "Korang suka detail macam ni?", sound: "音乐轻收束和桌面落放声", transition: "稳定停留到结束" },
@@ -266,6 +282,34 @@ assert.match(normalizedCommercePlan.plans[0].prompt, /镜头 1｜0-2秒｜极近
 assert.match(normalizedCommercePlan.plans[0].prompt, /人物与情绪/);
 assert.match(normalizedCommercePlan.plans[0].prompt, /固定微距/);
 
+const offerHook = {
+  ...commerceHook,
+  copyPatternId: "offer-surprise",
+  title: "优惠惊喜开场",
+  hookLine: "Tak sangka deal dia macam ni",
+  onScreenText: "Deal ni memang tak sangka",
+};
+const offerShots = commerceShots.map((shot, index) => index ? shot : {
+  ...shot,
+  dialogue: offerHook.hookLine,
+  onScreenText: offerHook.onScreenText,
+});
+const offerPlan = normalizeCommercePlanGeneration({
+  kind: "commerce-plan-generation",
+  plans: [{ direction: "product-asmr", hook: offerHook, production: commerceProduction, shots: offerShots, publishingCopy: commercePublishingCopy }],
+}, ["product-asmr"]);
+assert.match(offerPlan.plans[0].prompt, /Tak sangka deal dia macam ni/);
+assert.throws(() => normalizeCommercePlanGeneration({
+  kind: "commerce-plan-generation",
+  plans: [{
+    direction: "product-asmr",
+    hook: offerHook,
+    production: commerceProduction,
+    shots: offerShots,
+    publishingCopy: { ...commercePublishingCopy, caption: "Deal RM 19 memang berbaloi" },
+  }],
+}, ["product-asmr"]), /具体金额/);
+
 assert.throws(() => normalizeCommercePlanGeneration({
   kind: "commerce-plan-generation",
   plans: [{ direction: "product-asmr", prompt: commercePrompt, hook: { ...commerceHook, visualPatternId: "unknown" }, production: commerceProduction, shots: commerceShots, publishingCopy: commercePublishingCopy }],
@@ -288,7 +332,7 @@ assert.throws(() => normalizeCommercePlanGeneration({
     direction: "product-asmr",
     hook: { ...commerceHook, copyPatternId: "numbered-specificity", hookLine: "Dua detail terus menyerlah", onScreenText: "Dua detail terus menyerlah" },
     production: commerceProduction,
-    shots: commerceShots.map((shot, index) => index ? shot : { ...shot, onScreenText: "Dua detail terus menyerlah" }),
+    shots: commerceShots.map((shot, index) => index ? shot : { ...shot, dialogue: "Dua detail terus menyerlah", onScreenText: "Dua detail terus menyerlah" }),
     publishingCopy: commercePublishingCopy,
   }],
 }, ["product-asmr"]), /兑现相同数量/);

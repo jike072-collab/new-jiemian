@@ -4,8 +4,6 @@ import {
   ArrowDown,
   ArrowUp,
   Check,
-  ChevronDown,
-  CopyPlus,
   ImagePlus,
   LoaderCircle,
   Plus,
@@ -19,9 +17,7 @@ import type { EnabledProviders, WorkspacePublicProvider } from "@/components/stu
 import { fetchJsonWithCsrf } from "@/lib/client/api";
 import {
   commerceDirectionLabel,
-  commerceDirectionOptions,
   commerceDirectionRequiresHuman,
-  cloneCommercePlanForReuse,
   newCommerceProductDraft,
   normalizeCommercePlanGeneration,
   normalizeCommercePublishingCopy,
@@ -77,7 +73,7 @@ export function CanvasCommerceAssistant({
   const normalizedState = useMemo(() => state && Object.keys(state.products).length
     ? state
     : { products: { [initialProduct.id]: initialProduct } }, [initialProduct, state]);
-  const [activeProductId, setActiveProductId] = useState(() => {
+  const [activeProductId] = useState(() => {
     const stored = window.localStorage.getItem(storageKey) || "";
     return normalizedState.products[stored] ? stored : Object.keys(normalizedState.products)[0] || "";
   });
@@ -101,12 +97,10 @@ export function CanvasCommerceAssistant({
 
   if (!draft) return <div className="canvas-assistant__commerce-loading"><LoaderCircle className="is-spinning" />正在建立产品资料</div>;
 
-  const planProviders = Object.fromEntries(draft.plans.map((plan) => [plan.id, providerForPlan(plan, draft.sharedProviderId, compatibleProviders)]));
-  const sharedOptions = compatibleProviders.filter((provider) => draft.selectedDirections.every((direction) => providerSupportsDirection(provider, direction)));
-  const createCandidates = draft.plans.filter((plan) => plan.selected && !plan.createdGeneratorNodeId);
-  const createdDirections = new Set(draft.plans.filter((plan) => plan.createdGeneratorNodeId).map((plan) => plan.direction));
-  const uncreatedDirections = draft.selectedDirections.filter((direction) => !createdDirections.has(direction));
-  const canCreate = createCandidates.length > 0 && createCandidates.every((plan) => Boolean(planProviders[plan.id]));
+  const activePlan = draft.plans.find((plan) => plan.id === draft.activePlanId) || draft.plans.at(-1);
+  const activeProviderOptions = activePlan ? compatibleProviders.filter((provider) => providerSupportsDirection(provider, activePlan.direction)) : [];
+  const activeProvider = activePlan ? providerForPlan(activePlan, draft.sharedProviderId, compatibleProviders) : undefined;
+  const canCreate = Boolean(activePlan && !activePlan.createdGeneratorNodeId && activeProvider);
 
   function commit(nextDraft: CanvasCommerceProductDraft) {
     onStateChange({ products: { ...normalizedState.products, [nextDraft.id]: { ...nextDraft, updatedAt: new Date().toISOString() } } });
@@ -167,6 +161,7 @@ export function CanvasCommerceAssistant({
     if (!draft.images.length || busy) return;
     setBusy("product");
     patchDraft({ phase: "planning", error: undefined });
+    let workingDraft = draft;
     try {
       const selectedIds = draft.images.map((image) => image.nodeId);
       const response = await fetchJsonWithCsrf<unknown>("/api/canvas/assistant", {
@@ -186,42 +181,40 @@ export function CanvasCommerceAssistant({
         patchDraft({ phase: "error", error: analysis.conflictMessage || "所选图片疑似不是同一款鞋，请重新选择。" });
         return;
       }
+      const selectedDirections = analysis.recommendedDirections.slice(0, 1);
+      const direction = selectedDirections[0];
+      if (!direction) throw new Error("产品分析没有返回可用的视频方向。");
       const createdPlans = draft.plans.filter((plan) => plan.createdGeneratorNodeId);
-      const selectedDirections = analysis.recommendedDirections.slice(0, 3);
-      patchDraft({
+      workingDraft = {
+        ...draft,
         productName: draft.productName || analysis.suggestedName,
         sellingPoints: analysis.sellingPoints,
         visibleFacts: analysis.visibleFacts,
         recommendedDirections: analysis.recommendedDirections,
         selectedDirections,
-        directionSellingPoints: Object.fromEntries(selectedDirections.map((direction, index) => [direction, analysis.sellingPoints[index % analysis.sellingPoints.length]])),
+        directionSellingPoints: { [direction]: analysis.sellingPoints[0] },
         plans: createdPlans,
-        phase: "product-ready",
+        phase: "planning",
         error: undefined,
-      });
+      };
+      commit(workingDraft);
+      const generated = await requestPlanGeneration(workingDraft, selectedDirections);
+      workingDraft = { ...workingDraft, ...mergeGeneratedPlans(workingDraft, selectedDirections, generated.plans), phase: "plans-ready", error: undefined };
+      commit(workingDraft);
     } catch (error) {
-      patchDraft({ phase: "error", error: error instanceof Error ? error.message : "产品分析失败。" });
+      commit({ ...workingDraft, phase: "error", error: error instanceof Error ? error.message : "产品分析或提示词生成失败。" });
     } finally {
       setBusy("");
     }
   }
 
-  function toggleDirection(direction: CanvasCommerceDirection) {
-    const selected = draft.selectedDirections.includes(direction)
-      ? draft.selectedDirections.filter((item) => item !== direction)
-      : draft.selectedDirections.length < 3 ? [...draft.selectedDirections, direction] : draft.selectedDirections;
-    const assignments = { ...draft.directionSellingPoints };
-    selected.forEach((item, index) => { assignments[item] ||= draft.sellingPoints[index % draft.sellingPoints.length] || ""; });
-    patchDraft({ selectedDirections: selected, directionSellingPoints: assignments });
-  }
-
-  async function generatePlans(targetDirections = uncreatedDirections) {
-    if (!targetDirections.length || draft.sellingPoints.length < 4 || busy) return;
-    setBusy("plans");
-    patchDraft({ phase: "planning", error: undefined });
-    try {
-      const selectedIds = draft.images.map((image) => image.nodeId);
-      const usedHookPatterns = draft.plans.flatMap((plan) => plan.hook ? [{
+  async function requestPlanGeneration(
+    sourceDraft: CanvasCommerceProductDraft,
+    targetDirections: CanvasCommerceDirection[],
+    refinement?: { plan: CanvasCommercePlan; request: string },
+  ) {
+    const selectedIds = sourceDraft.images.map((image) => image.nodeId);
+    const usedHookPatterns = sourceDraft.plans.flatMap((plan) => plan.id !== refinement?.plan.id && plan.hook ? [{
         direction: plan.direction,
         visualPatternId: plan.hook.visualPatternId,
         copyPatternId: plan.hook.copyPatternId,
@@ -229,44 +222,62 @@ export function CanvasCommerceAssistant({
         shotPatternId: plan.production?.shotPatternId,
         performancePatternId: plan.production?.performancePatternId,
       }] : []);
-      const response = await fetchJsonWithCsrf<unknown>("/api/canvas/assistant", {
-        method: "POST",
-        body: JSON.stringify({
-          workflow: "commerce-plan-generation",
-          message: "根据已确认资料生成独立的15秒马来西亚 TikTok Shop 鞋类带货提示词。",
-          productDraftId: draft.id,
-          productName: draft.productName,
-          sellingPoints: draft.sellingPoints,
-          visibleFacts: draft.visibleFacts,
-          selectedDirections: targetDirections,
-          directionSellingPoints: draft.directionSellingPoints,
-          usedHookPatterns,
-          extraRequirements: draft.extraRequirements,
-          canvasTitle,
-          scope,
-          selectedNodeIds: selectedIds,
-          nodes: nodes.map((node) => ({ ...node, selected: selectedIds.includes(node.id) })),
-        }),
-      });
-      const generated = normalizeCommercePlanGeneration(response, targetDirections, {
-        visibleFacts: draft.visibleFacts,
-        imageCount: draft.images.length,
+    const response = await fetchJsonWithCsrf<unknown>("/api/canvas/assistant", {
+      method: "POST",
+      body: JSON.stringify({
+        workflow: "commerce-plan-generation",
+        message: "自动选择最适合当前产品的反差、冲突、意外、悬念或动作钩子，生成一段完整的15秒马来西亚 TikTok Shop 鞋类带货提示词。",
+        productDraftId: sourceDraft.id,
+        productName: sourceDraft.productName,
+        sellingPoints: sourceDraft.sellingPoints,
+        visibleFacts: sourceDraft.visibleFacts,
+        selectedDirections: targetDirections,
+        directionSellingPoints: sourceDraft.directionSellingPoints,
         usedHookPatterns,
-      });
-      const replacedDirections = new Set(targetDirections);
-      const previousByDirection = new Map(draft.plans
-        .filter((plan) => !plan.createdGeneratorNodeId && replacedDirections.has(plan.direction))
-        .map((plan) => [plan.direction, plan]));
-      const untouchedPlans = draft.plans.filter((plan) => plan.createdGeneratorNodeId || !replacedDirections.has(plan.direction));
-      const now = Date.now();
-      patchDraft({
-        plans: [...untouchedPlans, ...generated.plans.map((plan, index) => {
-          const previous = previousByDirection.get(plan.direction);
-          return { ...plan, id: `plan-${now}-${index}`, providerId: previous?.providerId, selected: previous?.selected ?? true };
-        })],
-        phase: "plans-ready",
-        error: undefined,
-      });
+        extraRequirements: refinement ? undefined : sourceDraft.extraRequirements,
+        basePlanId: refinement?.plan.id,
+        basePrompt: refinement?.plan.prompt,
+        refinementRequest: refinement?.request,
+        canvasTitle,
+        scope,
+        selectedNodeIds: selectedIds,
+        nodes: nodes.map((node) => ({ ...node, selected: selectedIds.includes(node.id) })),
+      }),
+    });
+    return normalizeCommercePlanGeneration(response, targetDirections, {
+      visibleFacts: sourceDraft.visibleFacts,
+      imageCount: sourceDraft.images.length,
+      usedHookPatterns,
+    });
+  }
+
+  function mergeGeneratedPlans(sourceDraft: CanvasCommerceProductDraft, targetDirections: CanvasCommerceDirection[], plans: CanvasCommercePlan[]) {
+    const replacedDirections = new Set(targetDirections);
+    const previousByDirection = new Map(sourceDraft.plans
+      .filter((plan) => !plan.createdGeneratorNodeId && replacedDirections.has(plan.direction))
+      .map((plan) => [plan.direction, plan]));
+    const untouchedPlans = sourceDraft.plans.filter((plan) => plan.createdGeneratorNodeId || !replacedDirections.has(plan.direction));
+    const generatedPlans = plans.map((plan, index) => {
+      const previous = previousByDirection.get(plan.direction);
+      const previousProvider = previous?.providerId && compatibleProviders.some((provider) => provider.id === previous.providerId && providerSupportsDirection(provider, plan.direction))
+        ? previous.providerId
+        : undefined;
+      const sharedProvider = sourceDraft.sharedProviderId && compatibleProviders.some((provider) => provider.id === sourceDraft.sharedProviderId && providerSupportsDirection(provider, plan.direction))
+        ? sourceDraft.sharedProviderId
+        : undefined;
+      const providerId = previousProvider || sharedProvider || compatibleProviders.find((provider) => providerSupportsDirection(provider, plan.direction))?.id;
+      return { ...plan, id: generatedPlanId(index), providerId, selected: true };
+    });
+    return { plans: [...untouchedPlans, ...generatedPlans], activePlanId: generatedPlans.at(-1)?.id };
+  }
+
+  async function generatePlans(targetDirections = draft.selectedDirections.slice(0, 1)) {
+    if (!targetDirections.length || draft.sellingPoints.length < 4 || busy) return;
+    setBusy("plans");
+    patchDraft({ phase: "planning", error: undefined });
+    try {
+      const generated = await requestPlanGeneration(draft, targetDirections);
+      patchDraft({ ...mergeGeneratedPlans(draft, targetDirections, generated.plans), phase: "plans-ready", error: undefined });
     } catch (error) {
       patchDraft({ phase: "error", error: error instanceof Error ? error.message : "提示词方案生成失败。" });
     } finally {
@@ -274,33 +285,53 @@ export function CanvasCommerceAssistant({
     }
   }
 
+  async function refinePlan() {
+    const request = draft.extraRequirements.trim();
+    if (!activePlan || activePlan.createdGeneratorNodeId || !request || busy) return;
+    setBusy("plans");
+    patchDraft({ phase: "planning", error: undefined });
+    try {
+      const generated = await requestPlanGeneration(draft, [activePlan.direction], { plan: activePlan, request });
+      const refined = generated.plans[0];
+      if (!refined) throw new Error("助手没有返回优化后的提示词。");
+      patchDraft({
+        plans: draft.plans.map((plan) => plan.id === activePlan.id ? {
+          ...refined,
+          id: activePlan.id,
+          providerId: activePlan.providerId,
+          selected: true,
+        } : plan),
+        activePlanId: activePlan.id,
+        extraRequirements: "",
+        phase: "plans-ready",
+        error: undefined,
+      });
+    } catch (error) {
+      patchDraft({ phase: "error", error: error instanceof Error ? error.message : "提示词优化失败。" });
+    } finally {
+      setBusy("");
+    }
+  }
+
   function createPlans() {
-    if (!canCreate || busy) return;
+    if (!canCreate || !activePlan || !activeProvider || busy) return;
     setBusy("create");
     try {
-      const prepared = {
-        ...draft,
-        plans: draft.plans.map((plan) => {
-          const provider = planProviders[plan.id];
-          if (!provider || !createCandidates.some((candidate) => candidate.id === plan.id)) return plan;
-          const publishingCopy = normalizeCommercePublishingCopy(plan.publishingCopy);
-          if (!publishingCopy) throw new Error(`方案“${plan.title}”的发布标题、正文或标签不完整。`);
-          return { ...plan, providerId: provider.id, publishingCopy };
-        }),
-      };
-      const result = onCreatePlans(prepared, createCandidates.map((plan) => plan.id));
-      const byPlan = new Map(result.map((item) => [item.planId, item]));
+      const publishingCopy = normalizeCommercePublishingCopy(activePlan.publishingCopy);
+      if (!publishingCopy) throw new Error("提示词的发布文案不完整，请重新分析。");
+      const preparedPlan = { ...activePlan, providerId: activeProvider.id, publishingCopy };
+      const prepared = { ...draft, plans: draft.plans.map((plan) => plan.id === activePlan.id ? preparedPlan : plan) };
+      const created = onCreatePlans(prepared, [activePlan.id])[0];
+      if (!created) throw new Error("没有创建新的画布节点。");
       patchDraft({
-        plans: prepared.plans.map((plan) => {
-          const created = byPlan.get(plan.id);
-          return created ? {
+        plans: prepared.plans.map((plan) => plan.id === activePlan.id ? {
             ...plan,
             selected: false,
             createdGroupId: created.groupId,
             createdPromptNodeId: created.promptNodeId,
             createdGeneratorNodeId: created.generatorNodeId,
-          } : plan;
-        }),
+          } : plan),
+        activePlanId: activePlan.id,
         phase: "plans-ready",
         error: undefined,
       });
@@ -311,55 +342,10 @@ export function CanvasCommerceAssistant({
     }
   }
 
-  function reuseCreatedPlan(plan: CanvasCommercePlan) {
-    if (busy) return;
-    const provider = providerForPlan(plan, draft.sharedProviderId, compatibleProviders);
-    if (!provider) {
-      patchDraft({ phase: "error", error: "原方案模型当前不可用，请重新选择模型后再复用。" });
-      return;
-    }
-    setBusy("create");
-    try {
-      const clonedPlan = { ...cloneCommercePlanForReuse(plan), providerId: provider.id };
-      const prepared = { ...draft, plans: [...draft.plans, clonedPlan] };
-      const created = onCreatePlans(prepared, [clonedPlan.id])[0];
-      if (!created) throw new Error("没有创建新的方案节点。");
-      patchDraft({
-        plans: [...draft.plans, {
-          ...clonedPlan,
-          selected: false,
-          createdGroupId: created.groupId,
-          createdPromptNodeId: created.promptNodeId,
-          createdGeneratorNodeId: created.generatorNodeId,
-        }],
-        phase: "plans-ready",
-        error: undefined,
-      });
-    } catch (error) {
-      patchDraft({ phase: "error", error: error instanceof Error ? error.message : "复用方案失败。" });
-    } finally {
-      setBusy("");
-    }
-  }
-
-  function startNewProduct() {
-    const product = newCommerceProductDraft();
-    onStateChange({ products: { ...normalizedState.products, [product.id]: product } });
-    setActiveProductId(product.id);
-  }
-
   return (
     <div className="canvas-assistant__commerce">
-      <div className="canvas-assistant__product-switcher">
-        <label>
-          <span>产品方案</span>
-          <span className="canvas-assistant__select-wrap"><select value={draft.id} onChange={(event) => setActiveProductId(event.target.value)}>{products.map((product) => <option key={product.id} value={product.id}>{product.productName || `未命名产品 · ${product.createdAt.slice(5, 10)}`}</option>)}</select><ChevronDown /></span>
-        </label>
-        <button type="button" className="canvas-icon-button" onClick={startNewProduct} aria-label="新建产品方案" title="新建产品方案"><Plus /></button>
-      </div>
-
-      <section className="canvas-assistant__workflow-section" aria-label="第一步 产品资料">
-        <header><span>01</span><div><strong>产品资料</strong><small>1–4 张同款鞋，多角度效果更稳定</small></div></header>
+      <section className="canvas-assistant__workflow-section" aria-label="产品图片">
+        <header><span>01</span><div><strong>产品图片</strong><small>1–4 张同款鞋</small></div></header>
         <input ref={fileInputRef} type="file" accept="image/png,image/jpeg,image/webp" multiple hidden onChange={(event) => { void upload(Array.from(event.target.files || [])); event.currentTarget.value = ""; }} />
         <div className="canvas-assistant__image-actions">
           <button type="button" onClick={() => fileInputRef.current?.click()} disabled={busy === "upload" || draft.images.length >= 4}><ImagePlus />上传图片</button>
@@ -379,58 +365,26 @@ export function CanvasCommerceAssistant({
             </div>
           </div>) : <p>还没有产品图片</p>}
         </div>
-        <div className="canvas-assistant__locked-fields">
-          <label><span>国家</span><input value="马来西亚" disabled /></label>
-          <label><span>语言</span><input value="马来语" disabled /></label>
-        </div>
-        <button type="button" className="canvas-assistant__primary-action" disabled={!draft.images.length || Boolean(busy)} onClick={() => { void analyzeProduct(); }}>{busy === "product" ? <LoaderCircle className="is-spinning" /> : <Sparkles />}分析产品</button>
+        <button type="button" className="canvas-assistant__primary-action" disabled={!draft.images.length || Boolean(busy)} onClick={() => { void analyzeProduct(); }}>{busy === "product" ? <><LoaderCircle className="is-spinning" />分析并生成中</> : <><Sparkles />生成15秒提示词</>}</button>
       </section>
 
-      {draft.sellingPoints.length ? <section className="canvas-assistant__workflow-section" aria-label="产品分析结果">
-        <header><span>02</span><div><strong>确认卖点</strong><small>只保留图片可核对的信息</small></div></header>
-        <label className="canvas-assistant__text-field"><span>产品名称（可留空）</span><input value={draft.productName} maxLength={120} onChange={(event) => patchDraft({ productName: event.target.value })} /></label>
-        <div className="canvas-assistant__selling-points">
-          {draft.sellingPoints.map((point, index) => <div key={index}><input value={point} maxLength={160} onChange={(event) => patchDraft({ sellingPoints: draft.sellingPoints.map((item, itemIndex) => itemIndex === index ? event.target.value : item) })} /><button type="button" onClick={() => patchDraft({ sellingPoints: draft.sellingPoints.filter((_, itemIndex) => itemIndex !== index) })} aria-label="删除卖点" title="删除卖点"><Trash2 /></button></div>)}
-          {draft.sellingPoints.length < 8 ? <button type="button" onClick={() => patchDraft({ sellingPoints: [...draft.sellingPoints, ""] })}><Plus />补充卖点</button> : null}
-        </div>
-      </section> : null}
-
-      {draft.sellingPoints.length >= 4 ? <section className="canvas-assistant__workflow-section" aria-label="第二步 选择内容方向">
-        <header><span>03</span><div><strong>内容方向</strong><small>选择 1–3 个，每个方向只讲一个卖点</small></div></header>
-        <div className="canvas-assistant__direction-grid">{commerceDirectionOptions.map((direction) => {
-          const active = draft.selectedDirections.includes(direction.id);
-          const recommended = draft.recommendedDirections.includes(direction.id);
-          return <button key={direction.id} type="button" className={active ? "is-active" : undefined} onClick={() => toggleDirection(direction.id)}><strong>{direction.label}{recommended ? <small>推荐</small> : null}</strong><span>{direction.detail}</span></button>;
-        })}</div>
-        {draft.selectedDirections.length ? <div className="canvas-assistant__direction-points">{draft.selectedDirections.map((direction) => <label key={direction}><span>{commerceDirectionLabel(direction)}</span><select value={draft.directionSellingPoints[direction] || ""} onChange={(event) => patchDraft({ directionSellingPoints: { ...draft.directionSellingPoints, [direction]: event.target.value } })}>{draft.sellingPoints.filter(Boolean).map((point) => <option key={point} value={point}>{point}</option>)}</select></label>)}</div> : null}
-        <label className="canvas-assistant__text-field"><span>补充要求（可选）</span><textarea value={draft.extraRequirements} maxLength={1_200} onChange={(event) => patchDraft({ extraRequirements: event.target.value })} placeholder="例如：人物动作更自然、不要出现包装" /></label>
-        <button type="button" className="canvas-assistant__primary-action" disabled={!uncreatedDirections.length || Boolean(busy)} onClick={() => { void generatePlans(); }}>{busy === "plans" ? <LoaderCircle className="is-spinning" /> : <Sparkles />}生成未创建方案</button>
-      </section> : null}
-
-      {draft.plans.length ? <section className="canvas-assistant__workflow-section" aria-label="第三步 确认方案和模型">
-        <header><span>04</span><div><strong>确认方案与模型</strong><small>共用模型，也可为单个方案覆盖</small></div></header>
-        <label className="canvas-assistant__model-field"><span>全部方案共用模型</span><select value={draft.sharedProviderId || ""} onChange={(event) => patchDraft({ sharedProviderId: event.target.value || undefined })}><option value="">请选择兼容模型</option>{sharedOptions.map((provider) => <option key={provider.id} value={provider.id}>{providerLabel(provider)}</option>)}</select></label>
-        <div className="canvas-assistant__plan-list">{draft.plans.map((plan) => {
-          const created = Boolean(plan.createdGeneratorNodeId);
-          const options = compatibleProviders.filter((provider) => providerSupportsDirection(provider, plan.direction));
-          const provider = planProviders[plan.id];
-          const capacity = provider?.videoOptions?.maxReferenceImages || 0;
-          return <article key={plan.id} className={created ? "is-created" : undefined}>
-            <header><label><input type="checkbox" checked={created || plan.selected} disabled={created} onChange={(event) => patchPlan(plan.id, { selected: event.target.checked })} /><span>{commerceDirectionLabel(plan.direction)}</span></label><div>{created ? <><small><Check />已创建</small><button type="button" disabled={Boolean(busy)} onClick={() => reuseCreatedPlan(plan)}><CopyPlus />复用为新节点</button></> : <button type="button" disabled={Boolean(busy)} onClick={() => { void generatePlans([plan.direction]); }}><Sparkles />重新分析</button>}</div></header>
-            <label><span>核心卖点</span><select value={plan.sellingPoint} disabled={created} onChange={(event) => patchDraft({ plans: draft.plans.map((item) => item.id === plan.id ? { ...item, sellingPoint: event.target.value } : item), directionSellingPoints: { ...draft.directionSellingPoints, [plan.direction]: event.target.value } })}>{draft.sellingPoints.filter(Boolean).map((point) => <option key={point} value={point}>{point}</option>)}</select></label>
-            <label><span>模型</span><select value={plan.providerId || ""} disabled={created} onChange={(event) => patchPlan(plan.id, { providerId: event.target.value || undefined })}><option value="">跟随共用模型</option>{options.map((item) => <option key={item.id} value={item.id}>{providerLabel(item)}</option>)}</select></label>
-            {plan.hook ? <div className="canvas-assistant__plan-hook">
-              <div><strong>{plan.hook.title}</strong><span>{plan.hook.reason}</span></div>
+      {activePlan ? <section className="canvas-assistant__workflow-section" aria-label="15秒提示词结果">
+        <header><span>02</span><div><strong>15秒提示词</strong><small>{commerceDirectionLabel(activePlan.direction)}</small></div></header>
+        <div className="canvas-assistant__plan-list"><article className={activePlan.createdGeneratorNodeId ? "is-created" : undefined}>
+            <header><span className="canvas-assistant__created-plan-label">{activePlan.createdGeneratorNodeId ? <Check /> : <Sparkles />}{activePlan.createdGeneratorNodeId ? "已创建方案" : "当前方案"}</span><div><button type="button" disabled={Boolean(busy)} onClick={() => { void generatePlans([activePlan.direction]); }}><Sparkles />重新生成一段</button></div></header>
+            <label><span>视频模型</span><select value={activePlan.providerId || activeProvider?.id || ""} disabled={Boolean(activePlan.createdGeneratorNodeId)} onChange={(event) => patchPlan(activePlan.id, { providerId: event.target.value || undefined })}><option value="">没有兼容模型</option>{activeProviderOptions.map((item) => <option key={item.id} value={item.id}>{providerLabel(item)}</option>)}</select></label>
+            {activePlan.hook ? <div className="canvas-assistant__plan-hook">
+              <div><strong>{activePlan.hook.title}</strong><span>{activePlan.hook.reason}</span></div>
               <dl>
-                <div><dt>开头口播</dt><dd lang="ms">{plan.hook.hookLine}</dd></div>
-                <div><dt>屏幕短字</dt><dd lang="ms">{plan.hook.onScreenText}</dd></div>
-                <div><dt>首帧</dt><dd>{plan.hook.scene} · {plan.hook.visualBeat}</dd></div>
+                <div><dt>开头口播</dt><dd lang="ms">{activePlan.hook.hookLine}</dd></div>
+                <div><dt>屏幕短字</dt><dd lang="ms">{activePlan.hook.onScreenText}</dd></div>
+                <div><dt>首帧</dt><dd>{activePlan.hook.scene} · {activePlan.hook.visualBeat}</dd></div>
               </dl>
             </div> : null}
-            {plan.production && plan.shots ? <details className="canvas-assistant__shot-plan">
-              <summary><span>4 镜头分镜脚本</span><small>{plan.production.energy === "dynamic" ? "动感" : plan.production.energy === "balanced" ? "均衡" : "舒缓"} · {plan.production.emotionArc}</small></summary>
-              <div className="canvas-assistant__production-note"><span>真实感</span><p>{plan.production.realismNotes}</p></div>
-              <ol>{plan.shots.map((shot) => <li key={shot.timeRange}>
+            {activePlan.production && activePlan.shots ? <details className="canvas-assistant__shot-plan">
+              <summary><span>4 镜头分镜脚本</span><small>{activePlan.production.energy === "dynamic" ? "动感" : activePlan.production.energy === "balanced" ? "均衡" : "舒缓"} · {activePlan.production.emotionArc}</small></summary>
+              <div className="canvas-assistant__production-note"><span>真实感</span><p>{activePlan.production.realismNotes}</p></div>
+              <ol>{activePlan.shots.map((shot) => <li key={shot.timeRange}>
                 <header><strong>{shot.timeRange}</strong><span>{shot.shotSize}</span></header>
                 <p><b>动作</b>{shot.action}</p>
                 <p><b>表演</b>{shot.performance}</p>
@@ -442,17 +396,14 @@ export function CanvasCommerceAssistant({
                 <p><b>转场</b>{shot.transition}</p>
               </li>)}</ol>
             </details> : null}
-            <textarea value={plan.prompt} disabled={created} onChange={(event) => patchPlan(plan.id, { prompt: event.target.value })} aria-label={`${commerceDirectionLabel(plan.direction)}提示词`} />
-            {plan.publishingCopy ? <div className="canvas-assistant__publishing-copy">
-              <strong>马来语发布包</strong>
-              <label><span>标题</span><input value={plan.publishingCopy.title} disabled={created} maxLength={80} onChange={(event) => patchPlan(plan.id, { publishingCopy: { ...plan.publishingCopy!, title: event.target.value } })} /></label>
-              <label><span>正文</span><textarea value={plan.publishingCopy.caption} disabled={created} maxLength={1_200} onChange={(event) => patchPlan(plan.id, { publishingCopy: { ...plan.publishingCopy!, caption: event.target.value } })} /></label>
-              <label><span>标签</span><input value={plan.publishingCopy.hashtags.join(" ")} disabled={created} onChange={(event) => patchPlan(plan.id, { publishingCopy: { ...plan.publishingCopy!, hashtags: event.target.value.split(/[\s,，]+/u).filter(Boolean).slice(0, 6) } })} /></label>
+            <textarea value={activePlan.prompt} disabled={Boolean(activePlan.createdGeneratorNodeId)} onChange={(event) => patchPlan(activePlan.id, { prompt: event.target.value })} aria-label="可编辑15秒提示词" />
+            {!activePlan.createdGeneratorNodeId ? <div className="canvas-assistant__refine">
+              <textarea value={draft.extraRequirements} maxLength={1_200} onChange={(event) => patchDraft({ extraRequirements: event.target.value })} placeholder="例如：只加强前两秒冲突，口播更像马来西亚本地人" aria-label="提示词优化要求" />
+              <button type="button" disabled={!draft.extraRequirements.trim() || Boolean(busy)} onClick={() => { void refinePlan(); }}>{busy === "plans" ? <LoaderCircle className="is-spinning" /> : <Sparkles />}按要求优化</button>
             </div> : null}
-            {provider && capacity < draft.images.length ? <p>该模型接收 {capacity} 张图，将按当前顺序连接前 {capacity} 张，其余不连接。</p> : null}
-          </article>;
-        })}</div>
-        <button type="button" className="canvas-assistant__primary-action" disabled={!canCreate || Boolean(busy)} onClick={createPlans}>{busy === "create" ? <LoaderCircle className="is-spinning" /> : <Check />}创建选中方案节点</button>
+            {activeProvider && (activeProvider.videoOptions?.maxReferenceImages || 0) < draft.images.length ? <p>该模型接收 {activeProvider.videoOptions?.maxReferenceImages || 0} 张图，将按当前顺序连接前 {activeProvider.videoOptions?.maxReferenceImages || 0} 张，其余不连接。</p> : null}
+          </article></div>
+        {!activePlan.createdGeneratorNodeId ? <button type="button" className="canvas-assistant__primary-action" disabled={!canCreate || Boolean(busy)} onClick={createPlans}>{busy === "create" ? <LoaderCircle className="is-spinning" /> : <Check />}创建提示词和视频节点</button> : null}
       </section> : null}
 
       {draft.error ? <p className="canvas-assistant__workflow-error" role="alert">{draft.error}</p> : null}
@@ -497,4 +448,8 @@ function moveItem<T>(items: T[], from: number, to: number) {
   const [item] = next.splice(from, 1);
   next.splice(to, 0, item);
   return next;
+}
+
+function generatedPlanId(index: number) {
+  return `plan-${Date.now()}-${index}`;
 }

@@ -261,8 +261,7 @@ export function normalizeCommerceShots(value: unknown, direction: CanvasCommerce
     return [shot];
   });
   if (shots.length !== 4 || shots[0].onScreenText !== hook.onScreenText) return undefined;
-  if (direction !== "product-asmr" && !shots[0].dialogue.includes(hook.hookLine)) return undefined;
-  if (direction === "product-asmr" && shots[0].dialogue !== "无口播" && !shots[0].dialogue.includes(hook.hookLine)) return undefined;
+  if (!shots[0].dialogue.includes(hook.hookLine)) return undefined;
   return shots;
 }
 
@@ -328,7 +327,7 @@ export function composeCommerceSeedancePrompt({
     "四镜头分镜脚本：",
     shotText,
     `声音/口播：从第 0 秒开始；${openingVoice}；最多三句短马来语，动作声与节拍承担中段情绪。`,
-    "禁止项：不得虚构价格、折扣、库存、销量、评价、品牌、材料、舒适、防滑、耐磨、透气或健康功效；不得使用危险动作、事故、受伤、街头骚扰；不得出现僵硬口型、广告式连续点头、漂浮滑步、肢体畸变、鞋子变形、文字乱码或无动机炫技运镜。",
+    "禁止项：优惠钩子不得出现具体金额、百分比、降价幅度、限时、库存或销量；不得虚构评价、品牌、材料、舒适、防滑、耐磨、透气或健康功效；不得使用危险动作、事故、受伤、街头骚扰；不得出现僵硬口型、广告式连续点头、漂浮滑步、肢体畸变、鞋子变形、文字乱码或无动机炫技运镜。",
   ].join("\n\n").slice(0, 8_000);
 }
 
@@ -500,10 +499,12 @@ function validateCommercePlanContent(prompt: string, hook: CanvasCommercePlanHoo
   if (requiredRanges.some((range) => !range.test(prompt))) throw new Error("提示词必须完整包含四段 15 秒时间轴。");
   const shotClaims = shots.flatMap((shot) => [shot.action, shot.productState, shot.dialogue, shot.onScreenText]).join("\n");
   const claimSurface = [shotClaims, hook.hookLine, hook.onScreenText, publishingCopy.title, publishingCopy.caption].join("\n");
-  const unsupportedClaim = claimSurface.match(/(?:价格|便宜|折扣|优惠|促销|清仓|退货|退款|销量|评价|舒适|防滑|耐磨|透气|脚痛|受伤|harga|murah|diskaun|promosi|clearance|refund|return|selesa|anti[- ]?slip|tahan lama|breathable|sakit|cedera)/iu)?.[0];
+  const unsupportedClaim = claimSurface.match(/(?:价格|原价|现价|限时|库存|清仓|退货|退款|销量|评价|舒适|防滑|耐磨|透气|脚痛|受伤|harga|limited[ -]?time|stok|stock|clearance|refund|return|selesa|anti[- ]?slip|tahan lama|breathable|sakit|cedera)/iu)?.[0];
   if (unsupportedClaim) {
     throw new Error(`方案包含当前产品资料无法证明的话术“${unsupportedClaim}”。`);
   }
+  const numericPromotion = claimSurface.match(/(?:\b(?:RM|MYR)\s*\d|[¥￥$]\s*\d|\d+(?:\.\d+)?\s*(?:%|折|off\b)|(?:折扣|优惠|促销|降价|diskaun|promosi|discount).{0,12}\d)/iu)?.[0];
+  if (numericPromotion) throw new Error("优惠钩子不得包含具体金额、百分比或降价数字。");
   if (hook.copyPatternId === "numbered-specificity") {
     const count = /(?:\b2\b|\bdua\b)/iu.test(`${hook.hookLine} ${hook.onScreenText}`) ? 2
       : /(?:\b3\b|\btiga\b)/iu.test(`${hook.hookLine} ${hook.onScreenText}`) ? 3 : 0;

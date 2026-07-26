@@ -70,6 +70,7 @@ const normalized = normalizeCanvasDocument({
             { id: "hook-3", style: "motion", title: "公园快走前后", hookLine: "Kasut mana ngam untuk jalan hari ni?", scene: "公园遮雨步道", visualBeat: "人物看着鞋架犹豫" },
           ],
           selectedCreativeOptionId: "hook-2",
+          activePlanId: "missing-plan",
           plans: [{
             id: "plan-1",
             direction: "product-asmr",
@@ -123,6 +124,7 @@ assert.equal(normalized.nodes[0].data.intrinsicWidth, 1080);
 assert.equal(normalized.nodes[0].data.intrinsicHeight, 1920);
 assert.equal(normalized.nodes[0].data.assistantProductId, "product-1");
 assert.equal(normalized.assistantState?.commerce?.products["product-1"].plans[0].direction, "product-asmr");
+assert.equal(normalized.assistantState?.commerce?.products["product-1"].activePlanId, "plan-1");
 assert.equal(normalized.assistantState?.commerce?.products["product-1"].directionSellingPoints["product-asmr"], "鞋面拼接");
 assert.equal(normalized.assistantState?.commerce?.products["product-1"].creativeOptions?.length, 3);
 assert.equal(normalized.assistantState?.commerce?.products["product-1"].selectedCreativeOptionId, "hook-2");
