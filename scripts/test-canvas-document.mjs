@@ -133,6 +133,24 @@ assert.equal(normalized.assistantState?.commerce?.products["product-1"].plans[0]
 assert.equal(normalized.assistantState?.commerce?.products["product-1"].plans[0].shots?.length, 4);
 assert.equal(normalized.assistantState?.commerce?.products["product-1"].plans[0].publishingCopy?.hashtags.includes("#fyp"), false);
 
+const createdOnlyProduct = normalized.assistantState?.commerce?.products["product-1"];
+const createdOnlyDocument = normalizeCanvasDocument({
+  ...normalized,
+  assistantState: {
+    commerce: {
+      products: createdOnlyProduct ? {
+        "product-1": {
+          ...createdOnlyProduct,
+          activePlanId: undefined,
+          phase: "setup",
+          plans: createdOnlyProduct.plans.map((plan) => ({ ...plan, createdGeneratorNodeId: "generator-old" })),
+        },
+      } : {},
+    },
+  },
+});
+assert.equal(createdOnlyDocument.assistantState?.commerce?.products["product-1"].activePlanId, undefined);
+
 assert.deepEqual(canvasMediaNodeSize(1920, 1080), { width: 420, height: 310, frameWidth: 418, frameHeight: 235 });
 assert.deepEqual(canvasMediaNodeSize(1080, 1920), { width: 260, height: 534, frameWidth: 258, frameHeight: 459 });
 assert.deepEqual(canvasMediaNodeSize(1024, 1024), { width: 360, height: 433, frameWidth: 358, frameHeight: 358 });

@@ -22,6 +22,7 @@ import {
   normalizeCommercePlanGeneration,
   normalizeCommercePublishingCopy,
   normalizeCommerceProductAnalysis,
+  resetCommerceDraftForImages,
 } from "@/lib/canvas/commerce-assistant";
 import type {
   CanvasCommerceAssistantState,
@@ -97,7 +98,8 @@ export function CanvasCommerceAssistant({
 
   if (!draft) return <div className="canvas-assistant__commerce-loading"><LoaderCircle className="is-spinning" />正在建立产品资料</div>;
 
-  const activePlan = draft.plans.find((plan) => plan.id === draft.activePlanId) || draft.plans.at(-1);
+  const activePlan = draft.plans.find((plan) => plan.id === draft.activePlanId)
+    || [...draft.plans].reverse().find((plan) => !plan.createdGeneratorNodeId);
   const activeProviderOptions = activePlan ? compatibleProviders.filter((provider) => providerSupportsDirection(provider, activePlan.direction)) : [];
   const activeProvider = activePlan ? providerForPlan(activePlan, draft.sharedProviderId, compatibleProviders) : undefined;
   const canCreate = Boolean(activePlan && !activePlan.createdGeneratorNodeId && activeProvider);
@@ -117,6 +119,10 @@ export function CanvasCommerceAssistant({
     patchDraft({ plans: draft.plans.map((plan) => plan.id === planId ? { ...plan, ...patch } : plan) });
   }
 
+  function replaceProductImages(images: CanvasCommerceProductDraft["images"]) {
+    commit(resetCommerceDraftForImages(draft, images));
+  }
+
   function addProductImages(candidates: CanvasAssistantNodeContext[]) {
     const currentKeys = new Set(draft.images.flatMap((image) => [image.nodeId, image.libraryItemId].filter(Boolean)));
     const additions = candidates.flatMap((node) => {
@@ -125,7 +131,8 @@ export function CanvasCommerceAssistant({
       if (node.libraryItemId) currentKeys.add(node.libraryItemId);
       return [{ nodeId: node.id, libraryItemId: node.libraryItemId, title: node.title }];
     });
-    patchDraft({ images: [...draft.images, ...additions].slice(0, 4), phase: "setup", error: undefined });
+    if (!additions.length) return;
+    replaceProductImages([...draft.images, ...additions].slice(0, 4));
   }
 
   async function upload(files: File[]) {
@@ -139,11 +146,8 @@ export function CanvasCommerceAssistant({
         return { nodeId, libraryItemId: node?.libraryItemId, title: node?.title || images[index]?.name || "产品图片" };
       });
       const existing = new Set(draft.images.flatMap((image) => [image.nodeId, image.libraryItemId].filter(Boolean)));
-      patchDraft({
-        images: [...draft.images, ...additions.filter((image) => !existing.has(image.nodeId) && (!image.libraryItemId || !existing.has(image.libraryItemId)))].slice(0, 4),
-        phase: "setup",
-        error: undefined,
-      });
+      const uniqueAdditions = additions.filter((image) => !existing.has(image.nodeId) && (!image.libraryItemId || !existing.has(image.libraryItemId)));
+      if (uniqueAdditions.length) replaceProductImages([...draft.images, ...uniqueAdditions].slice(0, 4));
     } catch (error) {
       patchDraft({ phase: "error", error: error instanceof Error ? error.message : "产品图片上传失败。" });
     } finally {
@@ -362,9 +366,9 @@ export function CanvasCommerceAssistant({
           {draft.images.length ? draft.images.map((image, index) => <div key={`${image.nodeId}-${index}`}>
             <span>{index === 0 ? "主图" : `角度 ${index + 1}`}</span><strong>{nodes.find((node) => node.id === image.nodeId)?.title || image.title}</strong>
             <div>
-              <button type="button" disabled={index === 0} onClick={() => patchDraft({ images: moveItem(draft.images, index, index - 1), phase: "setup" })} aria-label="图片上移" title="图片上移"><ArrowUp /></button>
-              <button type="button" disabled={index === draft.images.length - 1} onClick={() => patchDraft({ images: moveItem(draft.images, index, index + 1), phase: "setup" })} aria-label="图片下移" title="图片下移"><ArrowDown /></button>
-              <button type="button" onClick={() => patchDraft({ images: draft.images.filter((_, itemIndex) => itemIndex !== index), phase: "setup" })} aria-label="移除图片" title="移除图片"><Trash2 /></button>
+              <button type="button" disabled={index === 0} onClick={() => replaceProductImages(moveItem(draft.images, index, index - 1))} aria-label="图片上移" title="图片上移"><ArrowUp /></button>
+              <button type="button" disabled={index === draft.images.length - 1} onClick={() => replaceProductImages(moveItem(draft.images, index, index + 1))} aria-label="图片下移" title="图片下移"><ArrowDown /></button>
+              <button type="button" onClick={() => replaceProductImages(draft.images.filter((_, itemIndex) => itemIndex !== index))} aria-label="移除图片" title="移除图片"><Trash2 /></button>
             </div>
           </div>) : <p>还没有产品图片</p>}
         </div>

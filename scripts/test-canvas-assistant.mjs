@@ -25,6 +25,7 @@ const {
   normalizeCommercePlanGeneration,
   normalizeCommerceProductAnalysis,
   planCommerceCanvasCreation,
+  resetCommerceDraftForImages,
 } = await import(new URL("../src/lib/canvas/commerce-assistant.ts", import.meta.url));
 const {
   isMalaysiaCommerceCopyHookFormulaSatisfied,
@@ -421,6 +422,27 @@ const strongActionPlan = normalizeCommercePlanGeneration({
   }],
 }, ["daily-style"]);
 assert.equal(strongActionPlan.plans[0].shots.every((shot) => shot.dialogue === "无口播" ? !shot.onScreenText : shot.dialogue === shot.onScreenText), true);
+const sportConditionalHook = {
+  ...plainActionHook,
+  copyPatternId: "conditional-visible-result",
+  hookLine: "Eh, warna ni nampak terus bila bergerak.",
+  onScreenText: "Eh, warna ni nampak terus bila bergerak.",
+  visualBeat: "人物发现原本普通的运动穿搭缺少颜色重点，起步时目标鞋进入画面。",
+};
+const sportConditionalPlan = normalizeCommercePlanGeneration({
+  kind: "commerce-plan-generation",
+  plans: [{
+    direction: "sport-motion",
+    hook: sportConditionalHook,
+    production: { ...dailyProduction, energy: "dynamic" },
+    shots: dailyShots.map((shot, index) => index === 0
+      ? { ...shot, action: "人物发现运动穿搭缺少颜色重点，犹豫后准备起步", dialogue: sportConditionalHook.hookLine, onScreenText: sportConditionalHook.onScreenText }
+      : shot),
+    publishingCopy: commercePublishingCopy,
+  }],
+}, ["sport-motion"]);
+assert.equal(sportConditionalPlan.plans[0].hook.copyPatternId, "conditional-visible-result");
+assert.equal(sportConditionalPlan.plans[0].shots[0].onScreenText, sportConditionalHook.hookLine);
 const partialWearPlan = normalizeCommercePlanGeneration({
   kind: "commerce-plan-generation",
   plans: [{
@@ -536,6 +558,18 @@ const commerceDraft = {
   extraRequirements: "",
   phase: "plans-ready",
 };
+const resetDraft = resetCommerceDraftForImages({
+  ...commerceDraft,
+  activePlanId: "plan-daily",
+  plans: commerceDraft.plans.map((plan, index) => index === 0 ? { ...plan, createdGeneratorNodeId: "generator-old" } : plan),
+}, [{ nodeId: "source-image-new", title: "新产品主图" }]);
+assert.deepEqual(resetDraft.images, [{ nodeId: "source-image-new", title: "新产品主图" }]);
+assert.equal(resetDraft.productName, "");
+assert.deepEqual(resetDraft.sellingPoints, []);
+assert.equal(resetDraft.plans.length, 1);
+assert.equal(resetDraft.plans[0].createdGeneratorNodeId, "generator-old");
+assert.equal(resetDraft.activePlanId, undefined);
+assert.equal(resetDraft.phase, "setup");
 const creationProviders = [
   { id: "seedance-old", model: "seedance-2.0-720p", videoOptions: { maxReferenceImages: 2, resolutions: ["720p", "1080p"] } },
   { id: "seedance-new", model: "seedance-2.0-1080p", videoOptions: { maxReferenceImages: 3, resolution: "1080p" } },

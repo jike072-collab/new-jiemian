@@ -104,6 +104,28 @@ export function newCommerceProductDraft(): CanvasCommerceProductDraft {
   };
 }
 
+export function resetCommerceDraftForImages(
+  draft: CanvasCommerceProductDraft,
+  images: CanvasCommerceProductDraft["images"],
+): CanvasCommerceProductDraft {
+  return {
+    ...draft,
+    images,
+    productName: "",
+    sellingPoints: [],
+    visibleFacts: [],
+    recommendedDirections: [],
+    selectedDirections: [],
+    directionSellingPoints: {},
+    creativeOptions: undefined,
+    selectedCreativeOptionId: undefined,
+    plans: draft.plans.filter((plan) => plan.createdGeneratorNodeId),
+    activePlanId: undefined,
+    phase: "setup",
+    error: undefined,
+  };
+}
+
 export function normalizeCommerceProductAnalysis(value: unknown): CanvasCommerceProductAnalysisResponse {
   const record = object(value);
   if (record.kind !== "commerce-product-analysis") throw new Error("产品分析返回格式无效。");

@@ -285,7 +285,7 @@ export const malaysiaCommerceCopyHookPatterns: readonly CopyHookPattern[] = [
   {
     id: "conditional-visible-result",
     label: "条件与可见结果",
-    directions: ["human-wear", "daily-style", "product-asmr", "handheld", "malay-review"],
+    directions: ["human-wear", "sport-motion", "daily-style", "product-asmr", "handheld", "malay-review"],
     formula: "说明完成一个简单动作后会得到一个可见的穿搭或展示结果。",
     firstFrame: "第一帧已经开始条件动作，结果尚未完全出现。",
     spokenRule: "条件和结果都短且能当场看到，不承诺身体感受或长期效果。",

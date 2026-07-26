@@ -378,7 +378,7 @@ function normalizeCommerceProductDraft(value: Record<string, unknown>, id: strin
   const requestedActivePlanId = optionalIdentifier(value.activePlanId, 120);
   const activePlanId = requestedActivePlanId && plans.some((plan) => plan.id === requestedActivePlanId)
     ? requestedActivePlanId
-    : plans.at(-1)?.id;
+    : [...plans].reverse().find((plan) => !plan.createdGeneratorNodeId)?.id;
   const phase = value.phase === "product-ready" || value.phase === "planning" || value.phase === "plans-ready" || value.phase === "error"
     ? value.phase
     : "setup";
