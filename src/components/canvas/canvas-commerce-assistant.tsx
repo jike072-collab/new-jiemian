@@ -221,6 +221,14 @@ export function CanvasCommerceAssistant({
     patchDraft({ phase: "planning", error: undefined });
     try {
       const selectedIds = draft.images.map((image) => image.nodeId);
+      const usedHookPatterns = draft.plans.flatMap((plan) => plan.hook ? [{
+        direction: plan.direction,
+        visualPatternId: plan.hook.visualPatternId,
+        copyPatternId: plan.hook.copyPatternId,
+        scenePatternId: plan.production?.scenePatternId,
+        shotPatternId: plan.production?.shotPatternId,
+        performancePatternId: plan.production?.performancePatternId,
+      }] : []);
       const response = await fetchJsonWithCsrf<unknown>("/api/canvas/assistant", {
         method: "POST",
         body: JSON.stringify({
@@ -232,11 +240,7 @@ export function CanvasCommerceAssistant({
           visibleFacts: draft.visibleFacts,
           selectedDirections: targetDirections,
           directionSellingPoints: draft.directionSellingPoints,
-          usedHookPatterns: draft.plans.flatMap((plan) => plan.hook ? [{
-            direction: plan.direction,
-            visualPatternId: plan.hook.visualPatternId,
-            copyPatternId: plan.hook.copyPatternId,
-          }] : []),
+          usedHookPatterns,
           extraRequirements: draft.extraRequirements,
           canvasTitle,
           scope,
@@ -244,7 +248,11 @@ export function CanvasCommerceAssistant({
           nodes: nodes.map((node) => ({ ...node, selected: selectedIds.includes(node.id) })),
         }),
       });
-      const generated = normalizeCommercePlanGeneration(response, targetDirections);
+      const generated = normalizeCommercePlanGeneration(response, targetDirections, {
+        visibleFacts: draft.visibleFacts,
+        imageCount: draft.images.length,
+        usedHookPatterns,
+      });
       const replacedDirections = new Set(targetDirections);
       const previousByDirection = new Map(draft.plans
         .filter((plan) => !plan.createdGeneratorNodeId && replacedDirections.has(plan.direction))
@@ -419,6 +427,21 @@ export function CanvasCommerceAssistant({
                 <div><dt>首帧</dt><dd>{plan.hook.scene} · {plan.hook.visualBeat}</dd></div>
               </dl>
             </div> : null}
+            {plan.production && plan.shots ? <details className="canvas-assistant__shot-plan">
+              <summary><span>4 镜头分镜脚本</span><small>{plan.production.energy === "dynamic" ? "动感" : plan.production.energy === "balanced" ? "均衡" : "舒缓"} · {plan.production.emotionArc}</small></summary>
+              <div className="canvas-assistant__production-note"><span>真实感</span><p>{plan.production.realismNotes}</p></div>
+              <ol>{plan.shots.map((shot) => <li key={shot.timeRange}>
+                <header><strong>{shot.timeRange}</strong><span>{shot.shotSize}</span></header>
+                <p><b>动作</b>{shot.action}</p>
+                <p><b>表演</b>{shot.performance}</p>
+                <p><b>产品</b>{shot.productState}</p>
+                <p><b>运镜</b>{shot.camera}</p>
+                <p><b>台词</b><span lang="ms">{shot.dialogue}</span></p>
+                <p><b>字幕</b><span lang="ms">{shot.onScreenText || "无"}</span></p>
+                <p><b>声音</b>{shot.sound}</p>
+                <p><b>转场</b>{shot.transition}</p>
+              </li>)}</ol>
+            </details> : null}
             <textarea value={plan.prompt} disabled={created} onChange={(event) => patchPlan(plan.id, { prompt: event.target.value })} aria-label={`${commerceDirectionLabel(plan.direction)}提示词`} />
             {plan.publishingCopy ? <div className="canvas-assistant__publishing-copy">
               <strong>马来语发布包</strong>

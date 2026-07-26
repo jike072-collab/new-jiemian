@@ -5,7 +5,9 @@ import type {
   CanvasCommerceDirection,
   CanvasCommercePlan,
   CanvasCommercePlanHook,
+  CanvasCommerceProductionRecipe,
   CanvasCommerceProductDraft,
+  CanvasCommerceShot,
   CanvasNodeData,
   CanvasReferenceBinding,
   CanvasReferenceRole,
@@ -13,7 +15,11 @@ import type {
 } from "./types";
 import {
   isMalaysiaCommerceHookPairCompatible,
+  isMalaysiaCommerceProductionRecipeCompatible,
   malaysiaCommerceCopyHookPattern,
+  malaysiaCommercePerformancePattern,
+  malaysiaCommerceScenePattern,
+  malaysiaCommerceShotPattern,
   malaysiaCommerceVisualHookPattern,
 } from "#malaysia-commerce-video-hook-library";
 import { composeTikTokCaption, normalizeTikTokCopyDraft, type TikTokCopyDraft } from "#tiktok-copy";
@@ -140,40 +146,190 @@ export function commerceCreativeStyleLabel(style: CanvasCommerceCreativeStyle) {
   return "运动场景";
 }
 
-export function normalizeCommercePlanGeneration(value: unknown, expectedDirections?: CanvasCommerceDirection[]): CanvasCommercePlanGenerationResponse {
+export function normalizeCommercePlanGeneration(
+  value: unknown,
+  expectedDirections?: CanvasCommerceDirection[],
+  context: {
+    visibleFacts?: string[];
+    imageCount?: number;
+    usedHookPatterns?: Array<{
+      direction: CanvasCommerceDirection;
+      visualPatternId: string;
+      copyPatternId: string;
+      scenePatternId?: string;
+      shotPatternId?: string;
+      performancePatternId?: string;
+    }>;
+  } = {},
+): CanvasCommercePlanGenerationResponse {
   const record = object(value);
   if (record.kind !== "commerce-plan-generation" || !Array.isArray(record.plans)) throw new Error("提示词方案返回格式无效。");
   const expected = expectedDirections ? new Set(expectedDirections) : null;
   const seen = new Set<CanvasCommerceDirection>();
   const seenHookPairs = new Set<string>();
+  const seenProductionRecipes = new Set<string>();
+  const usedRecipes = new Set((context.usedHookPatterns || []).flatMap((pattern) => pattern.scenePatternId && pattern.shotPatternId && pattern.performancePatternId ? [
+    `${pattern.direction}:${pattern.visualPatternId}:${pattern.copyPatternId}:${pattern.scenePatternId}:${pattern.shotPatternId}:${pattern.performancePatternId}`,
+  ] : []));
   const plans = record.plans.slice(0, 3).flatMap((candidate) => {
     const item = object(candidate, false);
     if (!item) return [];
     const direction = text(item.direction, 40) as CanvasCommerceDirection;
-    const prompt = text(item.prompt, 8_000);
-    if (!directions.has(direction) || seen.has(direction) || (expected && !expected.has(direction)) || !prompt) return [];
+    if (!directions.has(direction) || seen.has(direction) || (expected && !expected.has(direction))) return [];
     const hook = normalizeCommercePlanHook(item.hook, direction);
+    const production = normalizeCommerceProductionRecipe(item.production, direction);
+    const shots = normalizeCommerceShots(item.shots, direction, hook);
     const publishingCopy = normalizeCommercePublishingCopy(item.publishingCopy);
-    if (!hook || !publishingCopy) throw new Error(`“${commerceDirectionLabel(direction)}”缺少合法的钩子或发布文案。`);
+    if (!hook || !production || !shots || !publishingCopy) throw new Error(`“${commerceDirectionLabel(direction)}”缺少合法的钩子、制作方案、四镜头脚本或发布文案。`);
     const hookPair = `${hook.visualPatternId}:${hook.copyPatternId}`;
     if (seenHookPairs.has(hookPair)) throw new Error("批量方案不能重复使用完全相同的视觉与话术钩子组合。");
+    const productionRecipe = `${production.scenePatternId}:${production.shotPatternId}:${production.performancePatternId}`;
+    if (seenProductionRecipes.has(productionRecipe)) throw new Error("批量方案不能重复使用完全相同的场景、镜头节奏与表演组合。");
+    const completeRecipe = `${direction}:${hookPair}:${productionRecipe}`;
+    if (usedRecipes.has(completeRecipe)) throw new Error(`“${commerceDirectionLabel(direction)}”重复使用了历史完整制作配方，请重新分析。`);
+    const referenceBindings = normalizeBindings(item.referenceBindings);
+    const prompt = composeCommerceSeedancePrompt({
+      hook,
+      production,
+      shots,
+      referenceBindings,
+      visibleFacts: context.visibleFacts || stringList(item.visibleFacts, 16, 160),
+      imageCount: context.imageCount,
+    });
     validateCommercePlanContent(prompt, hook, publishingCopy);
     seen.add(direction);
     seenHookPairs.add(hookPair);
+    seenProductionRecipes.add(productionRecipe);
     return [{
       id: text(item.id, 120) || commerceId("plan"),
       direction,
       title: text(item.title, 120) || commerceDirectionOptions.find((option) => option.id === direction)?.label || "15 秒带货方案",
       sellingPoint: text(item.sellingPoint, 160),
       prompt,
-      referenceBindings: normalizeBindings(item.referenceBindings),
+      referenceBindings,
       hook,
+      production,
+      shots,
       publishingCopy,
       selected: true,
     }];
   });
   if (!plans.length || (expected && plans.length !== expected.size)) throw new Error("助手没有完整返回所选方向的提示词方案。");
   return { kind: "commerce-plan-generation", plans };
+}
+
+export function normalizeCommerceProductionRecipe(value: unknown, direction: CanvasCommerceDirection): CanvasCommerceProductionRecipe | undefined {
+  const item = object(value, false);
+  if (!item) return undefined;
+  const scenePatternId = text(item.scenePatternId, 80);
+  const shotPatternId = text(item.shotPatternId, 80);
+  const performancePatternId = text(item.performancePatternId, 80);
+  if (!malaysiaCommerceScenePattern(scenePatternId)
+    || !malaysiaCommerceShotPattern(shotPatternId)
+    || !malaysiaCommercePerformancePattern(performancePatternId)
+    || !isMalaysiaCommerceProductionRecipeCompatible(scenePatternId, shotPatternId, performancePatternId, direction)) return undefined;
+  const energy = text(item.energy, 24) as CanvasCommerceProductionRecipe["energy"];
+  const emotionArc = text(item.emotionArc, 360);
+  const realismNotes = text(item.realismNotes, 500);
+  if (!(["calm", "balanced", "dynamic"] as const).includes(energy) || !emotionArc || !realismNotes) return undefined;
+  if (direction === "sport-motion" && energy !== "dynamic") return undefined;
+  if (direction === "product-asmr" && energy === "dynamic") return undefined;
+  return { scenePatternId, shotPatternId, performancePatternId, energy, emotionArc, realismNotes };
+}
+
+export function normalizeCommerceShots(value: unknown, direction: CanvasCommerceDirection, hook?: CanvasCommercePlanHook): CanvasCommerceShot[] | undefined {
+  if (!Array.isArray(value) || value.length !== 4 || !hook) return undefined;
+  const timeRanges: CanvasCommerceShot["timeRange"][] = ["0-2秒", "2-7秒", "7-12秒", "12-15秒"];
+  const shots = value.flatMap((candidate, index) => {
+    const item = object(candidate, false);
+    if (!item || text(item.timeRange, 24).replace(/\s+/gu, "").replace(/[–—]/gu, "-") !== timeRanges[index]) return [];
+    const shot = {
+      timeRange: timeRanges[index],
+      shotSize: text(item.shotSize, 80),
+      camera: text(item.camera, 240),
+      action: text(item.action, 360),
+      performance: text(item.performance, 360),
+      productState: text(item.productState, 300),
+      dialogue: text(item.dialogue, 240),
+      onScreenText: text(item.onScreenText, 160),
+      sound: text(item.sound, 240),
+      transition: text(item.transition, 240),
+    } satisfies CanvasCommerceShot;
+    if (!shot.shotSize || !shot.camera || !shot.action || !shot.performance || !shot.productState || !shot.dialogue || !shot.sound || !shot.transition) return [];
+    if (!/(?:全景|中景|近景|特写|极近景|半身|全身|POV|主观)/u.test(shot.shotSize)) return [];
+    if (!/(?:固定|推进|后拉|跟拍|侧移|环绕|低机位|手持|俯拍|仰拍|摇镜|主观|POV|匹配剪辑)/u.test(shot.camera)) return [];
+    return [shot];
+  });
+  if (shots.length !== 4 || shots[0].onScreenText !== hook.onScreenText) return undefined;
+  if (direction !== "product-asmr" && !shots[0].dialogue.includes(hook.hookLine)) return undefined;
+  if (direction === "product-asmr" && shots[0].dialogue !== "无口播" && !shots[0].dialogue.includes(hook.hookLine)) return undefined;
+  return shots;
+}
+
+export function composeCommerceSeedancePrompt({
+  hook,
+  production,
+  shots,
+  referenceBindings,
+  visibleFacts,
+  imageCount,
+}: {
+  hook: CanvasCommercePlanHook;
+  production: CanvasCommerceProductionRecipe;
+  shots: CanvasCommerceShot[];
+  referenceBindings: CanvasReferenceBinding[];
+  visibleFacts: string[];
+  imageCount?: number;
+}) {
+  const references = referenceBindings.length ? referenceBindings : Array.from({ length: Math.max(1, Math.min(4, imageCount || 1)) }, (_, index) => ({
+    label: `@Image${index + 1}`,
+    role: "product" as const,
+    transfer: "鞋子真实外观、配色和可见结构",
+    ignore: "原图背景、文字和不可验证信息",
+  }));
+  const referenceText = references.map((binding) => `${binding.label}：${binding.transfer || "产品外观"}；不继承${binding.ignore || "原图背景"}`).join("\n");
+  const facts = visibleFacts.length ? visibleFacts.map((fact) => `- ${fact}`).join("\n") : "- 只使用参考图可直接核对的鞋型、配色和结构";
+  const visualPattern = malaysiaCommerceVisualHookPattern(hook.visualPatternId);
+  const copyPattern = malaysiaCommerceCopyHookPattern(hook.copyPatternId);
+  const scenePattern = malaysiaCommerceScenePattern(production.scenePatternId);
+  const shotPattern = malaysiaCommerceShotPattern(production.shotPatternId);
+  const performancePattern = malaysiaCommercePerformancePattern(production.performancePatternId);
+  const energyGuidance = production.energy === "dynamic"
+    ? "剪辑紧凑但动作完整，脚步强拍驱动切镜，跟拍有真实加减速和轻微惯性"
+    : production.energy === "balanced"
+      ? "节奏有起伏，揭示段加快、证据段放稳，镜头运动有清楚起止"
+      : "节奏克制，依靠触感声和细节变化维持注意力，运镜平稳且不僵硬";
+  const openingVoice = shots[0]?.dialogue === "无口播"
+    ? `开头不口播；话术意图“${hook.hookLine}”只用于指导字幕语气，屏幕短字严格使用“${hook.onScreenText}”`
+    : `开头口播“${hook.hookLine}”，屏幕短字严格使用“${hook.onScreenText}”`;
+  const shotText = shots.map((shot, index) => [
+    `镜头 ${index + 1}｜${shot.timeRange}｜${shot.shotSize}`,
+    `动作：${shot.action}`,
+    `人物与情绪：${shot.performance}`,
+    `产品状态：${shot.productState}`,
+    `镜头：${shot.camera}`,
+    `台词/旁白：${shot.dialogue}`,
+    `屏幕短字：${shot.onScreenText || "无"}`,
+    `声音：${shot.sound}`,
+    `转场：${shot.transition}`,
+  ].join("\n")).join("\n\n");
+  return [
+    "素材职责：",
+    referenceText,
+    "产品可见事实：",
+    facts,
+    `开头机制：${visualPattern?.label || hook.visualPatternId} + ${copyPattern?.label || hook.copyPatternId}。${hook.reason}`,
+    `场景与当地细节：${scenePattern?.setting || hook.scene}；${scenePattern?.localDetails || hook.scene}。动作边界：${scenePattern?.movementBoundary || "只做与鞋型匹配的低风险动作"}。`,
+    `镜头节奏：${shotPattern?.label || production.shotPatternId}。${shotPattern?.cameraRhythm || "四个镜头景别清楚变化"}。转场原则：${shotPattern?.transitionRule || "只使用由人物动作触发的自然转场"}。`,
+    `动感强度：${production.energy}。${energyGuidance}。`,
+    `情绪弧线：${production.emotionArc}`,
+    `表演基准：${performancePattern?.performance || production.realismNotes}。情绪参考：${performancePattern?.emotionArc || production.emotionArc}。`,
+    `真人真实感：${production.realismNotes}。9:16 原生手机短视频观感，自然曝光和真实皮肤纹理；人物动作有准备、发力和收势，保留自然眨眼、呼吸、视线转移、重心变化和微小停顿，背景人物不抢戏；鞋子结构、配色、左右脚和参考图全程一致。`,
+    "四镜头分镜脚本：",
+    shotText,
+    `声音/口播：从第 0 秒开始；${openingVoice}；最多三句短马来语，动作声与节拍承担中段情绪。`,
+    "禁止项：不得虚构价格、折扣、库存、销量、评价、品牌、材料、舒适、防滑、耐磨、透气或健康功效；不得使用危险动作、事故、受伤、街头骚扰；不得出现僵硬口型、广告式连续点头、漂浮滑步、肢体畸变、鞋子变形、文字乱码或无动机炫技运镜。",
+  ].join("\n\n").slice(0, 8_000);
 }
 
 export function normalizeCommercePlanHook(value: unknown, direction: CanvasCommerceDirection): CanvasCommercePlanHook | undefined {

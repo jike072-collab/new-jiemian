@@ -85,6 +85,20 @@ const normalized = normalizeCanvasDocument({
               scene: "室内产品桌面",
               visualBeat: "第一帧手指已轻触鞋面拼接。",
             },
+            production: {
+              scenePatternId: "studio-tactile-table",
+              shotPatternId: "macro-pullback-rotate-hero",
+              performancePatternId: "quiet-tactile-focus",
+              energy: "balanced",
+              emotionArc: "细节吸引到视觉满足",
+              realismNotes: "真实手部轻触并保留自然停顿",
+            },
+            shots: [
+              { timeRange: "0-2秒", shotSize: "极近景", camera: "固定微距", action: "轻触拼接", performance: "动作轻缓", productState: "鞋子静置", dialogue: "无口播", onScreenText: "Detail ni memang menyerlah", sound: "轻触声", transition: "强拍后拉" },
+              { timeRange: "2-7秒", shotSize: "近景", camera: "快速后拉", action: "展示鞋型", performance: "手部自然调整", productState: "侧面完整", dialogue: "无口播", onScreenText: "", sound: "音乐进入", transition: "手部转动" },
+              { timeRange: "7-12秒", shotSize: "特写", camera: "短推进", action: "展示鞋带", performance: "停顿确认", productState: "结构一致", dialogue: "无口播", onScreenText: "", sound: "鞋带声", transition: "提示音切换" },
+              { timeRange: "12-15秒", shotSize: "中近景", camera: "固定机位", action: "产品稳定收束", performance: "双手退出", productState: "完整展示", dialogue: "无口播", onScreenText: "", sound: "音乐收束", transition: "停留结束" },
+            ],
             prompt: "0-2 秒钩子",
             referenceBindings: [{ label: "@Image1", role: "product" }],
             publishingCopy: {
@@ -113,6 +127,8 @@ assert.equal(normalized.assistantState?.commerce?.products["product-1"].directio
 assert.equal(normalized.assistantState?.commerce?.products["product-1"].creativeOptions?.length, 3);
 assert.equal(normalized.assistantState?.commerce?.products["product-1"].selectedCreativeOptionId, "hook-2");
 assert.equal(normalized.assistantState?.commerce?.products["product-1"].plans[0].hook?.visualPatternId, "product-asmr-detail");
+assert.equal(normalized.assistantState?.commerce?.products["product-1"].plans[0].production?.shotPatternId, "macro-pullback-rotate-hero");
+assert.equal(normalized.assistantState?.commerce?.products["product-1"].plans[0].shots?.length, 4);
 assert.equal(normalized.assistantState?.commerce?.products["product-1"].plans[0].publishingCopy?.hashtags.includes("#fyp"), false);
 
 assert.deepEqual(canvasMediaNodeSize(1920, 1080), { width: 420, height: 310, frameWidth: 418, frameHeight: 235 });

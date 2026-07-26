@@ -14,8 +14,12 @@ import type { CanvasAssistantVisualEvidence } from "@/lib/server/canvas-assistan
 import type { CanvasCommerceDirection, CanvasMediaType, CanvasReferenceBinding, CanvasSequenceState } from "@/lib/canvas/types";
 import {
   isMalaysiaCommerceHookPairCompatible,
+  isMalaysiaCommerceProductionRecipeCompatible,
   malaysiaCommerceCopyHookPattern,
   malaysiaCommerceHookPromptLibrary,
+  malaysiaCommercePerformancePattern,
+  malaysiaCommerceScenePattern,
+  malaysiaCommerceShotPattern,
   malaysiaCommerceVisualHookPattern,
 } from "#malaysia-commerce-video-hook-library";
 import { seedanceCanvasAssistantRules, seedancePromptGuidance } from "@/lib/seedance/prompt-guidance";
@@ -62,6 +66,9 @@ export type CanvasAssistantInput = {
     direction: CanvasCommerceDirection;
     visualPatternId: string;
     copyPatternId: string;
+    scenePatternId?: string;
+    shotPatternId?: string;
+    performancePatternId?: string;
   }>;
   extraRequirements?: string;
 };
@@ -131,8 +138,16 @@ const commercePlanGenerationPrompt = [
   "提示词主体使用简体中文；口播、对白、字幕和 CTA 使用自然的马来西亚马来语，可少量自然混用当地常见英语，禁止生硬逐字翻译。",
   "固定时间轴为 0-2 秒停留钩子、2-7 秒核心价值演示、7-12 秒可见细节或可信视觉证据、12-15 秒结果收束与 CTA。每段只有一个主要动作和一个有动机的主要运镜。",
   "先为每个方向从双层知识库选择一个兼容的 visualPatternId 和 copyPatternId。批量生成尽量不重复；usedHookPatterns 是同方向历史组合，重新分析时优先更换 copyPatternId，其次更换 visualPatternId。",
+  "同时为每个方向选择兼容的 scenePatternId、shotPatternId 和 performancePatternId。重新分析继续轮换镜头节奏、当地场景和人物表演，不能只换第一句口播。",
   "每个方案 hook 必须包含简体中文 title 和 reason、自然马来语 hookLine、3-7 个马来语词的 onScreenText、简体中文 scene 和 0-2 秒可执行 visualBeat。不得返回知识库外的 ID。",
   "0-2 秒必须让 hookLine、onScreenText、首帧动作和声音表达同一钩子，并把两段马来语原样写进最终 prompt。痛点和反差可使用穿鞋前后；ASMR、动作中开场和悬念揭示不强制先拍未穿鞋。",
+  "production 必须包含三个模式 ID、energy（calm、balanced 或 dynamic）、简体中文 emotionArc 和 realismNotes。真人方向优先 balanced 或 dynamic；运动动态必须 dynamic；ASMR 可 calm 或 balanced。",
+  "shots 必须正好四个，timeRange 依次且只能是 0-2秒、2-7秒、7-12秒、12-15秒。每镜头完整填写 shotSize、camera、action、performance、productState、dialogue、onScreenText、sound、transition。",
+  "shotSize 使用可执行景别，例如全景、中景、半身、全身、近景、特写、极近景或 POV；camera 写清机位和运动，例如低机位侧向跟拍、短推进、快速后拉、固定中景或匹配剪辑，不得只写电影感、动感、高级感。",
+  "performance 必须写人物当下视线、表情、重心和微动作，情绪由轻微问题自然过渡到发现、确认和收束；保留眨眼、呼吸、停顿和动作惯性，禁止广告式连续点头、僵硬对口型和从头到尾直视镜头。",
+  "action 每镜头只能有一个主要动作，并写清准备、发生和收势；productState 必须说明鞋子是否已穿、由谁拿着、可见角度和连续性。camera 只服务该动作，每镜头最多一个主要运镜。",
+  "dialogue 必须写准确马来语台词，没口播时明确写“无口播”；真人全片最多三句。第一镜头 onScreenText 必须与 hook.onScreenText 完全一致，其余没文字时写空字符串。sound 从第 0 秒开始，写清环境声、动作声和节拍变化。",
+  "transition 必须说明如何从当前动作自然切到下一镜头，例如脚步落点匹配剪辑、人物经过前景遮挡、手部移开遮挡或声音强拍切换，不使用无动机闪白和随机特效。",
   "15 秒必须有 4 个清楚不同的分镜节拍，对应四段时间轴。每段明确写出场景、人物动作、产品状态、景别或运镜、同期声音或台词；同一构图连续不超过 3 秒。禁止整段固定机位、整段只拍脚踝、只有缓慢旋转产品或从头到尾介绍参数。",
   "真人上脚、运动动态、日常穿搭和马来语口播属于真人方向：画面只安排一名马来西亚本地成年人物，从当地多元人群中自然选择，肤色、五官、发型和适应热带气候的日常穿搭真实自然；不指定或夸张族群、宗教符号，不使用刻板化形象。",
   "真人方向的 0-2 秒优先使用自然马来语痛点问句或可见困扰作为钩子，再进入产品展示。痛点只能来自已确认的风格、配色、搭配、外观结构或合理场景，例如难搭配日常服装；不得虚构脚痛、舒适、防滑、耐磨、透气或其他无法从图片验证的问题和功效。",
@@ -147,7 +162,7 @@ const commercePlanGenerationPrompt = [
   "不得伪造退货、消费者证言或长期使用经历。数字式钩子只能使用 2 或 3，并在 15 秒时间轴内逐项兑现。禁止倒地、跳椅、假装崴脚、伪装受伤动物、投掷液体、街头骚扰、阻碍交通或虚构事故。",
   "每个方案同时返回 publishingCopy：自然马来语 title、1-2 句 caption、4-6 个相关 hashtags、angle 和 category；默认不得使用 #fyp，不得把标签写进 title 或 caption。",
   "referenceBindings 中每张图片 role 使用 product，transfer 只写产品真实外观职责，ignore 明确不转移背景和不可验证信息。",
-  "仅输出 JSON，不要 Markdown：{\"kind\":\"commerce-plan-generation\",\"plans\":[{\"id\":\"plan-1\",\"direction\":\"product-asmr\",\"title\":\"\",\"sellingPoint\":\"\",\"hook\":{\"visualPatternId\":\"product-asmr-detail\",\"copyPatternId\":\"expectation-gap\",\"title\":\"\",\"reason\":\"\",\"hookLine\":\"\",\"onScreenText\":\"\",\"scene\":\"\",\"visualBeat\":\"\"},\"prompt\":\"\",\"referenceBindings\":[{\"label\":\"@Image1\",\"role\":\"product\",\"transfer\":\"产品外观\",\"ignore\":\"背景\"}],\"publishingCopy\":{\"title\":\"\",\"caption\":\"\",\"hashtags\":[\"#kasut\",\"#shoes\",\"#sneakers\",\"#kasutharian\"],\"angle\":\"auto\",\"category\":\"auto\"}}]}",
+  "仅输出 JSON，不要 Markdown：{\"kind\":\"commerce-plan-generation\",\"plans\":[{\"id\":\"plan-1\",\"direction\":\"product-asmr\",\"title\":\"\",\"sellingPoint\":\"\",\"hook\":{\"visualPatternId\":\"product-asmr-detail\",\"copyPatternId\":\"expectation-gap\",\"title\":\"\",\"reason\":\"\",\"hookLine\":\"\",\"onScreenText\":\"\",\"scene\":\"\",\"visualBeat\":\"\"},\"production\":{\"scenePatternId\":\"studio-tactile-table\",\"shotPatternId\":\"macro-pullback-rotate-hero\",\"performancePatternId\":\"quiet-tactile-focus\",\"energy\":\"balanced\",\"emotionArc\":\"\",\"realismNotes\":\"\"},\"shots\":[{\"timeRange\":\"0-2秒\",\"shotSize\":\"极近景\",\"camera\":\"固定微距\",\"action\":\"\",\"performance\":\"\",\"productState\":\"\",\"dialogue\":\"无口播\",\"onScreenText\":\"\",\"sound\":\"\",\"transition\":\"\"},{\"timeRange\":\"2-7秒\",\"shotSize\":\"近景\",\"camera\":\"快速后拉\",\"action\":\"\",\"performance\":\"\",\"productState\":\"\",\"dialogue\":\"无口播\",\"onScreenText\":\"\",\"sound\":\"\",\"transition\":\"\"},{\"timeRange\":\"7-12秒\",\"shotSize\":\"特写\",\"camera\":\"短推进\",\"action\":\"\",\"performance\":\"\",\"productState\":\"\",\"dialogue\":\"无口播\",\"onScreenText\":\"\",\"sound\":\"\",\"transition\":\"\"},{\"timeRange\":\"12-15秒\",\"shotSize\":\"中近景\",\"camera\":\"固定机位\",\"action\":\"\",\"performance\":\"\",\"productState\":\"\",\"dialogue\":\"无口播\",\"onScreenText\":\"\",\"sound\":\"\",\"transition\":\"\"}],\"referenceBindings\":[{\"label\":\"@Image1\",\"role\":\"product\",\"transfer\":\"产品外观\",\"ignore\":\"背景\"}],\"publishingCopy\":{\"title\":\"\",\"caption\":\"\",\"hashtags\":[\"#kasut\",\"#shoes\",\"#sneakers\",\"#kasutharian\"],\"angle\":\"auto\",\"category\":\"auto\"}}]}",
 ].join("\n");
 
 const canvasAssistantRetryDelayMs = 350;
@@ -233,11 +248,25 @@ function normalizeInput(input: Partial<CanvasAssistantInput>): CanvasAssistantIn
     const direction = text(item.direction, 40) as CanvasCommerceDirection;
     const visualPatternId = text(item.visualPatternId, 80);
     const copyPatternId = text(item.copyPatternId, 80);
+    const scenePatternId = text(item.scenePatternId, 80);
+    const shotPatternId = text(item.shotPatternId, 80);
+    const performancePatternId = text(item.performancePatternId, 80);
     if (!commerceDirections.has(direction)
       || !malaysiaCommerceVisualHookPattern(visualPatternId)
       || !malaysiaCommerceCopyHookPattern(copyPatternId)
       || !isMalaysiaCommerceHookPairCompatible(visualPatternId, copyPatternId, direction)) return [];
-    return [{ direction, visualPatternId, copyPatternId }];
+    const hasProductionRecipe = Boolean(scenePatternId || shotPatternId || performancePatternId);
+    const validProductionRecipe = Boolean(scenePatternId && shotPatternId && performancePatternId
+      && malaysiaCommerceScenePattern(scenePatternId)
+      && malaysiaCommerceShotPattern(shotPatternId)
+      && malaysiaCommercePerformancePattern(performancePatternId)
+      && isMalaysiaCommerceProductionRecipeCompatible(scenePatternId, shotPatternId, performancePatternId, direction));
+    return [{
+      direction,
+      visualPatternId,
+      copyPatternId,
+      ...(!hasProductionRecipe || !validProductionRecipe ? {} : { scenePatternId, shotPatternId, performancePatternId }),
+    }];
   }) : undefined;
   return {
     message,
@@ -386,7 +415,11 @@ async function answerCommerceWorkflow(
   });
   const parsed = parseJsonObject(output);
   if (normalized.workflow === "commerce-product-analysis") return normalizeCommerceProductAnalysis(parsed);
-  const generated = normalizeCommercePlanGeneration(parsed, normalized.selectedDirections);
+  const generated = normalizeCommercePlanGeneration(parsed, normalized.selectedDirections, {
+    visibleFacts: normalized.visibleFacts,
+    imageCount: selectedImages.length,
+    usedHookPatterns: normalized.usedHookPatterns,
+  });
   return {
     ...generated,
     plans: generated.plans.map((plan) => ({

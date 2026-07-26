@@ -431,6 +431,8 @@ function normalizeCommercePlan(value: unknown): CanvasCommercePlan | null {
   const createdPromptNodeId = optionalIdentifier(value.createdPromptNodeId, 160);
   const createdGeneratorNodeId = optionalIdentifier(value.createdGeneratorNodeId, 160);
   const hook = normalizeCommercePlanHookForDocument(value.hook);
+  const production = normalizeCommerceProductionRecipeForDocument(value.production);
+  const shots = normalizeCommerceShotsForDocument(value.shots);
   const publishingCopy = normalizeCommercePublishingCopyForDocument(value.publishingCopy);
   return {
     id,
@@ -440,6 +442,8 @@ function normalizeCommercePlan(value: unknown): CanvasCommercePlan | null {
     prompt,
     referenceBindings: normalizeReferenceBindings(value.referenceBindings),
     ...(hook ? { hook } : {}),
+    ...(production ? { production } : {}),
+    ...(shots ? { shots } : {}),
     ...(publishingCopy ? { publishingCopy } : {}),
     selected: Boolean(value.selected),
     ...(providerId ? { providerId } : {}),
@@ -447,6 +451,40 @@ function normalizeCommercePlan(value: unknown): CanvasCommercePlan | null {
     ...(createdPromptNodeId ? { createdPromptNodeId } : {}),
     ...(createdGeneratorNodeId ? { createdGeneratorNodeId } : {}),
   };
+}
+
+function normalizeCommerceProductionRecipeForDocument(value: unknown): CanvasCommercePlan["production"] {
+  if (!isRecord(value)) return undefined;
+  const scenePatternId = boundedString(value.scenePatternId, 80).trim();
+  const shotPatternId = boundedString(value.shotPatternId, 80).trim();
+  const performancePatternId = boundedString(value.performancePatternId, 80).trim();
+  const energy = boundedString(value.energy, 24) as NonNullable<CanvasCommercePlan["production"]>["energy"];
+  const emotionArc = boundedString(value.emotionArc, 360).trim();
+  const realismNotes = boundedString(value.realismNotes, 500).trim();
+  if (!scenePatternId || !shotPatternId || !performancePatternId || !(["calm", "balanced", "dynamic"] as const).includes(energy) || !emotionArc || !realismNotes) return undefined;
+  return { scenePatternId, shotPatternId, performancePatternId, energy, emotionArc, realismNotes };
+}
+
+function normalizeCommerceShotsForDocument(value: unknown): CanvasCommercePlan["shots"] {
+  if (!Array.isArray(value) || value.length !== 4) return undefined;
+  const timeRanges = ["0-2秒", "2-7秒", "7-12秒", "12-15秒"] as const;
+  const shots = value.flatMap((candidate, index) => {
+    if (!isRecord(candidate) || boundedString(candidate.timeRange, 24).replace(/\s+/gu, "").replace(/[–—]/gu, "-") !== timeRanges[index]) return [];
+    const shot = {
+      timeRange: timeRanges[index],
+      shotSize: boundedString(candidate.shotSize, 80).trim(),
+      camera: boundedString(candidate.camera, 240).trim(),
+      action: boundedString(candidate.action, 360).trim(),
+      performance: boundedString(candidate.performance, 360).trim(),
+      productState: boundedString(candidate.productState, 300).trim(),
+      dialogue: boundedString(candidate.dialogue, 240).trim(),
+      onScreenText: boundedString(candidate.onScreenText, 160).trim(),
+      sound: boundedString(candidate.sound, 240).trim(),
+      transition: boundedString(candidate.transition, 240).trim(),
+    };
+    return Object.entries(shot).every(([key, field]) => key === "onScreenText" || Boolean(field)) ? [shot] : [];
+  });
+  return shots.length === 4 ? shots : undefined;
 }
 
 function normalizeCommercePlanHookForDocument(value: unknown): CanvasCommercePlan["hook"] {

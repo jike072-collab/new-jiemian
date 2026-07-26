@@ -51,6 +51,28 @@ export type CanvasCommercePlanHook = {
   visualBeat: string;
 };
 
+export type CanvasCommerceProductionRecipe = {
+  scenePatternId: string;
+  shotPatternId: string;
+  performancePatternId: string;
+  energy: "calm" | "balanced" | "dynamic";
+  emotionArc: string;
+  realismNotes: string;
+};
+
+export type CanvasCommerceShot = {
+  timeRange: "0-2秒" | "2-7秒" | "7-12秒" | "12-15秒";
+  shotSize: string;
+  camera: string;
+  action: string;
+  performance: string;
+  productState: string;
+  dialogue: string;
+  onScreenText: string;
+  sound: string;
+  transition: string;
+};
+
 export type CanvasCommercePlan = {
   id: string;
   direction: CanvasCommerceDirection;
@@ -59,6 +81,8 @@ export type CanvasCommercePlan = {
   prompt: string;
   referenceBindings: CanvasReferenceBinding[];
   hook?: CanvasCommercePlanHook;
+  production?: CanvasCommerceProductionRecipe;
+  shots?: CanvasCommerceShot[];
   publishingCopy?: TikTokCopyDraft;
   selected: boolean;
   providerId?: string;
