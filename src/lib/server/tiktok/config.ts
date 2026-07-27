@@ -15,6 +15,7 @@ export type ZernioCredential = {
   id: string;
   apiKey: string;
   profileIds: string[];
+  displayName?: string;
 };
 
 export class TikTokConfigurationError extends Error {
@@ -89,11 +90,12 @@ function parseExtraCredentials(value: string): ZernioCredential[] | null {
       const candidate = entry as Record<string, unknown>;
       const id = String(candidate.id || "").trim();
       const apiKey = String(candidate.apiKey || "").trim();
+      const displayName = String(candidate.displayName || "").trim() || undefined;
       const profileIds = Array.from(new Set(Array.isArray(candidate.profileIds)
         ? candidate.profileIds.map((profileId) => String(profileId).trim()).filter(Boolean)
         : []));
       if (!id || !apiKey || !profileIds.length) throw new Error("invalid credential");
-      return { id, apiKey, profileIds };
+      return { id, apiKey, profileIds, displayName };
     });
     if (new Set(credentials.map((credential) => credential.id)).size !== credentials.length) return null;
     if (credentials.some((credential) => credential.id === "default")) return null;

@@ -111,7 +111,7 @@ async function listAvailableTikTokAccounts(): Promise<TikTokAvailableAccount[]> 
       zernioCredentialId: credential.id,
       zernioProfileId,
       zernioAccountId: account._id,
-      displayName: account.displayName || account.username || "TikTok",
+      displayName: credential.displayName || account.displayName || account.username || "TikTok",
       avatarUrl: account.avatarUrl,
       creatorUsername: (account.username || "").replace(/^@/, "") || undefined,
     });
@@ -136,7 +136,7 @@ export async function claimTikTokAccount(userId: string, zernioCredentialId: str
     zernioCredentialId: credential.id,
     zernioProfileId,
     zernioAccountId: account._id,
-    displayName: account.displayName || account.username || "TikTok",
+    displayName: credential.displayName || account.displayName || account.username || "TikTok",
     avatarUrl: account.avatarUrl,
     creatorUsername: (account.username || "").replace(/^@/, "") || undefined,
   });

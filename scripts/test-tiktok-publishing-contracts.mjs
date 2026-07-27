@@ -39,6 +39,7 @@ assert.match(service, /uploadZernioVideo\(\{[^}]*fileSize: video\.size/s);
 assert.doesNotMatch(client, /console\.(log|error).*apiKey/i);
 assert.match(config, /ZERNIO_EXTRA_CREDENTIALS_JSON/);
 assert.match(config, /requireZernioCredential/);
+assert.match(config, /displayName\?: string/);
 
 assert.match(service, /state\.userId !== input\.userId/);
 assert.match(service, /getTikTokConnectionByAccountId/);
@@ -85,6 +86,7 @@ assert.match(publisher, /connection\.connections\.map/);
 assert.match(publisher, /zernioAccountId: selectedAccountId/);
 assert.match(publisher, /zernioCredentialId: account\.zernioCredentialId/);
 assert.match(publisher, /发布账号/);
+assert.match(publisher, /<strong>\{selectedConnection\.displayName\}<\/strong>/);
 assert.match(publisher, /\/api\/tiktok\/copy/);
 assert.match(publisher, /正在分析视频并生成马来西亚文案/);
 assert.match(publisher, /malaysiaTikTokCopyAngles\.map/);

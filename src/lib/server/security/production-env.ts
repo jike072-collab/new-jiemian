@@ -530,7 +530,8 @@ function checkZernioTikTok(issues: RuntimeEnvironmentIssue[], env: RuntimeEnv) {
           || !String(credential.apiKey || "").trim()
           || !Array.isArray(credential.profileIds)
           || !credential.profileIds.length
-          || credential.profileIds.some((id) => !/^[A-Za-z0-9_-]{4,255}$/.test(String(id)));
+          || credential.profileIds.some((id) => !/^[A-Za-z0-9_-]{4,255}$/.test(String(id)))
+          || (credential.displayName !== undefined && (!String(credential.displayName).trim() || String(credential.displayName).length > 255));
       })) throw new Error("invalid credentials");
     } catch {
       issue(issues, "ZERNIO_EXTRA_CREDENTIALS_JSON", "must be a JSON array of Zernio credential objects.");

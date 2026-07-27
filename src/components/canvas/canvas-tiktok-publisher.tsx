@@ -397,7 +397,7 @@ export function CanvasTikTokPublisher({ item, scope, initialCopy, onCopyChange, 
 
             {selectedConnection ? <div className="canvas-tiktok-account">
               <Send />
-              <span><strong>{creator?.creatorNickname || selectedConnection.displayName}</strong><small>{creator?.creatorUsername ? `@${creator.creatorUsername}` : "TikTok 已绑定"}</small></span>
+              <span><strong>{selectedConnection.displayName}</strong><small>{creator?.creatorUsername ? `@${creator.creatorUsername}` : "TikTok 已绑定"}</small></span>
               <button type="button" disabled={busy} onClick={() => { void disconnect(); }} aria-label={`解除 ${selectedConnection.displayName} 的 TikTok 绑定`} title="解绑"><LogOut /></button>
             </div> : null}
 
