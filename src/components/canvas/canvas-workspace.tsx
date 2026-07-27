@@ -130,6 +130,7 @@ import {
   generationBillingFingerprint,
 } from "@/lib/generation-quota";
 import { ApiError, fetchJson, fetchJsonWithCsrf } from "@/lib/client/api";
+import { seedanceLibraryModelName } from "@/lib/seedance-model-display";
 import type {
   CanvasCommerceAssistantState,
   CanvasCommerceProductDraft,
@@ -4715,6 +4716,11 @@ type TeamOverviewResponse = {
     usage: { creditUnits: number; imageTasks: number; videoTasks: number };
   }>;
   totals: { creditUnits: number; imageTasks: number; videoTasks: number };
+  seedanceCanvas: {
+    successfulCount: number;
+    referenceVideoSuccessfulCount: number;
+    models: Array<{ model: string; successfulCount: number; referenceVideoSuccessfulCount: number }>;
+  };
 };
 
 type InternalAccessAccount = {
@@ -4834,6 +4840,22 @@ function TeamPanel({ onClose, allowCreateMembers }: { onClose: () => void; allow
               <div><span>图片任务</span><strong>{data.totals.imageTasks}</strong></div>
               <div><span>视频任务</span><strong>{data.totals.videoTasks}</strong></div>
             </div>
+            <section className="canvas-team-seedance" aria-label="Seedance 画布成功次数">
+              <div className="canvas-team-seedance__header">
+                <div><strong>Seedance 画布成功</strong><small>按模型统计，参考图片不计入参考视频</small></div>
+                <span>成功 {data.seedanceCanvas.successfulCount} · 参考视频 {data.seedanceCanvas.referenceVideoSuccessfulCount}</span>
+              </div>
+              <div className="canvas-team-seedance__list">
+                {data.seedanceCanvas.models.map((row) => (
+                  <div className="canvas-team-seedance__row" key={row.model}>
+                    <strong title={row.model}>{seedanceLibraryModelName(row.model) || row.model}</strong>
+                    <span>成功 {row.successfulCount}</span>
+                    <span>参考视频 {row.referenceVideoSuccessfulCount}</span>
+                  </div>
+                ))}
+                {!data.seedanceCanvas.models.length ? <div className="canvas-team-panel__empty">本周期暂无 Seedance 画布成功记录</div> : null}
+              </div>
+            </section>
             <div className="canvas-team-members">
               {data.members.map((member) => (
                 <div className="canvas-team-member" key={member.localUserId}>

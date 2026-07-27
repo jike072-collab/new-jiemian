@@ -17,7 +17,8 @@ import {
 } from "@/lib/server/integrations/new-api";
 import { applicationQuery } from "@/lib/server/database";
 import { isValidEmail, isValidUsername, normalizeEmail, normalizeUsername, publicSafeString, sha256 } from "@/lib/server/auth/normalize";
-import type { TeamUsageSummary } from "@/lib/server/team-usage";
+import { readLibraryMetadata } from "@/lib/server/library";
+import { aggregateSeedanceCanvasSuccess, type TeamUsageSummary } from "@/lib/server/team-usage";
 
 export type { TeamUsageSummary } from "@/lib/server/team-usage";
 
@@ -192,7 +193,12 @@ export class TeamService {
       imageTasks: summary.imageTasks + member.usage.imageTasks,
       videoTasks: summary.videoTasks + member.usage.videoTasks,
     }), { creditUnits: 0, imageTasks: 0, videoTasks: 0 });
-    return { ownerId, range, members: result, totals };
+    const seedanceCanvas = aggregateSeedanceCanvasSuccess(await readLibraryMetadata(), {
+      ownerIds: ids,
+      from: range.from,
+      to: range.to,
+    });
+    return { ownerId, range, members: result, totals, seedanceCanvas };
   }
 
   private toMember(user: AuthUser, usage: TeamUsageSummary, currentCredits: number | null): TeamMember {

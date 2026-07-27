@@ -259,6 +259,16 @@
 .canvas-team-stats > div { display: grid; gap: 4px; padding: 9px; border: 1px solid var(--border-subtle); border-radius: 6px; background: var(--surface); }
 .canvas-team-stats span, .canvas-team-member__metrics, .canvas-team-panel__empty { color: var(--muted); font-size: 10px; }
 .canvas-team-stats strong { font-size: 16px; }
+.canvas-team-seedance { display: grid; gap: 8px; margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--border-subtle); }
+.canvas-team-seedance__header { display: flex; align-items: end; justify-content: space-between; gap: 10px; }
+.canvas-team-seedance__header > div { display: grid; gap: 3px; min-width: 0; }
+.canvas-team-seedance__header strong { font-size: 12px; }
+.canvas-team-seedance__header small, .canvas-team-seedance__header > span { color: var(--muted); font-size: 10px; line-height: 1.4; }
+.canvas-team-seedance__header > span { flex: none; text-align: right; }
+.canvas-team-seedance__list { display: grid; }
+.canvas-team-seedance__row { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; align-items: center; gap: 10px; min-height: 34px; border-top: 1px solid var(--border-subtle); }
+.canvas-team-seedance__row strong { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 11px; }
+.canvas-team-seedance__row span { color: var(--muted); font-size: 10px; white-space: nowrap; }
 .canvas-team-members { display: grid; gap: 7px; margin-top: 12px; }
 .canvas-team-member { padding: 9px; border: 1px solid var(--border-subtle); border-radius: 6px; background: var(--surface); }
 .canvas-team-member__head { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; }

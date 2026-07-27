@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
-import { aggregateTeamUsage } from "../team-usage";
+import { aggregateSeedanceCanvasSuccess, aggregateTeamUsage } from "../team-usage";
 import type { UsageLogEntry } from "../quota/types";
 import { isInternalCanvasHostname, isRegistrationAllowedForHost } from "../auth/registration-policy";
 
@@ -37,6 +37,42 @@ test("team usage counts billable image and video work using actual units when av
   ]);
 
   assert.deepEqual(summary, { creditUnits: 24, imageTasks: 2, videoTasks: 1 });
+});
+
+test("Seedance canvas success groups models and separately counts reference-video generations", () => {
+  const entry = (input: Record<string, unknown> = {}) => ({
+    ownerLocalUserId: "user-a",
+    type: "video",
+    status: "done",
+    providerId: "video-seedance-new::model::fast",
+    model: "seedance2.0 720p-fast-gz-15s",
+    createdAt: "2026-07-20T00:00:00.000Z",
+    params: { canvasRequestedAt: "2026-07-20T00:00:00.000Z", referenceVideos: 1 },
+    ...input,
+  });
+  const summary = aggregateSeedanceCanvasSuccess([
+    entry(),
+    entry({ params: { canvasRequestedAt: "2026-07-21T00:00:00.000Z", referenceVideos: 0 } }),
+    entry({ providerId: "video-main", model: "Doubao-Seedance-2.0-fast-260128-grid", params: { billingTaskId: "canvas-video-old", referenceVideos: 2 } }),
+    entry({ status: "failed" }),
+    entry({ params: { referenceVideos: 1, billingTaskId: "studio-video-1" } }),
+    entry({ ownerLocalUserId: "user-b" }),
+    entry({ providerId: "video-veo", model: "veo-3.1-pro" }),
+    entry({ params: { canvasRequestedAt: "2026-06-01T00:00:00.000Z", referenceVideos: 1 } }),
+  ], {
+    ownerIds: ["user-a"],
+    from: "2026-07-01T00:00:00.000Z",
+    to: "2026-08-01T00:00:00.000Z",
+  });
+
+  assert.deepEqual(summary, {
+    successfulCount: 3,
+    referenceVideoSuccessfulCount: 2,
+    models: [
+      { model: "seedance2.0 720p-fast-gz-15s", successfulCount: 2, referenceVideoSuccessfulCount: 1 },
+      { model: "Doubao-Seedance-2.0-fast-260128-grid", successfulCount: 1, referenceVideoSuccessfulCount: 1 },
+    ],
+  });
 });
 
 test("internal canvas host is login-only while the public host keeps registration available", () => {
