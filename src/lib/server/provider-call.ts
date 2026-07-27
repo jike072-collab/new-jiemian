@@ -872,6 +872,16 @@ function videoJobFailureMessage(payload: unknown) {
   const reason = nestedString(payload, ["error", "error_message", "message", "detail", "fail_reason", "failed_reason", "reason"]);
   if (/moderation|content[_\s-]*policy|safety/i.test(reason)) return "视频内容未通过上游审核。";
   if (/timeout|timed[_\s-]*out/i.test(reason)) return "视频生成任务超时。";
+  if (/insufficient|balance|quota|credit|余额|额度|积分/i.test(reason)) return "上游账户余额或额度不足。";
+  if (/no available (?:account|channel)|all channels failed|capacity|overload|saturat|繁忙|无可用(?:账号|通道)/i.test(reason)) return "上游视频通道繁忙或暂无可用通道。";
+  if (/concurren|too many (?:tasks|requests)|rate[_\s-]*limit|429|并发|频率/i.test(reason)) return "上游并发或请求频率已达上限。";
+  if (/unauthori[sz]ed|authentication|api[_\s-]*key|401|认证/i.test(reason)) return "上游认证失败，请联系管理员检查接口密钥。";
+  if (/forbidden|permission|access denied|403|权限|拒绝访问/i.test(reason)) return "上游拒绝访问，请联系管理员检查模型或账号权限。";
+  if (/model.*(?:not found|unavailable|disabled)|(?:not found|unavailable|disabled).*model|模型.*(?:不存在|不可用|停用)/i.test(reason)) return "上游模型不存在或当前不可用。";
+  if (/invalid[_\s-]*(?:param|request)|bad request|unsupported|400|参数.*(?:无效|错误)|不支持/i.test(reason)) return "上游认为任务参数无效或不受支持。";
+  if (/(?:reference|input|source).*(?:download|fetch|read|invalid|expired)|(?:download|fetch|read).*(?:image|video|audio)|素材.*(?:读取|下载|失效)/i.test(reason)) return "上游无法读取参考素材，请重新上传后再试。";
+  if (/cancel(?:led|ed)|canceled|取消/i.test(reason)) return "上游已取消视频生成任务。";
+  if (/internal[_\s-]*error|internal server|service unavailable|server error|\b50[023]\b|内部错误|服务不可用/i.test(reason)) return "上游服务发生内部错误，请稍后重试。";
   return "视频生成任务失败。";
 }
 

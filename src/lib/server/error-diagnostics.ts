@@ -112,7 +112,7 @@ export function codeForUpstreamStatus(status: number): ErrorDiagnosticCode {
 }
 
 function codeForCommonThrownMessage(message: string): ErrorDiagnosticCode | null {
-  if (/scale|duration|ratio|unsupported|not support|only supports|seconds|second|Grok|1K|2K|4K/i.test(message)) {
+  if (/\b(?:scale|duration|ratio|seconds?|unsupported)\b|not support|only supports|Grok|1K|2K|4K/i.test(message)) {
     return "INPUT_INVALID_PARAMETERS";
   }
   if (

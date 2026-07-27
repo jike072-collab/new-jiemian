@@ -38,6 +38,12 @@ test("shared canvas members can refresh another member's video job", () => {
 
 test("video job failures expose safe upstream reasons", () => {
   assert.equal(providerCallInternalsForTests.videoJobFailureMessage({ status: "failed", error: "MODERATION_ERROR" }), "视频内容未通过上游审核。");
+  assert.equal(providerCallInternalsForTests.videoJobFailureMessage({ status: "failed", error: "INTERNAL_ERROR" }), "上游服务发生内部错误，请稍后重试。");
+  assert.equal(providerCallInternalsForTests.videoJobFailureMessage({ status: "failed", error: "all channels failed: No available account" }), "上游视频通道繁忙或暂无可用通道。");
+  assert.equal(providerCallInternalsForTests.videoJobFailureMessage({ status: "failed", error: "insufficient quota" }), "上游账户余额或额度不足。");
+  assert.equal(providerCallInternalsForTests.videoJobFailureMessage({ status: "failed", error: "rate_limit_exceeded" }), "上游并发或请求频率已达上限。");
+  assert.equal(providerCallInternalsForTests.videoJobFailureMessage({ status: "failed", error: "model unavailable" }), "上游模型不存在或当前不可用。");
+  assert.equal(providerCallInternalsForTests.videoJobFailureMessage({ status: "failed", error: "reference image download failed" }), "上游无法读取参考素材，请重新上传后再试。");
   assert.equal(providerCallInternalsForTests.videoJobFailureMessage({ status: "failed", error: "provider secret details" }), "视频生成任务失败。");
 });
 

@@ -85,6 +85,7 @@ test("upstream status maps to stable provider codes", () => {
 test("thrown errors are classified without leaking raw provider details", () => {
   assert.equal(codeForThrownError(new Error("fetch failed ECONNRESET")), "PROVIDER_NETWORK_ERROR");
   assert.equal(codeForThrownError(new Error("request timeout")), "PROVIDER_TIMEOUT");
+  assert.equal(codeForThrownError(new Error("The operation was aborted due to timeout")), "PROVIDER_TIMEOUT");
   assert.equal(codeForThrownError(new Error("API Key is invalid")), "PROVIDER_AUTH_FAILED");
   assert.equal(codeForThrownError(Object.assign(new Error("生成任务无法领取上游派发权限。"), { name: "BillingDispatchRejectedError" })), "TASK_CREATE_FAILED");
   assert.equal(codeForThrownError(new Error("请上传参考图片")), "INPUT_MISSING_IMAGE");
