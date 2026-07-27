@@ -100,6 +100,7 @@ assert.match(copyService, /caption 只写 1-2 句/);
 assert.match(copyService, /只有视频画面或可信上下文明确支持时/);
 assert.doesNotMatch(copyService, /item\.prompt/);
 assert.match(copyService, /const TIKTOK_COPY_MODEL = "gpt-5\.6-sol"/);
+assert.match(copyService, /createNewApiPromptModelCaller\(\)/);
 assert.match(copyService, /AI 文案模型 \$\{TIKTOK_COPY_MODEL\} 暂时不可用/);
 assert.match(copyService, /上游 HTTP \$\{error\.upstreamStatus\}/);
 assert.match(copyService, /马来西亚本地朋友分享刚看到的穿搭细节/);
