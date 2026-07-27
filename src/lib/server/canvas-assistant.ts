@@ -175,8 +175,8 @@ const commercePlanGenerationPrompt = [
   "每个方案同时返回 publishingCopy：自然马来语 title、1-2 句 caption、4-6 个相关 hashtags、angle 和 category；默认不得使用 #fyp，不得把标签写进 title 或 caption。",
   "referenceBindings 中每张图片 role 使用 product，transfer 只写产品真实外观职责，ignore 明确不转移背景和不可验证信息。",
   "仅输出 JSON，不要 Markdown：{\"kind\":\"commerce-plan-generation\",\"plans\":[{\"id\":\"plan-1\",\"direction\":\"daily-style\",\"title\":\"日常穿搭反差\",\"sellingPoint\":\"已确认的一个卖点\",\"hook\":{\"visualPatternId\":\"visible-problem-contrast\",\"copyPatternId\":\"direct-problem-question\",\"title\":\"普通穿搭问题\",\"reason\":\"首帧先看见穿搭不协调，再由目标鞋回答问题\",\"hookLine\":\"Outfit hari ni nampak biasa?\",\"onScreenText\":\"Outfit hari ni nampak biasa?\",\"scene\":\"普通马来西亚公寓玄关\",\"visualBeat\":\"人物看着镜中不协调的普通穿搭，手停在两双鞋之间犹豫\"},\"production\":{\"scenePatternId\":\"condo-entry-mirror\",\"shotPatternId\":\"problem-reveal-proof-result\",\"performancePatternId\":\"mild-friction-relief\",\"energy\":\"balanced\",\"emotionArc\":\"犹豫到发现再到自然确认\",\"realismNotes\":\"自然皮肤纹理、衣服轻微褶皱和手持微抖\"},\"shots\":[{\"timeRange\":\"0-2秒\",\"shotSize\":\"中景\",\"camera\":\"固定中景\",\"action\":\"人物在两双鞋之间拿错后停住\",\"performance\":\"看镜中穿搭轻微皱眉\",\"productState\":\"目标鞋未穿并在手边可见\",\"dialogue\":\"Outfit hari ni nampak biasa?\",\"onScreenText\":\"Outfit hari ni nampak biasa?\",\"sound\":\"第0秒自然口播与室内环境声\",\"transition\":\"目标鞋移近镜头形成遮挡\"},{\"timeRange\":\"2-7秒\",\"shotSize\":\"近景\",\"camera\":\"匹配剪辑后短推进\",\"action\":\"遮挡结束时完成穿鞋并踩稳\",\"performance\":\"肩膀放松并低头确认\",\"productState\":\"双脚已穿目标鞋\",\"dialogue\":\"Terus nampak lebih kemas.\",\"onScreenText\":\"Terus nampak lebih kemas.\",\"sound\":\"脚步落点进入音乐强拍\",\"transition\":\"脚步落点匹配到侧向动作\"},{\"timeRange\":\"7-12秒\",\"shotSize\":\"全身\",\"camera\":\"低机位侧向跟拍\",\"action\":\"人物自然走两步\",\"performance\":\"视线看前方并保留呼吸\",\"productState\":\"目标鞋保持已穿且清楚\",\"dialogue\":\"无口播\",\"onScreenText\":\"\",\"sound\":\"自然脚步声和轻音乐\",\"transition\":\"人物经过镜框前景形成遮挡\"},{\"timeRange\":\"12-15秒\",\"shotSize\":\"全身\",\"camera\":\"固定机位\",\"action\":\"人物整理衣角准备出门\",\"performance\":\"自然半笑后看向门口\",\"productState\":\"完整穿搭和目标鞋同时可见\",\"dialogue\":\"Korang suka gaya macam ni?\",\"onScreenText\":\"Korang suka gaya macam ni?\",\"sound\":\"音乐收束并保留钥匙轻响\",\"transition\":\"人物迈出画面后自然结束\"}],\"referenceBindings\":[{\"label\":\"@Image1\",\"role\":\"product\",\"transfer\":\"产品外观\",\"ignore\":\"背景\"}],\"publishingCopy\":{\"title\":\"Gaya harian nampak lebih kemas\",\"caption\":\"Tengok perubahan outfit bila kasut ni masuk.\",\"hashtags\":[\"#kasut\",\"#shoes\",\"#sneakers\",\"#kasutharian\"],\"angle\":\"daily\",\"category\":\"casual\"}}]}",
-].concat([
-  "最终只输出 JSON，不要 Markdown。使用 {\"kind\":\"commerce-plan-candidates\",\"candidates\":[{\"id\":\"方向-1\",\"plan\":{完整原方案字段}}]}；每个方向必须有三个候选。",
+].filter((line) => !line.startsWith("仅输出 JSON，不要 Markdown：")).concat([
+  "最终只输出 JSON，不要 Markdown。结构固定为 {\"kind\":\"commerce-plan-candidates\",\"candidates\":[{\"id\":\"方向-1\",\"plan\":{\"direction\":\"\",\"title\":\"\",\"sellingPoint\":\"\",\"hook\":{},\"production\":{},\"shots\":[],\"referenceBindings\":[],\"publishingCopy\":{}}}]}。每个方向必须恰好有三个候选，plan 使用上述完整字段。",
 ]).join("\n");
 
 const canvasAssistantRetryDelayMs = 350;
@@ -397,12 +397,15 @@ function parseJsonObject(value: string) {
 }
 
 const commerceHookFallbackLines: Record<string, string> = {
-  "stop-scroll-specific-reveal": "Kejap, tengok warna ni naik.",
-  "finally-found-match": "Akhirnya jumpa kasut yang nampak ngam.",
+  "stop-scroll-specific-reveal": "Jangan scroll, tengok tapak merah ni.",
+  "finally-found-match": "Akhirnya jumpa warna tak tenggelam.",
   "conditional-visible-result": "Bila bergerak, warna ni terus menyerlah.",
   "offer-surprise": "Deal kasut ni memang berbaloi.",
   "expectation-gap": "Tak sangka warna ni terus menyerlah.",
-  "direct-problem-question": "Korang pernah susah padankan kasut?",
+  "direct-problem-question": "Ingat kasut terang susah match?",
+  "late-discovery-regret": "Baru sedar, sebelum ni salah pilih.",
+  "wasted-choice-realization": "Baru sedar, sebelum ni salah pilih.",
+  "friend-asks-link": "Kawan terus tanya, link mana?",
 };
 
 const commerceShotFallbacks = [
@@ -615,6 +618,9 @@ function commercePlanQualityReasons(plan: CanvasCommercePlan) {
     && !/(?:warna|colour|color|detail|garis|siluet|bentuk|outfit|look|tali)/iu.test(hookLine)) {
     reasons.push("首句只说泛化变化，没有点明画面可见的对象。");
   }
+  if (/^tak sangka warna ni/iu.test(hookLine)) {
+    reasons.push("“没想到颜色很亮”没有悬念、冲突或具体兑现，不作为可用钩子。");
+  }
   if (execution?.shoeState === "already-worn" && /(?:未穿|尚未穿|放在(?:长椅|鞋架|手边)|拿起目标鞋)/u.test(opening)) {
     reasons.push("该钩子要求目标鞋首帧已穿着，不能用未穿到已穿的遮挡跳切。");
   }
@@ -639,11 +645,14 @@ function commercePlanQualityReasons(plan: CanvasCommercePlan) {
   return reasons;
 }
 
-function commerceQualityFallback(direction: CanvasCommerceDirection, sellingPoint: string, imageCount: number) {
+function commerceQualityFallback(direction: CanvasCommerceDirection, sellingPoint: string, imageCount: number, visibleFacts: string[]) {
   const visualId = direction === "product-asmr" ? "product-asmr-detail" : "local-reaction-reveal";
   const visual = malaysiaCommerceVisualHookPattern(visualId)
     || malaysiaCommerceVisualHookPatterns.find((pattern) => pattern.directions.includes(direction));
-  const copy = malaysiaCommerceCopyHookPattern("expectation-gap")
+  const preferredCopyId = direction === "product-asmr" || direction === "handheld"
+    ? "stop-scroll-specific-reveal"
+    : "direct-problem-question";
+  const copy = malaysiaCommerceCopyHookPattern(preferredCopyId)
     || malaysiaCommerceCopyHookPatterns.find((pattern) => pattern.directions.includes(direction));
   const scene = malaysiaCommerceScenePatterns.find((pattern) => pattern.directions.includes(direction));
   const recipe = scene ? malaysiaCommerceShotPatterns.flatMap((shotPattern) => malaysiaCommercePerformancePatterns.flatMap((performance) =>
@@ -651,12 +660,16 @@ function commerceQualityFallback(direction: CanvasCommerceDirection, sellingPoin
   )).at(0) : undefined;
   if (!visual || !copy || !scene || !recipe) return null;
   const held = malaysiaCommerceHookExecutionRecipe(visual.id)?.shoeState === "held-or-placed";
-  const hookLine = "Tak sangka warna ni menyerlah.";
+  const hasRedOutsole = visibleFacts.some((fact) => /(?:红色|red).{0,12}(?:外底|鞋底|tapak|sole)|(?:外底|鞋底|tapak|sole).{0,12}(?:红色|red)/iu.test(fact));
+  const visibleDetail = hasRedOutsole ? "红色外底" : "撞色层次";
+  const hookLine = hasRedOutsole && (direction === "product-asmr" || direction === "handheld")
+    ? commerceHookFallbackLines["stop-scroll-specific-reveal"]
+    : commerceHookFallbackLines[copy.id] || commerceHookFallbackLines["expectation-gap"];
   const openingState = held
     ? "目标鞋由人物稳定拿在手中或静置台面，亮色、轮廓和鞋带线索清楚可见"
     : "双脚从第0秒已穿目标鞋，鞋型、配色和左右脚清楚可见";
   const openingAction = held
-    ? "手部轻触或移开普通遮挡，让目标鞋的可见细节进入画面"
+    ? "手部轻触或移开普通遮挡，让目标鞋的" + visibleDetail + "进入画面"
     : "人物穿着目标鞋在镜前或步道边停住，低头确认完整穿搭的色彩反差";
   const movement = direction === "sport-motion"
     ? "人物在安全铺装步道做一段短距离轻慢跑后自然减速"
@@ -670,7 +683,7 @@ function commerceQualityFallback(direction: CanvasCommerceDirection, sellingPoin
       visualPatternId: visual.id,
       copyPatternId: copy.id,
       title: "可见配色发现",
-      reason: "首帧已经拍到目标鞋与当前穿搭的可见配色或结构线索，再用同一状态完成证明。",
+      reason: "首帧已经拍到目标鞋的" + visibleDetail + "线索，再用同一状态完成可见揭示。",
       hookLine,
       onScreenText: hookLine,
       scene: scene.setting,
@@ -686,7 +699,7 @@ function commerceQualityFallback(direction: CanvasCommerceDirection, sellingPoin
     },
     shots: [
       { timeRange: "0-2秒", shotSize: held ? "特写" : "中近景", camera: held ? "手持微距短推进" : "低机位中近景", action: openingAction, performance: "视线或手部先落在鞋子可见细节，保留一次自然停顿", productState: openingState, dialogue: hookLine, onScreenText: hookLine, sound: "第0秒动作声与同步口播进入", transition: "手部移开前景或脚步落点形成连续揭示" },
-      { timeRange: "2-7秒", shotSize: "近景", camera: "短推进后侧移", action: held ? "手部转到完整侧面并停半拍" : "人物向前迈一步，让鞋型在落点时清楚出现", performance: "表情从注意到确认，动作收势自然", productState: held ? "目标鞋保持手持或静置状态，完整侧面清楚" : "目标鞋保持已穿，鞋型和配色连续", dialogue: "Warna ni memang hidup.", onScreenText: "Warna ni memang hidup.", sound: "1.5秒动作落点触发一次音乐抬升", transition: "落点或转动方向连续进入下一镜头" },
+      { timeRange: "2-7秒", shotSize: "近景", camera: "短推进后侧移", action: held ? "手部转到完整侧面并停半拍" : "人物向前迈一步，让鞋型在落点时清楚出现", performance: "表情从注意到确认，动作收势自然", productState: held ? "目标鞋保持手持或静置状态，完整侧面清楚" : "目标鞋保持已穿，鞋型和配色连续", dialogue: hasRedOutsole ? "Pusing sikit, merah muncul." : "Warna ni memang hidup.", onScreenText: hasRedOutsole ? "Pusing sikit, merah muncul." : "Warna ni memang hidup.", sound: "1.5秒动作落点触发一次音乐抬升", transition: "落点或转动方向连续进入下一镜头" },
       { timeRange: "7-12秒", shotSize: held ? "中近景" : "全身", camera: held ? "侧向短环绕" : "低机位侧向跟拍", action: held ? "同一只鞋换一个角度展示可见轮廓" : movement, performance: "视线主要看前方或产品，呼吸和重心变化真实", productState: held ? "目标鞋持续可见，配色和轮廓不变" : "目标鞋保持已穿，左右脚和动作方向连续", dialogue: "无口播", onScreenText: "", sound: "7-12秒用真实动作声和低频节拍维持节奏", transition: "前景经过或动作收势桥接到结果镜头" },
       { timeRange: "12-15秒", shotSize: "全身", camera: "固定斜侧中景", action: held ? "人物把鞋稳定放下后自然收手" : "人物停稳，视线确认鞋子后自然转向前方", performance: "克制半笑，不直视镜头背稿", productState: held ? "目标鞋完整正侧面稳定可见" : "目标鞋保持已穿，完整穿搭和鞋子同时可见", dialogue: "Korang pakai dengan apa?", onScreenText: "Korang pakai dengan apa?", sound: "12-15秒保留最后一个动作声和音乐尾拍", transition: "动作完成后自然结束" },
     ],
@@ -824,7 +837,7 @@ async function selectCommercePlanCandidates(
       });
       return [matching.candidate.plan];
     }
-    const fallback = commerceQualityFallback(direction, normalized.directionSellingPoints?.[direction] || "", imageCount);
+    const fallback = commerceQualityFallback(direction, normalized.directionSellingPoints?.[direction] || "", imageCount, normalized.visibleFacts || []);
     if (!fallback) return [];
     newApiLogger.warn({
       event: "commerce_plan_quality_fallback",

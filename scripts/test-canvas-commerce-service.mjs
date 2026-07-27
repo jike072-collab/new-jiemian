@@ -120,10 +120,11 @@ assert.equal(generated.kind, "commerce-plan-generation");
 assert.equal(generated.plans.length, 1);
 assert.equal(calls[1].timeoutMs, 120_000);
 assert.equal(calls[1].maxTokens, 6_000);
+assert.match(calls[1].systemPrompt, /每个方向必须恰好有三个候选/);
 assert.equal(generated.plans[0].sellingPoint, "复古配色");
 assert.match(generated.plans[0].prompt, /0-2秒/);
 assert.match(generated.plans[0].prompt, /12-15秒/);
-assert.match(generated.plans[0].prompt, /menyerlah/);
+assert.match(generated.plans[0].prompt, /susah match/);
 assert.match(generated.plans[0].prompt, /双脚从第0秒已穿目标鞋/);
 assert.match(generated.plans[0].prompt, /镜头 1｜0-2秒｜中近景/);
 assert.match(generated.plans[0].prompt, /人物与情绪/);
@@ -270,12 +271,14 @@ assert.equal(hookRepaired.plans[0].shots[0].onScreenText, hookRepaired.plans[0].
 const candidateBase = structuredClone(generated.plans[0]);
 const candidateB = structuredClone(candidateBase);
 candidateB.hook.visualPatternId = "middle-of-action";
-candidateB.hook.hookLine = "Tak sangka warna ni berani.";
+candidateB.hook.copyPatternId = "expectation-gap";
+candidateB.hook.hookLine = "Tak sangka tapak dia merah.";
 candidateB.hook.onScreenText = candidateB.hook.hookLine;
 candidateB.shots[0].dialogue = candidateB.hook.hookLine;
 candidateB.shots[0].onScreenText = candidateB.hook.hookLine;
 const candidateC = structuredClone(candidateBase);
 candidateC.hook.hookLine = "Rupanya warna ni menyerlah.";
+candidateC.hook.copyPatternId = "expectation-gap";
 candidateC.hook.onScreenText = candidateC.hook.hookLine;
 candidateC.shots[0].dialogue = candidateC.hook.hookLine;
 candidateC.shots[0].onScreenText = candidateC.hook.hookLine;
@@ -307,7 +310,7 @@ const criticallySelected = await candidateService.answer({
   nodes,
 }, "request-candidates", visualEvidence);
 assert.equal(candidateCalls, 2);
-assert.equal(criticallySelected.plans[0].hook.hookLine, "Tak sangka warna ni berani.");
+assert.equal(criticallySelected.plans[0].hook.hookLine, "Tak sangka tapak dia merah.");
 assert.match(criticallySelected.plans[0].prompt, /1.5-2 秒/);
 assert.ok(criticallySelected.plans[0].prompt.length <= 2_400);
 
