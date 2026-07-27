@@ -40,7 +40,11 @@ export async function DELETE(request: NextRequest) {
     if (!requireCsrf(request)) return authResultResponse(request, csrfFailure());
     const session = await requireAuthSession(request);
     if (!session.ok) return authResultResponse(request, session);
-    return NextResponse.json({ ok: true, disconnected: await disconnectTikTok(session.user.local_user_id) });
+    const body = await readJsonBody(request);
+    return NextResponse.json({
+      ok: true,
+      disconnected: await disconnectTikTok(session.user.local_user_id, String(body.zernioAccountId || "")),
+    });
   } catch (error) {
     return tikTokErrorResponse(request, error, "tiktok-connection-delete");
   }

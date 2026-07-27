@@ -33,6 +33,7 @@ export async function POST(request: NextRequest) {
       : [session.user.local_user_id];
     const job = await scheduleTikTokPublish({
       userId: session.user.local_user_id,
+      zernioAccountId: String(body.zernioAccountId || ""),
       ownerIds,
       scope,
       libraryItemId: String(body.libraryItemId || ""),

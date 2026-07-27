@@ -2086,6 +2086,17 @@
 .canvas-tiktok-accounts > button strong,
 .canvas-tiktok-accounts > button small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .canvas-tiktok-accounts > button small { color: var(--muted); font-size: 9px; }
+.canvas-tiktok-account-switcher { display: grid; gap: 8px; border-bottom: 1px solid var(--border-subtle); padding: 12px 14px; }
+.canvas-tiktok-account-switcher__heading { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.canvas-tiktok-account-switcher__heading strong { font-size: 11px; }
+.canvas-tiktok-account-switcher__heading > button,
+.canvas-tiktok-account-switcher .canvas-tiktok-accounts > button { display: inline-flex; min-height: 34px; align-items: center; gap: 7px; border: 1px solid var(--border-subtle); border-radius: 6px; background: var(--surface); color: var(--foreground); cursor: pointer; padding: 0 9px; font-size: 10px; }
+.canvas-tiktok-account-switcher__heading > button svg,
+.canvas-tiktok-account-switcher .canvas-tiktok-accounts > button svg { width: 14px; }
+.canvas-tiktok-account-switcher .canvas-tiktok-accounts.is-bound { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.canvas-tiktok-account-switcher .canvas-tiktok-accounts > button.is-active { border-color: color-mix(in srgb, var(--primary) 55%, var(--border-subtle)); background: color-mix(in srgb, var(--primary) 10%, var(--surface)); }
+.canvas-tiktok-account-switcher__available { display: grid; gap: 6px; border-top: 1px solid var(--border-subtle); padding-top: 8px; }
+.canvas-tiktok-account-switcher__available > small { color: var(--muted); font-size: 9px; }
 .canvas-tiktok-panel__manual button,
 .canvas-tiktok-panel__connect button { display: inline-flex; min-height: 34px; align-items: center; gap: 6px; border: 1px solid var(--border-subtle); border-radius: 6px; background: var(--surface); color: var(--foreground); cursor: pointer; padding: 0 10px; font-size: 11px; }
 .canvas-tiktok-panel__manual button svg,
@@ -2284,6 +2295,7 @@
   .canvas-editor-backdrop { padding: 8px; }
   .canvas-tiktok-scrim { align-items: end; padding: 8px; }
   .canvas-tiktok-panel { width: 100%; max-height: calc(100dvh - 16px); }
+  .canvas-tiktok-account-switcher .canvas-tiktok-accounts.is-bound { grid-template-columns: 1fr; }
   .canvas-tiktok-form__music > div { grid-template-columns: 1fr; }
   .canvas-image-editor__tools { flex-wrap: nowrap; overflow-x: auto; }
   .canvas-image-editor__tools label { margin-left: 0; }

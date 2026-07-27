@@ -23,6 +23,7 @@ type OAuthStateRow = QueryResultRow & { user_id: string; return_to: string; expi
 type PublishJobRow = QueryResultRow & {
   id: string;
   user_id: string;
+  zernio_account_id: string | null;
   source_owner_id: string;
   library_item_id: string;
   idempotency_key: string;
@@ -73,6 +74,7 @@ function jobFromRow(row: PublishJobRow): TikTokPublishJob {
   return {
     id: row.id,
     userId: row.user_id,
+    zernioAccountId: row.zernio_account_id || undefined,
     sourceOwnerId: row.source_owner_id,
     libraryItemId: row.library_item_id,
     idempotencyKey: row.idempotency_key,
@@ -109,8 +111,17 @@ export async function getTikTokConnection(userId: string) {
 }
 
 export async function getTikTokConnectionByAccountId(zernioAccountId: string) {
-  const result = await applicationQuery<ConnectionRow>("select * from tiktok_connections where zernio_account_id = $1", [zernioAccountId]);
+  const result = await applicationQuery<ConnectionRow>("select * from tiktok_account_bindings where zernio_account_id = $1", [zernioAccountId]);
   return result.rows[0] ? connectionFromRow(result.rows[0]) : null;
+}
+
+export async function listTikTokConnections(userId: string) {
+  const result = await applicationQuery<ConnectionRow>(`
+    select * from tiktok_account_bindings
+    where user_id = $1
+    order by connected_at, zernio_account_id
+  `, [userId]);
+  return result.rows.map(connectionFromRow);
 }
 
 export async function saveTikTokProfile(input: { userId: string; zernioProfileId: string }) {
@@ -132,34 +143,39 @@ export async function saveTikTokConnection(input: {
   creatorUsername?: string;
 }) {
   const result = await applicationQuery<ConnectionRow>(`
-    insert into tiktok_connections(
+    insert into tiktok_account_bindings(
       user_id, zernio_profile_id, zernio_account_id, display_name, avatar_url, creator_username, connected_at, created_at, updated_at
     ) values ($1,$2,$3,$4,$5,$6,now(),now(),now())
-    on conflict (user_id) do update set
+    on conflict (zernio_account_id) do update set
       zernio_profile_id = excluded.zernio_profile_id,
-      zernio_account_id = excluded.zernio_account_id,
       display_name = excluded.display_name,
       avatar_url = excluded.avatar_url,
       creator_username = excluded.creator_username,
       connected_at = now(),
       updated_at = now()
+    where tiktok_account_bindings.user_id = excluded.user_id
     returning *
   `, [input.userId, input.zernioProfileId, input.zernioAccountId, input.displayName, input.avatarUrl || null, input.creatorUsername || null]);
+  if (!result.rows[0]) throw new Error("TikTok account is already bound to another user.");
   return connectionFromRow(result.rows[0]);
 }
 
-export async function clearTikTokConnection(userId: string) {
+export async function clearTikTokConnection(userId: string, zernioAccountId: string) {
   return withApplicationTransaction(async (client) => {
     await client.query(
-      "update tiktok_publish_jobs set status = 'canceled', locked_at = null, locked_by = null, updated_at = now() where user_id = $1 and status in ('scheduled','queued')",
-      [userId],
+      "update tiktok_publish_jobs set status = 'canceled', locked_at = null, locked_by = null, updated_at = now() where user_id = $1 and zernio_account_id = $2 and status in ('scheduled','queued')",
+      [userId, zernioAccountId],
     );
-    const result = await client.query<ConnectionRow>(`
+    await client.query(`
       update tiktok_connections
       set zernio_account_id = null, display_name = null, avatar_url = null, creator_username = null, connected_at = null, updated_at = now()
-      where user_id = $1
+      where user_id = $1 and zernio_account_id = $2
+    `, [userId, zernioAccountId]);
+    const result = await client.query<ConnectionRow>(`
+      delete from tiktok_account_bindings
+      where user_id = $1 and zernio_account_id = $2
       returning *
-    `, [userId]);
+    `, [userId, zernioAccountId]);
     return result.rows[0] ? connectionFromRow(result.rows[0]) : null;
   });
 }
@@ -181,7 +197,7 @@ export async function consumeTikTokOAuthState(stateHash: string) {
 }
 
 export async function createTikTokPublishJob(input: {
-  userId: string; sourceOwnerId: string; libraryItemId: string; idempotencyKey: string; caption: string;
+  userId: string; zernioAccountId: string; sourceOwnerId: string; libraryItemId: string; idempotencyKey: string; caption: string;
   privacyLevel: TikTokPrivacyLevel; disableComment: boolean; disableDuet: boolean; disableStitch: boolean;
   brandContentToggle: boolean; brandOrganicToggle: boolean; deliveryMode: TikTokDeliveryMode; scheduledAt: string;
 }) {
@@ -190,15 +206,16 @@ export async function createTikTokPublishJob(input: {
       insert into tiktok_publish_jobs(
         id, user_id, source_owner_id, library_item_id, idempotency_key, caption, privacy_level,
         disable_comment, disable_duet, disable_stitch, brand_content_toggle, brand_organic_toggle, delivery_mode,
-        is_aigc, status, scheduled_at, next_attempt_at, attempts, created_at, updated_at
+        zernio_account_id, is_aigc, status, scheduled_at, next_attempt_at, attempts, created_at, updated_at
       ) values (
-        $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,true,
+        $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$15,true,
         case when $14::timestamptz > now() + interval '15 seconds' then 'scheduled' else 'queued' end,
         greatest($14::timestamptz, now()),greatest($14::timestamptz, now()),0,now(),now()
       ) on conflict (user_id, idempotency_key) do nothing returning *
     `, [
       randomUUID(), input.userId, input.sourceOwnerId, input.libraryItemId, input.idempotencyKey, input.caption, input.privacyLevel,
       input.disableComment, input.disableDuet, input.disableStitch, input.brandContentToggle, input.brandOrganicToggle, input.deliveryMode, input.scheduledAt,
+      input.zernioAccountId,
     ]);
     if (created.rows[0]) return jobFromRow(created.rows[0]);
     const existing = await client.query<PublishJobRow>("select * from tiktok_publish_jobs where user_id = $1 and idempotency_key = $2", [input.userId, input.idempotencyKey]);

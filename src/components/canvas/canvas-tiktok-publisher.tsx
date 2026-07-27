@@ -1,6 +1,6 @@
 "use client";
 
-import { CalendarClock, Check, Clock3, Download, ExternalLink, LoaderCircle, LogOut, Music2, RefreshCw, Send, Sparkles, Volume2, X } from "lucide-react";
+import { CalendarClock, Check, Clock3, Download, ExternalLink, LoaderCircle, LogOut, Music2, RefreshCw, Send, Sparkles, UserPlus, Volume2, X } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from "react";
 
 import { ApiError, fetchJson, fetchJsonWithCsrf } from "@/lib/client/api";
@@ -9,7 +9,7 @@ import type { TikTokAvailableAccount, TikTokConnectionSummary, TikTokCreatorInfo
 import { composeTikTokCaption, malaysiaTikTokCopyAngles, type MalaysiaTikTokCopyAngle, type TikTokCopyDraft } from "@/lib/tiktok-copy";
 import { cn } from "@/lib/utils";
 
-type ConnectionResponse = { configured: boolean; missingConfiguration: string[]; connection: TikTokConnectionSummary | null; availableAccounts: TikTokAvailableAccount[] };
+type ConnectionResponse = { configured: boolean; missingConfiguration: string[]; connection: TikTokConnectionSummary | null; connections: TikTokConnectionSummary[]; availableAccounts: TikTokAvailableAccount[] };
 type JobsResponse = { jobs: TikTokPublicPublishJob[]; manualUploadUrl: string };
 type CopyResponse = { ok: true; draft: TikTokCopyDraft };
 export type CanvasTikTokCopyState = Pick<TikTokCopyDraft, "title" | "caption" | "angle"> & { hashtags: string };
@@ -38,6 +38,7 @@ export function CanvasTikTokPublisher({ item, scope, initialCopy, onCopyChange, 
   onClose: () => void;
 }) {
   const [connection, setConnection] = useState<ConnectionResponse | null>(null);
+  const [selectedAccountId, setSelectedAccountId] = useState("");
   const [creator, setCreator] = useState<TikTokCreatorInfo | null>(null);
   const [jobs, setJobs] = useState<TikTokPublicPublishJob[]>([]);
   const [manualUploadUrl, setManualUploadUrl] = useState("https://www.tiktok.com/tiktokstudio/upload");
@@ -65,6 +66,7 @@ export function CanvasTikTokPublisher({ item, scope, initialCopy, onCopyChange, 
   const [hashtags, setHashtags] = useState(initialCopy?.hashtags || "");
   const copyRequestId = useRef(0);
   const copyRequestedFor = useRef("");
+  const creatorRequestId = useRef(0);
 
   const loadJobs = useCallback(async () => {
     try {
@@ -79,7 +81,27 @@ export function CanvasTikTokPublisher({ item, scope, initialCopy, onCopyChange, 
     }
   }, []);
 
-  const load = useCallback(async () => {
+  const loadCreator = useCallback(async (accountId: string) => {
+    const requestId = creatorRequestId.current + 1;
+    creatorRequestId.current = requestId;
+    setCreator(null);
+    setCreatorError("");
+    try {
+      const response = await readTikTokJson<{ creator: TikTokCreatorInfo }>(`/api/tiktok/creator?accountId=${encodeURIComponent(accountId)}`);
+      if (creatorRequestId.current !== requestId) return;
+      setCreator(response.creator);
+      setPrivacyLevel((current) => response.creator.privacyLevelOptions.includes(current as TikTokPrivacyLevel)
+        ? current
+        : response.creator.privacyLevelOptions[0] || "");
+      setAllowComment(!response.creator.commentDisabled);
+      setAllowDuet(!response.creator.duetDisabled);
+      setAllowStitch(!response.creator.stitchDisabled);
+    } catch (error) {
+      if (creatorRequestId.current === requestId) setCreatorError(apiMessage(error, "TikTok 发布权限读取失败。"));
+    }
+  }, []);
+
+  const load = useCallback(async (preferredAccountId?: string) => {
     setLoading(true);
     setMessage("");
     setConnectionError("");
@@ -88,18 +110,11 @@ export function CanvasTikTokPublisher({ item, scope, initialCopy, onCopyChange, 
     try {
       const connectionResponse = await readTikTokJson<ConnectionResponse>("/api/tiktok/connection");
       setConnection(connectionResponse);
-      if (connectionResponse.configured && connectionResponse.connection) {
-        try {
-          const response = await readTikTokJson<{ creator: TikTokCreatorInfo }>("/api/tiktok/creator");
-          setCreator(response.creator);
-          setPrivacyLevel((current) => current || response.creator.privacyLevelOptions[0] || "");
-          setAllowComment(!response.creator.commentDisabled);
-          setAllowDuet(!response.creator.duetDisabled);
-          setAllowStitch(!response.creator.stitchDisabled);
-        } catch (error) {
-          setCreator(null);
-          setCreatorError(apiMessage(error, "TikTok 发布权限读取失败。"));
-        }
+      const selected = connectionResponse.connections.find((account) => account.zernioAccountId === preferredAccountId)
+        || connectionResponse.connections[0];
+      setSelectedAccountId(selected?.zernioAccountId || "");
+      if (connectionResponse.configured && selected) {
+        await loadCreator(selected.zernioAccountId);
       } else {
         setCreator(null);
       }
@@ -110,7 +125,7 @@ export function CanvasTikTokPublisher({ item, scope, initialCopy, onCopyChange, 
     } finally {
       setLoading(false);
     }
-  }, [loadJobs]);
+  }, [loadCreator, loadJobs]);
 
   useEffect(() => {
     const timer = window.setTimeout(() => { void load(); }, 0);
@@ -161,6 +176,10 @@ export function CanvasTikTokPublisher({ item, scope, initialCopy, onCopyChange, 
   }, [jobs, loadJobs]);
 
   const itemJobs = useMemo(() => jobs.filter((job) => job.libraryItemId === item.id).slice(0, 6), [item.id, jobs]);
+  const selectedConnection = useMemo(
+    () => connection?.connections.find((account) => account.zernioAccountId === selectedAccountId) || null,
+    [connection, selectedAccountId],
+  );
   const immediateLimitReached = deliveryMode === "direct" && mode === "now" && creator?.canPostMore === false;
   const publishCaption = useMemo(() => composeTikTokCaption({
     title,
@@ -187,11 +206,11 @@ export function CanvasTikTokPublisher({ item, scope, initialCopy, onCopyChange, 
     setBusy(true);
     setMessage("");
     try {
-      await fetchJsonWithCsrf("/api/tiktok/connection", {
+      const response = await fetchJsonWithCsrf<{ connection: TikTokConnectionSummary }>("/api/tiktok/connection", {
         method: "POST",
         body: JSON.stringify({ zernioProfileId: account.zernioProfileId, zernioAccountId: account.zernioAccountId }),
       });
-      await load();
+      await load(response.connection.zernioAccountId);
       setMessage("TikTok 已绑定到当前站内账号。");
     } catch (error) {
       setMessage(apiMessage(error, "TikTok 账号绑定失败。"));
@@ -200,13 +219,23 @@ export function CanvasTikTokPublisher({ item, scope, initialCopy, onCopyChange, 
     }
   };
 
+  const selectAccount = async (account: TikTokConnectionSummary) => {
+    if (account.zernioAccountId === selectedAccountId && creator) return;
+    setSelectedAccountId(account.zernioAccountId);
+    setMessage("");
+    await loadCreator(account.zernioAccountId);
+  };
+
   const disconnect = async () => {
-    if (!window.confirm("确定解除当前站内账号与 TikTok 的绑定吗？")) return;
+    if (!selectedConnection) return;
+    if (!window.confirm(`确定解除 ${selectedConnection.displayName} 的 TikTok 绑定吗？其他已绑定账号不会受影响。`)) return;
     setBusy(true);
     try {
-      await fetchJsonWithCsrf("/api/tiktok/connection", { method: "DELETE" });
-      setConnection((current) => current ? { ...current, connection: null } : current);
-      setCreator(null);
+      await fetchJsonWithCsrf("/api/tiktok/connection", {
+        method: "DELETE",
+        body: JSON.stringify({ zernioAccountId: selectedConnection.zernioAccountId }),
+      });
+      await load();
       setMessage("TikTok 已解绑。");
     } catch (error) {
       setMessage(apiMessage(error, "TikTok 解绑失败。"));
@@ -217,6 +246,10 @@ export function CanvasTikTokPublisher({ item, scope, initialCopy, onCopyChange, 
 
   const submit = async (event: FormEvent) => {
     event.preventDefault();
+    if (!selectedAccountId) {
+      setMessage("请选择发布账号。");
+      return;
+    }
     if (!privacyLevel) {
       setMessage("请选择发布范围。");
       return;
@@ -241,6 +274,7 @@ export function CanvasTikTokPublisher({ item, scope, initialCopy, onCopyChange, 
         method: "POST",
         body: JSON.stringify({
           libraryItemId: item.id,
+          zernioAccountId: selectedAccountId,
           idempotencyKey: crypto.randomUUID(),
           caption: publishCaption,
           privacyLevel,
@@ -307,11 +341,11 @@ export function CanvasTikTokPublisher({ item, scope, initialCopy, onCopyChange, 
           </div>
         ) : null}
 
-        {!loading && connection?.configured && !connection.connection ? (
+        {!loading && connection?.configured && !connection.connections.length ? (
           <div className="canvas-tiktok-panel__connect">
             <Send />
-            <strong>选择当前站内账号使用的 TikTok</strong>
-            <span>每个 TikTok 只能绑定一个站内账号，其他成员不会看到你的发布任务。</span>
+            <strong>添加当前站内账号使用的 TikTok</strong>
+            <span>一个站内账号可以绑定多个 TikTok；发布前需要明确选择目标账号。</span>
             {connection.availableAccounts.length ? (
               <div className="canvas-tiktok-accounts">
                 {connection.availableAccounts.map((account) => (
@@ -325,15 +359,49 @@ export function CanvasTikTokPublisher({ item, scope, initialCopy, onCopyChange, 
           </div>
         ) : null}
 
-        {!loading && connection?.connection ? (
+        {!loading && connection?.connections.length ? (
           <>
-            <div className="canvas-tiktok-account">
-              <Send />
-              <span><strong>{creator?.creatorNickname || connection.connection.displayName}</strong><small>{creator?.creatorUsername ? `@${creator.creatorUsername}` : "TikTok 已绑定"}</small></span>
-              <button type="button" disabled={busy} onClick={() => { void disconnect(); }} aria-label="解除 TikTok 绑定" title="解绑"><LogOut /></button>
-            </div>
+            <section className="canvas-tiktok-account-switcher" aria-label="发布账号">
+              <div className="canvas-tiktok-account-switcher__heading">
+                <strong>发布账号</strong>
+                <button type="button" disabled={busy} onClick={() => { void connect(); }}><UserPlus />新增账号</button>
+              </div>
+              <div className="canvas-tiktok-accounts is-bound">
+                {connection.connections.map((account) => (
+                  <button
+                    key={account.zernioAccountId}
+                    type="button"
+                    className={account.zernioAccountId === selectedAccountId ? "is-active" : undefined}
+                    aria-pressed={account.zernioAccountId === selectedAccountId}
+                    disabled={busy}
+                    onClick={() => { void selectAccount(account); }}
+                  >
+                    {account.zernioAccountId === selectedAccountId ? <Check /> : <Send />}
+                    <span><strong>{account.displayName}</strong><small>{account.creatorUsername ? `@${account.creatorUsername}` : "TikTok 已绑定"}</small></span>
+                  </button>
+                ))}
+              </div>
+              {connection.availableAccounts.length ? (
+                <div className="canvas-tiktok-account-switcher__available">
+                  <small>可添加账号</small>
+                  <div className="canvas-tiktok-accounts">
+                    {connection.availableAccounts.map((account) => (
+                      <button key={account.zernioAccountId} type="button" disabled={busy} onClick={() => { void claim(account); }}>
+                        <UserPlus /><span><strong>{account.displayName}</strong><small>{account.creatorUsername ? `@${account.creatorUsername}` : "TikTok 已连接"}</small></span>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              ) : null}
+            </section>
 
-            {creator ? (
+            {selectedConnection ? <div className="canvas-tiktok-account">
+              <Send />
+              <span><strong>{creator?.creatorNickname || selectedConnection.displayName}</strong><small>{creator?.creatorUsername ? `@${creator.creatorUsername}` : "TikTok 已绑定"}</small></span>
+              <button type="button" disabled={busy} onClick={() => { void disconnect(); }} aria-label={`解除 ${selectedConnection.displayName} 的 TikTok 绑定`} title="解绑"><LogOut /></button>
+            </div> : null}
+
+            {selectedConnection && creator ? (
               <form className="canvas-tiktok-form" onSubmit={submit}>
                 <section className="canvas-tiktok-copy" aria-label="TikTok 文案">
                   <div className="canvas-tiktok-copy__heading">
@@ -438,12 +506,12 @@ export function CanvasTikTokPublisher({ item, scope, initialCopy, onCopyChange, 
                   {busy ? "提交中" : immediateLimitReached ? "已达到当前 API 发布额度" : deliveryMode === "creator_inbox" ? "发送到 TikTok 草稿箱" : mode === "scheduled" ? "加入定时发布" : "发布到 TikTok"}
                 </button>
               </form>
-            ) : creatorError ? (
+            ) : selectedConnection && creatorError ? (
               <div className="canvas-tiktok-panel__error" role="alert">
                 <span>{creatorError}</span>
                 <button type="button" onClick={() => { void load(); }}><RefreshCw />重新读取发布权限</button>
               </div>
-            ) : <div className="canvas-tiktok-panel__loading"><LoaderCircle className="is-spinning" /><span>正在读取发布权限</span></div>}
+            ) : selectedConnection ? <div className="canvas-tiktok-panel__loading"><LoaderCircle className="is-spinning" /><span>正在读取发布权限</span></div> : null}
           </>
         ) : null}
 

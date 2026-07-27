@@ -30,6 +30,7 @@ import {
   createTikTokPublishJob,
   getTikTokConnectionByAccountId,
   getTikTokConnection,
+  listTikTokConnections,
   listTikTokPublishJobs,
   saveTikTokConnection,
   saveTikTokProfile,
@@ -84,14 +85,13 @@ export function publicTikTokPublishJob(job: TikTokPublishJob): TikTokPublicPubli
 
 export async function tikTokConnectionStatus(userId: string) {
   const config = getTikTokConfiguration();
-  const connection = await getTikTokConnection(userId);
-  const availableAccounts = config.configured && !connection?.zernioAccountId
-    ? await listAvailableTikTokAccounts(userId)
-    : [];
+  const connections = config.configured ? await listTikTokConnections(userId) : [];
+  const availableAccounts = config.configured ? await listAvailableTikTokAccounts(userId) : [];
   return {
     configured: config.configured,
     missingConfiguration: config.configured ? [] : config.missing,
-    connection: connection ? connectionSummary(connection) : null,
+    connection: connections[0] ? connectionSummary(connections[0]) : null,
+    connections: connections.map(connectionSummary).filter((connection): connection is TikTokConnectionSummary => Boolean(connection)),
     availableAccounts,
   };
 }
@@ -106,7 +106,7 @@ async function listAvailableTikTokAccounts(userId: string): Promise<TikTokAvaila
   for (const { account, zernioProfileId } of accounts) {
     if (!account._id || account.isActive === false) continue;
     const claimed = await getTikTokConnectionByAccountId(account._id);
-    if (claimed && claimed.userId !== userId) continue;
+    if (claimed) continue;
     available.push({
       zernioProfileId,
       zernioAccountId: account._id,
@@ -210,23 +210,27 @@ export async function finishTikTokOAuth(input: {
   return { returnTo: state.returnTo };
 }
 
-export async function disconnectTikTok(userId: string) {
+export async function disconnectTikTok(userId: string, zernioAccountId: string) {
   requireTikTokConfiguration();
-  const connection = await getTikTokConnection(userId);
-  if (!connection?.zernioAccountId) return false;
-  await clearTikTokConnection(userId);
+  const connection = await getTikTokConnectionByAccountId(zernioAccountId);
+  if (!connection || connection.userId !== userId) return false;
+  await clearTikTokConnection(userId, zernioAccountId);
   return true;
 }
 
-async function requiredTikTokConnection(userId: string) {
-  const connection = await getTikTokConnection(userId);
-  if (!connection?.zernioAccountId) throw new TikTokPublishingError("TIKTOK_NOT_CONNECTED", "请先绑定 TikTok 账号。", 409);
+async function requiredTikTokConnection(userId: string, zernioAccountId?: string) {
+  const connection = zernioAccountId
+    ? await getTikTokConnectionByAccountId(zernioAccountId)
+    : (await listTikTokConnections(userId))[0];
+  if (!connection?.zernioAccountId || connection.userId !== userId) {
+    throw new TikTokPublishingError("TIKTOK_NOT_CONNECTED", "请选择当前站内账号已绑定的 TikTok。", 409);
+  }
   return connection;
 }
 
-export async function getTikTokCreatorInfo(userId: string) {
+export async function getTikTokCreatorInfo(userId: string, zernioAccountId: string) {
   const config = requireTikTokConfiguration();
-  const connection = await requiredTikTokConnection(userId);
+  const connection = await requiredTikTokConnection(userId, zernioAccountId);
   const creator = await fetchZernioTikTokCreatorInfo({ apiKey: config.apiKey, baseUrl: config.apiBaseUrl, accountId: connection.zernioAccountId! });
   return { ...creator, creatorUsername: connection.creatorUsername || creator.creatorUsername };
 }
@@ -252,6 +256,7 @@ function scheduleTime(value: unknown, now: Date) {
 
 export async function scheduleTikTokPublish(input: {
   userId: string;
+  zernioAccountId: string;
   ownerIds: readonly string[];
   scope: CanvasLibraryScope;
   libraryItemId: string;
@@ -285,7 +290,7 @@ export async function scheduleTikTokPublish(input: {
   const scheduledAt = scheduleTime(input.scheduledAt, now);
   const [{ item, sourceOwnerId }, creator] = await Promise.all([
     findPublishableVideo(input.libraryItemId, input.ownerIds, input.scope),
-    getTikTokCreatorInfo(input.userId),
+    getTikTokCreatorInfo(input.userId, input.zernioAccountId),
   ]);
   const privacyLevel = input.privacyLevel as TikTokPrivacyLevel;
   if (!creator.privacyLevelOptions.includes(privacyLevel)) {
@@ -300,6 +305,7 @@ export async function scheduleTikTokPublish(input: {
   }
   const job = await createTikTokPublishJob({
     userId: input.userId,
+    zernioAccountId: input.zernioAccountId,
     sourceOwnerId,
     libraryItemId: item.id,
     idempotencyKey: input.idempotencyKey.trim(),
@@ -371,7 +377,7 @@ async function persistZernioStatus(job: TikTokPublishJob, workerId: string, post
 async function processClaimedJob(job: TikTokPublishJob, workerId: string) {
   if (terminalStatuses.has(job.status)) return;
   const config = requireTikTokConfiguration();
-  const connection = await requiredTikTokConnection(job.userId);
+  const connection = await requiredTikTokConnection(job.userId, job.zernioAccountId);
   const accountId = connection.zernioAccountId!;
 
   if (job.zernioPostId) {

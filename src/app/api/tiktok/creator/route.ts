@@ -10,7 +10,12 @@ export async function GET(request: NextRequest) {
   try {
     const session = await requireAuthSession(request);
     if (!session.ok) return authResultResponse(request, session);
-    return NextResponse.json({ creator: await getTikTokCreatorInfo(session.user.local_user_id) });
+    return NextResponse.json({
+      creator: await getTikTokCreatorInfo(
+        session.user.local_user_id,
+        request.nextUrl.searchParams.get("accountId") || "",
+      ),
+    });
   } catch (error) {
     return tikTokErrorResponse(request, error, "tiktok-creator-info");
   }

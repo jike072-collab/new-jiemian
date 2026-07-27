@@ -51,6 +51,7 @@ export type TikTokCreatorInfo = {
 export type TikTokPublishJob = {
   id: string;
   userId: string;
+  zernioAccountId?: string;
   sourceOwnerId: string;
   libraryItemId: string;
   idempotencyKey: string;
