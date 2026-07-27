@@ -311,6 +311,8 @@ const normalizedCommercePlan = normalizeCommercePlanGeneration({
   }],
 }, ["product-asmr"]);
 assert.equal(normalizedCommercePlan.plans.length, 1);
+assert.doesNotMatch(normalizedCommercePlan.plans[0].prompt, /素材职责/);
+assert.doesNotMatch(normalizedCommercePlan.plans[0].prompt, /产品可见事实/);
 assert.match(normalizedCommercePlan.plans[0].prompt, /镜头 1｜0-2秒｜极近景/);
 assert.match(normalizedCommercePlan.plans[0].prompt, /人物与情绪/);
 assert.match(normalizedCommercePlan.plans[0].prompt, /固定微距/);

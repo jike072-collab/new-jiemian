@@ -148,5 +148,6 @@ export function resolveLoweredUploadLimitBytes(
 }
 
 export function normalizeMimeType(value: string | null | undefined) {
-  return String(value || "").split(";")[0].trim().toLowerCase();
+  const mimeType = String(value || "").split(";")[0].trim().toLowerCase();
+  return mimeType === "audio/mp3" ? "audio/mpeg" : mimeType;
 }

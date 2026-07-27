@@ -104,6 +104,16 @@ test("format check reads only the header slice", async () => {
   assert.equal(file.fullReadCount, 0);
 });
 
+test("audio/mp3 browser MIME is accepted as canonical MP3 audio", async () => {
+  const file = fileLike({
+    name: "reference.mp3",
+    type: "audio/mp3",
+    size: 16,
+    header: new Uint8Array([0x49, 0x44, 0x33, 0x04]),
+  });
+  assert.equal(await assertFileFormatAllowed(file, "reference-audio"), "audio/mpeg");
+});
+
 test("diagnostic output does not include file content", () => {
   const diagnostic = createErrorDiagnostic(new GenerationDiagnosticError({
     code: "INPUT_UNSUPPORTED_FORMAT",

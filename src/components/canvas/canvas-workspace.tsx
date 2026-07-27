@@ -2950,7 +2950,7 @@ function CanvasWorkspaceInner({
       const prompt = currentNodes.find((node) => node.data.assistantProductId === draft.id && node.data.assistantPlanId === plan.id && node.data.kind === "prompt");
       const generator = currentNodes.find((node) => node.data.assistantProductId === draft.id && node.data.assistantPlanId === plan.id && node.data.kind === "generator");
       const group = currentNodes.find((node) => node.id === prompt?.parentId && node.data.kind === "group");
-      return prompt && generator && group ? [{ planId: plan.id, groupId: group.id, promptNodeId: prompt.id, generatorNodeId: generator.id }] : [];
+      return prompt && generator ? [{ planId: plan.id, ...(group ? { groupId: group.id } : {}), promptNodeId: prompt.id, generatorNodeId: generator.id }] : [];
     });
     const existingPlanIds = new Set(existingResults.map((item) => item.planId));
     if (plans.every((plan) => existingPlanIds.has(plan.id))) return existingResults;
@@ -2972,57 +2972,22 @@ function CanvasWorkspaceInner({
 
     pushHistorySnapshot();
     const now = new Date().toISOString();
-    let group = currentNodes.find((node) => node.data.kind === "group" && node.data.assistantProductId === draft.id);
-    const previousBranchCount = currentNodes.filter((node) => node.data.kind === "generator" && node.data.assistantProductId === draft.id && node.parentId === group?.id).length;
-    const branchCount = previousBranchCount + branches.length;
-    const groupWidth = 1_180;
-    const groupHeight = Math.min(1_800, Math.max(520, resolvedImages.length * 260 + 96, branchCount * 410 + 96));
+    const previousBranchCount = currentNodes.filter((node) => node.data.kind === "generator" && node.data.assistantProductId === draft.id).length;
+    const center = flowRef.current.screenToFlowPosition({ x: window.innerWidth / 2, y: window.innerHeight / 2 });
+    const rightmost = currentNodes
+      .filter((node) => !node.parentId)
+      .reduce((maximum, node) => Math.max(maximum, node.position.x + (node.width || 360)), center.x - 120);
+    const layoutOrigin = { x: rightmost + 120, y: center.y - 210 };
     const nextNodes: CanvasFlowNode[] = [];
     const nextEdges: Edge[] = [];
-    if (!group) {
-      const center = flowRef.current.screenToFlowPosition({ x: window.innerWidth / 2, y: window.innerHeight / 2 });
-      const rightmost = currentNodes.filter((node) => !node.parentId).reduce((maximum, node) => Math.max(maximum, node.position.x + (node.width || 360)), center.x - groupWidth / 2 - 120);
-      const groupId = canvasId("commerce-group");
-      group = {
-        id: groupId,
-        type: "group",
-        dragHandle: ".canvas-node-group__header",
-        position: { x: rightmost + 120, y: center.y - groupHeight / 2 },
-        width: groupWidth,
-        height: groupHeight,
-        data: {
-          kind: "group",
-          title: draft.productName.trim() || "未命名鞋类产品",
-          createdAt: now,
-          collapsed: false,
-          expandedWidth: groupWidth,
-          expandedHeight: groupHeight,
-          assistantProductId: draft.id,
-        },
-      };
-      nextNodes.push(group);
-    } else {
-      group = {
-        ...group,
-        width: Math.max(group.width || groupWidth, groupWidth),
-        height: Math.max(group.height || groupHeight, groupHeight),
-        data: { ...group.data, title: draft.productName.trim() || group.data.title, expandedWidth: groupWidth, expandedHeight: groupHeight },
-      };
-    }
-
-    const existingImageNodes = currentNodes.filter((node) => node.parentId === group.id && node.data.kind === "media" && node.data.assistantProductId === draft.id);
     const productImageNodes = resolvedImages.map(({ image, source, item }, index) => {
-      const existing = existingImageNodes.find((node) => node.data.libraryItemId && node.data.libraryItemId === (image.libraryItemId || source?.data.libraryItemId));
-      if (existing) return existing;
+      if (source?.data.kind === "media" && source.data.mediaType === "image") return source;
       const libraryItemId = image.libraryItemId || source?.data.libraryItemId;
       const node: CanvasFlowNode = {
         id: canvasId("commerce-image"),
         type: "canvas",
         dragHandle: canvasNodeDragHandle("media"),
-        parentId: group!.id,
-        extent: "parent",
-        expandParent: true,
-        position: { x: 32, y: 64 + index * 260 },
+        position: { x: layoutOrigin.x, y: layoutOrigin.y + index * 260 },
         width: 280,
         height: 230,
         data: {
@@ -3062,10 +3027,7 @@ function CanvasWorkspaceInner({
         id: promptId,
         type: "canvas",
         dragHandle: canvasNodeDragHandle("prompt"),
-        parentId: group!.id,
-        extent: "parent",
-        expandParent: true,
-        position: { x: 376, y: 64 + row * 410 },
+        position: { x: layoutOrigin.x + 360, y: layoutOrigin.y + row * 410 },
         width: 320,
         height: 330,
         data: branchData.promptData,
@@ -3074,10 +3036,7 @@ function CanvasWorkspaceInner({
         id: generatorId,
         type: "canvas",
         dragHandle: canvasNodeDragHandle("generator"),
-        parentId: group!.id,
-        extent: "parent",
-        expandParent: true,
-        position: { x: 776, y: 44 + row * 410 },
+        position: { x: layoutOrigin.x + 760, y: layoutOrigin.y + row * 410 },
         width: 360,
         height: 370,
         data: branchData.generatorData,
@@ -3087,18 +3046,17 @@ function CanvasWorkspaceInner({
         id: canvasId("edge"),
         ...edge,
       }, [...currentNodes, ...nextNodes], connectionStyle)));
-      created.push({ planId: plan.id, groupId: group!.id, promptNodeId: promptId, generatorNodeId: generatorId });
+      created.push({ planId: plan.id, promptNodeId: promptId, generatorNodeId: generatorId });
     });
 
-    const withoutOldGroup = currentNodes.filter((node) => node.id !== group!.id);
-    const presented = applyCanvasNodePresentation([...withoutOldGroup, group, ...nextNodes.filter((node) => node.id !== group!.id)], [...edgesRef.current, ...nextEdges]);
+    const presented = applyCanvasNodePresentation([...currentNodes, ...nextNodes], [...edgesRef.current, ...nextEdges]);
     nodesRef.current = presented.nodes;
     edgesRef.current = presented.edges;
     setNodes(presented.nodes);
     setEdges(presented.edges);
     markDirty();
     setNotice(`已创建 ${created.length} 套提示词和视频节点，尚未开始生成。`);
-    window.requestAnimationFrame(() => { void flowRef.current.setCenter(group!.position.x + groupWidth / 2, group!.position.y + Math.min(groupHeight, 900) / 2, { duration: 260, zoom: 0.65 }); });
+    window.requestAnimationFrame(() => { void flowRef.current.setCenter(layoutOrigin.x + 560, layoutOrigin.y + Math.min(410, branches.length * 410) / 2, { duration: 260, zoom: 0.65 }); });
     return [...existingResults, ...created];
   }, [connectionStyle, markDirty, pushHistorySnapshot]);
 

@@ -344,7 +344,7 @@ export function composeCommerceSeedancePrompt({
     `声音：${shot.sound}`,
     `转场：${shot.transition}`,
   ].join("\n")).join("\n\n");
-  return [
+  const detailedSections = [
     "素材职责：",
     referenceText,
     "产品可见事实：",
@@ -362,6 +362,15 @@ export function composeCommerceSeedancePrompt({
     shotText,
     `声音/口播：从第 0 秒开始；${openingVoice}；最多三句短马来语，每个有口播镜头的屏幕字幕必须与该镜头台词逐字相同，无口播镜头才不显示字幕；动作声与节拍承担中段情绪。`,
     "禁止项：优惠钩子不得出现具体金额、百分比、降价幅度、限时、库存或销量；不得虚构评价、品牌、材料、舒适、防滑、耐磨、透气或健康功效；不得使用危险动作、事故、受伤、街头骚扰；不得出现僵硬口型、广告式连续点头、塑料皮肤、过度磨皮、完美影棚布光、漂浮滑步、无重力步态、肢体畸变、鞋子变形、文字乱码或无动机炫技运镜。",
+  ];
+  return [
+    `使用 ${references.map((binding) => binding.label).join("、")} 作为同款鞋的唯一外观参考：全程保持可见鞋型、配色、结构、左右脚和穿着状态一致，忽略原图背景、文字及无法从图中确认的信息。`,
+    `制作一支 15 秒、9:16 的马来西亚马来语真人短视频。场景为${scenePattern?.setting || hook.scene}，${scenePattern?.localDetails || hook.scene}。${scenePattern?.movementBoundary || "只做与鞋型匹配的低风险动作"}。`,
+    `第 0 秒立刻出现${hook.visualBeat}。人物说“${hook.hookLine}”，字幕逐字使用“${hook.onScreenText}”，同时有对应环境声或动作声。`,
+    `镜头节奏：${shotPattern?.cameraRhythm || "四个镜头景别清晰变化"}；${energyGuidance}。${shotPattern?.transitionRule || "只使用由人物动作触发的自然转场"}。`,
+    `真人是马来西亚当地普通成年人，不是广告模特。${performancePattern?.performance || production.realismNotes}。保留皮肤纹理、碎发、衣服褶皱、眨眼、呼吸、重心变化、动作惯性、轻微手持抖动和自然曝光；禁止塑料皮肤、过度磨皮和影棚广告感。`,
+    "叙事从共鸣开头，接着以可见画面回应，再放进当地日常场景，最后自然 CTA；四段只讲同一个利益。",
+    ...detailedSections.slice(11),
   ].join("\n\n").slice(0, 8_000);
 }
 
@@ -581,9 +590,10 @@ function validateCommercePlanContent(prompt: string, hook: CanvasCommercePlanHoo
   if (hook.copyPatternId === "numbered-specificity") {
     const count = /(?:\b2\b|\bdua\b)/iu.test(`${hook.hookLine} ${hook.onScreenText}`) ? 2
       : /(?:\b3\b|\btiga\b)/iu.test(`${hook.hookLine} ${hook.onScreenText}`) ? 3 : 0;
+    const evidencePrompt = prompt.replace(/第一帧/gu, "");
     const fulfilled = count === 2
-      ? /(?:第一|pertama)/iu.test(prompt) && /(?:第二|kedua)/iu.test(prompt)
-      : /(?:第一|pertama)/iu.test(prompt) && /(?:第二|kedua)/iu.test(prompt) && /(?:第三|ketiga)/iu.test(prompt);
+      ? /(?:第一|pertama)/iu.test(evidencePrompt) && /(?:第二|kedua)/iu.test(evidencePrompt)
+      : /(?:第一|pertama)/iu.test(evidencePrompt) && /(?:第二|kedua)/iu.test(evidencePrompt) && /(?:第三|ketiga)/iu.test(evidencePrompt);
     if (!count || !fulfilled) {
       throw new Error("数字式钩子必须使用 2 或 3，并在时间轴中兑现相同数量的画面证据。");
     }

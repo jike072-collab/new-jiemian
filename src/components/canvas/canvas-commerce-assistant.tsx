@@ -39,7 +39,7 @@ export type CanvasCommerceLibraryImage = {
 
 export type CanvasCommerceCreateResult = {
   planId: string;
-  groupId: string;
+  groupId?: string;
   promptNodeId: string;
   generatorNodeId: string;
 };
@@ -337,7 +337,7 @@ export function CanvasCommerceAssistant({
         plans: prepared.plans.map((plan) => plan.id === activePlan.id ? {
             ...plan,
             selected: false,
-            createdGroupId: created.groupId,
+            ...(created.groupId ? { createdGroupId: created.groupId } : {}),
             createdPromptNodeId: created.promptNodeId,
             createdGeneratorNodeId: created.generatorNodeId,
           } : plan),
