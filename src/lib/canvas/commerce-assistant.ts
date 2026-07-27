@@ -188,6 +188,7 @@ export function normalizeCommercePlanGeneration(
   context: {
     visibleFacts?: string[];
     imageCount?: number;
+    commercialEvidence?: string;
     usedHookPatterns?: Array<{
       direction: CanvasCommerceDirection;
       visualPatternId: string;
@@ -235,7 +236,7 @@ export function normalizeCommercePlanGeneration(
       visibleFacts: context.visibleFacts || stringList(item.visibleFacts, 16, 160),
       imageCount: context.imageCount,
     });
-    validateCommercePlanContent(prompt, hook, shots, publishingCopy);
+    validateCommercePlanContent(prompt, hook, shots, publishingCopy, context.commercialEvidence);
     seen.add(direction);
     seenHookPairs.add(hookPair);
     seenProductionRecipes.add(productionRecipe);
@@ -540,7 +541,7 @@ export function buildCommerceCanvasBranchData({
   return { promptData, generatorData, edges };
 }
 
-function validateCommercePlanContent(prompt: string, hook: CanvasCommercePlanHook, shots: CanvasCommerceShot[], publishingCopy: TikTokCopyDraft) {
+function validateCommercePlanContent(prompt: string, hook: CanvasCommercePlanHook, shots: CanvasCommerceShot[], publishingCopy: TikTokCopyDraft, commercialEvidence = "") {
   if (!prompt.includes(hook.hookLine) || !prompt.includes(hook.onScreenText)) {
     throw new Error("钩子口播和屏幕短字必须原样写入最终提示词。");
   }
@@ -583,11 +584,12 @@ function validateCommercePlanContent(prompt: string, hook: CanvasCommercePlanHoo
   const shotClaims = shots.flatMap((shot) => [shot.action, shot.productState, shot.dialogue, shot.onScreenText]).join("\n");
   const claimSurface = [shotClaims, hook.hookLine, hook.onScreenText, publishingCopy.title, publishingCopy.caption].join("\n");
   const unsupportedClaim = claimSurface.match(/(?:价格|原价|现价|限时|库存|清仓|退货|退款|销量|评价|舒适|防滑|耐磨|透气|脚痛|受伤|harga|limited[ -]?time|stok|stock|clearance|refund|return|selesa|anti[- ]?slip|tahan lama|breathable|sakit|cedera)/iu)?.[0];
-  if (unsupportedClaim) {
+  const hasCommercialEvidence = Boolean(commercialEvidence.trim());
+  if (unsupportedClaim && !hasCommercialEvidence) {
     throw new Error(`方案包含当前产品资料无法证明的话术“${unsupportedClaim}”。`);
   }
   const numericPromotion = claimSurface.match(/(?:\b(?:RM|MYR)\s*\d|[¥￥$]\s*\d|\d+(?:\.\d+)?\s*(?:%|折|off\b)|(?:折扣|优惠|促销|降价|diskaun|promosi|discount).{0,12}\d)/iu)?.[0];
-  if (numericPromotion) throw new Error("优惠钩子不得包含具体金额、百分比或降价数字。");
+  if (numericPromotion && !hasCommercialEvidence) throw new Error("优惠钩子不得包含具体金额、百分比或降价数字。");
   if (hook.copyPatternId === "numbered-specificity") {
     const count = /(?:\b2\b|\bdua\b)/iu.test(`${hook.hookLine} ${hook.onScreenText}`) ? 2
       : /(?:\b3\b|\btiga\b)/iu.test(`${hook.hookLine} ${hook.onScreenText}`) ? 3 : 0;

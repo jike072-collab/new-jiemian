@@ -176,8 +176,9 @@ assert.match(workspace, /assistantPlanId/);
 assert.match(commerceContract, /ratio: "9:16"/);
 assert.match(commerceContract, /duration: 15/);
 assert.match(commerceContract, /notes: commercePlanNotes/);
-assert.match(hookLibrarySource, /允许非数字优惠惊喜话术/);
+assert.match(hookLibrarySource, /当前产品资料或用户优化要求已明确给出/);
 assert.match(hookLibrarySource, /offer-surprise/);
+assert.match(hookLibrarySource, /strongHookExamples/);
 assert.match(hookLibrarySource, /单纯系鞋带、站起、走路/);
 assert.match(hookLibrarySource, /每句马来语口播都必须显示逐字相同/);
 
@@ -370,6 +371,11 @@ assert.throws(() => normalizeCommercePlanGeneration({
     publishingCopy: { ...commercePublishingCopy, caption: "Deal RM 19 memang berbaloi" },
   }],
 }, ["product-asmr"]), /具体金额/);
+const verifiedOfferPlan = normalizeCommercePlanGeneration({
+  kind: "commerce-plan-generation",
+  plans: [{ direction: "product-asmr", hook: offerHook, production: commerceProduction, shots: offerShots, publishingCopy: { ...commercePublishingCopy, caption: "Deal RM 19 memang berbaloi" } }],
+}, ["product-asmr"], { commercialEvidence: "当前鞋款活动价为 RM 19，可在视频中展示。" });
+assert.match(verifiedOfferPlan.plans[0].publishingCopy.caption, /RM 19/);
 
 assert.throws(() => normalizeCommercePlanGeneration({
   kind: "commerce-plan-generation",

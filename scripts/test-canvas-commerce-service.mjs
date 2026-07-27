@@ -155,7 +155,7 @@ assert.match(calls[1].systemPrompt, /上一镜头结束时的人物、服装、�
 assert.match(calls[1].systemPrompt, /单纯系鞋带、站起、走路/);
 assert.match(calls[1].systemPrompt, /轻微手持微抖和曝光调整/);
 assert.match(calls[1].systemPrompt, /不是完美广告模特/);
-assert.match(calls[1].systemPrompt, /Tak sangka deal dia macam ni/);
+assert.match(calls[1].systemPrompt, /当前产品资料、用户优化要求或画布里明确给出的 RM\/MYR 金额/);
 const planRequest = JSON.parse(calls[1].userPrompt);
 assert.equal(planRequest.scope, "shared");
 assert.equal(planRequest.productDraftId, "product-1");
@@ -271,8 +271,8 @@ assert.equal(hookRepaired.plans[0].shots[0].onScreenText, hookRepaired.plans[0].
 const candidateBase = structuredClone(generated.plans[0]);
 const candidateB = structuredClone(candidateBase);
 candidateB.hook.visualPatternId = "middle-of-action";
-candidateB.hook.copyPatternId = "expectation-gap";
-candidateB.hook.hookLine = "Tak sangka tapak dia merah.";
+candidateB.hook.copyPatternId = "return-intent-reversal";
+candidateB.hook.hookLine = "Ingat nak pulangkan, sekali tapak merah muncul.";
 candidateB.hook.onScreenText = candidateB.hook.hookLine;
 candidateB.shots[0].dialogue = candidateB.hook.hookLine;
 candidateB.shots[0].onScreenText = candidateB.hook.hookLine;
@@ -310,9 +310,11 @@ const criticallySelected = await candidateService.answer({
   nodes,
 }, "request-candidates", visualEvidence);
 assert.equal(candidateCalls, 2);
-assert.equal(criticallySelected.plans[0].hook.hookLine, "Tak sangka tapak dia merah.");
+assert.equal(criticallySelected.plans[0].hook.hookLine, "Ingat nak pulangkan, sekali tapak merah muncul.");
 assert.match(criticallySelected.plans[0].prompt, /1.5-2 秒/);
 assert.ok(criticallySelected.plans[0].prompt.length <= 2_400);
+assert.match(calls[1].systemPrompt, /当前产品资料或用户优化要求/);
+assert.match(calls[1].systemPrompt, /return-intent-reversal/);
 
 const weakPlan = structuredClone(candidateBase);
 weakPlan.hook.visualPatternId = "visible-problem-contrast";

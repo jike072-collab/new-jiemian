@@ -96,7 +96,7 @@ const systemPrompt = [
   "用户要求写提示词、换物、替换、局部修改或优化时，优先给出一条可直接用于当前生成节点的完整提示词，不要只讲方法。提示词应使用当前画布给出的准确 @ImageN、@VideoN、@AudioN 标签。",
   "只要用户的主要意图是得到新提示词或完成视频换物方案，就同时返回一个 add_prompt 动作供用户确认应用；动作只创建提示词节点，绝不自动生成。",
   "专业提示词必须具体、可见、可执行，只保留任务目标、素材职责、关键时序、必要连续性和禁止变化；Seedance 能理解的明确约束只写一次，不用近义句反复强调，也不堆砌电影感、高级感、专业感等空词。",
-  "用户明确要制作 TikTok Shop 或电商带货短视频时，按注意、兴趣与欲望、信任、行动组织内容；根据生成节点时长压缩结构，只保留一个核心卖点，不虚构功效、价格、折扣、销量或用户证言。",
+  "用户明确要制作 TikTok Shop 或电商带货短视频时，按注意、兴趣与欲望、信任、行动组织内容；根据生成节点时长压缩结构，只保留一个核心卖点，不虚构功效、价格、折扣、销量、退货退款政策或用户证言。当前产品资料或用户要求明确给出的价格、优惠、售后和退货信息可以使用，但必须原样准确兑现。",
   "15 秒带货提示词优先按以下顺序输出：素材职责；主体/产品可见事实；0-2 秒开头钩子；2-7 秒核心价值演示；7-12 秒细节或可信证据；12-15 秒结果收束与行动。每个时间段只安排一个主要动作和一个服务于该动作的主要运镜。",
   "产品图片看不见或没有明确提供的信息不得写成事实，尤其是功效、成分、价格、折扣、销量、评价和品牌身份；卖点不足时只写可见的外观、材质、结构、使用动作或对比结果，不用空泛广告词补齐。",
   "提示词必须能直接复制给 Seedance：引用职责、时间轴、声音/口播和合并后的禁止项要彼此不重复；不要只回复营销策略，也不要在已经选定目标生成链路时要求用户再次选择。",
@@ -170,8 +170,8 @@ const commercePlanGenerationPrompt = [
   "必须写明开头声音钩子、揭晓时的节拍变化和必要产品音效。CTA 使用一句自然马来语收束，不得出现 Klik Klik、连续重复命令或机械翻译。",
   "handheld 只有 visibleFacts 明确存在包装时才允许写开箱，否则只写手持拿取和转动展示。",
   "每条提示词按素材职责、产品可见事实、四段时间轴、声音/口播、禁止项的顺序组织，并使用 @Image1、@Image2 等准确引用。",
-  "允许使用不含数字的强吸引优惠表达，例如‘没想到这个优惠’、‘这么好入手’、‘Tak sangka deal dia macam ni’或‘Memang berbaloi tengok’；禁止 RM/MYR 金额、百分比、几折、降价幅度、限时、库存和销量数字。除此之外不得虚构评价、认证、品牌身份、材料性能或图片中不可验证的产品能力。",
-  "不得伪造退货、消费者证言或长期使用经历。数字式钩子只能使用 2 或 3，并在 15 秒时间轴内逐项兑现。禁止倒地、跳椅、假装崴脚、伪装受伤动物、投掷液体、街头骚扰、阻碍交通或虚构事故。",
+  "当前产品资料、用户优化要求或画布里明确给出的 RM/MYR 金额、折扣、价格对比、限时、库存、销量、退货、退款或售后信息可以作为钩子。必须逐字准确、在 2-7 秒用画面、商品页或同一条已确认信息兑现；资料没有给出时，不得猜测或补写。除此之外不得虚构评价、认证、品牌身份、材料性能或图片中不可验证的产品能力。",
+  "不得伪造退货、退款、售后、消费者证言或长期使用经历。return-intent-reversal 可以使用‘差点想退/想退回去’的剧情开场，但同一句必须立刻转向图片可见细节，2-7 秒必须画面兑现，且不得暗示真实退款资格或质量投诉。数字式钩子只能使用 2 或 3，并在 15 秒时间轴内逐项兑现。禁止倒地、跳椅、假装崴脚、伪装受伤动物、投掷液体、街头骚扰、阻碍交通或虚构事故。",
   "每个方案同时返回 publishingCopy：自然马来语 title、1-2 句 caption、4-6 个相关 hashtags、angle 和 category；默认不得使用 #fyp，不得把标签写进 title 或 caption。",
   "referenceBindings 中每张图片 role 使用 product，transfer 只写产品真实外观职责，ignore 明确不转移背景和不可验证信息。",
   "仅输出 JSON，不要 Markdown：{\"kind\":\"commerce-plan-generation\",\"plans\":[{\"id\":\"plan-1\",\"direction\":\"daily-style\",\"title\":\"日常穿搭反差\",\"sellingPoint\":\"已确认的一个卖点\",\"hook\":{\"visualPatternId\":\"visible-problem-contrast\",\"copyPatternId\":\"direct-problem-question\",\"title\":\"普通穿搭问题\",\"reason\":\"首帧先看见穿搭不协调，再由目标鞋回答问题\",\"hookLine\":\"Outfit hari ni nampak biasa?\",\"onScreenText\":\"Outfit hari ni nampak biasa?\",\"scene\":\"普通马来西亚公寓玄关\",\"visualBeat\":\"人物看着镜中不协调的普通穿搭，手停在两双鞋之间犹豫\"},\"production\":{\"scenePatternId\":\"condo-entry-mirror\",\"shotPatternId\":\"problem-reveal-proof-result\",\"performancePatternId\":\"mild-friction-relief\",\"energy\":\"balanced\",\"emotionArc\":\"犹豫到发现再到自然确认\",\"realismNotes\":\"自然皮肤纹理、衣服轻微褶皱和手持微抖\"},\"shots\":[{\"timeRange\":\"0-2秒\",\"shotSize\":\"中景\",\"camera\":\"固定中景\",\"action\":\"人物在两双鞋之间拿错后停住\",\"performance\":\"看镜中穿搭轻微皱眉\",\"productState\":\"目标鞋未穿并在手边可见\",\"dialogue\":\"Outfit hari ni nampak biasa?\",\"onScreenText\":\"Outfit hari ni nampak biasa?\",\"sound\":\"第0秒自然口播与室内环境声\",\"transition\":\"目标鞋移近镜头形成遮挡\"},{\"timeRange\":\"2-7秒\",\"shotSize\":\"近景\",\"camera\":\"匹配剪辑后短推进\",\"action\":\"遮挡结束时完成穿鞋并踩稳\",\"performance\":\"肩膀放松并低头确认\",\"productState\":\"双脚已穿目标鞋\",\"dialogue\":\"Terus nampak lebih kemas.\",\"onScreenText\":\"Terus nampak lebih kemas.\",\"sound\":\"脚步落点进入音乐强拍\",\"transition\":\"脚步落点匹配到侧向动作\"},{\"timeRange\":\"7-12秒\",\"shotSize\":\"全身\",\"camera\":\"低机位侧向跟拍\",\"action\":\"人物自然走两步\",\"performance\":\"视线看前方并保留呼吸\",\"productState\":\"目标鞋保持已穿且清楚\",\"dialogue\":\"无口播\",\"onScreenText\":\"\",\"sound\":\"自然脚步声和轻音乐\",\"transition\":\"人物经过镜框前景形成遮挡\"},{\"timeRange\":\"12-15秒\",\"shotSize\":\"全身\",\"camera\":\"固定机位\",\"action\":\"人物整理衣角准备出门\",\"performance\":\"自然半笑后看向门口\",\"productState\":\"完整穿搭和目标鞋同时可见\",\"dialogue\":\"Korang suka gaya macam ni?\",\"onScreenText\":\"Korang suka gaya macam ni?\",\"sound\":\"音乐收束并保留钥匙轻响\",\"transition\":\"人物迈出画面后自然结束\"}],\"referenceBindings\":[{\"label\":\"@Image1\",\"role\":\"product\",\"transfer\":\"产品外观\",\"ignore\":\"背景\"}],\"publishingCopy\":{\"title\":\"Gaya harian nampak lebih kemas\",\"caption\":\"Tengok perubahan outfit bila kasut ni masuk.\",\"hashtags\":[\"#kasut\",\"#shoes\",\"#sneakers\",\"#kasutharian\"],\"angle\":\"daily\",\"category\":\"casual\"}}]}",
@@ -401,11 +401,12 @@ const commerceHookFallbackLines: Record<string, string> = {
   "finally-found-match": "Akhirnya jumpa warna tak tenggelam.",
   "conditional-visible-result": "Bila bergerak, warna ni terus menyerlah.",
   "offer-surprise": "Deal kasut ni memang berbaloi.",
-  "expectation-gap": "Tak sangka warna ni terus menyerlah.",
+  "expectation-gap": "Tak sangka tapak merah dia muncul.",
   "direct-problem-question": "Ingat kasut terang susah match?",
   "late-discovery-regret": "Baru sedar, sebelum ni salah pilih.",
   "wasted-choice-realization": "Baru sedar, sebelum ni salah pilih.",
   "friend-asks-link": "Kawan terus tanya, link mana?",
+  "return-intent-reversal": "Ingat nak pulangkan, sekali tapak merah muncul.",
 };
 
 const commerceShotFallbacks = [
@@ -618,8 +619,9 @@ function commercePlanQualityReasons(plan: CanvasCommercePlan) {
     && !/(?:warna|colour|color|detail|garis|siluet|bentuk|outfit|look|tali)/iu.test(hookLine)) {
     reasons.push("首句只说泛化变化，没有点明画面可见的对象。");
   }
-  if (/^tak sangka warna ni/iu.test(hookLine)) {
-    reasons.push("“没想到颜色很亮”没有悬念、冲突或具体兑现，不作为可用钩子。");
+  if (/\b(?:tak sangka|tak jangka|rupanya|baru sedar)\b/iu.test(hookLine)
+    && !/\b(?:warna|tapak|sole|detail|garis|siluet|bentuk|outfit|look|tali)\b/iu.test(hookLine)) {
+    reasons.push("惊讶句没有点明可见细节，不作为可用钩子。");
   }
   if (execution?.shoeState === "already-worn" && /(?:未穿|尚未穿|放在(?:长椅|鞋架|手边)|拿起目标鞋)/u.test(opening)) {
     reasons.push("该钩子要求目标鞋首帧已穿着，不能用未穿到已穿的遮挡跳切。");
@@ -918,6 +920,7 @@ async function answerCommerceWorkflow(
     visibleFacts: normalized.visibleFacts,
     imageCount: selectedImages.length,
     usedHookPatterns: normalized.usedHookPatterns,
+    commercialEvidence: [normalized.extraRequirements, normalized.refinementRequest].filter(Boolean).join("\n"),
   });
   let generated: CanvasCommercePlanGenerationResponse;
   try {

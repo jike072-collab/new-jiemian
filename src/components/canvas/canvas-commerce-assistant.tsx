@@ -285,6 +285,7 @@ export function CanvasCommerceAssistant({
       visibleFacts: sourceDraft.visibleFacts,
       imageCount: sourceDraft.images.length,
       usedHookPatterns,
+      commercialEvidence: refinement?.request || sourceDraft.extraRequirements,
     });
   }
 

@@ -239,6 +239,19 @@ export const malaysiaCommerceCopyHookPatterns: readonly CopyHookPattern[] = [
     prohibited: "退货、退款、清仓、促销、假差评或故意误导购买原因。",
   },
   {
+    id: "return-intent-reversal",
+    label: "差点想退的反转",
+    directions: ["human-wear", "daily-style", "malay-review"],
+    formula: "先说自己一度想把这双鞋退回去，再在同一条剧情里立刻揭示一个可见外观细节，让观众追问为什么不退。",
+    firstFrame: "人物正把鞋拿向门边、鞋盒或镜前，表情是对当前搭配的犹豫；目标鞋的可见颜色、鞋底或轮廓线索必须同时入镜。",
+    spokenRule: "马来语使用 Ingat nak pulangkan... sekali... 或 Hampir nak return... tapi...；只表示当前剧情里的第一印象，后半句必须点名一个可见细节。",
+    textRule: "字幕与口播逐字相同，开场与反转在同一句内完成。",
+    audio: "第 0 秒先有拿起或放下鞋盒的轻响，反转细节出现时用一次短节拍。",
+    evidence: "2-7 秒必须用同一双鞋的近景或上脚结果解释为什么改变主意，不能只靠台词。",
+    safety: "这是虚构短视频剧情，不暗示真实售后、退款资格、质量投诉或消费者证言。",
+    prohibited: "退款金额、售后流程、投诉、质量问题、假差评、库存、限时或任何无法由画面证明的产品问题。",
+  },
+  {
     id: "avoidance-reminder",
     label: "避免与提醒",
     directions: ["human-wear", "sport-motion", "daily-style", "malay-review"],
@@ -605,11 +618,16 @@ export function isMalaysiaCommerceCopyHookFormulaSatisfied(copyPatternId: string
   switch (copyPatternId) {
     case "expectation-gap":
     case "unexpected-visible-delight":
-      return has(/\b(?:tak sangka|tak jangka|rupanya|baru sedar)\b/u);
+      return has(/\b(?:tak sangka|tak jangka|rupanya|baru sedar)\b/u)
+        && has(/\b(?:warna|tapak|sole|detail|garis|siluet|bentuk|outfit|look|tali)\b/u);
     case "offer-surprise":
       return has(/\b(?:deal|berbaloi|senang nak dapat)\b/u) && !has(/\d|\brm\b|\bmyr\b|%/u);
     case "negative-setup-reversal":
       return has(/\b(?:ingat|hampir|dah nak|nak give up|mula-mula)\b/u) && has(/\b(?:tapi|sekali|rupanya)\b/u);
+    case "return-intent-reversal":
+      return has(/\b(?:ingat nak pulangkan|hampir nak return|nak pulangkan)\b/u)
+        && has(/\b(?:tapi|sekali|rupanya)\b/u)
+        && has(/\b(?:warna|tapak|sole|detail|garis|siluet|bentuk|outfit|look|tali)\b/u);
     case "avoidance-reminder":
       return has(/\b(?:jangan|elak|hati-hati|silap)\b/u);
     case "contrarian-reframe":
@@ -680,13 +698,22 @@ export function malaysiaCommerceHookPromptLibrary(directions?: readonly CanvasCo
       id: pattern.id, directions: pattern.directions, emotionArc: pattern.emotionArc,
       performance: pattern.performance, realism: pattern.realism, prohibited: pattern.prohibited,
     })),
+    strongHookExamples: [
+      "提问式：Ingat kasut terang susah match? 首帧必须同时看见当前普通穿搭和目标鞋的撞色线索。",
+      "反常识式：Ingat warna terang susah masuk outfit? 2-7 秒必须用同一套穿搭证明反差。",
+      "场景故事式：Tadi nak keluar, outfit ni rasa biasa. 首帧必须是人物在镜前或门口真实犹豫，不写长期体验。",
+      "数字兑现式：Dua detail ni buat look tak tenggelam. 后续镜头必须分别展示两处不同且可见的细节。",
+      "承诺式：Tengok tapak merah ni masuk outfit. 只能承诺随后可见的画面结果，不承诺舒适、耐磨或价格。",
+      "退货反转式：Ingat nak pulangkan, sekali tapak merah muncul. 这是剧情第一印象；2-7 秒必须展示同一双鞋的红色外底或已确认细节，不能伪造退款或投诉。",
+    ],
     globalRules: [
       "自动为每个方向选择一个兼容视觉模式和一个兼容话术模式",
       "同时选择兼容的马来西亚场景、四镜头节奏和人物表演模式",
       "批量方案尽量不重复五维组合；重新分析依次轮换话术、视觉、镜头节奏、场景和表演模式",
       "只使用图片和已确认卖点可以证明的事实",
-      "允许非数字优惠惊喜话术；禁止具体金额、百分比、降价幅度、限时、库存或退货话术",
+      "价格、折扣、限时、库存、退货、退款和售后仅在当前产品资料或用户优化要求已明确给出时允许使用；使用时必须在分镜中展示同一条已确认信息，不能编造金额、期限、资格、销量或政策。",
       "保留注意力机制，不照搬危险、欺骗或虚假证言情节",
+      "strongHookExamples 是质量基线：选择其中机制时必须把台词、首帧和 2-7 秒证据做成同一件事，不能只替换形容词。",
       "单纯系鞋带、站起、走路、拿起鞋或产品旋转只是动作载体，不构成钩子；首帧还必须出现问题、冲突、反差、异常线索或信息缺口",
       "15 秒是一条因果连续的视频：0-2 秒打开问题，2-7 秒揭示答案，7-12 秒给出可见证据，12-15 秒闭合问题并自然 CTA",
       "上一镜头的结束状态必须成为下一镜头的开始状态；人物、服装、鞋子穿着状态、动作方向、情绪和场景保持连续",
