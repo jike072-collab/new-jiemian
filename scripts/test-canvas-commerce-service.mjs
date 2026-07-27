@@ -262,6 +262,8 @@ assert.equal(invalidHookCalls, 1);
 assert.equal(hookRepaired.kind, "commerce-plan-generation");
 assert.notEqual(hookRepaired.plans[0].hook.visualPatternId, "invented-motion-hook");
 assert.notEqual(hookRepaired.plans[0].hook.copyPatternId, "invented-copy-hook");
+assert.equal(hookRepaired.plans[0].hook.copyPatternId, "return-intent-reversal");
+assert.match(hookRepaired.plans[0].hook.hookLine, /Hampir nak return/);
 assert.notEqual(hookRepaired.plans[0].production.scenePatternId, "invented-scene-pattern");
 assert.equal(hookRepaired.plans[0].production.energy, "dynamic");
 assert.deepEqual(hookRepaired.plans[0].shots.map((shot) => shot.timeRange), ["0-2秒", "2-7秒", "7-12秒", "12-15秒"]);
@@ -291,7 +293,7 @@ candidateB.shots[1] = {
   onScreenText: "Sekali pusing, detail warna terus nampak.",
 };
 const candidateC = structuredClone(candidateBase);
-candidateC.hook.hookLine = "Rupanya warna ni menyerlah.";
+candidateC.hook.hookLine = "Tak sangka detail warna pada sisi kasut ni terus ubah keseluruhan look.";
 candidateC.hook.copyPatternId = "expectation-gap";
 candidateC.hook.onScreenText = candidateC.hook.hookLine;
 candidateC.shots[0].dialogue = candidateC.hook.hookLine;
@@ -309,7 +311,7 @@ const candidateService = createCanvasAssistantService(async () => {
       ],
     });
   }
-  return JSON.stringify({ winners: [{ direction: "daily-style", candidateId: "candidate-b" }] });
+  return JSON.stringify({ winners: [{ direction: "daily-style", candidateId: "candidate-c" }] });
 });
 const criticallySelected = await candidateService.answer({
   workflow: "commerce-plan-generation",
@@ -324,7 +326,7 @@ const criticallySelected = await candidateService.answer({
   nodes,
 }, "request-candidates", visualEvidence);
 assert.equal(candidateCalls, 2);
-assert.equal(criticallySelected.plans[0].hook.hookLine, "Hampir nak return, tapi detail warna kasut ni terus ubah fikiran.");
+assert.equal(criticallySelected.plans[0].hook.hookLine, "Tak sangka detail warna pada sisi kasut ni terus ubah keseluruhan look.");
 assert.match(criticallySelected.plans[0].prompt, /1.5-2 秒/);
 assert.ok(criticallySelected.plans[0].prompt.length <= 2_400);
 assert.match(calls[1].systemPrompt, /当前产品资料或用户优化要求/);

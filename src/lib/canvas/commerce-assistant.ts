@@ -553,11 +553,9 @@ function validateCommercePlanContent(
     throw new Error("钩子口播和屏幕短字必须原样写入最终提示词。");
   }
   const wordCount = hook.onScreenText.match(/\p{L}+(?:['’-]\p{L}+)*/gu)?.length || 0;
-  const [minHookWords, maxHookWords] = hook.copyPatternId === "return-intent-reversal" ? [8, 18] : [3, 7];
+  const [minHookWords, maxHookWords] = [8, 18];
   if (wordCount < minHookWords || wordCount > maxHookWords) {
-    throw new Error(hook.copyPatternId === "return-intent-reversal"
-      ? "退货反转钩子必须控制在 8-18 个马来语词。"
-      : "马来语屏幕短字必须控制在 3-7 个词。");
+    throw new Error("所有钩子必须保留完整的 8-18 个马来语词。");
   }
   if (!isMalaysiaCommerceCopyHookFormulaSatisfied(hook.copyPatternId, hook.hookLine)) {
     throw new Error("钩子首句没有实际使用所选话术公式。");

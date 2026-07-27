@@ -151,7 +151,7 @@ const commercePlanGenerationPrompt = [
   "每个方案必须真正使用一个能在首帧看懂的吸引机制，禁止用静态产品展示、欢迎语、普通自我介绍或泛泛介绍产品作为开头。",
   "先为每个方向从双层知识库选择一个兼容的 visualPatternId 和 copyPatternId。批量生成尽量不重复；usedHookPatterns 是同方向历史组合，重新分析时优先更换 copyPatternId，其次更换 visualPatternId。",
   "同时为每个方向选择兼容的 scenePatternId、shotPatternId 和 performancePatternId。重新分析继续轮换镜头节奏、当地场景和人物表演，不能只换第一句口播。",
-  "每个方案 hook 必须包含简体中文 title 和 reason、自然马来语 hookLine、与 hookLine 逐字相同的 onScreenText、简体中文 scene 和 0-2 秒可执行 visualBeat。普通钩子控制在 3-7 个马来语词；return-intent-reversal 必须保留完整的 8-18 词反转句，不得压缩成泛问句。不得返回知识库外的 ID。",
+  "每个方案 hook 必须包含简体中文 title 和 reason、自然马来语 hookLine、与 hookLine 逐字相同的 onScreenText、简体中文 scene 和 0-2 秒可执行 visualBeat。所有首句必须保留完整的 8-18 个马来语词，不能压缩成泛问句、单纯惊叹或空喊停留。不得返回知识库外的 ID。",
   "0-2 秒必须让 hookLine、逐字相同的 onScreenText、首帧动作和声音表达同一钩子，并把马来语原样写进最终 prompt。真人鞋类默认第0秒已穿目标鞋或只做手持揭示，禁止用遮挡把未穿鞋直接跳成已穿鞋。middle-of-action 只能作为钩子的动作载体，单纯系鞋带、站起、走路、拿鞋或旋转产品不算钩子，首帧还必须同时出现可见问题、冲突、反差、异常线索或信息缺口。",
   "production 必须包含三个模式 ID、energy（calm、balanced 或 dynamic）、简体中文 emotionArc 和 realismNotes。真人方向优先 balanced 或 dynamic；运动动态必须 dynamic；ASMR 可 calm 或 balanced。",
   "shots 必须正好四个，timeRange 依次且只能是 0-2秒、2-7秒、7-12秒、12-15秒。每镜头完整填写 shotSize、camera、action、performance、productState、dialogue、onScreenText、sound、transition。",
@@ -397,16 +397,17 @@ function parseJsonObject(value: string) {
 }
 
 const commerceHookFallbackLines: Record<string, string> = {
-  "stop-scroll-specific-reveal": "Jangan scroll, tengok tapak merah ni.",
-  "finally-found-match": "Akhirnya jumpa warna tak tenggelam.",
-  "conditional-visible-result": "Bila bergerak, warna ni terus menyerlah.",
-  "offer-surprise": "Deal kasut ni memang berbaloi.",
-  "expectation-gap": "Tak sangka tapak merah dia muncul.",
-  "direct-problem-question": "Ingat kasut terang susah match?",
-  "late-discovery-regret": "Baru sedar, sebelum ni salah pilih.",
-  "wasted-choice-realization": "Baru sedar, sebelum ni salah pilih.",
-  "friend-asks-link": "Kawan terus tanya, link mana?",
+  "stop-scroll-specific-reveal": "Tunggu kejap, tengok detail warna kasut ni bila kena cahaya.",
+  "finally-found-match": "Akhirnya jumpa kasut yang buat detail warna outfit terus nampak jelas.",
+  "conditional-visible-result": "Bila kaki bergerak, detail warna kasut ni terus nampak berbeza.",
+  "offer-surprise": "Tak sangka deal kasut dengan detail macam ni memang berbaloi tengok.",
+  "expectation-gap": "Tak sangka detail warna pada sisi kasut ni terus ubah keseluruhan look.",
+  "direct-problem-question": "Korang pernah rasa kasut terang susah match, tapi detail ni terus jawab?",
+  "late-discovery-regret": "Kalau tahu awal detail warna kasut ni macam ni, memang dah pilih dulu.",
+  "wasted-choice-realization": "Baru sedar selama ni salah pilih kasut sampai detail outfit terus tenggelam.",
+  "friend-asks-link": "Kawan terus tanya link kasut ni bila nampak detail warna pada sisi.",
   "return-intent-reversal": "Hampir nak return, tapi detail warna kasut ni terus ubah fikiran.",
+  "hidden-detail-discovery": "Baru perasan detail warna pada sisi kasut ni bila kena cahaya.",
 };
 
 const commerceShotFallbacks = [
@@ -543,11 +544,15 @@ function repairCommercePlanHookMetadata(
 
     const requestedCopy = malaysiaCommerceCopyHookPattern(text(rawHook.copyPatternId, 80));
     const requestedHookLine = text(rawHook.hookLine, 240);
+    const requestedWordCount = requestedHookLine.match(/\p{L}+(?:['’-]\p{L}+)*/gu)?.length || 0;
+    const requestedLengthIsStrong = requestedWordCount >= 8 && requestedWordCount <= 18;
     const matchingCopy = malaysiaCommerceCopyHookPatterns.find((pattern) => pattern.directions.some((item) => item === direction)
       && isMalaysiaCommerceHookPairCompatible(visual.id, pattern.id, direction)
+      && requestedLengthIsStrong
       && isMalaysiaCommerceCopyHookFormulaSatisfied(pattern.id, requestedHookLine));
     const validRequestedCopy = requestedCopy?.directions.some((item) => item === direction)
       && isMalaysiaCommerceHookPairCompatible(visual.id, requestedCopy.id, direction)
+      && requestedLengthIsStrong
       && isMalaysiaCommerceCopyHookFormulaSatisfied(requestedCopy.id, requestedHookLine)
       ? requestedCopy
       : undefined;
@@ -556,12 +561,15 @@ function repairCommercePlanHookMetadata(
       return pattern?.directions.some((item) => item === direction)
         && isMalaysiaCommerceHookPairCompatible(visual.id, pattern.id, direction) ? [pattern] : [];
     });
+    const preferredFallbackCopyId = ["human-wear", "sport-motion", "daily-style", "malay-review"].includes(direction)
+      ? "return-intent-reversal"
+      : "hidden-detail-discovery";
     const copy = validRequestedCopy || matchingCopy
+      || fallbackCopies.find((pattern) => pattern.id === preferredFallbackCopyId)
       || fallbackCopies.find((pattern) => !usedCopyIds.has(`${direction}:${pattern.id}`))
       || fallbackCopies[index % fallbackCopies.length];
     if (!copy) return candidate;
-    const requestedWordCount = requestedHookLine.match(/\p{L}+(?:['’-]\p{L}+)*/gu)?.length || 0;
-    const [minHookWords, maxHookWords] = copy.id === "return-intent-reversal" ? [8, 18] : [3, 7];
+    const [minHookWords, maxHookWords] = [8, 18];
     const hookLine = isMalaysiaCommerceCopyHookFormulaSatisfied(copy.id, requestedHookLine)
       && requestedWordCount >= minHookWords && requestedWordCount <= maxHookWords
       ? requestedHookLine
@@ -615,7 +623,11 @@ function commercePlanQualityReasons(plan: CanvasCommercePlan) {
   const reasons: string[] = [];
   const opening = [plan.hook?.visualBeat, plan.shots?.[0]?.action, plan.shots?.[0]?.productState].filter(Boolean).join("\n");
   const hookLine = plan.hook?.hookLine || "";
+  const hookWordCount = hookLine.match(/\p{L}+(?:['’-]\p{L}+)*/gu)?.length || 0;
   const execution = plan.hook ? malaysiaCommerceHookExecutionRecipe(plan.hook.visualPatternId) : undefined;
+  if (hookWordCount < 8 || hookWordCount > 18) {
+    reasons.push("首句必须保留 8-18 个马来语词，不能缩成泛问句或单纯惊叹。");
+  }
   if (/(?:berubah|nampak lain|lebih baik|lebih cantik|sangat cantik|terus naik)/iu.test(hookLine)
     && !/(?:warna|colour|color|detail|garis|siluet|bentuk|outfit|look|tali)/iu.test(hookLine)) {
     reasons.push("首句只说泛化变化，没有点明画面可见的对象。");
@@ -652,11 +664,11 @@ function commerceQualityFallback(direction: CanvasCommerceDirection, sellingPoin
   const visualId = direction === "product-asmr" ? "product-asmr-detail" : "local-reaction-reveal";
   const visual = malaysiaCommerceVisualHookPattern(visualId)
     || malaysiaCommerceVisualHookPatterns.find((pattern) => pattern.directions.includes(direction));
-  const returnIntentReversal = ["human-wear", "daily-style", "malay-review"].includes(direction);
+  const returnIntentReversal = ["human-wear", "sport-motion", "daily-style", "malay-review"].includes(direction);
   const preferredCopyId = returnIntentReversal
     ? "return-intent-reversal"
     : direction === "product-asmr" || direction === "handheld"
-    ? "stop-scroll-specific-reveal"
+    ? "hidden-detail-discovery"
     : "direct-problem-question";
   const copy = malaysiaCommerceCopyHookPattern(preferredCopyId)
     || malaysiaCommerceCopyHookPatterns.find((pattern) => pattern.directions.includes(direction));
@@ -676,10 +688,13 @@ function commerceQualityFallback(direction: CanvasCommerceDirection, sellingPoin
       : hasBlackLightning ? "kilat hitam pada sisi"
         : hasTeal ? "warna teal kasut"
           : "detail warna kasut";
+  const discoveryMalayDetail = visibleMalayDetail.startsWith("detail ")
+    ? visibleMalayDetail
+    : "detail " + visibleMalayDetail;
   const hookLine = returnIntentReversal
     ? `Hampir nak return, tapi ${visibleMalayDetail} ni terus ubah fikiran.`
-    : hasRedOutsole && (direction === "product-asmr" || direction === "handheld")
-    ? commerceHookFallbackLines["stop-scroll-specific-reveal"]
+    : direction === "product-asmr" || direction === "handheld"
+    ? `Baru perasan ${discoveryMalayDetail} ni bila kena cahaya.`
     : commerceHookFallbackLines[copy.id] || commerceHookFallbackLines["expectation-gap"];
   const openingState = held
     ? "目标鞋由人物稳定拿在手中或静置台面，亮色、轮廓和鞋带线索清楚可见"

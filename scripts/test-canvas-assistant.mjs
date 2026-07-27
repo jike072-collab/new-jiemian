@@ -182,6 +182,8 @@ assert.match(commerceContract, /notes: commercePlanNotes/);
 assert.match(hookLibrarySource, /当前产品资料或用户优化要求已明确给出/);
 assert.match(hookLibrarySource, /offer-surprise/);
 assert.match(hookLibrarySource, /strongHookExamples/);
+assert.doesNotMatch(hookLibrarySource, /提问式：Ingat kasut terang susah match/);
+assert.match(hookLibrarySource, /每条首句必须是 8-18 个马来语词/);
 assert.match(hookLibrarySource, /单纯系鞋带、站起、走路/);
 assert.match(hookLibrarySource, /每句马来语口播都必须显示逐字相同/);
 
@@ -284,8 +286,8 @@ const commerceHook = {
   copyPatternId: "expectation-gap",
   title: "拼接细节预期落差",
   reason: "微距动作可以直接兑现可见拼接层次，不涉及价格。",
-  hookLine: "Tak sangka detail ni menyerlah",
-  onScreenText: "Tak sangka detail ni menyerlah",
+  hookLine: "Tak sangka detail warna pada sisi kasut ni terus ubah keseluruhan look",
+  onScreenText: "Tak sangka detail warna pada sisi kasut ni terus ubah keseluruhan look",
   scene: "室内产品桌面",
   visualBeat: "第一帧手指已经轻触鞋面拼接。",
 };
@@ -310,7 +312,7 @@ const commerceShots = [
   { timeRange: "7-12秒", shotSize: "特写", camera: "短推进", action: "手部转动鞋子展示第二处拼接", performance: "动作放慢，在结构清楚时停住", productState: "鞋面和鞋带结构保持一致", dialogue: "无口播", onScreenText: "", sound: "鞋带轻响和一次提示音", transition: "提示音强拍切到稳定正侧面" },
   { timeRange: "12-15秒", shotSize: "中近景", camera: "固定机位", action: "双手把鞋子放回桌面并退出画面", performance: "动作平稳收势，不做广告式指点", productState: "鞋子完整正侧面稳定展示", dialogue: "无口播", onScreenText: "", sound: "音乐轻收束和桌面落放声", transition: "稳定停留到结束" },
 ];
-const commercePrompt = "素材职责：@Image1 提供产品外观。产品可见事实：鞋面拼接层次。0-2 秒：手指轻触拼接，同时说‘Tak sangka detail ni menyerlah’，同步字幕‘Tak sangka detail ni menyerlah’；2-7 秒：后拉展示完整鞋型；7-12 秒：切换另一处拼接近景；12-15 秒：完整产品收束。声音/口播：从第 0 秒开始轻触声。禁止项：不虚构价格、折扣或性能。";
+const commercePrompt = "素材职责：@Image1 提供产品外观。产品可见事实：鞋面拼接层次。0-2 秒：手指轻触拼接，同时说‘Tak sangka detail warna pada sisi kasut ni terus ubah keseluruhan look’，同步显示相同字幕；2-7 秒：后拉展示完整鞋型；7-12 秒：切换另一处拼接近景；12-15 秒：完整产品收束。声音/口播：从第 0 秒开始轻触声。禁止项：不虚构价格、折扣或性能。";
 
 const normalizedCommercePlan = normalizeCommercePlanGeneration({
   kind: "commerce-plan-generation",
@@ -352,8 +354,8 @@ const offerHook = {
   ...commerceHook,
   copyPatternId: "offer-surprise",
   title: "优惠惊喜开场",
-  hookLine: "Tak sangka deal dia macam ni",
-  onScreenText: "Tak sangka deal dia macam ni",
+  hookLine: "Tak sangka deal kasut dengan detail macam ni memang berbaloi tengok",
+  onScreenText: "Tak sangka deal kasut dengan detail macam ni memang berbaloi tengok",
 };
 const offerShots = commerceShots.map((shot, index) => index ? shot : {
   ...shot,
@@ -364,7 +366,7 @@ const offerPlan = normalizeCommercePlanGeneration({
   kind: "commerce-plan-generation",
   plans: [{ direction: "product-asmr", hook: offerHook, production: commerceProduction, shots: offerShots, publishingCopy: commercePublishingCopy }],
 }, ["product-asmr"]);
-assert.match(offerPlan.plans[0].prompt, /Tak sangka deal dia macam ni/);
+assert.match(offerPlan.plans[0].prompt, /Tak sangka deal kasut dengan detail macam ni memang berbaloi tengok/);
 assert.throws(() => normalizeCommercePlanGeneration({
   kind: "commerce-plan-generation",
   plans: [{
@@ -426,8 +428,8 @@ const plainActionHook = {
   copyPatternId: "direct-problem-question",
   title: "动作中的穿搭问题",
   reason: "先提出具体穿搭问题，再由动作承接。",
-  hookLine: "Outfit hari ni rasa biasa?",
-  onScreenText: "Outfit hari ni rasa biasa?",
+  hookLine: "Korang pernah rasa outfit hari ni terlalu biasa walaupun kasut dah siap?",
+  onScreenText: "Korang pernah rasa outfit hari ni terlalu biasa walaupun kasut dah siap?",
   scene: "马来西亚公寓玄关",
   visualBeat: "人物正在系鞋带。",
 };
@@ -463,8 +465,8 @@ assert.equal(strongActionPlan.plans[0].shots.every((shot) => shot.dialogue === "
 const sportConditionalHook = {
   ...plainActionHook,
   copyPatternId: "conditional-visible-result",
-  hookLine: "Eh, warna ni nampak terus bila bergerak.",
-  onScreenText: "Eh, warna ni nampak terus bila bergerak.",
+  hookLine: "Bila bergerak, detail warna kasut ni terus nampak jelas pada setiap langkah.",
+  onScreenText: "Bila bergerak, detail warna kasut ni terus nampak jelas pada setiap langkah.",
   visualBeat: "人物发现原本普通的运动穿搭缺少颜色重点，起步时目标鞋进入画面。",
 };
 const sportConditionalPlan = normalizeCommercePlanGeneration({
@@ -507,9 +509,9 @@ assert.throws(() => normalizeCommercePlanGeneration({
   kind: "commerce-plan-generation",
   plans: [{
     direction: "product-asmr",
-    hook: { ...commerceHook, copyPatternId: "numbered-specificity", hookLine: "Dua detail terus menyerlah", onScreenText: "Dua detail terus menyerlah" },
+    hook: { ...commerceHook, copyPatternId: "numbered-specificity", hookLine: "Dua detail pada kasut ni terus ubah keseluruhan look bila bergerak", onScreenText: "Dua detail pada kasut ni terus ubah keseluruhan look bila bergerak" },
     production: commerceProduction,
-    shots: commerceShots.map((shot, index) => index ? shot : { ...shot, dialogue: "Dua detail terus menyerlah", onScreenText: "Dua detail terus menyerlah" }),
+    shots: commerceShots.map((shot, index) => index ? shot : { ...shot, dialogue: "Dua detail pada kasut ni terus ubah keseluruhan look bila bergerak", onScreenText: "Dua detail pada kasut ni terus ubah keseluruhan look bila bergerak" }),
     publishingCopy: commercePublishingCopy,
   }],
 }, ["product-asmr"]), /兑现相同数量/);
