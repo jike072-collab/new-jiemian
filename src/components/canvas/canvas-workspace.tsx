@@ -771,7 +771,7 @@ function CanvasWorkspaceInner({
     deferredCanvasSyncRef.current = {
       base: current?.base || base,
       project,
-      notice,
+      notice: canvasScope() === "shared" ? notice : "",
     };
     setSyncState("syncing");
   }, []);
@@ -823,9 +823,11 @@ function CanvasWorkspaceInner({
       setTitle(merged.title);
       applyWorkspaceDocument(merged.document);
       setSyncState("live");
-      setNotice(merged.conflictCount
-        ? `已合并团队更新，并按当前编辑处理 ${merged.conflictCount} 处冲突。`
-        : "已实时合并团队成员的画布更新。");
+      if (canvasScope() === "shared") {
+        setNotice(merged.conflictCount
+          ? `已合并团队更新，并按当前编辑处理 ${merged.conflictCount} 处冲突。`
+          : "已实时合并团队成员的画布更新。");
+      }
       if (hasLocalChanges) {
         setSaveState("dirty");
         scheduleSave();
@@ -834,7 +836,7 @@ function CanvasWorkspaceInner({
     }
     activateProject(project);
     setSyncState("live");
-    setNotice("已同步团队成员的最新画布。");
+    if (canvasScope() === "shared") setNotice("已同步团队成员的最新画布。");
   }, [activateProject, applyWorkspaceDocument, deferCanvasSync, hasTransientCanvasInteraction, scheduleSave, snapshotWorkspace]);
 
   useEffect(() => {
@@ -1005,7 +1007,7 @@ function CanvasWorkspaceInner({
             applyWorkspaceDocument(mergedLive.document);
           }
         }
-        if (response.merged) {
+        if (response.merged && canvasScope() === "shared") {
           setNotice(response.conflictCount
             ? `已保存并处理 ${response.conflictCount} 处并发冲突。`
             : "已保存并合并团队成员的同时修改。");
@@ -1097,7 +1099,7 @@ function CanvasWorkspaceInner({
     };
     const onDeleted = () => {
       setSyncState("paused");
-      setNotice("当前画布已被团队成员删除，正在刷新画布列表。");
+      if (canvasScope() === "shared") setNotice("当前画布已被团队成员删除，正在刷新画布列表。");
       window.setTimeout(() => window.location.reload(), 300);
     };
     const onPresence = (event: MessageEvent<string>) => {

@@ -249,6 +249,8 @@ assert.match(workspace, /new EventSource\(canvasProjectEventsUrl/);
 assert.match(workspace, /deferredCanvasSyncRef/);
 assert.match(workspace, /hasTransientCanvasInteraction/);
 assert.match(workspace, /已在编辑结束后同步团队成员的画布更新/);
+assert.match(workspace, /notice: canvasScope\(\) === "shared" \? notice : ""/);
+assert.match(workspace, /if \(response\.merged && canvasScope\(\) === "shared"\)/);
 assert.match(workspace, /hydrateMediaNodes\(current, items, true\)/);
 assert.match(workspace, /const pending = node\.data\.status === "queued" \|\| node\.data\.status === "generating"/);
 assert.match(workspace, /mediaUrl: pending \? undefined : node\.data\.mediaUrl \|\| canvasLibraryMediaUrl\(libraryItemId\)/);
