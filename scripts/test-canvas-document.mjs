@@ -12,7 +12,7 @@ const {
 const { duplicateCanvasNodeData } = await import(new URL("../src/lib/canvas/duplicate.ts", import.meta.url));
 const { canvasMediaNodeSize, nearestCanvasAspectRatio, normalizeMediaDimensions } = await import(new URL("../src/lib/canvas/media-sizing.ts", import.meta.url));
 const { absoluteCanvasNodePosition } = await import(new URL("../src/lib/canvas/node-position.ts", import.meta.url));
-const { matchPendingGeneratedMedia } = await import(new URL("../src/lib/canvas/pending-results.ts", import.meta.url));
+const { matchPendingGeneratedMedia, reconcileTerminalVideoGenerators } = await import(new URL("../src/lib/canvas/pending-results.ts", import.meta.url));
 
 const rootPositionNode = { id: "root-position", position: { x: 120, y: 80 } };
 const groupPositionNode = { id: "group-position", position: { x: 600, y: 400 } };
@@ -221,6 +221,17 @@ const exactPending = matchPendingGeneratedMedia([
   params: { billingTaskId: "canvas-video-request" },
 }]);
 assert.equal(exactPending.get("pending-exact"), "library-exact");
+
+const reconciledVideoGenerator = reconcileTerminalVideoGenerators([
+  { id: "generator-terminal", data: { kind: "generator", title: "Video", generationKind: "video", status: "generating", progress: 84, outputNodeId: "result-terminal" } },
+  { id: "result-terminal", data: { kind: "media", title: "Done", mediaType: "video", sourceNodeIds: ["generator-terminal"], status: "done" } },
+  { id: "generator-active", data: { kind: "generator", title: "Still running", generationKind: "video", status: "generating", outputNodeId: "result-active" } },
+  { id: "result-active", data: { kind: "media", title: "Running", mediaType: "video", sourceNodeIds: ["generator-active"], status: "generating" } },
+]);
+assert.equal(reconciledVideoGenerator[0].data.status, "idle");
+assert.equal(reconciledVideoGenerator[0].data.progress, 0);
+assert.equal(reconciledVideoGenerator[0].data.sequenceState.accepted, true);
+assert.equal(reconciledVideoGenerator[2].data.status, "generating");
 
 const recoveredFailed = matchPendingGeneratedMedia([
   { id: "generator-failed", type: "canvas", position: { x: 0, y: 0 }, data: { kind: "generator", title: "Video", generationKind: "video", providerId: "video-provider" } },

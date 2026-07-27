@@ -161,7 +161,7 @@ import {
 import { mergeCanvasWorkspace } from "@/lib/canvas/merge";
 import { layoutCanvasFlowNodes } from "@/lib/canvas/layout";
 import { absoluteCanvasNodePosition } from "@/lib/canvas/node-position";
-import { matchPendingGeneratedMedia } from "@/lib/canvas/pending-results";
+import { matchPendingGeneratedMedia, reconcileTerminalVideoGenerators } from "@/lib/canvas/pending-results";
 import {
   canvasPresenceMembersForNode,
   dedupeCanvasPresenceMembers,
@@ -682,7 +682,7 @@ function CanvasWorkspaceInner({
   const hydrateMediaNodes = useCallback((sourceNodes: CanvasStoredNode[] | CanvasFlowNode[], items: LibraryItem[], preserveNonMedia = false) => {
     const itemMap = new Map(items.map((item) => [item.id, item]));
     const recoveredItemIds = matchPendingGeneratedMedia(sourceNodes, items);
-    return sourceNodes.map((node) => {
+    const hydratedNodes = sourceNodes.map((node) => {
       const dragHandle = canvasNodeDragHandle(node.data.kind);
       const libraryItemId = node.data.libraryItemId || recoveredItemIds.get(node.id);
       if (node.data.kind !== "media" || !libraryItemId) {
@@ -722,6 +722,7 @@ function CanvasWorkspaceInner({
         },
       };
     }) as CanvasFlowNode[];
+    return reconcileTerminalVideoGenerators(hydratedNodes);
   }, []);
 
   const applyWorkspaceDocument = useCallback((document: CanvasProjectDocument, items = libraryRef.current, projectId?: string) => {
@@ -856,9 +857,19 @@ function CanvasWorkspaceInner({
       items.map((item) => item.id),
     );
     if (!result.removedNodeIds.length) {
-      setNodes((current) => hydrateMediaNodes(current, items, true));
-      if (recoveredCount && persist) markDirty();
-      return recoveredCount;
+      const previouslyBusyGeneratorIds = new Set(nodesRef.current
+        .filter((node) => node.data.kind === "generator" && (node.data.status === "queued" || node.data.status === "generating"))
+        .map((node) => node.id));
+      const hydratedNodes = hydrateMediaNodes(nodesRef.current, items, true);
+      const busyGeneratorIds = new Set(hydratedNodes
+        .filter((node) => node.data.kind === "generator" && (node.data.status === "queued" || node.data.status === "generating"))
+        .map((node) => node.id));
+      const releasedGeneratorCount = [...previouslyBusyGeneratorIds].filter((id) => !busyGeneratorIds.has(id)).length;
+      nodesRef.current = hydratedNodes;
+      setNodes(hydratedNodes);
+      setPresenceGeneratingNodeIds((current) => current.filter((id) => busyGeneratorIds.has(id)));
+      if ((recoveredCount || releasedGeneratorCount) && persist) markDirty();
+      return recoveredCount + releasedGeneratorCount;
     }
     applyWorkspaceDocument(result.document, items);
     setNotice(`已自动清理 ${result.removedNodeIds.length} 个过期或已删除的素材节点。`);

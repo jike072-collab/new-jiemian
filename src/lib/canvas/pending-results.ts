@@ -4,6 +4,38 @@ import type { CanvasNodeData } from "./types";
 const legacyMatchWindowMs = 90_000;
 type PendingMatchNode = { id: string; data: CanvasNodeData };
 
+export function reconcileTerminalVideoGenerators<T extends PendingMatchNode>(nodes: readonly T[]): T[] {
+  const nodesById = new Map(nodes.map((node) => [node.id, node]));
+  return nodes.map((node): T => {
+    if (
+      node.data.kind !== "generator"
+      || node.data.generationKind !== "video"
+      || !["queued", "generating"].includes(node.data.status || "")
+      || !node.data.outputNodeId
+    ) return node;
+    const output = nodesById.get(node.data.outputNodeId);
+    if (
+      output?.data.kind !== "media"
+      || !output.data.sourceNodeIds?.includes(node.id)
+      || (output.data.status !== "done" && output.data.status !== "failed")
+    ) return node;
+    const succeeded = output.data.status === "done";
+    return {
+      ...node,
+      data: {
+        ...node.data,
+        status: succeeded ? "idle" : "failed",
+        progress: 0,
+        jobId: undefined,
+        error: succeeded ? undefined : output.data.error || node.data.error,
+        ...(succeeded ? {
+          sequenceState: { ...(node.data.sequenceState || {}), accepted: true },
+        } : {}),
+      },
+    } as T;
+  });
+}
+
 export function matchPendingGeneratedMedia(
   nodes: readonly PendingMatchNode[],
   items: readonly LibraryItem[],
