@@ -233,7 +233,9 @@ const invalidHookPlan = {
     performancePatternId: "invented-performance-pattern",
     energy: "balanced",
   },
-  shots: [{ timeRange: "0-2秒", shotSize: "中景" }],
+  shots: generated.plans[0].shots.map((shot, index) => index === 0
+    ? { ...shot, transition: "直接切到下一镜头" }
+    : shot),
 };
 const hookRepairService = createCanvasAssistantService(async () => {
   invalidHookCalls += 1;
@@ -260,6 +262,7 @@ assert.notEqual(hookRepaired.plans[0].hook.copyPatternId, "invented-copy-hook");
 assert.notEqual(hookRepaired.plans[0].production.scenePatternId, "invented-scene-pattern");
 assert.equal(hookRepaired.plans[0].production.energy, "dynamic");
 assert.deepEqual(hookRepaired.plans[0].shots.map((shot) => shot.timeRange), ["0-2秒", "2-7秒", "7-12秒", "12-15秒"]);
+assert.doesNotMatch(hookRepaired.plans[0].shots[0].transition, /切到下一镜头/);
 assert.equal(hookRepaired.plans[0].shots[0].dialogue, hookRepaired.plans[0].hook.hookLine);
 assert.equal(hookRepaired.plans[0].shots[0].onScreenText, hookRepaired.plans[0].hook.hookLine);
 

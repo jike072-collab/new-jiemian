@@ -444,6 +444,8 @@ const commerceShotFallbacks = [
 function repairCommerceShots(value: unknown, hookLine: string) {
   const candidates = Array.isArray(value) ? value : [];
   const timeRanges = ["0-2秒", "2-7秒", "7-12秒", "12-15秒"] as const;
+  const transitionBridge = /(?:动作|遮挡|落点|脚步|前景|移开|经过|转动|提示音|声音|强拍|匹配|节拍|光影|后拉|推进|跟随|连续)/u;
+  const invalidTransition = /(?:直接|然后)?切到(?:下一个|下一)镜头|普通切换|自然切换/u;
   return timeRanges.map((timeRange, index) => {
     const candidate = candidates[index] && typeof candidates[index] === "object" && !Array.isArray(candidates[index])
       ? candidates[index] as Record<string, unknown>
@@ -452,6 +454,7 @@ function repairCommerceShots(value: unknown, hookLine: string) {
     const dialogue = index === 0
       ? hookLine
       : text(candidate.dialogue, 240) || (index === 2 ? "无口播" : index === 3 ? "Tengok detail kasut ni." : "Nampak terus lebih kemas.");
+    const transition = text(candidate.transition, 240);
     return {
       timeRange,
       shotSize: text(candidate.shotSize, 80) || fallback.shotSize,
@@ -462,7 +465,9 @@ function repairCommerceShots(value: unknown, hookLine: string) {
       dialogue,
       onScreenText: dialogue === "无口播" ? "" : dialogue,
       sound: text(candidate.sound, 240) || fallback.sound,
-      transition: text(candidate.transition, 240) || fallback.transition,
+      transition: index < 3 && (!transition || invalidTransition.test(transition) || !transitionBridge.test(transition))
+        ? fallback.transition
+        : transition || fallback.transition,
     };
   });
 }
