@@ -328,6 +328,20 @@ assert.doesNotMatch(normalizedCommercePlan.plans[0].prompt, /产品可见事实/
 assert.match(normalizedCommercePlan.plans[0].prompt, /镜头 1｜0-2秒｜极近景/);
 assert.match(normalizedCommercePlan.plans[0].prompt, /人物与情绪/);
 assert.match(normalizedCommercePlan.plans[0].prompt, /固定微距/);
+const canonicalCommercePlan = normalizeCommercePlanGeneration({
+  kind: "commerce-plan-generation",
+  plans: [{
+    direction: "product-asmr",
+    hook: commerceHook,
+    production: commerceProduction,
+    shots: commerceShots,
+    referenceBindings: [{ label: "@Image3", role: "product", transfer: "旧链路标签", ignore: "背景" }],
+    publishingCopy: commercePublishingCopy,
+  }],
+}, ["product-asmr"], { imageCount: 1 });
+assert.equal(canonicalCommercePlan.plans[0].referenceBindings[0].label, "@Image1");
+assert.match(canonicalCommercePlan.plans[0].prompt, /@Image1/);
+assert.doesNotMatch(canonicalCommercePlan.plans[0].prompt, /@Image3/);
 
 const offerHook = {
   ...commerceHook,

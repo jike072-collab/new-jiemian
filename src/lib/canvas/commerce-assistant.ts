@@ -225,7 +225,7 @@ export function normalizeCommercePlanGeneration(
     if (seenProductionRecipes.has(productionRecipe)) throw new Error("批量方案不能重复使用完全相同的场景、镜头节奏与表演组合。");
     const completeRecipe = `${direction}:${hookPair}:${productionRecipe}`;
     if (usedRecipes.has(completeRecipe)) throw new Error(`“${commerceDirectionLabel(direction)}”重复使用了历史完整制作配方，请重新分析。`);
-    const referenceBindings = normalizeBindings(item.referenceBindings);
+    const referenceBindings = canonicalCommerceBindings(normalizeBindings(item.referenceBindings), context.imageCount);
     const prompt = composeCommerceSeedancePrompt({
       hook,
       production,
@@ -622,6 +622,19 @@ function normalizeBindings(value: unknown): CanvasReferenceBinding[] {
     const transfer = text(item.transfer, 240);
     const ignore = text(item.ignore, 240);
     return [{ label, role, ...(transfer ? { transfer } : {}), ...(ignore ? { ignore } : {}) }];
+  });
+}
+
+function canonicalCommerceBindings(bindings: CanvasReferenceBinding[], imageCount?: number): CanvasReferenceBinding[] {
+  const count = Math.max(1, Math.min(4, Math.floor(imageCount || bindings.length || 1)));
+  return Array.from({ length: count }, (_, index) => {
+    const binding = bindings[index];
+    return {
+      label: `@Image${index + 1}`,
+      role: binding?.role || "product",
+      transfer: binding?.transfer || "只转移产品真实可见的外观、配色和结构",
+      ignore: binding?.ignore || "不转移背景、文字和不可验证信息",
+    };
   });
 }
 

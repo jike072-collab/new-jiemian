@@ -213,11 +213,10 @@ export function CanvasAssistantPanel({
       const promptAction: PromptAction = {
         ...action,
       };
-      const bindings = promptAction.referenceBindings?.length
-        ? promptAction.referenceBindings
-        : buildReferenceBindings(mode, selectedImages, selectedVideos, "");
+      const bindings = buildReferenceBindings(mode, selectedImages, selectedVideos, "");
+      const prompt = rebindPreviewReferences(promptAction.prompt, promptAction.referenceBindings || [], bindings);
       setPreviewTitle(promptAction.title || (mode === "prompt" ? "15 秒带货视频提示词" : "专业视频换物提示词"));
-      setPreviewPrompt(promptAction.prompt);
+      setPreviewPrompt(prompt);
       setPreviewBindings(bindings);
       setMessages((current) => [...current, { role: "assistant", content: normalized.reply.slice(0, 240) }]);
       setPhase("preview");
@@ -355,7 +354,22 @@ function buildReferenceBindings(mode: AssistantModule, images: CanvasAssistantNo
 }
 
 function referenceLabel(node: CanvasAssistantNodeContext, generatorId: string, fallback: string) {
-  return node.referenceLabels?.find((item) => item.generatorId === generatorId)?.label || node.referenceLabels?.[0]?.label || fallback;
+  return generatorId ? node.referenceLabels?.find((item) => item.generatorId === generatorId)?.label || fallback : fallback;
+}
+
+function rebindPreviewReferences(prompt: string, generated: CanvasReferenceBinding[], canonical: CanvasReferenceBinding[]) {
+  const labels = new Map<string, string>();
+  for (const type of ["Image", "Video"] as const) {
+    const expected = canonical.filter((binding) => binding.label.startsWith(`@${type}`));
+    const received = generated.filter((binding) => binding.label.startsWith(`@${type}`));
+    received.forEach((binding, index) => {
+      if (expected[index]) labels.set(binding.label, expected[index].label);
+    });
+    if (expected.length === 1) {
+      prompt.match(new RegExp(`@${type}\\d+`, "g"))?.forEach((label) => labels.set(label, expected[0].label));
+    }
+  }
+  return prompt.replace(/@(Image|Video)\d+/g, (label) => labels.get(label) || label);
 }
 
 function assistantMentionToken(node: CanvasAssistantNodeContext) {
