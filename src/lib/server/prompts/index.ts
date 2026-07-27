@@ -1,6 +1,7 @@
 export {
   createNewApiAdminPromptModelCaller,
   createNewApiPromptModelCaller,
+  createProviderPromptModelCaller,
   createPromptOptimizeService,
   getPromptOptimizeService,
   type PromptModelCaller,

@@ -654,10 +654,14 @@ async function callPromptProvider(provider: ProviderConfig, input: PromptModelCa
   return extractChatText(payload as ChatCompletionPayload);
 }
 
-export function createProviderPromptModelCaller(loadProvider: PromptProviderLoader = () => providerById(PROMPT_OPTIMIZER_PROVIDER_ID)): PromptModelCaller {
+export function createProviderPromptModelCaller(
+  loadProvider: PromptProviderLoader = () => providerById(PROMPT_OPTIMIZER_PROVIDER_ID),
+  modelOverride = "",
+): PromptModelCaller {
+  const model = modelOverride.trim();
   return async (input) => {
     const provider = assertPromptProviderReady(await loadProvider(), input);
-    return callPromptProvider(provider, input);
+    return callPromptProvider(model ? { ...provider, model } : provider, input);
   };
 }
 

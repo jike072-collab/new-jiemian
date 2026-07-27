@@ -470,6 +470,38 @@ test("provider caller uses prompt-optimizer provider configuration", async () =>
   assert.equal(output, "来自专用 provider 的中文提示词");
 });
 
+test("provider caller can override the configured model without changing provider credentials", async () => {
+  handlers.set("POST /provider/model-override", async (request, response) => {
+    assert.equal(request.headers.authorization, "Bearer provider-secret");
+    const chunks: Buffer[] = [];
+    for await (const chunk of request) chunks.push(Buffer.from(chunk));
+    const body = JSON.parse(Buffer.concat(chunks).toString("utf8"));
+    assert.equal(body.model, "gpt-5.6-sol");
+    json(response, 200, { choices: [{ message: { content: "model override ok" } }] });
+  });
+
+  const caller = createProviderPromptModelCaller(async () => ({
+    id: "prompt-optimizer",
+    kind: "prompt",
+    title: "Prompt optimizer",
+    role: "Prompt optimizer",
+    apiUrl: `${baseUrl}/provider/model-override`,
+    model: "gpt-5.6-luna",
+    displayName: "Configured model",
+    apiKey: "provider-secret",
+    enabled: true,
+    endpointType: "chat-completions",
+    custom: false,
+  }), "gpt-5.6-sol");
+
+  assert.equal(await caller({
+    systemPrompt: "system",
+    userPrompt: "user",
+    requestId: "req-provider-model-override",
+    timeoutMs: 500,
+  }), "model override ok");
+});
+
 test("provider caller sends labeled visual evidence as multimodal content", async () => {
   handlers.set("POST /provider/vision", async (request, response) => {
     const chunks: Buffer[] = [];
