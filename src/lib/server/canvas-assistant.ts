@@ -11,13 +11,14 @@ import { NewApiError } from "@/lib/server/integrations/new-api";
 import { newApiLogger } from "@/lib/server/integrations/new-api/logger";
 import { createNewApiPromptModelCaller, type PromptModelCaller } from "@/lib/server/prompts";
 import type { CanvasAssistantVisualEvidence } from "@/lib/server/canvas-assistant-media";
-import type { CanvasCommerceDirection, CanvasMediaType, CanvasReferenceBinding, CanvasSequenceState } from "@/lib/canvas/types";
+import type { CanvasCommerceDirection, CanvasCommercePlan, CanvasMediaType, CanvasReferenceBinding, CanvasSequenceState } from "@/lib/canvas/types";
 import {
   isMalaysiaCommerceCopyHookFormulaSatisfied,
   isMalaysiaCommerceHookPairCompatible,
   isMalaysiaCommerceProductionRecipeCompatible,
   malaysiaCommerceCopyHookPattern,
   malaysiaCommerceCopyHookPatterns,
+  malaysiaCommerceHookExecutionRecipe,
   malaysiaCommerceHookPromptLibrary,
   malaysiaCommercePerformancePattern,
   malaysiaCommercePerformancePatterns,
@@ -141,7 +142,7 @@ const commerceProductAnalysisPrompt = [
 
 const commercePlanGenerationPrompt = [
   "你是为马来西亚 TikTok Shop 制作鞋类短视频的跨境内容导演和 Seedance 2.0 提示词编辑。",
-  "根据已确认的产品图、产品名、卖点和所选方向，一次为每个 selectedDirection 返回一个完整且独立的 15 秒方案；不得增加未选择方向。",
+  "根据已确认的产品图、产品名、卖点和所选方向，为每个 selectedDirection 返回 3 个内部候选方案；每个候选都必须完整独立，三者必须使用不同的钩子或制作配方。",
   "当 refinementRequest 和 basePrompt 同时存在时，basePrompt 是待优化草稿，只按 refinementRequest 修改相关部分并重新输出一份完整方案；没有要求变化的素材职责、产品事实和镜头连续性应保持。",
   "每个方案只突出 directionSellingPoints 指定的一个核心卖点，不把多个卖点塞进同一条视频。",
   "提示词主体使用简体中文；口播、对白、字幕和 CTA 使用自然的马来西亚马来语，可少量自然混用当地常见英语，禁止生硬逐字翻译。",
@@ -151,7 +152,7 @@ const commercePlanGenerationPrompt = [
   "先为每个方向从双层知识库选择一个兼容的 visualPatternId 和 copyPatternId。批量生成尽量不重复；usedHookPatterns 是同方向历史组合，重新分析时优先更换 copyPatternId，其次更换 visualPatternId。",
   "同时为每个方向选择兼容的 scenePatternId、shotPatternId 和 performancePatternId。重新分析继续轮换镜头节奏、当地场景和人物表演，不能只换第一句口播。",
   "每个方案 hook 必须包含简体中文 title 和 reason、自然马来语 hookLine、与 hookLine 逐字相同且控制在 3-7 个马来语词的 onScreenText、简体中文 scene 和 0-2 秒可执行 visualBeat。不得返回知识库外的 ID。",
-  "0-2 秒必须让 hookLine、逐字相同的 onScreenText、首帧动作和声音表达同一钩子，并把马来语原样写进最终 prompt。痛点和反差可使用穿鞋前后；ASMR和悬念揭示不强制先拍未穿鞋。middle-of-action 只能作为钩子的动作载体，单纯系鞋带、站起、走路、拿鞋或旋转产品不算钩子，首帧还必须同时出现可见问题、冲突、反差、异常线索或信息缺口。",
+  "0-2 秒必须让 hookLine、逐字相同的 onScreenText、首帧动作和声音表达同一钩子，并把马来语原样写进最终 prompt。真人鞋类默认第0秒已穿目标鞋或只做手持揭示，禁止用遮挡把未穿鞋直接跳成已穿鞋。middle-of-action 只能作为钩子的动作载体，单纯系鞋带、站起、走路、拿鞋或旋转产品不算钩子，首帧还必须同时出现可见问题、冲突、反差、异常线索或信息缺口。",
   "production 必须包含三个模式 ID、energy（calm、balanced 或 dynamic）、简体中文 emotionArc 和 realismNotes。真人方向优先 balanced 或 dynamic；运动动态必须 dynamic；ASMR 可 calm 或 balanced。",
   "shots 必须正好四个，timeRange 依次且只能是 0-2秒、2-7秒、7-12秒、12-15秒。每镜头完整填写 shotSize、camera、action、performance、productState、dialogue、onScreenText、sound、transition。",
   "shotSize 使用可执行景别，例如全景、中景、半身、全身、近景、特写、极近景或 POV；camera 写清机位和运动，例如低机位侧向跟拍、短推进、快速后拉、固定中景或匹配剪辑，不得只写电影感、动感、高级感。",
@@ -174,7 +175,9 @@ const commercePlanGenerationPrompt = [
   "每个方案同时返回 publishingCopy：自然马来语 title、1-2 句 caption、4-6 个相关 hashtags、angle 和 category；默认不得使用 #fyp，不得把标签写进 title 或 caption。",
   "referenceBindings 中每张图片 role 使用 product，transfer 只写产品真实外观职责，ignore 明确不转移背景和不可验证信息。",
   "仅输出 JSON，不要 Markdown：{\"kind\":\"commerce-plan-generation\",\"plans\":[{\"id\":\"plan-1\",\"direction\":\"daily-style\",\"title\":\"日常穿搭反差\",\"sellingPoint\":\"已确认的一个卖点\",\"hook\":{\"visualPatternId\":\"visible-problem-contrast\",\"copyPatternId\":\"direct-problem-question\",\"title\":\"普通穿搭问题\",\"reason\":\"首帧先看见穿搭不协调，再由目标鞋回答问题\",\"hookLine\":\"Outfit hari ni nampak biasa?\",\"onScreenText\":\"Outfit hari ni nampak biasa?\",\"scene\":\"普通马来西亚公寓玄关\",\"visualBeat\":\"人物看着镜中不协调的普通穿搭，手停在两双鞋之间犹豫\"},\"production\":{\"scenePatternId\":\"condo-entry-mirror\",\"shotPatternId\":\"problem-reveal-proof-result\",\"performancePatternId\":\"mild-friction-relief\",\"energy\":\"balanced\",\"emotionArc\":\"犹豫到发现再到自然确认\",\"realismNotes\":\"自然皮肤纹理、衣服轻微褶皱和手持微抖\"},\"shots\":[{\"timeRange\":\"0-2秒\",\"shotSize\":\"中景\",\"camera\":\"固定中景\",\"action\":\"人物在两双鞋之间拿错后停住\",\"performance\":\"看镜中穿搭轻微皱眉\",\"productState\":\"目标鞋未穿并在手边可见\",\"dialogue\":\"Outfit hari ni nampak biasa?\",\"onScreenText\":\"Outfit hari ni nampak biasa?\",\"sound\":\"第0秒自然口播与室内环境声\",\"transition\":\"目标鞋移近镜头形成遮挡\"},{\"timeRange\":\"2-7秒\",\"shotSize\":\"近景\",\"camera\":\"匹配剪辑后短推进\",\"action\":\"遮挡结束时完成穿鞋并踩稳\",\"performance\":\"肩膀放松并低头确认\",\"productState\":\"双脚已穿目标鞋\",\"dialogue\":\"Terus nampak lebih kemas.\",\"onScreenText\":\"Terus nampak lebih kemas.\",\"sound\":\"脚步落点进入音乐强拍\",\"transition\":\"脚步落点匹配到侧向动作\"},{\"timeRange\":\"7-12秒\",\"shotSize\":\"全身\",\"camera\":\"低机位侧向跟拍\",\"action\":\"人物自然走两步\",\"performance\":\"视线看前方并保留呼吸\",\"productState\":\"目标鞋保持已穿且清楚\",\"dialogue\":\"无口播\",\"onScreenText\":\"\",\"sound\":\"自然脚步声和轻音乐\",\"transition\":\"人物经过镜框前景形成遮挡\"},{\"timeRange\":\"12-15秒\",\"shotSize\":\"全身\",\"camera\":\"固定机位\",\"action\":\"人物整理衣角准备出门\",\"performance\":\"自然半笑后看向门口\",\"productState\":\"完整穿搭和目标鞋同时可见\",\"dialogue\":\"Korang suka gaya macam ni?\",\"onScreenText\":\"Korang suka gaya macam ni?\",\"sound\":\"音乐收束并保留钥匙轻响\",\"transition\":\"人物迈出画面后自然结束\"}],\"referenceBindings\":[{\"label\":\"@Image1\",\"role\":\"product\",\"transfer\":\"产品外观\",\"ignore\":\"背景\"}],\"publishingCopy\":{\"title\":\"Gaya harian nampak lebih kemas\",\"caption\":\"Tengok perubahan outfit bila kasut ni masuk.\",\"hashtags\":[\"#kasut\",\"#shoes\",\"#sneakers\",\"#kasutharian\"],\"angle\":\"daily\",\"category\":\"casual\"}}]}",
-].join("\n");
+].concat([
+  "最终只输出 JSON，不要 Markdown。使用 {\"kind\":\"commerce-plan-candidates\",\"candidates\":[{\"id\":\"方向-1\",\"plan\":{完整原方案字段}}]}；每个方向必须有三个候选。",
+]).join("\n");
 
 const canvasAssistantRetryDelayMs = 350;
 
@@ -394,7 +397,7 @@ function parseJsonObject(value: string) {
 }
 
 const commerceHookFallbackLines: Record<string, string> = {
-  "stop-scroll-specific-reveal": "Kejap, tengok kasut ni berubah.",
+  "stop-scroll-specific-reveal": "Kejap, tengok warna ni naik.",
   "finally-found-match": "Akhirnya jumpa kasut yang nampak ngam.",
   "conditional-visible-result": "Bila bergerak, warna ni terus menyerlah.",
   "offer-surprise": "Deal kasut ni memang berbaloi.",
@@ -582,6 +585,259 @@ function repairCommercePlanHookMetadata(
   return { ...root, plans };
 }
 
+type CommercePlanCandidate = { id: string; plan: Record<string, unknown> };
+
+function commercePlanCandidates(value: unknown): CommercePlanCandidate[] {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return [];
+  const root = value as Record<string, unknown>;
+  const candidates = root.kind === "commerce-plan-candidates" && Array.isArray(root.candidates)
+    ? root.candidates
+    : root.kind === "commerce-plan-generation" && Array.isArray(root.plans)
+      ? root.plans.map((plan, index) => ({ id: "legacy-" + (index + 1), plan }))
+      : [];
+  return candidates.slice(0, 9).flatMap((candidate, index) => {
+    const item = candidate && typeof candidate === "object" && !Array.isArray(candidate)
+      ? candidate as Record<string, unknown>
+      : null;
+    const plan = item?.plan && typeof item.plan === "object" && !Array.isArray(item.plan)
+      ? item.plan as Record<string, unknown>
+      : item;
+    return plan ? [{ id: text(item?.id, 120) || "candidate-" + (index + 1), plan }] : [];
+  });
+}
+
+function commercePlanQualityReasons(plan: CanvasCommercePlan) {
+  const reasons: string[] = [];
+  const opening = [plan.hook?.visualBeat, plan.shots?.[0]?.action, plan.shots?.[0]?.productState].filter(Boolean).join("\n");
+  const hookLine = plan.hook?.hookLine || "";
+  const execution = plan.hook ? malaysiaCommerceHookExecutionRecipe(plan.hook.visualPatternId) : undefined;
+  if (/(?:berubah|nampak lain|lebih baik|lebih cantik|sangat cantik|terus naik)/iu.test(hookLine)
+    && !/(?:warna|colour|color|detail|garis|siluet|bentuk|outfit|look|tali)/iu.test(hookLine)) {
+    reasons.push("首句只说泛化变化，没有点明画面可见的对象。");
+  }
+  if (execution?.shoeState === "already-worn" && /(?:未穿|尚未穿|放在(?:长椅|鞋架|手边)|拿起目标鞋)/u.test(opening)) {
+    reasons.push("该钩子要求目标鞋首帧已穿着，不能用未穿到已穿的遮挡跳切。");
+  }
+  if (execution?.shoeState === "held-or-placed" && /(?:双脚.{0,12}(?:已穿|穿着)|目标鞋.{0,12}(?:已穿|穿着|上脚))/u.test(opening)) {
+    reasons.push("该发现式钩子首帧应展示手持或静置产品，不能直接跳到上脚状态。");
+  }
+  if (plan.hook?.visualPatternId === "visible-problem-contrast"
+    && !/(?:问题|困扰|犹豫|拿错|配错|不协调|反差|比较|差别|镜中|镜前)/u.test(opening)) {
+    reasons.push("穿搭反差钩子没有在首帧写出可见问题或比较。");
+  }
+  if (plan.shots?.[0]?.sound && /[“”"']/.test(plan.shots[0].sound)) {
+    reasons.push("首镜声音字段包含第二句台词，可能与字幕和口播冲突。");
+  }
+  if (["daily-style", "human-wear", "malay-review"].includes(plan.direction)
+    && plan.shots?.some((shot) => /(?:慢跑|跑步|冲刺|jog|run)/iu.test([shot.action, shot.camera].join("\n")))) {
+    reasons.push("日常方向不能擅自升级成跑步或慢跑。");
+  }
+  if (plan.shots?.some((shot) => /(?:轻音乐|环境声)/u.test(shot.sound)
+    && !/(?:第?\s*(?:0|1|2|7|12|15)\s*秒|落点|强拍|节拍|鞋带|轻触|脚步)/u.test(shot.sound))) {
+    reasons.push("声音描述没有时间点或动作落点，无法形成节奏升级。");
+  }
+  return reasons;
+}
+
+function commerceQualityFallback(direction: CanvasCommerceDirection, sellingPoint: string, imageCount: number) {
+  const visualId = direction === "product-asmr" ? "product-asmr-detail" : "local-reaction-reveal";
+  const visual = malaysiaCommerceVisualHookPattern(visualId)
+    || malaysiaCommerceVisualHookPatterns.find((pattern) => pattern.directions.includes(direction));
+  const copy = malaysiaCommerceCopyHookPattern("expectation-gap")
+    || malaysiaCommerceCopyHookPatterns.find((pattern) => pattern.directions.includes(direction));
+  const scene = malaysiaCommerceScenePatterns.find((pattern) => pattern.directions.includes(direction));
+  const recipe = scene ? malaysiaCommerceShotPatterns.flatMap((shotPattern) => malaysiaCommercePerformancePatterns.flatMap((performance) =>
+    isMalaysiaCommerceProductionRecipeCompatible(scene.id, shotPattern.id, performance.id, direction) ? [{ shotPattern, performance }] : [],
+  )).at(0) : undefined;
+  if (!visual || !copy || !scene || !recipe) return null;
+  const held = malaysiaCommerceHookExecutionRecipe(visual.id)?.shoeState === "held-or-placed";
+  const hookLine = "Tak sangka warna ni menyerlah.";
+  const openingState = held
+    ? "目标鞋由人物稳定拿在手中或静置台面，亮色、轮廓和鞋带线索清楚可见"
+    : "双脚从第0秒已穿目标鞋，鞋型、配色和左右脚清楚可见";
+  const openingAction = held
+    ? "手部轻触或移开普通遮挡，让目标鞋的可见细节进入画面"
+    : "人物穿着目标鞋在镜前或步道边停住，低头确认完整穿搭的色彩反差";
+  const movement = direction === "sport-motion"
+    ? "人物在安全铺装步道做一段短距离轻慢跑后自然减速"
+    : "人物沿同一方向快走两步后自然减速";
+  return {
+    id: "quality-fallback-" + direction,
+    direction,
+    title: "可见配色反差",
+    sellingPoint: sellingPoint || "参考图可见的配色和鞋型轮廓",
+    hook: {
+      visualPatternId: visual.id,
+      copyPatternId: copy.id,
+      title: "可见配色发现",
+      reason: "首帧已经拍到目标鞋与当前穿搭的可见配色或结构线索，再用同一状态完成证明。",
+      hookLine,
+      onScreenText: hookLine,
+      scene: scene.setting,
+      visualBeat: openingAction,
+    },
+    production: {
+      scenePatternId: scene.id,
+      shotPatternId: recipe.shotPattern.id,
+      performancePatternId: recipe.performance.id,
+      energy: direction === "sport-motion" ? "dynamic" : direction === "product-asmr" ? "calm" : "balanced",
+      emotionArc: "注意到可见细节，确认同一个外观结果，再自然收束",
+      realismNotes: "保留皮肤纹理、衣服褶皱、呼吸、眨眼、动作惯性和轻微手持变化",
+    },
+    shots: [
+      { timeRange: "0-2秒", shotSize: held ? "特写" : "中近景", camera: held ? "手持微距短推进" : "低机位中近景", action: openingAction, performance: "视线或手部先落在鞋子可见细节，保留一次自然停顿", productState: openingState, dialogue: hookLine, onScreenText: hookLine, sound: "第0秒动作声与同步口播进入", transition: "手部移开前景或脚步落点形成连续揭示" },
+      { timeRange: "2-7秒", shotSize: "近景", camera: "短推进后侧移", action: held ? "手部转到完整侧面并停半拍" : "人物向前迈一步，让鞋型在落点时清楚出现", performance: "表情从注意到确认，动作收势自然", productState: held ? "目标鞋保持手持或静置状态，完整侧面清楚" : "目标鞋保持已穿，鞋型和配色连续", dialogue: "Warna ni memang hidup.", onScreenText: "Warna ni memang hidup.", sound: "1.5秒动作落点触发一次音乐抬升", transition: "落点或转动方向连续进入下一镜头" },
+      { timeRange: "7-12秒", shotSize: held ? "中近景" : "全身", camera: held ? "侧向短环绕" : "低机位侧向跟拍", action: held ? "同一只鞋换一个角度展示可见轮廓" : movement, performance: "视线主要看前方或产品，呼吸和重心变化真实", productState: held ? "目标鞋持续可见，配色和轮廓不变" : "目标鞋保持已穿，左右脚和动作方向连续", dialogue: "无口播", onScreenText: "", sound: "7-12秒用真实动作声和低频节拍维持节奏", transition: "前景经过或动作收势桥接到结果镜头" },
+      { timeRange: "12-15秒", shotSize: "全身", camera: "固定斜侧中景", action: held ? "人物把鞋稳定放下后自然收手" : "人物停稳，视线确认鞋子后自然转向前方", performance: "克制半笑，不直视镜头背稿", productState: held ? "目标鞋完整正侧面稳定可见" : "目标鞋保持已穿，完整穿搭和鞋子同时可见", dialogue: "Korang pakai dengan apa?", onScreenText: "Korang pakai dengan apa?", sound: "12-15秒保留最后一个动作声和音乐尾拍", transition: "动作完成后自然结束" },
+    ],
+    referenceBindings: Array.from({ length: Math.max(1, Math.min(4, imageCount)) }, (_, index) => ({
+      label: "@Image" + (index + 1), role: "product", transfer: "产品真实外观、配色和可见结构", ignore: "原图背景和文字",
+    })),
+    publishingCopy: {
+      title: "Warna kasut ni terus menyerlah",
+      caption: "Detail warna yang nampak terus dalam outfit harian. Simpan untuk idea gaya seterusnya.",
+      hashtags: ["#kasut", "#sneakers", "#gayaharian", "#malaysia"],
+      angle: "style",
+      category: "casual",
+    },
+  };
+}
+
+async function selectCommercePlanCandidates(
+  value: unknown,
+  normalized: CanvasAssistantInput,
+  caller: PromptModelCaller,
+  requestId: string | undefined,
+  imageCount: number,
+  normalizePlans: (value: unknown) => CanvasCommercePlanGenerationResponse,
+) {
+  const candidates = commercePlanCandidates(value);
+  if (!candidates.length) throw new Error("提示词候选返回格式无效。");
+  const accepted = candidates.flatMap((candidate) => {
+    const direction = text(candidate.plan.direction, 40) as CanvasCommerceDirection;
+    if (!normalized.selectedDirections?.includes(direction)) return [];
+    try {
+      let acceptedCandidate = candidate;
+      let plan: CanvasCommercePlan;
+      try {
+        plan = normalizePlans({ kind: "commerce-plan-generation", plans: [candidate.plan] }).plans[0];
+      } catch {
+        const repaired = repairCommercePlanHookMetadata(
+          { kind: "commerce-plan-generation", plans: [candidate.plan] },
+          [direction],
+          normalized.usedHookPatterns,
+        ) as { plans?: unknown[] };
+        const repairedPlan = repaired.plans?.[0];
+        if (!repairedPlan || typeof repairedPlan !== "object" || Array.isArray(repairedPlan)) throw new Error("方案无法修复。");
+        acceptedCandidate = { ...candidate, plan: repairedPlan as Record<string, unknown> };
+        plan = normalizePlans({ kind: "commerce-plan-generation", plans: [acceptedCandidate.plan] }).plans[0];
+        newApiLogger.warn({
+          event: "commerce_plan_hook_metadata_repair",
+          requestId,
+          context: "canvas-assistant",
+          retryable: false,
+          details: { direction, candidateId: candidate.id, correctionMessage: "候选钩子元数据已修复" },
+        });
+      }
+      const reasons = commercePlanQualityReasons(plan);
+      if (reasons.length) {
+        newApiLogger.warn({
+          event: "commerce_plan_quality_rejected",
+          requestId,
+          context: "canvas-assistant",
+          retryable: false,
+          details: { direction, candidateId: candidate.id, reasons },
+        });
+        return [];
+      }
+      return [{ candidate: acceptedCandidate, plan }];
+    } catch (error) {
+      newApiLogger.warn({
+        event: "commerce_plan_quality_rejected",
+        requestId,
+        context: "canvas-assistant",
+        retryable: false,
+        details: { direction, candidateId: candidate.id, reasons: [error instanceof Error ? error.message.slice(0, 220) : "结构校验失败"] },
+      });
+      return [];
+    }
+  });
+  const seenRecipes = new Set<string>();
+  const uniqueAccepted = accepted.filter(({ plan }) => {
+    const recipe = [plan.direction, plan.hook?.visualPatternId, plan.hook?.copyPatternId, plan.production?.scenePatternId, plan.production?.shotPatternId, plan.production?.performancePatternId].join(":");
+    if (seenRecipes.has(recipe)) return false;
+    seenRecipes.add(recipe);
+    return true;
+  });
+  const candidateIdsByDirection = new Map<CanvasCommerceDirection, string[]>();
+  for (const item of uniqueAccepted) {
+    const entries = candidateIdsByDirection.get(item.plan.direction) || [];
+    entries.push(item.candidate.id);
+    candidateIdsByDirection.set(item.plan.direction, entries);
+  }
+  const multiCandidateDirections = [...candidateIdsByDirection.entries()].filter(([, ids]) => ids.length > 1);
+  const criticWinners = new Map<CanvasCommerceDirection, string>();
+  if (multiCandidateDirections.length) {
+    try {
+      const criticOutput = await callAssistantModel(caller, {
+        systemPrompt: "你是马来西亚鞋类短视频创意评审。只在候选中选择首帧问题真实可见、2秒内兑现、马来语自然、动作和声音节奏可执行的第一名。不要重写方案，只输出 JSON：{\"winners\":[{\"direction\":\"\",\"candidateId\":\"\"}]}。",
+        userPrompt: JSON.stringify({
+          candidates: uniqueAccepted.map(({ candidate, plan }) => ({
+            id: candidate.id,
+            direction: plan.direction,
+            hook: plan.hook,
+            production: plan.production,
+            openingShot: plan.shots?.[0],
+            middleShot: plan.shots?.[1],
+          })),
+        }),
+        requestId,
+        timeoutMs: 30_000,
+        maxTokens: 700,
+      });
+      const critic = parseJsonObject(criticOutput);
+      if (critic && typeof critic === "object" && !Array.isArray(critic)) {
+        const winners = (critic as Record<string, unknown>).winners;
+        if (Array.isArray(winners)) {
+          for (const winner of winners) {
+            if (!winner || typeof winner !== "object" || Array.isArray(winner)) continue;
+            const item = winner as Record<string, unknown>;
+            const direction = text(item.direction, 40) as CanvasCommerceDirection;
+            const candidateId = text(item.candidateId, 120);
+            if (candidateIdsByDirection.get(direction)?.includes(candidateId)) criticWinners.set(direction, candidateId);
+          }
+        }
+      }
+    } catch {
+      // A critic failure never blocks prompt generation; deterministic candidate order remains available.
+    }
+  }
+  const selectedPlans = (normalized.selectedDirections || []).flatMap((direction) => {
+    const selectedId = criticWinners.get(direction);
+    const matching = uniqueAccepted.find((item) => item.plan.direction === direction && (!selectedId || item.candidate.id === selectedId));
+    if (matching) {
+      newApiLogger.info({
+        event: "commerce_plan_creative_selected",
+        requestId,
+        context: "canvas-assistant",
+        details: { direction, candidateId: matching.candidate.id, criticUsed: Boolean(selectedId) },
+      });
+      return [matching.candidate.plan];
+    }
+    const fallback = commerceQualityFallback(direction, normalized.directionSellingPoints?.[direction] || "", imageCount);
+    if (!fallback) return [];
+    newApiLogger.warn({
+      event: "commerce_plan_quality_fallback",
+      requestId,
+      context: "canvas-assistant",
+      retryable: false,
+      details: { direction },
+    });
+    return [fallback];
+  });
+  return normalizePlans({ kind: "commerce-plan-generation", plans: selectedPlans });
+}
+
 async function callAssistantModel(caller: PromptModelCaller, input: Parameters<PromptModelCaller>[0]) {
   try {
     return await caller(input);
@@ -652,7 +908,7 @@ async function answerCommerceWorkflow(
   });
   let generated: CanvasCommercePlanGenerationResponse;
   try {
-    generated = normalizePlans(parseJsonObject(output));
+    generated = await selectCommercePlanCandidates(parseJsonObject(output), normalized, caller, requestId, selectedImages.length, normalizePlans);
   } catch (error) {
     const validationMessage = error instanceof Error ? error.message.slice(0, 300) : "结构化方案校验失败";
     newApiLogger.warn({
@@ -671,7 +927,7 @@ async function answerCommerceWorkflow(
     });
     const correctedValue = parseJsonObject(correctedOutput);
     try {
-      generated = normalizePlans(correctedValue);
+      generated = await selectCommercePlanCandidates(correctedValue, normalized, caller, requestId, selectedImages.length, normalizePlans);
     } catch (correctionError) {
       const correctionMessage = correctionError instanceof Error ? correctionError.message.slice(0, 300) : "结构化方案二次校验失败";
       newApiLogger.warn({
@@ -681,11 +937,11 @@ async function answerCommerceWorkflow(
         retryable: false,
         details: { correctionMessage },
       });
-      generated = normalizePlans(repairCommercePlanHookMetadata(
+      generated = await selectCommercePlanCandidates(repairCommercePlanHookMetadata(
         correctedValue,
         normalized.selectedDirections,
         normalized.usedHookPatterns,
-      ));
+      ), normalized, caller, requestId, selectedImages.length, normalizePlans);
     }
   }
   return {

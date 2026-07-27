@@ -19,6 +19,7 @@ import {
   isMalaysiaCommerceProductionRecipeCompatible,
   malaysiaCommerceCopyHookPattern,
   malaysiaCommerceCopyHookPatterns,
+  malaysiaCommerceHookExecutionRecipe,
   malaysiaCommercePerformancePattern,
   malaysiaCommerceScenePattern,
   malaysiaCommerceShotPattern,
@@ -331,19 +332,23 @@ export function composeCommerceSeedancePrompt({
     transfer: "鞋子真实外观、配色和可见结构",
     ignore: "原图背景、文字和不可验证信息",
   }));
-  const referenceText = references.map((binding) => `${binding.label}：${binding.transfer || "产品外观"}；不继承${binding.ignore || "原图背景"}`).join("\n");
   const facts = visibleFacts.length ? visibleFacts.map((fact) => `- ${fact}`).join("\n") : "- 只使用参考图可直接核对的鞋型、配色和结构";
   const visualPattern = malaysiaCommerceVisualHookPattern(hook.visualPatternId);
-  const copyPattern = malaysiaCommerceCopyHookPattern(hook.copyPatternId);
   const scenePattern = malaysiaCommerceScenePattern(production.scenePatternId);
   const shotPattern = malaysiaCommerceShotPattern(production.shotPatternId);
   const performancePattern = malaysiaCommercePerformancePattern(production.performancePatternId);
+  const execution = malaysiaCommerceHookExecutionRecipe(hook.visualPatternId) || {
+    openingEvidence: "第一帧必须出现钩子所说的可见证据。",
+    revealWithin: "0-2秒" as const,
+    shoeState: "already-worn" as const,
+    actionBoundary: "保持产品状态连续，不做未穿到已穿的跳切。",
+    audioBeats: ["0 秒真实动作声与口播同步", "1.5-2 秒一次揭示落点和音乐抬升", "7-12 秒动作声承担节奏", "12-15 秒自然尾音和音乐收束"] as const,
+  };
   const energyGuidance = production.energy === "dynamic"
     ? "剪辑紧凑但动作完整，脚步强拍驱动切镜，跟拍有真实加减速和轻微惯性"
     : production.energy === "balanced"
       ? "节奏有起伏，揭示段加快、证据段放稳，镜头运动有清楚起止"
       : "节奏克制，依靠触感声和细节变化维持注意力，运镜平稳且不僵硬";
-  const openingVoice = `开头口播“${hook.hookLine}”，同步字幕逐字使用“${hook.onScreenText}”`;
   const shotText = shots.map((shot, index) => [
     `镜头 ${index + 1}｜${shot.timeRange}｜${shot.shotSize}`,
     `动作：${shot.action}`,
@@ -352,37 +357,22 @@ export function composeCommerceSeedancePrompt({
     `镜头：${shot.camera}`,
     `台词/旁白：${shot.dialogue}`,
     `屏幕短字：${shot.onScreenText || "无"}`,
-    `声音：${shot.sound}`,
+    `声音：${execution.audioBeats[index]}`,
     `转场：${shot.transition}`,
   ].join("\n")).join("\n\n");
-  const detailedSections = [
-    "素材职责：",
-    referenceText,
-    "产品可见事实：",
-    facts,
-    `开头机制：${visualPattern?.label || hook.visualPatternId} + ${copyPattern?.label || hook.copyPatternId}。${hook.reason}`,
-    `场景与当地细节：${scenePattern?.setting || hook.scene}；${scenePattern?.localDetails || hook.scene}。动作边界：${scenePattern?.movementBoundary || "只做与鞋型匹配的低风险动作"}。`,
-    `镜头节奏：${shotPattern?.label || production.shotPatternId}。${shotPattern?.cameraRhythm || "四个镜头景别清楚变化"}。转场原则：${shotPattern?.transitionRule || "只使用由人物动作触发的自然转场"}。`,
-    `动感强度：${production.energy}。${energyGuidance}。`,
-    `情绪弧线：${production.emotionArc}`,
-    `表演基准：${performancePattern?.performance || production.realismNotes}。情绪参考：${performancePattern?.emotionArc || production.emotionArc}。`,
-    `真人真实感：${production.realismNotes}。9:16 原生手机短视频观感；马来西亚当地成年人物像真实生活中的普通人，不是完美广告模特。保留自然皮肤纹理、轻微出汗或碎发、衣服轻微褶皱、眨眼、呼吸、视线转移、重心变化和动作惯性；普通公寓、商场、遮雨走廊或公园允许少量背景杂物、自然人流、轻微手持微抖和曝光调整，禁止塑料皮肤、过度磨皮、完美影棚布光和空无一人的豪华广告场景；鞋子结构、配色、左右脚和参考图全程一致。`,
-    `带货叙事骨架：情绪引发共鸣（镜头 1 用当前可见的小困扰或信息缺口让观众代入）→ 利益直接转化（镜头 2 让产品立即回答开头，并展示一个能从画面验证的穿搭或外观利益）→ 场景长期种草（镜头 3 把同一个利益放进${scenePattern?.setting || hook.scene}这类可重复发生的马来西亚生活场景）→ 闭环 CTA（镜头 4 回答开头并展示人物已获得的可见结果）。四段服务同一个核心利益，不得各说各话。`,
-    "承上启下与连续性：镜头 1 提出可见问题或信息缺口；镜头 2 必须承接镜头 1 的人物、产品和动作状态并揭示答案；镜头 3 延续同一动作或结果，用不同景别提供证据；镜头 4 延续已证明的状态闭合开头并 CTA。上一镜头结束状态就是下一镜头开始状态，人物、服装、鞋子穿着状态、动作方向、情绪和场景不得跳变；每次转场必须由动作、遮挡、落点或声音桥接。",
-    "四镜头分镜脚本：",
-    shotText,
-    `声音/口播：从第 0 秒开始；${openingVoice}；最多三句短马来语，每个有口播镜头的屏幕字幕必须与该镜头台词逐字相同，无口播镜头才不显示字幕；动作声与节拍承担中段情绪。`,
-    "禁止项：优惠钩子不得出现具体金额、百分比、降价幅度、限时、库存或销量；不得虚构评价、品牌、材料、舒适、防滑、耐磨、透气或健康功效；不得使用危险动作、事故、受伤、街头骚扰；不得出现僵硬口型、广告式连续点头、塑料皮肤、过度磨皮、完美影棚布光、漂浮滑步、无重力步态、肢体畸变、鞋子变形、文字乱码或无动机炫技运镜。",
-  ];
   return [
-    `使用 ${references.map((binding) => binding.label).join("、")} 作为同款鞋的唯一外观参考：全程保持可见鞋型、配色、结构、左右脚和穿着状态一致，忽略原图背景、文字及无法从图中确认的信息。`,
-    `制作一支 15 秒、9:16 的马来西亚马来语真人短视频。场景为${scenePattern?.setting || hook.scene}，${scenePattern?.localDetails || hook.scene}。${scenePattern?.movementBoundary || "只做与鞋型匹配的低风险动作"}。`,
-    `第 0 秒立刻出现${hook.visualBeat}。人物说“${hook.hookLine}”，字幕逐字使用“${hook.onScreenText}”，同时有对应环境声或动作声。`,
-    `镜头节奏：${shotPattern?.cameraRhythm || "四个镜头景别清晰变化"}；${energyGuidance}。${shotPattern?.transitionRule || "只使用由人物动作触发的自然转场"}。`,
-    `真人是马来西亚当地普通成年人，不是广告模特。${performancePattern?.performance || production.realismNotes}。保留皮肤纹理、碎发、衣服褶皱、眨眼、呼吸、重心变化、动作惯性、轻微手持抖动和自然曝光；禁止塑料皮肤、过度磨皮和影棚广告感。`,
-    "叙事从共鸣开头，接着以可见画面回应，再放进当地日常场景，最后自然 CTA；四段只讲同一个利益。",
-    ...detailedSections.slice(11),
-  ].join("\n\n").slice(0, 8_000);
+    `使用 ${references.map((binding) => binding.label).join("、")} 作为同款鞋的唯一外观参考；全程保持鞋型、配色、结构、左右脚和穿着状态一致，忽略原图背景、文字及不可验证信息。`,
+    `制作 15 秒、9:16、马来西亚马来语真人短视频。场景：${scenePattern?.setting || hook.scene}；${scenePattern?.localDetails || hook.scene}。动作边界：${scenePattern?.movementBoundary || "只做与鞋型匹配的低风险动作"}。`,
+    `可见事实：\n${facts}`,
+    `钩子配方：${visualPattern?.label || hook.visualPatternId}。第 0 秒必须出现${hook.visualBeat}。${execution.openingEvidence}${execution.actionBoundary} 首句口播和字幕逐字相同：“${hook.hookLine}”。`,
+    `镜头节奏：${shotPattern?.cameraRhythm || "四个镜头景别清楚变化"}；${energyGuidance}。${shotPattern?.transitionRule || "转场由动作触发"}。`,
+    `表演：${performancePattern?.performance || production.realismNotes}。保留皮肤纹理、碎发、衣服褶皱、眨眼、呼吸、重心变化、动作惯性和轻微手持抖动；人物像真实当地日常人物，不是广告模特。`,
+    "叙事骨架：情绪引发共鸣 → 利益直接转化 → 场景长期种草 → 闭环 CTA。",
+    "四段只服务同一个可见外观利益；上一镜头结束状态即下一镜头开始状态。每个口播镜头的字幕必须逐字等于台词，无口播镜头字幕为空。",
+    "四镜头分镜：",
+    shotText,
+    "禁止：具体金额、百分比、限时、库存、销量、品牌、材料或性能承诺；危险动作、事故、伤害、塑料皮肤、漂浮步态、鞋子变形、字幕乱码、无动机特效。",
+  ].join("\n\n").slice(0, 2_400);
 }
 
 export function normalizeCommercePlanHook(value: unknown, direction: CanvasCommerceDirection): CanvasCommercePlanHook | undefined {

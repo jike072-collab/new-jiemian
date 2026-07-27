@@ -58,6 +58,14 @@ type PerformancePattern = {
   prohibited: string;
 };
 
+export type MalaysiaCommerceHookExecutionRecipe = {
+  openingEvidence: string;
+  revealWithin: "0-2秒";
+  shoeState: "already-worn" | "held-or-placed";
+  actionBoundary: string;
+  audioBeats: readonly [string, string, string, string];
+};
+
 const humanDirections = ["human-wear", "sport-motion", "daily-style", "malay-review"] as const;
 const allDirections = [...humanDirections, "product-asmr", "handheld"] as const;
 
@@ -493,6 +501,72 @@ const scenePatternsById = new Map(malaysiaCommerceScenePatterns.map((pattern) =>
 const shotPatternsById = new Map(malaysiaCommerceShotPatterns.map((pattern) => [pattern.id, pattern]));
 const performancePatternsById = new Map(malaysiaCommercePerformancePatterns.map((pattern) => [pattern.id, pattern]));
 
+const hookExecutionRecipes: Record<string, MalaysiaCommerceHookExecutionRecipe> = {
+  "visible-problem-contrast": {
+    openingEvidence: "第一帧必须同时拍到当前穿搭问题和目标鞋；不得只让文案声称旧鞋或问题存在。",
+    revealWithin: "0-2秒",
+    shoeState: "already-worn",
+    actionBoundary: "目标鞋从第 0 秒已穿着；用镜中构图、前景遮挡或落点强调反差，不做未穿到已穿的跳切。",
+    audioBeats: ["0 秒鞋底轻触或衣料动作声后立刻进入口播", "1.5-2 秒用一次脚步落点和音乐抬升回答问题", "7-12 秒只保留有节奏的脚步和低频律动", "12-15 秒保留最后一个落点并收束音乐"],
+  },
+  "middle-of-action": {
+    openingEvidence: "第一帧必须已处在可见错配、比较或信息缺口的动作中段。",
+    revealWithin: "0-2秒",
+    shoeState: "already-worn",
+    actionBoundary: "动作只能强调已穿目标鞋的搭配结果或安全移动；不能把普通拿鞋、系带或起步单独当钩子。",
+    audioBeats: ["0 秒真实鞋带、衣料或落地声与口播同步", "1.5-2 秒动作完成时只给一次节拍抬升", "7-12 秒让脚步或动作声承担节奏", "12-15 秒以自然停步声和音乐尾拍结束"],
+  },
+  "occluded-discovery": {
+    openingEvidence: "第一帧必须露出被普通物件局部遮挡的真实鞋型、配色或轮廓线索。",
+    revealWithin: "0-2秒",
+    shoeState: "held-or-placed",
+    actionBoundary: "只允许掀开、抽出或移开普通物件后展示完整鞋型；不要求在两秒内完成上脚。",
+    audioBeats: ["0 秒布料或购物袋摩擦声与口播同步", "1.5-2 秒揭开时一次清楚提示音和音乐抬升", "7-12 秒用轻触、落放或鞋带声保持节奏", "12-15 秒以稳定落放声和短尾拍收束"],
+  },
+  "ground-clue-approach": {
+    openingEvidence: "第一帧必须让安全摆放的鞋子局部或普通物件形成可理解的线索。",
+    revealWithin: "0-2秒",
+    shoeState: "held-or-placed",
+    actionBoundary: "镜头连续靠近并从安全位置拿起鞋；不制造事故、通道阻塞或受困叙事。",
+    audioBeats: ["0 秒环境底噪中进入轻脚步和口播", "1.5-2 秒拿起鞋时一次清楚落点音", "7-12 秒使用轻触和转动声维持节奏", "12-15 秒让动作停稳并淡出音乐"],
+  },
+  "barrier-pov": {
+    openingEvidence: "第一帧必须看到安全屏障上的雨滴、水汽或反射及人物或产品线索。",
+    revealWithin: "0-2秒",
+    shoeState: "held-or-placed",
+    actionBoundary: "只使用静止车辆、门框或展示窗；擦开或移开屏障后展示鞋子。",
+    audioBeats: ["0 秒轻敲或擦拭声与口播同步", "1.5-2 秒视线打开时一次短促转场音", "7-12 秒保留自然环境声和轻节拍", "12-15 秒让动作声先停、音乐后收"],
+  },
+  "forced-perspective": {
+    openingEvidence: "第一帧必须出现前景鞋子与远处人物形成的明显且安全的尺度错觉。",
+    revealWithin: "0-2秒",
+    shoeState: "held-or-placed",
+    actionBoundary: "镜头只可侧移或由人物接住鞋子解释比例；不得跳跃、假摔或夸大鞋子尺寸。",
+    audioBeats: ["0 秒短促移动声和口播同步", "1.5-2 秒镜头侧移时一次轻提示音", "7-12 秒转为自然动作节拍", "12-15 秒让最后一声动作音带出音乐尾拍"],
+  },
+  "product-asmr-detail": {
+    openingEvidence: "第一帧必须已有手部轻触、鞋带穿孔或光线扫过的可见细节。",
+    revealWithin: "0-2秒",
+    shoeState: "held-or-placed",
+    actionBoundary: "只触碰图片可核对的鞋带、轮廓、拼接或颜色；不做弯折、泼水或性能测试。",
+    audioBeats: ["0 秒轻触或鞋带摩擦声与口播同步", "1.5-2 秒后拉揭示时一次干净落放音", "7-12 秒每个细节只用一次真实轻触声", "12-15 秒稳定落放后让音乐轻收束"],
+  },
+  "harmless-prop-mismatch": {
+    openingEvidence: "第一帧必须明确看到柔软安全道具造成的轻微错配或卡顿。",
+    revealWithin: "0-2秒",
+    shoeState: "already-worn",
+    actionBoundary: "问题须当场用目标鞋的配色或穿搭结果解决；不涉及疼痛、受困或危险挣脱。",
+    audioBeats: ["0 秒轻微卡顿声和口播同步", "1.5-2 秒解决动作以一次节拍抬升回应", "7-12 秒用自然移动声保持律动", "12-15 秒停稳后保留一声衣料或脚步尾音"],
+  },
+  "local-reaction-reveal": {
+    openingEvidence: "第一帧必须同时出现人物克制反应和目标鞋的可见配色、轮廓或拼接。",
+    revealWithin: "0-2秒",
+    shoeState: "already-worn",
+    actionBoundary: "人物只回应当前可见外观，不伪装为真实买家或专业评测。",
+    audioBeats: ["0 秒自然吸气或鞋步声后进入口播", "1.5-2 秒镜头靠近时一次音乐抬升", "7-12 秒以脚步或轻触声驱动节奏", "12-15 秒以自然反应和尾拍收束"],
+  },
+};
+
 export function malaysiaCommerceVisualHookPattern(id: string) {
   return visualPatternsById.get(id);
 }
@@ -511,6 +585,10 @@ export function malaysiaCommerceShotPattern(id: string) {
 
 export function malaysiaCommercePerformancePattern(id: string) {
   return performancePatternsById.get(id);
+}
+
+export function malaysiaCommerceHookExecutionRecipe(id: string) {
+  return hookExecutionRecipes[id];
 }
 
 export function isMalaysiaCommerceHookPairCompatible(visualPatternId: string, copyPatternId: string, direction: CanvasCommerceDirection) {
@@ -584,6 +662,7 @@ export function malaysiaCommerceHookPromptLibrary(directions?: readonly CanvasCo
       id: pattern.id, directions: pattern.directions, mechanism: pattern.mechanism, firstFrame: pattern.firstFrame,
       reveal: pattern.reveal, spokenRule: pattern.spokenRule, textRule: "每句口播的字幕必须与口播逐字相同。",
       audio: pattern.audio, evidence: pattern.evidence, safety: pattern.safety, prohibited: pattern.prohibited,
+      execution: malaysiaCommerceHookExecutionRecipe(pattern.id),
     })),
     copyPatterns: malaysiaCommerceCopyHookPatterns.filter(matches).map((pattern) => ({
       id: pattern.id, directions: pattern.directions, formula: pattern.formula, firstFrame: pattern.firstFrame,

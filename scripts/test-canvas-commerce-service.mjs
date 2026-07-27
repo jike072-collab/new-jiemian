@@ -123,11 +123,12 @@ assert.equal(calls[1].maxTokens, 6_000);
 assert.equal(generated.plans[0].sellingPoint, "复古配色");
 assert.match(generated.plans[0].prompt, /0-2秒/);
 assert.match(generated.plans[0].prompt, /12-15秒/);
-assert.match(generated.plans[0].prompt, /lebih kemas/);
-assert.match(generated.plans[0].prompt, /镜头 1｜0-2秒｜中景/);
+assert.match(generated.plans[0].prompt, /menyerlah/);
+assert.match(generated.plans[0].prompt, /双脚从第0秒已穿目标鞋/);
+assert.match(generated.plans[0].prompt, /镜头 1｜0-2秒｜中近景/);
 assert.match(generated.plans[0].prompt, /人物与情绪/);
 assert.equal(generated.plans[0].shots.length, 4);
-assert.equal(generated.plans[0].hook.visualPatternId, "middle-of-action");
+assert.equal(generated.plans[0].hook.visualPatternId, "local-reaction-reveal");
 assert.equal(generated.plans[0].publishingCopy.hashtags.includes("#fyp"), false);
 assert.equal(generated.plans[0].publishingCopy.hashtags.length, 4);
 assert.equal(Object.hasOwn(generated, "actions"), false);
@@ -255,7 +256,7 @@ const hookRepaired = await hookRepairService.answer({
   selectedNodeIds: nodes.map((node) => node.id),
   nodes,
 }, "request-hook-repair", visualEvidence);
-assert.equal(invalidHookCalls, 2);
+assert.equal(invalidHookCalls, 1);
 assert.equal(hookRepaired.kind, "commerce-plan-generation");
 assert.notEqual(hookRepaired.plans[0].hook.visualPatternId, "invented-motion-hook");
 assert.notEqual(hookRepaired.plans[0].hook.copyPatternId, "invented-copy-hook");
@@ -265,6 +266,82 @@ assert.deepEqual(hookRepaired.plans[0].shots.map((shot) => shot.timeRange), ["0-
 assert.doesNotMatch(hookRepaired.plans[0].shots[0].transition, /切到下一镜头/);
 assert.equal(hookRepaired.plans[0].shots[0].dialogue, hookRepaired.plans[0].hook.hookLine);
 assert.equal(hookRepaired.plans[0].shots[0].onScreenText, hookRepaired.plans[0].hook.hookLine);
+
+const candidateBase = structuredClone(generated.plans[0]);
+const candidateB = structuredClone(candidateBase);
+candidateB.hook.visualPatternId = "middle-of-action";
+candidateB.hook.hookLine = "Tak sangka warna ni berani.";
+candidateB.hook.onScreenText = candidateB.hook.hookLine;
+candidateB.shots[0].dialogue = candidateB.hook.hookLine;
+candidateB.shots[0].onScreenText = candidateB.hook.hookLine;
+const candidateC = structuredClone(candidateBase);
+candidateC.hook.hookLine = "Rupanya warna ni menyerlah.";
+candidateC.hook.onScreenText = candidateC.hook.hookLine;
+candidateC.shots[0].dialogue = candidateC.hook.hookLine;
+candidateC.shots[0].onScreenText = candidateC.hook.hookLine;
+let candidateCalls = 0;
+const candidateService = createCanvasAssistantService(async () => {
+  candidateCalls += 1;
+  if (candidateCalls === 1) {
+    return JSON.stringify({
+      kind: "commerce-plan-candidates",
+      candidates: [
+        { id: "candidate-a", plan: candidateBase },
+        { id: "candidate-b", plan: candidateB },
+        { id: "candidate-c", plan: candidateC },
+      ],
+    });
+  }
+  return JSON.stringify({ winners: [{ direction: "daily-style", candidateId: "candidate-b" }] });
+});
+const criticallySelected = await candidateService.answer({
+  workflow: "commerce-plan-generation",
+  message: "生成一段15秒提示词",
+  productDraftId: "product-1",
+  productName: analysis.suggestedName,
+  sellingPoints: analysis.sellingPoints,
+  visibleFacts: analysis.visibleFacts,
+  selectedDirections: ["daily-style"],
+  directionSellingPoints: { "daily-style": "复古配色" },
+  selectedNodeIds: nodes.map((node) => node.id),
+  nodes,
+}, "request-candidates", visualEvidence);
+assert.equal(candidateCalls, 2);
+assert.equal(criticallySelected.plans[0].hook.hookLine, "Tak sangka warna ni berani.");
+assert.match(criticallySelected.plans[0].prompt, /1.5-2 秒/);
+assert.ok(criticallySelected.plans[0].prompt.length <= 2_400);
+
+const weakPlan = structuredClone(candidateBase);
+weakPlan.hook.visualPatternId = "visible-problem-contrast";
+weakPlan.hook.copyPatternId = "stop-scroll-specific-reveal";
+weakPlan.hook.hookLine = "Kejap, tengok kasut ni berubah.";
+weakPlan.hook.onScreenText = weakPlan.hook.hookLine;
+weakPlan.hook.visualBeat = "人物站着看鞋";
+weakPlan.shots[0] = {
+  ...weakPlan.shots[0],
+  action: "人物站着看鞋",
+  productState: "目标鞋未穿，放在长椅上",
+  dialogue: weakPlan.hook.hookLine,
+  onScreenText: weakPlan.hook.hookLine,
+  sound: "第0秒口播“Kasus gelap tenggelam sangat?”和环境声",
+};
+weakPlan.shots[2] = { ...weakPlan.shots[2], action: "人物沿步道慢跑", camera: "低机位跟拍" };
+const weakService = createCanvasAssistantService(async () => JSON.stringify({ kind: "commerce-plan-generation", plans: [weakPlan] }));
+const weakRecovered = await weakService.answer({
+  workflow: "commerce-plan-generation",
+  message: "生成一段15秒提示词",
+  productDraftId: "product-1",
+  productName: analysis.suggestedName,
+  sellingPoints: analysis.sellingPoints,
+  visibleFacts: analysis.visibleFacts,
+  selectedDirections: ["daily-style"],
+  directionSellingPoints: { "daily-style": "复古配色" },
+  selectedNodeIds: nodes.map((node) => node.id),
+  nodes,
+}, "request-weak-hook", visualEvidence);
+assert.doesNotMatch(weakRecovered.plans[0].prompt, /kasut ni berubah/);
+assert.match(weakRecovered.plans[0].prompt, /双脚从第0秒已穿目标鞋/);
+assert.doesNotMatch(weakRecovered.plans[0].prompt, /慢跑/);
 
 console.log(JSON.stringify({
   ok: true,
