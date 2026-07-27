@@ -4,7 +4,7 @@ import { buildCanvasAssistantVisualEvidence } from "@/lib/server/canvas-assistan
 import { isCanvasLibraryItemInScope, type CanvasLibraryScope } from "@/lib/canvas/library-scope";
 import { NewApiError } from "@/lib/server/integrations/new-api";
 import { readLibraryMetadataForOwners } from "@/lib/server/library";
-import { createNewApiPromptModelCaller, type PromptModelCaller } from "@/lib/server/prompts";
+import { createNewApiAdminPromptModelCaller, type PromptModelCaller } from "@/lib/server/prompts";
 import { malaysiaShoeCopyPromptLibrary } from "@/lib/malaysia-shoe-copy-library";
 import {
   malaysiaTikTokCopyAngle,
@@ -70,7 +70,7 @@ export async function generateMalaysiaTikTokCopy(input: {
   if (!visualEvidence.images.length) {
     throw new TikTokPublishingError("TIKTOK_COPY_VIDEO_UNREADABLE", "暂时无法读取视频画面，请稍后重试。", 409);
   }
-  const caller = input.caller || createNewApiPromptModelCaller();
+  const caller = input.caller || createNewApiAdminPromptModelCaller({ model: TIKTOK_COPY_MODEL });
   const callInput = {
     systemPrompt,
     userPrompt: JSON.stringify({
