@@ -546,7 +546,12 @@ function validateCommercePlanContent(prompt: string, hook: CanvasCommercePlanHoo
     throw new Error("钩子口播和屏幕短字必须原样写入最终提示词。");
   }
   const wordCount = hook.onScreenText.match(/\p{L}+(?:['’-]\p{L}+)*/gu)?.length || 0;
-  if (wordCount < 3 || wordCount > 7) throw new Error("马来语屏幕短字必须控制在 3-7 个词。");
+  const [minHookWords, maxHookWords] = hook.copyPatternId === "return-intent-reversal" ? [8, 18] : [3, 7];
+  if (wordCount < minHookWords || wordCount > maxHookWords) {
+    throw new Error(hook.copyPatternId === "return-intent-reversal"
+      ? "退货反转钩子必须控制在 8-18 个马来语词。"
+      : "马来语屏幕短字必须控制在 3-7 个词。");
+  }
   if (!isMalaysiaCommerceCopyHookFormulaSatisfied(hook.copyPatternId, hook.hookLine)) {
     throw new Error("钩子首句没有实际使用所选话术公式。");
   }
@@ -585,7 +590,9 @@ function validateCommercePlanContent(prompt: string, hook: CanvasCommercePlanHoo
   const claimSurface = [shotClaims, hook.hookLine, hook.onScreenText, publishingCopy.title, publishingCopy.caption].join("\n");
   const unsupportedClaim = claimSurface.match(/(?:价格|原价|现价|限时|库存|清仓|退货|退款|销量|评价|舒适|防滑|耐磨|透气|脚痛|受伤|harga|limited[ -]?time|stok|stock|clearance|refund|return|selesa|anti[- ]?slip|tahan lama|breathable|sakit|cedera)/iu)?.[0];
   const hasCommercialEvidence = Boolean(commercialEvidence.trim());
-  if (unsupportedClaim && !hasCommercialEvidence) {
+  const fictionalReturnReversal = hook.copyPatternId === "return-intent-reversal"
+    && isMalaysiaCommerceCopyHookFormulaSatisfied(hook.copyPatternId, hook.hookLine);
+  if (unsupportedClaim && !hasCommercialEvidence && !(fictionalReturnReversal && /^return$/iu.test(unsupportedClaim))) {
     throw new Error(`方案包含当前产品资料无法证明的话术“${unsupportedClaim}”。`);
   }
   const numericPromotion = claimSurface.match(/(?:\b(?:RM|MYR)\s*\d|[¥￥$]\s*\d|\d+(?:\.\d+)?\s*(?:%|折|off\b)|(?:折扣|优惠|促销|降价|diskaun|promosi|discount).{0,12}\d)/iu)?.[0];

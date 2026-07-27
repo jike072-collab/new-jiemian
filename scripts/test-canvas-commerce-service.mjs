@@ -124,12 +124,13 @@ assert.match(calls[1].systemPrompt, /每个方向必须恰好有三个候选/);
 assert.equal(generated.plans[0].sellingPoint, "复古配色");
 assert.match(generated.plans[0].prompt, /0-2秒/);
 assert.match(generated.plans[0].prompt, /12-15秒/);
-assert.match(generated.plans[0].prompt, /susah match/);
+assert.match(generated.plans[0].prompt, /Hampir nak return, tapi detail warna kasut ni terus ubah fikiran/);
 assert.match(generated.plans[0].prompt, /双脚从第0秒已穿目标鞋/);
 assert.match(generated.plans[0].prompt, /镜头 1｜0-2秒｜中近景/);
 assert.match(generated.plans[0].prompt, /人物与情绪/);
 assert.equal(generated.plans[0].shots.length, 4);
 assert.equal(generated.plans[0].hook.visualPatternId, "local-reaction-reveal");
+assert.equal(generated.plans[0].hook.copyPatternId, "return-intent-reversal");
 assert.equal(generated.plans[0].publishingCopy.hashtags.includes("#fyp"), false);
 assert.equal(generated.plans[0].publishingCopy.hashtags.length, 4);
 assert.equal(Object.hasOwn(generated, "actions"), false);
@@ -270,12 +271,25 @@ assert.equal(hookRepaired.plans[0].shots[0].onScreenText, hookRepaired.plans[0].
 
 const candidateBase = structuredClone(generated.plans[0]);
 const candidateB = structuredClone(candidateBase);
-candidateB.hook.visualPatternId = "middle-of-action";
+candidateB.hook.visualPatternId = "local-reaction-reveal";
 candidateB.hook.copyPatternId = "return-intent-reversal";
-candidateB.hook.hookLine = "Ingat nak pulangkan, sekali tapak merah muncul.";
+candidateB.hook.hookLine = "Hampir nak return, tapi detail warna kasut ni terus ubah fikiran.";
 candidateB.hook.onScreenText = candidateB.hook.hookLine;
-candidateB.shots[0].dialogue = candidateB.hook.hookLine;
-candidateB.shots[0].onScreenText = candidateB.hook.hookLine;
+candidateB.hook.visualBeat = "人物在镜前准备把目标鞋脱下放回鞋盒时停住，抬起鞋跟露出鞋面和鞋底的撞色层次";
+candidateB.shots[0] = {
+  ...candidateB.shots[0],
+  action: "人物在镜前准备把目标鞋脱下放回鞋盒时停住，抬起鞋跟露出鞋面和鞋底的撞色层次",
+  productState: "双脚从第0秒已穿目标鞋，鞋型、配色和左右脚清楚可见",
+  dialogue: candidateB.hook.hookLine,
+  onScreenText: candidateB.hook.hookLine,
+};
+candidateB.shots[1] = {
+  ...candidateB.shots[1],
+  action: "人物把鞋盒推开并转动脚侧，让鞋面和鞋底的撞色层次在近景中清楚出现",
+  productState: "目标鞋保持已穿，鞋面和鞋底的可见撞色细节与首帧连续",
+  dialogue: "Sekali pusing, detail warna terus nampak.",
+  onScreenText: "Sekali pusing, detail warna terus nampak.",
+};
 const candidateC = structuredClone(candidateBase);
 candidateC.hook.hookLine = "Rupanya warna ni menyerlah.";
 candidateC.hook.copyPatternId = "expectation-gap";
@@ -310,7 +324,7 @@ const criticallySelected = await candidateService.answer({
   nodes,
 }, "request-candidates", visualEvidence);
 assert.equal(candidateCalls, 2);
-assert.equal(criticallySelected.plans[0].hook.hookLine, "Ingat nak pulangkan, sekali tapak merah muncul.");
+assert.equal(criticallySelected.plans[0].hook.hookLine, "Hampir nak return, tapi detail warna kasut ni terus ubah fikiran.");
 assert.match(criticallySelected.plans[0].prompt, /1.5-2 秒/);
 assert.ok(criticallySelected.plans[0].prompt.length <= 2_400);
 assert.match(calls[1].systemPrompt, /当前产品资料或用户优化要求/);

@@ -53,6 +53,8 @@ assert.match(service, /禁止输出删除、运行生成/);
 assert.match(service, /timeoutMs: 45_000/);
 assert.match(service, /commerce-plan-generation" \? 120_000 : 60_000/);
 assert.match(service, /commerce_plan_validation_retry/);
+assert.match(service, /returnIntentReversal/);
+assert.match(service, /Hampir nak return, tapi/);
 assert.match(service, /只修正这个明确失败项/);
 assert.match(service, /canvasAssistantRetryDelayMs/);
 assert.match(service, /error\.retryable/);
@@ -193,6 +195,7 @@ assert.equal(isMalaysiaCommerceCopyHookFormulaSatisfied("late-discovery-regret",
 assert.equal(isMalaysiaCommerceCopyHookFormulaSatisfied("late-discovery-regret", "Kasut ni nampak kemas"), false);
 assert.equal(isMalaysiaCommerceCopyHookFormulaSatisfied("friend-asks-link", "Kawan terus tanya link kasut ni"), true);
 assert.equal(isMalaysiaCommerceCopyHookFormulaSatisfied("direct-problem-question", "Outfit hari ni rasa biasa?"), true);
+assert.equal(isMalaysiaCommerceCopyHookFormulaSatisfied("return-intent-reversal", "Hampir nak return, tapi kilat hitam dengan warna teal ni terus ubah fikiran."), true);
 for (const [patternId, hookLine] of [
   ["expectation-gap", "Tak sangka warna ni terus menyerlah"],
   ["offer-surprise", "Deal ni memang berbaloi tengok"],

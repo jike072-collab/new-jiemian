@@ -151,7 +151,7 @@ const commercePlanGenerationPrompt = [
   "每个方案必须真正使用一个能在首帧看懂的吸引机制，禁止用静态产品展示、欢迎语、普通自我介绍或泛泛介绍产品作为开头。",
   "先为每个方向从双层知识库选择一个兼容的 visualPatternId 和 copyPatternId。批量生成尽量不重复；usedHookPatterns 是同方向历史组合，重新分析时优先更换 copyPatternId，其次更换 visualPatternId。",
   "同时为每个方向选择兼容的 scenePatternId、shotPatternId 和 performancePatternId。重新分析继续轮换镜头节奏、当地场景和人物表演，不能只换第一句口播。",
-  "每个方案 hook 必须包含简体中文 title 和 reason、自然马来语 hookLine、与 hookLine 逐字相同且控制在 3-7 个马来语词的 onScreenText、简体中文 scene 和 0-2 秒可执行 visualBeat。不得返回知识库外的 ID。",
+  "每个方案 hook 必须包含简体中文 title 和 reason、自然马来语 hookLine、与 hookLine 逐字相同的 onScreenText、简体中文 scene 和 0-2 秒可执行 visualBeat。普通钩子控制在 3-7 个马来语词；return-intent-reversal 必须保留完整的 8-18 词反转句，不得压缩成泛问句。不得返回知识库外的 ID。",
   "0-2 秒必须让 hookLine、逐字相同的 onScreenText、首帧动作和声音表达同一钩子，并把马来语原样写进最终 prompt。真人鞋类默认第0秒已穿目标鞋或只做手持揭示，禁止用遮挡把未穿鞋直接跳成已穿鞋。middle-of-action 只能作为钩子的动作载体，单纯系鞋带、站起、走路、拿鞋或旋转产品不算钩子，首帧还必须同时出现可见问题、冲突、反差、异常线索或信息缺口。",
   "production 必须包含三个模式 ID、energy（calm、balanced 或 dynamic）、简体中文 emotionArc 和 realismNotes。真人方向优先 balanced 或 dynamic；运动动态必须 dynamic；ASMR 可 calm 或 balanced。",
   "shots 必须正好四个，timeRange 依次且只能是 0-2秒、2-7秒、7-12秒、12-15秒。每镜头完整填写 shotSize、camera、action、performance、productState、dialogue、onScreenText、sound、transition。",
@@ -406,7 +406,7 @@ const commerceHookFallbackLines: Record<string, string> = {
   "late-discovery-regret": "Baru sedar, sebelum ni salah pilih.",
   "wasted-choice-realization": "Baru sedar, sebelum ni salah pilih.",
   "friend-asks-link": "Kawan terus tanya, link mana?",
-  "return-intent-reversal": "Ingat nak pulangkan, sekali tapak merah muncul.",
+  "return-intent-reversal": "Hampir nak return, tapi detail warna kasut ni terus ubah fikiran.",
 };
 
 const commerceShotFallbacks = [
@@ -561,8 +561,9 @@ function repairCommercePlanHookMetadata(
       || fallbackCopies[index % fallbackCopies.length];
     if (!copy) return candidate;
     const requestedWordCount = requestedHookLine.match(/\p{L}+(?:['’-]\p{L}+)*/gu)?.length || 0;
+    const [minHookWords, maxHookWords] = copy.id === "return-intent-reversal" ? [8, 18] : [3, 7];
     const hookLine = isMalaysiaCommerceCopyHookFormulaSatisfied(copy.id, requestedHookLine)
-      && requestedWordCount >= 3 && requestedWordCount <= 7
+      && requestedWordCount >= minHookWords && requestedWordCount <= maxHookWords
       ? requestedHookLine
       : commerceHookFallbackLines[copy.id];
     if (!hookLine) return candidate;
@@ -651,7 +652,10 @@ function commerceQualityFallback(direction: CanvasCommerceDirection, sellingPoin
   const visualId = direction === "product-asmr" ? "product-asmr-detail" : "local-reaction-reveal";
   const visual = malaysiaCommerceVisualHookPattern(visualId)
     || malaysiaCommerceVisualHookPatterns.find((pattern) => pattern.directions.includes(direction));
-  const preferredCopyId = direction === "product-asmr" || direction === "handheld"
+  const returnIntentReversal = ["human-wear", "daily-style", "malay-review"].includes(direction);
+  const preferredCopyId = returnIntentReversal
+    ? "return-intent-reversal"
+    : direction === "product-asmr" || direction === "handheld"
     ? "stop-scroll-specific-reveal"
     : "direct-problem-question";
   const copy = malaysiaCommerceCopyHookPattern(preferredCopyId)
@@ -663,29 +667,52 @@ function commerceQualityFallback(direction: CanvasCommerceDirection, sellingPoin
   if (!visual || !copy || !scene || !recipe) return null;
   const held = malaysiaCommerceHookExecutionRecipe(visual.id)?.shoeState === "held-or-placed";
   const hasRedOutsole = visibleFacts.some((fact) => /(?:红色|red).{0,12}(?:外底|鞋底|tapak|sole)|(?:外底|鞋底|tapak|sole).{0,12}(?:红色|red)/iu.test(fact));
-  const visibleDetail = hasRedOutsole ? "红色外底" : "撞色层次";
-  const hookLine = hasRedOutsole && (direction === "product-asmr" || direction === "handheld")
+  const hasBlackLightning = visibleFacts.some((fact) => /(?:黑色|black).{0,12}(?:闪电|lightning)|(?:闪电|lightning).{0,12}(?:黑色|black)/iu.test(fact));
+  const hasTeal = visibleFacts.some((fact) => /(?:浅青绿|蓝绿色|青蓝色|teal|turquoise)/iu.test(fact));
+  const visibleDetail = hasRedOutsole ? "红色外底" : hasBlackLightning ? "黑色闪电纹" : hasTeal ? "青蓝撞色" : "撞色层次";
+  const visibleMalayDetail = hasRedOutsole
+    ? "tapak merah"
+    : hasBlackLightning && hasTeal ? "kilat hitam dengan warna teal"
+      : hasBlackLightning ? "kilat hitam pada sisi"
+        : hasTeal ? "warna teal kasut"
+          : "detail warna kasut";
+  const hookLine = returnIntentReversal
+    ? `Hampir nak return, tapi ${visibleMalayDetail} ni terus ubah fikiran.`
+    : hasRedOutsole && (direction === "product-asmr" || direction === "handheld")
     ? commerceHookFallbackLines["stop-scroll-specific-reveal"]
     : commerceHookFallbackLines[copy.id] || commerceHookFallbackLines["expectation-gap"];
   const openingState = held
     ? "目标鞋由人物稳定拿在手中或静置台面，亮色、轮廓和鞋带线索清楚可见"
     : "双脚从第0秒已穿目标鞋，鞋型、配色和左右脚清楚可见";
-  const openingAction = held
+  const openingAction = returnIntentReversal
+    ? "人物在镜前准备把目标鞋脱下放回鞋盒时停住，抬起鞋跟露出" + visibleDetail
+    : held
     ? "手部轻触或移开普通遮挡，让目标鞋的" + visibleDetail + "进入画面"
     : "人物穿着目标鞋在镜前或步道边停住，低头确认完整穿搭的色彩反差";
+  const revealAction = returnIntentReversal
+    ? "人物把鞋盒推开并转动脚侧，让" + visibleDetail + "在近景中清楚出现"
+    : held ? "手部转到完整侧面并停半拍" : "人物向前迈一步，让鞋型在落点时清楚出现";
+  const revealState = returnIntentReversal
+    ? "目标鞋保持已穿，鞋底或鞋侧的可见细节与首帧连续"
+    : held ? "目标鞋保持手持或静置状态，完整侧面清楚" : "目标鞋保持已穿，鞋型和配色连续";
+  const revealLine = returnIntentReversal
+    ? `Sekali pusing, ${visibleMalayDetail} terus nampak.`
+    : hasRedOutsole ? "Pusing sikit, merah muncul." : "Warna ni memang hidup.";
   const movement = direction === "sport-motion"
     ? "人物在安全铺装步道做一段短距离轻慢跑后自然减速"
     : "人物沿同一方向快走两步后自然减速";
   return {
     id: "quality-fallback-" + direction,
     direction,
-    title: "可见配色反差",
+    title: returnIntentReversal ? "差点想退的可见反转" : "可见配色反差",
     sellingPoint: sellingPoint || "参考图可见的配色和鞋型轮廓",
     hook: {
       visualPatternId: visual.id,
       copyPatternId: copy.id,
-      title: "可见配色发现",
-      reason: "首帧已经拍到目标鞋的" + visibleDetail + "线索，再用同一状态完成可见揭示。",
+      title: returnIntentReversal ? "差点退回的可见反转" : "可见配色发现",
+      reason: returnIntentReversal
+        ? "首句先写虚构的想退剧情，再在同一句点明目标鞋的" + visibleDetail + "；2-7 秒用同一双鞋的近景兑现。"
+        : "首帧已经拍到目标鞋的" + visibleDetail + "线索，再用同一状态完成可见揭示。",
       hookLine,
       onScreenText: hookLine,
       scene: scene.setting,
@@ -701,7 +728,7 @@ function commerceQualityFallback(direction: CanvasCommerceDirection, sellingPoin
     },
     shots: [
       { timeRange: "0-2秒", shotSize: held ? "特写" : "中近景", camera: held ? "手持微距短推进" : "低机位中近景", action: openingAction, performance: "视线或手部先落在鞋子可见细节，保留一次自然停顿", productState: openingState, dialogue: hookLine, onScreenText: hookLine, sound: "第0秒动作声与同步口播进入", transition: "手部移开前景或脚步落点形成连续揭示" },
-      { timeRange: "2-7秒", shotSize: "近景", camera: "短推进后侧移", action: held ? "手部转到完整侧面并停半拍" : "人物向前迈一步，让鞋型在落点时清楚出现", performance: "表情从注意到确认，动作收势自然", productState: held ? "目标鞋保持手持或静置状态，完整侧面清楚" : "目标鞋保持已穿，鞋型和配色连续", dialogue: hasRedOutsole ? "Pusing sikit, merah muncul." : "Warna ni memang hidup.", onScreenText: hasRedOutsole ? "Pusing sikit, merah muncul." : "Warna ni memang hidup.", sound: "1.5秒动作落点触发一次音乐抬升", transition: "落点或转动方向连续进入下一镜头" },
+      { timeRange: "2-7秒", shotSize: "近景", camera: "短推进后侧移", action: revealAction, performance: "表情从注意到确认，动作收势自然", productState: revealState, dialogue: revealLine, onScreenText: revealLine, sound: "1.5秒动作落点触发一次音乐抬升", transition: "落点或转动方向连续进入下一镜头" },
       { timeRange: "7-12秒", shotSize: held ? "中近景" : "全身", camera: held ? "侧向短环绕" : "低机位侧向跟拍", action: held ? "同一只鞋换一个角度展示可见轮廓" : movement, performance: "视线主要看前方或产品，呼吸和重心变化真实", productState: held ? "目标鞋持续可见，配色和轮廓不变" : "目标鞋保持已穿，左右脚和动作方向连续", dialogue: "无口播", onScreenText: "", sound: "7-12秒用真实动作声和低频节拍维持节奏", transition: "前景经过或动作收势桥接到结果镜头" },
       { timeRange: "12-15秒", shotSize: "全身", camera: "固定斜侧中景", action: held ? "人物把鞋稳定放下后自然收手" : "人物停稳，视线确认鞋子后自然转向前方", performance: "克制半笑，不直视镜头背稿", productState: held ? "目标鞋完整正侧面稳定可见" : "目标鞋保持已穿，完整穿搭和鞋子同时可见", dialogue: "Korang pakai dengan apa?", onScreenText: "Korang pakai dengan apa?", sound: "12-15秒保留最后一个动作声和音乐尾拍", transition: "动作完成后自然结束" },
     ],
