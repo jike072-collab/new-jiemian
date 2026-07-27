@@ -236,7 +236,7 @@ export function normalizeCommercePlanGeneration(
       visibleFacts: context.visibleFacts || stringList(item.visibleFacts, 16, 160),
       imageCount: context.imageCount,
     });
-    validateCommercePlanContent(prompt, hook, shots, publishingCopy, context.commercialEvidence);
+    validateCommercePlanContent(prompt, hook, shots, publishingCopy, context.commercialEvidence, context.visibleFacts || []);
     seen.add(direction);
     seenHookPairs.add(hookPair);
     seenProductionRecipes.add(productionRecipe);
@@ -541,7 +541,14 @@ export function buildCommerceCanvasBranchData({
   return { promptData, generatorData, edges };
 }
 
-function validateCommercePlanContent(prompt: string, hook: CanvasCommercePlanHook, shots: CanvasCommerceShot[], publishingCopy: TikTokCopyDraft, commercialEvidence = "") {
+function validateCommercePlanContent(
+  prompt: string,
+  hook: CanvasCommercePlanHook,
+  shots: CanvasCommerceShot[],
+  publishingCopy: TikTokCopyDraft,
+  commercialEvidence = "",
+  visibleFacts: string[] = [],
+) {
   if (!prompt.includes(hook.hookLine) || !prompt.includes(hook.onScreenText)) {
     throw new Error("钩子口播和屏幕短字必须原样写入最终提示词。");
   }
@@ -554,6 +561,11 @@ function validateCommercePlanContent(prompt: string, hook: CanvasCommercePlanHoo
   }
   if (!isMalaysiaCommerceCopyHookFormulaSatisfied(hook.copyPatternId, hook.hookLine)) {
     throw new Error("钩子首句没有实际使用所选话术公式。");
+  }
+  const hookSurface = [hook.hookLine, hook.onScreenText, shots[0]?.dialogue, shots[0]?.onScreenText].join("\n");
+  const visibleFactSurface = visibleFacts.join("\n");
+  if (/(?:红色|red|merah)/iu.test(hookSurface) && !/(?:红色|red|merah)/iu.test(visibleFactSurface)) {
+    throw new Error("钩子把鞋底写成红色，但产品可见事实没有红色细节。");
   }
   const spokenShots = shots.filter((shot) => shot.dialogue !== "无口播");
   if (spokenShots.length > 3) throw new Error("15 秒视频最多只能有三句短马来语口播。");

@@ -55,6 +55,7 @@ assert.match(service, /commerce-plan-generation" \? 120_000 : 60_000/);
 assert.match(service, /commerce_plan_validation_retry/);
 assert.match(service, /returnIntentReversal/);
 assert.match(service, /Hampir nak return, tapi/);
+assert.match(commerceContract, /钩子把鞋底写成红色/);
 assert.match(service, /只修正这个明确失败项/);
 assert.match(service, /canvasAssistantRetryDelayMs/);
 assert.match(service, /error\.retryable/);
