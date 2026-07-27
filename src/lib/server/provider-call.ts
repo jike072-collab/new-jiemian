@@ -2546,7 +2546,7 @@ export async function refreshVideoJob(jobId: string, localUserId?: string | null
     const stored = outputUrl.includes("/content")
       ? await outputToLibraryFromAuthenticatedUrl(provider, outputUrl, "video", isSeedanceTaskProvider(provider) ? seedanceVideoResultDownloadOptions : undefined)
       : isSeedanceTaskProvider(provider)
-        ? await storeRemoteUrlStreamed(outputUrl, { prefix: "video", fallbackMime: "video/mp4", ...seedanceVideoResultDownloadOptions })
+        ? await storeRemoteUrlStreamed(outputUrl, { prefix: "video", fallbackMime: "video/mp4", trustedProviderResultHost: true, ...seedanceVideoResultDownloadOptions })
         : await outputToLibrary({ ...output, url: outputUrl }, "video", "video");
     await updateLibraryItem(job.libraryItemId, {
       status: "done",

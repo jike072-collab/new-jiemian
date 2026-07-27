@@ -28,6 +28,7 @@ export type RemoteMediaDownloadOptions = {
   timeoutMs?: number;
   idleTimeoutMs?: number;
   maxRedirects?: number;
+  trustedProviderResultHost?: boolean;
 };
 
 type SafeRemoteUrl = {
@@ -81,7 +82,7 @@ export async function storeRemoteUrlStreamed(url: string, options: RemoteMediaDo
   };
 
   try {
-    const safeInitial = await assertSafeRemoteUrl(url, options.lookupImpl);
+    const safeInitial = await assertSafeRemoteUrl(url, options.lookupImpl, options.trustedProviderResultHost);
     const response = await fetchWithSafeRedirects(safeInitial, options, controller.signal);
     if (!response.ok) throw new Error(`Download generated media failed: HTTP ${response.status}`);
 
@@ -119,7 +120,7 @@ async function fetchWithSafeRedirects(initial: SafeRemoteUrl, options: RemoteMed
     const location = response.headers.get("location");
     if (!location) throw new Error("Remote media redirect is missing a location.");
     previousOrigin = current.url.origin;
-    current = await assertSafeRemoteUrl(new URL(location, current.url).toString(), options.lookupImpl);
+    current = await assertSafeRemoteUrl(new URL(location, current.url).toString(), options.lookupImpl, options.trustedProviderResultHost);
   }
   throw new Error("Remote media download exceeded redirect limit.");
 }
@@ -279,9 +280,9 @@ function assertAllowedRemoteMime(kind: RemoteMediaKind, mimeType: string) {
   throw new Error("Remote media type is not supported.");
 }
 
-async function assertSafeRemoteUrl(raw: string, lookupImpl: typeof lookup = lookup): Promise<SafeRemoteUrl> {
+async function assertSafeRemoteUrl(raw: string, lookupImpl: typeof lookup = lookup, trustedProviderResultHost = false): Promise<SafeRemoteUrl> {
   const url = parseHttpUrl(raw);
-  assertAllowedRemoteHost(url.hostname);
+  if (!trustedProviderResultHost) assertAllowedRemoteHost(url.hostname);
   if (isUnsafeHostname(url.hostname)) throw new Error("Remote media URL points to a private or local network.");
   const addresses = await lookupImpl(url.hostname, { all: true, verbatim: false });
   if (addresses.length === 0) throw new Error("Remote media URL could not be resolved.");

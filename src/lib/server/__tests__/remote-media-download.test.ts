@@ -357,6 +357,32 @@ test("production allowlist is fail-closed and rejects suffix bypasses and unlist
   });
 });
 
+test("trusted Seedance results can use a new public CDN host without allowing private addresses", async () => {
+  const publicLookup = async () => [{ address: "93.184.216.34", family: 4 as const }];
+  const privateLookup = async () => [{ address: "10.0.0.5", family: 4 as const }];
+  const fetchVideo = async () => new Response(Buffer.from([0, 0, 0, 0]), {
+    status: 200,
+    headers: { "content-type": "video/mp4" },
+  });
+  await withEnv({ NODE_ENV: "production", REMOTE_MEDIA_ALLOWED_HOSTS: undefined }, async () => {
+    const stored = await storeRemoteUrlStreamed("https://new-cdn-result.example/video.mp4", {
+      prefix: "video",
+      fallbackMime: "video/mp4",
+      trustedProviderResultHost: true,
+      fetchImpl: fetchVideo as unknown as typeof fetch,
+      lookupImpl: publicLookup as unknown as TestLookup,
+    });
+    assert.equal(stored.mimeType, "video/mp4");
+    await assert.rejects(() => storeRemoteUrlStreamed("https://private-result.example/video.mp4", {
+      prefix: "video",
+      fallbackMime: "video/mp4",
+      trustedProviderResultHost: true,
+      fetchImpl: fetchVideo as unknown as typeof fetch,
+      lookupImpl: privateLookup as unknown as TestLookup,
+    }));
+  });
+});
+
 test("GetToken result storage allows only the exact production result hosts", async () => {
   await withEnv({ NODE_ENV: "production", REMOTE_MEDIA_ALLOWED_HOSTS: undefined }, async () => {
     assert.doesNotThrow(() => remoteMediaDownloadInternalsForTests.assertAllowedRemoteHost(
