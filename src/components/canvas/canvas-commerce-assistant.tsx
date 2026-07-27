@@ -16,6 +16,8 @@ import type { CanvasAssistantNodeContext } from "@/components/canvas/canvas-assi
 import type { EnabledProviders, WorkspacePublicProvider } from "@/components/studio/types";
 import { fetchJsonWithCsrf } from "@/lib/client/api";
 import {
+  archiveCommercePromptPlans,
+  cloneCommercePlanForReuse,
   commerceDirectionLabel,
   commerceDirectionRequiresHuman,
   newCommerceProductDraft,
@@ -80,6 +82,7 @@ export function CanvasCommerceAssistant({
   });
   const [busy, setBusy] = useState<"" | "upload" | "product" | "plans" | "create">("");
   const [libraryImageId, setLibraryImageId] = useState("");
+  const [promptLibraryId, setPromptLibraryId] = useState("");
   const fileInputRef = useRef<HTMLInputElement>(null);
   const products = useMemo(() => Object.values(normalizedState.products).sort((left, right) => right.updatedAt.localeCompare(left.updatedAt)), [normalizedState.products]);
   const draft = normalizedState.products[activeProductId] || products[0];
@@ -106,6 +109,10 @@ export function CanvasCommerceAssistant({
   const activeProviderOptions = activePlan ? compatibleProviders.filter((provider) => providerSupportsDirection(provider, activePlan.direction)) : [];
   const activeProvider = activePlan ? providerForPlan(activePlan, draft.sharedProviderId, compatibleProviders) : undefined;
   const canCreate = Boolean(activePlan && !activePlan.createdGeneratorNodeId && activeProvider);
+  const unusedPromptPlans = [
+    ...draft.plans.filter((plan) => !plan.createdGeneratorNodeId).map((plan) => ({ id: `current:${plan.id}`, plan, current: true })),
+    ...(draft.promptLibrary || []).filter((plan) => !draft.plans.some((current) => current.id === plan.id)).map((plan) => ({ id: `library:${plan.id}`, plan, current: false })),
+  ];
   const visibleError = draft.error === "助手暂时不可用，请稍后重试。" && activePlan?.createdGeneratorNodeId
     ? undefined
     : draft.error;
@@ -124,6 +131,24 @@ export function CanvasCommerceAssistant({
 
   function replaceProductImages(images: CanvasCommerceProductDraft["images"]) {
     commit(resetCommerceDraftForImages(draft, images));
+  }
+
+  function reusePromptPlan() {
+    const selected = unusedPromptPlans.find((item) => item.id === promptLibraryId);
+    if (!selected || busy) return;
+    if (selected.current) {
+      patchDraft({ activePlanId: selected.plan.id, phase: "plans-ready", error: undefined });
+      return;
+    }
+    const plan = cloneCommercePlanForReuse(selected.plan, generatedPlanId(draft.plans.length));
+    patchDraft({
+      plans: [...draft.plans, plan],
+      promptLibrary: (draft.promptLibrary || []).filter((item) => item.id !== selected.plan.id),
+      activePlanId: plan.id,
+      phase: "plans-ready",
+      error: undefined,
+    });
+    setPromptLibraryId("");
   }
 
   function addProductImages(candidates: CanvasAssistantNodeContext[]) {
@@ -195,6 +220,7 @@ export function CanvasCommerceAssistant({
       const direction = selectedDirections[0];
       if (!direction) throw new Error("产品分析没有返回可用的视频方向。");
       const createdPlans = draft.plans.filter((plan) => plan.createdGeneratorNodeId);
+      const unusedPlans = draft.plans.filter((plan) => !plan.createdGeneratorNodeId);
       workingDraft = {
         ...draft,
         productName: draft.productName || analysis.suggestedName,
@@ -204,6 +230,7 @@ export function CanvasCommerceAssistant({
         selectedDirections,
         directionSellingPoints: { [direction]: analysis.sellingPoints[0] },
         plans: createdPlans,
+        promptLibrary: archiveCommercePromptPlans(draft.promptLibrary, unusedPlans),
         phase: "planning",
         error: undefined,
       };
@@ -266,6 +293,7 @@ export function CanvasCommerceAssistant({
     const previousByDirection = new Map(sourceDraft.plans
       .filter((plan) => !plan.createdGeneratorNodeId && replacedDirections.has(plan.direction))
       .map((plan) => [plan.direction, plan]));
+    const archivedPlans = sourceDraft.plans.filter((plan) => !plan.createdGeneratorNodeId && replacedDirections.has(plan.direction));
     const untouchedPlans = sourceDraft.plans.filter((plan) => plan.createdGeneratorNodeId || !replacedDirections.has(plan.direction));
     const generatedPlans = plans.map((plan, index) => {
       const previous = previousByDirection.get(plan.direction);
@@ -278,7 +306,11 @@ export function CanvasCommerceAssistant({
       const providerId = previousProvider || sharedProvider || compatibleProviders.find((provider) => providerSupportsDirection(provider, plan.direction))?.id;
       return { ...plan, id: generatedPlanId(index), providerId, selected: true };
     });
-    return { plans: [...untouchedPlans, ...generatedPlans], activePlanId: generatedPlans.at(-1)?.id };
+    return {
+      plans: [...untouchedPlans, ...generatedPlans],
+      promptLibrary: archiveCommercePromptPlans(sourceDraft.promptLibrary, archivedPlans),
+      activePlanId: generatedPlans.at(-1)?.id,
+    };
   }
 
   async function generatePlans(targetDirections = draft.selectedDirections.slice(0, 1)) {
@@ -311,6 +343,7 @@ export function CanvasCommerceAssistant({
           providerId: activePlan.providerId,
           selected: true,
         } : plan),
+        promptLibrary: archiveCommercePromptPlans(draft.promptLibrary, [cloneCommercePlanForReuse(activePlan, `library-${activePlan.id}-${Date.now()}`)]),
         activePlanId: activePlan.id,
         extraRequirements: "",
         phase: "plans-ready",
@@ -355,7 +388,7 @@ export function CanvasCommerceAssistant({
   return (
     <div className="canvas-assistant__commerce">
       <section className="canvas-assistant__workflow-section" aria-label="产品图片">
-        <header><span>01</span><div><strong>产品图片</strong><small>1–4 张同款鞋</small></div></header>
+        <header><span>01</span><div><strong>产品图片</strong><small>1–4 张同款鞋</small></div><div className="canvas-assistant__prompt-library"><select value={promptLibraryId} onChange={(event) => setPromptLibraryId(event.target.value)} aria-label="未使用提示词素材库"><option value="">未使用提示词（{unusedPromptPlans.length}）</option>{unusedPromptPlans.map((item) => <option key={item.id} value={item.id}>{item.plan.title || item.plan.hook?.title || "15秒提示词"}</option>)}</select><button type="button" disabled={!promptLibraryId || Boolean(busy)} onClick={reusePromptPlan}>调用</button></div></header>
         <input ref={fileInputRef} type="file" accept="image/png,image/jpeg,image/webp" multiple hidden onChange={(event) => { void upload(Array.from(event.target.files || [])); event.currentTarget.value = ""; }} />
         <div className="canvas-assistant__image-actions">
           <button type="button" onClick={() => fileInputRef.current?.click()} disabled={busy === "upload" || draft.images.length >= 4}><ImagePlus />上传图片</button>

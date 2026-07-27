@@ -105,6 +105,7 @@ export type CanvasCommerceProductDraft = {
   creativeOptions?: CanvasCommerceCreativeOption[];
   selectedCreativeOptionId?: string;
   plans: CanvasCommercePlan[];
+  promptLibrary?: CanvasCommercePlan[];
   activePlanId?: string;
   sharedProviderId?: string;
   extraRequirements: string;

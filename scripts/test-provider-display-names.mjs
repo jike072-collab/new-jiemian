@@ -162,7 +162,7 @@ async function assertStoredPromptProviderOverridesEnvironmentFallback() {
       model: "saved-model",
       models: ["old-model-1", "old-model-2"],
       enabledModels: ["old-model-1", "old-model-2"],
-      displayName: "GPT-5.6 Luna",
+      displayName: "GPT-5.6 Sol",
       endpointType: "chat-completions",
       enabled: true,
       apiKey: "saved-provider-key",
@@ -172,7 +172,7 @@ async function assertStoredPromptProviderOverridesEnvironmentFallback() {
   const provider = (await providersModule.readProviders()).find((item) => item.id === "prompt-optimizer");
   assert.equal(provider?.apiUrl, "https://saved.example/v1/chat/completions");
   assert.equal(provider?.model, "saved-model");
-  assert.equal(provider?.displayName, "GPT-5.6 Luna");
+  assert.equal(provider?.displayName, "GPT-5.6 Sol");
   assert.equal(provider?.apiKey, "saved-provider-key");
   assert.equal(provider?.enabled, true);
   assert.deepEqual(provider?.models, undefined);

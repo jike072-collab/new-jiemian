@@ -99,9 +99,19 @@ export function newCommerceProductDraft(): CanvasCommerceProductDraft {
     selectedDirections: [],
     directionSellingPoints: {},
     plans: [],
+    promptLibrary: [],
     extraRequirements: "",
     phase: "setup",
   };
+}
+
+export function archiveCommercePromptPlans(existing: CanvasCommercePlan[] | undefined, candidates: CanvasCommercePlan[]) {
+  const seen = new Set<string>();
+  return [...candidates].reverse().concat(existing || []).flatMap((plan) => {
+    if (plan.createdGeneratorNodeId || seen.has(plan.id)) return [];
+    seen.add(plan.id);
+    return [plan];
+  }).slice(0, 12);
 }
 
 export function resetCommerceDraftForImages(
@@ -120,6 +130,7 @@ export function resetCommerceDraftForImages(
     creativeOptions: undefined,
     selectedCreativeOptionId: undefined,
     plans: draft.plans.filter((plan) => plan.createdGeneratorNodeId),
+    promptLibrary: archiveCommercePromptPlans(draft.promptLibrary, draft.plans),
     activePlanId: undefined,
     phase: "setup",
     error: undefined,

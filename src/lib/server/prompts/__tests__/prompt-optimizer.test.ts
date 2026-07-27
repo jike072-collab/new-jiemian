@@ -488,8 +488,8 @@ test("provider caller sends labeled visual evidence as multimodal content", asyn
     title: "Prompt optimizer",
     role: "Prompt optimizer",
     apiUrl: `${baseUrl}/provider/vision`,
-    model: "gpt-5.6-luna",
-    displayName: "GPT-5.6 Luna",
+    model: "gpt-5.6-sol",
+    displayName: "GPT-5.6 Sol",
     apiKey: "provider-secret",
     enabled: true,
     endpointType: "chat-completions",
@@ -512,7 +512,7 @@ test("New API admin caller uses the requested chat model and output budget witho
     const chunks: Buffer[] = [];
     for await (const chunk of request) chunks.push(Buffer.from(chunk));
     const body = JSON.parse(Buffer.concat(chunks).toString("utf8"));
-    assert.equal(body.model, "gpt-5.6-terra");
+    assert.equal(body.model, "gpt-5.6-sol");
     assert.equal(body.max_tokens, 6000);
     assert.equal(body.messages[0].role, "system");
     assert.equal(body.messages[1].role, "user");
@@ -533,7 +533,7 @@ test("New API admin caller uses the requested chat model and output budget witho
       adminAccessToken: "admin-secret",
       adminUserId: 1,
     }),
-    model: "gpt-5.6-terra",
+    model: "gpt-5.6-sol",
   });
   const output = await caller({
     systemPrompt: "system",

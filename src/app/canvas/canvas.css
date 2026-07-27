@@ -1507,6 +1507,10 @@
 .canvas-assistant__workflow-section > header > div { display: grid; min-width: 0; gap: 1px; }
 .canvas-assistant__workflow-section > header strong { font-size: 12px; }
 .canvas-assistant__workflow-section > header small { color: var(--muted); font-size: 10px; }
+.canvas-assistant__prompt-library { display: grid !important; grid-template-columns: minmax(0, 1fr) auto; width: min(196px, 48%); margin-left: auto; gap: 5px !important; }
+.canvas-assistant__prompt-library select { min-width: 0; height: 28px; border: 1px solid var(--border-subtle); border-radius: 5px; background: var(--surface); color: var(--muted-strong); padding: 0 6px; font: inherit; font-size: 9px; }
+.canvas-assistant__prompt-library button { height: 28px; border: 1px solid color-mix(in srgb, var(--primary) 45%, var(--border-subtle)); border-radius: 5px; background: color-mix(in srgb, var(--primary) 8%, var(--surface)); color: var(--primary); cursor: pointer; padding: 0 7px; font: inherit; font-size: 9px; }
+.canvas-assistant__prompt-library button:disabled { cursor: not-allowed; opacity: 0.45; }
 
 .canvas-assistant__image-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 7px; }
 .canvas-assistant__image-actions button,

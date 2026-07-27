@@ -21,6 +21,7 @@ const { inferSeedancePromptMode, seedancePromptGuidance, seedanceReferenceIssues
 const { isTikTokShopVideoRequest, tiktokShopVideoGuidance, tiktokShopVideoTiming } = await import(new URL("../src/lib/tiktok-shop-video-guidance.ts", import.meta.url));
 const {
   buildCommerceCanvasBranchData,
+  archiveCommercePromptPlans,
   cloneCommercePlanForReuse,
   normalizeCommercePlanGeneration,
   normalizeCommerceProductAnalysis,
@@ -120,6 +121,10 @@ assert.match(commercePanel, /basePlanId/);
 assert.match(commercePanel, /refinementRequest/);
 assert.match(commercePanel, /activePlanId/);
 assert.match(commercePanel, /visibleError/);
+assert.match(commercePanel, /未使用提示词素材库/);
+assert.match(commercePanel, /reusePromptPlan/);
+assert.match(commercePanel, /promptLibrary/);
+assert.match(commerceContract, /archiveCommercePromptPlans/);
 assert.match(commercePanel, /activePlan?\.createdGeneratorNodeId/);
 assert.match(commercePanel, /onCreatePlans\(prepared, \[activePlan\.id\]\)/);
 assert.match(commercePanel, /compatibleProviders\.find\(\(provider\) => providerSupportsDirection/);
@@ -220,6 +225,13 @@ for (const direction of ["human-wear", "sport-motion", "daily-style", "product-a
     .map((patterns) => patterns.filter((pattern) => pattern.directions.includes(direction)).length);
   assert.equal(compatibleCounts.reduce((total, count) => total * count, 1) >= 1_000, true, `${direction} should have at least 1000 five-axis recipes`);
 }
+
+assert.deepEqual(archiveCommercePromptPlans([
+  { id: "earlier-plan", selected: true },
+], [
+  { id: "unused-plan", selected: true },
+  { id: "created-plan", selected: true, createdGeneratorNodeId: "generator-1" },
+]).map((plan) => plan.id), ["unused-plan", "earlier-plan"]);
 
 const commerceCreativeOptions = [
   { id: "hook-1", style: "pain-point", title: "穿搭不够醒目", hookLine: "Outfit nampak terlalu biasa?", scene: "马来西亚公寓玄关", visualBeat: "人物看向镜中普通穿搭后立即抬起鞋子" },

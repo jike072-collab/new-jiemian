@@ -14,6 +14,8 @@ import {
 } from "@/lib/tiktok-copy";
 import { TikTokPublishingError } from "./service";
 
+const TIKTOK_COPY_MODEL = "gpt-5.6-sol";
+
 const systemPrompt = [
   "你是面向马来西亚市场的 TikTok 鞋类短视频文案编辑。",
   "必须先观察按时间顺序提供的视频代表帧，再根据视频真实可见内容写文案；不得使用素材的生成提示词代替发布文案。",
@@ -29,10 +31,18 @@ const systemPrompt = [
   `马来鞋类文案库：${malaysiaShoeCopyPromptLibrary()}`,
   "只学习文案库示例的结构和口吻，不得逐句复制示例或公开样本文案。",
   "只输出 JSON，不要 Markdown。结构：{\"title\":\"\",\"caption\":\"\",\"hashtags\":[\"#...\"],\"angle\":\"auto|transformation|daily|style|detail\",\"category\":\"auto|sports|women|men|kids|safety|outdoor|casual\"}",
+  "文案要像马来西亚本地朋友分享刚看到的穿搭细节：短句、具体、自然，不要硬塞夸张带货词。优先从画面里真实可见的反差、颜色、局部细节或日常场景开场；避免空泛的 ‘terus nampak lain’、‘wajib ada’、‘confirm’ 或机械套话，除非画面本身能证明。标题用自然疑问、意外发现或具体观察吸引继续看；正文补充同一个可见细节，再给一句轻松、不施压的 CTA。仍只输出 JSON。",
 ].join("\n");
 
 function delay(milliseconds: number) {
   return new Promise((resolve) => setTimeout(resolve, milliseconds));
+}
+
+function copyProviderUnavailableMessage(error: unknown) {
+  const upstream = error instanceof NewApiError && error.upstreamStatus
+    ? `（上游 HTTP ${error.upstreamStatus}）`
+    : "";
+  return `AI 文案模型 ${TIKTOK_COPY_MODEL} 暂时不可用${upstream}，请稍后重试。`;
 }
 
 export async function generateMalaysiaTikTokCopy(input: {
@@ -60,7 +70,7 @@ export async function generateMalaysiaTikTokCopy(input: {
   if (!visualEvidence.images.length) {
     throw new TikTokPublishingError("TIKTOK_COPY_VIDEO_UNREADABLE", "暂时无法读取视频画面，请稍后重试。", 409);
   }
-  const caller = input.caller || createNewApiAdminPromptModelCaller({ model: "gpt-5.6-terra" });
+  const caller = input.caller || createNewApiAdminPromptModelCaller({ model: TIKTOK_COPY_MODEL });
   const callInput = {
     systemPrompt,
     userPrompt: JSON.stringify({
@@ -81,13 +91,13 @@ export async function generateMalaysiaTikTokCopy(input: {
     output = await caller(callInput);
   } catch (error) {
     if (!(error instanceof NewApiError) || !error.retryable) {
-      throw new TikTokPublishingError("TIKTOK_COPY_UPSTREAM_FAILED", "AI 文案生成暂时不可用，请稍后重试。", 502);
+      throw new TikTokPublishingError("TIKTOK_COPY_UPSTREAM_FAILED", copyProviderUnavailableMessage(error), 502);
     }
     await delay(350);
     try {
       output = await caller(callInput);
-    } catch {
-      throw new TikTokPublishingError("TIKTOK_COPY_UPSTREAM_FAILED", "AI 文案生成暂时不可用，请稍后重试。", 502);
+    } catch (retryError) {
+      throw new TikTokPublishingError("TIKTOK_COPY_UPSTREAM_FAILED", copyProviderUnavailableMessage(retryError), 502);
     }
   }
   try {
