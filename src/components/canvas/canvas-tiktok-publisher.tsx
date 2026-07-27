@@ -208,7 +208,7 @@ export function CanvasTikTokPublisher({ item, scope, initialCopy, onCopyChange, 
     try {
       const response = await fetchJsonWithCsrf<{ connection: TikTokConnectionSummary }>("/api/tiktok/connection", {
         method: "POST",
-        body: JSON.stringify({ zernioProfileId: account.zernioProfileId, zernioAccountId: account.zernioAccountId }),
+        body: JSON.stringify({ zernioCredentialId: account.zernioCredentialId, zernioProfileId: account.zernioProfileId, zernioAccountId: account.zernioAccountId }),
       });
       await load(response.connection.zernioAccountId);
       setMessage("TikTok 已绑定到当前站内账号。");

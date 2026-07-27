@@ -11,6 +11,7 @@ export type TikTokPublishStatus = "scheduled" | "queued" | "uploading" | "proces
 
 export type TikTokConnectionRecord = {
   userId: string;
+  zernioCredentialId: string;
   zernioProfileId: string;
   zernioAccountId?: string;
   displayName?: string;
@@ -30,6 +31,7 @@ export type TikTokConnectionSummary = {
 };
 
 export type TikTokAvailableAccount = {
+  zernioCredentialId: string;
   zernioProfileId: string;
   zernioAccountId: string;
   displayName: string;
@@ -51,6 +53,7 @@ export type TikTokCreatorInfo = {
 export type TikTokPublishJob = {
   id: string;
   userId: string;
+  zernioCredentialId: string;
   zernioAccountId?: string;
   sourceOwnerId: string;
   libraryItemId: string;

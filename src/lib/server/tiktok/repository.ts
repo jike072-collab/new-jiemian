@@ -8,6 +8,7 @@ import type { TikTokConnectionRecord, TikTokDeliveryMode, TikTokPrivacyLevel, Ti
 
 type ConnectionRow = QueryResultRow & {
   user_id: string;
+  zernio_credential_id?: string;
   zernio_profile_id: string;
   zernio_account_id: string | null;
   display_name: string | null;
@@ -23,6 +24,7 @@ type OAuthStateRow = QueryResultRow & { user_id: string; return_to: string; expi
 type PublishJobRow = QueryResultRow & {
   id: string;
   user_id: string;
+  zernio_credential_id?: string;
   zernio_account_id: string | null;
   source_owner_id: string;
   library_item_id: string;
@@ -59,6 +61,7 @@ function optionalIso(value: string | Date | null) { return value ? iso(value) : 
 function connectionFromRow(row: ConnectionRow): TikTokConnectionRecord {
   return {
     userId: row.user_id,
+    zernioCredentialId: row.zernio_credential_id || "default",
     zernioProfileId: row.zernio_profile_id,
     zernioAccountId: row.zernio_account_id || undefined,
     displayName: row.display_name || undefined,
@@ -74,6 +77,7 @@ function jobFromRow(row: PublishJobRow): TikTokPublishJob {
   return {
     id: row.id,
     userId: row.user_id,
+    zernioCredentialId: row.zernio_credential_id || "default",
     zernioAccountId: row.zernio_account_id || undefined,
     sourceOwnerId: row.source_owner_id,
     libraryItemId: row.library_item_id,
@@ -136,6 +140,7 @@ export async function saveTikTokProfile(input: { userId: string; zernioProfileId
 
 export async function saveTikTokConnection(input: {
   userId: string;
+  zernioCredentialId: string;
   zernioProfileId: string;
   zernioAccountId: string;
   displayName: string;
@@ -144,9 +149,10 @@ export async function saveTikTokConnection(input: {
 }) {
   const result = await applicationQuery<ConnectionRow>(`
     insert into tiktok_account_bindings(
-      user_id, zernio_profile_id, zernio_account_id, display_name, avatar_url, creator_username, connected_at, created_at, updated_at
-    ) values ($1,$2,$3,$4,$5,$6,now(),now(),now())
+      user_id, zernio_credential_id, zernio_profile_id, zernio_account_id, display_name, avatar_url, creator_username, connected_at, created_at, updated_at
+    ) values ($1,$2,$3,$4,$5,$6,$7,now(),now(),now())
     on conflict (zernio_account_id) do update set
+      zernio_credential_id = excluded.zernio_credential_id,
       zernio_profile_id = excluded.zernio_profile_id,
       display_name = excluded.display_name,
       avatar_url = excluded.avatar_url,
@@ -155,7 +161,7 @@ export async function saveTikTokConnection(input: {
       updated_at = now()
     where tiktok_account_bindings.user_id = excluded.user_id
     returning *
-  `, [input.userId, input.zernioProfileId, input.zernioAccountId, input.displayName, input.avatarUrl || null, input.creatorUsername || null]);
+  `, [input.userId, input.zernioCredentialId, input.zernioProfileId, input.zernioAccountId, input.displayName, input.avatarUrl || null, input.creatorUsername || null]);
   if (!result.rows[0]) throw new Error("TikTok account is already bound to another user.");
   return connectionFromRow(result.rows[0]);
 }
@@ -197,7 +203,7 @@ export async function consumeTikTokOAuthState(stateHash: string) {
 }
 
 export async function createTikTokPublishJob(input: {
-  userId: string; zernioAccountId: string; sourceOwnerId: string; libraryItemId: string; idempotencyKey: string; caption: string;
+  userId: string; zernioCredentialId: string; zernioAccountId: string; sourceOwnerId: string; libraryItemId: string; idempotencyKey: string; caption: string;
   privacyLevel: TikTokPrivacyLevel; disableComment: boolean; disableDuet: boolean; disableStitch: boolean;
   brandContentToggle: boolean; brandOrganicToggle: boolean; deliveryMode: TikTokDeliveryMode; scheduledAt: string;
 }) {
@@ -206,16 +212,16 @@ export async function createTikTokPublishJob(input: {
       insert into tiktok_publish_jobs(
         id, user_id, source_owner_id, library_item_id, idempotency_key, caption, privacy_level,
         disable_comment, disable_duet, disable_stitch, brand_content_toggle, brand_organic_toggle, delivery_mode,
-        zernio_account_id, is_aigc, status, scheduled_at, next_attempt_at, attempts, created_at, updated_at
+        zernio_credential_id, zernio_account_id, is_aigc, status, scheduled_at, next_attempt_at, attempts, created_at, updated_at
       ) values (
-        $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$15,true,
+        $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$16,$15,true,
         case when $14::timestamptz > now() + interval '15 seconds' then 'scheduled' else 'queued' end,
         greatest($14::timestamptz, now()),greatest($14::timestamptz, now()),0,now(),now()
       ) on conflict (user_id, idempotency_key) do nothing returning *
     `, [
       randomUUID(), input.userId, input.sourceOwnerId, input.libraryItemId, input.idempotencyKey, input.caption, input.privacyLevel,
       input.disableComment, input.disableDuet, input.disableStitch, input.brandContentToggle, input.brandOrganicToggle, input.deliveryMode, input.scheduledAt,
-      input.zernioAccountId,
+      input.zernioAccountId, input.zernioCredentialId,
     ]);
     if (created.rows[0]) return jobFromRow(created.rows[0]);
     const existing = await client.query<PublishJobRow>("select * from tiktok_publish_jobs where user_id = $1 and idempotency_key = $2", [input.userId, input.idempotencyKey]);

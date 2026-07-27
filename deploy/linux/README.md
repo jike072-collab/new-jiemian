@@ -106,9 +106,12 @@ Canvas TikTok publishing uses Zernio and a local PostgreSQL schedule queue. Keep
 `/etc/aohuang-ai/production.env`. Set
 `ZERNIO_TIKTOK_REDIRECT_URI=https://aohuang888.cn/api/tiktok/oauth/callback`
 and set `ZERNIO_PROFILE_IDS` to the comma-separated Profile IDs that contain the
-internal TikTok accounts. Site members claim one already-connected account from
-the canvas publisher; the database prevents the same TikTok account from being
-claimed by two site users. Unbinding in the canvas removes only the local
+internal TikTok accounts. Additional Zernio workspaces use
+`ZERNIO_EXTRA_CREDENTIALS_JSON`, a JSON array of objects with `id`, `apiKey`, and
+`profileIds`; keys stay in the production environment and bindings store only
+the credential ID. Site members can bind multiple accounts and select the target
+before publishing. The database prevents the same TikTok account from being
+claimed by two site users. Unbinding in the canvas removes only that local
 mapping and does not disconnect the account in Zernio.
 
 Install `deploy/systemd/aohuang-tiktok-publisher.service` and

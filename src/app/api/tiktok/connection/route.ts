@@ -26,6 +26,7 @@ export async function POST(request: NextRequest) {
       ok: true,
       connection: await claimTikTokAccount(
         session.user.local_user_id,
+        String(body.zernioCredentialId || ""),
         String(body.zernioProfileId || ""),
         String(body.zernioAccountId || ""),
       ),

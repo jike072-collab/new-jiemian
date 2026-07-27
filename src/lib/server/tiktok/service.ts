@@ -19,7 +19,7 @@ import {
   ZernioApiError,
   zernioTikTokPostResult,
 } from "./client";
-import { getTikTokConfiguration, requireTikTokConfiguration } from "./config";
+import { getTikTokConfiguration, requireTikTokConfiguration, requireZernioCredential } from "./config";
 import { hashTikTokOAuthState } from "./crypto";
 import {
   cancelTikTokPublishJob,
@@ -86,7 +86,7 @@ export function publicTikTokPublishJob(job: TikTokPublishJob): TikTokPublicPubli
 export async function tikTokConnectionStatus(userId: string) {
   const config = getTikTokConfiguration();
   const connections = config.configured ? await listTikTokConnections(userId) : [];
-  const availableAccounts = config.configured ? await listAvailableTikTokAccounts(userId) : [];
+  const availableAccounts = config.configured ? await listAvailableTikTokAccounts() : [];
   return {
     configured: config.configured,
     missingConfiguration: config.configured ? [] : config.missing,
@@ -96,18 +96,19 @@ export async function tikTokConnectionStatus(userId: string) {
   };
 }
 
-async function listAvailableTikTokAccounts(userId: string): Promise<TikTokAvailableAccount[]> {
+async function listAvailableTikTokAccounts(): Promise<TikTokAvailableAccount[]> {
   const config = requireTikTokConfiguration();
-  const accounts = (await Promise.all(config.profileIds.map(async (zernioProfileId) => {
-    const profileAccounts = await listZernioTikTokAccounts({ apiKey: config.apiKey, baseUrl: config.apiBaseUrl, profileId: zernioProfileId });
-    return profileAccounts.map((account) => ({ account, zernioProfileId }));
-  }))).flat();
+  const accounts = (await Promise.all(config.credentials.flatMap((credential) => credential.profileIds.map(async (zernioProfileId) => {
+    const profileAccounts = await listZernioTikTokAccounts({ apiKey: credential.apiKey, baseUrl: config.apiBaseUrl, profileId: zernioProfileId });
+    return profileAccounts.map((account) => ({ account, credential, zernioProfileId }));
+  })))).flat();
   const available: TikTokAvailableAccount[] = [];
-  for (const { account, zernioProfileId } of accounts) {
+  for (const { account, credential, zernioProfileId } of accounts) {
     if (!account._id || account.isActive === false) continue;
     const claimed = await getTikTokConnectionByAccountId(account._id);
     if (claimed) continue;
     available.push({
+      zernioCredentialId: credential.id,
       zernioProfileId,
       zernioAccountId: account._id,
       displayName: account.displayName || account.username || "TikTok",
@@ -118,12 +119,12 @@ async function listAvailableTikTokAccounts(userId: string): Promise<TikTokAvaila
   return available;
 }
 
-export async function claimTikTokAccount(userId: string, zernioProfileId: string, zernioAccountId: string) {
-  const config = requireTikTokConfiguration();
-  if (!config.profileIds.includes(zernioProfileId)) {
+export async function claimTikTokAccount(userId: string, zernioCredentialId: string, zernioProfileId: string, zernioAccountId: string) {
+  const credential = requireZernioCredential(zernioCredentialId);
+  if (!credential.profileIds.includes(zernioProfileId)) {
     throw new TikTokPublishingError("TIKTOK_PROFILE_NOT_ALLOWED", "该 TikTok Profile 未开放给站内账号。", 403);
   }
-  const accounts = await listZernioTikTokAccounts({ apiKey: config.apiKey, baseUrl: config.apiBaseUrl, profileId: zernioProfileId });
+  const accounts = await listZernioTikTokAccounts({ apiKey: credential.apiKey, baseUrl: credential.apiBaseUrl, profileId: zernioProfileId });
   const account = accounts.find((item) => item._id === zernioAccountId && item.isActive !== false);
   if (!account?._id) throw new TikTokPublishingError("TIKTOK_ACCOUNT_NOT_CONNECTED", "Zernio 未确认这个 TikTok 账号已连接。", 409);
   const claimed = await getTikTokConnectionByAccountId(account._id);
@@ -132,6 +133,7 @@ export async function claimTikTokAccount(userId: string, zernioProfileId: string
   }
   const connection = await saveTikTokConnection({
     userId,
+    zernioCredentialId: credential.id,
     zernioProfileId,
     zernioAccountId: account._id,
     displayName: account.displayName || account.username || "TikTok",
@@ -201,6 +203,7 @@ export async function finishTikTokOAuth(input: {
   if (!account?._id) throw new TikTokPublishingError("TIKTOK_ACCOUNT_NOT_CONNECTED", "Zernio 未确认 TikTok 账号绑定。", 502);
   await saveTikTokConnection({
     userId: input.userId,
+    zernioCredentialId: "default",
     zernioProfileId: profile.zernioProfileId,
     zernioAccountId: account._id,
     displayName: account.displayName || account.username || "TikTok",
@@ -229,9 +232,9 @@ async function requiredTikTokConnection(userId: string, zernioAccountId?: string
 }
 
 export async function getTikTokCreatorInfo(userId: string, zernioAccountId: string) {
-  const config = requireTikTokConfiguration();
   const connection = await requiredTikTokConnection(userId, zernioAccountId);
-  const creator = await fetchZernioTikTokCreatorInfo({ apiKey: config.apiKey, baseUrl: config.apiBaseUrl, accountId: connection.zernioAccountId! });
+  const credential = requireZernioCredential(connection.zernioCredentialId);
+  const creator = await fetchZernioTikTokCreatorInfo({ apiKey: credential.apiKey, baseUrl: credential.apiBaseUrl, accountId: connection.zernioAccountId! });
   return { ...creator, creatorUsername: connection.creatorUsername || creator.creatorUsername };
 }
 
@@ -288,10 +291,13 @@ export async function scheduleTikTokPublish(input: {
     throw new TikTokPublishingError("TIKTOK_DRAFT_SCHEDULE_UNAVAILABLE", "TikTok 草稿箱模式不能定时，请在 TikTok 内选音乐后发布。", 400);
   }
   const scheduledAt = scheduleTime(input.scheduledAt, now);
-  const [{ item, sourceOwnerId }, creator] = await Promise.all([
+  const connection = await requiredTikTokConnection(input.userId, input.zernioAccountId);
+  const credential = requireZernioCredential(connection.zernioCredentialId);
+  const [{ item, sourceOwnerId }, creatorResponse] = await Promise.all([
     findPublishableVideo(input.libraryItemId, input.ownerIds, input.scope),
-    getTikTokCreatorInfo(input.userId, input.zernioAccountId),
+    fetchZernioTikTokCreatorInfo({ apiKey: credential.apiKey, baseUrl: credential.apiBaseUrl, accountId: connection.zernioAccountId! }),
   ]);
+  const creator = { ...creatorResponse, creatorUsername: connection.creatorUsername || creatorResponse.creatorUsername };
   const privacyLevel = input.privacyLevel as TikTokPrivacyLevel;
   if (!creator.privacyLevelOptions.includes(privacyLevel)) {
     throw new TikTokPublishingError("TIKTOK_PRIVACY_UNAVAILABLE", "该 TikTok 账号当前不允许这个发布范围。", 400);
@@ -305,6 +311,7 @@ export async function scheduleTikTokPublish(input: {
   }
   const job = await createTikTokPublishJob({
     userId: input.userId,
+    zernioCredentialId: connection.zernioCredentialId,
     zernioAccountId: input.zernioAccountId,
     sourceOwnerId,
     libraryItemId: item.id,
@@ -376,8 +383,8 @@ async function persistZernioStatus(job: TikTokPublishJob, workerId: string, post
 
 async function processClaimedJob(job: TikTokPublishJob, workerId: string) {
   if (terminalStatuses.has(job.status)) return;
-  const config = requireTikTokConfiguration();
   const connection = await requiredTikTokConnection(job.userId, job.zernioAccountId);
+  const config = requireZernioCredential(job.zernioCredentialId || connection.zernioCredentialId);
   const accountId = connection.zernioAccountId!;
 
   if (job.zernioPostId) {

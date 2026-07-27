@@ -519,6 +519,23 @@ function checkZernioTikTok(issues: RuntimeEnvironmentIssue[], env: RuntimeEnv) {
   if (profileIds.some((id) => !/^[A-Za-z0-9_-]{4,255}$/.test(id))) {
     issue(issues, "ZERNIO_PROFILE_IDS", "must be a comma-separated list of Zernio Profile IDs.");
   }
+  const extraCredentialsValue = value(env, "ZERNIO_EXTRA_CREDENTIALS_JSON");
+  if (extraCredentialsValue) {
+    try {
+      const parsed = JSON.parse(extraCredentialsValue) as unknown;
+      if (!Array.isArray(parsed) || parsed.some((entry) => {
+        if (!entry || typeof entry !== "object") return true;
+        const credential = entry as Record<string, unknown>;
+        return !/^[A-Za-z0-9_-]{2,64}$/.test(String(credential.id || ""))
+          || !String(credential.apiKey || "").trim()
+          || !Array.isArray(credential.profileIds)
+          || !credential.profileIds.length
+          || credential.profileIds.some((id) => !/^[A-Za-z0-9_-]{4,255}$/.test(String(id)));
+      })) throw new Error("invalid credentials");
+    } catch {
+      issue(issues, "ZERNIO_EXTRA_CREDENTIALS_JSON", "must be a JSON array of Zernio credential objects.");
+    }
+  }
 }
 
 function checkProductionOnlyEnv(issues: RuntimeEnvironmentIssue[], env: RuntimeEnv) {

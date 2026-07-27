@@ -6,6 +6,7 @@ import { join } from "node:path";
 const root = process.cwd();
 const read = (path) => readFileSync(join(root, path), "utf8");
 const client = read("src/lib/server/tiktok/client.ts");
+const config = read("src/lib/server/tiktok/config.ts");
 const service = read("src/lib/server/tiktok/service.ts");
 const repository = read("src/lib/server/tiktok/repository.ts");
 const publishRoute = read("src/app/api/tiktok/publish/route.ts");
@@ -36,6 +37,8 @@ assert.match(client, /createReadStream\(input\.filePath\)/);
 assert.match(client, /"Content-Length": String\(input\.fileSize\)/);
 assert.match(service, /uploadZernioVideo\(\{[^}]*fileSize: video\.size/s);
 assert.doesNotMatch(client, /console\.(log|error).*apiKey/i);
+assert.match(config, /ZERNIO_EXTRA_CREDENTIALS_JSON/);
+assert.match(config, /requireZernioCredential/);
 
 assert.match(service, /state\.userId !== input\.userId/);
 assert.match(service, /getTikTokConnectionByAccountId/);
@@ -50,6 +53,7 @@ assert.match(service, /job\.deliveryMode === "direct"[^\n]*!creator\.canPostMore
 assert.match(service, /TIKTOK_DRAFT_SCHEDULE_UNAVAILABLE/);
 assert.match(service, /deliveryMode: job\.deliveryMode/);
 assert.match(service, /requiredTikTokConnection\(job\.userId, job\.zernioAccountId\)/);
+assert.match(service, /requireZernioCredential\(job\.zernioCredentialId/);
 assert.match(service, /statusPollDelayMs/);
 
 assert.match(publishRoute, /requireAuthSession/);
@@ -67,6 +71,7 @@ assert.match(creatorInboxMigration, /check \(delivery_mode in \('direct', 'creat
 assert.match(multiAccountMigration, /create table if not exists tiktok_account_bindings/);
 assert.match(multiAccountMigration, /unique \(zernio_account_id\)/);
 assert.match(multiAccountMigration, /add column if not exists zernio_account_id text/);
+assert.match(multiAccountMigration, /zernio_credential_id text not null default 'default'/);
 assert.match(multiAccountMigration, /insert into tiktok_account_bindings/);
 assert.match(callbackRoute, /safeTikTokSecretEqual\(state, cookieState\)/);
 assert.match(workerRoute, /safeTikTokSecretEqual\(authorization, expected\)/);
@@ -78,6 +83,7 @@ assert.match(publisher, /immediateLimitReached/);
 assert.match(publisher, /availableAccounts/);
 assert.match(publisher, /connection\.connections\.map/);
 assert.match(publisher, /zernioAccountId: selectedAccountId/);
+assert.match(publisher, /zernioCredentialId: account\.zernioCredentialId/);
 assert.match(publisher, /发布账号/);
 assert.match(publisher, /\/api\/tiktok\/copy/);
 assert.match(publisher, /正在分析视频并生成马来西亚文案/);
