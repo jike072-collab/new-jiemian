@@ -20,8 +20,11 @@ import {
   malaysiaCommerceCopyHookPatterns,
   malaysiaCommerceHookPromptLibrary,
   malaysiaCommercePerformancePattern,
+  malaysiaCommercePerformancePatterns,
   malaysiaCommerceScenePattern,
+  malaysiaCommerceScenePatterns,
   malaysiaCommerceShotPattern,
+  malaysiaCommerceShotPatterns,
   malaysiaCommerceVisualHookPattern,
   malaysiaCommerceVisualHookPatterns,
 } from "#malaysia-commerce-video-hook-library";
@@ -399,6 +402,108 @@ const commerceHookFallbackLines: Record<string, string> = {
   "direct-problem-question": "Korang pernah susah padankan kasut?",
 };
 
+const commerceShotFallbacks = [
+  {
+    shotSize: "中景",
+    camera: "固定中景后短推进",
+    action: "人物在当前场景中停住半拍，处理一个可见的穿搭或出门选择问题",
+    performance: "视线先落在问题上，再看向目标鞋，保留自然呼吸和一次轻微停顿",
+    productState: "目标鞋尚未穿上，安全放在手边或鞋架边缘，外观线索清楚可见",
+    sound: "第 0 秒开始有自然环境声、同步口播和轻微动作声",
+    transition: "目标鞋或手部经过镜头前形成短暂遮挡，直接衔接下一镜头",
+  },
+  {
+    shotSize: "近景",
+    camera: "遮挡匹配后低机位短推进",
+    action: "人物承接上一镜头完成穿鞋或拿取动作，并在安全位置踩稳或放稳",
+    performance: "视线跟随手脚移动，动作完成后肩膀自然放松，不直视镜头背稿",
+    productState: "目标鞋完成揭示，鞋面、鞋底轮廓和配色与参考图保持一致",
+    sound: "动作落点配合轻音乐节拍，保留鞋面或鞋底接触的真实声音",
+    transition: "脚步或放落动作的声音强拍匹配到下一镜头的开头",
+  },
+  {
+    shotSize: "全身",
+    camera: "低机位侧向跟拍",
+    action: "人物在安全的马来西亚日常场景中完成一段短距离自然移动",
+    performance: "视线看向前方，重心变化和步伐有惯性，保留眨眼与呼吸",
+    productState: "目标鞋保持已穿或被稳定拿持，关键外观在移动中持续可见",
+    sound: "无口播，环境声、脚步声和轻音乐共同承担中段节奏",
+    transition: "人物经过门框、柱子或其他安全前景形成自然遮挡",
+  },
+  {
+    shotSize: "半身",
+    camera: "固定斜侧中景后轻微后拉",
+    action: "人物停稳检查整体穿搭或产品细节，随后做出自然 CTA 收势",
+    performance: "先确认已展示的可见结果，再看向镜中或画面外，克制半笑后收动作",
+    productState: "目标鞋状态延续上一镜头，外观、配色和左右脚保持连续",
+    sound: "CTA 与自然环境声从容收束，保留最后一个动作声和音乐尾拍",
+    transition: "人物转身或把产品移出画面，动作完成后自然结束",
+  },
+];
+
+function repairCommerceShots(value: unknown, hookLine: string) {
+  const candidates = Array.isArray(value) ? value : [];
+  const timeRanges = ["0-2秒", "2-7秒", "7-12秒", "12-15秒"] as const;
+  return timeRanges.map((timeRange, index) => {
+    const candidate = candidates[index] && typeof candidates[index] === "object" && !Array.isArray(candidates[index])
+      ? candidates[index] as Record<string, unknown>
+      : {};
+    const fallback = commerceShotFallbacks[index];
+    const dialogue = index === 0
+      ? hookLine
+      : text(candidate.dialogue, 240) || (index === 2 ? "无口播" : index === 3 ? "Tengok detail kasut ni." : "Nampak terus lebih kemas.");
+    return {
+      timeRange,
+      shotSize: text(candidate.shotSize, 80) || fallback.shotSize,
+      camera: text(candidate.camera, 240) || fallback.camera,
+      action: text(candidate.action, 360) || fallback.action,
+      performance: text(candidate.performance, 360) || fallback.performance,
+      productState: text(candidate.productState, 300) || fallback.productState,
+      dialogue,
+      onScreenText: dialogue === "无口播" ? "" : dialogue,
+      sound: text(candidate.sound, 240) || fallback.sound,
+      transition: text(candidate.transition, 240) || fallback.transition,
+    };
+  });
+}
+
+function repairCommerceProduction(value: unknown, direction: CanvasCommerceDirection) {
+  const raw = value && typeof value === "object" && !Array.isArray(value) ? value as Record<string, unknown> : {};
+  const requestedScene = text(raw.scenePatternId, 80);
+  const requestedShot = text(raw.shotPatternId, 80);
+  const requestedPerformance = text(raw.performancePatternId, 80);
+  const requestedIsValid = isMalaysiaCommerceProductionRecipeCompatible(requestedScene, requestedShot, requestedPerformance, direction);
+  const sceneCandidates = malaysiaCommerceScenePatterns.filter((pattern) => pattern.directions.includes(direction));
+  const shotCandidates = malaysiaCommerceShotPatterns.filter((pattern) => pattern.directions.includes(direction));
+  const performanceCandidates = malaysiaCommercePerformancePatterns.filter((pattern) => pattern.directions.includes(direction));
+  let recipe = requestedIsValid ? { scenePatternId: requestedScene, shotPatternId: requestedShot, performancePatternId: requestedPerformance } : undefined;
+  if (!recipe) {
+    for (const scene of sceneCandidates) {
+      for (const shot of shotCandidates) {
+        const performance = performanceCandidates.find((candidate) => isMalaysiaCommerceProductionRecipeCompatible(scene.id, shot.id, candidate.id, direction));
+        if (performance) {
+          recipe = { scenePatternId: scene.id, shotPatternId: shot.id, performancePatternId: performance.id };
+          break;
+        }
+      }
+      if (recipe) break;
+    }
+  }
+  const fallback = recipe || {
+    scenePatternId: requestedScene,
+    shotPatternId: requestedShot,
+    performancePatternId: requestedPerformance,
+  };
+  const energy = direction === "sport-motion" ? "dynamic" : (["calm", "balanced", "dynamic"] as const).includes(raw.energy as "calm" | "balanced" | "dynamic") ? raw.energy : "balanced";
+  return {
+    ...raw,
+    ...fallback,
+    energy,
+    emotionArc: text(raw.emotionArc, 360) || "从当前小困扰到发现，再到自然确认",
+    realismNotes: text(raw.realismNotes, 500) || "保留自然皮肤纹理、呼吸、眨眼、动作惯性和轻微手持变化",
+  };
+}
+
 function repairCommercePlanHookMetadata(
   value: unknown,
   expectedDirections: CanvasCommerceDirection[] = [],
@@ -449,23 +554,24 @@ function repairCommercePlanHookMetadata(
       ? requestedHookLine
       : commerceHookFallbackLines[copy.id];
     if (!hookLine) return candidate;
-    const production = plan.production && typeof plan.production === "object" && !Array.isArray(plan.production)
-      ? plan.production as Record<string, unknown>
-      : {};
+    const production = repairCommerceProduction(plan.production, direction);
     const scene = malaysiaCommerceScenePattern(text(production.scenePatternId, 80));
+    const repairedHook = {
+      ...rawHook,
+      visualPatternId: visual.id,
+      copyPatternId: copy.id,
+      title: text(rawHook.title, 120) || `${visual.label} + ${copy.label}`,
+      reason: text(rawHook.reason, 360) || `${visual.mechanism}${copy.formula}`,
+      hookLine,
+      onScreenText: hookLine,
+      scene: text(rawHook.scene, 240) || scene?.setting || "马来西亚本地日常场景",
+      visualBeat: text(rawHook.visualBeat, 360) || visual.firstFrame,
+    };
     return {
       ...plan,
-      hook: {
-        ...rawHook,
-        visualPatternId: visual.id,
-        copyPatternId: copy.id,
-        title: text(rawHook.title, 120) || `${visual.label} + ${copy.label}`,
-        reason: text(rawHook.reason, 360) || `${visual.mechanism}${copy.formula}`,
-        hookLine,
-        onScreenText: hookLine,
-        scene: text(rawHook.scene, 240) || scene?.setting || "马来西亚本地日常场景",
-        visualBeat: text(rawHook.visualBeat, 360) || visual.firstFrame,
-      },
+      hook: repairedHook,
+      production,
+      shots: repairCommerceShots(plan.shots, hookLine),
     };
   });
   return { ...root, plans };

@@ -221,11 +221,19 @@ assert.equal(malformedCalls, 2);
 let invalidHookCalls = 0;
 const invalidHookPlan = {
   ...generated.plans[0],
+  direction: "sport-motion",
   hook: {
     visualPatternId: "invented-motion-hook",
     copyPatternId: "invented-copy-hook",
     hookLine: "Biasa sahaja",
   },
+  production: {
+    scenePatternId: "invented-scene-pattern",
+    shotPatternId: "invented-shot-pattern",
+    performancePatternId: "invented-performance-pattern",
+    energy: "balanced",
+  },
+  shots: [{ timeRange: "0-2秒", shotSize: "中景" }],
 };
 const hookRepairService = createCanvasAssistantService(async () => {
   invalidHookCalls += 1;
@@ -240,8 +248,8 @@ const hookRepaired = await hookRepairService.answer({
   productName: analysis.suggestedName,
   sellingPoints: analysis.sellingPoints,
   visibleFacts: analysis.visibleFacts,
-  selectedDirections: ["daily-style"],
-  directionSellingPoints: { "daily-style": "复古配色" },
+  selectedDirections: ["sport-motion"],
+  directionSellingPoints: { "sport-motion": "复古配色" },
   selectedNodeIds: nodes.map((node) => node.id),
   nodes,
 }, "request-hook-repair", visualEvidence);
@@ -249,6 +257,9 @@ assert.equal(invalidHookCalls, 2);
 assert.equal(hookRepaired.kind, "commerce-plan-generation");
 assert.notEqual(hookRepaired.plans[0].hook.visualPatternId, "invented-motion-hook");
 assert.notEqual(hookRepaired.plans[0].hook.copyPatternId, "invented-copy-hook");
+assert.notEqual(hookRepaired.plans[0].production.scenePatternId, "invented-scene-pattern");
+assert.equal(hookRepaired.plans[0].production.energy, "dynamic");
+assert.deepEqual(hookRepaired.plans[0].shots.map((shot) => shot.timeRange), ["0-2秒", "2-7秒", "7-12秒", "12-15秒"]);
 assert.equal(hookRepaired.plans[0].shots[0].dialogue, hookRepaired.plans[0].hook.hookLine);
 assert.equal(hookRepaired.plans[0].shots[0].onScreenText, hookRepaired.plans[0].hook.hookLine);
 
