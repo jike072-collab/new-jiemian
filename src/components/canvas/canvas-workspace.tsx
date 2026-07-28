@@ -3555,7 +3555,7 @@ function CanvasWorkspaceInner({
           scope={isInternalCanvas ? canvasScope() : undefined}
           title={title}
           saveState={saveState}
-          syncState={isInternalCanvas ? syncState : undefined}
+          seedanceStats={isTeamOwner ? <SeedanceStatsControl /> : undefined}
           canvasTheme={canvasTheme}
           libraryOpen={libraryOpen}
           layersOpen={layersOpen}
@@ -4744,6 +4744,70 @@ type InternalAccessAccount = {
   enabled: boolean;
 };
 
+function SeedanceStatsControl() {
+  const [rangeDays, setRangeDays] = useState("30");
+  const [data, setData] = useState<TeamOverviewResponse["seedanceCanvas"] | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [message, setMessage] = useState("");
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    setMessage("");
+    const to = new Date();
+    const from = new Date(to.getTime() - Number(rangeDays) * 24 * 60 * 60 * 1000);
+    try {
+      const response = await fetchJson<TeamOverviewResponse>(`/api/account/team?from=${encodeURIComponent(from.toISOString())}&to=${encodeURIComponent(to.toISOString())}`);
+      setData(response.seedanceCanvas);
+    } catch (error) {
+      setMessage(apiMessage(error, "Seedance 统计读取失败。"));
+    } finally {
+      setLoading(false);
+    }
+  }, [rangeDays]);
+
+  useEffect(() => {
+    const timer = window.setTimeout(() => { void load(); }, 0);
+    return () => window.clearTimeout(timer);
+  }, [load]);
+
+  return (
+    <details className="canvas-v2-seedance-stats">
+      <summary aria-label="Seedance 成功统计" title="Seedance 成功统计">
+        <ListChecks />
+        <span>
+          <strong>Seedance 成功</strong>
+          <small>{loading ? "统计中" : data ? `${data.successfulCount} · 参考视频 ${data.referenceVideoSuccessfulCount}` : "暂不可用"}</small>
+        </span>
+      </summary>
+      <section className="canvas-v2-seedance-stats__popover" aria-label="Seedance 画布成功次数">
+        <header>
+          <div><strong>Seedance 画布成功</strong><small>按模型统计，参考图片不计入参考视频</small></div>
+          <select value={rangeDays} onChange={(event) => setRangeDays(event.target.value)} aria-label="Seedance 统计周期">
+            <option value="7">近 7 天</option>
+            <option value="30">近 30 天</option>
+            <option value="90">近 90 天</option>
+          </select>
+        </header>
+        {message ? <div className="canvas-v2-seedance-stats__message" role="status">{message}</div> : null}
+        {!message && loading ? <div className="canvas-v2-seedance-stats__empty">正在读取统计</div> : null}
+        {!message && !loading && data ? (
+          <div className="canvas-v2-seedance-stats__list">
+            <div className="canvas-v2-seedance-stats__total"><span>成功 {data.successfulCount}</span><span>参考视频 {data.referenceVideoSuccessfulCount}</span></div>
+            {data.models.map((row) => (
+              <div className="canvas-v2-seedance-stats__row" key={row.model}>
+                <strong title={row.model}>{seedanceLibraryModelName(row.model) || row.model}</strong>
+                <span>成功 {row.successfulCount}</span>
+                <span>参考视频 {row.referenceVideoSuccessfulCount}</span>
+              </div>
+            ))}
+            {!data.models.length ? <div className="canvas-v2-seedance-stats__empty">本周期暂无成功记录</div> : null}
+          </div>
+        ) : null}
+      </section>
+    </details>
+  );
+}
+
 function TeamPanel({ onClose, allowCreateMembers }: { onClose: () => void; allowCreateMembers: boolean }) {
   const [rangeDays, setRangeDays] = useState("30");
   const [data, setData] = useState<TeamOverviewResponse | null>(null);
@@ -4846,22 +4910,6 @@ function TeamPanel({ onClose, allowCreateMembers }: { onClose: () => void; allow
         {message ? <div className="canvas-team-panel__message" role="status">{message}</div> : null}
         {!loading && data ? (
           <>
-            <section className="canvas-team-seedance" aria-label="Seedance 画布成功次数">
-              <div className="canvas-team-seedance__header">
-                <div><strong>Seedance 画布成功</strong><small>按模型统计，参考图片不计入参考视频</small></div>
-                <span>成功 {data.seedanceCanvas.successfulCount} · 参考视频 {data.seedanceCanvas.referenceVideoSuccessfulCount}</span>
-              </div>
-              <div className="canvas-team-seedance__list">
-                {data.seedanceCanvas.models.map((row) => (
-                  <div className="canvas-team-seedance__row" key={row.model}>
-                    <strong title={row.model}>{seedanceLibraryModelName(row.model) || row.model}</strong>
-                    <span>成功 {row.successfulCount}</span>
-                    <span>参考视频 {row.referenceVideoSuccessfulCount}</span>
-                  </div>
-                ))}
-                {!data.seedanceCanvas.models.length ? <div className="canvas-team-panel__empty">本周期暂无 Seedance 画布成功记录</div> : null}
-              </div>
-            </section>
             <div className="canvas-team-stats">
               <div><span>积分消耗</span><strong>{data.totals.creditUnits.toLocaleString()}</strong></div>
               <div><span>图片任务</span><strong>{data.totals.imageTasks}</strong></div>

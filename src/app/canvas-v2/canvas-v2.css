@@ -141,8 +141,6 @@
 .canvas-v2-presence__member b { overflow: hidden; color: var(--foreground); text-overflow: ellipsis; white-space: nowrap; font-size: 11px; }
 .canvas-v2-presence__member small { color: var(--muted); font-size: 9px; }
 
-.canvas-v2-free-chip,
-.canvas-v2-sync-chip,
 .canvas-v2-save-chip {
   display: inline-flex;
   min-height: 28px;
@@ -156,11 +154,61 @@
   font-weight: 650;
   white-space: nowrap;
 }
-.canvas-v2-sync-chip.is-syncing,
 .canvas-v2-save-chip.is-saving { color: #0369a1; }
-.canvas-v2-sync-chip.is-paused,
 .canvas-v2-save-chip.is-dirty { color: #a16207; }
 .canvas-v2-save-chip.is-error { color: #be123c; }
+
+.canvas-v2-seedance-stats { position: relative; }
+.canvas-v2-seedance-stats > summary {
+  display: flex;
+  min-width: 144px;
+  height: 36px;
+  align-items: center;
+  gap: 7px;
+  border: 1px solid color-mix(in srgb, var(--primary) 38%, var(--border-subtle));
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--primary) 8%, var(--panel));
+  color: var(--foreground);
+  cursor: pointer;
+  padding: 0 10px;
+  list-style: none;
+}
+.canvas-v2-seedance-stats > summary::-webkit-details-marker { display: none; }
+.canvas-v2-seedance-stats > summary:hover,
+.canvas-v2-seedance-stats[open] > summary { border-color: color-mix(in srgb, var(--primary) 62%, var(--border-subtle)); background: color-mix(in srgb, var(--primary) 13%, var(--panel)); }
+.canvas-v2-seedance-stats > summary > svg { width: 17px; height: 17px; flex: 0 0 17px; color: var(--primary); }
+.canvas-v2-seedance-stats > summary > span { display: grid; min-width: 0; gap: 1px; }
+.canvas-v2-seedance-stats > summary strong,
+.canvas-v2-seedance-stats > summary small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.canvas-v2-seedance-stats > summary strong { font-size: 10px; }
+.canvas-v2-seedance-stats > summary small { color: var(--muted); font-size: 8px; }
+.canvas-v2-seedance-stats__popover {
+  position: absolute;
+  z-index: 40;
+  top: calc(100% + 10px);
+  right: 0;
+  display: grid;
+  width: min(390px, calc(100vw - 20px));
+  gap: 10px;
+  border: 1px solid var(--border-subtle);
+  border-radius: 8px;
+  background: var(--panel);
+  box-shadow: 0 20px 54px rgba(15, 23, 42, 0.18);
+  padding: 12px;
+}
+.canvas-v2-seedance-stats__popover > header { display: flex; align-items: end; justify-content: space-between; gap: 10px; }
+.canvas-v2-seedance-stats__popover > header > div { display: grid; min-width: 0; gap: 3px; }
+.canvas-v2-seedance-stats__popover > header strong { font-size: 12px; }
+.canvas-v2-seedance-stats__popover > header small { color: var(--muted); font-size: 9px; line-height: 1.4; }
+.canvas-v2-seedance-stats__popover select { height: 32px; flex: none; border: 1px solid var(--border-subtle); border-radius: 6px; background: var(--surface); color: var(--foreground); padding: 0 7px; font-size: 10px; }
+.canvas-v2-seedance-stats__list { display: grid; }
+.canvas-v2-seedance-stats__total { display: flex; justify-content: flex-end; gap: 12px; min-height: 30px; align-items: center; color: var(--muted-strong); font-size: 10px; }
+.canvas-v2-seedance-stats__row { display: grid; min-height: 34px; grid-template-columns: minmax(0, 1fr) auto auto; align-items: center; gap: 10px; border-top: 1px solid var(--border-subtle); }
+.canvas-v2-seedance-stats__row strong { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 11px; }
+.canvas-v2-seedance-stats__row span { color: var(--muted); font-size: 10px; white-space: nowrap; }
+.canvas-v2-seedance-stats__empty,
+.canvas-v2-seedance-stats__message { color: var(--muted); padding: 8px 0; font-size: 10px; }
+.canvas-v2-seedance-stats__message { color: #fda4af; }
 
 .canvas-v2-menu { position: relative; }
 .canvas-v2-menu__popover {
@@ -260,8 +308,6 @@
   .canvas-v2-command-button span,
   .canvas-v2-command-button kbd { display: none; }
   .canvas-v2-topbar__actions > button[aria-label="操作与快捷键"] { display: none; }
-  .canvas-v2-free-chip,
-  .canvas-v2-sync-chip,
   .canvas-v2-agent-button span,
   .canvas-v2-organize-button span,
   .canvas-v2-account-button span,
@@ -270,6 +316,9 @@
   .canvas-v2-account-button,
   .canvas-v2-agent-button,
   .canvas-v2-organize-button { width: 34px; height: 34px; flex: 0 0 34px; justify-content: center; padding: 0; }
+  .canvas-v2-seedance-stats > summary { width: 34px; min-width: 34px; height: 34px; justify-content: center; padding: 0; }
+  .canvas-v2-seedance-stats > summary > span { display: none; }
+  .canvas-v2-seedance-stats__popover { position: fixed; top: 64px; right: 10px; left: 10px; width: auto; max-height: calc(100dvh - 78px); overflow-y: auto; }
   .canvas-v2-icon-button,
   .canvas-v2-menu > summary { width: 34px; height: 34px; flex-basis: 34px; }
   .canvas-v2-presence__popover { position: fixed; top: 64px; right: 10px; }

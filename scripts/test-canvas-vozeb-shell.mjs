@@ -43,6 +43,10 @@ assert.match(shell, /canvas-v2-title[\s\S]*canvas-v2-scope-switch/, "personal/te
 assert.doesNotMatch(shell, /canvas-v2-segments/, "personal/team scope must not remain inside the menu");
 assert.match(shell, /aria-label=\{libraryOpen \? "关闭素材库" : "打开素材库"\}/, "the topbar must open the library in one click");
 assert.match(shell, /aria-label="一键整理画布"/, "the topbar must expose one-click canvas organization");
+assert.match(shell, /\{seedanceStats\}/, "the topbar must expose standalone Seedance success statistics");
+assert.doesNotMatch(shell, /内部免费|实时同步/, "the topbar must not show internal-free or sync-status chips");
+assert.match(workspace, /function SeedanceStatsControl/, "Seedance success statistics must be independent from team management");
+assert.match(workspace, /seedanceStats=\{isTeamOwner \? <SeedanceStatsControl \/> : undefined\}/, "only the team owner should see Seedance success statistics");
 assert.match(workspace, /onOrganize=\{\(\) => organizeCanvas\("flow"\)\}/, "one-click organization must use the existing flow layout");
 assert.match(workspace, /optimizePromptNode/, "prompt nodes must reuse the existing prompt optimizer");
 assert.match(workspace, /\/api\/prompts\/optimize/, "prompt nodes must call the established prompt optimizer endpoint");

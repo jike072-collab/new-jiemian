@@ -22,7 +22,7 @@ import {
   UserCircle2,
   UsersRound,
 } from "lucide-react";
-import { useRef } from "react";
+import { useRef, type ReactNode } from "react";
 
 import type { CanvasPresenceMember } from "@/lib/canvas/presence";
 import { cn } from "@/lib/utils";
@@ -39,7 +39,7 @@ export function CanvasVozebTopbar({
   scope,
   title,
   saveState,
-  syncState,
+  seedanceStats,
   canvasTheme,
   libraryOpen,
   layersOpen,
@@ -75,7 +75,7 @@ export function CanvasVozebTopbar({
   scope?: "personal" | "shared";
   title: string;
   saveState: SaveState;
-  syncState?: "live" | "syncing" | "paused";
+  seedanceStats?: ReactNode;
   canvasTheme: CanvasTheme;
   libraryOpen: boolean;
   layersOpen: boolean;
@@ -182,9 +182,8 @@ export function CanvasVozebTopbar({
       </div>
 
       <div className="canvas-v2-topbar__actions">
-        <span className="canvas-v2-free-chip" title="内部画布不扣积分">内部免费</span>
+        {seedanceStats}
         <button type="button" className="canvas-v2-organize-button" aria-label="一键整理画布" title="按创作流程一键整理画布" onClick={onOrganize}><LayoutDashboard /><span>一键整理</span></button>
-        {syncState ? <span className={cn("canvas-v2-sync-chip", `is-${syncState}`)} title="共享画布同步状态">{syncLabel(syncState)}</span> : null}
         {presenceMembers.length ? (
           <details className="canvas-v2-presence">
             <summary className="canvas-v2-icon-button" aria-label={`在线成员 ${presenceMembers.length} 人`} title="在线成员">
@@ -218,12 +217,6 @@ function saveLabel(state: SaveState) {
   if (state === "saving") return "保存中";
   if (state === "error") return "保存失败";
   return "已保存";
-}
-
-function syncLabel(state: "live" | "syncing" | "paused") {
-  if (state === "syncing") return "同步中";
-  if (state === "paused") return "同步暂停";
-  return "实时同步";
 }
 
 function presenceActivityLabel(activity: CanvasPresenceMember["activity"]) {
