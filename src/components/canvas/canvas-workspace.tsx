@@ -4846,11 +4846,6 @@ function TeamPanel({ onClose, allowCreateMembers }: { onClose: () => void; allow
         {message ? <div className="canvas-team-panel__message" role="status">{message}</div> : null}
         {!loading && data ? (
           <>
-            <div className="canvas-team-stats">
-              <div><span>积分消耗</span><strong>{data.totals.creditUnits.toLocaleString()}</strong></div>
-              <div><span>图片任务</span><strong>{data.totals.imageTasks}</strong></div>
-              <div><span>视频任务</span><strong>{data.totals.videoTasks}</strong></div>
-            </div>
             <section className="canvas-team-seedance" aria-label="Seedance 画布成功次数">
               <div className="canvas-team-seedance__header">
                 <div><strong>Seedance 画布成功</strong><small>按模型统计，参考图片不计入参考视频</small></div>
@@ -4867,6 +4862,11 @@ function TeamPanel({ onClose, allowCreateMembers }: { onClose: () => void; allow
                 {!data.seedanceCanvas.models.length ? <div className="canvas-team-panel__empty">本周期暂无 Seedance 画布成功记录</div> : null}
               </div>
             </section>
+            <div className="canvas-team-stats">
+              <div><span>积分消耗</span><strong>{data.totals.creditUnits.toLocaleString()}</strong></div>
+              <div><span>图片任务</span><strong>{data.totals.imageTasks}</strong></div>
+              <div><span>视频任务</span><strong>{data.totals.videoTasks}</strong></div>
+            </div>
             <div className="canvas-team-members">
               {data.members.map((member) => (
                 <div className="canvas-team-member" key={member.localUserId}>
