@@ -448,7 +448,9 @@ function MediaNode({ id, data }: { id: string; data: CanvasNodeData }) {
           <CanvasVideoPreview
             src={data.mediaUrl}
             controls
-            className="nodrag nowheel"
+            className="nodrag nowheel nopan"
+            onPointerDown={(event) => event.stopPropagation()}
+            onClick={(event) => event.stopPropagation()}
             onLoadedMetadata={(event) => actions.registerMediaDimensions(id, event.currentTarget.videoWidth, event.currentTarget.videoHeight)}
           />
           {data.libraryItemId && data.status === "done" && actions.internalCanvas ? (
@@ -477,7 +479,7 @@ function MediaNode({ id, data }: { id: string; data: CanvasNodeData }) {
         </div>
       ) : null}
       <div className="canvas-node__media-footer">
-        {data.mediaOrigin === "upload" && data.status === "done" ? null : <StatusLine status={data.status} progress={data.progress} error={data.error} />}
+        {data.mediaOrigin === "upload" ? null : <StatusLine status={data.status} progress={data.progress} error={data.error} />}
         <MediaMetadata data={data} />
       </div>
     </div>

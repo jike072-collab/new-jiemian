@@ -5007,7 +5007,7 @@ function LibraryPanel({ open, items, filter, search, onClose, onFilter, onSearch
               </span>
               <span className="canvas-library-item__copy">
                 <strong title={item.title}>{item.title}</strong>
-                <small>{item.status === "done" ? "已完成" : item.status === "failed" ? "失败" : "生成中"}</small>
+                {item.mode === "canvas-upload" ? null : <small>{item.status === "done" ? "已完成" : item.status === "failed" ? "失败" : "生成中"}</small>}
               </span>
             </button>
             <details className="canvas-library-item__menu">
