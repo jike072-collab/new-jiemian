@@ -1,7 +1,7 @@
 "use client";
 
 import { Check, Copy, FileText, Film, LoaderCircle, RefreshCw, X } from "lucide-react";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type SyntheticEvent } from "react";
 
 import { ApiError, fetchJson } from "@/lib/client/api";
 import type { LibraryItem } from "@/lib/server/types";
@@ -30,8 +30,11 @@ export function CanvasTikTokCaptions({ scope, library, onClose }: {
   const [error, setError] = useState("");
   const [copiedJobId, setCopiedJobId] = useState("");
   const [loadedAt, setLoadedAt] = useState(() => new Date());
+  const loadingRef = useRef(false);
 
   const load = useCallback(async (background = false) => {
+    if (loadingRef.current) return;
+    loadingRef.current = true;
     if (background) setRefreshing(true);
     else setLoading(true);
     try {
@@ -46,6 +49,7 @@ export function CanvasTikTokCaptions({ scope, library, onClose }: {
     } catch (loadError) {
       setError(readErrorMessage(loadError));
     } finally {
+      loadingRef.current = false;
       setLoading(false);
       setRefreshing(false);
     }
@@ -53,10 +57,18 @@ export function CanvasTikTokCaptions({ scope, library, onClose }: {
 
   useEffect(() => {
     const initialTimer = window.setTimeout(() => { void load(); }, 0);
-    const refreshTimer = window.setInterval(() => { void load(true); }, 10_000);
+    const refreshTimer = window.setInterval(() => { void load(true); }, 5_000);
+    const refreshOnFocus = () => { void load(true); };
+    const refreshWhenVisible = () => {
+      if (document.visibilityState === "visible") void load(true);
+    };
+    window.addEventListener("focus", refreshOnFocus);
+    document.addEventListener("visibilitychange", refreshWhenVisible);
     return () => {
       window.clearTimeout(initialTimer);
       window.clearInterval(refreshTimer);
+      window.removeEventListener("focus", refreshOnFocus);
+      document.removeEventListener("visibilitychange", refreshWhenVisible);
     };
   }, [load]);
 
@@ -140,7 +152,15 @@ export function CanvasTikTokCaptions({ scope, library, onClose }: {
                 return (
                   <article className="canvas-tiktok-caption" key={job.id}>
                     <div className="canvas-tiktok-caption__preview">
-                      <video src={captionVideoUrl(job.libraryItemId, scope)} muted playsInline preload="metadata" aria-label={`${item?.title || "发布视频"}预览`} />
+                      <video
+                        src={captionVideoUrl(job.libraryItemId, scope)}
+                        muted
+                        playsInline
+                        preload="auto"
+                        aria-label={`${item?.title || "发布视频"}预览`}
+                        onLoadedMetadata={seekPreviewFrame}
+                        onSeeked={(event) => { event.currentTarget.dataset.previewReady = "true"; }}
+                      />
                       <Film aria-hidden="true" />
                     </div>
                     <div className="canvas-tiktok-caption__content">
@@ -148,7 +168,6 @@ export function CanvasTikTokCaptions({ scope, library, onClose }: {
                         <span><strong>{index + 1}/{selectedAccount.jobs.length}</strong><small>{item?.title || `视频 ${job.libraryItemId.slice(-6)}`}</small></span>
                         <span className={cn("canvas-tiktok-caption__status", `is-${job.status}`)}>{formatShanghaiTime(job.scheduledAt)} · {publishStatusLabel(job.status)}</span>
                       </div>
-                      <p>{job.caption || "该任务没有保存文案"}</p>
                       <button type="button" disabled={!job.caption.trim()} onClick={() => { void copyCaption(job); }}>
                         {copiedJobId === job.id ? <Check /> : <Copy />}
                         {copiedJobId === job.id ? "已复制" : "复制"}
@@ -172,7 +191,13 @@ export function CanvasTikTokCaptions({ scope, library, onClose }: {
 }
 
 function captionVideoUrl(libraryItemId: string, scope: "personal" | "shared") {
-  return `/api/library/${encodeURIComponent(libraryItemId)}/media?scope=${scope}#t=0.1`;
+  return `/api/library/${encodeURIComponent(libraryItemId)}/media?scope=${scope}`;
+}
+
+function seekPreviewFrame(event: SyntheticEvent<HTMLVideoElement>) {
+  const video = event.currentTarget;
+  if (!Number.isFinite(video.duration) || video.duration <= 0) return;
+  video.currentTime = Math.min(0.5, Math.max(0.1, video.duration / 10));
 }
 
 function publishStatusLabel(status: TikTokPublishStatus) {
