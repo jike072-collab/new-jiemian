@@ -156,10 +156,9 @@ export function CanvasTikTokCaptions({ scope, library, onClose }: {
                         src={captionVideoUrl(job.libraryItemId, scope)}
                         muted
                         playsInline
-                        preload="auto"
+                        preload="metadata"
                         aria-label={`${item?.title || "发布视频"}预览`}
                         onLoadedMetadata={seekPreviewFrame}
-                        onSeeked={(event) => { event.currentTarget.dataset.previewReady = "true"; }}
                       />
                       <Film aria-hidden="true" />
                     </div>
