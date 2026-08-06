@@ -21,6 +21,7 @@ import {
   ArrowUp,
   Bot,
   Eraser,
+  FileText,
   Film,
   FolderOpen,
   Image as ImageIcon,
@@ -110,6 +111,7 @@ import {
 import { CanvasImageEditor } from "@/components/canvas/canvas-image-editor";
 import { CanvasMediaViewer } from "@/components/canvas/canvas-media-viewer";
 import { CanvasTikTokPublisher, type CanvasTikTokCopyState } from "@/components/canvas/canvas-tiktok-publisher";
+import { CanvasTikTokCaptions } from "@/components/canvas/canvas-tiktok-captions";
 import { CanvasVideoTrimmer } from "@/components/canvas/canvas-video-trimmer";
 import { CanvasVideoPreview } from "@/components/canvas/canvas-video-preview";
 import { CanvasVozebTopbar } from "@/components/canvas/canvas-vozeb-shell";
@@ -494,6 +496,7 @@ function CanvasWorkspaceInner({
   const [trimmingLibraryItemId, setTrimmingLibraryItemId] = useState("");
   const [batchTrimming, setBatchTrimming] = useState(false);
   const [tiktokLibraryItemId, setTikTokLibraryItemId] = useState("");
+  const [tiktokCaptionsOpen, setTikTokCaptionsOpen] = useState(false);
   const [tiktokCopyDrafts, setTikTokCopyDrafts] = useState<Record<string, CanvasTikTokCopyState>>({});
   const [teamOpen, setTeamOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
@@ -3563,7 +3566,7 @@ function CanvasWorkspaceInner({
           teamOpen={teamOpen}
           assistantOpen={assistantOpen}
           shortcutsOpen={shortcutsOpen}
-          commandOpen={commandOpen}
+          captionsOpen={tiktokCaptionsOpen}
           isTeamOwner={isTeamOwner}
           presenceMembers={canvasScope() === "shared" ? uniquePresenceMembers : []}
           presenceClientId={collaborationClientId}
@@ -3604,7 +3607,7 @@ function CanvasWorkspaceInner({
             else setNotice("智能助手仅供内部画布使用。");
           }}
           onShortcuts={toggleShortcuts}
-          onCommand={() => commandOpen ? closeCommandPalette() : openCommandPalette()}
+          onCaptions={() => setTikTokCaptionsOpen(true)}
           onOrganize={() => organizeCanvas("flow")}
           onThemeCycle={() => setCanvasTheme((value) => value === "light" ? "midnight" : "light")}
         />
@@ -3639,6 +3642,8 @@ function CanvasWorkspaceInner({
           setShortcutsOpen(false);
           setSettingsOpen(false);
         }}
+        captionsOpen={tiktokCaptionsOpen}
+        onCaptions={() => setTikTokCaptionsOpen(true)}
         onAddPrompt={addPromptNode}
         onAddImage={() => addGeneratorNode("image")}
         onAddVideo={() => addGeneratorNode("video")}
@@ -4084,6 +4089,14 @@ function CanvasWorkspaceInner({
         />
       ) : null}
 
+      {tiktokCaptionsOpen ? (
+        <CanvasTikTokCaptions
+          scope={isInternalCanvas ? canvasScope() : "personal"}
+          library={library}
+          onClose={() => setTikTokCaptionsOpen(false)}
+        />
+      ) : null}
+
       {notice ? (
         <div className="canvas-notice" role="status" aria-live="polite">
           <span>{notice}</span>
@@ -4114,6 +4127,8 @@ function CanvasToolbar({
   onSave,
   onToggleLibrary,
   onToggleLayers,
+  captionsOpen,
+  onCaptions,
   onAddPrompt,
   onAddImage,
   onAddVideo,
@@ -4151,6 +4166,8 @@ function CanvasToolbar({
   onSave: () => void;
   onToggleLibrary: () => void;
   onToggleLayers: () => void;
+  captionsOpen: boolean;
+  onCaptions: () => void;
   onAddPrompt: () => void;
   onAddImage: () => void;
   onAddVideo: () => void;
@@ -4191,6 +4208,7 @@ function CanvasToolbar({
         {scope !== "shared" ? <button type="button" className="canvas-icon-button" aria-label="删除画布" title="删除画布" onClick={onDeleteProject}><Trash2 /></button> : null}
       </div>
       <div className="canvas-toolbar__tools" aria-label="画布工具">
+        <button type="button" className={cn("canvas-tool-button", captionsOpen && "is-active")} aria-label="今日文案" title="今日文案" onClick={onCaptions}><FileText /><span>文案</span></button>
         <button
           type="button"
           className={cn("canvas-tool-button", libraryOpen && "is-active")}

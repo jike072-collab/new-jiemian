@@ -5,6 +5,7 @@ import {
   Bot,
   Code2,
   Download,
+  FileText,
   FolderOpen,
   Keyboard,
   Layers3,
@@ -14,7 +15,6 @@ import {
   Palette,
   Plus,
   Save,
-  Search,
   Settings2,
   Sun,
   Trash2,
@@ -47,7 +47,7 @@ export function CanvasVozebTopbar({
   teamOpen,
   assistantOpen,
   shortcutsOpen,
-  commandOpen,
+  captionsOpen,
   isTeamOwner,
   presenceMembers,
   presenceClientId,
@@ -65,7 +65,7 @@ export function CanvasVozebTopbar({
   onToggleTeam,
   onAssistant,
   onShortcuts,
-  onCommand,
+  onCaptions,
   onOrganize,
   onThemeCycle,
 }: {
@@ -83,7 +83,7 @@ export function CanvasVozebTopbar({
   teamOpen: boolean;
   assistantOpen: boolean;
   shortcutsOpen: boolean;
-  commandOpen: boolean;
+  captionsOpen: boolean;
   isTeamOwner: boolean;
   presenceMembers: CanvasPresenceMember[];
   presenceClientId: string;
@@ -101,7 +101,7 @@ export function CanvasVozebTopbar({
   onToggleTeam: () => void;
   onAssistant: () => void;
   onShortcuts: () => void;
-  onCommand: () => void;
+  onCaptions: () => void;
   onOrganize: () => void;
   onThemeCycle: () => void;
 }) {
@@ -170,20 +170,12 @@ export function CanvasVozebTopbar({
             <button type="button" role="tab" aria-selected={scope === "shared"} className={scope === "shared" ? "is-active" : undefined} onClick={() => onScopeChange("shared")}>团队</button>
           </div>
         ) : null}
-        <button
-          type="button"
-          className={cn("canvas-v2-command-button", commandOpen && "is-active")}
-          aria-label="搜索节点和操作"
-          title="搜索节点和操作（Ctrl K）"
-          onClick={onCommand}
-        >
-          <Search /><span>搜索与命令</span><kbd>Ctrl K</kbd>
-        </button>
       </div>
 
       <div className="canvas-v2-topbar__actions">
         {seedanceStats}
         <button type="button" className="canvas-v2-organize-button" aria-label="一键整理画布" title="按创作流程一键整理画布" onClick={onOrganize}><LayoutDashboard /><span>一键整理</span></button>
+        <button type="button" className={cn("canvas-v2-caption-button", captionsOpen && "is-active")} aria-label="今日文案" title="今日文案" onClick={onCaptions}><FileText /><span>文案</span></button>
         {presenceMembers.length ? (
           <details className="canvas-v2-presence">
             <summary className="canvas-v2-icon-button" aria-label={`在线成员 ${presenceMembers.length} 人`} title="在线成员">

@@ -20,6 +20,8 @@ const copyRoute = read("src/app/api/tiktok/copy/route.ts");
 const workspace = read("src/components/canvas/canvas-workspace.tsx");
 const node = read("src/components/canvas/canvas-node.tsx");
 const canvasCss = read("src/app/canvas/canvas.css");
+const captionsPanel = read("src/components/canvas/canvas-tiktok-captions.tsx");
+const vozebTopbar = read("src/components/canvas/canvas-vozeb-shell.tsx");
 const migration = read("db/migrations/020_tiktok_publishing.sql");
 const creatorInboxMigration = read("db/migrations/021_tiktok_creator_inbox.sql");
 const multiAccountMigration = read("db/migrations/022_tiktok_multi_account_bindings.sql");
@@ -79,6 +81,7 @@ assert.match(workerRoute, /safeTikTokSecretEqual\(authorization, expected\)/);
 assert.match(timer, /OnUnitInactiveSec=20s/);
 
 assert.match(workspace, /CanvasTikTokPublisher/);
+assert.match(workspace, /CanvasTikTokCaptions/);
 assert.match(node, /发布到 TikTok/);
 assert.match(publisher, /immediateLimitReached/);
 assert.match(publisher, /availableAccounts/);
@@ -137,6 +140,13 @@ assert.match(shoeCopyLibrary, /do not add #fyp by default/);
 assert.match(canvasCss, /canvas-tiktok-panel/);
 assert.match(canvasCss, /canvas-tiktok-copy__angles/);
 assert.match(canvasCss, /canvas-tiktok-form__music/);
+assert.match(canvasCss, /canvas-tiktok-captions__accounts/);
+assert.match(captionsPanel, /job\.caption/);
+assert.match(captionsPanel, /job\.libraryItemId/);
+assert.match(captionsPanel, /navigator\.clipboard/);
+assert.match(captionsPanel, /10_000/);
+assert.match(vozebTopbar, /<FileText \/><span>文案<\/span>/);
+assert.doesNotMatch(vozebTopbar, /canvas-v2-command-button/);
 
 const {
   composeTikTokCaption,
@@ -150,6 +160,7 @@ const {
   malaysiaShoeCopyHashtagPool,
   malaysiaShoeCopyPromptLibrary,
 } = await import("../src/lib/malaysia-shoe-copy-library.ts");
+const { groupTodayTikTokCaptionJobs, shanghaiDateKey } = await import("../src/lib/tiktok-caption-dashboard.ts");
 
 const parsedCopy = parseTikTokCopyResponse(`\`\`\`json
 {"title":"Warna yang terus mencuri perhatian #fyp","caption":"Satu langkah, terus nampak lain. #kasut","hashtags":["#kasutsukan","kasutsukan","#sportshoes"],"angle":"transformation","category":"sports"}
@@ -182,5 +193,21 @@ assert.ok(malaysiaShoeCopyHashtagPool("safety").includes("kasutsafety"));
 const promptLibrary = malaysiaShoeCopyPromptLibrary();
 for (const category of ["sports", "women", "men", "kids", "safety", "outdoor", "casual"]) assert.match(promptLibrary, new RegExp(`"id":"${category}"`));
 for (const claim of ["price", "discount", "stock or sold-out status", "comfort", "anti-slip, waterproof or protective performance"]) assert.match(promptLibrary, new RegExp(claim));
+
+const captionConnections = [
+  { connected: true, zernioAccountId: "account-a", displayName: "奥皇账号" },
+  { connected: true, zernioAccountId: "account-b", displayName: "吴雨桐" },
+  { connected: true, zernioAccountId: "account-c", displayName: "伍国徽" },
+];
+const captionJobs = [
+  { id: "later", zernioAccountId: "account-a", libraryItemId: "video-2", caption: "第二条 #鞋子", deliveryMode: "creator_inbox", status: "published", scheduledAt: "2026-08-06T00:10:00.000Z", createdAt: "2026-08-05T23:10:00.000Z" },
+  { id: "earlier", zernioAccountId: "account-a", libraryItemId: "video-1", caption: "第一条 #鞋子", deliveryMode: "creator_inbox", status: "published", scheduledAt: "2026-08-06T00:00:00.000Z", createdAt: "2026-08-05T23:00:00.000Z" },
+  { id: "direct", zernioAccountId: "account-a", libraryItemId: "video-direct", caption: "直接发布", deliveryMode: "direct", status: "published", scheduledAt: "2026-08-06T00:05:00.000Z", createdAt: "2026-08-05T23:05:00.000Z" },
+  { id: "tomorrow", zernioAccountId: "account-b", libraryItemId: "video-tomorrow", caption: "明天", deliveryMode: "creator_inbox", status: "scheduled", scheduledAt: "2026-08-06T16:00:00.000Z", createdAt: "2026-08-06T15:00:00.000Z" },
+];
+const captionGroups = groupTodayTikTokCaptionJobs(captionConnections, captionJobs, new Date("2026-08-06T01:00:00.000Z"));
+assert.equal(shanghaiDateKey("2026-08-05T16:00:00.000Z"), "2026-08-06");
+assert.deepEqual(captionGroups.map((group) => [group.displayName, group.jobs.length]), [["奥皇账号", 2], ["吴雨桐", 0], ["伍国徽", 0]]);
+assert.deepEqual(captionGroups[0].jobs.map((job) => job.id), ["earlier", "later"]);
 
 console.log("TikTok publishing contracts passed without creating a post");
